@@ -553,23 +553,19 @@ ${hasTools ? '6' : '4'}. When referencing markdown blocks in your answer, keep t
     // Add assistant's system prompt (if available)
     if (currentAssistant && currentAssistant.systemPrompt) {
       content += `Here are instructions from the selected assistant (${currentAssistant.name}):
-<assistant_instructions>
 ${currentAssistant.systemPrompt}
-</assistant_instructions>
-
 `
     }
     
     // Add global custom instructions (if available)
     if (customInstruction) {
       content += `Here are additional instructions to follow in your responses when relevant. There's no need to explicitly acknowledge them:
-<custom_instructions>
 ${customInstruction}
-</custom_instructions>`
+`
     }
     
     return {
-      role: 'user',
+      role: 'system',
       content: content,
     }
   }
