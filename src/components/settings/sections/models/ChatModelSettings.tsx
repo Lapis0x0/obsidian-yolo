@@ -61,8 +61,10 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
       )
 
       const handleSubmit = async () => {
-        if (!['low', 'medium', 'high'].includes(reasoningEffort)) {
-          new Notice('Reasoning effort must be one of "low", "medium", "high"')
+        if (!['minimal', 'low', 'medium', 'high'].includes(reasoningEffort)) {
+          new Notice(
+            'Reasoning effort must be one of "minimal", "low", "medium", "high"',
+          )
           return
         }
 
@@ -112,6 +114,7 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
               <ObsidianDropdown
                 value={reasoningEffort}
                 options={{
+                  minimal: 'minimal',
                   low: 'low',
                   medium: 'medium',
                   high: 'high',
@@ -245,9 +248,9 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
       )
 
       const handleSubmit = async () => {
-        if (!['low', 'medium', 'high'].includes(searchContextSize)) {
+        if (!['minimal', 'low', 'medium', 'high'].includes(searchContextSize)) {
           new Notice(
-            'Search context size must be one of "low", "medium", "high"',
+            'Search context size must be one of "minimal", "low", "medium", "high"',
           )
           return
         }
@@ -277,6 +280,7 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
             <ObsidianDropdown
               value={searchContextSize}
               options={{
+                minimal: 'minimal',
                 low: 'low',
                 medium: 'medium',
                 high: 'high',
