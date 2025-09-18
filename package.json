@@ -1,6 +1,6 @@
 {
   "name": "obsidian-yolo",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "AI chat with note context, smart writing assistance, and one-click edits for your vault.",
   "main": "main.js",
   "scripts": {
