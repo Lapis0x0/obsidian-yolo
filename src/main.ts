@@ -20,7 +20,6 @@ import {
 import { ApplyView, ApplyViewState } from './ApplyView'
 import { ChatView } from './ChatView'
 import { ChatProps } from './components/chat-view/Chat'
-import { CustomContinueModal } from './components/modals/CustomContinueModal'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CustomContinuePanel } from './components/panels/CustomContinuePanel'
 import { CustomRewritePanel } from './components/panels/CustomRewritePanel'
@@ -160,11 +159,16 @@ export default class SmartComposerPlugin extends Plugin {
       if (cm?.coordsAtPos && typeof head === 'number') {
         const rect = cm.coordsAtPos(head)
         if (rect) {
-          const y = (rect.bottom ?? rect.top) + dy
-          return { x: rect.left, y }
+          const base = rect.bottom ?? rect.top
+          if (typeof base === 'number') {
+            const y = base + dy
+            return { x: rect.left, y }
+          }
         }
       }
-    } catch {}
+    } catch {
+      // Fall back to default positioning when the cursor coordinates cannot be resolved.
+    }
     // Fallback: center (handled by caller when returning undefined)
     return undefined
   }
@@ -285,7 +289,9 @@ export default class SmartComposerPlugin extends Plugin {
     for (const controller of Array.from(this.activeAbortControllers)) {
       try {
         controller.abort()
-      } catch {}
+      } catch {
+        // Ignore abort errors; controllers may already be settled.
+      }
     }
     this.activeAbortControllers.clear()
     this.isContinuationInProgress = false
@@ -343,7 +349,9 @@ export default class SmartComposerPlugin extends Plugin {
     if (!this.tabCompletionAbortController) return
     try {
       this.tabCompletionAbortController.abort()
-    } catch {}
+    } catch {
+      // Ignore abort errors; controller might already be closed.
+    }
     this.activeAbortControllers.delete(this.tabCompletionAbortController)
     this.tabCompletionAbortController = null
   }
@@ -1304,7 +1312,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       if (file instanceof TFile || file instanceof TFolder) {
         this.onVaultPathChanged(file.path)
       }
-    } catch {}
+    } catch {
+      // Ignore unexpected file type changes during event handling.
+    }
   }
 
   private onVaultPathChanged(path: string) {

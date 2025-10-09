@@ -51,9 +51,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         const pct = Math.round((p.completedChunks / p.totalChunks) * 100)
         return Math.max(0, Math.min(100, pct))
       }
-    } catch {}
+    } catch {
+      // Ignore JSON parsing errors from outdated cached data.
+    }
     return null
-  }, [indexProgress, isIndexing])
+  }, [indexProgress])
 
   const includeFolders = useMemo(
     () => includePatternsToFolderPaths(settings.ragOptions.includePatterns),

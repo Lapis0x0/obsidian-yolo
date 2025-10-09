@@ -155,7 +155,7 @@ export function useChatHistory(): UseChatHistory {
                 const generated = response.choices?.[0]?.message?.content ?? ''
                 const nextTitle = (generated || '')
                   .trim()
-                  .replace(/^[\'\"“”‘’]+|[\'\"“”‘’]+$/g, '')
+                  .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
                 if (!nextTitle) return
                 const nextSafeTitle = nextTitle.substring(0, 10)
 
@@ -174,7 +174,7 @@ export function useChatHistory(): UseChatHistory {
           maxWait: 1000,
         },
       ),
-    [chatManager, fetchChatList],
+    [chatManager, fetchChatList, language, settings],
   )
 
   const deleteConversation = useCallback(

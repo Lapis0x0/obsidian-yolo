@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
 import { ApplyViewState } from '../../ApplyView'
@@ -116,7 +115,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const {
     createOrUpdateConversation,
     deleteConversation,
-    getChatMessagesById,
     getConversationById,
     updateConversationTitle,
     chatList,
@@ -384,6 +382,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       promptGenerator,
       abortActiveStreams,
       forceScrollToBottom,
+      chatMode,
     ],
   )
 

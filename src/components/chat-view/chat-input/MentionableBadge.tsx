@@ -315,7 +315,7 @@ export default function MentionableBadge({
           onDelete={onDelete}
           onClick={onClick}
           isFocused={isFocused}
-          onToggleVisibility={() => onToggleVisibility && onToggleVisibility()}
+          onToggleVisibility={() => onToggleVisibility?.()}
         />
       )
     case 'block':

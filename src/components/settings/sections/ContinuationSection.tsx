@@ -17,7 +17,7 @@ type ContinuationSectionProps = {
   app: App
 }
 
-export function ContinuationSection({ app }: ContinuationSectionProps) {
+export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
 

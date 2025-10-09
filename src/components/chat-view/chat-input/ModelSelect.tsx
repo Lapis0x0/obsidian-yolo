@@ -3,10 +3,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 
 import { useSettings } from '../../../contexts/settings-context'
-import {
-  getModelDisplayName,
-  getModelDisplayNameWithProvider,
-} from '../../../utils/model-id-utils'
+import { getModelDisplayName } from '../../../utils/model-id-utils'
 
 export function ModelSelect({
   modelId: externalModelId,

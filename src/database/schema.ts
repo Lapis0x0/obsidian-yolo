@@ -8,8 +8,6 @@ import {
   serial,
   smallint,
   text,
-  timestamp,
-  uuid,
 } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 

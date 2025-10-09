@@ -63,7 +63,7 @@ describe('parseSmartComposerSettings', () => {
       },
 
       continuationOptions: {
-        enableSuperContinuation: false,
+        enableSuperContinuation: true,
         continuationModelId: 'openai/gpt-4.1-mini',
         defaultSystemPrompt: DEFAULT_CONTINUATION_SYSTEM_PROMPT,
         enableKeywordTrigger: true,

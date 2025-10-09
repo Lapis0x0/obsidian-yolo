@@ -1,4 +1,3 @@
-import { getIcon } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -19,16 +18,15 @@ export default function ApplyViewRoot({
   state: ApplyViewState
   close: () => void
 }) {
-  const acceptIcon = getIcon('check')
-  const rejectIcon = getIcon('x')
-  const [currentDiffIndex, setCurrentDiffIndex] = useState(0)
+  const [, setCurrentDiffIndex] = useState(0)
   const diffBlockRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   const app = useApp()
 
-  const [diff, setDiff] = useState<DiffBlock[]>(
-    createDiffBlocks(state.originalContent, state.newContent),
+  const diff = useMemo(
+    () => createDiffBlocks(state.originalContent, state.newContent),
+    [state.newContent, state.originalContent],
   )
   const modifiedBlockIndices = useMemo(
     () =>
@@ -54,20 +52,12 @@ export default function ApplyViewRoot({
     [modifiedBlockIndices],
   )
 
-  const handlePrevDiff = useCallback(() => {
-    scrollToDiffBlock(currentDiffIndex - 1)
-  }, [currentDiffIndex, scrollToDiffBlock])
-
-  const handleNextDiff = useCallback(() => {
-    scrollToDiffBlock(currentDiffIndex + 1)
-  }, [currentDiffIndex, scrollToDiffBlock])
-
   const applyContentAndClose = async (newContent: string) => {
     await app.vault.modify(state.file, newContent)
     close()
   }
 
-  const acceptCurrentBlock = (index: number) => {
+  const acceptCurrentBlock = () => {
     // Immediately apply: keep current (original) for all blocks
     const newContent = diff
       .map((block) => {
@@ -176,7 +166,7 @@ export default function ApplyViewRoot({
                     key={index}
                     block={block}
                     onAcceptIncoming={() => acceptIncomingBlock(index)}
-                    onAcceptCurrent={() => acceptCurrentBlock(index)}
+                    onAcceptCurrent={acceptCurrentBlock}
                     onAcceptBoth={() => acceptBothBlocks(index)}
                     ref={(el) => {
                       diffBlockRefs.current[index] = el

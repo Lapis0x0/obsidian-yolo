@@ -482,11 +482,10 @@ export function useMenuAnchorRef(
   setResolution: (r: MenuResolution | null) => void,
   className?: string,
   parent: HTMLElement = document.body,
-  shouldIncludePageYOffset__EXPERIMENTAL = true,
+  _shouldIncludePageYOffset__EXPERIMENTAL = true,
 ): MutableRefObject<HTMLElement> {
   const [editor] = useLexicalComposerContext()
   const anchorElementRef = useRef<HTMLElement>(document.createElement('div'))
-  const lastSizeRef = useRef<{ w: number; h: number } | null>(null)
   const positionMenu = useCallback(() => {
     // 通过行内样式固定定位弹窗容器
     const containerDiv = anchorElementRef.current
@@ -500,8 +499,7 @@ export function useMenuAnchorRef(
 
     if (rootElement !== null && resolution !== null) {
       const rect = resolution.getRect()
-      const { left, top, bottom } = rect
-      const offset = 6
+      const { left, top } = rect
 
       if (!containerDiv.isConnected) {
         if (className != null) {
@@ -536,7 +534,9 @@ export function useMenuAnchorRef(
           const matches = boxShadow.match(/0px\s+0px\s+0px\s+([0-9.]+)px/g)
           if (matches) {
             for (const m of matches) {
-              const n = parseFloat((m.match(/([0-9.]+)px$/) || [, '0'])[1]) || 0
+              const match = m.match(/([0-9.]+)px$/)
+              const value = match ? match[1] : '0'
+              const n = parseFloat(value) || 0
               if (n > ring) ring = n
             }
           }
@@ -600,13 +600,7 @@ export function useMenuAnchorRef(
       anchorElementRef.current = containerDiv
       rootElement.setAttribute('aria-controls', 'typeahead-menu')
     }
-  }, [
-    editor,
-    resolution,
-    shouldIncludePageYOffset__EXPERIMENTAL,
-    className,
-    parent,
-  ])
+  }, [editor, resolution, className, parent])
 
   useEffect(() => {
     const rootElement = editor.getRootElement()

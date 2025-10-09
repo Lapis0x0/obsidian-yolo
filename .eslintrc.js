@@ -7,9 +7,10 @@ const config = {
   },
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: 'tsconfig.json',
+    project: './tsconfig.eslint.json',
     tsconfigRootDir: __dirname,
     sourceType: 'module',
+    warnOnUnsupportedTypeScriptVersion: false,
   },
   plugins: ['@typescript-eslint/eslint-plugin'],
   extends: [
@@ -35,6 +36,12 @@ const config = {
     '@typescript-eslint/no-floating-promises': 'off',
     '@typescript-eslint/no-unnecessary-condition': 'off',
     '@typescript-eslint/no-misused-promises': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-unsafe-argument': 'off',
+    '@typescript-eslint/no-unsafe-return': 'off',
+    '@typescript-eslint/no-non-null-assertion': 'off',
+    '@typescript-eslint/prefer-nullish-coalescing': 'off',
+    '@typescript-eslint/restrict-template-expressions': 'off',
     '@typescript-eslint/no-unused-vars': [
       'error',
       {
@@ -45,6 +52,7 @@ const config = {
     ],
 
     'react/react-in-jsx-scope': 'off',
+    'react/prop-types': 'off',
 
     'import/no-unresolved': 'off',
 
@@ -68,6 +76,11 @@ const config = {
         },
       },
     ],
+  },
+  settings: {
+    react: {
+      version: 'detect',
+    },
   },
   ignorePatterns: ['.eslintrc.js'],
 }

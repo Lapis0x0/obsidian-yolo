@@ -218,7 +218,7 @@ export class GeminiProvider extends BaseLLMProvider<
           request as any,
           options,
         )
-        async function* singleChunk(
+        const singleChunk = async function* (
           resp: LLMResponseNonStreaming,
         ): AsyncIterable<LLMResponseStreaming> {
           yield {
@@ -353,7 +353,9 @@ export class GeminiProvider extends BaseLLMProvider<
         reasoningText =
           thoughtPieces.length > 0 ? thoughtPieces.join('') : undefined
       }
-    } catch {}
+    } catch {
+      // Ignore parsing issues for optional reasoning metadata.
+    }
     return {
       id: messageId,
       choices: [
@@ -414,7 +416,9 @@ export class GeminiProvider extends BaseLLMProvider<
           else contentPiece += p.text
         }
       }
-    } catch {}
+    } catch {
+      // Ignore parsing issues for partial chunk metadata.
+    }
     return {
       id: messageId,
       choices: [

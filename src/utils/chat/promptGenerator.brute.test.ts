@@ -11,7 +11,7 @@ jest.mock('../llm/token', () => ({
 
 jest.mock('../obsidian', () => ({
   readMultipleTFiles: jest.fn(async () => ['A', 'B']),
-  getNestedFiles: jest.fn((folder: any) => []),
+  getNestedFiles: jest.fn((_folder: any) => []),
   readTFileContent: jest.fn(async () => 'X'),
 }))
 

@@ -1,6 +1,6 @@
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'

@@ -582,7 +582,7 @@ ${hasTools ? '6' : '4'}. When referencing markdown blocks in your answer, keep t
     let content = ''
 
     // Add assistant's system prompt (if available)
-    if (currentAssistant && currentAssistant.systemPrompt) {
+    if (currentAssistant?.systemPrompt) {
       content += `Here are instructions from the selected assistant (${currentAssistant.name}):
 <assistant_instructions>
 ${currentAssistant.systemPrompt}

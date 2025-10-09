@@ -1,5 +1,5 @@
 import { App, TFile, TFolder, Vault } from 'obsidian'
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { FolderPickerModal } from '../modals/FolderPickerModal'
@@ -32,7 +32,7 @@ export function FolderSelectionList({
   const overIndexRef = useRef<number | null>(null)
 
   // Normalize any incoming folder values to avoid duplicates like '/', '**', 'path/'
-  const normalize = (p: string): string => {
+  const normalize = useCallback((p: string): string => {
     if (!p) return ''
     const trimmed = p.replace(/^\/+/, '').replace(/\/+$/, '')
     if (allowFiles) {
@@ -54,9 +54,9 @@ export function FolderSelectionList({
     if (m2) return m2[1].replace(/^\/+/, '').replace(/\/+$/, '')
     if (trimmed.includes('*')) return ''
     return trimmed
-  }
+  }, [allowFiles, vault])
 
-  const items = useMemo(() => value.map(normalize), [value])
+  const items = useMemo(() => value.map(normalize), [normalize, value])
 
   const absorbByParent = (list: string[]): string[] => {
     // Keep shortest ancestors; remove descendants covered by any kept parent

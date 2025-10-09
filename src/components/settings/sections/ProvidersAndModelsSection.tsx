@@ -12,17 +12,14 @@ import React, { useState } from 'react'
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_EMBEDDING_MODELS,
-  DEFAULT_PROVIDERS,
   PROVIDER_TYPES_INFO,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
 import SmartComposerPlugin from '../../../main'
-import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
-import { ConfirmModal } from '../../modals/ConfirmModal'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
 import { AddEmbeddingModelModal } from '../modals/AddEmbeddingModelModal'
 import { EditChatModelModal } from '../modals/EditChatModelModal'
@@ -42,7 +39,7 @@ export function ProvidersAndModelsSection({
   plugin,
 }: ProvidersAndModelsSectionProps) {
   const { settings, setSettings } = useSettings()
-  const { t, language } = useLanguage()
+  const { t, language: _language } = useLanguage()
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(
     new Set(),
   )

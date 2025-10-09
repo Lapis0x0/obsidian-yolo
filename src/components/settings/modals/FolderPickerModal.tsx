@@ -6,7 +6,7 @@ import {
   FolderClosed,
   FolderOpen,
 } from 'lucide-react'
-import { App, TFile, TFolder, Vault } from 'obsidian'
+import { App, TFile, Vault } from 'obsidian'
 import React, { useMemo, useState } from 'react'
 
 import { listAllFolderPaths } from '../../../utils/rag-utils'
@@ -54,7 +54,9 @@ function FolderPickerModalComponent({
       if (all && Array.isArray(all)) {
         return all.filter((f): f is TFile => f instanceof TFile)
       }
-    } catch {}
+    } catch {
+      // Ignore errors when fallback APIs are unavailable.
+    }
     return vault.getMarkdownFiles?.() ?? []
   }, [vault, allowFiles])
 

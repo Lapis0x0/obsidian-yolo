@@ -83,7 +83,9 @@ export function ObsidianTextArea({
       const len = el.value.length
       try {
         el.setSelectionRange(len, len)
-      } catch {}
+      } catch {
+        // Some input implementations may not support setSelectionRange; ignore errors.
+      }
     }
   }, [textAreaComponent, autoFocus])
 
