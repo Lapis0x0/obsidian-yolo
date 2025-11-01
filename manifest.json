@@ -1,7 +1,7 @@
 {
   "id": "yolo",
   "name": "YOLO",
-  "version": "1.4.3",
+  "version": "1.4.4.1",
   "minAppVersion": "0.15.0",
   "description": "Smart, snappy, and multilingual AI assistant for your vault.",
   "author": "Lapix0x0",
