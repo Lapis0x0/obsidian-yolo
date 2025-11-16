@@ -952,16 +952,17 @@
   max-width: 280px;
 }
 
-.smtcmp-chat-list-dropdown-content li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.smtcmp-chat-list-dropdown-content li {  
+  display: flex;  
+  align-items: center;  
+  justify-content: flex-start; /* 改这里 */  
 }
 
-.smtcmp-chat-list-dropdown-item-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.smtcmp-chat-list-dropdown-item-title {  
+  overflow: hidden;  
+  text-overflow: ellipsis;  
+  white-space: nowrap;  
+  flex: 1; /* 添加这行 */  
 }
 
 input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
@@ -969,16 +970,17 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   font-size: var(--font-ui-smaller);
 }
 
-.smtcmp-chat-list-dropdown-item-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-
-  svg {
-    height: var(--icon-xs);
-    width: var(--icon-xs);
-    stroke-width: var(--icon-stroke);
-  }
+.smtcmp-chat-list-dropdown-item-actions {  
+  display: flex;  
+  align-items: center;  
+  gap: var(--size-4-1);  
+  margin-left: auto; /* 添加这行 */  
+  
+  svg {  
+    height: var(--icon-xs);  
+    width: var(--icon-xs);  
+    stroke-width: var(--icon-stroke);  
+  }  
 }
 
 .smtcmp-code-block {
