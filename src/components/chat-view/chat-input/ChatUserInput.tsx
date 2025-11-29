@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 import { useApp } from '../../../contexts/app-context'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
@@ -292,6 +293,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         <MentionableContentPreview
           displayedMentionableKey={displayedMentionableKey}
           mentionables={mentionables}
+          onCollapse={() => setDisplayedMentionableKey(null)}
         />
 
         <LexicalContentEditable
@@ -342,9 +344,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 function MentionableContentPreview({
   displayedMentionableKey,
   mentionables,
+  onCollapse,
 }: {
   displayedMentionableKey: string | null
   mentionables: Mentionable[]
+  onCollapse: () => void
 }) {
   const app = useApp()
 
@@ -400,11 +404,42 @@ function MentionableContentPreview({
 
   return displayFileContent ? (
     <div className="smtcmp-chat-user-input-file-content-preview">
-      <ObsidianMarkdown content={displayFileContent} scale="xs" />
+      <div className="smtcmp-chat-user-input-file-content-preview-header">
+        <div className="smtcmp-chat-user-input-file-content-preview-title">
+          {displayedMentionable?.type === 'block'
+            ? `${(displayedMentionable as any).file.name} (${(displayedMentionable as any).startLine}:${(displayedMentionable as any).endLine})`
+            : (displayedMentionable as any)?.file?.name || 'File content'
+          }
+        </div>
+        <div
+          className="smtcmp-chat-user-input-file-content-preview-collapse"
+          onClick={onCollapse}
+          title="收起文件内容"
+        >
+          <ChevronDown size={14} />
+        </div>
+      </div>
+      <div className="smtcmp-chat-user-input-file-content-preview-content">
+        <ObsidianMarkdown content={displayFileContent} scale="xs" />
+      </div>
     </div>
   ) : displayImage ? (
     <div className="smtcmp-chat-user-input-file-content-preview">
-      <img src={displayImage.data} alt={displayImage.name} />
+      <div className="smtcmp-chat-user-input-file-content-preview-header">
+        <div className="smtcmp-chat-user-input-file-content-preview-title">
+          {displayImage.name}
+        </div>
+        <div
+          className="smtcmp-chat-user-input-file-content-preview-collapse"
+          onClick={onCollapse}
+          title="收起图片"
+        >
+          <ChevronDown size={14} />
+        </div>
+      </div>
+      <div className="smtcmp-chat-user-input-file-content-preview-content">
+        <img src={displayImage.data} alt={displayImage.name} />
+      </div>
     </div>
   ) : null
 }
