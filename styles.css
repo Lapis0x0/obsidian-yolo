@@ -792,6 +792,42 @@
   }
 }
 
+.smtcmp-chat-user-input-file-content-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--size-2-2) var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+}
+
+.smtcmp-chat-user-input-file-content-preview-title {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.smtcmp-chat-user-input-file-content-preview-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.smtcmp-chat-user-input-file-content-preview-collapse:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 /**
  * ChatUserInput
  */
