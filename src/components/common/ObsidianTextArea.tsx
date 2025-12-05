@@ -70,7 +70,20 @@ export function ObsidianTextArea({
   // Apply input class for theming instead of inline styles
   useEffect(() => {
     if (!textAreaComponent) return
-    if (inputClassName) textAreaComponent.inputEl.classList.add(inputClassName)
+    if (inputClassName) {
+      textAreaComponent.inputEl.classList.add(inputClassName)
+      // 确保样式能够正确应用
+      textAreaComponent.inputEl.style.cssText = ''
+      // 强制应用我们的样式
+      textAreaComponent.inputEl.style.width = '100%'
+      textAreaComponent.inputEl.style.height = '100%'
+      textAreaComponent.inputEl.style.minHeight = '300px'
+      textAreaComponent.inputEl.style.maxHeight = '100%'
+      textAreaComponent.inputEl.style.boxSizing = 'border-box'
+      textAreaComponent.inputEl.style.resize = 'none'
+      textAreaComponent.inputEl.style.overflow = 'auto'
+      textAreaComponent.inputEl.style.flex = '1'
+    }
   }, [textAreaComponent, inputClassName])
 
   // Auto focus when required

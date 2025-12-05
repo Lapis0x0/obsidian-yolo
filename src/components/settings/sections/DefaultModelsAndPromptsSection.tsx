@@ -13,6 +13,7 @@ import {
 } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
+import ModularSystemPromptSection from './ModularSystemPromptSection'
 
 export function DefaultModelsAndPromptsSection() {
   const { settings, setSettings } = useSettings()
@@ -136,20 +137,7 @@ export function DefaultModelsAndPromptsSection() {
         />
       </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.defaults.globalSystemPrompt')}
-        desc={t('settings.defaults.globalSystemPromptDesc')}
-        className="smtcmp-settings-textarea-header"
-      />
-
-      <ObsidianSetting className="smtcmp-settings-textarea">
-        <ObsidianTextArea
-          value={settings.systemPrompt}
-          onChange={(value: string) => {
-            commitSettingsUpdate({ systemPrompt: value }, 'systemPrompt')
-          }}
-        />
-      </ObsidianSetting>
+      <ModularSystemPromptSection />
 
       <ObsidianSetting
         name={t('settings.defaults.chatTitlePrompt')}

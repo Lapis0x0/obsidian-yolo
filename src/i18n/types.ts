@@ -435,6 +435,64 @@ export type TranslationKeys = {
       copySuffix?: string
       dragHandleAria?: string
     }
+    // Modular System Prompt
+    systemPrompt?: {
+      title: string
+      desc?: string
+      modularMode: string
+      previewMode: string
+      addGroup: string
+      addPrompt: string
+      defaultGroupName: string
+      defaultPromptName: string
+      defaultPromptContent: string
+      groupNamePlaceholder: string
+      promptNamePlaceholder: string
+      promptContentPlaceholder: string
+      editPrompt: string
+      editGroupName: string
+      editPromptName: string
+      editPromptContent: string
+      editingTips: string
+      tip1: string
+      tip2: string
+      tip3: string
+      tip4: string
+      wordCount: string
+      charCount: string
+      reset: string
+      confirmResetContent: string
+      confirmDiscardChanges: string
+      confirmDeleteGroup: string
+      confirmDeletePrompt: string
+      deleteGroup: string
+      deletePrompt: string
+      enabledPrompts: string
+      noPrompts: string
+      enableGroup: string
+      disableGroup: string
+      enablePrompt: string
+      disablePrompt: string
+      // Table headers
+      promptName?: string
+      enable?: string
+      actions?: string
+    }
+    // System Prompt Preview
+    systemPreview?: {
+      title: string
+      previewContent: string
+      previewDesc: string
+      previewEmpty: string
+      copyToClipboard: string
+      copied: string
+      previewTip: string
+      totalChars: string
+      totalWords: string
+      totalLines: string
+      chineseChars: string
+      englishWords: string
+    }
     language: {
       title: string
       select: string

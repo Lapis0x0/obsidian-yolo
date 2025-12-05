@@ -1,0 +1,765 @@
+/* 模块化系统提示词样式 */
+
+/* 主容器 */
+.smtcmp-system-prompt-section {
+  /* 继承现有 smtcmp-settings-section 样式 */
+  margin-bottom: 16px;
+}
+
+/* 模式切换区域 */
+.smtcmp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.smtcmp-mode-toggle {
+  margin-left: auto;
+}
+
+.smtcmp-mode-dropdown {
+  min-width: 120px;
+}
+
+.smtcmp-mode-toggle-container {
+  margin: 12px 0;
+  text-align: right;
+}
+
+/* 模块化模式容器 */
+.smtcmp-modular-mode {
+  /* 继承现有样式 */
+  padding: 8px 0;
+}
+
+.smtcmp-modular-container {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  margin: 8px 0;
+  background: var(--background-primary);
+}
+
+/* 添加分组按钮 - 使用与Providers相同的样式 */
+.smtcmp-add-group-btn,
+.smtcmp-add-provider-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  font-size: var(--font-ui-small);
+}
+
+.smtcmp-add-group-btn:hover,
+.smtcmp-add-provider-btn:hover {
+  background: var(--interactive-hover);
+  color: var(--text-normal);
+}
+
+/* 分组项样式 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-prompt-group,
+.smtcmp-provider-section {
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.smtcmp-prompt-group:last-child,
+.smtcmp-provider-section:last-child {
+  border-bottom: none;
+}
+
+.smtcmp-prompt-group--dragging,
+.smtcmp-provider-dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+/* 分组头部 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-prompt-group-header,
+.smtcmp-provider-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  min-height: 48px;
+}
+
+.smtcmp-provider-header.smtcmp-clickable {
+  cursor: pointer;
+}
+
+.smtcmp-provider-header.smtcmp-clickable:hover {
+  background: var(--interactive-hover);
+}
+
+/* 拖拽手柄 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-drag-handle,
+.smtcmp-provider-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  cursor: grab;
+  border-radius: 3px;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.smtcmp-drag-handle:hover,
+.smtcmp-provider-drag-handle:hover {
+  color: var(--text-normal);
+}
+
+.smtcmp-drag-handle:active,
+.smtcmp-provider-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* 展开/收起按钮 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-expand-button,
+.smtcmp-provider-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.smtcmp-expand-button:hover,
+.smtcmp-provider-expand-btn:hover {
+  background: var(--interactive-hover);
+  color: var(--text-normal);
+}
+
+/* 分组信息区域 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-group-name-section,
+.smtcmp-provider-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+
+/* 分组统计信息区域 */
+.smtcmp-provider-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  flex: 0 0 auto;
+  min-width: 100px;
+  max-width: 120px;
+}
+
+.smtcmp-group-name,
+.smtcmp-provider-id {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-group-name:hover,
+.smtcmp-provider-id:hover {
+  background: var(--interactive-hover);
+}
+
+.smtcmp-group-name-input,
+.smtcmp-inline-edit-input {
+  width: 100%;
+  font-size: var(--font-ui-small);
+}
+
+.smtcmp-provider-type,
+.smtcmp-group-stats {
+  padding: 4px 8px;
+  background: var(--background-modifier-form-field);
+  border-radius: 3px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.smtcmp-provider-api-key {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.smtcmp-provider-api-key:hover {
+  color: var(--text-normal);
+}
+
+/* 分组操作区域 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-group-actions,
+.smtcmp-provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.smtcmp-group-toggle,
+.smtcmp-provider-toggle {
+  /* 继承现有 ObsidianToggle 样式 */
+  margin-right: 8px;
+}
+
+.smtcmp-add-prompt-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.smtcmp-add-prompt-icon-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.smtcmp-delete-group-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.smtcmp-delete-group-btn:hover {
+  background: var(--color-red);
+  color: var(--text-on-accent);
+}
+
+/* 分组内容区域 - 使用与ProviderSectionItem相同的样式 */
+.smtcmp-prompt-group-content,
+.smtcmp-provider-models {
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+/* 提示词列表 - 使用与ChatModelsTable相同的样式 */
+.smtcmp-prompt-list {
+  /* 继承现有样式 */
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.smtcmp-prompt-list-empty,
+.smtcmp-no-models {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* 提示词项样式 - 使用与ChatModelRow相同的样式 */
+.smtcmp-prompt-module {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+  background: var(--background-secondary);
+}
+
+.smtcmp-prompt-module:last-child {
+  border-bottom: none;
+}
+
+.smtcmp-prompt-module--dragging,
+.smtcmp-row-dragging {
+  opacity: 0.5;
+  transform: rotate(1deg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 999;
+}
+
+/* 表格样式 - 使用与ChatModelsTable相同的样式 */
+.smtcmp-models-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.smtcmp-models-table th,
+.smtcmp-models-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+.smtcmp-models-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+}
+
+.smtcmp-models-table tr:hover {
+  background: var(--interactive-hover);
+}
+
+/* 提示词名称区域 */
+.smtcmp-prompt-name-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.smtcmp-prompt-name {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-prompt-name:hover {
+  background: var(--interactive-hover);
+}
+
+.smtcmp-prompt-name-input {
+  width: 100%;
+  font-size: var(--font-ui-small);
+}
+
+/* 提示词操作区域 - 使用与ChatModelRow相同的样式 */
+.smtcmp-prompt-actions,
+.smtcmp-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smtcmp-edit-prompt-btn,
+.smtcmp-delete-prompt-btn,
+.clickable-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.smtcmp-edit-prompt-btn:hover,
+.clickable-icon:hover {
+  background: var(--interactive-hover);
+  color: var(--text-normal);
+}
+
+.smtcmp-delete-prompt-btn:hover {
+  background: var(--color-red);
+  color: var(--text-on-accent);
+}
+
+.smtcmp-prompt-toggle {
+  /* 继承现有 ObsidianToggle 样式 */
+  margin-right: 8px;
+}
+
+/* 添加提示词按钮 - 使用与AddModelButton相同的样式 */
+.smtcmp-add-prompt-btn,
+.smtcmp-add-model-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 12px;
+  padding: 8px 12px;
+  background: var(--interactive-normal);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  font-size: var(--font-ui-small);
+}
+
+.smtcmp-add-prompt-btn:hover,
+.smtcmp-add-model-btn:hover {
+  background: var(--interactive-hover);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
+/* 预览模式样式 */
+.smtcmp-preview-mode {
+  /* 继承现有样式 */
+  padding: 16px 0;
+}
+
+.smtcmp-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.smtcmp-preview-title {
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: 0;
+}
+
+.smtcmp-preview-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.smtcmp-preview-stat {
+  padding: 2px 6px;
+  background: var(--background-modifier-form-field);
+  border-radius: 3px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.smtcmp-preview-textarea {
+  min-height: 200px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 12px;
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.smtcmp-preview-textarea-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-normal);
+  cursor: default;
+}
+
+.smtcmp-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 8px 0;
+}
+
+.smtcmp-copy-btn {
+  min-width: 140px;
+}
+
+.smtcmp-preview-tips {
+  flex: 1;
+  text-align: right;
+}
+
+.smtcmp-preview-tip {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* 编辑模态框样式 */
+.smtcmp-prompt-edit-modal-wrapper {
+  /* 确保模态框容器能够正确应用我们的样式 */
+  max-width: 35vw !important;
+  width: 35vw !important;
+  max-height: 47vh !important;
+  height: 47vh !important;
+}
+
+.smtcmp-prompt-edit-modal-content-wrapper {
+  /* 确保内容区域能够正确应用我们的样式 */
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.smtcmp-prompt-edit-modal {
+  /* 继承现有 Modal 样式 */
+  max-width: 35vw;
+  width: 35vw;
+  max-height: 47vh;
+  height: 47vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.smtcmp-prompt-edit-modal-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+.smtcmp-prompt-edit-modal-title {
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-prompt-edit-modal-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  overflow: hidden;
+  min-height: 0; /* 确保flex子元素可以缩小 */
+}
+
+.smtcmp-prompt-edit-textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
+  resize: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 12px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-sizing: border-box;
+}
+
+.smtcmp-prompt-edit-textarea-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* 确保flex子元素可以缩小 */
+}
+
+.smtcmp-prompt-edit-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-top: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  min-height: 50px;
+  width: 100%;
+}
+
+.smtcmp-prompt-edit-modal-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.smtcmp-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.smtcmp-button-secondary {
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.smtcmp-button-secondary:hover:not(:disabled) {
+  background: var(--interactive-hover);
+}
+
+.smtcmp-button-primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.smtcmp-button-primary:hover:not(:disabled) {
+  background: var(--interactive-accent-hover);
+}
+
+.smtcmp-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .smtcmp-prompt-group-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .smtcmp-group-stats {
+    order: 3;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .smtcmp-preview-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .smtcmp-preview-stats {
+    flex-wrap: wrap;
+  }
+
+  .smtcmp-prompt-edit-modal {
+    width: 42vw;
+    height: 53vh;
+  }
+
+  .smtcmp-prompt-edit-modal-header {
+    padding: 6px 12px;
+    min-height: 36px;
+  }
+
+  .smtcmp-prompt-edit-modal-content {
+    padding: 6px;
+  }
+
+  .smtcmp-prompt-edit-modal-footer {
+    padding: 6px 12px;
+    min-height: 46px;
+  }
+
+  .smtcmp-prompt-edit-modal-actions {
+    gap: 6px;
+  }
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .smtcmp-modular-container {
+    background: var(--background-primary-alt);
+  }
+
+  .smtcmp-prompt-group {
+    background: var(--background-secondary-alt);
+  }
+
+  .smtcmp-prompt-module {
+    background: var(--background-secondary-alt);
+  }
+
+  .smtcmp-preview-textarea {
+    background: var(--background-secondary-alt);
+  }
+}
+
+/* 焦点动画 */
+@keyframes smtcmp-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.smtcmp-prompt-group,
+.smtcmp-prompt-module {
+  animation: smtcmp-fade-in 0.2s ease-out;
+}
+
+/* 拖拽反馈 */
+.smtcmp-drag-handle--active {
+  color: var(--interactive-accent);
+  background: var(--interactive-accent-hover);
+}
+
+/* 状态颜色 */
+.smtcmp-group-stats,
+.smtcmp-preview-stat {
+  color: var(--text-accent);
+}
+
+.smtcmp-group-name:hover,
+.smtcmp-prompt-name:hover {
+  color: var(--text-accent);
+}
+
+/* 禁用状态 */
+.smtcmp-prompt-group:has(.smtcmp-group-toggle:not(:checked)) {
+  opacity: 0.6;
+}
+
+.smtcmp-prompt-module:has(.smtcmp-prompt-toggle:not(:checked)) {
+  opacity: 0.6;
+}
