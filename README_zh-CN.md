@@ -1,6 +1,10 @@
 <h1 align="center">YOLO</h1>
 
 <p align="center">
+  <a href="./README.md">English</a> | <b>简体中文</b> | <a href="./README_it.md">Italiano</a>
+</p>
+
+<p align="center">
   <a href="./DOC/DOC_zhCN/01-基本介绍.md">文档</a>
   ·
   <a href="https://github.com/Lapis0x0/obsidian-yolo/issues">报告 Bug</a>

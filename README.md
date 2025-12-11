@@ -1,7 +1,7 @@
 <h1 align="center">YOLO</h1>
 
 <p align="center">
-  <b>English</b> | <a href="./README_zh-CN.md">简体中文</a>
+  <b>English</b> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_it.md">Italiano</a>
 </p>
 
 <p align="center">
