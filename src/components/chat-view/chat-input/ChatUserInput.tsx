@@ -41,6 +41,7 @@ import { MentionNode } from './plugins/mention/MentionNode'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import { SubmitButton } from './SubmitButton'
 import ToolBadge from './ToolBadge'
+import { SystemPromptToggle } from '../system-prompt/SystemPromptToggle'
 
 export type ChatUserInputRef = {
   focus: () => void
@@ -332,6 +333,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               sideOffset={8}
               contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
             />
+          </div>
+          <div className="smtcmp-chat-user-input-controls__system-prompt-toggle">
+            <SystemPromptToggle />
           </div>
           <div className="smtcmp-chat-user-input-controls__buttons">
             <ImageUploadButton onUpload={handleUploadImages} />

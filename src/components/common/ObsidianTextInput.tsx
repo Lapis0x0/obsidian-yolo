@@ -8,6 +8,8 @@ type ObsidianTextInputProps = {
   placeholder?: string
   onChange: (value: string) => void
   type?: 'text' | 'number'
+  onKeyDown?: (e: KeyboardEvent) => void
+  onBlur?: () => void
 }
 
 export function ObsidianTextInput({
@@ -15,11 +17,15 @@ export function ObsidianTextInput({
   placeholder,
   onChange,
   type,
+  onKeyDown,
+  onBlur,
 }: ObsidianTextInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { setting } = useObsidianSetting()
   const [textComponent, setTextComponent] = useState<TextComponent | null>(null)
   const onChangeRef = useRef(onChange)
+  const onKeyDownRef = useRef(onKeyDown)
+  const onBlurRef = useRef(onBlur)
 
   useEffect(() => {
     if (setting) {
@@ -44,11 +50,35 @@ export function ObsidianTextInput({
 
   useEffect(() => {
     onChangeRef.current = onChange
-  }, [onChange])
+    onKeyDownRef.current = onKeyDown
+    onBlurRef.current = onBlur
+  }, [onChange, onKeyDown, onBlur])
 
   useEffect(() => {
     if (!textComponent) return
     textComponent.onChange((v) => onChangeRef.current(v))
+    
+    // Add keyboard event listener
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (onKeyDownRef.current) {
+        onKeyDownRef.current(e)
+      }
+    }
+    
+    // Add blur event listener
+    const handleBlur = () => {
+      if (onBlurRef.current) {
+        onBlurRef.current()
+      }
+    }
+    
+    textComponent.inputEl.addEventListener('keydown', handleKeyDown)
+    textComponent.inputEl.addEventListener('blur', handleBlur)
+    
+    return () => {
+      textComponent.inputEl.removeEventListener('keydown', handleKeyDown)
+      textComponent.inputEl.removeEventListener('blur', handleBlur)
+    }
   }, [textComponent])
 
   useEffect(() => {

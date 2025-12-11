@@ -15,6 +15,31 @@ import { llmProviderSchema } from '../../types/provider.types'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
+// 模块化系统提示词类型定义
+export const promptModuleSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(50),
+  content: z.string(),
+  enabled: z.boolean().default(true),
+  order: z.number().default(0),
+})
+
+export const promptGroupSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(30),
+  enabled: z.boolean().default(true),
+  prompts: z.array(promptModuleSchema).default([]),
+  order: z.number().default(0),
+})
+
+export const modularPromptDataSchema = z.object({
+  groups: z.array(promptGroupSchema).default([]),
+})
+
+export type PromptModule = z.infer<typeof promptModuleSchema>
+export type PromptGroup = z.infer<typeof promptGroupSchema>
+export type ModularPromptData = z.infer<typeof modularPromptDataSchema>
+
 const ragOptionsSchema = z.object({
   enabled: z.boolean().catch(true),
   chunkSize: z.number().catch(1000),
@@ -132,6 +157,9 @@ export const smartComposerSettingsSchema = z.object({
 
   // System Prompt
   systemPrompt: z.string().catch(''),
+
+  // Modular System Prompt Data
+  modularPromptData: modularPromptDataSchema.optional(),
 
   // RAG Options
   ragOptions: ragOptionsSchema.catch({
