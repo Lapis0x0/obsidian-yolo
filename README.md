@@ -78,6 +78,9 @@ Supports multiple providers (OpenAI, Claude, Gemini, DeepSeek, etc.) with native
 
 ## Getting Started
 
+> [!WARNING]
+> YOLO cannot coexist with [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer). Please disable or uninstall Smart Composer before using YOLO.
+
 > [!NOTE]
 > YOLO is not yet available in the Obsidian Community Plugin Store. Please install it manually following the steps below.
 

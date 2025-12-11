@@ -75,6 +75,9 @@ https://github.com/user-attachments/assets/21b775d7-b427-4da2-b20c-f2ede85c2b69
 
 ## 开始使用
 
+> [!WARNING]
+> YOLO 无法与 [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer) 共存，请在使用 YOLO 前禁用或卸载 Smart Composer。
+
 > [!NOTE]
 > YOLO 目前尚未上架 Obsidian 社区插件商店，请按照以下步骤手动安装。
 
