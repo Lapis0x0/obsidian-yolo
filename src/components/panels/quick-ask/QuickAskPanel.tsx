@@ -192,7 +192,7 @@ export function QuickAskPanel({
   const renderAssistantBlocks = useCallback(
     (rawContent: string | undefined | null) => {
       const parsed = parseTagContents(rawContent ?? '')
-      const rendered: JSX.Element[] = []
+      const rendered: React.JSX.Element[] = []
 
       parsed.forEach((block, index) => {
         if (block.type === 'think') {

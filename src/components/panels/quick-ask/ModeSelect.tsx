@@ -12,6 +12,9 @@ import { useLanguage } from '../../../contexts/language-context'
 
 export type QuickAskMode = 'ask' | 'edit' | 'edit-direct'
 
+const isQuickAskMode = (value: string): value is QuickAskMode =>
+  value === 'ask' || value === 'edit' || value === 'edit-direct'
+
 type ModeOption = {
   value: QuickAskMode
   labelKey: string
@@ -95,7 +98,6 @@ export const ModeSelect = forwardRef<
         if (typeof ref === 'function') {
           ref(node)
         } else if (ref) {
-          // eslint-disable-next-line no-param-reassign -- React ref object assignment
           ref.current = node
         }
       },
@@ -226,8 +228,10 @@ export const ModeSelect = forwardRef<
                   focusByDelta(-1)
                 }
               }}
-              onValueChange={(value: string) => {
-                onChange(value as QuickAskMode)
+              onValueChange={(value) => {
+                if (isQuickAskMode(value)) {
+                  onChange(value)
+                }
               }}
             >
               {MODE_OPTIONS.map((option) => (
