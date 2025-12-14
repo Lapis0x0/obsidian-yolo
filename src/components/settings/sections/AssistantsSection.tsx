@@ -155,26 +155,28 @@ export const AssistantsSection: FC<AssistantsSectionProps> = ({ app }) => {
       },
     })
 
-    modal.onClose = async () => {
+    modal.onClose = () => {
       if (!confirmed) return
 
-      try {
-        const updatedAssistants = assistants.filter((a) => a.id !== id)
+      void (async () => {
+        try {
+          const updatedAssistants = assistants.filter((a) => a.id !== id)
 
-        let newCurrentAssistantId = settings.currentAssistantId
-        if (id === settings.currentAssistantId) {
-          newCurrentAssistantId =
-            updatedAssistants.length > 0 ? updatedAssistants[0].id : undefined
+          let newCurrentAssistantId = settings.currentAssistantId
+          if (id === settings.currentAssistantId) {
+            newCurrentAssistantId =
+              updatedAssistants.length > 0 ? updatedAssistants[0].id : undefined
+          }
+
+          await setSettings({
+            ...settings,
+            assistants: updatedAssistants,
+            currentAssistantId: newCurrentAssistantId,
+          })
+        } catch (error: unknown) {
+          console.error('Failed to delete assistant', error)
         }
-
-        await setSettings({
-          ...settings,
-          assistants: updatedAssistants,
-          currentAssistantId: newCurrentAssistantId,
-        })
-      } catch (error: unknown) {
-        console.error('Failed to delete assistant', error)
-      }
+      })()
     }
 
     modal.open()
