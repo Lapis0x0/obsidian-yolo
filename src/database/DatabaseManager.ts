@@ -417,14 +417,28 @@ export class DatabaseManager {
         }
         const fallbackMessage = (() => {
           if (typeof lastError === 'string') return lastError
-          if (lastError && typeof lastError === 'object') {
-            try {
-              return JSON.stringify(lastError)
-            } catch {
-              return Object.prototype.toString.call(lastError)
-            }
+          if (lastError === null) return 'null'
+          if (typeof lastError === 'undefined') return 'undefined'
+          if (
+            typeof lastError === 'number' ||
+            typeof lastError === 'boolean' ||
+            typeof lastError === 'bigint'
+          ) {
+            return String(lastError)
           }
-          return String(lastError)
+          if (typeof lastError === 'symbol') {
+            return lastError.description ?? lastError.toString()
+          }
+          if (typeof lastError === 'function') {
+            return lastError.name
+              ? `[Function: ${lastError.name}]`
+              : '[Function]'
+          }
+          try {
+            return JSON.stringify(lastError)
+          } catch {
+            return Object.prototype.toString.call(lastError)
+          }
         })()
         throw new Error(fallbackMessage)
       }
