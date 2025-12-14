@@ -76,6 +76,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     useState<IndexProgress | null>(null)
   const [isIndexing, setIsIndexing] = useState(false)
   const [isProgressOpen, setIsProgressOpen] = useState(false)
+  const [indexAbortController, setIndexAbortController] =
+    useState<AbortController | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
   const effectiveProgress = indexProgress ?? persistedProgress
   const ragUpdateError = 'Failed to update RAG settings.'
@@ -536,12 +538,14 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               disabled={isIndexing}
               onClick={() => {
                 void (async () => {
+                  const abortController = new AbortController()
+                  setIndexAbortController(abortController)
                   setIsIndexing(true)
                   setIndexProgress(null)
                   try {
                     const ragEngine = await plugin.getRAGEngine()
                     await ragEngine.updateVaultIndex(
-                      { reindexAll: false },
+                      { reindexAll: false, signal: abortController.signal },
                       (queryProgress) => {
                         if (queryProgress.type === 'indexing') {
                           handleIndexProgress(queryProgress.indexProgress)
@@ -559,10 +563,15 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     // i18n notice
                     new Notice(t('notices.indexUpdated'))
                   } catch (error) {
-                    console.error('Failed to update index:', error)
-                    new Notice(t('notices.indexUpdateFailed'))
+                    if (error instanceof DOMException && error.name === 'AbortError') {
+                      new Notice(t('notices.indexCancelled', '索引已取消'))
+                    } else {
+                      console.error('Failed to update index:', error)
+                      new Notice(t('notices.indexUpdateFailed'))
+                    }
                   } finally {
                     setIsIndexing(false)
+                    setIndexAbortController(null)
                     setTimeout(() => setIndexProgress(null), 3000)
                   }
                 })()
@@ -617,12 +626,14 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       // 继续执行，让实际的加载逻辑处理错误
                     }
 
+                    const abortController = new AbortController()
+                    setIndexAbortController(abortController)
                     setIsIndexing(true)
                     setIndexProgress(null)
                     try {
                       const ragEngine = await plugin.getRAGEngine()
                       await ragEngine.updateVaultIndex(
-                        { reindexAll: true },
+                        { reindexAll: true, signal: abortController.signal },
                         (queryProgress) => {
                           if (queryProgress.type === 'indexing') {
                             handleIndexProgress(queryProgress.indexProgress)
@@ -638,15 +649,31 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         },
                       })
                     } catch (error) {
-                      console.error('Failed to rebuild index:', error)
-                      new Notice(t('notices.rebuildFailed'))
+                      if (error instanceof DOMException && error.name === 'AbortError') {
+                        new Notice(t('notices.indexCancelled', '索引已取消'))
+                      } else {
+                        console.error('Failed to rebuild index:', error)
+                        new Notice(t('notices.rebuildFailed'))
+                      }
                     } finally {
                       setIsIndexing(false)
+                      setIndexAbortController(null)
                       setTimeout(() => setIndexProgress(null), 3000)
                     }
                   })()
                 }}
               />
+              {isIndexing && indexAbortController && (
+                <ObsidianButton
+                  text={t('settings.rag.cancelIndex', '取消')}
+                  onClick={() => {
+                    console.log('[YOLO] Cancel button clicked')
+                    indexAbortController.abort()
+                    // 立即更新 UI 状态，不等待异步操作完成
+                    new Notice(t('notices.indexCancelling', '正在取消索引...'))
+                  }}
+                />
+              )}
             </div>
           </ObsidianSetting>
 

@@ -104,9 +104,11 @@ export class VectorManager {
       excludePatterns: string[]
       includePatterns: string[]
       reindexAll?: boolean
+      signal?: AbortSignal
     },
     updateProgress?: (indexProgress: IndexProgress) => void,
   ): Promise<void> {
+    const { signal } = options
     let filesToIndex: TFile[]
     let newFilesCount = 0
     let updatedFilesCount = 0
@@ -223,6 +225,13 @@ export class VectorManager {
     const maybeYield = createYieldController(10)
 
     for (const file of filesToIndex) {
+      // 检查是否被取消
+      if (signal?.aborted) {
+        // 保存已完成的工作后退出
+        await this.requestSave()
+        throw new DOMException('Indexing cancelled by user', 'AbortError')
+      }
+
       // 让步给主线程，防止 UI 冻结
       await maybeYield()
 
@@ -338,16 +347,40 @@ export class VectorManager {
       error: string
     }[] = []
 
+    // 增量保存：每处理 500 个 chunks 保存一次，防止中断时丢失进度
+    const INCREMENTAL_SAVE_THRESHOLD = 500
+    let chunksSinceLastSave = 0
+
     try {
       for (const batchChunk of batchChunks) {
+        // 检查是否被取消
+        if (signal?.aborted) {
+          // 保存已完成的工作后退出
+          await this.requestSave()
+          throw new DOMException('Indexing cancelled by user', 'AbortError')
+        }
+
         // 每个批次开始前让步给主线程，防止 UI 冻结
         await yieldToMain()
 
         const embeddingChunks: (InsertEmbedding | null)[] = await Promise.all(
           batchChunk.map(async (chunk) => {
+            // 在每个 chunk 处理前检查取消信号
+            if (signal?.aborted) {
+              return null
+            }
+
             try {
               return await backOff(
                 async () => {
+                  // 在 backOff 执行函数中也检查取消信号
+                  if (signal?.aborted) {
+                    throw new DOMException(
+                      'Indexing cancelled by user',
+                      'AbortError',
+                    )
+                  }
+
                   if (chunk.content.length === 0) {
                     throw new Error(
                       `Chunk content is empty in file: ${chunk.path}`,
@@ -392,6 +425,10 @@ export class VectorManager {
                   timeMultiple: 2,
                   maxDelay: 60000,
                   retry: (error) => {
+                    // 如果已取消，不再重试
+                    if (signal?.aborted) {
+                      return false
+                    }
                     if (
                       error instanceof LLMRateLimitExceededException ||
                       error.status === 429
@@ -428,6 +465,16 @@ export class VectorManager {
         const validEmbeddingChunks = embeddingChunks.filter(
           (chunk) => chunk !== null,
         )
+
+        // 如果是因为取消导致的，保存已完成的工作并退出
+        if (signal?.aborted) {
+          if (validEmbeddingChunks.length > 0) {
+            await this.repository.insertVectors(validEmbeddingChunks)
+          }
+          await this.requestSave()
+          throw new DOMException('Indexing cancelled by user', 'AbortError')
+        }
+
         // If all chunks in this batch failed, stop processing
         if (validEmbeddingChunks.length === 0 && batchChunk.length > 0) {
           throw new Error(
@@ -435,6 +482,13 @@ export class VectorManager {
           )
         }
         await this.repository.insertVectors(validEmbeddingChunks)
+
+        // 增量保存检查：每处理一定数量的 chunks 后保存，防止中断时丢失进度
+        chunksSinceLastSave += validEmbeddingChunks.length
+        if (chunksSinceLastSave >= INCREMENTAL_SAVE_THRESHOLD) {
+          await this.requestSave()
+          chunksSinceLastSave = 0
+        }
 
         // 更新文件夹的 chunk 完成进度（全局 completedChunks 已在获取 embedding 时逐个增加）
         // 更新每个文件夹的 chunk 完成进度
@@ -467,6 +521,11 @@ export class VectorManager {
         })
       }
     } catch (error) {
+      // 如果是用户取消操作，直接重新抛出，不显示错误弹窗
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
+      }
+
       if (
         error instanceof LLMAPIKeyNotSetException ||
         error instanceof LLMAPIKeyInvalidException ||
@@ -493,6 +552,8 @@ Please report this issue to the developer if it persists.`,
           },
         ).open()
       }
+      // 重新抛出错误，让调用方知道索引失败了
+      throw error
     } finally {
       await this.requestSave()
     }
