@@ -306,7 +306,7 @@ export const en: TranslationKeys = {
       noEmbeddingModelsConfigured: 'No embedding models configured',
     },
     rag: {
-      title: 'RAG (retrieval augmented generation)',
+      title: 'RAG (Retrieval-Augmented Generation)',
       enableRag: 'Show RAG settings',
       enableRagDesc:
         'Toggle visibility of the retrieval-augmented generation options below.',
@@ -655,10 +655,10 @@ export const en: TranslationKeys = {
   applyView: {
     applying: 'Applying',
     changesResolved: 'changes resolved',
-    acceptAllIncoming: 'Accept All Incoming',
-    rejectAll: 'Reject All',
+    acceptAllIncoming: 'Accept all incoming',
+    rejectAll: 'Reject all',
     reset: 'Reset',
-    applyAndClose: 'Apply & Close',
+    applyAndClose: 'Apply & close',
     acceptIncoming: 'Accept incoming',
     acceptCurrent: 'Accept current',
     acceptBoth: 'Accept both',
@@ -670,7 +670,7 @@ export const en: TranslationKeys = {
 
   quickAsk: {
     selectAssistant: 'Select an assistant',
-    noAssistant: 'No Assistant',
+    noAssistant: 'No assistant',
     noAssistantDescription: 'Use default system prompt',
     navigationHint: '↑↓ to navigate, Enter to select, Esc to cancel',
     inputPlaceholder: 'Ask a question...',
@@ -689,7 +689,7 @@ export const en: TranslationKeys = {
     // Mode select
     modeAsk: 'Ask',
     modeEdit: 'Edit',
-    modeEditDirect: 'Edit (Full Access)',
+    modeEditDirect: 'Edit (full access)',
     modeAskDesc: 'Ask questions and get answers',
     modeEditDesc: 'Edit the current document',
     modeEditDirectDesc: 'Edit document directly without confirmation',
