@@ -46,9 +46,9 @@ const loadAppLocalStorage = async (
   app: App,
   key: string,
 ): Promise<string | null> => {
-  const { loadLocalStorage } = app as AppWithLocalStorage
-  if (typeof loadLocalStorage === 'function') {
-    const result = loadLocalStorage.call(app, key)
+  const appWithLocalStorage = app as AppWithLocalStorage
+  if (typeof appWithLocalStorage.loadLocalStorage === 'function') {
+    const result = appWithLocalStorage.loadLocalStorage(key)
     return isPromiseLike(result) ? await result : result
   }
   return null
@@ -59,9 +59,9 @@ const saveAppLocalStorage = async (
   key: string,
   value: string,
 ): Promise<void> => {
-  const { saveLocalStorage } = app as AppWithLocalStorage
-  if (typeof saveLocalStorage === 'function') {
-    const result = saveLocalStorage.call(app, key, value)
+  const appWithLocalStorage = app as AppWithLocalStorage
+  if (typeof appWithLocalStorage.saveLocalStorage === 'function') {
+    const result = appWithLocalStorage.saveLocalStorage(key, value)
     if (isPromiseLike(result)) {
       await result
     }
