@@ -2177,9 +2177,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       leaf.view.openNewChat(chatProps?.selectedBlock)
     }
 
-    this.app.workspace.revealLeaf(
-      this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0],
-    )
+    const leafToReveal =
+      leaf ?? this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0]
+    if (leafToReveal) {
+      await this.app.workspace.revealLeaf(leafToReveal)
+    }
   }
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {

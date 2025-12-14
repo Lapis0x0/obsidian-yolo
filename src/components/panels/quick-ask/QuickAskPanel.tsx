@@ -591,8 +591,23 @@ export function QuickAskPanel({
           return current
         })
 
-        createOrUpdateConversation?.(conversationId, finalMessages)
-        generateConversationTitle?.(conversationId, finalMessages)
+        if (createOrUpdateConversation) {
+          void Promise.resolve(
+            createOrUpdateConversation(conversationId, finalMessages),
+          ).catch((error) => {
+            console.error('Failed to save quick ask conversation', error)
+          })
+        }
+        if (generateConversationTitle) {
+          void Promise.resolve(
+            generateConversationTitle(conversationId, finalMessages),
+          ).catch((error) => {
+            console.error(
+              'Failed to generate quick ask conversation title',
+              error,
+            )
+          })
+        }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           // Aborted by user
@@ -849,7 +864,11 @@ export function QuickAskPanel({
       .reverse()
       .find((m) => m.role === 'assistant')
     if (lastAssistantMessage && lastAssistantMessage.role === 'assistant') {
-      navigator.clipboard.writeText(lastAssistantMessage.content || '')
+      void navigator.clipboard
+        .writeText(lastAssistantMessage.content || '')
+        .catch((error) => {
+          console.error('Failed to copy to clipboard', error)
+        })
       new Notice(t('quickAsk.copied', 'Copied to clipboard'))
     }
   }, [chatMessages, t])

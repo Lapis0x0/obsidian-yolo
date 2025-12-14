@@ -144,15 +144,19 @@ export class AssistantIconPickerModal extends Modal {
     }
 
     // 渲染 React 组件
-    import('react-dom/client').then(({ createRoot }) => {
-      const reactRoot = createRoot(root)
-      reactRoot.render(<IconPickerContent />)
+    void import('react-dom/client')
+      .then(({ createRoot }) => {
+        const reactRoot = createRoot(root)
+        reactRoot.render(<IconPickerContent />)
 
-      // 在关闭时清理
-      this.onClose = () => {
-        reactRoot.unmount()
-      }
-    })
+        // 在关闭时清理
+        this.onClose = () => {
+          reactRoot.unmount()
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load react-dom/client for icon picker', error)
+      })
   }
 
   onClose() {
