@@ -783,15 +783,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   // 从所有消息中删除指定的 mentionable，并清空 promptContent 以便重新编译
   const handleMentionableDeleteFromAll = useCallback(
-    (mentionable: typeof inputMessage.mentionables[number]) => {
-      const mentionableKey = getMentionableKey(serializeMentionable(mentionable))
+    (mentionable: (typeof inputMessage.mentionables)[number]) => {
+      const mentionableKey = getMentionableKey(
+        serializeMentionable(mentionable),
+      )
 
       // 从所有历史消息中删除
       setChatMessages((prevMessages) =>
         prevMessages.map((message) => {
           if (message.role !== 'user') return message
           const filtered = message.mentionables.filter(
-            (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
+            (m) =>
+              getMentionableKey(serializeMentionable(m)) !== mentionableKey,
           )
           // 如果 mentionables 变化了，清空 promptContent 以便下次重新编译
           if (filtered.length !== message.mentionables.length) {

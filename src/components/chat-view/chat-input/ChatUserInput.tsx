@@ -232,7 +232,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         // 否则只从当前消息中删除
         setMentionables(
           mentionables.filter(
-            (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
+            (m) =>
+              getMentionableKey(serializeMentionable(m)) !== mentionableKey,
           ),
         )
       }

@@ -22,6 +22,10 @@ import {
   EmbeddingModelClient,
 } from '../../../types/embedding'
 import { chunkArray } from '../../../utils/common/chunk-array'
+import {
+  createYieldController,
+  yieldToMain,
+} from '../../../utils/common/yield-to-main'
 
 import { VectorRepository } from './VectorRepository'
 
@@ -109,42 +113,33 @@ export class VectorManager {
     const removedFilesCount = 0
 
     if (options.reindexAll) {
-      filesToIndex = await this.getFilesToIndex({
-        embeddingModel: embeddingModel,
-        excludePatterns: options.excludePatterns,
-        includePatterns: options.includePatterns,
-        reindexAll: true,
-      })
+      filesToIndex = this.getFilteredMarkdownFiles(
+        options.excludePatterns,
+        options.includePatterns,
+      )
       await this.repository.clearAllVectors(embeddingModel)
       newFilesCount = filesToIndex.length // 全量重建时都算新文件
     } else {
       await this.deleteVectorsForDeletedFiles(embeddingModel)
 
-      // 获取需要索引的文件，并分类统计
-      const allFilesToCheck = await this.getFilesToIndex({
-        embeddingModel: embeddingModel,
+      // 使用批量查询获取所有已索引文件的 mtime，避免 N+1 查询
+      const result = await this.getFilesToIndexWithStats({
+        embeddingModel,
         excludePatterns: options.excludePatterns,
         includePatterns: options.includePatterns,
       })
 
-      // 分类文件：新文件 vs 更新文件
-      for (const file of allFilesToCheck) {
-        const existingChunks = await this.repository.getVectorsByFilePath(
-          file.path,
+      filesToIndex = result.files
+      newFilesCount = result.newCount
+      updatedFilesCount = result.updatedCount
+
+      // 批量删除需要重新索引的文件的向量
+      if (filesToIndex.length > 0) {
+        await this.repository.deleteVectorsForMultipleFiles(
+          filesToIndex.map((file) => file.path),
           embeddingModel,
         )
-        if (existingChunks.length === 0) {
-          newFilesCount++
-        } else {
-          updatedFilesCount++
-        }
       }
-
-      filesToIndex = allFilesToCheck
-      await this.repository.deleteVectorsForMultipleFiles(
-        filesToIndex.map((file) => file.path),
-        embeddingModel,
-      )
     }
 
     if (filesToIndex.length === 0) {
@@ -224,7 +219,13 @@ export class VectorManager {
     // 处理文件并生成chunks
     const contentChunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
 
+    // 创建让步控制器，每处理 10 个文件让步一次给主线程
+    const maybeYield = createYieldController(10)
+
     for (const file of filesToIndex) {
+      // 让步给主线程，防止 UI 冻结
+      await maybeYield()
+
       const currentFolder = file.path.includes('/')
         ? file.path.substring(0, file.path.lastIndexOf('/'))
         : ''
@@ -339,6 +340,9 @@ export class VectorManager {
 
     try {
       for (const batchChunk of batchChunks) {
+        // 每个批次开始前让步给主线程，防止 UI 冻结
+        await yieldToMain()
+
         const embeddingChunks: (InsertEmbedding | null)[] = await Promise.all(
           batchChunk.map(async (chunk) => {
             try {
@@ -515,60 +519,78 @@ Please report this issue to the developer if it persists.`,
     }
   }
 
-  private async getFilesToIndex({
-    embeddingModel,
-    excludePatterns,
-    includePatterns,
-    reindexAll,
-  }: {
-    embeddingModel: EmbeddingModelClient
-    excludePatterns: string[]
-    includePatterns: string[]
-    reindexAll?: boolean
-  }): Promise<TFile[]> {
-    let filesToIndex = this.app.vault.getMarkdownFiles()
+  /**
+   * 获取过滤后的 Markdown 文件列表
+   * 应用 include/exclude 模式过滤
+   */
+  private getFilteredMarkdownFiles(
+    excludePatterns: string[],
+    includePatterns: string[],
+  ): TFile[] {
+    let files = this.app.vault.getMarkdownFiles()
 
-    filesToIndex = filesToIndex.filter((file) => {
+    files = files.filter((file) => {
       return !excludePatterns.some((pattern) => minimatch(file.path, pattern))
     })
 
     if (includePatterns.length > 0) {
-      filesToIndex = filesToIndex.filter((file) => {
+      files = files.filter((file) => {
         return includePatterns.some((pattern) => minimatch(file.path, pattern))
       })
     }
 
-    if (reindexAll) {
-      return filesToIndex
+    return files
+  }
+
+  /**
+   * 获取需要索引的文件，同时返回新文件和更新文件的统计
+   * 使用批量查询优化，避免 N+1 查询问题
+   */
+  private async getFilesToIndexWithStats({
+    embeddingModel,
+    excludePatterns,
+    includePatterns,
+  }: {
+    embeddingModel: EmbeddingModelClient
+    excludePatterns: string[]
+    includePatterns: string[]
+  }): Promise<{ files: TFile[]; newCount: number; updatedCount: number }> {
+    const allFiles = this.getFilteredMarkdownFiles(
+      excludePatterns,
+      includePatterns,
+    )
+
+    // 批量查询所有已索引文件的 mtime，一次数据库查询替代 N 次查询
+    const mtimeMap = await this.repository.getFileMtimes(embeddingModel)
+
+    const filesToIndex: TFile[] = []
+    let newCount = 0
+    let updatedCount = 0
+
+    // 创建让步控制器，每检查 50 个文件让步一次
+    const maybeYield = createYieldController(50)
+
+    for (const file of allFiles) {
+      await maybeYield()
+
+      const existingMtime = mtimeMap.get(file.path)
+
+      if (existingMtime === undefined) {
+        // 新文件：未被索引过
+        const fileContent = await this.app.vault.cachedRead(file)
+        if (fileContent.length > 0) {
+          filesToIndex.push(file)
+          newCount++
+        }
+      } else if (file.stat.mtime > existingMtime) {
+        // 更新的文件：mtime 比索引时更新
+        filesToIndex.push(file)
+        updatedCount++
+      }
+      // 否则文件未变化，跳过
     }
 
-    // Check for updated or new files
-    filesToIndex = await Promise.all(
-      filesToIndex.map(async (file) => {
-        // TODO: Query all rows at once and compare them to enhance performance
-        const fileChunks = await this.repository.getVectorsByFilePath(
-          file.path,
-          embeddingModel,
-        )
-        if (fileChunks.length === 0) {
-          // File is not indexed, so we need to index it
-          const fileContent = await this.app.vault.cachedRead(file)
-          if (fileContent.length === 0) {
-            // Ignore empty files
-            return null
-          }
-          return file
-        }
-        const outOfDate = file.stat.mtime > fileChunks[0].mtime
-        if (outOfDate) {
-          // File has changed, so we need to re-index it
-          return file
-        }
-        return null
-      }),
-    ).then((files) => files.filter((f): f is TFile => f !== null))
-
-    return filesToIndex
+    return { files: filesToIndex, newCount, updatedCount }
   }
 
   async getEmbeddingStats(): Promise<EmbeddingDbStats[]> {

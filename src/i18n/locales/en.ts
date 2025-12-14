@@ -434,7 +434,8 @@ export const en: TranslationKeys = {
       smartSpaceTriggerMode: 'Empty-line space trigger',
       smartSpaceTriggerModeDesc:
         'How smart space should respond when you press space on an empty line.',
-      smartSpaceTriggerModeSingle: 'Single space to trigger (original behavior)',
+      smartSpaceTriggerModeSingle:
+        'Single space to trigger (original behavior)',
       smartSpaceTriggerModeDouble:
         'Double space to trigger (~600ms; first space inserts a real space)',
       smartSpaceTriggerModeOff:
@@ -694,7 +695,9 @@ export const en: TranslationKeys = {
     modeEditDirectDesc: 'Edit document directly without confirmation',
     editNoFile: 'Please open a file first',
     editNoChanges: 'No valid changes returned by model',
-    editPartialSuccess: 'Applied ${appliedCount} of ${blocks.length} edits. Check console for details.',
-    editApplied: 'Successfully applied ${appliedCount} edit(s) to ${activeFile.name}',
+    editPartialSuccess:
+      'Applied ${appliedCount} of ${blocks.length} edits. Check console for details.',
+    editApplied:
+      'Successfully applied ${appliedCount} edit(s) to ${activeFile.name}',
   },
 }

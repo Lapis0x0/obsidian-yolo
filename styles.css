@@ -7150,7 +7150,8 @@ button.smtcmp-chat-input-model-select {
   transition: opacity 0.15s ease;
 }
 
-.smtcmp-quick-ask-panel:hover .smtcmp-quick-ask-resize-handle-bottom-right::after {
+.smtcmp-quick-ask-panel:hover
+  .smtcmp-quick-ask-resize-handle-bottom-right::after {
   opacity: 1;
 }
 

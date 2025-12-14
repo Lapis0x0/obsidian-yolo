@@ -1,6 +1,6 @@
 import { en } from './locales/en'
-import { zh } from './locales/zh'
 import { it } from './locales/it'
+import { zh } from './locales/zh'
 import { Language, TranslationKeys } from './types'
 
 const translations: Record<Language, TranslationKeys> = {

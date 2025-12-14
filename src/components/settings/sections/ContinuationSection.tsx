@@ -143,11 +143,10 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               onChange={(value) => {
                 updateContinuationOptions(
                   {
-                    smartSpaceTriggerMode:
-                      value as
-                        | 'single-space'
-                        | 'double-space'
-                        | 'off',
+                    smartSpaceTriggerMode: value as
+                      | 'single-space'
+                      | 'double-space'
+                      | 'off',
                   },
                   'smartSpaceTriggerMode',
                 )

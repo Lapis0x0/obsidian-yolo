@@ -132,7 +132,10 @@ export function applySearchReplaceBlocks(
     if (block.type === 'insert') {
       if (content.includes(searchText)) {
         // Insert after the found text
-        content = content.replace(searchText, searchText + '\n\n' + block.replace)
+        content = content.replace(
+          searchText,
+          searchText + '\n\n' + block.replace,
+        )
         appliedCount++
       } else {
         // Try fuzzy matching by trimming whitespace

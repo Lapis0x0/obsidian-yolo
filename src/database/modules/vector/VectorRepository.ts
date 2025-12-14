@@ -66,6 +66,37 @@ export class VectorRepository {
     return fileVectors
   }
 
+  /**
+   * 批量获取文件的 mtime 信息
+   * 用于优化 N+1 查询问题，一次查询获取所有文件的索引状态
+   */
+  async getFileMtimes(
+    embeddingModel: EmbeddingModelClient,
+  ): Promise<Map<string, number>> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+
+    const results = await this.db
+      .select({
+        path: embeddingTable.path,
+        mtime: embeddingTable.mtime,
+      })
+      .from(embeddingTable)
+      .where(eq(embeddingTable.model, embeddingModel.id))
+      .groupBy(embeddingTable.path, embeddingTable.mtime)
+
+    const mtimeMap = new Map<string, number>()
+    for (const row of results) {
+      // 如果同一文件有多条记录，取最新的 mtime
+      const existing = mtimeMap.get(row.path)
+      if (existing === undefined || row.mtime > existing) {
+        mtimeMap.set(row.path, row.mtime)
+      }
+    }
+    return mtimeMap
+  }
+
   async deleteVectorsForSingleFile(
     filePath: string,
     embeddingModel: EmbeddingModelClient,

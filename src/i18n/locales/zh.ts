@@ -401,8 +401,7 @@ export const zh: TranslationKeys = {
       smartSpaceToggleDesc:
         '当关闭时，空格或 "/"+空格 将不再唤出 Smart Space 悬浮输入框。',
       smartSpaceTriggerMode: '空行空格触发方式',
-      smartSpaceTriggerModeDesc:
-        '在空行按下空格时如何唤出 Smart Space。',
+      smartSpaceTriggerModeDesc: '在空行按下空格时如何唤出 Smart Space。',
       smartSpaceTriggerModeSingle: '单空格触发（原行为）',
       smartSpaceTriggerModeDouble: '双空格触发（600ms 内；首个空格正常输入）',
       smartSpaceTriggerModeOff: '关闭空行空格触发（仅保留 "/"+空格）',
@@ -656,7 +655,8 @@ export const zh: TranslationKeys = {
     modeEditDirectDesc: '直接编辑文档，无需确认',
     editNoFile: '请先打开一个文件',
     editNoChanges: '模型未返回有效的编辑内容',
-    editPartialSuccess: '已应用 ${appliedCount}/${blocks.length} 个编辑，详情请查看控制台',
+    editPartialSuccess:
+      '已应用 ${appliedCount}/${blocks.length} 个编辑，详情请查看控制台',
     editApplied: '成功应用了 ${appliedCount} 个编辑到 ${activeFile.name}',
   },
 }

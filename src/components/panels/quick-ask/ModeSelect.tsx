@@ -1,5 +1,11 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ChevronDown, ChevronUp, MessageSquare, Pencil, Zap } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  Pencil,
+  Zap,
+} from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -90,7 +96,8 @@ export const ModeSelect = forwardRef<
           ref(node)
         } else if (ref) {
           // eslint-disable-next-line no-param-reassign
-          ;(ref as React.MutableRefObject<HTMLButtonElement | null>).current = node
+          ;(ref ).current =
+            node
         }
       },
       [ref],

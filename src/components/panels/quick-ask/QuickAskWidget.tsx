@@ -351,10 +351,9 @@ export class QuickAskWidget extends WidgetType {
       sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
 
     // Use resized width if available, otherwise use default max width
-    const panelWidth = this.resizeSize?.width ?? Math.max(
-      120,
-      Math.min(editorContentWidth, viewportWidth - margin * 2),
-    )
+    const panelWidth =
+      this.resizeSize?.width ??
+      Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
 
     const panelHeight = this.resizeSize?.height
 

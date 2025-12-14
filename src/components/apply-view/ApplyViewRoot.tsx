@@ -1,3 +1,4 @@
+import { MarkdownView } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -7,7 +8,6 @@ import {
   useState,
 } from 'react'
 
-import { MarkdownView } from 'obsidian'
 
 import { ApplyViewState } from '../../ApplyView'
 import { useApp } from '../../contexts/app-context'
@@ -125,7 +125,9 @@ export default function ApplyViewRoot({
       .getLeavesOfType('markdown')
       .find((leaf) => {
         const view = leaf.view
-        return view instanceof MarkdownView && view.file?.path === state.file.path
+        return (
+          view instanceof MarkdownView && view.file?.path === state.file.path
+        )
       })
 
     close()

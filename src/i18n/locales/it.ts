@@ -81,7 +81,7 @@ export const it: TranslationKeys = {
       knowledgeBasePlaceholder:
         'Seleziona cartelle o file usati come ambito di recupero (lascia vuoto per tutti).',
       knowledgeBaseHint:
-        'Abilita la ricerca embeddings per limitare l\'ambito di recupero.',
+        "Abilita la ricerca embeddings per limitare l'ambito di recupero.",
     },
   },
 
@@ -116,15 +116,17 @@ export const it: TranslationKeys = {
         'Seleziona il modello usato globalmente come modello strumento (per la denominazione automatica delle conversazioni, operazioni di applicazione, ecc.).',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
-        'Questo prompt viene aggiunto all\'inizio di ogni conversazione chat.',
-      continuationSystemPrompt: 'Prompt di sistema di continuazione predefinito',
+        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat.",
+      continuationSystemPrompt:
+        'Prompt di sistema di continuazione predefinito',
       continuationSystemPromptDesc:
         'Usato come messaggio di sistema quando si genera testo di continuazione; lascia vuoto per usare quello predefinito incorporato.',
       chatTitlePrompt: 'Prompt titolo chat',
       chatTitlePromptDesc:
         'Prompt usato quando si generano automaticamente i titoli delle conversazioni dal primo messaggio utente.',
       baseModelSpecialPrompt: 'Prompt speciale modello base',
-      baseModelSpecialPromptDesc: 'Parole prompt speciali usate come modello base.',
+      baseModelSpecialPromptDesc:
+        'Parole prompt speciali usate come modello base.',
       tabCompletionSystemPrompt: 'Prompt di sistema completamento tab',
       tabCompletionSystemPromptDesc:
         'Messaggio di sistema applicato quando si generano suggerimenti di completamento tab; lascia vuoto per usare quello predefinito incorporato.',
@@ -138,10 +140,10 @@ export const it: TranslationKeys = {
       confirmReset:
         'Sei sicuro di voler ripristinare le azioni rapide predefinite ed eliminare tutte le impostazioni personalizzate?',
       actionLabel: 'Etichetta azione',
-      actionLabelDesc: 'Testo visualizzato nell\'azione rapida',
+      actionLabelDesc: "Testo visualizzato nell'azione rapida",
       actionLabelPlaceholder: 'Ad esempio, continua a scrivere',
       actionInstruction: 'Prompt',
-      actionInstructionDesc: 'Istruzione inviata all\'AI',
+      actionInstructionDesc: "Istruzione inviata all'AI",
       actionInstructionPlaceholder:
         'Ad esempio, continua il testo corrente nello stesso stile e tono',
       actionCategory: 'Categoria',
@@ -182,10 +184,10 @@ export const it: TranslationKeys = {
         'Include automaticamente il file correntemente aperto nel contesto della chat.',
       enableTools: 'Abilita strumenti',
       enableToolsDesc:
-        'Permetti all\'AI di usare strumenti per cercare nel vault, eseguire calcoli, ecc.',
+        "Permetti all'AI di usare strumenti per cercare nel vault, eseguire calcoli, ecc.",
       maxAutoIterations: 'Iterazioni automatiche massime',
       maxAutoIterationsDesc:
-        'Quante volte l\'AI può chiamare automaticamente gli strumenti in una singola risposta.',
+        "Quante volte l'AI può chiamare automaticamente gli strumenti in una singola risposta.",
       maxContextMessages: 'Messaggi di contesto massimi',
       maxContextMessagesDesc:
         'Numero di messaggi precedenti da includere nel contesto della chat.',
@@ -206,13 +208,14 @@ export const it: TranslationKeys = {
       noAssistant: 'Nessun assistente',
       selectAssistant: 'Seleziona un assistente',
       name: 'Nome',
-      nameDesc: 'Nome dell\'assistente',
+      nameDesc: "Nome dell'assistente",
       namePlaceholder: 'Ad esempio, Assistente di codifica',
       description: 'Descrizione',
-      descriptionDesc: 'Breve descrizione dello scopo dell\'assistente',
+      descriptionDesc: "Breve descrizione dello scopo dell'assistente",
       descriptionPlaceholder: 'Ad esempio, Aiuta con domande di programmazione',
       systemPrompt: 'Prompt di sistema',
-      systemPromptDesc: 'Istruzioni che definiscono il comportamento dell\'assistente',
+      systemPromptDesc:
+        "Istruzioni che definiscono il comportamento dell'assistente",
       systemPromptPlaceholder: 'Ad esempio, Sei un esperto programmatore...',
       defaultAssistantName: 'Nuovo assistente',
       actions: 'Azioni',
@@ -223,7 +226,7 @@ export const it: TranslationKeys = {
       deleteAssistantAria: 'Elimina assistente',
       dragHandleAria: 'Trascina per riordinare',
       maxContextMessagesDesc:
-        'Numero di messaggi precedenti da includere nel contesto (lascia vuoto per usare l\'impostazione globale).',
+        "Numero di messaggi precedenti da includere nel contesto (lascia vuoto per usare l'impostazione globale).",
       duplicate: 'Duplica',
       copySuffix: '(copia)',
       currentBadge: 'Corrente',
@@ -295,7 +298,8 @@ export const it: TranslationKeys = {
         'Tempo massimo di pensiero in millisecondi per richiesta.',
       geminiThinkingBudgetPlaceholder: 'Ad esempio, 10000',
       toolType: 'Tipo di strumento',
-      toolTypeDesc: 'Tipo di chiamata di strumento supportato da questo modello.',
+      toolTypeDesc:
+        'Tipo di chiamata di strumento supportato da questo modello.',
       toolTypeNone: 'Nessuno',
       toolTypeGemini: 'Gemini',
       customParameters: 'Parametri personalizzati',
@@ -314,7 +318,7 @@ export const it: TranslationKeys = {
       title: 'RAG (Retrieval Augmented Generation)',
       enableRag: 'Abilita RAG',
       enableRagDesc:
-        'Permetti all\'AI di cercare nel tuo vault note rilevanti per migliorare le risposte.',
+        "Permetti all'AI di cercare nel tuo vault note rilevanti per migliorare le risposte.",
       embeddingModel: 'Modello embedding',
       embeddingModelDesc:
         'Modello usato per generare embeddings per la ricerca semantica.',
@@ -330,10 +334,10 @@ export const it: TranslationKeys = {
       limitDesc: 'Numero massimo di chunk da recuperare.',
       includePatterns: 'Pattern di inclusione',
       includePatternsDesc:
-        'Pattern glob per i file da includere nell\'indice (uno per riga).',
+        "Pattern glob per i file da includere nell'indice (uno per riga).",
       excludePatterns: 'Pattern di esclusione',
       excludePatternsDesc:
-        'Pattern glob per i file da escludere dall\'indice (uno per riga).',
+        "Pattern glob per i file da escludere dall'indice (uno per riga).",
       testPatterns: 'Testa pattern',
       manageEmbeddingDatabase: 'Gestisci database embedding',
       manage: 'Gestisci',
@@ -353,20 +357,20 @@ export const it: TranslationKeys = {
       conflictRule: 'Regola di conflitto',
       autoUpdate: 'Aggiornamento automatico',
       autoUpdateDesc:
-        'Aggiorna automaticamente l\'indice quando i file vengono modificati.',
+        "Aggiorna automaticamente l'indice quando i file vengono modificati.",
       autoUpdateInterval: 'Intervallo aggiornamento automatico',
       autoUpdateIntervalDesc:
-        'Tempo di attesa (in millisecondi) dopo che un file viene modificato prima di aggiornare l\'indice.',
+        "Tempo di attesa (in millisecondi) dopo che un file viene modificato prima di aggiornare l'indice.",
       manualUpdateNow: 'Aggiorna ora',
       manualUpdateNowDesc:
-        'Aggiorna manualmente l\'indice per i file modificati dall\'ultimo aggiornamento.',
+        "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',
     },
     mcp: {
       title: 'MCP (Model Context Protocol)',
-      desc: 'Gestisci i server MCP che forniscono strumenti e risorse aggiuntive all\'AI.',
+      desc: "Gestisci i server MCP che forniscono strumenti e risorse aggiuntive all'AI.",
       warning:
         'Avviso: i server MCP possono eseguire codice arbitrario. Aggiungi solo server di cui ti fidi.',
       notSupportedOnMobile: 'MCP non è supportato su mobile',
@@ -446,7 +450,7 @@ export const it: TranslationKeys = {
         'Parola chiave che trigger automaticamente la continuazione AI.',
       quickAskSubsectionTitle: 'Quick Ask',
       quickAskDescription:
-        'Quick Ask è un menu contestuale che ti permette di chiedere all\'AI o modificare il testo selezionato.',
+        "Quick Ask è un menu contestuale che ti permette di chiedere all'AI o modificare il testo selezionato.",
       quickAskToggle: 'Abilita Quick Ask',
       quickAskToggleDesc:
         'Mostra il menu Quick Ask quando selezioni il testo e premi Cmd/Ctrl+Shift+K.',
@@ -493,8 +497,7 @@ export const it: TranslationKeys = {
       resetSettingsSuccess: 'Impostazioni ripristinate con successo.',
       reset: 'Ripristina',
       clearChatHistory: 'Cancella cronologia chat',
-      clearChatHistoryDesc:
-        'Elimina tutte le conversazioni chat salvate.',
+      clearChatHistoryDesc: 'Elimina tutte le conversazioni chat salvate.',
       clearChatHistoryConfirm:
         'Sei sicuro di voler cancellare tutta la cronologia chat? Questa azione non può essere annullata.',
       clearChatHistorySuccess: 'Cronologia chat cancellata con successo.',
@@ -578,7 +581,7 @@ export const it: TranslationKeys = {
             instruction: 'Scrivi un riassunto conciso del contenuto corrente.',
           },
           todo: {
-            label: 'Aggiungi elementi d\'azione',
+            label: "Aggiungi elementi d'azione",
             instruction:
               'Genera una checklist di prossimi passi azionabili dal contesto corrente.',
           },
@@ -605,7 +608,7 @@ export const it: TranslationKeys = {
           brainstorm: {
             label: 'Brainstorming idee',
             instruction:
-              'Suggerisci diverse idee fresche o angolazioni basate sull\'argomento corrente.',
+              "Suggerisci diverse idee fresche o angolazioni basate sull'argomento corrente.",
           },
           analyze: {
             label: 'Analizza questa sezione',
@@ -615,7 +618,7 @@ export const it: TranslationKeys = {
           dialogue: {
             label: 'Fai domande di approfondimento',
             instruction:
-              'Genera domande ponderate che possono approfondire la comprensione dell\'argomento.',
+              "Genera domande ponderate che possono approfondire la comprensione dell'argomento.",
           },
         },
       },
@@ -710,7 +713,9 @@ export const it: TranslationKeys = {
     modeEditDirectDesc: 'Modifica il documento direttamente senza conferma',
     editNoFile: 'Apri prima un file',
     editNoChanges: 'Nessuna modifica valida restituita dal modello',
-    editPartialSuccess: 'Applicate ${appliedCount} di ${blocks.length} modifiche. Controlla la console per i dettagli.',
-    editApplied: 'Applicate con successo ${appliedCount} modifica/modifiche a ${activeFile.name}',
+    editPartialSuccess:
+      'Applicate ${appliedCount} di ${blocks.length} modifiche. Controlla la console per i dettagli.',
+    editApplied:
+      'Applicate con successo ${appliedCount} modifica/modifiche a ${activeFile.name}',
   },
 }

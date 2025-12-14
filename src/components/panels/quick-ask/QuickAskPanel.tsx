@@ -1,5 +1,10 @@
 import { EditorView } from '@codemirror/view'
-import { $getRoot, $nodesOfType, LexicalEditor, SerializedEditorState } from 'lexical'
+import {
+  $getRoot,
+  $nodesOfType,
+  LexicalEditor,
+  SerializedEditorState,
+} from 'lexical'
 import {
   ChevronDown,
   ChevronUp,
@@ -27,22 +32,22 @@ import SmartComposerPlugin from '../../../main'
 import { Assistant } from '../../../types/assistant.types'
 import { ChatMessage, ChatUserMessage } from '../../../types/chat'
 import { Mentionable, SerializedMentionable } from '../../../types/mentionable'
+import { renderAssistantIcon } from '../../../utils/assistant-icon'
+import { generateEditContent } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
   getMentionableKey,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { renderAssistantIcon } from '../../../utils/assistant-icon'
-import { generateEditContent } from '../../../utils/chat/editMode'
+import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
 import { ResponseGenerator } from '../../../utils/chat/responseGenerator'
-import { parseTagContents } from '../../../utils/chat/parse-tag-content'
-import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import {
   applySearchReplaceBlocks,
   parseSearchReplaceBlocks,
 } from '../../../utils/chat/searchReplace'
 import { readTFileContent } from '../../../utils/obsidian'
+import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
@@ -168,7 +173,12 @@ export function QuickAskPanel({
   }>({})
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
-  const dragStartRef = useRef<{ x: number; y: number; panelX: number; panelY: number } | null>(null)
+  const dragStartRef = useRef<{
+    x: number
+    y: number
+    panelX: number
+    panelY: number
+  } | null>(null)
   const resizeStartRef = useRef<{
     direction: 'right' | 'bottom' | 'bottom-right'
     x: number
@@ -176,7 +186,10 @@ export function QuickAskPanel({
     width: number
     height: number
   } | null>(null)
-  const [panelSize, setPanelSize] = useState<{ width: number; height: number } | null>(null)
+  const [panelSize, setPanelSize] = useState<{
+    width: number
+    height: number
+  } | null>(null)
   const renderAssistantBlocks = useCallback(
     (rawContent: string | undefined | null) => {
       const parsed = parseTagContents(rawContent ?? '')
@@ -946,10 +959,16 @@ export function QuickAskPanel({
       let newWidth = resizeStartRef.current.width
       let newHeight = resizeStartRef.current.height
 
-      if (resizeStartRef.current.direction === 'right' || resizeStartRef.current.direction === 'bottom-right') {
+      if (
+        resizeStartRef.current.direction === 'right' ||
+        resizeStartRef.current.direction === 'bottom-right'
+      ) {
         newWidth = Math.max(300, resizeStartRef.current.width + deltaX)
       }
-      if (resizeStartRef.current.direction === 'bottom' || resizeStartRef.current.direction === 'bottom-right') {
+      if (
+        resizeStartRef.current.direction === 'bottom' ||
+        resizeStartRef.current.direction === 'bottom-right'
+      ) {
         newHeight = Math.max(200, resizeStartRef.current.height + deltaY)
       }
 
@@ -977,36 +996,43 @@ export function QuickAskPanel({
   }, [isResizing, containerRef, onResize])
 
   // Drag handle mouse down
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if (!containerRef?.current) return
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (!containerRef?.current) return
 
-    const rect = containerRef.current.getBoundingClientRect()
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      panelX: rect.left,
-      panelY: rect.top,
-    }
-    setIsDragging(true)
-    e.preventDefault()
-  }, [containerRef])
+      const rect = containerRef.current.getBoundingClientRect()
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        panelX: rect.left,
+        panelY: rect.top,
+      }
+      setIsDragging(true)
+      e.preventDefault()
+    },
+    [containerRef],
+  )
 
   // Resize handle mouse down
-  const handleResizeStart = useCallback((direction: 'right' | 'bottom' | 'bottom-right') => (e: React.MouseEvent) => {
-    if (!containerRef?.current) return
+  const handleResizeStart = useCallback(
+    (direction: 'right' | 'bottom' | 'bottom-right') =>
+      (e: React.MouseEvent) => {
+        if (!containerRef?.current) return
 
-    const rect = containerRef.current.getBoundingClientRect()
-    resizeStartRef.current = {
-      direction,
-      x: e.clientX,
-      y: e.clientY,
-      width: rect.width,
-      height: rect.height,
-    }
-    setIsResizing(true)
-    e.preventDefault()
-    e.stopPropagation()
-  }, [containerRef])
+        const rect = containerRef.current.getBoundingClientRect()
+        resizeStartRef.current = {
+          direction,
+          x: e.clientX,
+          y: e.clientY,
+          width: rect.width,
+          height: rect.height,
+        }
+        setIsResizing(true)
+        e.preventDefault()
+        e.stopPropagation()
+      },
+    [containerRef],
+  )
 
   return (
     <div

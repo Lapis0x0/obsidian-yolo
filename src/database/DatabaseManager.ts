@@ -3,6 +3,7 @@ import { PgliteDatabase, drizzle } from 'drizzle-orm/pglite'
 import { App, normalizePath, requestUrl } from 'obsidian'
 
 import { PGLITE_DB_PATH, PLUGIN_ID } from '../constants'
+import { yieldToMain } from '../utils/common/yield-to-main'
 
 import { PGLiteAbortedException } from './exception'
 import migrations from './migrations.json'
@@ -205,8 +206,19 @@ export class DatabaseManager {
       return
     }
     try {
+      // 让步给主线程，避免在繁忙时刻开始保存
+      await yieldToMain()
+
       const blob: Blob = await this.pgClient.dumpDataDir('gzip')
+
+      // 让步给主线程，大型数据库的 dump 可能很耗时
+      await yieldToMain()
+
       const arrayBuffer = await blob.arrayBuffer()
+
+      // 让步给主线程，准备写入文件
+      await yieldToMain()
+
       await this.app.vault.adapter.writeBinary(this.dbPath, arrayBuffer)
     } catch (error) {
       console.error('Error saving database:', error)
