@@ -95,9 +95,8 @@ export const ModeSelect = forwardRef<
         if (typeof ref === 'function') {
           ref(node)
         } else if (ref) {
-          // eslint-disable-next-line no-param-reassign
-          ;(ref ).current =
-            node
+          // eslint-disable-next-line no-param-reassign -- React ref object assignment
+          ref.current = node
         }
       },
       [ref],

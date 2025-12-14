@@ -73,7 +73,6 @@ type QuickAskPanelProps = {
 function SimpleMarkdownContent({
   content,
   component,
-  scale, // scale is unused here but kept for interface compatibility
 }: {
   content: string
   component: Component
@@ -203,7 +202,7 @@ export function QuickAskPanel({
               key={index}
               reasoning={block.content}
               content={rawContent ?? ''}
-              MarkdownComponent={({ content, scale }) => (
+              MarkdownComponent={({ content }) => (
                 <SimpleMarkdownContent content={content} component={plugin} />
               )}
             />,
@@ -1133,7 +1132,7 @@ export function QuickAskPanel({
                     <AssistantMessageReasoning
                       reasoning={message.reasoning}
                       content={message.content}
-                      MarkdownComponent={({ content, scale }) => (
+                      MarkdownComponent={({ content }) => (
                         <SimpleMarkdownContent
                           content={content}
                           component={plugin}

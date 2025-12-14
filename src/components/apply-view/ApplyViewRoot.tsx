@@ -8,7 +8,6 @@ import {
   useState,
 } from 'react'
 
-
 import { ApplyViewState } from '../../ApplyView'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -301,7 +300,7 @@ export default function ApplyViewRoot({
             </button>
           )}
           <button
-            onClick={applyAndClose}
+            onClick={() => void applyAndClose()}
             className="smtcmp-toolbar-btn smtcmp-apply-btn"
             title={t('applyView.applyAndClose', 'Apply changes and close')}
           >

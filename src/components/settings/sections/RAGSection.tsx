@@ -563,7 +563,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     // i18n notice
                     new Notice(t('notices.indexUpdated'))
                   } catch (error) {
-                    if (error instanceof DOMException && error.name === 'AbortError') {
+                    if (
+                      error instanceof DOMException &&
+                      error.name === 'AbortError'
+                    ) {
                       new Notice(t('notices.indexCancelled', '索引已取消'))
                     } else {
                       console.error('Failed to update index:', error)
@@ -649,7 +652,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         },
                       })
                     } catch (error) {
-                      if (error instanceof DOMException && error.name === 'AbortError') {
+                      if (
+                        error instanceof DOMException &&
+                        error.name === 'AbortError'
+                      ) {
                         new Notice(t('notices.indexCancelled', '索引已取消'))
                       } else {
                         console.error('Failed to rebuild index:', error)

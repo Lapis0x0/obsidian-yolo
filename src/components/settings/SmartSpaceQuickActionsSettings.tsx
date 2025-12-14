@@ -605,7 +605,7 @@ export function SmartSpaceQuickActionsSettings() {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragEnd={handleQuickActionDragEnd}
+        onDragEnd={(event) => void handleQuickActionDragEnd(event)}
       >
         <SortableContext
           items={quickActionIds}
@@ -663,8 +663,8 @@ type QuickActionItemProps = {
   editingAction: QuickAction | null
   setEditingAction: React.Dispatch<React.SetStateAction<QuickAction | null>>
   setIsAddingAction: React.Dispatch<React.SetStateAction<boolean>>
-  handleDuplicateAction: (action: QuickAction) => void
-  handleDeleteAction: (id: string) => void
+  handleDuplicateAction: (action: QuickAction) => void | Promise<void>
+  handleDeleteAction: (id: string) => void | Promise<void>
   handleSaveAction: () => void | Promise<void>
   categoryOptions: Record<string, string>
   iconOptions: Record<string, string>
@@ -741,12 +741,12 @@ function QuickActionItem({
             }
           />
           <ObsidianButton
-            onClick={() => handleDuplicateAction(action)}
+            onClick={() => void handleDuplicateAction(action)}
             icon="copy"
             tooltip={t('settings.smartSpace.duplicate', '复制')}
           />
           <ObsidianButton
-            onClick={() => handleDeleteAction(action.id)}
+            onClick={() => void handleDeleteAction(action.id)}
             icon="trash-2"
             tooltip={t('common.delete', '删除')}
           />

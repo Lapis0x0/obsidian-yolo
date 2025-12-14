@@ -948,7 +948,7 @@ export function ProvidersAndModelsSection({
         <DndContext
           sensors={providerSensors}
           collisionDetection={closestCenter}
-          onDragEnd={handleProviderDragEnd}
+          onDragEnd={(event) => void handleProviderDragEnd(event)}
         >
           <SortableContext
             items={providerIds}
@@ -980,10 +980,10 @@ export function ProvidersAndModelsSection({
                   handleDeleteEmbeddingModel={handleDeleteEmbeddingModel}
                   handleToggleEnableChatModel={handleToggleEnableChatModel}
                   handleChatModelDragEnd={(event) =>
-                    handleChatModelDragEnd(provider.id, event)
+                    void handleChatModelDragEnd(provider.id, event)
                   }
                   handleEmbeddingModelDragEnd={(event) =>
-                    handleEmbeddingModelDragEnd(provider.id, event)
+                    void handleEmbeddingModelDragEnd(provider.id, event)
                   }
                 />
               )

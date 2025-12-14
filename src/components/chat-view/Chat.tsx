@@ -205,7 +205,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   // 从所有历史消息中聚合 mentionables（排除 current-file）
   const aggregatedMentionables = useMemo(() => {
-    const allMentionables: typeof inputMessage.mentionables = []
+    const allMentionables: ChatUserMessage['mentionables'] = []
     const seenKeys = new Set<string>()
 
     chatMessages.forEach((message) => {
@@ -227,7 +227,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   // 计算底部输入框显示的 mentionables（合并 current-file + 聚合 + 当前输入）
   const displayMentionablesForInput = useMemo(() => {
-    const result: typeof inputMessage.mentionables = []
+    const result: ChatUserMessage['mentionables'] = []
     const seenKeys = new Set<string>()
 
     // 1. 先添加 current-file（如果有）
@@ -303,46 +303,55 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }
 
-  const handleLoadConversation = async (conversationId: string) => {
-    try {
-      abortActiveStreams()
-      const conversation = await getConversationById(conversationId)
-      if (!conversation) {
-        throw new Error('Conversation not found')
-      }
-      setCurrentConversationId(conversationId)
-      setChatMessages(conversation.messages)
-      const suppressed =
-        conversationSuppressionRef.current.get(conversationId) ?? 'none'
-      setCurrentFileSuppression(suppressed)
-      setConversationOverrides(conversation.overrides ?? null)
-      if (conversation.overrides) {
-        conversationOverridesRef.current.set(
-          conversationId,
-          conversation.overrides,
+  const handleLoadConversation = useCallback(
+    async (conversationId: string) => {
+      try {
+        abortActiveStreams()
+        const conversation = await getConversationById(conversationId)
+        if (!conversation) {
+          throw new Error('Conversation not found')
+        }
+        setCurrentConversationId(conversationId)
+        setChatMessages(conversation.messages)
+        const suppressed =
+          conversationSuppressionRef.current.get(conversationId) ?? 'none'
+        setCurrentFileSuppression(suppressed)
+        setConversationOverrides(conversation.overrides ?? null)
+        if (conversation.overrides) {
+          conversationOverridesRef.current.set(
+            conversationId,
+            conversation.overrides,
+          )
+        }
+        const modelFromRef =
+          conversationModelIdRef.current.get(conversationId) ??
+          settings.chatModelId
+        setConversationModelId(modelFromRef)
+        // Reset per-message model mapping when switching conversation
+        setMessageModelMap(new Map())
+        const newInputMessage = getNewInputMessage(
+          app,
+          settings.chatOptions.includeCurrentFileContent,
+          suppressed,
         )
+        setInputMessage(newInputMessage)
+        setFocusedMessageId(newInputMessage.id)
+        setQueryProgress({
+          type: 'idle',
+        })
+      } catch (error) {
+        new Notice('Failed to load conversation')
+        console.error('Failed to load conversation', error)
       }
-      const modelFromRef =
-        conversationModelIdRef.current.get(conversationId) ??
-        settings.chatModelId
-      setConversationModelId(modelFromRef)
-      // Reset per-message model mapping when switching conversation
-      setMessageModelMap(new Map())
-      const newInputMessage = getNewInputMessage(
-        app,
-        settings.chatOptions.includeCurrentFileContent,
-        suppressed,
-      )
-      setInputMessage(newInputMessage)
-      setFocusedMessageId(newInputMessage.id)
-      setQueryProgress({
-        type: 'idle',
-      })
-    } catch (error) {
-      new Notice('Failed to load conversation')
-      console.error('Failed to load conversation', error)
-    }
-  }
+    },
+    [
+      abortActiveStreams,
+      app,
+      getConversationById,
+      settings.chatModelId,
+      settings.chatOptions.includeCurrentFileContent,
+    ],
+  )
 
   // Load an initial conversation passed in via props (e.g., from Quick Ask)
   useEffect(() => {
@@ -783,7 +792,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   // 从所有消息中删除指定的 mentionable，并清空 promptContent 以便重新编译
   const handleMentionableDeleteFromAll = useCallback(
-    (mentionable: (typeof inputMessage.mentionables)[number]) => {
+    (mentionable: ChatUserMessage['mentionables'][number]) => {
       const mentionableKey = getMentionableKey(
         serializeMentionable(mentionable),
       )

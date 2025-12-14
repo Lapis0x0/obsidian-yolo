@@ -356,7 +356,7 @@ export const AssistantsSection: FC<AssistantsSectionProps> = ({ app }) => {
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
+          onDragEnd={(event) => void handleDragEnd(event)}
         >
           <SortableContext
             items={assistantIds}
