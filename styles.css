@@ -23,7 +23,7 @@
 
 .smtcmp-chat-input-settings-outer {
   position: absolute;
-  top: -23px;
+  top: 0px;
   right: -3px;
   left: auto !important; /* cancel any left: 0 from other rules */
   z-index: 3;
