@@ -1,4 +1,4 @@
-import { Modal } from 'obsidian'
+import { type App, Modal } from 'obsidian'
 import React, { useState } from 'react'
 
 import { AssistantIcon } from '../../../types/assistant.types'
@@ -13,7 +13,7 @@ export class AssistantIconPickerModal extends Modal {
   private onSelect: (icon: AssistantIcon) => void
 
   constructor(
-    app: any,
+    app: App,
     currentIcon: AssistantIcon | undefined,
     onSelect: (icon: AssistantIcon) => void,
   ) {
@@ -169,7 +169,7 @@ export class AssistantIconPickerModal extends Modal {
  * 打开图标选择器
  */
 export const openIconPicker = (
-  app: any,
+  app: App,
   currentIcon: AssistantIcon | undefined,
   onSelect: (icon: AssistantIcon) => void,
 ) => {

@@ -160,11 +160,19 @@ export const renderAssistantIcon = (
   }
 
   // Lucide 图标
-  const IconComponent = (LucideIcons as any)[iconConfig.value]
+  type LucideIconComponent = React.ComponentType<{
+    size?: number
+    className?: string
+  }>
+  const lucideIconMap = LucideIcons as unknown as Record<
+    string,
+    LucideIconComponent
+  >
+  const IconComponent = lucideIconMap[iconConfig.value]
 
   if (!IconComponent) {
     // 如果图标不存在，降级到默认图标
-    const DefaultIcon = (LucideIcons as any)[DEFAULT_ASSISTANT_ICON.value]
+    const DefaultIcon = lucideIconMap[DEFAULT_ASSISTANT_ICON.value]
     return <DefaultIcon size={size} className={combinedClassName} />
   }
 
