@@ -7164,3 +7164,14 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-quick-ask-panel.is-resizing {
   user-select: none;
 }
+
+/* Global interaction state (drag/resize) */
+body.smtcmp-quick-ask-global-interaction,
+body.smtcmp-quick-ask-global-interaction * {
+  cursor: var(--smtcmp-quick-ask-global-cursor, auto) !important;
+  -webkit-user-select: var(
+    --smtcmp-quick-ask-global-user-select,
+    auto
+  ) !important;
+  user-select: var(--smtcmp-quick-ask-global-user-select, auto) !important;
+}

@@ -947,26 +947,38 @@ export function QuickAskPanel({
     const handleMouseUp = () => {
       setIsDragging(false)
       dragStartRef.current = null
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
     }
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-    document.body.style.cursor = 'grabbing'
-    document.body.style.userSelect = 'none'
+    document.body.classList.add('smtcmp-quick-ask-global-interaction')
+    document.body.setCssProps({
+      '--smtcmp-quick-ask-global-cursor': 'grabbing',
+      '--smtcmp-quick-ask-global-user-select': 'none',
+    })
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+      document.body.classList.remove('smtcmp-quick-ask-global-interaction')
+      document.body.setCssProps({
+        '--smtcmp-quick-ask-global-cursor': '',
+        '--smtcmp-quick-ask-global-user-select': '',
+      })
     }
   }, [isDragging, containerRef, onDragOffset])
 
   // Resize handling
   useEffect(() => {
     if (!isResizing) return
+
+    const direction = resizeStartRef.current?.direction
+    const cursor =
+      direction === 'right'
+        ? 'ew-resize'
+        : direction === 'bottom'
+          ? 'ns-resize'
+          : 'nwse-resize'
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeStartRef.current || !containerRef?.current) return
@@ -997,19 +1009,24 @@ export function QuickAskPanel({
     const handleMouseUp = () => {
       setIsResizing(false)
       resizeStartRef.current = null
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
     }
 
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-    document.body.style.userSelect = 'none'
+    document.body.classList.add('smtcmp-quick-ask-global-interaction')
+    document.body.setCssProps({
+      '--smtcmp-quick-ask-global-cursor': cursor,
+      '--smtcmp-quick-ask-global-user-select': 'none',
+    })
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+      document.body.classList.remove('smtcmp-quick-ask-global-interaction')
+      document.body.setCssProps({
+        '--smtcmp-quick-ask-global-cursor': '',
+        '--smtcmp-quick-ask-global-user-select': '',
+      })
     }
   }, [isResizing, containerRef, onResize])
 
