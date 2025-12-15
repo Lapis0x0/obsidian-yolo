@@ -527,7 +527,7 @@ export const it: TranslationKeys = {
     },
     customContinuePromptLabel: 'Come vuoi continuare?',
     customContinuePromptPlaceholder:
-      'Descrivi come continuare, ad es. "riassumi i punti chiave"; premi shift+invio per confermare, invio per una nuova riga, ed esc per chiudere.',
+      'Chiedi all\'AI (@ per aggiungere i file)',
     customContinueHint:
       'Shift+Invio per inviare, Invio per nuova riga, Esc per chiudere',
     customContinueConfirmHint: 'Invia la tua istruzione per continuare',
