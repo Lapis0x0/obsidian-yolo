@@ -4079,19 +4079,23 @@ button.smtcmp-chat-input-model-select {
 }
 
 /* Custom continue inline panel */
+.smtcmp-smart-space-overlay-host {
+  position: relative;
+}
+
 .smtcmp-smart-space-overlay-root {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 0;
-  z-index: 9998;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .smtcmp-smart-space-overlay {
   position: absolute;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 2;
   animation: smtcmp-smart-space-fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)
     forwards;
 }
