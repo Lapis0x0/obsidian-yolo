@@ -4464,6 +4464,13 @@ button.smtcmp-chat-input-model-select {
   pointer-events: auto;
 }
 
+.smtcmp-smart-space-section-card.is-floating {
+  position: absolute;
+  left: 0;
+  flex: 0 0 auto;
+  z-index: 1;
+}
+
 .smtcmp-smart-space-section-list {
   flex: 1;
   min-height: 0;

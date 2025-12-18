@@ -93,6 +93,9 @@ function SmartSpacePanelBody({
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const inputCardRef = useRef<HTMLDivElement>(null)
+  const errorRef = useRef<HTMLDivElement>(null)
+  const localContainerRef = useRef<HTMLDivElement>(null)
+  const resolvedContainerRef = containerRef ?? localContainerRef
   const modelSelectRef = useRef<HTMLButtonElement>(null)
   const webSearchButtonRef = useRef<HTMLButtonElement>(null)
   const urlContextButtonRef = useRef<HTMLButtonElement>(null)
@@ -119,6 +122,18 @@ function SmartSpacePanelBody({
   const [mentionMenuPlacement, setMentionMenuPlacement] = useState<
     'top' | 'bottom'
   >('top')
+  const [quickActionsPlacement, setQuickActionsPlacement] = useState<
+    'top' | 'bottom'
+  >('bottom')
+  const quickActionsPlacementRef = useRef<'top' | 'bottom'>('bottom')
+  const quickActionsPlacementLockedRef = useRef(false)
+  const quickActionsHasInitializedRef = useRef(false)
+  const quickActionsLayoutRafIdRef = useRef<number | null>(null)
+  const quickActionsLayoutRafId2Ref = useRef<number | null>(null)
+  const [isQuickActionsLayoutReady, setIsQuickActionsLayoutReady] =
+    useState(false)
+  const [quickActionsOffset, setQuickActionsOffset] = useState<number>(0)
+  const [quickActionsMaxHeight, setQuickActionsMaxHeight] = useState<number>(0)
   const [isMultilineInput, setIsMultilineInput] = useState(false)
   const [isKeyboardNavigationActive, setIsKeyboardNavigationActive] =
     useState(false)
@@ -318,6 +333,65 @@ function SmartSpacePanelBody({
       setMentionMenuPlacement('top')
     }
   }, [])
+
+  useEffect(() => {
+    quickActionsPlacementRef.current = quickActionsPlacement
+  }, [quickActionsPlacement])
+
+  const updateQuickActionsLayout = useCallback(() => {
+    const panel = resolvedContainerRef.current
+    const card = inputCardRef.current
+    if (!panel || !card) return
+
+    const panelRect = panel.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    const belowAnchorRect =
+      errorRef.current?.getBoundingClientRect() ?? cardRect
+
+    const viewportHeight = window.innerHeight
+    const margin = 16
+    const gap = 12
+
+    const availableAbove = cardRect.top - gap - margin
+    const availableBelow =
+      viewportHeight - belowAnchorRect.bottom - gap - margin
+    const preferredHeight = 260
+
+    const nextPlacement: 'top' | 'bottom' =
+      availableBelow < preferredHeight && availableAbove > availableBelow
+        ? 'top'
+        : 'bottom'
+
+    const resolvedPlacement = quickActionsPlacementLockedRef.current
+      ? quickActionsPlacementRef.current
+      : nextPlacement
+
+    const cardTopWithinPanel = cardRect.top - panelRect.top
+    const cardBottomWithinPanel = belowAnchorRect.bottom - panelRect.top
+
+    const nextOffset =
+      resolvedPlacement === 'bottom'
+        ? Math.round(cardBottomWithinPanel + gap)
+        : Math.round(panelRect.height - cardTopWithinPanel + gap)
+
+    const nextMaxHeight = Math.max(
+      0,
+      Math.floor(
+        resolvedPlacement === 'bottom' ? availableBelow : availableAbove,
+      ),
+    )
+
+    if (!quickActionsPlacementLockedRef.current) {
+      quickActionsPlacementRef.current = resolvedPlacement
+      setQuickActionsPlacement((prev) =>
+        prev === resolvedPlacement ? prev : resolvedPlacement,
+      )
+    }
+    setQuickActionsOffset((prev) => (prev === nextOffset ? prev : nextOffset))
+    setQuickActionsMaxHeight((prev) =>
+      prev === nextMaxHeight ? prev : nextMaxHeight,
+    )
+  }, [resolvedContainerRef])
 
   const handleMentionNodeMutation = useCallback(
     (mutations: NodeMutations<MentionNode>) => {
@@ -605,6 +679,75 @@ function SmartSpacePanelBody({
     [sections],
   )
 
+  const shouldShowQuickActions =
+    showQuickActions && totalItems > 0 && !isMentionMenuOpen
+
+  useEffect(() => {
+    if (!shouldShowQuickActions) return
+    const panel = resolvedContainerRef.current
+    const card = inputCardRef.current
+    if (!panel || !card) return
+
+    const observer = new ResizeObserver(() => {
+      if (!quickActionsHasInitializedRef.current) return
+      updateQuickActionsLayout()
+    })
+    observer.observe(panel)
+    observer.observe(card)
+
+    const handleResize = () => {
+      if (!quickActionsHasInitializedRef.current) return
+      updateQuickActionsLayout()
+    }
+    window.addEventListener('resize', handleResize)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [shouldShowQuickActions, resolvedContainerRef, updateQuickActionsLayout])
+
+  useEffect(() => {
+    if (!shouldShowQuickActions) return
+    if (quickActionsHasInitializedRef.current) return
+
+    setIsQuickActionsLayoutReady(false)
+    quickActionsPlacementLockedRef.current = false
+
+    if (quickActionsLayoutRafIdRef.current !== null) {
+      cancelAnimationFrame(quickActionsLayoutRafIdRef.current)
+      quickActionsLayoutRafIdRef.current = null
+    }
+    if (quickActionsLayoutRafId2Ref.current !== null) {
+      cancelAnimationFrame(quickActionsLayoutRafId2Ref.current)
+      quickActionsLayoutRafId2Ref.current = null
+    }
+
+    let cancelled = false
+    quickActionsLayoutRafIdRef.current = window.requestAnimationFrame(() => {
+      quickActionsLayoutRafIdRef.current = null
+      quickActionsLayoutRafId2Ref.current = window.requestAnimationFrame(() => {
+        quickActionsLayoutRafId2Ref.current = null
+        if (cancelled) return
+        updateQuickActionsLayout()
+        quickActionsPlacementLockedRef.current = true
+        quickActionsHasInitializedRef.current = true
+        setIsQuickActionsLayoutReady(true)
+      })
+    })
+
+    return () => {
+      cancelled = true
+      if (quickActionsLayoutRafIdRef.current !== null) {
+        cancelAnimationFrame(quickActionsLayoutRafIdRef.current)
+        quickActionsLayoutRafIdRef.current = null
+      }
+      if (quickActionsLayoutRafId2Ref.current !== null) {
+        cancelAnimationFrame(quickActionsLayoutRafId2Ref.current)
+        quickActionsLayoutRafId2Ref.current = null
+      }
+    }
+  }, [shouldShowQuickActions, updateQuickActionsLayout])
+
   useEffect(() => {
     if (itemRefs.current.length !== totalItems) {
       const nextRefs = new Array<HTMLButtonElement | null>(totalItems).fill(
@@ -852,7 +995,7 @@ function SmartSpacePanelBody({
   const isInputEmpty = instructionText.length === 0 && mentionables.length === 0
 
   return (
-    <div className="smtcmp-smart-space-panel" ref={containerRef ?? undefined}>
+    <div className="smtcmp-smart-space-panel" ref={resolvedContainerRef}>
       {!isSubmitting ? (
         <>
           <div className="smtcmp-smart-space-input-card" ref={inputCardRef}>
@@ -1069,16 +1212,26 @@ function SmartSpacePanelBody({
             </div>
           </div>
           {error && (
-            <div className="smtcmp-smart-space-error" role="alert">
+            <div
+              className="smtcmp-smart-space-error"
+              role="alert"
+              ref={errorRef}
+            >
               {error}
             </div>
           )}
-          {showQuickActions && sections.length > 0 && (
+          {shouldShowQuickActions && isQuickActionsLayoutReady && (
             <div
-              className={`smtcmp-smart-space-section-card${
+              className={`smtcmp-smart-space-section-card is-floating smtcmp-smart-space-section-card--${quickActionsPlacement}${
                 isKeyboardNavigationActive ? ' is-keyboard-nav' : ''
               }`}
               onPointerMove={handleQuickActionsPointerMove}
+              style={{
+                ...(quickActionsPlacement === 'bottom'
+                  ? { top: quickActionsOffset }
+                  : { bottom: quickActionsOffset }),
+                maxHeight: quickActionsMaxHeight,
+              }}
             >
               <div className="smtcmp-smart-space-section-list">
                 {(() => {
