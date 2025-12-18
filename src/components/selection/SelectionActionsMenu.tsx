@@ -14,6 +14,7 @@ export type SelectionAction = {
 
 type SelectionActionsMenuProps = {
   selection: SelectionInfo
+  containerEl: HTMLElement
   indicatorPosition: { left: number; top: number }
   visible: boolean
   onAction: (actionId: string) => void | Promise<void>
@@ -22,6 +23,7 @@ type SelectionActionsMenuProps = {
 
 export function SelectionActionsMenu({
   selection,
+  containerEl,
   indicatorPosition,
   visible,
   onAction,
@@ -58,6 +60,7 @@ export function SelectionActionsMenu({
   )
 
   const updatePosition = useCallback(() => {
+    const containerRect = containerEl.getBoundingClientRect()
     // Position menu relative to indicator
     const menuWidth = 200 // Approximate menu width
     const menuHeight = 44 * actions.length + 16 // Approximate height
@@ -66,9 +69,9 @@ export function SelectionActionsMenu({
     let left = indicatorPosition.left + 28 + offset // 28px is indicator width
     let top = indicatorPosition.top
 
-    // Ensure menu stays within viewport
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
+    // Ensure menu stays within container bounds
+    const viewportWidth = containerRect.width
+    const viewportHeight = containerRect.height
 
     if (left + menuWidth > viewportWidth - 8) {
       // Position to the left of indicator
@@ -86,7 +89,7 @@ export function SelectionActionsMenu({
     }
 
     setPosition({ left, top })
-  }, [actions.length, indicatorPosition.left, indicatorPosition.top])
+  }, [actions.length, containerEl, indicatorPosition.left, indicatorPosition.top])
 
   useEffect(() => {
     updatePosition()

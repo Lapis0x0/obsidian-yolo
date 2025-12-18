@@ -6,12 +6,14 @@ import type { SelectionInfo } from './SelectionManager'
 type SelectionIndicatorProps = {
   selection: SelectionInfo
   onHoverChange: (isHovering: boolean) => void
+  containerEl: HTMLElement
   offset?: number
 }
 
 export function SelectionIndicator({
   selection,
   onHoverChange,
+  containerEl,
   offset = 8,
 }: SelectionIndicatorProps) {
   const indicatorRef = useRef<HTMLDivElement>(null)
@@ -20,6 +22,7 @@ export function SelectionIndicator({
 
   const updatePosition = useCallback(() => {
     const { rect } = selection
+    const containerRect = containerEl.getBoundingClientRect()
     const isRTL = document.dir === 'rtl'
 
     let left: number
@@ -27,17 +30,18 @@ export function SelectionIndicator({
 
     if (isRTL) {
       // For RTL, position to the left of the selection
-      left = rect.left - 28 - offset // 28px is approximate indicator width
+      left =
+        rect.left - containerRect.left - 28 - offset // 28px is approximate indicator width
     } else {
       // For LTR, position to the right of the selection
-      left = rect.right + offset
+      left = rect.right - containerRect.left + offset
     }
 
-    top = rect.bottom + offset
+    top = rect.bottom - containerRect.top + offset
 
-    // Ensure the indicator stays within viewport
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
+    // Ensure the indicator stays within container bounds
+    const viewportWidth = containerRect.width
+    const viewportHeight = containerRect.height
     const indicatorWidth = 28
     const indicatorHeight = 28
 
@@ -48,11 +52,14 @@ export function SelectionIndicator({
       left = 8
     }
     if (top + indicatorHeight > viewportHeight - 8) {
-      top = rect.top - indicatorHeight - offset
+      top = rect.top - containerRect.top - indicatorHeight - offset
+    }
+    if (top < 8) {
+      top = 8
     }
 
     setPosition({ left, top })
-  }, [offset, selection])
+  }, [containerEl, offset, selection])
 
   useEffect(() => {
     updatePosition()

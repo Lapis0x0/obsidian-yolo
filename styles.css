@@ -5706,25 +5706,29 @@ button.smtcmp-chat-input-model-select {
    ============================================ */
 
 /* Overlay root container */
+.smtcmp-selection-chat-overlay-host {
+  position: relative;
+}
+
 .smtcmp-selection-chat-overlay-root {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  z-index: 9997;
+  z-index: 1;
 }
 
 .smtcmp-selection-chat-overlay {
-  position: fixed;
+  position: absolute;
+  inset: 0;
   pointer-events: none;
-  z-index: 9998;
+  z-index: 2;
 }
 
 /* Selection Indicator - small floating capsule */
 .smtcmp-selection-indicator {
-  position: fixed;
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5736,7 +5740,7 @@ button.smtcmp-chat-input-model-select {
   box-shadow: var(--shadow-s);
   cursor: pointer;
   pointer-events: auto;
-  z-index: 9998;
+  z-index: 2;
   opacity: 0;
   transform: scale(0.85);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -5762,11 +5766,11 @@ button.smtcmp-chat-input-model-select {
 
 /* Selection Actions Menu */
 .smtcmp-selection-menu {
-  position: fixed;
+  position: absolute;
   min-width: 200px;
   max-width: 280px;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 3;
   opacity: 0;
   transform: translateY(-4px) scale(0.96);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -6348,19 +6352,23 @@ button.smtcmp-chat-input-model-select {
 
 /* ==================== Quick Ask Panel - Cmd+K Style ==================== */
 
+.smtcmp-quick-ask-overlay-host {
+  position: relative;
+}
+
 .smtcmp-quick-ask-overlay-root {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 0;
-  z-index: 9998;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .smtcmp-quick-ask-overlay {
   position: absolute;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 2;
   animation: smtcmp-quick-ask-fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)
     forwards;
 }

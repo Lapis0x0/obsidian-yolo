@@ -26,6 +26,7 @@ export class QuickAskWidget extends WidgetType {
   private anchor: HTMLSpanElement | null = null
   private cleanupListeners: (() => void) | null = null
   private cleanupCallbacks: (() => void)[] = []
+  private overlayHost: HTMLElement | null = null
   private rafId: number | null = null
   private resizeObserver: ResizeObserver | null = null
   private isClosing = false
@@ -113,17 +114,32 @@ export class QuickAskWidget extends WidgetType {
     this.overlayContainer = null
     const overlayRoot = QuickAskWidget.overlayRoot
     if (overlayRoot && overlayRoot.childElementCount === 0) {
+      const host = overlayRoot.parentElement
       overlayRoot.remove()
       QuickAskWidget.overlayRoot = null
+      host?.classList.remove('smtcmp-quick-ask-overlay-host')
     }
     this.anchor = null
   }
 
-  private static getOverlayRoot(): HTMLElement {
+  private static getOverlayRoot(host: HTMLElement): HTMLElement {
+    if (
+      QuickAskWidget.overlayRoot &&
+      QuickAskWidget.overlayRoot.parentElement !== host
+    ) {
+      QuickAskWidget.overlayRoot.parentElement?.classList.remove(
+        'smtcmp-quick-ask-overlay-host',
+      )
+      QuickAskWidget.overlayRoot.remove()
+      QuickAskWidget.overlayRoot = null
+    }
+
     if (QuickAskWidget.overlayRoot) return QuickAskWidget.overlayRoot
+
     const root = document.createElement('div')
     root.className = 'smtcmp-quick-ask-overlay-root'
-    document.body.appendChild(root)
+    host.appendChild(root)
+    host.classList.add('smtcmp-quick-ask-overlay-host')
     QuickAskWidget.overlayRoot = root
     return root
   }
@@ -155,7 +171,11 @@ export class QuickAskWidget extends WidgetType {
   }
 
   private mountOverlay() {
-    const overlayRoot = QuickAskWidget.getOverlayRoot()
+    // 将浮层挂载到编辑器 DOM 内部，使其层级/裁剪行为更接近正文内容，避免遮挡标题栏
+    const overlayHost = this.options.view.dom ?? document.body
+    this.overlayHost = overlayHost
+
+    const overlayRoot = QuickAskWidget.getOverlayRoot(overlayHost)
     const overlayContainer = document.createElement('div')
     overlayContainer.className = 'smtcmp-quick-ask-overlay'
     overlayRoot.appendChild(overlayContainer)
@@ -269,7 +289,11 @@ export class QuickAskWidget extends WidgetType {
     }
     const anchorRect = this.anchor.getBoundingClientRect()
 
-    const viewportWidth = window.innerWidth
+    const hostRect =
+      this.overlayHost?.getBoundingClientRect() ??
+      document.body.getBoundingClientRect()
+
+    const viewportWidth = hostRect.width
     const margin = 12
     const offsetY = 6
 
@@ -292,16 +316,18 @@ export class QuickAskWidget extends WidgetType {
       Math.min(editorContentWidth, viewportWidth - margin * 2),
     )
 
-    const contentLeft = sizerRect?.left ?? scrollRect?.left ?? margin
+    const contentLeft =
+      (sizerRect?.left ?? scrollRect?.left ?? hostRect.left + margin) -
+      hostRect.left
     const contentRight = contentLeft + editorContentWidth
 
-    let left = anchorRect.left
+    let left = anchorRect.left - hostRect.left
     left = Math.min(left, contentRight - maxPanelWidth)
     left = Math.max(left, contentLeft)
     left = Math.min(left, viewportWidth - margin - maxPanelWidth)
     left = Math.max(left, margin)
 
-    const top = anchorRect.bottom + offsetY
+    const top = anchorRect.bottom - hostRect.top + offsetY
 
     updateDynamicStyleClass(
       this.overlayContainer,
@@ -331,6 +357,10 @@ export class QuickAskWidget extends WidgetType {
   private updateDragPosition() {
     if (!this.overlayContainer || !this.dragPosition) return
 
+    const hostRect =
+      this.overlayHost?.getBoundingClientRect() ??
+      document.body.getBoundingClientRect()
+
     // Get panel dimensions for width calculation
     const scrollDom = this.options.view.scrollDOM
     const scrollRect = scrollDom?.getBoundingClientRect()
@@ -344,7 +374,7 @@ export class QuickAskWidget extends WidgetType {
       10,
     )
 
-    const viewportWidth = window.innerWidth
+    const viewportWidth = hostRect.width
     const margin = 12
 
     const editorContentWidth =
@@ -363,8 +393,8 @@ export class QuickAskWidget extends WidgetType {
       {
         width: panelWidth,
         ...(panelHeight ? { height: panelHeight } : {}),
-        left: Math.round(this.dragPosition.x),
-        top: Math.round(this.dragPosition.y),
+        left: Math.round(this.dragPosition.x - hostRect.left),
+        top: Math.round(this.dragPosition.y - hostRect.top),
       },
     )
   }

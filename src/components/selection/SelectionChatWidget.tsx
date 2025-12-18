@@ -23,6 +23,7 @@ function SelectionChatWidgetBody({
   plugin: _plugin,
   editor: _editor,
   selection,
+  editorContainer,
   onClose,
   onAction,
 }: SelectionChatWidgetProps) {
@@ -39,14 +40,17 @@ function SelectionChatWidgetBody({
   useEffect(() => {
     // Calculate indicator position for menu positioning
     const { rect } = selection
+    const containerRect = editorContainer.getBoundingClientRect()
     const offset = 8
     const isRTL = document.dir === 'rtl'
 
-    const left = isRTL ? rect.left - 28 - offset : rect.right + offset
-    const top = rect.bottom + offset
+    const left = isRTL
+      ? rect.left - containerRect.left - 28 - offset
+      : rect.right - containerRect.left + offset
+    const top = rect.bottom - containerRect.top + offset
 
     setIndicatorPosition({ left, top })
-  }, [selection])
+  }, [editorContainer, selection])
 
   useEffect(() => {
     const isHovering = isHoveringIndicator || isHoveringMenu
@@ -94,10 +98,12 @@ function SelectionChatWidgetBody({
     <>
       <SelectionIndicator
         selection={selection}
+        containerEl={editorContainer}
         onHoverChange={setIsHoveringIndicator}
       />
       <SelectionActionsMenu
         selection={selection}
+        containerEl={editorContainer}
         indicatorPosition={indicatorPosition}
         visible={showMenu}
         onAction={handleAction}
@@ -113,6 +119,7 @@ export class SelectionChatWidget {
   private overlayContainer: HTMLDivElement | null = null
   private cleanupListeners: (() => void) | null = null
   private cleanupCallbacks: (() => void)[] = []
+  private overlayHost: HTMLElement | null = null
   private currentSelection: SelectionInfo
   private scrollThrottle: number | null = null
 
@@ -133,7 +140,8 @@ export class SelectionChatWidget {
   }
 
   mount(): void {
-    const overlayRoot = SelectionChatWidget.getOverlayRoot()
+    this.overlayHost = this.options.editorContainer
+    const overlayRoot = SelectionChatWidget.getOverlayRoot(this.overlayHost)
     const overlayContainer = document.createElement('div')
     overlayContainer.className = 'smtcmp-selection-chat-overlay'
     overlayRoot.appendChild(overlayContainer)
@@ -168,8 +176,10 @@ export class SelectionChatWidget {
 
     const overlayRoot = SelectionChatWidget.overlayRoot
     if (overlayRoot && overlayRoot.childElementCount === 0) {
+      const host = overlayRoot.parentElement
       overlayRoot.remove()
       SelectionChatWidget.overlayRoot = null
+      host?.classList.remove('smtcmp-selection-chat-overlay-host')
     }
 
     if (this.scrollThrottle !== null) {
@@ -178,13 +188,24 @@ export class SelectionChatWidget {
     }
   }
 
-  private static getOverlayRoot(): HTMLElement {
-    if (SelectionChatWidget.overlayRoot) {
-      return SelectionChatWidget.overlayRoot
+  private static getOverlayRoot(host: HTMLElement): HTMLElement {
+    if (
+      SelectionChatWidget.overlayRoot &&
+      SelectionChatWidget.overlayRoot.parentElement !== host
+    ) {
+      SelectionChatWidget.overlayRoot.parentElement?.classList.remove(
+        'smtcmp-selection-chat-overlay-host',
+      )
+      SelectionChatWidget.overlayRoot.remove()
+      SelectionChatWidget.overlayRoot = null
     }
+
+    if (SelectionChatWidget.overlayRoot) return SelectionChatWidget.overlayRoot
+
     const root = document.createElement('div')
     root.className = 'smtcmp-selection-chat-overlay-root'
-    document.body.appendChild(root)
+    host.appendChild(root)
+    host.classList.add('smtcmp-selection-chat-overlay-host')
     SelectionChatWidget.overlayRoot = root
     return root
   }
