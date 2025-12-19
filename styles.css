@@ -6480,7 +6480,7 @@ button.smtcmp-chat-input-model-select {
     var(--background-modifier-hover) 32%,
     transparent
   );
-  color: white !important;
+  color: var(--interactive-accent) !important;
   outline: none;
 }
 
@@ -6540,7 +6540,7 @@ button.smtcmp-chat-input-model-select {
   );
   border: none !important;
   box-shadow: none !important;
-  color: white;
+  color: var(--interactive-accent);
   outline: none;
 }
 
@@ -6628,7 +6628,7 @@ button.smtcmp-chat-input-model-select {
   );
   border: none !important;
   box-shadow: none !important;
-  color: white;
+  color: var(--interactive-accent);
   outline: none;
 }
 
