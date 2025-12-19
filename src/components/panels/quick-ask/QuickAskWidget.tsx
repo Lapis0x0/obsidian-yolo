@@ -45,6 +45,7 @@ export class QuickAskWidget extends WidgetType {
       editor: Editor
       view: EditorView
       contextText: string
+      fileTitle: string
       onClose: () => void
     },
   ) {
@@ -206,6 +207,7 @@ export class QuickAskWidget extends WidgetType {
                     editor={this.options.editor}
                     view={this.options.view}
                     contextText={this.options.contextText}
+                    fileTitle={this.options.fileTitle}
                     onClose={this.closeWithAnimation}
                     containerRef={this.containerRef}
                     onOverlayStateChange={this.handleOverlayStateChange}

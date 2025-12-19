@@ -62,6 +62,7 @@ type QuickAskPanelProps = {
   editor: Editor
   view: EditorView
   contextText: string
+  fileTitle: string
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
   onOverlayStateChange?: (isOverlayActive: boolean) => void
@@ -107,6 +108,7 @@ export function QuickAskPanel({
   editor,
   view: _view,
   contextText,
+  fileTitle,
   onClose,
   containerRef,
   onOverlayStateChange,
@@ -320,9 +322,16 @@ export function QuickAskPanel({
   const promptGenerator = useMemo(() => {
     const globalSystemPrompt = settings.systemPrompt || ''
     const assistantPrompt = selectedAssistant?.systemPrompt || ''
+    const trimmedTitle = fileTitle.trim()
+    const hasTitle = trimmedTitle.length > 0
+    const hasContext = contextText.trim().length > 0
+    const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
+    const contextBlock = hasContext
+      ? `Here is the text before the cursor (context):\n"""\n${contextText}\n"""\n`
+      : ''
     const contextSection =
-      contextText.trim().length > 0
-        ? `\n\nThe user is asking a question in the context of their current document.\nHere is the text before the cursor (context):\n"""\n${contextText}\n"""\n\nAnswer the user's question based on this context when relevant.`
+      hasTitle || hasContext
+        ? `\n\nThe user is asking a question in the context of their current document.\n${titleSection}${contextBlock}\nAnswer the user's question based on this context when relevant.`
         : ''
 
     const combinedSystemPrompt =

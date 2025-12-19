@@ -301,6 +301,7 @@ type QuickAskWidgetPayload = {
     editor: Editor
     view: EditorView
     contextText: string
+    fileTitle: string
     onClose: () => void
   }
 }
@@ -568,6 +569,7 @@ export default class SmartComposerPlugin extends Plugin {
 
     // Get context text (all text before cursor)
     const contextText = editor.getRange({ line: 0, ch: 0 }, editor.getCursor())
+    const fileTitle = this.app.workspace.getActiveFile()?.basename?.trim() ?? ''
 
     // Close any existing Quick Ask panel
     this.closeQuickAsk()
@@ -598,6 +600,7 @@ export default class SmartComposerPlugin extends Plugin {
             editor,
             view,
             contextText,
+            fileTitle,
             onClose: close,
           },
         }),
