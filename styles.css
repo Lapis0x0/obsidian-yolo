@@ -6466,6 +6466,7 @@ button.smtcmp-chat-input-model-select {
   -webkit-appearance: none;
   outline: none;
   font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
   color: var(--text-muted) !important;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -6606,6 +6607,7 @@ button.smtcmp-chat-input-model-select {
   box-shadow: none !important;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
   transition: all 0.15s ease;
 }
 
