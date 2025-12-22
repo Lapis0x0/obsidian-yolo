@@ -1,18 +1,5 @@
-import {
-  EditorSelection,
-  type Extension,
-  Prec,
-  StateEffect,
-  StateField,
-} from '@codemirror/state'
-import {
-  Decoration,
-  DecorationSet,
-  EditorView,
-  WidgetType,
-  keymap,
-} from '@codemirror/view'
-import { SerializedEditorState } from 'lexical'
+import { type Extension, Prec, StateEffect } from '@codemirror/state'
+import { EditorView, keymap } from '@codemirror/view'
 import { minimatch } from 'minimatch'
 import {
   Editor,
@@ -29,8 +16,6 @@ import { ApplyView, ApplyViewState } from './ApplyView'
 import { ChatView } from './ChatView'
 import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
-import { QuickAskWidget } from './components/panels/quick-ask'
-import { SmartSpaceWidget } from './components/panels/SmartSpacePanel'
 import { SelectionChatWidget } from './components/selection/SelectionChatWidget'
 import { SelectionManager } from './components/selection/SelectionManager'
 import type { SelectionInfo } from './components/selection/SelectionManager'
@@ -41,298 +26,39 @@ import { RAGEngine } from './core/rag/ragEngine'
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
+import {
+  InlineSuggestionGhostPayload,
+  ThinkingIndicatorPayload,
+  inlineSuggestionGhostEffect,
+  inlineSuggestionGhostField,
+  thinkingIndicatorEffect,
+  thinkingIndicatorField,
+} from './features/editor/inline-suggestion/inlineSuggestion'
+import {
+  SmartSpaceController,
+  SmartSpaceDraftState,
+} from './features/editor/smart-space/smartSpaceController'
+import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import { createTranslationFunction } from './i18n'
 import {
-  DEFAULT_TAB_COMPLETION_OPTIONS,
-  DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   SmartComposerSettings,
   smartComposerSettingsSchema,
 } from './settings/schema/setting.types'
 import { parseSmartComposerSettings } from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import {
-  LLMRequestBase,
-  LLMRequestNonStreaming,
-  RequestMessage,
-} from './types/llm/request'
-import {
-  MentionableFile,
-  MentionableFolder,
-  SerializedMentionable,
-} from './types/mentionable'
+import { LLMRequestBase, RequestMessage } from './types/llm/request'
+import { MentionableFile, MentionableFolder } from './types/mentionable'
 import {
   getMentionableBlockData,
   getNestedFiles,
   readMultipleTFiles,
   readTFileContent,
 } from './utils/obsidian'
+import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
 
-type InlineSuggestionGhostPayload = { from: number; text: string } | null
-
-const inlineSuggestionGhostEffect =
-  StateEffect.define<InlineSuggestionGhostPayload>()
-
-type ThinkingIndicatorPayload = {
-  from: number
-  label: string
-  snippet?: string
-} | null
-
-const thinkingIndicatorEffect = StateEffect.define<ThinkingIndicatorPayload>()
-
-class ThinkingIndicatorWidget extends WidgetType {
-  constructor(
-    private readonly label: string,
-    private readonly snippet?: string,
-  ) {
-    super()
-  }
-
-  eq(other: ThinkingIndicatorWidget) {
-    return this.label === other.label && this.snippet === other.snippet
-  }
-
-  ignoreEvent(): boolean {
-    return true
-  }
-
-  toDOM(): HTMLElement {
-    const container = document.createElement('span')
-    container.className = 'smtcmp-thinking-indicator-inline'
-
-    // 创建思考动画容器
-    const loader = document.createElement('span')
-    loader.className = 'smtcmp-thinking-loader'
-
-    // 图标容器
-    const icon = document.createElement('span')
-    icon.className = 'smtcmp-thinking-icon'
-
-    // SVG 图标 (Sparkles)
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    svg.setAttribute('width', '12')
-    svg.setAttribute('height', '12')
-    svg.setAttribute('viewBox', '0 0 24 24')
-    svg.setAttribute('fill', 'none')
-    svg.setAttribute('stroke', 'currentColor')
-    svg.setAttribute('stroke-width', '2')
-    svg.setAttribute('stroke-linecap', 'round')
-    svg.setAttribute('stroke-linejoin', 'round')
-    svg.classList.add('smtcmp-thinking-icon-svg')
-
-    const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path1.setAttribute(
-      'd',
-      'm12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z',
-    )
-    const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path2.setAttribute('d', 'M5 3v4')
-    const path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path3.setAttribute('d', 'M19 17v4')
-    const path4 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path4.setAttribute('d', 'M3 5h4')
-    const path5 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path5.setAttribute('d', 'M17 19h4')
-
-    svg.appendChild(path1)
-    svg.appendChild(path2)
-    svg.appendChild(path3)
-    svg.appendChild(path4)
-    svg.appendChild(path5)
-
-    icon.appendChild(svg)
-
-    // 文字
-    const textEl = document.createElement('span')
-    textEl.className = 'smtcmp-thinking-text'
-    textEl.textContent = this.label
-
-    loader.appendChild(icon)
-    loader.appendChild(textEl)
-    if (this.snippet) {
-      const snippetEl = document.createElement('span')
-      snippetEl.className = 'smtcmp-thinking-snippet'
-      snippetEl.textContent = this.snippet
-      loader.appendChild(snippetEl)
-    }
-    container.appendChild(loader)
-
-    return container
-  }
-}
-
-const thinkingIndicatorField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none
-  },
-  update(value, tr) {
-    let decorations = value.map(tr.changes)
-
-    for (const effect of tr.effects) {
-      if (effect.is(thinkingIndicatorEffect)) {
-        const payload = effect.value
-        if (!payload) {
-          decorations = Decoration.none
-          continue
-        }
-        const widget = Decoration.widget({
-          widget: new ThinkingIndicatorWidget(payload.label, payload.snippet),
-          side: 1,
-        }).range(payload.from)
-        decorations = Decoration.set([widget])
-      }
-    }
-
-    if (tr.docChanged) {
-      decorations = Decoration.none
-    }
-
-    return decorations
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
-
-class InlineSuggestionGhostWidget extends WidgetType {
-  constructor(private readonly text: string) {
-    super()
-  }
-
-  eq(other: InlineSuggestionGhostWidget) {
-    return this.text === other.text
-  }
-
-  ignoreEvent(): boolean {
-    return true
-  }
-
-  toDOM(): HTMLElement {
-    const span = document.createElement('span')
-    span.className = 'smtcmp-ghost-text'
-    span.textContent = this.text
-    return span
-  }
-}
-
-const inlineSuggestionGhostField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none
-  },
-  update(value, tr) {
-    let decorations = value.map(tr.changes)
-
-    for (const effect of tr.effects) {
-      if (effect.is(inlineSuggestionGhostEffect)) {
-        const payload = effect.value
-        if (!payload) {
-          decorations = Decoration.none
-          continue
-        }
-        const widget = Decoration.widget({
-          widget: new InlineSuggestionGhostWidget(payload.text),
-          side: 1,
-        }).range(payload.from)
-        decorations = Decoration.set([widget])
-      }
-    }
-
-    if (tr.docChanged) {
-      decorations = Decoration.none
-    }
-
-    return decorations
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
 
 const inlineSuggestionExtensionViews = new WeakSet<EditorView>()
-
-type SmartSpaceWidgetPayload = {
-  pos: number
-  options: {
-    plugin: SmartComposerPlugin
-    editor: Editor
-    view: EditorView
-    onClose: () => void
-    showQuickActions?: boolean
-  }
-}
-
-const smartSpaceWidgetEffect =
-  StateEffect.define<SmartSpaceWidgetPayload | null>()
-
-const smartSpaceWidgetField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none
-  },
-  update(decorations, tr) {
-    let updated = decorations.map(tr.changes)
-    for (const effect of tr.effects) {
-      if (effect.is(smartSpaceWidgetEffect)) {
-        updated = Decoration.none
-        const payload = effect.value
-        if (payload) {
-          updated = Decoration.set([
-            Decoration.widget({
-              widget: new SmartSpaceWidget(payload.options),
-              side: 1,
-              block: false,
-            }).range(payload.pos),
-          ])
-        }
-      }
-    }
-    return updated
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
-
-type SmartSpaceDraftState = {
-  instructionText?: string
-  mentionables?: SerializedMentionable[]
-  editorState?: SerializedEditorState
-} | null
-
-// Quick Ask Widget types and state
-type QuickAskWidgetPayload = {
-  pos: number
-  options: {
-    plugin: SmartComposerPlugin
-    editor: Editor
-    view: EditorView
-    contextText: string
-    fileTitle: string
-    onClose: () => void
-  }
-}
-
-const quickAskWidgetEffect = StateEffect.define<QuickAskWidgetPayload | null>()
-
-const quickAskWidgetField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none
-  },
-  update(decorations, tr) {
-    let updated = decorations.map(tr.changes)
-    for (const effect of tr.effects) {
-      if (effect.is(quickAskWidgetEffect)) {
-        updated = Decoration.none
-        const payload = effect.value
-        if (payload) {
-          updated = Decoration.set([
-            Decoration.widget({
-              widget: new QuickAskWidget(payload.options),
-              side: 1,
-              block: false,
-            }).range(payload.pos),
-          ])
-        }
-      }
-    }
-    return updated
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
 
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
@@ -349,20 +75,13 @@ export default class SmartComposerPlugin extends Plugin {
   private autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
   private isAutoUpdating = false
   private activeAbortControllers: Set<AbortController> = new Set()
-  private tabCompletionTimer: ReturnType<typeof setTimeout> | null = null
-  private tabCompletionAbortController: AbortController | null = null
+  private tabCompletionController: TabCompletionController | null = null
   private activeInlineSuggestion: {
     source: 'tab' | 'continuation'
     editor: Editor
     view: EditorView
     fromOffset: number
     text: string
-  } | null = null
-  private tabCompletionSuggestion: {
-    editor: Editor
-    view: EditorView
-    text: string
-    cursorOffset: number
   } | null = null
   private continuationInlineSuggestion: {
     editor: Editor
@@ -371,26 +90,8 @@ export default class SmartComposerPlugin extends Plugin {
     fromOffset: number
     startPos: ReturnType<Editor['getCursor']>
   } | null = null
-  private tabCompletionPending: {
-    editor: Editor
-    cursorOffset: number
-  } | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
-  private smartSpaceWidgetState: {
-    view: EditorView
-    pos: number
-    close: () => void
-  } | null = null
-  private lastSmartSpaceSlash: {
-    view: EditorView
-    pos: number
-    timestamp: number
-  } | null = null
-  private lastSmartSpaceSpace: {
-    view: EditorView
-    pos: number
-    timestamp: number
-  } | null = null
+  private smartSpaceController: SmartSpaceController | null = null
   // Selection chat state
   private selectionManager: SelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
@@ -404,11 +105,7 @@ export default class SmartComposerPlugin extends Plugin {
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
   // Quick Ask state
-  private quickAskWidgetState: {
-    view: EditorView
-    pos: number
-    close: () => void
-  } | null = null
+  private quickAskController: QuickAskController | null = null
 
   getSmartSpaceDraftState(): SmartSpaceDraftState {
     return this.smartSpaceDraftState
@@ -479,25 +176,40 @@ export default class SmartComposerPlugin extends Plugin {
     return undefined
   }
 
-  private closeSmartSpace() {
-    const state = this.smartSpaceWidgetState
-    if (!state) return
-
-    // 先清除状态，避免重复关闭
-    this.smartSpaceWidgetState = null
-
-    // Clear pending selection rewrite if user closes without submitting
-    this.pendingSelectionRewrite = null
-
-    // 尝试触发关闭动画
-    const hasAnimation = SmartSpaceWidget.closeCurrentWithAnimation()
-
-    if (!hasAnimation) {
-      // 如果没有动画实例，直接分发关闭效果
-      state.view.dispatch({ effects: smartSpaceWidgetEffect.of(null) })
+  private getSmartSpaceController(): SmartSpaceController {
+    if (!this.smartSpaceController) {
+      this.smartSpaceController = new SmartSpaceController({
+        plugin: this,
+        getSettings: () => this.settings,
+        getActiveMarkdownView: () =>
+          this.app.workspace.getActiveViewOfType(MarkdownView),
+        getEditorView: (editor) => this.getEditorView(editor),
+        clearPendingSelectionRewrite: () => {
+          this.pendingSelectionRewrite = null
+        },
+      })
     }
+    return this.smartSpaceController
+  }
 
-    state.view.focus()
+  private getQuickAskController(): QuickAskController {
+    if (!this.quickAskController) {
+      this.quickAskController = new QuickAskController({
+        plugin: this,
+        getSettings: () => this.settings,
+        getActiveMarkdownView: () =>
+          this.app.workspace.getActiveViewOfType(MarkdownView),
+        getEditorView: (editor) => this.getEditorView(editor),
+        getActiveFileTitle: () =>
+          this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
+        closeSmartSpace: () => this.closeSmartSpace(),
+      })
+    }
+    return this.quickAskController
+  }
+
+  private closeSmartSpace() {
+    this.getSmartSpaceController().close()
   }
 
   private showSmartSpace(
@@ -505,217 +217,20 @@ export default class SmartComposerPlugin extends Plugin {
     view: EditorView,
     showQuickActions = true,
   ) {
-    const selection = view.state.selection.main
-    // Use the end of selection (max of head and anchor) to always position at the visual end
-    // This ensures the widget appears below the selection regardless of selection direction
-    const pos = Math.max(selection.head, selection.anchor)
-
-    this.closeSmartSpace()
-
-    const close = () => {
-      // 检查是否是当前的 widget（允许状态为 null，因为可能在动画期间被清除）
-      if (
-        this.smartSpaceWidgetState &&
-        this.smartSpaceWidgetState.view !== view
-      ) {
-        return
-      }
-      this.smartSpaceWidgetState = null
-      view.dispatch({ effects: smartSpaceWidgetEffect.of(null) })
-      view.focus()
-    }
-
-    view.dispatch({
-      effects: [
-        smartSpaceWidgetEffect.of(null),
-        smartSpaceWidgetEffect.of({
-          pos,
-          options: {
-            plugin: this,
-            editor,
-            view,
-            onClose: close,
-            showQuickActions,
-          },
-        }),
-      ],
-    })
-
-    this.smartSpaceWidgetState = { view, pos, close }
+    this.getSmartSpaceController().show(editor, view, showQuickActions)
   }
 
   // Quick Ask methods
   private closeQuickAsk() {
-    const state = this.quickAskWidgetState
-    if (!state) return
-
-    // Clear state to prevent duplicate close
-    this.quickAskWidgetState = null
-
-    // Try to trigger close animation
-    const hasAnimation = QuickAskWidget.closeCurrentWithAnimation()
-
-    if (!hasAnimation) {
-      // If no animation instance, dispatch close effect directly
-      state.view.dispatch({ effects: quickAskWidgetEffect.of(null) })
-    }
-
-    state.view.focus()
+    this.getQuickAskController().close()
   }
 
   private showQuickAsk(editor: Editor, view: EditorView) {
-    const selection = view.state.selection.main
-    const pos = selection.head
-
-    // Get context text (all text before cursor)
-    const contextText = editor.getRange({ line: 0, ch: 0 }, editor.getCursor())
-    const fileTitle = this.app.workspace.getActiveFile()?.basename?.trim() ?? ''
-
-    // Close any existing Quick Ask panel
-    this.closeQuickAsk()
-    // Also close Smart Space if open
-    this.closeSmartSpace()
-
-    const close = () => {
-      const isCurrentView =
-        !this.quickAskWidgetState || this.quickAskWidgetState.view === view
-
-      if (isCurrentView) {
-        this.quickAskWidgetState = null
-      }
-      view.dispatch({ effects: quickAskWidgetEffect.of(null) })
-
-      if (isCurrentView) {
-        view.focus()
-      }
-    }
-
-    view.dispatch({
-      effects: [
-        quickAskWidgetEffect.of(null),
-        quickAskWidgetEffect.of({
-          pos,
-          options: {
-            plugin: this,
-            editor,
-            view,
-            contextText,
-            fileTitle,
-            onClose: close,
-          },
-        }),
-      ],
-    })
-
-    this.quickAskWidgetState = { view, pos, close }
+    this.getQuickAskController().show(editor, view)
   }
 
   private createQuickAskTriggerExtension(): Extension {
-    return [
-      quickAskWidgetField,
-      EditorView.domEventHandlers({
-        keydown: (event, view) => {
-          // Check if Quick Ask feature is enabled (default: true)
-          const enableQuickAsk =
-            this.settings.continuationOptions?.enableQuickAsk ?? true
-          if (!enableQuickAsk) {
-            return false
-          }
-
-          if (event.defaultPrevented) {
-            return false
-          }
-
-          // Don't trigger with modifier keys (except Shift for special chars like @)
-          if (event.altKey || event.metaKey || event.ctrlKey) {
-            return false
-          }
-
-          // Get trigger string from settings (default: @)
-          const triggerStr =
-            this.settings.continuationOptions?.quickAskTrigger ?? '@'
-
-          // Determine what character the user is typing
-          let typedChar = event.key
-          // Special handling for @ which may be Shift+2 on some keyboards
-          if (event.key === '2' && event.shiftKey) {
-            typedChar = '@'
-          }
-
-          // Only proceed if the typed character could be part of the trigger
-          if (typedChar.length !== 1) {
-            return false
-          }
-
-          const selection = view.state.selection.main
-          if (!selection.empty) {
-            return false
-          }
-
-          // Check if cursor is at an empty line or at line start
-          const line = view.state.doc.lineAt(selection.head)
-          const lineTextBeforeCursor = line.text.slice(
-            0,
-            selection.head - line.from,
-          )
-
-          // Build the potential trigger sequence: existing text + new character
-          const potentialSequence = lineTextBeforeCursor + typedChar
-
-          // Check if the potential sequence matches the trigger string
-          if (potentialSequence !== triggerStr) {
-            // Check if it could be a partial match (for multi-char triggers)
-            if (
-              triggerStr.length > 1 &&
-              triggerStr.startsWith(potentialSequence)
-            ) {
-              // Allow the character to be typed, it might complete the trigger later
-              return false
-            }
-            return false
-          }
-
-          const markdownView =
-            this.app.workspace.getActiveViewOfType(MarkdownView)
-          const editor = markdownView?.editor
-          if (!editor) {
-            return false
-          }
-
-          const activeView = this.getEditorView(editor)
-          if (activeView && activeView !== view) {
-            return false
-          }
-
-          // Prevent default input
-          event.preventDefault()
-          event.stopPropagation()
-
-          // Clear the trigger characters from the line before showing panel
-          if (lineTextBeforeCursor.length > 0) {
-            // Delete the partial trigger that was already typed
-            const deleteFrom = line.from
-            const deleteTo = selection.head
-            view.dispatch({
-              changes: { from: deleteFrom, to: deleteTo },
-              selection: { anchor: deleteFrom },
-            })
-          }
-
-          // Show Quick Ask panel
-          this.showQuickAsk(editor, view)
-          return true
-        },
-      }),
-      EditorView.updateListener.of((update) => {
-        const state = this.quickAskWidgetState
-        if (!state || state.view !== update.view) return
-
-        if (update.docChanged) {
-          state.pos = update.changes.mapPos(state.pos)
-        }
-      }),
-    ]
+    return this.getQuickAskController().createTriggerExtension()
   }
 
   // Selection Chat methods
@@ -769,7 +284,7 @@ export default class SmartComposerPlugin extends Plugin {
     }
 
     // Don't show if Smart Space is active
-    if (this.smartSpaceWidgetState) {
+    if (this.smartSpaceController?.isOpen()) {
       return
     }
 
@@ -931,174 +446,7 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private createSmartSpaceTriggerExtension(): Extension {
-    return [
-      smartSpaceWidgetField,
-      EditorView.domEventHandlers({
-        keydown: (event, view) => {
-          const smartSpaceEnabled =
-            this.settings.continuationOptions?.enableSmartSpace ?? true
-          if (!smartSpaceEnabled) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-          if (event.defaultPrevented) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-
-          const isSlash = event.key === '/' || event.code === 'Slash'
-          const isSpace =
-            event.key === ' ' ||
-            event.key === 'Spacebar' ||
-            event.key === 'Space' ||
-            event.code === 'Space'
-          const handledKey = isSlash || isSpace
-
-          if (!handledKey) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-          if (event.altKey || event.metaKey || event.ctrlKey) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-
-          const selection = view.state.selection.main
-          if (!selection.empty) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-
-          const markdownView =
-            this.app.workspace.getActiveViewOfType(MarkdownView)
-          const editor = markdownView?.editor
-          if (!editor) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-          const activeView = this.getEditorView(editor)
-          if (activeView && activeView !== view) {
-            this.lastSmartSpaceSlash = null
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-
-          if (isSlash) {
-            this.lastSmartSpaceSlash = {
-              view,
-              pos: selection.head,
-              timestamp: Date.now(),
-            }
-            this.lastSmartSpaceSpace = null
-            return false
-          }
-
-          // Space handling (either legacy single-space trigger, or slash + space)
-          const now = Date.now()
-          const triggerMode =
-            this.settings.continuationOptions?.smartSpaceTriggerMode ??
-            'single-space'
-          const lastSlash = this.lastSmartSpaceSlash
-          let selectionAfterRemoval = selection
-          let triggeredBySlashCombo = false
-          if (
-            lastSlash &&
-            lastSlash.view === view &&
-            now - lastSlash.timestamp <= 600
-          ) {
-            const slashChar = view.state.doc.sliceString(
-              lastSlash.pos,
-              lastSlash.pos + 1,
-            )
-            if (slashChar === '/') {
-              view.dispatch({
-                changes: { from: lastSlash.pos, to: lastSlash.pos + 1 },
-                selection: EditorSelection.cursor(lastSlash.pos),
-              })
-              selectionAfterRemoval = view.state.selection.main
-              triggeredBySlashCombo = true
-            }
-            this.lastSmartSpaceSlash = null
-          } else {
-            this.lastSmartSpaceSlash = null
-            selectionAfterRemoval = view.state.selection.main
-          }
-
-          if (!triggeredBySlashCombo) {
-            const line = view.state.doc.lineAt(selectionAfterRemoval.head)
-            if (line.text.trim().length > 0) {
-              this.lastSmartSpaceSpace = null
-              return false
-            }
-
-            if (triggerMode === 'off') {
-              this.lastSmartSpaceSpace = null
-              return false
-            }
-
-            if (triggerMode === 'double-space') {
-              const lastSpace = this.lastSmartSpaceSpace
-              const isDoublePress =
-                lastSpace &&
-                lastSpace.view === view &&
-                now - lastSpace.timestamp <= 600 &&
-                lastSpace.pos + 1 === selectionAfterRemoval.head &&
-                view.state.doc.sliceString(lastSpace.pos, lastSpace.pos + 1) ===
-                  ' '
-              if (!isDoublePress || !lastSpace) {
-                this.lastSmartSpaceSpace = {
-                  view,
-                  pos: selectionAfterRemoval.head,
-                  timestamp: now,
-                }
-                return false
-              }
-
-              view.dispatch({
-                changes: {
-                  from: lastSpace.pos,
-                  to: Math.min(lastSpace.pos + 1, view.state.doc.length),
-                },
-                selection: EditorSelection.cursor(lastSpace.pos),
-              })
-              selectionAfterRemoval = view.state.selection.main
-              this.lastSmartSpaceSpace = null
-            } else {
-              this.lastSmartSpaceSpace = null
-            }
-          } else {
-            this.lastSmartSpaceSpace = null
-          }
-
-          event.preventDefault()
-          event.stopPropagation()
-
-          this.showSmartSpace(editor, view)
-          return true
-        },
-      }),
-      EditorView.updateListener.of((update) => {
-        const state = this.smartSpaceWidgetState
-        if (!state || state.view !== update.view) return
-
-        if (update.docChanged) {
-          state.pos = update.changes.mapPos(state.pos)
-        }
-
-        if (update.selectionSet) {
-          const head = update.state.selection.main
-          if (!head.empty || head.head !== state.pos) {
-            this.closeSmartSpace()
-          }
-        }
-      }),
-    ]
+    return this.getSmartSpaceController().createTriggerExtension()
   }
 
   private getActiveConversationOverrides():
@@ -1223,7 +571,7 @@ export default class SmartComposerPlugin extends Plugin {
     }
     this.activeAbortControllers.clear()
     this.isContinuationInProgress = false
-    this.tabCompletionAbortController = null
+    this.tabCompletionController?.cancelRequest()
   }
 
   private getEditorView(editor: Editor | null | undefined): EditorView | null {
@@ -1302,40 +650,43 @@ export default class SmartComposerPlugin extends Plugin {
     view.dispatch({ effects: thinkingIndicatorEffect.of(null) })
   }
 
-  private getTabCompletionOptions() {
-    return {
-      ...DEFAULT_TAB_COMPLETION_OPTIONS,
-      ...(this.settings.continuationOptions.tabCompletionOptions ?? {}),
+  private getTabCompletionController(): TabCompletionController {
+    if (!this.tabCompletionController) {
+      this.tabCompletionController = new TabCompletionController({
+        getSettings: () => this.settings,
+        getEditorView: (editor) => this.getEditorView(editor),
+        getActiveConversationOverrides: () =>
+          this.getActiveConversationOverrides(),
+        resolveContinuationParams: (overrides) =>
+          this.resolveContinuationParams(overrides),
+        getActiveFileTitle: () =>
+          this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
+        setInlineSuggestionGhost: (view, payload) =>
+          this.setInlineSuggestionGhost(view, payload),
+        clearInlineSuggestion: () => this.clearInlineSuggestion(),
+        setActiveInlineSuggestion: (suggestion) => {
+          this.activeInlineSuggestion = suggestion
+        },
+        addAbortController: (controller) =>
+          this.activeAbortControllers.add(controller),
+        removeAbortController: (controller) =>
+          this.activeAbortControllers.delete(controller),
+        isContinuationInProgress: () => this.isContinuationInProgress,
+      })
     }
+    return this.tabCompletionController
   }
 
   private clearTabCompletionTimer() {
-    if (this.tabCompletionTimer) {
-      clearTimeout(this.tabCompletionTimer)
-      this.tabCompletionTimer = null
-    }
-    this.tabCompletionPending = null
+    this.tabCompletionController?.clearTimer()
   }
 
   private cancelTabCompletionRequest() {
-    if (!this.tabCompletionAbortController) return
-    try {
-      this.tabCompletionAbortController.abort()
-    } catch {
-      // Ignore abort errors; controller might already be closed.
-    }
-    this.activeAbortControllers.delete(this.tabCompletionAbortController)
-    this.tabCompletionAbortController = null
+    this.tabCompletionController?.cancelRequest()
   }
 
   private clearInlineSuggestion() {
-    if (this.tabCompletionSuggestion) {
-      const { view } = this.tabCompletionSuggestion
-      if (view) {
-        this.setInlineSuggestionGhost(view, null)
-      }
-      this.tabCompletionSuggestion = null
-    }
+    this.tabCompletionController?.clearSuggestion()
     if (this.continuationInlineSuggestion) {
       const { view } = this.continuationInlineSuggestion
       if (view) {
@@ -1352,7 +703,7 @@ export default class SmartComposerPlugin extends Plugin {
     if (suggestion.view !== view) return false
 
     if (suggestion.source === 'tab') {
-      return this.tryAcceptTabCompletionFromView(view)
+      return this.getTabCompletionController().tryAcceptFromView(view)
     }
 
     if (suggestion.source === 'continuation') {
@@ -1371,263 +722,7 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private scheduleTabCompletion(editor: Editor) {
-    if (!this.settings.continuationOptions?.enableTabCompletion) return
-    const view = this.getEditorView(editor)
-    if (!view) return
-    const selection = editor.getSelection()
-    if (selection && selection.length > 0) return
-    const cursorOffset = view.state.selection.main.head
-
-    const options = this.getTabCompletionOptions()
-    const delay = Math.max(0, options.triggerDelayMs)
-
-    this.clearTabCompletionTimer()
-    this.tabCompletionPending = { editor, cursorOffset }
-    this.tabCompletionTimer = setTimeout(() => {
-      if (!this.tabCompletionPending) return
-      if (this.tabCompletionPending.editor !== editor) return
-      void this.runTabCompletion(editor, cursorOffset)
-    }, delay)
-  }
-
-  private async runTabCompletion(
-    editor: Editor,
-    scheduledCursorOffset: number,
-  ) {
-    try {
-      if (!this.settings.continuationOptions?.enableTabCompletion) return
-      if (this.isContinuationInProgress) return
-
-      const view = this.getEditorView(editor)
-      if (!view) return
-      if (view.state.selection.main.head !== scheduledCursorOffset) return
-      const selection = editor.getSelection()
-      if (selection && selection.length > 0) return
-
-      const options = this.getTabCompletionOptions()
-
-      const cursorPos = editor.getCursor()
-      const headText = editor.getRange({ line: 0, ch: 0 }, cursorPos)
-      const headLength = headText.trim().length
-      if (!headText || headLength === 0) return
-      if (headLength < options.minContextLength) return
-
-      const context =
-        headText.length > options.maxContextChars
-          ? headText.slice(-options.maxContextChars)
-          : headText
-
-      let modelId = this.settings.continuationOptions.tabCompletionModelId
-      if (!modelId || modelId.length === 0) {
-        modelId = this.settings.continuationOptions.continuationModelId
-      }
-      if (!modelId) return
-
-      const sidebarOverrides = this.getActiveConversationOverrides()
-      const { temperature, topP } =
-        this.resolveContinuationParams(sidebarOverrides)
-
-      const { providerClient, model } = getChatModelClient({
-        settings: this.settings,
-        modelId,
-      })
-
-      const fileTitle = this.app.workspace.getActiveFile()?.basename?.trim()
-      const titleSection = fileTitle ? `File title: ${fileTitle}\n\n` : ''
-      const customSystemPrompt = (
-        this.settings.continuationOptions.tabCompletionSystemPrompt ?? ''
-      ).trim()
-      const systemPrompt =
-        customSystemPrompt.length > 0
-          ? customSystemPrompt
-          : DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
-
-      const isBaseModel = Boolean(model.isBaseModel)
-      const baseModelSpecialPrompt = (
-        this.settings.chatOptions.baseModelSpecialPrompt ?? ''
-      ).trim()
-      const basePromptSection =
-        isBaseModel && baseModelSpecialPrompt.length > 0
-          ? `${baseModelSpecialPrompt}\n\n`
-          : ''
-      const userContent = isBaseModel
-        ? `${basePromptSection}${systemPrompt}\n\n${context}\n\nPredict the next words that continue naturally.`
-        : `${basePromptSection}${titleSection}Recent context:\n\n${context}\n\nProvide the next words that would help continue naturally.`
-
-      const requestMessages: RequestMessage[] = [
-        ...(isBaseModel
-          ? []
-          : [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]),
-        {
-          role: 'user' as const,
-          content: userContent,
-        },
-      ]
-
-      this.cancelTabCompletionRequest()
-      this.clearInlineSuggestion()
-      this.tabCompletionPending = null
-
-      const controller = new AbortController()
-      this.tabCompletionAbortController = controller
-      this.activeAbortControllers.add(controller)
-
-      const baseRequest: LLMRequestNonStreaming = {
-        model: model.model,
-        messages: requestMessages,
-        stream: false,
-        max_tokens: Math.max(16, Math.min(options.maxTokens, 2000)),
-      }
-      if (typeof options.temperature === 'number') {
-        baseRequest.temperature = Math.min(Math.max(options.temperature, 0), 2)
-      } else if (typeof temperature === 'number') {
-        baseRequest.temperature = Math.min(Math.max(temperature, 0), 2)
-      } else {
-        baseRequest.temperature = DEFAULT_TAB_COMPLETION_OPTIONS.temperature
-      }
-      if (typeof topP === 'number') {
-        baseRequest.top_p = topP
-      }
-      const requestTimeout = Math.max(0, options.requestTimeoutMs)
-      const attempts = Math.max(0, Math.floor(options.maxRetries)) + 1
-
-      this.cancelTabCompletionRequest()
-      this.clearInlineSuggestion()
-      this.tabCompletionPending = null
-
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        const controller = new AbortController()
-        this.tabCompletionAbortController = controller
-        this.activeAbortControllers.add(controller)
-
-        let timeoutHandle: ReturnType<typeof setTimeout> | null = null
-        if (requestTimeout > 0) {
-          timeoutHandle = setTimeout(() => controller.abort(), requestTimeout)
-        }
-
-        try {
-          const response = await providerClient.generateResponse(
-            model,
-            baseRequest,
-            { signal: controller.signal },
-          )
-
-          if (timeoutHandle) clearTimeout(timeoutHandle)
-
-          let suggestion = response.choices?.[0]?.message?.content ?? ''
-          suggestion = suggestion.replace(/\r\n/g, '\n').replace(/\s+$/, '')
-          if (!suggestion.trim()) return
-          if (/^[\s\n\t]+$/.test(suggestion)) return
-
-          // Avoid leading line breaks which look awkward in ghost text
-          suggestion = suggestion.replace(/^[\s\n\t]+/, '')
-
-          // Guard against large multiline insertions
-          if (suggestion.length > options.maxSuggestionLength) {
-            suggestion = suggestion.slice(0, options.maxSuggestionLength)
-          }
-
-          const currentView = this.getEditorView(editor)
-          if (!currentView) return
-          if (currentView.state.selection.main.head !== scheduledCursorOffset)
-            return
-          if (editor.getSelection()?.length) return
-
-          this.setInlineSuggestionGhost(currentView, {
-            from: scheduledCursorOffset,
-            text: suggestion,
-          })
-          this.activeInlineSuggestion = {
-            source: 'tab',
-            editor,
-            view: currentView,
-            fromOffset: scheduledCursorOffset,
-            text: suggestion,
-          }
-          this.tabCompletionSuggestion = {
-            editor,
-            view: currentView,
-            text: suggestion,
-            cursorOffset: scheduledCursorOffset,
-          }
-          return
-        } catch (error) {
-          if (timeoutHandle) clearTimeout(timeoutHandle)
-
-          const aborted =
-            controller.signal.aborted || error?.name === 'AbortError'
-          if (attempt < attempts - 1 && aborted) {
-            this.activeAbortControllers.delete(controller)
-            this.tabCompletionAbortController = null
-            continue
-          }
-          if (error?.name === 'AbortError') {
-            return
-          }
-          console.error('Tab completion failed:', error)
-          return
-        } finally {
-          if (this.tabCompletionAbortController === controller) {
-            this.activeAbortControllers.delete(controller)
-            this.tabCompletionAbortController = null
-          } else {
-            this.activeAbortControllers.delete(controller)
-          }
-        }
-      }
-    } catch (error) {
-      if (error?.name === 'AbortError') return
-      console.error('Tab completion failed:', error)
-    } finally {
-      if (this.tabCompletionAbortController) {
-        this.activeAbortControllers.delete(this.tabCompletionAbortController)
-        this.tabCompletionAbortController = null
-      }
-    }
-  }
-
-  private tryAcceptTabCompletionFromView(view: EditorView): boolean {
-    const suggestion = this.tabCompletionSuggestion
-    if (!suggestion) return false
-    if (suggestion.view !== view) return false
-
-    if (view.state.selection.main.head !== suggestion.cursorOffset) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    const editor = suggestion.editor
-    if (this.getEditorView(editor) !== view) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    if (editor.getSelection()?.length) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    const cursor = editor.getCursor()
-    const suggestionText = suggestion.text
-    this.clearInlineSuggestion()
-    editor.replaceRange(suggestionText, cursor, cursor)
-
-    const parts = suggestionText.split('\n')
-    const endCursor =
-      parts.length === 1
-        ? { line: cursor.line, ch: cursor.ch + parts[0].length }
-        : {
-            line: cursor.line + parts.length - 1,
-            ch: parts[parts.length - 1].length,
-          }
-    editor.setCursor(endCursor)
-    this.scheduleTabCompletion(editor)
-    return true
+    this.getTabCompletionController().schedule(editor)
   }
 
   private tryAcceptContinuationFromView(view: EditorView): boolean {
@@ -1675,21 +770,7 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private handleTabCompletionEditorChange(editor: Editor) {
-    this.clearTabCompletionTimer()
-    this.cancelTabCompletionRequest()
-
-    if (!this.settings.continuationOptions?.enableTabCompletion) {
-      this.clearInlineSuggestion()
-      return
-    }
-
-    if (this.isContinuationInProgress) {
-      this.clearInlineSuggestion()
-      return
-    }
-
-    this.clearInlineSuggestion()
-    this.scheduleTabCompletion(editor)
+    this.getTabCompletionController().handleEditorChange(editor)
   }
 
   private async handleCustomRewrite(
