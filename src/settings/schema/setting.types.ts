@@ -46,6 +46,14 @@ type TabCompletionOptionLegacy = {
   maxRetries?: number
 }
 
+export type TabCompletionTrigger = {
+  id: string
+  type: 'string' | 'regex'
+  pattern: string
+  enabled: boolean
+  description?: string
+}
+
 export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
   'Your job is to predict the most logical text that should be written at the location of the <mask/>. Your answer can be either code, a single word, or multiple sentences. Your answer must be in the same language as the text that is already there. Your response must have the following format:\nANSWER: here, you write the text that should be at the location of <mask/>.'
 
@@ -57,6 +65,63 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   temperature: 0.5,
   requestTimeoutMs: 12000,
 }
+
+export const DEFAULT_TAB_COMPLETION_TRIGGERS: TabCompletionTrigger[] = [
+  {
+    id: 'sentence-end-period',
+    type: 'string',
+    pattern: '. ',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-question',
+    type: 'string',
+    pattern: '? ',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-exclaim',
+    type: 'string',
+    pattern: '! ',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-comma',
+    type: 'string',
+    pattern: ', ',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-chinese-comma',
+    type: 'string',
+    pattern: '，',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-chinese-period',
+    type: 'string',
+    pattern: '。',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-chinese-question',
+    type: 'string',
+    pattern: '？',
+    enabled: true,
+  },
+  {
+    id: 'sentence-end-chinese-exclaim',
+    type: 'string',
+    pattern: '！',
+    enabled: true,
+  },
+  {
+    id: 'newline',
+    type: 'regex',
+    pattern: '\\n$',
+    enabled: true,
+  },
+]
 
 // Helper to compute maxTokens from maxSuggestionLength (roughly 1 token ≈ 3-4 chars)
 export const computeMaxTokens = (maxSuggestionLength: number): number => {
@@ -112,6 +177,21 @@ const tabCompletionOptionsSchema = z
     maxRetries: z.number().optional(),
   })
   .catch({ ...DEFAULT_TAB_COMPLETION_OPTIONS })
+
+const tabCompletionTriggerSchema = z
+  .object({
+    id: z.string(),
+    type: z.enum(['string', 'regex']),
+    pattern: z.string(),
+    enabled: z.boolean().catch(true),
+    description: z.string().optional(),
+  })
+  .catch({
+    id: '',
+    type: 'string',
+    pattern: '',
+    enabled: true,
+  })
 
 /**
  * Settings
@@ -225,6 +305,10 @@ export const smartComposerSettingsSchema = z.object({
       tabCompletionModelId: z.string().optional(),
       // extra options for tab completion behavior
       tabCompletionOptions: tabCompletionOptionsSchema.optional(),
+      // triggers used to invoke tab completion
+      tabCompletionTriggers: z
+        .array(tabCompletionTriggerSchema)
+        .catch([...DEFAULT_TAB_COMPLETION_TRIGGERS]),
       // override system prompt for tab completion
       tabCompletionSystemPrompt: z.string().optional(),
       // Smart Space custom quick actions

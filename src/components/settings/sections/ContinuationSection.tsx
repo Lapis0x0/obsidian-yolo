@@ -3,7 +3,12 @@ import { useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { DEFAULT_TAB_COMPLETION_OPTIONS } from '../../../settings/schema/setting.types'
+import {
+  DEFAULT_TAB_COMPLETION_OPTIONS,
+  DEFAULT_TAB_COMPLETION_TRIGGERS,
+  type TabCompletionTrigger,
+} from '../../../settings/schema/setting.types'
+import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -73,6 +78,52 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
       },
       'tabCompletionOptions',
     )
+  }
+
+  const tabCompletionTriggers: TabCompletionTrigger[] =
+    settings.continuationOptions.tabCompletionTriggers ??
+    DEFAULT_TAB_COMPLETION_TRIGGERS
+
+  const updateTabCompletionTriggers = (
+    nextTriggers: TabCompletionTrigger[],
+  ) => {
+    updateContinuationOptions(
+      {
+        tabCompletionTriggers: nextTriggers,
+      },
+      'tabCompletionTriggers',
+    )
+  }
+
+  const createTriggerId = () =>
+    `tab-trigger-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`
+
+  const handleTriggerChange = (
+    id: string,
+    patch: Partial<TabCompletionTrigger>,
+  ) => {
+    const next = tabCompletionTriggers.map((trigger) =>
+      trigger.id === id ? { ...trigger, ...patch } : trigger,
+    )
+    updateTabCompletionTriggers(next)
+  }
+
+  const handleAddTrigger = () => {
+    const nextTrigger: TabCompletionTrigger = {
+      id: createTriggerId(),
+      type: 'string',
+      pattern: '',
+      enabled: true,
+      description: '',
+    }
+    updateTabCompletionTriggers([...tabCompletionTriggers, nextTrigger])
+  }
+
+  const handleRemoveTrigger = (id: string) => {
+    const next = tabCompletionTriggers.filter((trigger) => trigger.id !== id)
+    updateTabCompletionTriggers(next)
   }
 
   const parseNumberOrDefault = (value: string, fallback: number) => {
@@ -274,28 +325,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.continuation.tabCompletionTriggerDelay')}
-            desc={t('settings.continuation.tabCompletionTriggerDelayDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.triggerDelayMs)}
-              onChange={(value) => {
-                const next = Math.max(
-                  200,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.triggerDelayMs,
-                  ),
-                )
-                updateTabCompletionOptions({
-                  triggerDelayMs: next,
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
             name={t('settings.continuation.tabCompletionMaxSuggestionLength')}
             desc={t(
               'settings.continuation.tabCompletionMaxSuggestionLengthDesc',
@@ -319,6 +348,91 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             />
           </ObsidianSetting>
 
+          <div className="smtcmp-settings-sub-header">
+            {t('settings.continuation.tabCompletionTriggersTitle')}
+          </div>
+          <div className="smtcmp-settings-trigger-callout-row">
+            <div className="smtcmp-settings-desc smtcmp-settings-callout">
+              {t('settings.continuation.tabCompletionTriggersDesc')}
+            </div>
+            <div className="smtcmp-tab-trigger-add">
+              <ObsidianButton
+                text={t('settings.continuation.tabCompletionTriggerAdd')}
+                onClick={handleAddTrigger}
+              />
+            </div>
+          </div>
+          <div className="smtcmp-settings-table-container">
+            <table className="smtcmp-settings-table">
+              <thead>
+                <tr>
+                  <th>{t('settings.continuation.tabCompletionTriggerEnabled')}</th>
+                  <th>{t('settings.continuation.tabCompletionTriggerType')}</th>
+                  <th>{t('settings.continuation.tabCompletionTriggerPattern')}</th>
+                  <th>{t('settings.continuation.tabCompletionTriggerDescription')}</th>
+                  <th>{t('settings.continuation.tabCompletionTriggerRemove')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tabCompletionTriggers.map((trigger) => (
+                  <tr key={trigger.id}>
+                    <td>
+                      <ObsidianToggle
+                        value={trigger.enabled}
+                        onChange={(value) => {
+                          handleTriggerChange(trigger.id, { enabled: value })
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <ObsidianDropdown
+                        value={trigger.type}
+                        options={{
+                          string: t(
+                            'settings.continuation.tabCompletionTriggerTypeString',
+                          ),
+                          regex: t(
+                            'settings.continuation.tabCompletionTriggerTypeRegex',
+                          ),
+                        }}
+                        onChange={(value) => {
+                          handleTriggerChange(trigger.id, {
+                            type: value as 'string' | 'regex',
+                          })
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <ObsidianTextInput
+                        value={trigger.pattern}
+                        onChange={(value) => {
+                          handleTriggerChange(trigger.id, { pattern: value })
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <ObsidianTextInput
+                        value={trigger.description ?? ''}
+                        onChange={(value) => {
+                          handleTriggerChange(trigger.id, {
+                            description: value,
+                          })
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <ObsidianButton
+                        text={t(
+                          'settings.continuation.tabCompletionTriggerRemove',
+                        )}
+                        onClick={() => handleRemoveTrigger(trigger.id)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {/* Advanced settings toggle */}
           <div
             className="smtcmp-settings-advanced-toggle"

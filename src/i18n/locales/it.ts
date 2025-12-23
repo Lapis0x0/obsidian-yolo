@@ -458,7 +458,7 @@ export const it: TranslationKeys = {
       quickAskTriggerDesc: 'Scorciatoia da tastiera per aprire Quick Ask.',
       tabCompletion: 'Completamento tab',
       tabCompletionDesc:
-        'Suggerisce automaticamente il completamento mentre scrivi.',
+        'Genera suggerimenti quando una regola trigger corrisponde.',
       tabCompletionModel: 'Modello completamento tab',
       tabCompletionModelDesc:
         'Modello usato per generare suggerimenti di completamento tab.',
@@ -481,6 +481,17 @@ export const it: TranslationKeys = {
       tabCompletionRequestTimeout: 'Timeout richiesta (ms)',
       tabCompletionRequestTimeoutDesc:
         'Quanto tempo attendere una risposta dal modello prima del timeout.',
+      tabCompletionTriggersTitle: 'Trigger',
+      tabCompletionTriggersDesc:
+        'Il completamento tab si attiva solo quando una regola abilitata corrisponde.',
+      tabCompletionTriggerAdd: 'Aggiungi trigger',
+      tabCompletionTriggerEnabled: 'Abilitato',
+      tabCompletionTriggerType: 'Tipo',
+      tabCompletionTriggerTypeString: 'Stringa',
+      tabCompletionTriggerTypeRegex: 'Regex',
+      tabCompletionTriggerPattern: 'Pattern',
+      tabCompletionTriggerDescription: 'Descrizione',
+      tabCompletionTriggerRemove: 'Rimuovi',
     },
     etc: {
       title: 'Altro',

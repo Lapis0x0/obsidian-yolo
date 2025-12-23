@@ -2,6 +2,7 @@ import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
+  DEFAULT_TAB_COMPLETION_TRIGGERS,
 } from './setting.types'
 import { parseSmartComposerSettings } from './settings'
 
@@ -61,6 +62,9 @@ describe('parseSmartComposerSettings', () => {
     })
     expect(result.continuationOptions.tabCompletionOptions).toMatchObject(
       DEFAULT_TAB_COMPLETION_OPTIONS,
+    )
+    expect(result.continuationOptions.tabCompletionTriggers).toEqual(
+      expect.arrayContaining(DEFAULT_TAB_COMPLETION_TRIGGERS),
     )
     expect(result.continuationOptions.smartSpaceQuickActions).toBeUndefined()
 

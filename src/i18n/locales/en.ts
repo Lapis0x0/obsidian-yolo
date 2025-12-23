@@ -460,7 +460,7 @@ export const en: TranslationKeys = {
         'Typing this character on an empty line triggers Quick Ask (default: @). Supports 1-3 characters.',
       tabCompletion: 'Enable tab completion',
       tabCompletionDesc:
-        'After a 3-second pause, request a prefix completion and show it as gray ghost text that can be accepted with the tab key.',
+        'Request a completion when a trigger rule matches, then show it as gray ghost text that can be accepted with the tab key.',
       tabCompletionModel: 'Completion model',
       tabCompletionModelDesc:
         'Choose which model provides tab completion suggestions.',
@@ -483,6 +483,17 @@ export const en: TranslationKeys = {
       tabCompletionRequestTimeout: 'Request timeout (ms)',
       tabCompletionRequestTimeoutDesc:
         'Abort a prefix completion request if it takes longer than this time.',
+      tabCompletionTriggersTitle: 'Triggers',
+      tabCompletionTriggersDesc:
+        'Tab completion is triggered only when one of the enabled rules matches.',
+      tabCompletionTriggerAdd: 'Add trigger',
+      tabCompletionTriggerEnabled: 'Enabled',
+      tabCompletionTriggerType: 'Type',
+      tabCompletionTriggerTypeString: 'String',
+      tabCompletionTriggerTypeRegex: 'Regex',
+      tabCompletionTriggerPattern: 'Pattern',
+      tabCompletionTriggerDescription: 'Description',
+      tabCompletionTriggerRemove: 'Remove',
     },
     etc: {
       title: 'Etc',

@@ -376,6 +376,16 @@ export type TranslationKeys = {
       tabCompletionTemperatureDesc: string
       tabCompletionRequestTimeout: string
       tabCompletionRequestTimeoutDesc: string
+      tabCompletionTriggersTitle: string
+      tabCompletionTriggersDesc: string
+      tabCompletionTriggerAdd: string
+      tabCompletionTriggerEnabled: string
+      tabCompletionTriggerType: string
+      tabCompletionTriggerTypeString: string
+      tabCompletionTriggerTypeRegex: string
+      tabCompletionTriggerPattern: string
+      tabCompletionTriggerDescription: string
+      tabCompletionTriggerRemove: string
     }
     etc: {
       title: string

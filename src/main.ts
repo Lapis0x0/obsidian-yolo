@@ -676,10 +676,6 @@ export default class SmartComposerPlugin extends Plugin {
     return this.tabCompletionController
   }
 
-  private clearTabCompletionTimer() {
-    this.tabCompletionController?.clearTimer()
-  }
-
   private cancelTabCompletionRequest() {
     this.tabCompletionController?.cancelRequest()
   }
@@ -720,9 +716,6 @@ export default class SmartComposerPlugin extends Plugin {
     return true
   }
 
-  private scheduleTabCompletion(editor: Editor) {
-    this.getTabCompletionController().schedule(editor)
-  }
 
   private tryAcceptContinuationFromView(view: EditorView): boolean {
     const suggestion = this.continuationInlineSuggestion
@@ -764,7 +757,6 @@ export default class SmartComposerPlugin extends Plugin {
             ch: parts[parts.length - 1].length,
           }
     editor.setCursor(endCursor)
-    this.scheduleTabCompletion(editor)
     return true
   }
 
@@ -1190,7 +1182,6 @@ export default class SmartComposerPlugin extends Plugin {
     }
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
-    this.clearTabCompletionTimer()
     this.cancelTabCompletionRequest()
     this.clearInlineSuggestion()
   }

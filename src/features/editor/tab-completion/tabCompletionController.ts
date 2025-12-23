@@ -8,8 +8,10 @@ import {
   computeMaxTokens,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
+  DEFAULT_TAB_COMPLETION_TRIGGERS,
   splitContextRange,
   type SmartComposerSettings,
+  type TabCompletionTrigger,
 } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type {
@@ -144,13 +146,8 @@ const extractMaskedContext = (
 }
 
 export class TabCompletionController {
-  private tabCompletionTimer: ReturnType<typeof setTimeout> | null = null
   private tabCompletionAbortController: AbortController | null = null
   private tabCompletionSuggestion: TabCompletionSuggestion | null = null
-  private tabCompletionPending: {
-    editor: Editor
-    cursorOffset: number
-  } | null = null
 
   constructor(private readonly deps: TabCompletionDeps) {}
 
@@ -179,12 +176,45 @@ export class TabCompletionController {
     }
   }
 
-  clearTimer() {
-    if (this.tabCompletionTimer) {
-      clearTimeout(this.tabCompletionTimer)
-      this.tabCompletionTimer = null
+  private getTabCompletionTriggers(): TabCompletionTrigger[] {
+    const settings = this.deps.getSettings()
+    return (
+      settings.continuationOptions?.tabCompletionTriggers ??
+      DEFAULT_TAB_COMPLETION_TRIGGERS
+    )
+  }
+
+  private shouldTrigger(view: EditorView, cursorOffset: number): boolean {
+    const triggers = this.getTabCompletionTriggers().filter(
+      (trigger) => trigger.enabled,
+    )
+    if (triggers.length === 0) return false
+
+    const doc = view.state.doc
+    const line = doc.lineAt(cursorOffset)
+    const currentLine = doc.sliceString(line.from, cursorOffset)
+    const windowSize = Math.min(this.getTabCompletionOptions().contextRange, 2000)
+    const beforeWindow = doc.sliceString(
+      Math.max(0, cursorOffset - windowSize),
+      cursorOffset,
+    )
+
+    for (const trigger of triggers) {
+      if (!trigger.pattern || trigger.pattern.trim().length === 0) {
+        continue
+      }
+      if (trigger.type === 'string') {
+        if (beforeWindow.endsWith(trigger.pattern)) return true
+        continue
+      }
+      try {
+        const regex = new RegExp(trigger.pattern)
+        if (regex.test(currentLine)) return true
+      } catch {
+        // Ignore invalid regex patterns.
+      }
     }
-    this.tabCompletionPending = null
+    return false
   }
 
   cancelRequest() {
@@ -209,7 +239,6 @@ export class TabCompletionController {
   }
 
   handleEditorChange(editor: Editor) {
-    this.clearTimer()
     this.cancelRequest()
 
     const settings = this.deps.getSettings()
@@ -224,32 +253,13 @@ export class TabCompletionController {
     }
 
     this.deps.clearInlineSuggestion()
-    this.schedule(editor)
-  }
-
-  schedule(editor: Editor) {
-    const settings = this.deps.getSettings()
-    if (!settings.continuationOptions?.enableTabCompletion) return
     const view = this.deps.getEditorView(editor)
     if (!view) return
     const selection = editor.getSelection()
     if (selection && selection.length > 0) return
     const cursorOffset = view.state.selection.main.head
-
-    const options = this.getTabCompletionOptions()
-    const delay = Math.max(0, options.triggerDelayMs)
-
-    this.clearTimer()
-    this.tabCompletionPending = { editor, cursorOffset }
-    this.tabCompletionTimer = setTimeout(() => {
-      if (!this.tabCompletionPending) return
-      if (this.tabCompletionPending.editor !== editor) return
-      // Check if cursor position has changed during delay
-      const currentView = this.deps.getEditorView(editor)
-      if (!currentView) return
-      if (currentView.state.selection.main.head !== cursorOffset) return
-      void this.run(editor, cursorOffset)
-    }, delay)
+    if (!this.shouldTrigger(view, cursorOffset)) return
+    void this.run(editor, cursorOffset)
   }
 
   async run(editor: Editor, scheduledCursorOffset: number) {
@@ -326,7 +336,6 @@ export class TabCompletionController {
 
       this.cancelRequest()
       this.deps.clearInlineSuggestion()
-      this.tabCompletionPending = null
 
       const baseRequest: LLMRequestNonStreaming = {
         model: model.model,
@@ -474,7 +483,6 @@ export class TabCompletionController {
             ch: parts[parts.length - 1].length,
           }
     editor.setCursor(endCursor)
-    this.schedule(editor)
     return true
   }
 }

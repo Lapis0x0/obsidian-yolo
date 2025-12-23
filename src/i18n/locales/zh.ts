@@ -423,7 +423,7 @@ export const zh: TranslationKeys = {
         '在空行输入此字符时触发 Quick Ask（默认：@）。支持 1-3 个字符。',
       tabCompletion: '启用 Tab 补全',
       tabCompletionDesc:
-        '停顿 3 秒后自动请求补全，并以灰色幽灵文本形式给出建议，按下 Tab 接受。',
+        '当触发规则命中时自动请求补全，并以灰色幽灵文本形式给出建议，按下 Tab 接受。',
       tabCompletionModel: '补全模型',
       tabCompletionModelDesc: '为 Tab 补全选择一个专用模型。',
       tabCompletionTriggerDelay: '触发延迟（毫秒）',
@@ -443,6 +443,17 @@ export const zh: TranslationKeys = {
       tabCompletionRequestTimeout: '请求超时（毫秒）',
       tabCompletionRequestTimeoutDesc:
         '若补全请求超过该时间仍未返回则强制中止。',
+      tabCompletionTriggersTitle: '触发器',
+      tabCompletionTriggersDesc:
+        '仅当启用的触发规则命中时才会触发 Tab 补全。',
+      tabCompletionTriggerAdd: '添加触发器',
+      tabCompletionTriggerEnabled: '启用',
+      tabCompletionTriggerType: '类型',
+      tabCompletionTriggerTypeString: '字符串',
+      tabCompletionTriggerTypeRegex: '正则',
+      tabCompletionTriggerPattern: '匹配模式',
+      tabCompletionTriggerDescription: '描述',
+      tabCompletionTriggerRemove: '移除',
     },
     etc: {
       title: '其他',
