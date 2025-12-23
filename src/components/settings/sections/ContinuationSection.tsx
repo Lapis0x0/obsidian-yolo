@@ -433,6 +433,27 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               </tbody>
             </table>
           </div>
+          <ObsidianSetting
+            name={t('settings.continuation.tabCompletionTriggerDelay')}
+            desc={t('settings.continuation.tabCompletionTriggerDelayDesc')}
+          >
+            <ObsidianTextInput
+              type="number"
+              value={String(tabCompletionOptions.triggerDelayMs)}
+              onChange={(value) => {
+                const next = Math.max(
+                  200,
+                  parseIntegerOption(
+                    value,
+                    DEFAULT_TAB_COMPLETION_OPTIONS.triggerDelayMs,
+                  ),
+                )
+                updateTabCompletionOptions({
+                  triggerDelayMs: next,
+                })
+              }}
+            />
+          </ObsidianSetting>
           {/* Advanced settings toggle */}
           <div
             className="smtcmp-settings-advanced-toggle"

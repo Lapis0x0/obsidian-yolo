@@ -16,8 +16,10 @@ import {
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type {
   LLMRequestNonStreaming,
+  LLMRequestStreaming,
   RequestMessage,
 } from '../../../types/llm/request'
+import type { LLMResponseStreaming } from '../../../types/llm/response'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
 
 type TabCompletionSuggestion = {
@@ -64,6 +66,13 @@ const parseMaskedAnswer = (raw: string): string => {
   const normalized = raw.trim()
   const markerIndex = normalized.toLowerCase().indexOf(ANSWER_PREFIX)
   if (markerIndex === -1) return normalized
+  return normalized.slice(markerIndex + ANSWER_PREFIX.length).trim()
+}
+
+const parseMaskedAnswerStreaming = (raw: string): string => {
+  const normalized = raw.trim()
+  const markerIndex = normalized.toLowerCase().indexOf(ANSWER_PREFIX)
+  if (markerIndex === -1) return ''
   return normalized.slice(markerIndex + ANSWER_PREFIX.length).trim()
 }
 
@@ -146,8 +155,13 @@ const extractMaskedContext = (
 }
 
 export class TabCompletionController {
+  private tabCompletionTimer: ReturnType<typeof setTimeout> | null = null
   private tabCompletionAbortController: AbortController | null = null
   private tabCompletionSuggestion: TabCompletionSuggestion | null = null
+  private tabCompletionPending: {
+    editor: Editor
+    cursorOffset: number
+  } | null = null
 
   constructor(private readonly deps: TabCompletionDeps) {}
 
@@ -191,8 +205,6 @@ export class TabCompletionController {
     if (triggers.length === 0) return false
 
     const doc = view.state.doc
-    const line = doc.lineAt(cursorOffset)
-    const currentLine = doc.sliceString(line.from, cursorOffset)
     const windowSize = Math.min(this.getTabCompletionOptions().contextRange, 2000)
     const beforeWindow = doc.sliceString(
       Math.max(0, cursorOffset - windowSize),
@@ -209,12 +221,20 @@ export class TabCompletionController {
       }
       try {
         const regex = new RegExp(trigger.pattern)
-        if (regex.test(currentLine)) return true
+        if (regex.test(beforeWindow)) return true
       } catch {
         // Ignore invalid regex patterns.
       }
     }
     return false
+  }
+
+  clearTimer() {
+    if (this.tabCompletionTimer) {
+      clearTimeout(this.tabCompletionTimer)
+      this.tabCompletionTimer = null
+    }
+    this.tabCompletionPending = null
   }
 
   cancelRequest() {
@@ -239,6 +259,7 @@ export class TabCompletionController {
   }
 
   handleEditorChange(editor: Editor) {
+    this.clearTimer()
     this.cancelRequest()
 
     const settings = this.deps.getSettings()
@@ -259,7 +280,20 @@ export class TabCompletionController {
     if (selection && selection.length > 0) return
     const cursorOffset = view.state.selection.main.head
     if (!this.shouldTrigger(view, cursorOffset)) return
-    void this.run(editor, cursorOffset)
+    const options = this.getTabCompletionOptions()
+    const delay = Math.max(0, options.triggerDelayMs)
+    this.tabCompletionPending = { editor, cursorOffset }
+    this.tabCompletionTimer = setTimeout(() => {
+      if (!this.tabCompletionPending) return
+      if (this.tabCompletionPending.editor !== editor) return
+      const currentView = this.deps.getEditorView(editor)
+      if (!currentView) return
+      if (currentView.state.selection.main.head !== cursorOffset) return
+      const currentSelection = editor.getSelection()
+      if (currentSelection && currentSelection.length > 0) return
+      if (this.deps.isContinuationInProgress()) return
+      void this.run(editor, cursorOffset)
+    }, delay)
   }
 
   async run(editor: Editor, scheduledCursorOffset: number) {
@@ -336,6 +370,7 @@ export class TabCompletionController {
 
       this.cancelRequest()
       this.deps.clearInlineSuggestion()
+      this.tabCompletionPending = null
 
       const baseRequest: LLMRequestNonStreaming = {
         model: model.model,
@@ -356,6 +391,37 @@ export class TabCompletionController {
       const requestTimeout = Math.max(0, options.requestTimeoutMs)
       const attempts = Math.max(0, Math.floor(options.maxRetries)) + 1
 
+      const updateSuggestion = (
+        suggestionText: string,
+        currentView: EditorView,
+      ) => {
+        let cleaned = suggestionText.replace(/\r\n/g, '\n').replace(/\s+$/, '')
+        if (!cleaned.trim()) return
+        if (/^[\s\n\t]+$/.test(cleaned)) return
+        cleaned = cleaned.replace(/^[\s\n\t]+/, '')
+        if (cleaned.length > options.maxSuggestionLength) {
+          cleaned = cleaned.slice(0, options.maxSuggestionLength)
+        }
+
+        this.deps.setInlineSuggestionGhost(currentView, {
+          from: scheduledCursorOffset,
+          text: cleaned,
+        })
+        this.deps.setActiveInlineSuggestion({
+          source: 'tab',
+          editor,
+          view: currentView,
+          fromOffset: scheduledCursorOffset,
+          text: cleaned,
+        })
+        this.tabCompletionSuggestion = {
+          editor,
+          view: currentView,
+          text: cleaned,
+          cursorOffset: scheduledCursorOffset,
+        }
+      }
+
       for (let attempt = 0; attempt < attempts; attempt++) {
         const controller = new AbortController()
         this.tabCompletionAbortController = controller
@@ -367,51 +433,69 @@ export class TabCompletionController {
         }
 
         try {
-          const response = await providerClient.generateResponse(
-            model,
-            baseRequest,
-            { signal: controller.signal },
-          )
+          let stream: AsyncIterable<LLMResponseStreaming>
+          try {
+            const streamingRequest: LLMRequestStreaming = {
+              ...baseRequest,
+              stream: true,
+            }
+            stream = await providerClient.streamResponse(
+              model,
+              streamingRequest,
+              { signal: controller.signal },
+            )
+          } catch (error) {
+            const msg = String(error?.message ?? '')
+            const shouldFallback =
+              /protocol error|unexpected EOF|incomplete envelope/i.test(msg)
+            if (!shouldFallback) throw error
 
-          if (timeoutHandle) clearTimeout(timeoutHandle)
+            const response = await providerClient.generateResponse(
+              model,
+              baseRequest,
+              { signal: controller.signal },
+            )
+            let suggestion = response.choices?.[0]?.message?.content ?? ''
+            suggestion = parseMaskedAnswer(suggestion)
 
-          let suggestion = response.choices?.[0]?.message?.content ?? ''
-          suggestion = parseMaskedAnswer(suggestion)
-          suggestion = suggestion.replace(/\r\n/g, '\n').replace(/\s+$/, '')
-          if (!suggestion.trim()) return
-          if (/^[\s\n\t]+$/.test(suggestion)) return
+            const currentView = this.deps.getEditorView(editor)
+            if (!currentView) return
+            if (currentView.state.selection.main.head !== scheduledCursorOffset)
+              return
+            if (editor.getSelection()?.length) return
 
-          // Avoid leading line breaks which look awkward in ghost text
-          suggestion = suggestion.replace(/^[\s\n\t]+/, '')
-
-          // Guard against large multiline insertions
-          if (suggestion.length > options.maxSuggestionLength) {
-            suggestion = suggestion.slice(0, options.maxSuggestionLength)
+            updateSuggestion(suggestion, currentView)
+            if (timeoutHandle) clearTimeout(timeoutHandle)
+            return
           }
 
+          let rawText = ''
+          for await (const chunk of stream) {
+            const delta = chunk.choices?.[0]?.delta?.content ?? ''
+            if (!delta) continue
+            rawText += delta
+
+            const currentView = this.deps.getEditorView(editor)
+            if (!currentView) return
+            if (currentView.state.selection.main.head !== scheduledCursorOffset)
+              return
+            if (editor.getSelection()?.length) return
+
+            const suggestion = parseMaskedAnswerStreaming(rawText)
+            if (!suggestion) continue
+            updateSuggestion(suggestion, currentView)
+          }
+
+          if (rawText.length === 0) return
+          const finalSuggestion = parseMaskedAnswer(rawText)
           const currentView = this.deps.getEditorView(editor)
           if (!currentView) return
           if (currentView.state.selection.main.head !== scheduledCursorOffset)
             return
           if (editor.getSelection()?.length) return
 
-          this.deps.setInlineSuggestionGhost(currentView, {
-            from: scheduledCursorOffset,
-            text: suggestion,
-          })
-          this.deps.setActiveInlineSuggestion({
-            source: 'tab',
-            editor,
-            view: currentView,
-            fromOffset: scheduledCursorOffset,
-            text: suggestion,
-          })
-          this.tabCompletionSuggestion = {
-            editor,
-            view: currentView,
-            text: suggestion,
-            cursorOffset: scheduledCursorOffset,
-          }
+          updateSuggestion(finalSuggestion, currentView)
+          if (timeoutHandle) clearTimeout(timeoutHandle)
           return
         } catch (error) {
           if (timeoutHandle) clearTimeout(timeoutHandle)
@@ -429,6 +513,9 @@ export class TabCompletionController {
           console.error('Tab completion failed:', error)
           return
         } finally {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle)
+          }
           if (this.tabCompletionAbortController === controller) {
             this.deps.removeAbortController(controller)
             this.tabCompletionAbortController = null

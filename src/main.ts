@@ -680,6 +680,10 @@ export default class SmartComposerPlugin extends Plugin {
     this.tabCompletionController?.cancelRequest()
   }
 
+  private clearTabCompletionTimer() {
+    this.tabCompletionController?.clearTimer()
+  }
+
   private clearInlineSuggestion() {
     this.tabCompletionController?.clearSuggestion()
     if (this.continuationInlineSuggestion) {
@@ -1182,6 +1186,7 @@ export default class SmartComposerPlugin extends Plugin {
     }
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
+    this.clearTabCompletionTimer()
     this.cancelTabCompletionRequest()
     this.clearInlineSuggestion()
   }
