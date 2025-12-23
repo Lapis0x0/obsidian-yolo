@@ -34,11 +34,12 @@ import {
   thinkingIndicatorEffect,
   thinkingIndicatorField,
 } from './features/editor/inline-suggestion/inlineSuggestion'
+import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,
 } from './features/editor/smart-space/smartSpaceController'
-import { QuickAskController } from './features/editor/quick-ask/quickAskController'
+import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
 import { createTranslationFunction } from './i18n'
 import {
   SmartComposerSettings,
@@ -55,8 +56,6 @@ import {
   readMultipleTFiles,
   readTFileContent,
 } from './utils/obsidian'
-import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
-
 
 const inlineSuggestionExtensionViews = new WeakSet<EditorView>()
 

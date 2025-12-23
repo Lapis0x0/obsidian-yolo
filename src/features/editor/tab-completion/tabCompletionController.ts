@@ -1,6 +1,7 @@
-import type { Editor } from 'obsidian'
 
+import type { Text } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
+import type { Editor } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
 import {
@@ -9,7 +10,10 @@ import {
   type SmartComposerSettings,
 } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
-import type { LLMRequestNonStreaming, RequestMessage } from '../../../types/llm/request'
+import type {
+  LLMRequestNonStreaming,
+  RequestMessage,
+} from '../../../types/llm/request'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
 
 type TabCompletionSuggestion = {
@@ -47,6 +51,94 @@ type TabCompletionDeps = {
   addAbortController: (controller: AbortController) => void
   removeAbortController: (controller: AbortController) => void
   isContinuationInProgress: () => boolean
+}
+
+const MASK_TAG = '<mask/>'
+const ANSWER_PREFIX = 'answer:'
+
+const parseMaskedAnswer = (raw: string): string => {
+  const normalized = raw.trim()
+  const markerIndex = normalized.toLowerCase().indexOf(ANSWER_PREFIX)
+  if (markerIndex === -1) return normalized
+  return normalized.slice(markerIndex + ANSWER_PREFIX.length).trim()
+}
+
+const findBoundaryIndex = (text: string): number | null => {
+  let earliest = text.indexOf('\n\n')
+  const limit = earliest === -1 ? text.length : earliest
+
+  const boundaryPatterns = [
+    /^#{1,6}\s/,
+    /^-\s+\[[ xX]\]\s+/,
+    /^[-*+]\s+/,
+    /^\d+\.\s+/,
+    /^>\s+/,
+    /^```/,
+  ]
+
+  let lineStart = 0
+  while (lineStart < text.length) {
+    if (lineStart > limit) break
+    const lineEnd = text.indexOf('\n', lineStart)
+    const actualEnd = lineEnd === -1 ? text.length : lineEnd
+    if (lineStart > 0) {
+      const line = text.slice(lineStart, actualEnd)
+      const trimmed = line.trimStart()
+      if (boundaryPatterns.some((pattern) => pattern.test(trimmed))) {
+        const boundaryIndex = Math.max(0, lineStart - 1)
+        earliest =
+          earliest === -1 ? boundaryIndex : Math.min(earliest, boundaryIndex)
+        break
+      }
+    }
+    if (lineEnd === -1) break
+    lineStart = lineEnd + 1
+  }
+
+  return earliest === -1 ? null : earliest
+}
+
+const extractAfterContext = (window: string): string => {
+  if (!window) return ''
+  const boundary = findBoundaryIndex(window)
+  const candidate = boundary === null ? window : window.slice(0, boundary)
+  if (candidate.trim().length > 0) return candidate
+
+  const firstNonWhitespace = window.search(/\S/)
+  if (firstNonWhitespace === -1) return ''
+  const trimmed = window.slice(firstNonWhitespace)
+  const nextBoundary = findBoundaryIndex(trimmed)
+  return nextBoundary === null ? trimmed : trimmed.slice(0, nextBoundary)
+}
+
+const extractBeforeContext = (window: string): string => {
+  if (!window) return ''
+  const lastParagraphBreak = window.lastIndexOf('\n\n')
+  if (lastParagraphBreak !== -1 && lastParagraphBreak + 2 < window.length) {
+    return window.slice(lastParagraphBreak + 2)
+  }
+  return window
+}
+
+const extractMaskedContext = (
+  doc: Text,
+  cursorOffset: number,
+  maxBeforeChars: number,
+  maxAfterChars: number,
+): { before: string; after: string } => {
+  const beforeStart = Math.max(0, cursorOffset - maxBeforeChars)
+  const beforeWindow = doc.sliceString(beforeStart, cursorOffset)
+  const before = extractBeforeContext(beforeWindow)
+
+  if (maxAfterChars <= 0) {
+    return { before, after: '' }
+  }
+
+  const afterEnd = Math.min(doc.length, cursorOffset + maxAfterChars)
+  const afterWindow = doc.sliceString(cursorOffset, afterEnd)
+  const after = extractAfterContext(afterWindow)
+
+  return { before, after }
 }
 
 export class TabCompletionController {
@@ -151,16 +243,16 @@ export class TabCompletionController {
 
       const options = this.getTabCompletionOptions()
 
-      const cursorPos = editor.getCursor()
-      const headText = editor.getRange({ line: 0, ch: 0 }, cursorPos)
-      const headLength = headText.trim().length
-      if (!headText || headLength === 0) return
-      if (headLength < options.minContextLength) return
-
-      const context =
-        headText.length > options.maxContextChars
-          ? headText.slice(-options.maxContextChars)
-          : headText
+      const doc = view.state.doc
+      const { before, after } = extractMaskedContext(
+        doc,
+        scheduledCursorOffset,
+        options.maxBeforeChars,
+        options.maxAfterChars,
+      )
+      const beforeLength = before.trim().length
+      if (!before || beforeLength === 0) return
+      if (beforeLength < options.minContextLength) return
 
       let modelId = settings.continuationOptions?.tabCompletionModelId
       if (!modelId || modelId.length === 0) {
@@ -179,13 +271,7 @@ export class TabCompletionController {
 
       const fileTitle = this.deps.getActiveFileTitle()
       const titleSection = fileTitle ? `File title: ${fileTitle}\n\n` : ''
-      const customSystemPrompt = (
-        settings.continuationOptions?.tabCompletionSystemPrompt ?? ''
-      ).trim()
-      const systemPrompt =
-        customSystemPrompt.length > 0
-          ? customSystemPrompt
-          : DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
+      const systemPrompt = DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
 
       const isBaseModel = Boolean(model.isBaseModel)
       const baseModelSpecialPrompt = (
@@ -195,9 +281,10 @@ export class TabCompletionController {
         isBaseModel && baseModelSpecialPrompt.length > 0
           ? `${baseModelSpecialPrompt}\n\n`
           : ''
+      const contextWithMask = `${before}${MASK_TAG}${after}`
       const userContent = isBaseModel
-        ? `${basePromptSection}${systemPrompt}\n\n${context}\n\nPredict the next words that continue naturally.`
-        : `${basePromptSection}${titleSection}Recent context:\n\n${context}\n\nProvide the next words that would help continue naturally.`
+        ? `${basePromptSection}${systemPrompt}\n\n${titleSection}${contextWithMask}`
+        : `${basePromptSection}${titleSection}${contextWithMask}`
 
       const requestMessages: RequestMessage[] = [
         ...(isBaseModel
@@ -265,6 +352,7 @@ export class TabCompletionController {
           if (timeoutHandle) clearTimeout(timeoutHandle)
 
           let suggestion = response.choices?.[0]?.message?.content ?? ''
+          suggestion = parseMaskedAnswer(suggestion)
           suggestion = suggestion.replace(/\r\n/g, '\n').replace(/\s+$/, '')
           if (!suggestion.trim()) return
           if (/^[\s\n\t]+$/.test(suggestion)) return

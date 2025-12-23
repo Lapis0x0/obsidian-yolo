@@ -48,10 +48,25 @@ export const migrateFrom13To14: SettingMigration['migrate'] = (data) => {
       legacy.minContextLength,
       options.minContextLength,
     )
-    options.maxContextChars = normalizeNumber(
+    const legacyMaxContext = normalizeNumber(
       legacy.maxContextChars,
-      options.maxContextChars,
+      options.maxBeforeChars,
     )
+    const hasLegacyBefore = Object.prototype.hasOwnProperty.call(
+      legacy,
+      'maxBeforeChars',
+    )
+    const hasLegacyAfter = Object.prototype.hasOwnProperty.call(
+      legacy,
+      'maxAfterChars',
+    )
+
+    options.maxBeforeChars = hasLegacyBefore
+      ? normalizeNumber(legacy.maxBeforeChars, options.maxBeforeChars)
+      : legacyMaxContext
+    options.maxAfterChars = hasLegacyAfter
+      ? normalizeNumber(legacy.maxAfterChars, options.maxAfterChars)
+      : options.maxAfterChars
     options.maxSuggestionLength = normalizeNumber(
       legacy.maxSuggestionLength,
       options.maxSuggestionLength,

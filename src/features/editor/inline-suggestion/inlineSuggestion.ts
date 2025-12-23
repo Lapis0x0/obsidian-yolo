@@ -1,5 +1,10 @@
 import { StateEffect, StateField } from '@codemirror/state'
-import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view'
+import {
+  Decoration,
+  DecorationSet,
+  EditorView,
+  WidgetType,
+} from '@codemirror/view'
 
 export type InlineSuggestionGhostPayload = { from: number; text: string } | null
 
@@ -12,7 +17,8 @@ export type ThinkingIndicatorPayload = {
   snippet?: string
 } | null
 
-export const thinkingIndicatorEffect = StateEffect.define<ThinkingIndicatorPayload>()
+export const thinkingIndicatorEffect =
+  StateEffect.define<ThinkingIndicatorPayload>()
 
 class ThinkingIndicatorWidget extends WidgetType {
   constructor(

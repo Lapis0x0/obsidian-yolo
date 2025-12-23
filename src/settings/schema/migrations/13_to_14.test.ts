@@ -22,7 +22,8 @@ describe('migrateFrom13To14', () => {
     expect(tabOptions).toMatchObject({
       triggerDelayMs: 3000,
       minContextLength: 20,
-      maxContextChars: 4000,
+      maxBeforeChars: 3000,
+      maxAfterChars: 1000,
       maxSuggestionLength: 240,
       temperature: 0.5,
       requestTimeoutMs: 12000,
@@ -57,7 +58,8 @@ describe('migrateFrom13To14', () => {
     expect(tabOptions).toMatchObject({
       triggerDelayMs: 5000,
       minContextLength: 5,
-      maxContextChars: 8000,
+      maxBeforeChars: 8000,
+      maxAfterChars: 1000,
       maxSuggestionLength: 600,
       temperature: 0.8,
       requestTimeoutMs: 20000,

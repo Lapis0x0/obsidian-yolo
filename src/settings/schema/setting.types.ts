@@ -32,7 +32,8 @@ const ragOptionsSchema = z.object({
 type TabCompletionOptionDefaults = {
   triggerDelayMs: number
   minContextLength: number
-  maxContextChars: number
+  maxBeforeChars: number
+  maxAfterChars: number
   maxSuggestionLength: number
   maxTokens: number
   temperature: number
@@ -41,12 +42,13 @@ type TabCompletionOptionDefaults = {
 }
 
 export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
-  "You are a helpful assistant providing inline writing suggestions. Predict a concise continuation after the user's cursor. Do not repeat existing text. Return only the suggested continuation without quotes or extra commentary."
+  'Your job is to predict the most logical text that should be written at the location of the <mask/>. Your answer can be either code, a single word, or multiple sentences. Your answer must be in the same language as the text that is already there. Your response must have the following format:\nANSWER: here, you write the text that should be at the location of <mask/>.'
 
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   triggerDelayMs: 3000,
   minContextLength: 20,
-  maxContextChars: 4000,
+  maxBeforeChars: 3000,
+  maxAfterChars: 1000,
   maxSuggestionLength: 240,
   maxTokens: 64,
   temperature: 0.5,
@@ -66,11 +68,16 @@ const tabCompletionOptionsSchema = z
       .min(0)
       .max(2000)
       .catch(DEFAULT_TAB_COMPLETION_OPTIONS.minContextLength),
-    maxContextChars: z
+    maxBeforeChars: z
       .number()
       .min(200)
       .max(40000)
-      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxContextChars),
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxBeforeChars),
+    maxAfterChars: z
+      .number()
+      .min(0)
+      .max(40000)
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxAfterChars),
     maxSuggestionLength: z
       .number()
       .min(20)

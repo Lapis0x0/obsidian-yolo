@@ -3,13 +3,9 @@ import { useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import {
-  DEFAULT_TAB_COMPLETION_OPTIONS,
-  DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
-} from '../../../settings/schema/setting.types'
+import { DEFAULT_TAB_COMPLETION_OPTIONS } from '../../../settings/schema/setting.types'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
-import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SmartSpaceQuickActionsSettings } from '../SmartSpaceQuickActionsSettings'
@@ -55,11 +51,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   const enableTabCompletion = Boolean(
     settings.continuationOptions.enableTabCompletion,
   )
-  const tabCompletionSystemPromptValue =
-    (settings.continuationOptions.tabCompletionSystemPrompt ?? '').trim()
-      .length > 0
-      ? settings.continuationOptions.tabCompletionSystemPrompt!
-      : DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
   const tabCompletionOptions = enableTabCompletion
     ? {
         ...DEFAULT_TAB_COMPLETION_OPTIONS,
@@ -251,26 +242,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
       {enableTabCompletion && (
         <>
           <ObsidianSetting
-            name={t('settings.defaults.tabCompletionSystemPrompt')}
-            desc={t('settings.defaults.tabCompletionSystemPromptDesc')}
-            className="smtcmp-settings-textarea-header"
-          />
-
-          <ObsidianSetting className="smtcmp-settings-textarea">
-            <ObsidianTextArea
-              value={tabCompletionSystemPromptValue}
-              onChange={(value: string) => {
-                updateContinuationOptions(
-                  {
-                    tabCompletionSystemPrompt: value,
-                  },
-                  'tabCompletionSystemPrompt',
-                )
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
             name={t('settings.continuation.tabCompletionModel')}
             desc={t('settings.continuation.tabCompletionModelDesc')}
           >
@@ -345,22 +316,44 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMaxContextChars')}
-            desc={t('settings.continuation.tabCompletionMaxContextCharsDesc')}
+            name={t('settings.continuation.tabCompletionMaxBeforeChars')}
+            desc={t('settings.continuation.tabCompletionMaxBeforeCharsDesc')}
           >
             <ObsidianTextInput
               type="number"
-              value={String(tabCompletionOptions.maxContextChars)}
+              value={String(tabCompletionOptions.maxBeforeChars)}
               onChange={(value) => {
                 const next = Math.max(
                   200,
                   parseIntegerOption(
                     value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.maxContextChars,
+                    DEFAULT_TAB_COMPLETION_OPTIONS.maxBeforeChars,
                   ),
                 )
                 updateTabCompletionOptions({
-                  maxContextChars: next,
+                  maxBeforeChars: next,
+                })
+              }}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name={t('settings.continuation.tabCompletionMaxAfterChars')}
+            desc={t('settings.continuation.tabCompletionMaxAfterCharsDesc')}
+          >
+            <ObsidianTextInput
+              type="number"
+              value={String(tabCompletionOptions.maxAfterChars)}
+              onChange={(value) => {
+                const next = Math.max(
+                  0,
+                  parseIntegerOption(
+                    value,
+                    DEFAULT_TAB_COMPLETION_OPTIONS.maxAfterChars,
+                  ),
+                )
+                updateTabCompletionOptions({
+                  maxAfterChars: next,
                 })
               }}
             />

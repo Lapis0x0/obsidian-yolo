@@ -431,8 +431,11 @@ export const zh: TranslationKeys = {
       tabCompletionMinContextLength: '最小上下文长度',
       tabCompletionMinContextLengthDesc:
         '光标前文本长度不足该值时不触发 Tab 补全。',
-      tabCompletionMaxContextChars: '最大上下文字符数',
-      tabCompletionMaxContextCharsDesc: '限制发送给模型的最近上下文字符数量。',
+      tabCompletionMaxBeforeChars: '前文最大字符数',
+      tabCompletionMaxBeforeCharsDesc: '限制发送给模型的光标前字符数量。',
+      tabCompletionMaxAfterChars: '后文最大字符数',
+      tabCompletionMaxAfterCharsDesc:
+        '限制发送给模型的光标后字符数量（设为 0 可关闭）。',
       tabCompletionMaxSuggestionLength: '补全最大长度',
       tabCompletionMaxSuggestionLengthDesc: '限制接受建议时插入的最大字符数。',
       tabCompletionMaxTokens: '最大 Token 数',

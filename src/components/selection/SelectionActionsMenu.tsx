@@ -89,7 +89,12 @@ export function SelectionActionsMenu({
     }
 
     setPosition({ left, top })
-  }, [actions.length, containerEl, indicatorPosition.left, indicatorPosition.top])
+  }, [
+    actions.length,
+    containerEl,
+    indicatorPosition.left,
+    indicatorPosition.top,
+  ])
 
   useEffect(() => {
     updatePosition()

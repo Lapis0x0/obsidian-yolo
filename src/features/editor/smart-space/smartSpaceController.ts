@@ -117,7 +117,10 @@ export class SmartSpaceController {
 
     const close = () => {
       // 检查是否是当前的 widget（允许状态为 null，因为可能在动画期间被清除）
-      if (this.smartSpaceWidgetState && this.smartSpaceWidgetState.view !== view) {
+      if (
+        this.smartSpaceWidgetState &&
+        this.smartSpaceWidgetState.view !== view
+      ) {
         return
       }
       this.smartSpaceWidgetState = null
@@ -150,7 +153,8 @@ export class SmartSpaceController {
       EditorView.domEventHandlers({
         keydown: (event, view) => {
           const smartSpaceEnabled =
-            this.deps.getSettings().continuationOptions?.enableSmartSpace ?? true
+            this.deps.getSettings().continuationOptions?.enableSmartSpace ??
+            true
           if (!smartSpaceEnabled) {
             this.lastSmartSpaceSlash = null
             this.lastSmartSpaceSpace = null
@@ -215,12 +219,16 @@ export class SmartSpaceController {
           // Space handling (either legacy single-space trigger, or slash + space)
           const now = Date.now()
           const triggerMode =
-            this.deps.getSettings().continuationOptions?.smartSpaceTriggerMode ??
-            'single-space'
+            this.deps.getSettings().continuationOptions
+              ?.smartSpaceTriggerMode ?? 'single-space'
           const lastSlash = this.lastSmartSpaceSlash
           let selectionAfterRemoval = selection
           let triggeredBySlashCombo = false
-          if (lastSlash && lastSlash.view === view && now - lastSlash.timestamp <= 600) {
+          if (
+            lastSlash &&
+            lastSlash.view === view &&
+            now - lastSlash.timestamp <= 600
+          ) {
             const slashChar = view.state.doc.sliceString(
               lastSlash.pos,
               lastSlash.pos + 1,

@@ -470,9 +470,12 @@ export const en: TranslationKeys = {
       tabCompletionMinContextLength: 'Minimum context length',
       tabCompletionMinContextLengthDesc:
         'Skip tab completion unless the text before the cursor contains at least this many characters.',
-      tabCompletionMaxContextChars: 'Max context characters',
-      tabCompletionMaxContextCharsDesc:
-        'Limit how many recent characters are sent to the model for prefix completion.',
+      tabCompletionMaxBeforeChars: 'Max before-context characters',
+      tabCompletionMaxBeforeCharsDesc:
+        'Limit how many characters before the cursor are sent to the model.',
+      tabCompletionMaxAfterChars: 'Max after-context characters',
+      tabCompletionMaxAfterCharsDesc:
+        'Limit how many characters after the cursor are sent to the model (0 to disable).',
       tabCompletionMaxSuggestionLength: 'Max suggestion length',
       tabCompletionMaxSuggestionLengthDesc:
         'Cap the number of characters inserted when accepting a suggestion.',

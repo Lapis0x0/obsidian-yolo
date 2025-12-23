@@ -468,9 +468,12 @@ export const it: TranslationKeys = {
       tabCompletionMinContextLength: 'Lunghezza minima contesto',
       tabCompletionMinContextLengthDesc:
         'Numero minimo di caratteri richiesti prima del cursore per attivare i suggerimenti.',
-      tabCompletionMaxContextChars: 'Caratteri massimi contesto',
-      tabCompletionMaxContextCharsDesc:
-        'Numero massimo di caratteri da inviare come contesto al modello.',
+      tabCompletionMaxBeforeChars: 'Caratteri massimi contesto precedente',
+      tabCompletionMaxBeforeCharsDesc:
+        'Numero massimo di caratteri prima del cursore da inviare al modello.',
+      tabCompletionMaxAfterChars: 'Caratteri massimi contesto successivo',
+      tabCompletionMaxAfterCharsDesc:
+        'Numero massimo di caratteri dopo il cursore da inviare al modello (0 per disattivare).',
       tabCompletionMaxSuggestionLength: 'Lunghezza massima suggerimento',
       tabCompletionMaxSuggestionLengthDesc:
         'Numero massimo di caratteri da mostrare nel suggerimento.',
@@ -538,8 +541,7 @@ export const it: TranslationKeys = {
       applying: 'Applicazione in corso...',
     },
     customContinuePromptLabel: 'Come vuoi continuare?',
-    customContinuePromptPlaceholder:
-      'Chiedi all\'AI (@ per aggiungere i file)',
+    customContinuePromptPlaceholder: "Chiedi all'AI (@ per aggiungere i file)",
     customContinueHint:
       'Shift+Invio per inviare, Invio per nuova riga, Esc per chiudere',
     customContinueConfirmHint: 'Invia la tua istruzione per continuare',

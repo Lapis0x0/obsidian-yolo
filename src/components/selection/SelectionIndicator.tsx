@@ -30,8 +30,7 @@ export function SelectionIndicator({
 
     if (isRTL) {
       // For RTL, position to the left of the selection
-      left =
-        rect.left - containerRect.left - 28 - offset // 28px is approximate indicator width
+      left = rect.left - containerRect.left - 28 - offset // 28px is approximate indicator width
     } else {
       // For LTR, position to the right of the selection
       left = rect.right - containerRect.left + offset
