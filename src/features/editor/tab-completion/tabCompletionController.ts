@@ -244,6 +244,10 @@ export class TabCompletionController {
     this.tabCompletionTimer = setTimeout(() => {
       if (!this.tabCompletionPending) return
       if (this.tabCompletionPending.editor !== editor) return
+      // Check if cursor position has changed during delay
+      const currentView = this.deps.getEditorView(editor)
+      if (!currentView) return
+      if (currentView.state.selection.main.head !== cursorOffset) return
       void this.run(editor, cursorOffset)
     }, delay)
   }
@@ -324,10 +328,6 @@ export class TabCompletionController {
       this.deps.clearInlineSuggestion()
       this.tabCompletionPending = null
 
-      const controller = new AbortController()
-      this.tabCompletionAbortController = controller
-      this.deps.addAbortController(controller)
-
       const baseRequest: LLMRequestNonStreaming = {
         model: model.model,
         messages: requestMessages,
@@ -346,10 +346,6 @@ export class TabCompletionController {
       }
       const requestTimeout = Math.max(0, options.requestTimeoutMs)
       const attempts = Math.max(0, Math.floor(options.maxRetries)) + 1
-
-      this.cancelRequest()
-      this.deps.clearInlineSuggestion()
-      this.tabCompletionPending = null
 
       for (let attempt = 0; attempt < attempts; attempt++) {
         const controller = new AbortController()
