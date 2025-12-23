@@ -32,13 +32,18 @@ const ragOptionsSchema = z.object({
 type TabCompletionOptionDefaults = {
   triggerDelayMs: number
   minContextLength: number
-  maxBeforeChars: number
-  maxAfterChars: number
+  contextRange: number // Combined context range, internally split 4:1 (before:after)
   maxSuggestionLength: number
-  maxTokens: number
   temperature: number
   requestTimeoutMs: number
-  maxRetries: number
+}
+
+// Legacy fields for migration compatibility
+type TabCompletionOptionLegacy = {
+  maxBeforeChars?: number
+  maxAfterChars?: number
+  maxTokens?: number
+  maxRetries?: number
 }
 
 export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
@@ -47,13 +52,24 @@ export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   triggerDelayMs: 3000,
   minContextLength: 20,
-  maxBeforeChars: 3000,
-  maxAfterChars: 1000,
+  contextRange: 4000, // Total context chars, split 4:1 (3200 before, 800 after)
   maxSuggestionLength: 240,
-  maxTokens: 64,
   temperature: 0.5,
   requestTimeoutMs: 12000,
-  maxRetries: 0,
+}
+
+// Helper to compute maxTokens from maxSuggestionLength (roughly 1 token ≈ 3-4 chars)
+export const computeMaxTokens = (maxSuggestionLength: number): number => {
+  return Math.max(16, Math.min(2000, Math.ceil(maxSuggestionLength / 3)))
+}
+
+// Helper to split contextRange into before/after (4:1 ratio)
+export const splitContextRange = (
+  contextRange: number,
+): { maxBeforeChars: number; maxAfterChars: number } => {
+  const maxBeforeChars = Math.round((contextRange * 4) / 5)
+  const maxAfterChars = contextRange - maxBeforeChars
+  return { maxBeforeChars, maxAfterChars }
 }
 
 const tabCompletionOptionsSchema = z
@@ -68,26 +84,16 @@ const tabCompletionOptionsSchema = z
       .min(0)
       .max(2000)
       .catch(DEFAULT_TAB_COMPLETION_OPTIONS.minContextLength),
-    maxBeforeChars: z
+    contextRange: z
       .number()
-      .min(200)
-      .max(40000)
-      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxBeforeChars),
-    maxAfterChars: z
-      .number()
-      .min(0)
-      .max(40000)
-      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxAfterChars),
+      .min(500)
+      .max(50000)
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.contextRange),
     maxSuggestionLength: z
       .number()
       .min(20)
       .max(4000)
       .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxSuggestionLength),
-    maxTokens: z
-      .number()
-      .min(16)
-      .max(2000)
-      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxTokens),
     temperature: z
       .number()
       .min(0)
@@ -99,11 +105,11 @@ const tabCompletionOptionsSchema = z
       .min(1000)
       .max(60000)
       .catch(DEFAULT_TAB_COMPLETION_OPTIONS.requestTimeoutMs),
-    maxRetries: z
-      .number()
-      .min(0)
-      .max(5)
-      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.maxRetries),
+    // Legacy fields kept for migration compatibility (will be removed in future)
+    maxBeforeChars: z.number().optional(),
+    maxAfterChars: z.number().optional(),
+    maxTokens: z.number().optional(),
+    maxRetries: z.number().optional(),
   })
   .catch({ ...DEFAULT_TAB_COMPLETION_OPTIONS })
 

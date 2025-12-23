@@ -428,26 +428,21 @@ export const zh: TranslationKeys = {
       tabCompletionModelDesc: '为 Tab 补全选择一个专用模型。',
       tabCompletionTriggerDelay: '触发延迟（毫秒）',
       tabCompletionTriggerDelayDesc: '在停止输入后等待多久再向模型请求补全。',
+      tabCompletionMaxSuggestionLength: '补全最大长度',
+      tabCompletionMaxSuggestionLengthDesc: '限制接受建议时插入的最大字符数。',
+      tabCompletionAdvanced: '高级设置',
+      tabCompletionContextRange: '上下文范围',
+      tabCompletionContextRangeDesc:
+        '发送给模型的上下文总字符数（按 4:1 比例分配给光标前后）。',
       tabCompletionMinContextLength: '最小上下文长度',
       tabCompletionMinContextLengthDesc:
         '光标前文本长度不足该值时不触发 Tab 补全。',
-      tabCompletionMaxBeforeChars: '前文最大字符数',
-      tabCompletionMaxBeforeCharsDesc: '限制发送给模型的光标前字符数量。',
-      tabCompletionMaxAfterChars: '后文最大字符数',
-      tabCompletionMaxAfterCharsDesc:
-        '限制发送给模型的光标后字符数量（设为 0 可关闭）。',
-      tabCompletionMaxSuggestionLength: '补全最大长度',
-      tabCompletionMaxSuggestionLengthDesc: '限制接受建议时插入的最大字符数。',
-      tabCompletionMaxTokens: '最大 Token 数',
-      tabCompletionMaxTokensDesc: '限制模型每次前缀补全可返回的最大 Token 数。',
       tabCompletionTemperature: '采样温度',
       tabCompletionTemperatureDesc:
         '控制补全的创造性（0 为确定性，值越大越发散）。',
       tabCompletionRequestTimeout: '请求超时（毫秒）',
       tabCompletionRequestTimeoutDesc:
         '若补全请求超过该时间仍未返回则强制中止。',
-      tabCompletionMaxRetries: '最大重试次数',
-      tabCompletionMaxRetriesDesc: '补全请求超时后自动重试的次数上限。',
     },
     etc: {
       title: '其他',

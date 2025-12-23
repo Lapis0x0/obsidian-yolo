@@ -1,10 +1,19 @@
-import {
-  DEFAULT_TAB_COMPLETION_OPTIONS,
-  SettingMigration,
-  SmartComposerSettings,
-} from '../setting.types'
+import { SettingMigration, SmartComposerSettings } from '../setting.types'
 
-const cloneDefaults = () => ({ ...DEFAULT_TAB_COMPLETION_OPTIONS })
+// Legacy defaults for v17->v18 migration (before schema v19 changes)
+const LEGACY_TAB_COMPLETION_DEFAULTS = {
+  triggerDelayMs: 3000,
+  minContextLength: 20,
+  maxBeforeChars: 3000,
+  maxAfterChars: 1000,
+  maxSuggestionLength: 240,
+  maxTokens: 64,
+  temperature: 0.5,
+  requestTimeoutMs: 12000,
+  maxRetries: 0,
+}
+
+const cloneDefaults = () => ({ ...LEGACY_TAB_COMPLETION_DEFAULTS })
 
 export const migrateFrom17To18: SettingMigration['migrate'] = (data) => {
   const newData = { ...data }

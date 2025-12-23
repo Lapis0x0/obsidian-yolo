@@ -365,22 +365,17 @@ export type TranslationKeys = {
       tabCompletionModelDesc: string
       tabCompletionTriggerDelay: string
       tabCompletionTriggerDelayDesc: string
-      tabCompletionMinContextLength: string
-      tabCompletionMinContextLengthDesc: string
-      tabCompletionMaxBeforeChars: string
-      tabCompletionMaxBeforeCharsDesc: string
-      tabCompletionMaxAfterChars: string
-      tabCompletionMaxAfterCharsDesc: string
       tabCompletionMaxSuggestionLength: string
       tabCompletionMaxSuggestionLengthDesc: string
-      tabCompletionMaxTokens: string
-      tabCompletionMaxTokensDesc: string
+      tabCompletionAdvanced: string
+      tabCompletionContextRange: string
+      tabCompletionContextRangeDesc: string
+      tabCompletionMinContextLength: string
+      tabCompletionMinContextLengthDesc: string
       tabCompletionTemperature: string
       tabCompletionTemperatureDesc: string
       tabCompletionRequestTimeout: string
       tabCompletionRequestTimeoutDesc: string
-      tabCompletionMaxRetries: string
-      tabCompletionMaxRetriesDesc: string
     }
     etc: {
       title: string

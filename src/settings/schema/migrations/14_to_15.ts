@@ -1,11 +1,23 @@
 import {
-  DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   SettingMigration,
   SmartComposerSettings,
 } from '../setting.types'
 
-const cloneDefaults = () => ({ ...DEFAULT_TAB_COMPLETION_OPTIONS })
+// Legacy defaults for v14->v15 migration (before schema v19 changes)
+const LEGACY_TAB_COMPLETION_DEFAULTS = {
+  triggerDelayMs: 3000,
+  minContextLength: 20,
+  maxBeforeChars: 3000,
+  maxAfterChars: 1000,
+  maxSuggestionLength: 240,
+  maxTokens: 64,
+  temperature: 0.5,
+  requestTimeoutMs: 12000,
+  maxRetries: 0,
+}
+
+const cloneDefaults = () => ({ ...LEGACY_TAB_COMPLETION_DEFAULTS })
 
 export const migrateFrom14To15: SettingMigration['migrate'] = (data) => {
   const newData = { ...data }
@@ -47,7 +59,7 @@ export const migrateFrom14To15: SettingMigration['migrate'] = (data) => {
         typeof legacy.maxTokens === 'number' &&
         Number.isFinite(legacy.maxTokens)
           ? legacy.maxTokens
-          : DEFAULT_TAB_COMPLETION_OPTIONS.maxTokens,
+          : LEGACY_TAB_COMPLETION_DEFAULTS.maxTokens,
     }
   }
 

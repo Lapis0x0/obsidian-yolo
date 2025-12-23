@@ -467,30 +467,22 @@ export const en: TranslationKeys = {
       tabCompletionTriggerDelay: 'Trigger delay (ms)',
       tabCompletionTriggerDelayDesc:
         'How long to wait after you stop typing before a prefix completion request is sent.',
-      tabCompletionMinContextLength: 'Minimum context length',
-      tabCompletionMinContextLengthDesc:
-        'Skip tab completion unless the text before the cursor contains at least this many characters.',
-      tabCompletionMaxBeforeChars: 'Max before-context characters',
-      tabCompletionMaxBeforeCharsDesc:
-        'Limit how many characters before the cursor are sent to the model.',
-      tabCompletionMaxAfterChars: 'Max after-context characters',
-      tabCompletionMaxAfterCharsDesc:
-        'Limit how many characters after the cursor are sent to the model (0 to disable).',
       tabCompletionMaxSuggestionLength: 'Max suggestion length',
       tabCompletionMaxSuggestionLengthDesc:
         'Cap the number of characters inserted when accepting a suggestion.',
-      tabCompletionMaxTokens: 'Max tokens',
-      tabCompletionMaxTokensDesc:
-        'Limit the number of tokens requested from the model for each prefix completion call.',
+      tabCompletionAdvanced: 'Advanced settings',
+      tabCompletionContextRange: 'Context range',
+      tabCompletionContextRangeDesc:
+        'Total characters of context sent to the model (split 4:1 between before and after cursor).',
+      tabCompletionMinContextLength: 'Minimum context length',
+      tabCompletionMinContextLengthDesc:
+        'Skip tab completion unless the text before the cursor contains at least this many characters.',
       tabCompletionTemperature: 'Sampling temperature',
       tabCompletionTemperatureDesc:
         'Controls creativity for prefix suggestions (0 = deterministic, higher = more diverse).',
       tabCompletionRequestTimeout: 'Request timeout (ms)',
       tabCompletionRequestTimeoutDesc:
         'Abort a prefix completion request if it takes longer than this time.',
-      tabCompletionMaxRetries: 'Retry count',
-      tabCompletionMaxRetriesDesc:
-        'Automatically retry timed-out prefix completion requests up to this many times.',
     },
     etc: {
       title: 'Etc',

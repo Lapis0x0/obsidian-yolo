@@ -465,30 +465,22 @@ export const it: TranslationKeys = {
       tabCompletionTriggerDelay: 'Ritardo trigger (ms)',
       tabCompletionTriggerDelayDesc:
         'Quanto tempo attendere dopo che smetti di digitare prima di generare un suggerimento.',
-      tabCompletionMinContextLength: 'Lunghezza minima contesto',
-      tabCompletionMinContextLengthDesc:
-        'Numero minimo di caratteri richiesti prima del cursore per attivare i suggerimenti.',
-      tabCompletionMaxBeforeChars: 'Caratteri massimi contesto precedente',
-      tabCompletionMaxBeforeCharsDesc:
-        'Numero massimo di caratteri prima del cursore da inviare al modello.',
-      tabCompletionMaxAfterChars: 'Caratteri massimi contesto successivo',
-      tabCompletionMaxAfterCharsDesc:
-        'Numero massimo di caratteri dopo il cursore da inviare al modello (0 per disattivare).',
       tabCompletionMaxSuggestionLength: 'Lunghezza massima suggerimento',
       tabCompletionMaxSuggestionLengthDesc:
         'Numero massimo di caratteri da mostrare nel suggerimento.',
-      tabCompletionMaxTokens: 'Token massimi',
-      tabCompletionMaxTokensDesc:
-        'Numero massimo di token che il modello può generare.',
+      tabCompletionAdvanced: 'Impostazioni avanzate',
+      tabCompletionContextRange: 'Intervallo contesto',
+      tabCompletionContextRangeDesc:
+        'Caratteri totali di contesto inviati al modello (divisi 4:1 tra prima e dopo il cursore).',
+      tabCompletionMinContextLength: 'Lunghezza minima contesto',
+      tabCompletionMinContextLengthDesc:
+        'Numero minimo di caratteri richiesti prima del cursore per attivare i suggerimenti.',
       tabCompletionTemperature: 'Temperatura',
       tabCompletionTemperatureDesc:
         'Controlla la casualità dei suggerimenti (0 = deterministico, 1 = creativo).',
       tabCompletionRequestTimeout: 'Timeout richiesta (ms)',
       tabCompletionRequestTimeoutDesc:
         'Quanto tempo attendere una risposta dal modello prima del timeout.',
-      tabCompletionMaxRetries: 'Tentativi massimi',
-      tabCompletionMaxRetriesDesc:
-        'Quante volte riprovare se una richiesta fallisce.',
     },
     etc: {
       title: 'Altro',

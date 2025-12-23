@@ -1,7 +1,17 @@
-import {
-  DEFAULT_TAB_COMPLETION_OPTIONS,
-  SettingMigration,
-} from '../setting.types'
+import { SettingMigration } from '../setting.types'
+
+// Legacy defaults for v13->v14 migration (before schema v19 changes)
+const LEGACY_TAB_COMPLETION_DEFAULTS = {
+  triggerDelayMs: 3000,
+  minContextLength: 20,
+  maxBeforeChars: 3000,
+  maxAfterChars: 1000,
+  maxSuggestionLength: 240,
+  maxTokens: 64,
+  temperature: 0.5,
+  requestTimeoutMs: 12000,
+  maxRetries: 0,
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -34,10 +44,10 @@ export const migrateFrom13To14: SettingMigration['migrate'] = (data) => {
 
   if (!isRecord(continuationOptions.tabCompletionOptions)) {
     continuationOptions.tabCompletionOptions = {
-      ...DEFAULT_TAB_COMPLETION_OPTIONS,
+      ...LEGACY_TAB_COMPLETION_DEFAULTS,
     }
   } else {
-    const options = { ...DEFAULT_TAB_COMPLETION_OPTIONS }
+    const options = { ...LEGACY_TAB_COMPLETION_DEFAULTS }
     const legacy = continuationOptions.tabCompletionOptions
 
     options.triggerDelayMs = normalizeNumber(

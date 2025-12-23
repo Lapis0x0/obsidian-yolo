@@ -5,8 +5,10 @@ import type { Editor } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
 import {
+  computeMaxTokens,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
+  splitContextRange,
   type SmartComposerSettings,
 } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
@@ -154,9 +156,26 @@ export class TabCompletionController {
 
   private getTabCompletionOptions() {
     const settings = this.deps.getSettings()
-    return {
+    const rawOptions = settings.continuationOptions?.tabCompletionOptions ?? {}
+    const merged = {
       ...DEFAULT_TAB_COMPLETION_OPTIONS,
-      ...(settings.continuationOptions?.tabCompletionOptions ?? {}),
+      ...rawOptions,
+    }
+
+    // Compute maxBeforeChars and maxAfterChars from contextRange
+    const { maxBeforeChars, maxAfterChars } = splitContextRange(
+      merged.contextRange,
+    )
+
+    // Compute maxTokens from maxSuggestionLength
+    const maxTokens = computeMaxTokens(merged.maxSuggestionLength)
+
+    return {
+      ...merged,
+      maxBeforeChars,
+      maxAfterChars,
+      maxTokens,
+      maxRetries: 1, // Fixed retry count
     }
   }
 

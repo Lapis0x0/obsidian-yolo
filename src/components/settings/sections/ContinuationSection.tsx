@@ -1,5 +1,5 @@
 import { App } from 'obsidian'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -17,6 +17,7 @@ type ContinuationSectionProps = {
 export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
+  const [showAdvancedTabSettings, setShowAdvancedTabSettings] = useState(false)
 
   const updateContinuationOptions = (
     patch: Partial<typeof settings.continuationOptions>,
@@ -241,6 +242,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
 
       {enableTabCompletion && (
         <>
+          {/* Core settings */}
           <ObsidianSetting
             name={t('settings.continuation.tabCompletionModel')}
             desc={t('settings.continuation.tabCompletionModelDesc')}
@@ -280,7 +282,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               value={String(tabCompletionOptions.triggerDelayMs)}
               onChange={(value) => {
                 const next = Math.max(
-                  0,
+                  200,
                   parseIntegerOption(
                     value,
                     DEFAULT_TAB_COMPLETION_OPTIONS.triggerDelayMs,
@@ -288,72 +290,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
                 )
                 updateTabCompletionOptions({
                   triggerDelayMs: next,
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMinContextLength')}
-            desc={t('settings.continuation.tabCompletionMinContextLengthDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.minContextLength)}
-              onChange={(value) => {
-                const next = Math.max(
-                  0,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.minContextLength,
-                  ),
-                )
-                updateTabCompletionOptions({
-                  minContextLength: next,
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMaxBeforeChars')}
-            desc={t('settings.continuation.tabCompletionMaxBeforeCharsDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.maxBeforeChars)}
-              onChange={(value) => {
-                const next = Math.max(
-                  200,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.maxBeforeChars,
-                  ),
-                )
-                updateTabCompletionOptions({
-                  maxBeforeChars: next,
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMaxAfterChars')}
-            desc={t('settings.continuation.tabCompletionMaxAfterCharsDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.maxAfterChars)}
-              onChange={(value) => {
-                const next = Math.max(
-                  0,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.maxAfterChars,
-                  ),
-                )
-                updateTabCompletionOptions({
-                  maxAfterChars: next,
                 })
               }}
             />
@@ -383,91 +319,126 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMaxTokens')}
-            desc={t('settings.continuation.tabCompletionMaxTokensDesc')}
+          {/* Advanced settings toggle */}
+          <div
+            className="smtcmp-settings-advanced-toggle"
+            onClick={() => setShowAdvancedTabSettings(!showAdvancedTabSettings)}
+            style={{
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 0',
+              color: 'var(--text-muted)',
+              fontSize: '0.9em',
+            }}
           >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.maxTokens)}
-              onChange={(value) => {
-                const parsed = Math.max(
-                  16,
-                  Math.min(
-                    2000,
-                    parseIntegerOption(
+            <span
+              style={{
+                transform: showAdvancedTabSettings
+                  ? 'rotate(90deg)'
+                  : 'rotate(0deg)',
+                transition: 'transform 0.2s',
+              }}
+            >
+              ▶
+            </span>
+            {t('settings.continuation.tabCompletionAdvanced')}
+          </div>
+
+          {/* Advanced settings */}
+          {showAdvancedTabSettings && (
+            <>
+              <ObsidianSetting
+                name={t('settings.continuation.tabCompletionContextRange')}
+                desc={t('settings.continuation.tabCompletionContextRangeDesc')}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={String(tabCompletionOptions.contextRange)}
+                  onChange={(value) => {
+                    const next = Math.max(
+                      500,
+                      parseIntegerOption(
+                        value,
+                        DEFAULT_TAB_COMPLETION_OPTIONS.contextRange,
+                      ),
+                    )
+                    updateTabCompletionOptions({
+                      contextRange: next,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.continuation.tabCompletionMinContextLength')}
+                desc={t(
+                  'settings.continuation.tabCompletionMinContextLengthDesc',
+                )}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={String(tabCompletionOptions.minContextLength)}
+                  onChange={(value) => {
+                    const next = Math.max(
+                      0,
+                      parseIntegerOption(
+                        value,
+                        DEFAULT_TAB_COMPLETION_OPTIONS.minContextLength,
+                      ),
+                    )
+                    updateTabCompletionOptions({
+                      minContextLength: next,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.continuation.tabCompletionTemperature')}
+                desc={t('settings.continuation.tabCompletionTemperatureDesc')}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={String(tabCompletionOptions.temperature)}
+                  onChange={(value) => {
+                    const next = parseNumberOrDefault(
                       value,
-                      DEFAULT_TAB_COMPLETION_OPTIONS.maxTokens,
-                    ),
-                  ),
-                )
-                updateTabCompletionOptions({
-                  maxTokens: parsed,
-                })
-              }}
-            />
-          </ObsidianSetting>
+                      DEFAULT_TAB_COMPLETION_OPTIONS.temperature,
+                    )
+                    updateTabCompletionOptions({
+                      temperature: Math.min(Math.max(next, 0), 2),
+                    })
+                  }}
+                />
+              </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionTemperature')}
-            desc={t('settings.continuation.tabCompletionTemperatureDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.temperature)}
-              onChange={(value) => {
-                const next = parseNumberOrDefault(
-                  value,
-                  DEFAULT_TAB_COMPLETION_OPTIONS.temperature,
-                )
-                updateTabCompletionOptions({
-                  temperature: Math.min(Math.max(next, 0), 2),
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionRequestTimeout')}
-            desc={t('settings.continuation.tabCompletionRequestTimeoutDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.requestTimeoutMs)}
-              onChange={(value) => {
-                const next = Math.max(
-                  0,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.requestTimeoutMs,
-                  ),
-                )
-                updateTabCompletionOptions({
-                  requestTimeoutMs: next,
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMaxRetries')}
-            desc={t('settings.continuation.tabCompletionMaxRetriesDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={String(tabCompletionOptions.maxRetries)}
-              onChange={(value) => {
-                const parsed = parseIntegerOption(
-                  value,
-                  DEFAULT_TAB_COMPLETION_OPTIONS.maxRetries,
-                )
-                const next = Math.max(0, Math.min(5, parsed))
-                updateTabCompletionOptions({
-                  maxRetries: next,
-                })
-              }}
-            />
-          </ObsidianSetting>
+              <ObsidianSetting
+                name={t('settings.continuation.tabCompletionRequestTimeout')}
+                desc={t(
+                  'settings.continuation.tabCompletionRequestTimeoutDesc',
+                )}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={String(tabCompletionOptions.requestTimeoutMs)}
+                  onChange={(value) => {
+                    const next = Math.max(
+                      1000,
+                      parseIntegerOption(
+                        value,
+                        DEFAULT_TAB_COMPLETION_OPTIONS.requestTimeoutMs,
+                      ),
+                    )
+                    updateTabCompletionOptions({
+                      requestTimeoutMs: next,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+            </>
+          )}
         </>
       )}
     </div>

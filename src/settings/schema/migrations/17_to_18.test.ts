@@ -1,6 +1,7 @@
-import { DEFAULT_TAB_COMPLETION_OPTIONS } from '../setting.types'
-
 import { migrateFrom17To18 } from './17_to_18'
+
+// Legacy defaults for test (before schema v19 changes)
+const LEGACY_MAX_AFTER_CHARS = 1000
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -26,7 +27,7 @@ describe('migrateFrom17To18', () => {
     }
     expect(tabOptions).toMatchObject({
       maxBeforeChars: 8000,
-      maxAfterChars: DEFAULT_TAB_COMPLETION_OPTIONS.maxAfterChars,
+      maxAfterChars: LEGACY_MAX_AFTER_CHARS,
     })
   })
 
