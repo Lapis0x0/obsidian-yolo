@@ -485,6 +485,9 @@ export const en: TranslationKeys = {
       tabCompletionRequestTimeout: 'Request timeout (ms)',
       tabCompletionRequestTimeoutDesc:
         'Abort a prefix completion request if it takes longer than this time.',
+      tabCompletionConstraints: 'Tab completion constraints',
+      tabCompletionConstraintsDesc:
+        'Optional rules inserted into the tab completion prompt (for example, "write in Chinese" or "match a specific style").',
       tabCompletionTriggersTitle: 'Triggers',
       tabCompletionTriggersDesc:
         'Tab completion is triggered only when one of the enabled rules matches.',

@@ -481,6 +481,9 @@ export const it: TranslationKeys = {
       tabCompletionRequestTimeout: 'Timeout richiesta (ms)',
       tabCompletionRequestTimeoutDesc:
         'Quanto tempo attendere una risposta dal modello prima del timeout.',
+      tabCompletionConstraints: 'Vincoli completamento tab',
+      tabCompletionConstraintsDesc:
+        'Regole opzionali inserite nel prompt di completamento tab (ad esempio "scrivi in italiano" o "segui uno stile specifico").',
       tabCompletionTriggersTitle: 'Trigger',
       tabCompletionTriggersDesc:
         'Il completamento tab si attiva solo quando una regola abilitata corrisponde.',

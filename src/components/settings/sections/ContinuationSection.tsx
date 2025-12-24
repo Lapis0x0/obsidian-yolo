@@ -11,6 +11,7 @@ import {
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SmartSpaceQuickActionsSettings } from '../SmartSpaceQuickActionsSettings'
@@ -66,6 +67,8 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
         ...DEFAULT_TAB_COMPLETION_OPTIONS,
         ...(settings.continuationOptions.tabCompletionOptions ?? {}),
       }
+  const tabCompletionConstraints =
+    settings.continuationOptions.tabCompletionConstraints ?? ''
   const updateTabCompletionOptions = (
     updates: Partial<typeof tabCompletionOptions>,
   ) => {
@@ -577,6 +580,23 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
                     updateTabCompletionOptions({
                       requestTimeoutMs: next,
                     })
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.continuation.tabCompletionConstraints')}
+                desc={t('settings.continuation.tabCompletionConstraintsDesc')}
+                className="smtcmp-settings-textarea-header"
+              />
+              <ObsidianSetting className="smtcmp-settings-textarea">
+                <ObsidianTextArea
+                  value={tabCompletionConstraints}
+                  onChange={(value: string) => {
+                    updateContinuationOptions(
+                      { tabCompletionConstraints: value },
+                      'tabCompletionConstraints',
+                    )
                   }}
                 />
               </ObsidianSetting>

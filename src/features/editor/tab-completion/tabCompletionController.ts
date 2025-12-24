@@ -7,6 +7,7 @@ import {
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
+  TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER,
   type SmartComposerSettings,
   type TabCompletionTrigger,
   computeMaxTokens,
@@ -61,6 +62,24 @@ type TabCompletionDeps = {
 
 const MASK_TAG = '<mask/>'
 const ANSWER_PREFIX = 'answer:'
+const TAB_COMPLETION_CONSTRAINTS_BLOCK = `\n\nAdditional constraints:\n${TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER}`
+
+const applyTabCompletionConstraints = (
+  prompt: string,
+  constraints: string,
+): string => {
+  const trimmed = constraints.trim()
+  if (!trimmed) {
+    return prompt
+      .replace(TAB_COMPLETION_CONSTRAINTS_BLOCK, '')
+      .replace(TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER, '')
+      .replace(/\n{3,}/g, '\n\n')
+  }
+  if (!prompt.includes(TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER)) {
+    return `${prompt}\n\nAdditional constraints:\n${trimmed}`
+  }
+  return prompt.replace(TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER, trimmed)
+}
 
 const parseMaskedAnswer = (raw: string): string => {
   const normalized = raw.trim()
@@ -369,7 +388,15 @@ export class TabCompletionController {
 
       const fileTitle = this.deps.getActiveFileTitle()
       const titleSection = fileTitle ? `File title: ${fileTitle}\n\n` : ''
-      const systemPrompt = DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
+      const baseSystemPrompt =
+        settings.continuationOptions?.tabCompletionSystemPrompt ??
+        DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
+      const tabCompletionConstraints =
+        settings.continuationOptions?.tabCompletionConstraints ?? ''
+      const systemPrompt = applyTabCompletionConstraints(
+        baseSystemPrompt,
+        tabCompletionConstraints,
+      )
 
       const isBaseModel = Boolean(model.isBaseModel)
       const baseModelSpecialPrompt = (

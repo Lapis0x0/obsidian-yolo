@@ -443,6 +443,9 @@ export const zh: TranslationKeys = {
       tabCompletionRequestTimeout: '请求超时（毫秒）',
       tabCompletionRequestTimeoutDesc:
         '若补全请求超过该时间仍未返回则强制中止。',
+      tabCompletionConstraints: '补全约束',
+      tabCompletionConstraintsDesc:
+        '可选规则，会插入到 Tab 补全提示词中（例如“使用中文”或“匹配某种写作风格”）。',
       tabCompletionTriggersTitle: '触发器',
       tabCompletionTriggersDesc: '仅当启用的触发规则命中时才会触发 Tab 补全。',
       tabCompletionTriggerAdd: '添加触发器',

@@ -54,8 +54,12 @@ export type TabCompletionTrigger = {
   description?: string
 }
 
+export const TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER =
+  '{{tab_completion_constraints}}'
 export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
-  'Your job is to predict the most logical text that should be written at the location of the <mask/>. Your answer can be either code, a single word, or multiple sentences. Your answer must be in the same language as the text that is already there. Your response must have the following format:\nANSWER: here, you write the text that should be at the location of <mask/>.'
+  'Your job is to predict the most logical text that should be written at the location of the <mask/>. Your answer can be either code, a single word, or multiple sentences. Your answer must be in the same language as the text that is already there.' +
+  `\n\nAdditional constraints:\n${TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER}` +
+  '\n\nYour response must have the following format:\nANSWER: here, you write the text that should be at the location of <mask/>.'
 
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   triggerDelayMs: 3000,
@@ -293,6 +297,8 @@ export const smartComposerSettingsSchema = z.object({
         .catch([...DEFAULT_TAB_COMPLETION_TRIGGERS]),
       // override system prompt for tab completion
       tabCompletionSystemPrompt: z.string().optional(),
+      // extra prompt constraints for tab completion
+      tabCompletionConstraints: z.string().optional(),
       // Smart Space custom quick actions
       smartSpaceQuickActions: z
         .array(
@@ -340,7 +346,9 @@ export const smartComposerSettingsSchema = z.object({
         DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_APPLY_MODEL_ID)?.id ??
         DEFAULT_CHAT_MODELS[0].id,
       tabCompletionOptions: { ...DEFAULT_TAB_COMPLETION_OPTIONS },
+      tabCompletionTriggers: [...DEFAULT_TAB_COMPLETION_TRIGGERS],
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
+      tabCompletionConstraints: '',
       smartSpaceQuickActions: undefined,
       smartSpaceTriggerMode: 'single-space',
       smartSpaceUseWebSearch: false,
