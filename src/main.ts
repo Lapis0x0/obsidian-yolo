@@ -28,7 +28,6 @@ import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
 import {
   InlineSuggestionGhostPayload,
-  ThinkingIndicatorPayload,
   inlineSuggestionGhostEffect,
   inlineSuggestionGhostField,
   thinkingIndicatorEffect,
@@ -721,7 +720,6 @@ export default class SmartComposerPlugin extends Plugin {
     this.clearInlineSuggestion()
     return true
   }
-
 
   private tryAcceptContinuationFromView(view: EditorView): boolean {
     const suggestion = this.continuationInlineSuggestion

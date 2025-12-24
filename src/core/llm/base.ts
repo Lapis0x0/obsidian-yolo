@@ -62,7 +62,7 @@ function parseCustomParameterValue(raw: string): unknown {
 
   try {
     return JSON.parse(trimmed)
-  } catch (error) {
+  } catch (_error) {
     return raw
   }
 }

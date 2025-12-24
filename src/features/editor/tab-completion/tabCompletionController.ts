@@ -1,17 +1,16 @@
-
 import type { Extension, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
 import {
-  computeMaxTokens,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
-  splitContextRange,
   type SmartComposerSettings,
   type TabCompletionTrigger,
+  computeMaxTokens,
+  splitContextRange,
 } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type {
@@ -221,7 +220,10 @@ export class TabCompletionController {
     if (triggers.length === 0) return false
 
     const doc = view.state.doc
-    const windowSize = Math.min(this.getTabCompletionOptions().contextRange, 2000)
+    const windowSize = Math.min(
+      this.getTabCompletionOptions().contextRange,
+      2000,
+    )
     const beforeWindow = doc.sliceString(
       Math.max(0, cursorOffset - windowSize),
       cursorOffset,

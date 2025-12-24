@@ -341,7 +341,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
               if (toolCall.arguments && toolCall.arguments.length > 0) {
                 try {
                   return JSON.parse(toolCall.arguments) as unknown
-                } catch (error) {
+                } catch (_error) {
                   return {}
                 }
               }

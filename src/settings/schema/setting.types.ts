@@ -39,7 +39,7 @@ type TabCompletionOptionDefaults = {
 }
 
 // Legacy fields for migration compatibility
-type TabCompletionOptionLegacy = {
+export type TabCompletionOptionLegacy = {
   maxBeforeChars?: number
   maxAfterChars?: number
   maxTokens?: number

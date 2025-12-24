@@ -54,6 +54,8 @@ describe('migrateFrom20To21', () => {
     if (!Array.isArray(triggers)) {
       throw new Error('Expected tabCompletionTriggers to be an array')
     }
-    expect(triggers).toEqual(expect.arrayContaining(DEFAULT_TAB_COMPLETION_TRIGGERS))
+    expect(triggers).toEqual(
+      expect.arrayContaining(DEFAULT_TAB_COMPLETION_TRIGGERS),
+    )
   })
 })

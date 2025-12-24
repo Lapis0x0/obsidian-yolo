@@ -366,11 +366,19 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             <table className="smtcmp-settings-table">
               <thead>
                 <tr>
-                  <th>{t('settings.continuation.tabCompletionTriggerEnabled')}</th>
+                  <th>
+                    {t('settings.continuation.tabCompletionTriggerEnabled')}
+                  </th>
                   <th>{t('settings.continuation.tabCompletionTriggerType')}</th>
-                  <th>{t('settings.continuation.tabCompletionTriggerPattern')}</th>
-                  <th>{t('settings.continuation.tabCompletionTriggerDescription')}</th>
-                  <th>{t('settings.continuation.tabCompletionTriggerRemove')}</th>
+                  <th>
+                    {t('settings.continuation.tabCompletionTriggerPattern')}
+                  </th>
+                  <th>
+                    {t('settings.continuation.tabCompletionTriggerDescription')}
+                  </th>
+                  <th>
+                    {t('settings.continuation.tabCompletionTriggerRemove')}
+                  </th>
                 </tr>
               </thead>
               <tbody>

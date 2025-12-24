@@ -251,7 +251,7 @@ export const en: TranslationKeys = {
       baseUrlPlaceholder: 'https://api.example.com/v1',
       noStainlessHeaders: 'No stainless headers',
       noStainlessHeadersDesc:
-        'Enable this if you encounter cross-origin errors related to stainless headers (x-stainless-os, etc.)',
+        'Enable this if you encounter cross-origin errors related to stainless headers.',
     },
     models: {
       title: 'Models',
@@ -307,7 +307,7 @@ export const en: TranslationKeys = {
       noEmbeddingModelsConfigured: 'No embedding models configured',
     },
     rag: {
-      title: 'Retrieval-augmented generation (RAG)',
+      title: 'Retrieval-augmented generation (rag)',
       enableRag: 'Show retrieval-augmented generation settings',
       enableRagDesc:
         'Toggle visibility of the retrieval-augmented generation options below.',
@@ -370,7 +370,7 @@ export const en: TranslationKeys = {
       notStarted: 'Not started',
     },
     mcp: {
-      title: 'Model context protocol (MCP)',
+      title: 'Model context protocol (mcp)',
       desc: 'Configure model context protocol servers to extend assistant capabilities',
       warning:
         'When using tools, the tool response is passed to the language model; if the tool result contains a large amount of content, this can significantly increase model usage and associated costs, so please be mindful when enabling or using tools that may return long outputs.',
@@ -616,7 +616,7 @@ export const en: TranslationKeys = {
       },
     },
     customRewritePromptPlaceholder:
-      'Describe how to rewrite the selected text, e.g., "make it concise and active voice; keep markdown structure"; press shift+enter to confirm, enter for a new line, and escape to close.',
+      'Describe how to rewrite the selected text, for example: "make it concise and active voice; keep markdown structure"; press Shift+Enter to confirm, Enter for a new line, and Escape to close.',
     conversationSettings: {
       openAria: 'Conversation settings',
       chatMemory: 'Chat memory',
@@ -626,7 +626,7 @@ export const en: TranslationKeys = {
       topP: 'Top p',
       streaming: 'Streaming',
       vaultSearch: 'Vault search',
-      useVaultSearch: 'RAG search',
+      useVaultSearch: 'Retrieval-augmented search',
       geminiTools: 'Gemini tools',
       webSearch: 'Web search',
       urlContext: 'URL context',
@@ -640,7 +640,7 @@ export const en: TranslationKeys = {
     pgliteUnavailable:
       'PGlite resources unavailable; please check your network connection.',
     downloadingPglite:
-      'Downloading PGlite dependencies from CDN (~20MB); this may take a moment…',
+      'Downloading PGlite dependencies from the content delivery network (~20 megabytes); this may take a moment…',
     updatingIndex: 'Updating vault index…',
     indexUpdated: 'Vault index updated.',
     indexUpdateFailed: 'Vault index update failed.',
@@ -662,7 +662,7 @@ export const en: TranslationKeys = {
 
   applyView: {
     applying: 'Applying',
-    changesResolved: 'changes resolved',
+    changesResolved: 'Changes resolved',
     acceptAllIncoming: 'Accept all incoming',
     rejectAll: 'Reject all',
     reset: 'Reset',
@@ -680,7 +680,7 @@ export const en: TranslationKeys = {
     selectAssistant: 'Select an assistant',
     noAssistant: 'No assistant',
     noAssistantDescription: 'Use default system prompt',
-    navigationHint: '↑↓ to navigate, Enter to select, Esc to cancel',
+    navigationHint: 'Use ↑/↓ to navigate, enter to select, esc to cancel',
     inputPlaceholder: 'Ask a question...',
     close: 'Close',
     copy: 'Copy',

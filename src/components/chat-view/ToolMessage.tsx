@@ -126,7 +126,7 @@ function ToolCallItem({
     }
     try {
       return JSON.stringify(JSON.parse(request.arguments), null, 2)
-    } catch (error) {
+    } catch (_error) {
       return request.arguments
     }
   }, [request.arguments])
