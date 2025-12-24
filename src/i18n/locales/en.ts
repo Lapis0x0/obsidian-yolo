@@ -181,7 +181,8 @@ export const en: TranslationKeys = {
       includeCurrentFileDesc:
         'Automatically include the content of your current file in chats.',
       enableTools: 'Enable tools',
-      enableToolsDesc: 'Allow the AI to use MCP tools.',
+      enableToolsDesc:
+        'Allow the assistant to use model context protocol tools.',
       maxAutoIterations: 'Max auto tool requests',
       maxAutoIterationsDesc:
         'Maximum number of consecutive tool calls that can be made automatically without user confirmation; higher values can significantly increase costs as each tool call consumes additional tokens.',
@@ -240,9 +241,9 @@ export const en: TranslationKeys = {
       providerId: 'ID',
       providerIdDesc:
         'Choose an ID to identify this provider in your settings. This is just for your reference.',
-      providerIdPlaceholder: 'my-custom-provider',
+      providerIdPlaceholder: 'Example: my-custom-provider',
       apiKey: 'API key',
-      apiKeyDesc: '(Leave empty if not required)',
+      apiKeyDesc: 'Leave empty if not required.',
       apiKeyPlaceholder: 'Enter your API key',
       baseUrl: 'Base URL',
       baseUrlDesc:
@@ -250,7 +251,7 @@ export const en: TranslationKeys = {
       baseUrlPlaceholder: 'https://api.example.com/v1',
       noStainlessHeaders: 'No stainless headers',
       noStainlessHeadersDesc:
-        'Enable this if you encounter CORS errors related to stainless headers (x-stainless-os, etc.)',
+        'Enable this if you encounter cross-origin errors related to stainless headers (x-stainless-os, etc.)',
     },
     models: {
       title: 'Models',
@@ -267,7 +268,7 @@ export const en: TranslationKeys = {
       modelId: 'Model ID',
       modelIdDesc:
         'API model identifier used for requests (e.g., gpt-4o-mini, claude-3-5-sonnet)',
-      modelIdPlaceholder: 'gpt-4o-mini',
+      modelIdPlaceholder: 'Example: gpt-4o-mini',
       modelName: 'Display name',
       modelNamePlaceholder: 'Enter a display name',
       availableModelsAuto: 'Available models (auto-fetched)',
@@ -286,7 +287,7 @@ export const en: TranslationKeys = {
         'Choose effort: minimal (gpt-5 only) / low / medium / high',
       geminiThinkingBudget: 'Thinking budget (thinkingBudget)',
       geminiThinkingBudgetDesc:
-        'Unit: thinking tokens. 0=off (Flash/Flash-Lite), -1=dynamic; ranges vary by model.',
+        'Unit: thinking tokens. 0 = off (flash/flash-lite), -1 = dynamic; ranges vary by model.',
       geminiThinkingBudgetPlaceholder: 'For example, -1 (dynamic, 0=off)',
       toolType: 'Tool type',
       toolTypeDesc: 'Select the tool type supported by the model',
@@ -306,24 +307,24 @@ export const en: TranslationKeys = {
       noEmbeddingModelsConfigured: 'No embedding models configured',
     },
     rag: {
-      title: 'RAG (Retrieval-Augmented Generation)',
-      enableRag: 'Show RAG settings',
+      title: 'Retrieval-augmented generation (RAG)',
+      enableRag: 'Show retrieval-augmented generation settings',
       enableRagDesc:
         'Toggle visibility of the retrieval-augmented generation options below.',
       embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
       chunkSizeDesc:
-        "Set the chunk size for text splitting. After changing this, please re-index the vault using the 'Rebuild entire vault index' command.",
+        "Set the chunk size for text splitting. After changing this, please re-index the vault using the 'rebuild entire vault index' command.",
       thresholdTokens: 'Threshold tokens',
       thresholdTokensDesc:
-        'Maximum number of tokens before switching to RAG; if the total tokens from mentioned files exceed this, the plugin uses RAG instead of including all file contents.',
+        'Maximum number of tokens before switching to retrieval-augmented generation; if the total tokens from mentioned files exceed this, the plugin uses retrieval-augmented generation instead of including all file contents.',
       minSimilarity: 'Minimum similarity',
       minSimilarityDesc:
-        'Minimum similarity score for RAG results; higher values return more relevant but potentially fewer results.',
+        'Minimum similarity score for retrieval-augmented generation results; higher values return more relevant but potentially fewer results.',
       limit: 'Limit',
       limitDesc:
-        'Maximum number of RAG results to include in the prompt; higher values provide more context but increase token usage.',
+        'Maximum number of retrieval-augmented generation results to include in the prompt; higher values provide more context but increase token usage.',
       includePatterns: 'Include patterns',
       includePatternsDesc:
         "Specify glob patterns to include files in indexing (one per line); for example, use 'notes/**' for all files in the notes folder, leave empty to include all files, and rebuild the entire vault index after changes.",
@@ -344,7 +345,7 @@ export const en: TranslationKeys = {
       selectExcludeFoldersPlaceholder:
         'Click here to select folders to exclude (leave empty to exclude nothing)',
       conflictNoteDefaultInclude:
-        'Tip: No include folders are selected, so all are included by default; if exclude folders are set, exclusion takes precedence.',
+        'Tip: no include folders are selected, so all are included by default; if exclude folders are set, exclusion takes precedence.',
       conflictExact:
         'The following folders are both included and excluded; they will be excluded:',
       conflictParentExclude:
@@ -364,17 +365,18 @@ export const en: TranslationKeys = {
       manualUpdateNowDesc:
         'Run an incremental update immediately and record the last updated time.',
       // Index progress header/status
-      indexProgressTitle: 'RAG index progress',
+      indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',
       notStarted: 'Not started',
     },
     mcp: {
-      title: 'Model Context Protocol (MCP)',
-      desc: 'Configure MCP servers to extend AI capabilities',
+      title: 'Model context protocol (MCP)',
+      desc: 'Configure model context protocol servers to extend assistant capabilities',
       warning:
-        'When using tools, the tool response is passed to the language model (LLM); if the tool result contains a large amount of content, this can significantly increase LLM usage and associated costs, so please be mindful when enabling or using tools that may return long outputs.',
-      notSupportedOnMobile: 'MCP is not supported on mobile devices',
-      mcpServers: 'MCP servers',
+        'When using tools, the tool response is passed to the language model; if the tool result contains a large amount of content, this can significantly increase model usage and associated costs, so please be mindful when enabling or using tools that may return long outputs.',
+      notSupportedOnMobile:
+        'Model context protocol is not supported on mobile devices',
+      mcpServers: 'Model context protocol servers',
       addServer: 'Add server',
       serverName: 'Server name',
       command: 'Command',
@@ -382,7 +384,7 @@ export const en: TranslationKeys = {
       status: 'Status',
       enabled: 'Enabled',
       actions: 'Actions',
-      noServersFound: 'No MCP servers found',
+      noServersFound: 'No model context protocol servers found',
       tools: 'Tools',
       error: 'Error',
       connected: 'Connected',
@@ -396,7 +398,7 @@ export const en: TranslationKeys = {
       expand: 'Expand',
       collapse: 'Collapse',
       validParameters: 'Valid parameters',
-      failedToAddServer: 'Failed to add MCP server.',
+      failedToAddServer: 'Failed to add model context protocol server.',
       failedToDeleteServer: 'Failed to delete server.',
     },
     templates: {
@@ -449,15 +451,15 @@ export const en: TranslationKeys = {
       triggerKeyword: 'Trigger keyword',
       triggerKeywordDesc:
         'Continuation is triggered when the text immediately before the cursor equals this keyword (default: cc).',
-      quickAskSubsectionTitle: 'Quick Ask',
+      quickAskSubsectionTitle: 'Quick ask',
       quickAskDescription:
-        'Quick Ask lets you ask questions directly in the editor. Type the trigger character (default @) on an empty line to open a floating chat panel, select an assistant, and get AI responses. Supports multi-turn conversations, copying answers, inserting at cursor, or opening in sidebar.',
-      quickAskToggle: 'Enable Quick Ask',
+        'Quick ask lets you ask questions directly in the editor. Type the trigger character (default @) on an empty line to open a floating chat panel, select an assistant, and get responses. Supports multi-turn conversations, copying answers, inserting at cursor, or opening in sidebar.',
+      quickAskToggle: 'Enable quick ask',
       quickAskToggleDesc:
-        'When disabled, the trigger character will no longer summon the Quick Ask floating panel.',
+        'When disabled, the trigger character will no longer summon the quick ask floating panel.',
       quickAskTrigger: 'Trigger character',
       quickAskTriggerDesc:
-        'Typing this character on an empty line triggers Quick Ask (default: @). Supports 1-3 characters.',
+        'Typing this character on an empty line triggers quick ask (default: @). Supports 1-3 characters.',
       tabCompletion: 'Enable tab completion',
       tabCompletionDesc:
         'Request a completion when a trigger rule matches, then show it as gray ghost text that can be accepted with the tab key.',
@@ -618,7 +620,7 @@ export const en: TranslationKeys = {
     conversationSettings: {
       openAria: 'Conversation settings',
       chatMemory: 'Chat memory',
-      maxContext: 'Max context',
+      maxContext: 'Maximum context',
       sampling: 'Sampling parameters',
       temperature: 'Temperature',
       topP: 'Top p',

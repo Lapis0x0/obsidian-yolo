@@ -673,7 +673,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 <ObsidianButton
                   text={t('settings.rag.cancelIndex', '取消')}
                   onClick={() => {
-                    console.log('[YOLO] Cancel button clicked')
+                    console.debug('[YOLO] Cancel button clicked')
                     indexAbortController.abort()
                     // 立即更新 UI 状态，不等待异步操作完成
                     new Notice(t('notices.indexCancelling', '正在取消索引...'))
