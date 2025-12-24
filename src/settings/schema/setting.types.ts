@@ -68,24 +68,6 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
 
 export const DEFAULT_TAB_COMPLETION_TRIGGERS: TabCompletionTrigger[] = [
   {
-    id: 'sentence-end-period',
-    type: 'string',
-    pattern: '. ',
-    enabled: true,
-  },
-  {
-    id: 'sentence-end-question',
-    type: 'string',
-    pattern: '? ',
-    enabled: true,
-  },
-  {
-    id: 'sentence-end-exclaim',
-    type: 'string',
-    pattern: '! ',
-    enabled: true,
-  },
-  {
     id: 'sentence-end-comma',
     type: 'string',
     pattern: ', ',
@@ -98,27 +80,27 @@ export const DEFAULT_TAB_COMPLETION_TRIGGERS: TabCompletionTrigger[] = [
     enabled: true,
   },
   {
-    id: 'sentence-end-chinese-period',
+    id: 'sentence-end-colon',
     type: 'string',
-    pattern: '。',
+    pattern: ': ',
     enabled: true,
   },
   {
-    id: 'sentence-end-chinese-question',
+    id: 'sentence-end-chinese-colon',
     type: 'string',
-    pattern: '？',
-    enabled: true,
-  },
-  {
-    id: 'sentence-end-chinese-exclaim',
-    type: 'string',
-    pattern: '！',
+    pattern: '：',
     enabled: true,
   },
   {
     id: 'newline',
     type: 'regex',
     pattern: '\\n$',
+    enabled: true,
+  },
+  {
+    id: 'list-item',
+    type: 'regex',
+    pattern: '(?:^|\\n)[-*+]\\s$',
     enabled: true,
   },
 ]

@@ -654,6 +654,8 @@ export default class SmartComposerPlugin extends Plugin {
       this.tabCompletionController = new TabCompletionController({
         getSettings: () => this.settings,
         getEditorView: (editor) => this.getEditorView(editor),
+        getActiveMarkdownView: () =>
+          this.app.workspace.getActiveViewOfType(MarkdownView),
         getActiveConversationOverrides: () =>
           this.getActiveConversationOverrides(),
         resolveContinuationParams: (overrides) =>
@@ -935,6 +937,9 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
+    this.registerEditorExtension(
+      this.getTabCompletionController().createTriggerExtension(),
+    )
 
     // This creates an icon in the left ribbon.
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {

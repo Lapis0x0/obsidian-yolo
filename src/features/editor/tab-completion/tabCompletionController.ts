@@ -1,7 +1,7 @@
 
-import type { Text } from '@codemirror/state'
-import type { EditorView } from '@codemirror/view'
-import type { Editor } from 'obsidian'
+import type { Extension, Text } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import type { Editor, MarkdownView } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
 import {
@@ -40,6 +40,7 @@ type ActiveInlineSuggestion = {
 type TabCompletionDeps = {
   getSettings: () => SmartComposerSettings
   getEditorView: (editor: Editor) => EditorView | null
+  getActiveMarkdownView: () => MarkdownView | null
   getActiveConversationOverrides: () => ConversationOverrideSettings | undefined
   resolveContinuationParams: (overrides?: ConversationOverrideSettings) => {
     temperature?: number
@@ -165,6 +166,21 @@ export class TabCompletionController {
 
   constructor(private readonly deps: TabCompletionDeps) {}
 
+  createTriggerExtension(): Extension {
+    return EditorView.updateListener.of((update) => {
+      if (!update.docChanged) return
+
+      const markdownView = this.deps.getActiveMarkdownView()
+      const editor = markdownView?.editor
+      if (!editor) return
+
+      const activeView = this.deps.getEditorView(editor)
+      if (activeView && activeView !== update.view) return
+
+      this.handleEditorChange(editor)
+    })
+  }
+
   private getTabCompletionOptions() {
     const settings = this.deps.getSettings()
     const rawOptions = settings.continuationOptions?.tabCompletionOptions ?? {}
@@ -210,18 +226,26 @@ export class TabCompletionController {
       Math.max(0, cursorOffset - windowSize),
       cursorOffset,
     )
+    const beforeWindowTrimmed = beforeWindow.replace(/\s+$/, '')
 
     for (const trigger of triggers) {
       if (!trigger.pattern || trigger.pattern.trim().length === 0) {
         continue
       }
       if (trigger.type === 'string') {
-        if (beforeWindow.endsWith(trigger.pattern)) return true
+        if (
+          beforeWindow.endsWith(trigger.pattern) ||
+          beforeWindowTrimmed.endsWith(trigger.pattern)
+        ) {
+          return true
+        }
         continue
       }
       try {
         const regex = new RegExp(trigger.pattern)
-        if (regex.test(beforeWindow)) return true
+        if (regex.test(beforeWindow) || regex.test(beforeWindowTrimmed)) {
+          return true
+        }
       } catch {
         // Ignore invalid regex patterns.
       }
@@ -311,6 +335,11 @@ export class TabCompletionController {
       const options = this.getTabCompletionOptions()
 
       const doc = view.state.doc
+      const beforeWindow = doc.sliceString(
+        Math.max(0, scheduledCursorOffset - options.maxBeforeChars),
+        scheduledCursorOffset,
+      )
+      const beforeWindowLength = beforeWindow.trim().length
       const { before, after } = extractMaskedContext(
         doc,
         scheduledCursorOffset,
@@ -319,7 +348,7 @@ export class TabCompletionController {
       )
       const beforeLength = before.trim().length
       if (!before || beforeLength === 0) return
-      if (beforeLength < options.minContextLength) return
+      if (beforeWindowLength < options.minContextLength) return
 
       let modelId = settings.continuationOptions?.tabCompletionModelId
       if (!modelId || modelId.length === 0) {
