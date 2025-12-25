@@ -4,4 +4,7 @@ module.exports = {
   transform: {
     '^.+.tsx?$': ['ts-jest', {}],
   },
+  testPathIgnorePatterns: [
+    '<rootDir>/src/components/chat-view/system-prompt/__tests__/setup-jest.ts'
+  ],
 }
