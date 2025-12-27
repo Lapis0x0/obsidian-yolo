@@ -673,7 +673,7 @@
   .smtcmp-chat-user-input-controls__left {
     display: flex;
     align-items: center;
-    gap: var(--size-4-1);
+    gap: var(--size-4-3);
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -743,6 +743,7 @@
 /* Chat Mode Select */
 .smtcmp-chat-mode-select {
   flex-shrink: 0;
+  gap: var(--size-4-1);
 }
 
 .smtcmp-chat-mode-select__icon {
@@ -750,6 +751,7 @@
   align-items: center;
   justify-content: center;
   color: inherit;
+  margin-right: 2px;
 }
 
 .smtcmp-chat-mode-select__icon svg {
@@ -805,6 +807,7 @@
 /* Reasoning Select */
 .smtcmp-reasoning-select {
   flex-shrink: 0;
+  gap: var(--size-4-1);
 }
 
 .smtcmp-reasoning-select__icon {
@@ -812,6 +815,7 @@
   align-items: center;
   justify-content: center;
   color: inherit;
+  margin-right: 2px;
 }
 
 .smtcmp-reasoning-select__icon svg {
