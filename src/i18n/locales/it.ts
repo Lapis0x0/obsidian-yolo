@@ -726,4 +726,20 @@ export const it: TranslationKeys = {
     editApplied:
       'Applicate con successo ${appliedCount} modifica/modifiche a ${activeFile.name}',
   },
+
+  chatMode: {
+    chat: 'Chat',
+    chatDesc: 'Modalità conversazione normale',
+    agent: 'Agent',
+    agentDesc: 'Abilita le capacità di chiamata degli strumenti',
+  },
+
+  reasoning: {
+    selectReasoning: 'Seleziona ragionamento',
+    off: 'Disattivato',
+    low: 'Basso',
+    medium: 'Medio',
+    high: 'Alto',
+    extraHigh: 'Extra alto',
+  },
 }

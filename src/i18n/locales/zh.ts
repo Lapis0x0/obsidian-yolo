@@ -670,4 +670,20 @@ export const zh: TranslationKeys = {
       '已应用 ${appliedCount}/${blocks.length} 个编辑，详情请查看控制台',
     editApplied: '成功应用了 ${appliedCount} 个编辑到 ${activeFile.name}',
   },
+
+  chatMode: {
+    chat: '对话',
+    chatDesc: '普通对话模式',
+    agent: 'Agent',
+    agentDesc: '启用工具调用能力',
+  },
+
+  reasoning: {
+    selectReasoning: '选择推理强度',
+    off: '关闭',
+    low: '低',
+    medium: '中',
+    high: '高',
+    extraHigh: '超高',
+  },
 }

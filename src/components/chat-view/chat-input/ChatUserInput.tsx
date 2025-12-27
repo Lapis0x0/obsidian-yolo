@@ -18,6 +18,8 @@ import {
 } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { useSettings } from '../../../contexts/settings-context'
+import { ChatModel } from '../../../types/chat-model.types'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import {
   Mentionable,
@@ -33,12 +35,17 @@ import { fileToMentionableImage } from '../../../utils/llm/image'
 import { readTFileContent } from '../../../utils/obsidian'
 import { ObsidianMarkdown } from '../ObsidianMarkdown'
 
-import { ImageUploadButton } from './ImageUploadButton'
+import { ChatMode, ChatModeSelect } from './ChatModeSelect'
 import LexicalContentEditable from './LexicalContentEditable'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
 import { MentionNode } from './plugins/mention/MentionNode'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
+import {
+  ReasoningLevel,
+  ReasoningSelect,
+  supportsReasoning,
+} from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
 import ToolBadge from './ToolBadge'
 
@@ -67,6 +74,12 @@ export type ChatUserInputProps = {
   displayMentionables?: Mentionable[]
   // 删除时从所有消息中删除的回调
   onDeleteFromAll?: (mentionable: Mentionable) => void
+  // Chat mode (chat/agent)
+  chatMode?: ChatMode
+  onModeChange?: (mode: ChatMode) => void
+  // Reasoning level
+  reasoningLevel?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel) => void
 }
 
 type ChatSubmitOptions = {
@@ -91,10 +104,21 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onModelChange,
       displayMentionables,
       onDeleteFromAll,
+      chatMode = 'chat',
+      onModeChange,
+      reasoningLevel = 'medium',
+      onReasoningChange,
     },
     ref,
   ) => {
     const app = useApp()
+    const { settings } = useSettings()
+
+    // Get current model for reasoning support check
+    const currentModel: ChatModel | null = useMemo(() => {
+      if (!modelId) return null
+      return settings.chatModels.find((m) => m.id === modelId) ?? null
+    }, [modelId, settings.chatModels])
 
     const editorRef = useRef<LexicalEditor | null>(null)
     const contentEditableRef = useRef<HTMLDivElement>(null)
@@ -248,7 +272,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       })
     }
 
-    const handleUploadImages = (images: File[]) => {
+    // Note: Image upload is now handled via drag/drop and paste only
+    // This function is kept for potential future use
+    const _handleUploadImages = (images: File[]) => {
       void Promise.all(
         images.map((image) => fileToMentionableImage(image)),
       ).then(handleCreateImageMentionables, (error) => {
@@ -325,7 +351,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         />
 
         <div className="smtcmp-chat-user-input-controls">
-          <div className="smtcmp-chat-user-input-controls__model-select-container smtcmp-chat-sidebar-model-select">
+          <div className="smtcmp-chat-user-input-controls__left">
+            <ChatModeSelect
+              mode={chatMode}
+              onChange={(mode) => onModeChange?.(mode)}
+              side="top"
+              sideOffset={8}
+              contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+            />
             <ModelSelect
               modelId={modelId}
               onChange={onModelChange}
@@ -333,9 +366,18 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               sideOffset={8}
               contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
             />
+            {supportsReasoning(currentModel) && (
+              <ReasoningSelect
+                model={currentModel}
+                value={reasoningLevel}
+                onChange={(level) => onReasoningChange?.(level)}
+                side="top"
+                sideOffset={8}
+                contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+              />
+            )}
           </div>
-          <div className="smtcmp-chat-user-input-controls__buttons">
-            <ImageUploadButton onUpload={handleUploadImages} />
+          <div className="smtcmp-chat-user-input-controls__right">
             <SubmitButton onClick={() => handleSubmit()} />
           </div>
         </div>

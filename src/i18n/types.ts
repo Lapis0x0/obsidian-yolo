@@ -622,4 +622,22 @@ export type TranslationKeys = {
     editPartialSuccess?: string
     editApplied?: string
   }
+
+  // Chat Mode Select
+  chatMode?: {
+    chat?: string
+    chatDesc?: string
+    agent?: string
+    agentDesc?: string
+  }
+
+  // Reasoning Select
+  reasoning?: {
+    selectReasoning?: string
+    off?: string
+    low?: string
+    medium?: string
+    high?: string
+    extraHigh?: string
+  }
 }

@@ -247,6 +247,8 @@ export const smartComposerSettingsSchema = z.object({
       defaultTopP: z.number().min(0).max(1).optional(),
       chatTitlePrompt: z.string().optional(),
       baseModelSpecialPrompt: z.string().optional(),
+      // Chat mode (chat/agent)
+      chatMode: z.enum(['chat', 'agent']).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -257,6 +259,7 @@ export const smartComposerSettingsSchema = z.object({
       defaultTopP: 0.9,
       chatTitlePrompt: '',
       baseModelSpecialPrompt: '',
+      chatMode: 'chat',
     }),
 
   // Continuation (续写) options
