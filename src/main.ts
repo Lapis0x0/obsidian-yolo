@@ -55,6 +55,7 @@ import {
   readMultipleTFiles,
   readTFileContent,
 } from './utils/obsidian'
+import { escapeMarkdownSpecialChars } from './utils/markdown-escape'
 
 const inlineSuggestionExtensionViews = new WeakSet<EditorView>()
 
@@ -748,7 +749,10 @@ export default class SmartComposerPlugin extends Plugin {
       return false
     }
 
-    const insertionText = text
+    const insertionText = escapeMarkdownSpecialChars(text, {
+      escapeAngleBrackets: true,
+      preserveCodeBlocks: true,
+    })
     this.clearInlineSuggestion()
     editor.replaceRange(insertionText, startPos, startPos)
 
