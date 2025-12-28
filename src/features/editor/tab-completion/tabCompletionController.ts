@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
+import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import {
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
@@ -588,7 +589,10 @@ export class TabCompletionController {
     }
 
     const cursor = editor.getCursor()
-    const suggestionText = suggestion.text
+    const suggestionText = escapeMarkdownSpecialChars(suggestion.text, {
+      escapeAngleBrackets: true,
+      preserveCodeBlocks: true,
+    })
     this.deps.clearInlineSuggestion()
     editor.replaceRange(suggestionText, cursor, cursor)
 
