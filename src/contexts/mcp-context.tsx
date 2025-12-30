@@ -1,10 +1,4 @@
-import {
-  PropsWithChildren,
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-} from 'react'
+import { PropsWithChildren, createContext, useContext, useMemo } from 'react'
 
 import { McpManager } from '../core/mcp/mcpManager'
 
@@ -18,10 +12,6 @@ export function McpProvider({
   getMcpManager,
   children,
 }: PropsWithChildren<{ getMcpManager: () => Promise<McpManager> }>) {
-  useEffect(() => {
-    void getMcpManager()
-  }, [getMcpManager])
-
   const value = useMemo(() => {
     return { getMcpManager }
   }, [getMcpManager])
