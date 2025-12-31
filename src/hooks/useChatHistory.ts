@@ -179,7 +179,15 @@ export function useChatHistory(): UseChatHistory {
 
   const generateConversationTitle = useCallback(
     async (id: string, messages: ChatMessage[]): Promise<void> => {
-      const conversation = await chatManager.findById(id)
+      // 等待对话存在（最多等待 2 秒，每 200ms 检查一次）
+      // 这是为了处理 debounce 导致的保存延迟
+      let conversation = null
+      for (let i = 0; i < 10; i++) {
+        conversation = await chatManager.findById(id)
+        if (conversation) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+
       if (!conversation) {
         return
       }
@@ -189,29 +197,31 @@ export function useChatHistory(): UseChatHistory {
         return
       }
 
-      // 检查是否有用户消息和助手消息
+      // 只需要用户消息即可生成标题
       const firstUserMessage = messages.find((v) => v.role === 'user')
-      const firstAssistantMessage = messages.find((v) => v.role === 'assistant')
-
-      // 只有在有用户消息和助手消息时才进行命名
-      if (!firstUserMessage || !firstAssistantMessage) {
+      if (!firstUserMessage) {
         return
       }
 
-      // 使用用户的第一条消息和助手的第一条回答来生成标题
+      // 使用用户的第一条消息来生成标题
       const userText = firstUserMessage.content
         ? editorStateToPlainText(firstUserMessage.content)
         : ''
-      const assistantText = firstAssistantMessage.content || ''
 
       if (!userText || userText.trim().length === 0) {
         return
       }
 
-      void (async () => {
+      // 标题生成核心逻辑，支持重试
+      const attemptGenerateTitle = async (
+        retryCount: number = 0,
+      ): Promise<string | null> => {
+        const MAX_RETRIES = 2
+        const TIMEOUT_MS = 10000 // 10秒超时
+
         try {
           const controller = new AbortController()
-          const timer = setTimeout(() => controller.abort(), 3000)
+          const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
           const { providerClient, model } = getChatModelClient({
             settings,
@@ -226,7 +236,6 @@ export function useChatHistory(): UseChatHistory {
           const systemPrompt =
             customizedPrompt.length > 0 ? customizedPrompt : defaultTitlePrompt
 
-          // 使用用户消息和助手回答来生成标题，这样能更好地理解对话内容
           const response = await providerClient.generateResponse(
             model,
             {
@@ -234,7 +243,6 @@ export function useChatHistory(): UseChatHistory {
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userText },
-                { role: 'assistant', content: assistantText },
               ],
               stream: false,
             },
@@ -246,13 +254,28 @@ export function useChatHistory(): UseChatHistory {
           const nextTitle = (generated || '')
             .trim()
             .replace(/^["'""'']+|["'""'']+$/g, '')
-          if (!nextTitle) return
-          const nextSafeTitle = nextTitle.substring(0, 10)
 
+          return nextTitle || null
+        } catch {
+          // 如果还有重试次数，则重试
+          if (retryCount < MAX_RETRIES) {
+            return attemptGenerateTitle(retryCount + 1)
+          }
+          return null
+        }
+      }
+
+      void (async () => {
+        const generatedTitle = await attemptGenerateTitle()
+        if (!generatedTitle) return
+
+        const nextSafeTitle = generatedTitle.substring(0, 10)
+
+        // 再次检查标题是否仍为"新消息"，避免竞态条件
+        const currentConversation = await chatManager.findById(id)
+        if (currentConversation && currentConversation.title === '新消息') {
           await chatManager.updateChat(id, { title: nextSafeTitle })
           await fetchChatList()
-        } catch {
-          // Ignore failures/timeouts; keep fallback title
         }
       })()
     },
