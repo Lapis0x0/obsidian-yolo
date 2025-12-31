@@ -7,6 +7,7 @@ type ObsidianTextInputProps = {
   value: string
   placeholder?: string
   onChange: (value: string) => void
+  onBlur?: (value: string) => void
   type?: 'text' | 'number'
 }
 
@@ -14,12 +15,14 @@ export function ObsidianTextInput({
   value,
   placeholder,
   onChange,
+  onBlur,
   type,
 }: ObsidianTextInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { setting } = useObsidianSetting()
   const [textComponent, setTextComponent] = useState<TextComponent | null>(null)
   const onChangeRef = useRef(onChange)
+  const onBlurRef = useRef(onBlur)
 
   useEffect(() => {
     if (setting) {
@@ -47,8 +50,23 @@ export function ObsidianTextInput({
   }, [onChange])
 
   useEffect(() => {
+    onBlurRef.current = onBlur
+  }, [onBlur])
+
+  useEffect(() => {
     if (!textComponent) return
     textComponent.onChange((v) => onChangeRef.current(v))
+  }, [textComponent])
+
+  useEffect(() => {
+    if (!textComponent || !onBlurRef.current) return
+    const handler = () => {
+      onBlurRef.current?.(textComponent.getValue())
+    }
+    textComponent.inputEl.addEventListener('blur', handler)
+    return () => {
+      textComponent.inputEl.removeEventListener('blur', handler)
+    }
   }, [textComponent])
 
   useEffect(() => {

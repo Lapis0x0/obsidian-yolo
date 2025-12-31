@@ -521,9 +521,8 @@ export class GeminiProvider extends BaseLLMProvider<
   private static toNonStreamingRequest(
     request: LLMRequestStreaming,
   ): LLMRequestNonStreaming {
-    const { stream: _stream, ...rest } = request
     return {
-      ...rest,
+      ...request,
       stream: false,
     }
   }

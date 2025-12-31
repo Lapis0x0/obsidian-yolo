@@ -1,5 +1,5 @@
 import { App } from 'obsidian'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -69,6 +69,32 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
       }
   const tabCompletionConstraints =
     settings.continuationOptions.tabCompletionConstraints ?? ''
+  const [tabNumberInputs, setTabNumberInputs] = useState({
+    maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
+    triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+    contextRange: String(tabCompletionOptions.contextRange),
+    minContextLength: String(tabCompletionOptions.minContextLength),
+    temperature: String(tabCompletionOptions.temperature),
+    requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+  })
+
+  useEffect(() => {
+    setTabNumberInputs({
+      maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
+      triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+      contextRange: String(tabCompletionOptions.contextRange),
+      minContextLength: String(tabCompletionOptions.minContextLength),
+      temperature: String(tabCompletionOptions.temperature),
+      requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+    })
+  }, [
+    tabCompletionOptions.maxSuggestionLength,
+    tabCompletionOptions.triggerDelayMs,
+    tabCompletionOptions.contextRange,
+    tabCompletionOptions.minContextLength,
+    tabCompletionOptions.temperature,
+    tabCompletionOptions.requestTimeoutMs,
+  ])
   const updateTabCompletionOptions = (
     updates: Partial<typeof tabCompletionOptions>,
   ) => {
@@ -129,15 +155,27 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
     updateTabCompletionTriggers(next)
   }
 
-  const parseNumberOrDefault = (value: string, fallback: number) => {
-    if (value.trim().length === 0) return fallback
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : fallback
+  const parseIntegerInput = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (!/^-?\d+$/.test(trimmed)) return null
+    return parseInt(trimmed, 10)
   }
 
-  const parseIntegerOption = (value: string, fallback: number) => {
-    const parsed = parseNumberOrDefault(value, fallback)
-    return Math.round(parsed)
+  const parseFloatInput = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (!/^-?\d*(?:\.\d*)?$/.test(trimmed)) return null
+    if (
+      trimmed === '-' ||
+      trimmed === '.' ||
+      trimmed === '-.' ||
+      trimmed.endsWith('.')
+    ) {
+      return null
+    }
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
   }
 
   return (
@@ -335,18 +373,29 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
           >
             <ObsidianTextInput
               type="number"
-              value={String(tabCompletionOptions.maxSuggestionLength)}
+              value={tabNumberInputs.maxSuggestionLength}
               onChange={(value) => {
-                const next = Math.max(
-                  20,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.maxSuggestionLength,
-                  ),
+                setTabNumberInputs((prev) => ({
+                  ...prev,
+                  maxSuggestionLength: value,
+                }))
+                const parsed = parseIntegerInput(value)
+                if (parsed === null) return
+                const next = Math.max(20, parsed)
+                updateTabCompletionOptions({ maxSuggestionLength: next })
+              }}
+              onBlur={() => {
+                const parsed = parseIntegerInput(
+                  tabNumberInputs.maxSuggestionLength,
                 )
-                updateTabCompletionOptions({
-                  maxSuggestionLength: next,
-                })
+                if (parsed === null) {
+                  setTabNumberInputs((prev) => ({
+                    ...prev,
+                    maxSuggestionLength: String(
+                      tabCompletionOptions.maxSuggestionLength,
+                    ),
+                  }))
+                }
               }}
             />
           </ObsidianSetting>
@@ -450,18 +499,25 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
           >
             <ObsidianTextInput
               type="number"
-              value={String(tabCompletionOptions.triggerDelayMs)}
+              value={tabNumberInputs.triggerDelayMs}
               onChange={(value) => {
-                const next = Math.max(
-                  200,
-                  parseIntegerOption(
-                    value,
-                    DEFAULT_TAB_COMPLETION_OPTIONS.triggerDelayMs,
-                  ),
-                )
-                updateTabCompletionOptions({
-                  triggerDelayMs: next,
-                })
+                setTabNumberInputs((prev) => ({
+                  ...prev,
+                  triggerDelayMs: value,
+                }))
+                const parsed = parseIntegerInput(value)
+                if (parsed === null) return
+                const next = Math.max(200, parsed)
+                updateTabCompletionOptions({ triggerDelayMs: next })
+              }}
+              onBlur={() => {
+                const parsed = parseIntegerInput(tabNumberInputs.triggerDelayMs)
+                if (parsed === null) {
+                  setTabNumberInputs((prev) => ({
+                    ...prev,
+                    triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+                  }))
+                }
               }}
             />
           </ObsidianSetting>
@@ -501,18 +557,27 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               >
                 <ObsidianTextInput
                   type="number"
-                  value={String(tabCompletionOptions.contextRange)}
+                  value={tabNumberInputs.contextRange}
                   onChange={(value) => {
-                    const next = Math.max(
-                      500,
-                      parseIntegerOption(
-                        value,
-                        DEFAULT_TAB_COMPLETION_OPTIONS.contextRange,
-                      ),
+                    setTabNumberInputs((prev) => ({
+                      ...prev,
+                      contextRange: value,
+                    }))
+                    const parsed = parseIntegerInput(value)
+                    if (parsed === null) return
+                    const next = Math.max(500, parsed)
+                    updateTabCompletionOptions({ contextRange: next })
+                  }}
+                  onBlur={() => {
+                    const parsed = parseIntegerInput(
+                      tabNumberInputs.contextRange,
                     )
-                    updateTabCompletionOptions({
-                      contextRange: next,
-                    })
+                    if (parsed === null) {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        contextRange: String(tabCompletionOptions.contextRange),
+                      }))
+                    }
                   }}
                 />
               </ObsidianSetting>
@@ -525,18 +590,29 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               >
                 <ObsidianTextInput
                   type="number"
-                  value={String(tabCompletionOptions.minContextLength)}
+                  value={tabNumberInputs.minContextLength}
                   onChange={(value) => {
-                    const next = Math.max(
-                      0,
-                      parseIntegerOption(
-                        value,
-                        DEFAULT_TAB_COMPLETION_OPTIONS.minContextLength,
-                      ),
+                    setTabNumberInputs((prev) => ({
+                      ...prev,
+                      minContextLength: value,
+                    }))
+                    const parsed = parseIntegerInput(value)
+                    if (parsed === null) return
+                    const next = Math.max(0, parsed)
+                    updateTabCompletionOptions({ minContextLength: next })
+                  }}
+                  onBlur={() => {
+                    const parsed = parseIntegerInput(
+                      tabNumberInputs.minContextLength,
                     )
-                    updateTabCompletionOptions({
-                      minContextLength: next,
-                    })
+                    if (parsed === null) {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        minContextLength: String(
+                          tabCompletionOptions.minContextLength,
+                        ),
+                      }))
+                    }
                   }}
                 />
               </ObsidianSetting>
@@ -547,15 +623,26 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               >
                 <ObsidianTextInput
                   type="number"
-                  value={String(tabCompletionOptions.temperature)}
+                  value={tabNumberInputs.temperature}
                   onChange={(value) => {
-                    const next = parseNumberOrDefault(
-                      value,
-                      DEFAULT_TAB_COMPLETION_OPTIONS.temperature,
-                    )
+                    setTabNumberInputs((prev) => ({
+                      ...prev,
+                      temperature: value,
+                    }))
+                    const parsed = parseFloatInput(value)
+                    if (parsed === null) return
                     updateTabCompletionOptions({
-                      temperature: Math.min(Math.max(next, 0), 2),
+                      temperature: Math.min(Math.max(parsed, 0), 2),
                     })
+                  }}
+                  onBlur={() => {
+                    const parsed = parseFloatInput(tabNumberInputs.temperature)
+                    if (parsed === null) {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        temperature: String(tabCompletionOptions.temperature),
+                      }))
+                    }
                   }}
                 />
               </ObsidianSetting>
@@ -568,18 +655,29 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               >
                 <ObsidianTextInput
                   type="number"
-                  value={String(tabCompletionOptions.requestTimeoutMs)}
+                  value={tabNumberInputs.requestTimeoutMs}
                   onChange={(value) => {
-                    const next = Math.max(
-                      1000,
-                      parseIntegerOption(
-                        value,
-                        DEFAULT_TAB_COMPLETION_OPTIONS.requestTimeoutMs,
-                      ),
+                    setTabNumberInputs((prev) => ({
+                      ...prev,
+                      requestTimeoutMs: value,
+                    }))
+                    const parsed = parseIntegerInput(value)
+                    if (parsed === null) return
+                    const next = Math.max(1000, parsed)
+                    updateTabCompletionOptions({ requestTimeoutMs: next })
+                  }}
+                  onBlur={() => {
+                    const parsed = parseIntegerInput(
+                      tabNumberInputs.requestTimeoutMs,
                     )
-                    updateTabCompletionOptions({
-                      requestTimeoutMs: next,
-                    })
+                    if (parsed === null) {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        requestTimeoutMs: String(
+                          tabCompletionOptions.requestTimeoutMs,
+                        ),
+                      }))
+                    }
                   }}
                 />
               </ObsidianSetting>

@@ -14,7 +14,7 @@ describe('escapeMarkdownSpecialChars', () => {
     const input = 'For example, use winget search <keyword> to find packages.'
     const result = escapeMarkdownSpecialChars(input)
     expect(result).toBe(
-      'For example, use winget search \\<keyword\\> to find packages.'
+      'For example, use winget search \\<keyword\\> to find packages.',
     )
   })
 
@@ -38,7 +38,7 @@ describe('escapeMarkdownSpecialChars', () => {
       preserveCodeBlocks: true,
     })
     expect(result).toBe(
-      'Example:\n```\n<tag>content</tag>\n```\nUse \\<value\\> outside'
+      'Example:\n```\n<tag>content</tag>\n```\nUse \\<value\\> outside',
     )
   })
 
@@ -81,7 +81,7 @@ describe('escapeMarkdownSpecialChars', () => {
       preserveCodeBlocks: true,
     })
     expect(result).toBe(
-      'Use `<inline>` code and:\n```js\nconst x = <T>()\n```\nThen \\<value\\>'
+      'Use `<inline>` code and:\n```js\nconst x = <T>()\n```\nThen \\<value\\>',
     )
   })
 })

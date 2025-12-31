@@ -487,7 +487,7 @@ export const en: TranslationKeys = {
         'Abort a prefix completion request if it takes longer than this time.',
       tabCompletionConstraints: 'Tab completion constraints',
       tabCompletionConstraintsDesc:
-        'Optional rules inserted into the tab completion prompt (for example, "write in Chinese" or "match a specific style").',
+        'Optional rules inserted into the tab completion prompt (for example, "write in another language" or "match a specific style").',
       tabCompletionTriggersTitle: 'Triggers',
       tabCompletionTriggersDesc:
         'Tab completion is triggered only when one of the enabled rules matches.',
@@ -501,7 +501,7 @@ export const en: TranslationKeys = {
       tabCompletionTriggerRemove: 'Remove',
     },
     etc: {
-      title: 'Etc',
+      title: 'Other',
       resetSettings: 'Reset settings',
       resetSettingsDesc: 'Reset all settings to default values',
       resetSettingsConfirm:

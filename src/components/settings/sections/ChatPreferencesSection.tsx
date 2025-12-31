@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -7,6 +9,22 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 export function ChatPreferencesSection() {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
+  const [maxAutoIterationsInput, setMaxAutoIterationsInput] = useState(
+    settings.chatOptions.maxAutoIterations.toString(),
+  )
+  const [maxContextMessagesInput, setMaxContextMessagesInput] = useState(
+    (settings.chatOptions.maxContextMessages ?? 32).toString(),
+  )
+
+  useEffect(() => {
+    setMaxAutoIterationsInput(settings.chatOptions.maxAutoIterations.toString())
+  }, [settings.chatOptions.maxAutoIterations])
+
+  useEffect(() => {
+    setMaxContextMessagesInput(
+      (settings.chatOptions.maxContextMessages ?? 32).toString(),
+    )
+  }, [settings.chatOptions.maxContextMessages])
 
   const updateChatOptions = (
     patch: Partial<typeof settings.chatOptions>,
@@ -25,6 +43,13 @@ export function ChatPreferencesSection() {
         console.error(`Failed to update chat options: ${context}`, error)
       }
     })()
+  }
+
+  const parseIntegerInput = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (!/^\d+$/.test(trimmed)) return null
+    return parseInt(trimmed, 10)
   }
 
   return (
@@ -72,18 +97,25 @@ export function ChatPreferencesSection() {
         desc={t('settings.chatPreferences.maxAutoIterationsDesc')}
       >
         <ObsidianTextInput
-          value={settings.chatOptions.maxAutoIterations.toString()}
+          value={maxAutoIterationsInput}
           onChange={(value) => {
-            const parsedValue = parseInt(value)
-            if (isNaN(parsedValue) || parsedValue < 1) {
-              return
-            }
+            setMaxAutoIterationsInput(value)
+            const parsedValue = parseIntegerInput(value)
+            if (parsedValue === null || parsedValue < 1) return
             updateChatOptions(
               {
                 maxAutoIterations: parsedValue,
               },
               'maxAutoIterations',
             )
+          }}
+          onBlur={() => {
+            const parsedValue = parseIntegerInput(maxAutoIterationsInput)
+            if (parsedValue === null || parsedValue < 1) {
+              setMaxAutoIterationsInput(
+                settings.chatOptions.maxAutoIterations.toString(),
+              )
+            }
           }}
         />
       </ObsidianSetting>
@@ -93,18 +125,25 @@ export function ChatPreferencesSection() {
         desc={t('settings.chatPreferences.maxContextMessagesDesc')}
       >
         <ObsidianTextInput
-          value={(settings.chatOptions.maxContextMessages ?? 32).toString()}
+          value={maxContextMessagesInput}
           onChange={(value) => {
-            const parsedValue = parseInt(value)
-            if (isNaN(parsedValue) || parsedValue < 0) {
-              return
-            }
+            setMaxContextMessagesInput(value)
+            const parsedValue = parseIntegerInput(value)
+            if (parsedValue === null || parsedValue < 0) return
             updateChatOptions(
               {
                 maxContextMessages: parsedValue,
               },
               'maxContextMessages',
             )
+          }}
+          onBlur={() => {
+            const parsedValue = parseIntegerInput(maxContextMessagesInput)
+            if (parsedValue === null || parsedValue < 0) {
+              setMaxContextMessagesInput(
+                (settings.chatOptions.maxContextMessages ?? 32).toString(),
+              )
+            }
           }}
         />
       </ObsidianSetting>

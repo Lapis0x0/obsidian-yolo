@@ -211,8 +211,8 @@ export class VectorRepository {
     const similaritySearchResults = await this.db
       .select({
         ...(() => {
-          const { embedding: _embedding, ...rest } =
-            getTableColumns(embeddingTable)
+          const { embedding, ...rest } = getTableColumns(embeddingTable)
+          void embedding
           return rest
         })(),
         similarity,

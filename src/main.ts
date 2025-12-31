@@ -49,13 +49,13 @@ import { SmartComposerSettingTab } from './settings/SettingTab'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import { LLMRequestBase, RequestMessage } from './types/llm/request'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
+import { escapeMarkdownSpecialChars } from './utils/markdown-escape'
 import {
   getMentionableBlockData,
   getNestedFiles,
   readMultipleTFiles,
   readTFileContent,
 } from './utils/obsidian'
-import { escapeMarkdownSpecialChars } from './utils/markdown-escape'
 
 const inlineSuggestionExtensionViews = new WeakSet<EditorView>()
 

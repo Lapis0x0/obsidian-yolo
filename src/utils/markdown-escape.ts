@@ -13,7 +13,7 @@ export function escapeMarkdownSpecialChars(
     escapeAngleBrackets?: boolean
     escapeBackslashes?: boolean
     preserveCodeBlocks?: boolean
-  }
+  },
 ): string {
   const {
     escapeAngleBrackets = true,
@@ -60,7 +60,7 @@ function escapeText(
   options: {
     escapeAngleBrackets: boolean
     escapeBackslashes: boolean
-  }
+  },
 ): string {
   let result = text
 

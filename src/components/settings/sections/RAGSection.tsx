@@ -81,6 +81,43 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const isRagEnabled = settings.ragOptions.enabled ?? true
   const effectiveProgress = indexProgress ?? persistedProgress
   const ragUpdateError = 'Failed to update RAG settings.'
+  const [chunkSizeInput, setChunkSizeInput] = useState(
+    String(settings.ragOptions.chunkSize),
+  )
+  const [thresholdTokensInput, setThresholdTokensInput] = useState(
+    String(settings.ragOptions.thresholdTokens),
+  )
+  const [minSimilarityInput, setMinSimilarityInput] = useState(
+    String(settings.ragOptions.minSimilarity),
+  )
+  const [limitInput, setLimitInput] = useState(
+    String(settings.ragOptions.limit),
+  )
+  const [autoUpdateIntervalInput, setAutoUpdateIntervalInput] = useState(
+    String(settings.ragOptions.autoUpdateIntervalHours ?? 24),
+  )
+
+  useEffect(() => {
+    setChunkSizeInput(String(settings.ragOptions.chunkSize))
+  }, [settings.ragOptions.chunkSize])
+
+  useEffect(() => {
+    setThresholdTokensInput(String(settings.ragOptions.thresholdTokens))
+  }, [settings.ragOptions.thresholdTokens])
+
+  useEffect(() => {
+    setMinSimilarityInput(String(settings.ragOptions.minSimilarity))
+  }, [settings.ragOptions.minSimilarity])
+
+  useEffect(() => {
+    setLimitInput(String(settings.ragOptions.limit))
+  }, [settings.ragOptions.limit])
+
+  useEffect(() => {
+    setAutoUpdateIntervalInput(
+      String(settings.ragOptions.autoUpdateIntervalHours ?? 24),
+    )
+  }, [settings.ragOptions.autoUpdateIntervalHours])
 
   const applySettingsUpdate = useCallback(
     (nextSettings: typeof settings, errorMessage: string = ragUpdateError) => {
@@ -95,6 +132,22 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     },
     [ragUpdateError, setSettings],
   )
+
+  const parseIntegerInput = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (!/^\d+$/.test(trimmed)) return null
+    return parseInt(trimmed, 10)
+  }
+
+  const parseFloatInput = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (!/^\d*(?:\.\d*)?$/.test(trimmed)) return null
+    if (trimmed === '.' || trimmed.endsWith('.')) return null
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -391,11 +444,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             desc={t('settings.rag.chunkSizeDesc')}
           >
             <ObsidianTextInput
-              value={String(settings.ragOptions.chunkSize)}
+              value={chunkSizeInput}
               placeholder="1000"
               onChange={(value) => {
-                const chunkSize = parseInt(value, 10)
-                if (!isNaN(chunkSize)) {
+                setChunkSizeInput(value)
+                const chunkSize = parseIntegerInput(value)
+                if (chunkSize !== null) {
                   applySettingsUpdate({
                     ...settings,
                     ragOptions: {
@@ -403,6 +457,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       chunkSize,
                     },
                   })
+                }
+              }}
+              onBlur={() => {
+                const chunkSize = parseIntegerInput(chunkSizeInput)
+                if (chunkSize === null) {
+                  setChunkSizeInput(String(settings.ragOptions.chunkSize))
                 }
               }}
             />
@@ -413,11 +473,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             desc={t('settings.rag.thresholdTokensDesc')}
           >
             <ObsidianTextInput
-              value={String(settings.ragOptions.thresholdTokens)}
+              value={thresholdTokensInput}
               placeholder="8192"
               onChange={(value) => {
-                const thresholdTokens = parseInt(value, 10)
-                if (!isNaN(thresholdTokens)) {
+                setThresholdTokensInput(value)
+                const thresholdTokens = parseIntegerInput(value)
+                if (thresholdTokens !== null) {
                   applySettingsUpdate({
                     ...settings,
                     ragOptions: {
@@ -425,6 +486,14 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       thresholdTokens,
                     },
                   })
+                }
+              }}
+              onBlur={() => {
+                const thresholdTokens = parseIntegerInput(thresholdTokensInput)
+                if (thresholdTokens === null) {
+                  setThresholdTokensInput(
+                    String(settings.ragOptions.thresholdTokens),
+                  )
                 }
               }}
             />
@@ -435,17 +504,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             desc={t('settings.rag.minSimilarityDesc')}
           >
             <ObsidianTextInput
-              value={String(settings.ragOptions.minSimilarity)}
+              value={minSimilarityInput}
               placeholder="0.0"
               onChange={(value) => {
-                // Allow decimal point and numbers only
-                if (!/^[0-9.]*$/.test(value)) return
-
-                // Ignore typing decimal point to prevent interference with the input
-                if (value === '.' || value.endsWith('.')) return
-
-                const minSimilarity = parseFloat(value)
-                if (!isNaN(minSimilarity)) {
+                setMinSimilarityInput(value)
+                const minSimilarity = parseFloatInput(value)
+                if (minSimilarity !== null) {
                   applySettingsUpdate({
                     ...settings,
                     ragOptions: {
@@ -453,6 +517,14 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       minSimilarity,
                     },
                   })
+                }
+              }}
+              onBlur={() => {
+                const minSimilarity = parseFloatInput(minSimilarityInput)
+                if (minSimilarity === null) {
+                  setMinSimilarityInput(
+                    String(settings.ragOptions.minSimilarity),
+                  )
                 }
               }}
             />
@@ -463,11 +535,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             desc={t('settings.rag.limitDesc')}
           >
             <ObsidianTextInput
-              value={String(settings.ragOptions.limit)}
+              value={limitInput}
               placeholder="10"
               onChange={(value) => {
-                const limit = parseInt(value, 10)
-                if (!isNaN(limit)) {
+                setLimitInput(value)
+                const limit = parseIntegerInput(value)
+                if (limit !== null) {
                   applySettingsUpdate({
                     ...settings,
                     ragOptions: {
@@ -475,6 +548,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       limit,
                     },
                   })
+                }
+              }}
+              onBlur={() => {
+                const limit = parseIntegerInput(limitInput)
+                if (limit === null) {
+                  setLimitInput(String(settings.ragOptions.limit))
                 }
               }}
             />
@@ -509,11 +588,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             )}
           >
             <ObsidianTextInput
-              value={String(settings.ragOptions.autoUpdateIntervalHours ?? 24)}
+              value={autoUpdateIntervalInput}
               placeholder="24"
               onChange={(v) => {
-                const n = parseInt(v, 10)
-                if (!isNaN(n) && n > 0) {
+                setAutoUpdateIntervalInput(v)
+                const n = parseIntegerInput(v)
+                if (n !== null && n > 0) {
                   applySettingsUpdate({
                     ...settings,
                     ragOptions: {
@@ -521,6 +601,14 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       autoUpdateIntervalHours: n,
                     },
                   })
+                }
+              }}
+              onBlur={() => {
+                const n = parseIntegerInput(autoUpdateIntervalInput)
+                if (n === null || n <= 0) {
+                  setAutoUpdateIntervalInput(
+                    String(settings.ragOptions.autoUpdateIntervalHours ?? 24),
+                  )
                 }
               }}
             />

@@ -3,7 +3,6 @@ import { EditorView } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
-import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import {
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
@@ -21,6 +20,7 @@ import type {
   RequestMessage,
 } from '../../../types/llm/request'
 import type { LLMResponseStreaming } from '../../../types/llm/response'
+import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
 
 type TabCompletionSuggestion = {
