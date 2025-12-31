@@ -23,9 +23,9 @@ export const RECOMMENDED_MODELS_FOR_EMBEDDING = [
 ]
 
 export const DEFAULT_CHAT_TITLE_PROMPT = {
-  en: "You are a title generator. Generate a concise conversation title (max 10 chars) from the user's first message; remove extra punctuation/quotes; avoid generic or sensitive content. Output the title only.",
-  zh: '你是一个标题生成器。请基于用户的第一条消息生成一个简洁的会话标题，最多 10 个字符；去除多余标点与引号；避免过于泛化或敏感内容。直接输出标题本身。',
-  it: "Sei un generatore di titoli. Genera un titolo di conversazione conciso (max 10 caratteri) dal primo messaggio dell'utente; rimuovi punteggiatura/virgolette extra; evita contenuti generici o sensibili. Restituisci solo il titolo.",
+  en: "You are a title generator. Generate a concise conversation title from the user's first message. Output the title only.",
+  zh: '你是一个标题生成器。请基于用户的第一条消息生成一个简洁的会话标题，直接输出标题本身。',
+  it: "Sei un generatore di titoli. Genera un titolo di conversazione conciso dal primo messaggio dell'utente. Restituisci solo il titolo.",
 } as const
 
 export const PROVIDER_TYPES_INFO = {
