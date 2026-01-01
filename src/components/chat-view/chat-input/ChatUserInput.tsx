@@ -31,7 +31,6 @@ import {
   getMentionableKey,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { fileToMentionableImage } from '../../../utils/llm/image'
 import { readTFileContent } from '../../../utils/obsidian'
 import { ObsidianMarkdown } from '../ObsidianMarkdown'
 
