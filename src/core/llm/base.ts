@@ -48,6 +48,9 @@ export abstract class BaseLLMProvider<P extends LLMProvider> {
       const key = typeof entry?.key === 'string' ? entry.key.trim() : ''
       if (!key) continue
       const rawValue = typeof entry?.value === 'string' ? entry.value : ''
+      if (rawValue.trim().length === 0) {
+        continue
+      }
       next[key] = parseCustomParameterValue(rawValue)
     }
     return next as T

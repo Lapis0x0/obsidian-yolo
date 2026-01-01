@@ -147,68 +147,6 @@ export function ChatPreferencesSection() {
           }}
         />
       </ObsidianSetting>
-
-      <ObsidianSetting
-        name={t('settings.chatPreferences.defaultTemperature')}
-        desc={t('settings.chatPreferences.defaultTemperatureDesc')}
-      >
-        <ObsidianTextInput
-          value={settings.chatOptions.defaultTemperature?.toString() ?? ''}
-          placeholder={t('common.default')}
-          onChange={(value) => {
-            if (value.trim() === '') {
-              updateChatOptions(
-                {
-                  defaultTemperature: undefined,
-                },
-                'defaultTemperature (reset)',
-              )
-              return
-            }
-            const parsedValue = parseFloat(value)
-            if (isNaN(parsedValue) || parsedValue < 0 || parsedValue > 2) {
-              return
-            }
-            updateChatOptions(
-              {
-                defaultTemperature: parsedValue,
-              },
-              'defaultTemperature',
-            )
-          }}
-        />
-      </ObsidianSetting>
-
-      <ObsidianSetting
-        name={t('settings.chatPreferences.defaultTopP')}
-        desc={t('settings.chatPreferences.defaultTopPDesc')}
-      >
-        <ObsidianTextInput
-          value={settings.chatOptions.defaultTopP?.toString() ?? ''}
-          placeholder={t('common.default')}
-          onChange={(value) => {
-            if (value.trim() === '') {
-              updateChatOptions(
-                {
-                  defaultTopP: undefined,
-                },
-                'defaultTopP (reset)',
-              )
-              return
-            }
-            const parsedValue = parseFloat(value)
-            if (isNaN(parsedValue) || parsedValue < 0 || parsedValue > 1) {
-              return
-            }
-            updateChatOptions(
-              {
-                defaultTopP: parsedValue,
-              },
-              'defaultTopP',
-            )
-          }}
-        />
-      </ObsidianSetting>
     </div>
   )
 }

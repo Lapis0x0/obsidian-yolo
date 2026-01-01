@@ -2528,10 +2528,18 @@ button.smtcmp-chat-input-model-select {
   }
 }
 
-.smtcmp-settings-kv-entry .setting-item-control {
+.smtcmp-settings-kv-entry.setting-item .setting-item-info {
+  display: none;
+}
+
+.smtcmp-settings-kv-entry.setting-item .setting-item-control {
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-4-1);
+  justify-content: flex-start;
+  align-items: flex-start;
+  margin-left: 0;
+  width: 100%;
 }
 
 .smtcmp-settings-kv-entry .setting-item-control input {

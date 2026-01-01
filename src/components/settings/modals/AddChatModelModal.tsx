@@ -166,9 +166,13 @@ function AddChatModelModalComponent({
   // Tool type (only meaningful for Gemini provider)
   const [toolType, setToolType] =
     useState<(typeof GEMINI_TOOL_TYPES)[number]>('none')
+  const defaultSamplingCustomParameters: { key: string; value: string }[] = [
+    { key: 'temperature', value: '0.8' },
+    { key: 'top_p', value: '' },
+  ]
   const [customParameters, setCustomParameters] = useState<
     { key: string; value: string }[]
-  >([])
+  >([...defaultSamplingCustomParameters])
 
   useEffect(() => {
     const fetchModels = async () => {

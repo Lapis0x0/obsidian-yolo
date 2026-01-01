@@ -35,6 +35,7 @@ export const en: TranslationKeys = {
     copy: 'Copy',
     paste: 'Paste',
     default: 'Default',
+    modelDefault: 'Model default',
     on: 'On',
     off: 'Off',
     noResults: 'No matches found',
@@ -194,12 +195,6 @@ export const en: TranslationKeys = {
       maxContextMessages: 'Max context messages',
       maxContextMessagesDesc:
         'Number of previous chat messages to include in each request (0 to include none); 32 is recommended (about 16 user-assistant turns).',
-      defaultTemperature: 'Default temperature',
-      defaultTemperatureDesc:
-        'Default temperature for new conversations (0.0-2.0); leave empty to use the model default.',
-      defaultTopP: 'Default top p',
-      defaultTopPDesc:
-        'Default top p for new conversations (0.0-1.0); leave empty to use the model default.',
     },
     assistants: {
       title: 'Assistants',

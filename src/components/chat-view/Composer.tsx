@@ -156,8 +156,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     : ''
                 }
                 placeholder={
-                  settings.chatOptions.defaultTemperature?.toString() ??
-                  t('common.default', '默认')
+                  t('common.modelDefault', '模型默认')
                 }
                 onChange={(event) => {
                   const value = event.currentTarget.value
@@ -191,8 +190,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                   typeof continuationTopP === 'number' ? continuationTopP : ''
                 }
                 placeholder={
-                  settings.chatOptions.defaultTopP?.toString() ??
-                  t('common.default', '默认')
+                  t('common.modelDefault', '模型默认')
                 }
                 onChange={(event) => {
                   const value = event.currentTarget.value

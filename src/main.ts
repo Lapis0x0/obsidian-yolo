@@ -480,34 +480,6 @@ export default class SmartComposerPlugin extends Plugin {
     return undefined
   }
 
-  private resolveSamplingParams(overrides?: ConversationOverrideSettings): {
-    temperature?: number
-    topP?: number
-    stream: boolean
-  } {
-    const defaultTemperature = this.settings.chatOptions.defaultTemperature
-    const defaultTopP = this.settings.chatOptions.defaultTopP
-
-    const temperature =
-      typeof overrides?.temperature === 'number'
-        ? overrides.temperature
-        : typeof defaultTemperature === 'number'
-          ? defaultTemperature
-          : undefined
-
-    const topP =
-      typeof overrides?.top_p === 'number'
-        ? overrides.top_p
-        : typeof defaultTopP === 'number'
-          ? defaultTopP
-          : undefined
-
-    const stream =
-      typeof overrides?.stream === 'boolean' ? overrides.stream : true
-
-    return { temperature, topP, stream }
-  }
-
   private resolveContinuationParams(overrides?: ConversationOverrideSettings): {
     temperature?: number
     topP?: number
@@ -515,16 +487,13 @@ export default class SmartComposerPlugin extends Plugin {
     useVaultSearch: boolean
   } {
     const continuation = this.settings.continuationOptions ?? {}
-    const chatDefaults = this.settings.chatOptions ?? {}
 
     const temperature =
       typeof continuation.temperature === 'number'
         ? continuation.temperature
         : typeof overrides?.temperature === 'number'
           ? overrides.temperature
-          : typeof chatDefaults.defaultTemperature === 'number'
-            ? chatDefaults.defaultTemperature
-            : undefined
+          : undefined
 
     const overrideTopP = overrides?.top_p
     const topP =
@@ -532,9 +501,7 @@ export default class SmartComposerPlugin extends Plugin {
         ? continuation.topP
         : typeof overrideTopP === 'number'
           ? overrideTopP
-          : typeof chatDefaults.defaultTopP === 'number'
-            ? chatDefaults.defaultTopP
-            : undefined
+          : undefined
 
     const stream =
       typeof continuation.stream === 'boolean'

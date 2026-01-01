@@ -56,6 +56,22 @@ function EditChatModelModalComponent({
 }: EditChatModelModalComponentProps & { onClose: () => void }) {
   const { t } = useLanguage()
   const editableModel: EditableChatModel = model
+  const defaultSamplingCustomParameters: { key: string; value: string }[] = [
+    { key: 'temperature', value: '0.8' },
+    { key: 'top_p', value: '' },
+  ]
+  const withSamplingDefaults = (
+    entries?: { key: string; value: string }[],
+  ) => {
+    const base = Array.isArray(entries) ? entries : []
+    const existingKeys = new Set(
+      base.map((entry) => entry.key.trim().toLowerCase()),
+    )
+    const defaultsToAdd = defaultSamplingCustomParameters.filter(
+      (entry) => !existingKeys.has(entry.key),
+    )
+    return [...defaultsToAdd, ...base]
+  }
 
   const normalizeReasoningType = (
     value: string,
@@ -133,9 +149,7 @@ function EditChatModelModalComponent({
   const [customParameters, setCustomParameters] = useState<
     { key: string; value: string }[]
   >(() =>
-    Array.isArray(editableModel.customParameters)
-      ? editableModel.customParameters
-      : [],
+    withSamplingDefaults(editableModel.customParameters),
   )
 
   const handleSubmit = () => {

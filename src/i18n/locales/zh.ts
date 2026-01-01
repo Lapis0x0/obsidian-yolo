@@ -35,6 +35,7 @@ export const zh: TranslationKeys = {
     copy: '复制',
     paste: '粘贴',
     default: '默认',
+    modelDefault: '模型默认',
     on: '开',
     off: '关',
     noResults: '未找到匹配项',
@@ -168,12 +169,6 @@ export const zh: TranslationKeys = {
       maxContextMessages: '默认上下文传递条数',
       maxContextMessagesDesc:
         '每次请求要包含的历史消息条数（0 表示不包含）。建议 32 条（约等于 16 轮对话）。',
-      defaultTemperature: '默认温度',
-      defaultTemperatureDesc:
-        '新对话的默认温度值（0.0-2.0）。留空则使用模型默认值。',
-      defaultTopP: '默认 Top P',
-      defaultTopPDesc:
-        '新对话的默认 Top P 值（0.0-1.0）。留空则使用模型默认值。',
     },
     assistants: {
       title: '助手',

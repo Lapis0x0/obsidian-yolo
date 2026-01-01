@@ -38,6 +38,7 @@ export type TranslationKeys = {
     paste: string
     // additions
     default?: string
+    modelDefault?: string
     on?: string
     off?: string
     noResults?: string
@@ -127,10 +128,6 @@ export type TranslationKeys = {
       maxAutoIterationsDesc: string
       maxContextMessages: string
       maxContextMessagesDesc: string
-      defaultTemperature?: string
-      defaultTemperatureDesc?: string
-      defaultTopP?: string
-      defaultTopPDesc?: string
     }
     assistants: {
       title: string

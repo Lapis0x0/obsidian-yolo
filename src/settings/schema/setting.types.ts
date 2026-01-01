@@ -242,9 +242,6 @@ export const smartComposerSettingsSchema = z.object({
       enableTools: z.boolean(),
       maxAutoIterations: z.number(),
       maxContextMessages: z.number(),
-      // Default conversation parameters
-      defaultTemperature: z.number().min(0).max(2).optional(),
-      defaultTopP: z.number().min(0).max(1).optional(),
       chatTitlePrompt: z.string().optional(),
       baseModelSpecialPrompt: z.string().optional(),
       // Chat mode (chat/agent)
@@ -255,8 +252,6 @@ export const smartComposerSettingsSchema = z.object({
       enableTools: true,
       maxAutoIterations: 1,
       maxContextMessages: 32,
-      defaultTemperature: 0.8,
-      defaultTopP: 0.9,
       chatTitlePrompt: '',
       baseModelSpecialPrompt: '',
       chatMode: 'chat',

@@ -35,6 +35,7 @@ export const it: TranslationKeys = {
     copy: 'Copia',
     paste: 'Incolla',
     default: 'Predefinito',
+    modelDefault: 'Predefinito del modello',
     on: 'Attivo',
     off: 'Disattivo',
     noResults: 'Nessuna corrispondenza trovata',
@@ -196,12 +197,6 @@ export const it: TranslationKeys = {
       maxContextMessages: 'Messaggi di contesto massimi',
       maxContextMessagesDesc:
         'Numero di messaggi precedenti da includere nel contesto della chat.',
-      defaultTemperature: 'Temperatura predefinita',
-      defaultTemperatureDesc:
-        'Controlla la casualità delle risposte (0 = deterministico, 1 = creativo).',
-      defaultTopP: 'Top P predefinito',
-      defaultTopPDesc:
-        'Controlla la diversità delle risposte tramite campionamento nucleus.',
     },
     assistants: {
       title: 'Assistenti',
