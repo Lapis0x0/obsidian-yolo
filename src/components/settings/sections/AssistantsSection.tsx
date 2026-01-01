@@ -18,6 +18,7 @@ import { App } from 'obsidian'
 import React, { type FC, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { Assistant, AssistantIcon } from '../../../types/assistant.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
@@ -27,6 +28,7 @@ import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
+import { AssistantsModal } from '../modals/AssistantsModal'
 
 type AssistantsSectionProps = {
   app: App
@@ -52,6 +54,35 @@ type AssistantListItemProps = {
 }
 
 export const AssistantsSection: FC<AssistantsSectionProps> = ({ app }) => {
+  const plugin = usePlugin()
+  const { settings } = useSettings()
+  const { t } = useLanguage()
+  const assistants = settings.assistants || []
+  const assistantsCountLabel = t(
+    'settings.assistants.assistantsCount',
+    '已配置 {count} 个助手',
+  ).replace('{count}', String(assistants.length))
+
+  return (
+    <div className="smtcmp-settings-section">
+      <ObsidianSetting
+        name={t('settings.assistants.title')}
+        desc={t('settings.assistants.desc')}
+      >
+        <div className="smtcmp-settings-desc">{assistantsCountLabel}</div>
+        <ObsidianButton
+          text={t('settings.assistants.configureAssistants', '配置助手')}
+          onClick={() => {
+            const modal = new AssistantsModal(app, plugin)
+            modal.open()
+          }}
+        />
+      </ObsidianSetting>
+    </div>
+  )
+}
+
+export const AssistantsSectionContent: FC<AssistantsSectionProps> = ({ app }) => {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const assistants = settings.assistants || []

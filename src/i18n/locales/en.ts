@@ -201,6 +201,8 @@ export const en: TranslationKeys = {
     assistants: {
       title: 'Assistants',
       desc: 'Create and manage custom AI assistants',
+      configureAssistants: 'Configure assistants',
+      assistantsCount: 'Configured {count} assistants',
       addAssistant: 'Add assistant',
       editAssistant: 'Edit assistant',
       deleteAssistant: 'Delete assistant',

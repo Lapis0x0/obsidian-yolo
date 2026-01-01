@@ -132,6 +132,8 @@ export type TranslationKeys = {
     assistants: {
       title: string
       desc: string
+      configureAssistants: string
+      assistantsCount: string
       addAssistant: string
       noAssistants: string
       // existing optional keys in locales

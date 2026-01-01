@@ -175,6 +175,8 @@ export const zh: TranslationKeys = {
     assistants: {
       title: '助手',
       desc: '创建和管理自定义AI助手',
+      configureAssistants: '配置助手',
+      assistantsCount: '已配置 {count} 个助手',
       addAssistant: '添加助手',
       name: '名称',
       nameDesc: '助手名称',

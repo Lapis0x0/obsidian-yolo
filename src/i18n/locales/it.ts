@@ -203,6 +203,8 @@ export const it: TranslationKeys = {
     assistants: {
       title: 'Assistenti',
       desc: 'Gestisci gli assistenti AI personalizzati con istruzioni e comportamenti specifici.',
+      configureAssistants: 'Configura assistenti',
+      assistantsCount: 'Assistenti configurati: {count}',
       addAssistant: 'Aggiungi assistente',
       noAssistants: 'Nessun assistente configurato',
       editAssistant: 'Modifica assistente',
