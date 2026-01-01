@@ -2326,6 +2326,10 @@ button.smtcmp-chat-input-model-select {
   margin-top: var(--size-4-10);
 }
 
+.smtcmp-settings-section--tight {
+  margin-top: var(--size-4-4) !important;
+}
+
 .smtcmp-settings-section select option {
   padding-inline-start: 0 !important;
   padding-left: 0 !important;

@@ -64,7 +64,7 @@ export const AssistantsSection: FC<AssistantsSectionProps> = ({ app }) => {
   ).replace('{count}', String(assistants.length))
 
   return (
-    <div className="smtcmp-settings-section">
+    <div className="smtcmp-settings-section smtcmp-settings-section--tight">
       <ObsidianSetting
         name={t('settings.assistants.title')}
         desc={t('settings.assistants.desc')}
