@@ -364,6 +364,7 @@ export const it: TranslationKeys = {
       manualUpdateNow: 'Aggiorna ora',
       manualUpdateNowDesc:
         "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
+      advanced: 'Impostazioni avanzate',
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',

@@ -364,6 +364,7 @@ export const en: TranslationKeys = {
       manualUpdateNow: 'Update now',
       manualUpdateNowDesc:
         'Run an incremental update immediately and record the last updated time.',
+      advanced: 'Advanced settings',
       // Index progress header/status
       indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',

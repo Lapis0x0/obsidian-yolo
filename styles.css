@@ -2390,6 +2390,19 @@ button.smtcmp-chat-input-model-select {
   padding-top: 0 !important;
 }
 
+.smtcmp-settings-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.smtcmp-settings-advanced-toggle-icon {
+  transition: transform 0.2s;
+}
+
 .smtcmp-settings-required::after {
   color: var(--color-red);
   content: '*';

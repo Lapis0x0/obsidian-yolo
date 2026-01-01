@@ -333,6 +333,7 @@ export const zh: TranslationKeys = {
       autoUpdateIntervalDesc: '到达该间隔才会触发自动更新；用于避免频繁重建。',
       manualUpdateNow: '立即更新',
       manualUpdateNowDesc: '手动执行一次增量更新，并记录最近更新时间。',
+      advanced: '高级设置',
       // Index progress header/status
       indexProgressTitle: 'RAG 索引进度',
       indexing: '进行中',
