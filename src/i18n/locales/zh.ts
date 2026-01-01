@@ -12,6 +12,9 @@ export const zh: TranslationKeys = {
     continueWritingSelected: 'AI续写（选中段落）',
     customContinueWriting: '自定义续写',
     customRewrite: '自定义改写',
+    triggerSmartSpace: '触发 Smart Space',
+    triggerQuickAsk: '触发 Quick Ask',
+    triggerTabCompletion: '触发 Tab 补全',
   },
 
   common: {

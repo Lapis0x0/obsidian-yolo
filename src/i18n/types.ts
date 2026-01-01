@@ -13,6 +13,9 @@ export type TranslationKeys = {
     continueWritingSelected: string
     customContinueWriting: string
     customRewrite: string
+    triggerSmartSpace: string
+    triggerQuickAsk: string
+    triggerTabCompletion: string
   }
 
   // UI Common

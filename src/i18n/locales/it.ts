@@ -12,6 +12,9 @@ export const it: TranslationKeys = {
     continueWritingSelected: 'AI continua scrittura (selezione)',
     customContinueWriting: 'AI continua personalizzato',
     customRewrite: 'AI riscrivi personalizzato',
+    triggerSmartSpace: 'Attiva smart space',
+    triggerQuickAsk: 'Attiva quick ask',
+    triggerTabCompletion: 'Attiva completamento tab',
   },
 
   common: {

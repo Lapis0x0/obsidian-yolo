@@ -973,6 +973,37 @@ export default class SmartComposerPlugin extends Plugin {
       },
     })
 
+    this.addCommand({
+      id: 'trigger-smart-space',
+      name: this.t('commands.triggerSmartSpace'),
+      editorCallback: (editor: Editor) => {
+        const cmView = this.getEditorView(editor)
+        if (!cmView) return
+        this.showSmartSpace(editor, cmView, true)
+      },
+    })
+
+    this.addCommand({
+      id: 'trigger-quick-ask',
+      name: this.t('commands.triggerQuickAsk'),
+      editorCallback: (editor: Editor) => {
+        const cmView = this.getEditorView(editor)
+        if (!cmView) return
+        this.showQuickAsk(editor, cmView)
+      },
+    })
+
+    this.addCommand({
+      id: 'trigger-tab-completion',
+      name: this.t('commands.triggerTabCompletion'),
+      editorCallback: (editor: Editor) => {
+        const cmView = this.getEditorView(editor)
+        if (!cmView) return
+        const cursorOffset = cmView.state.selection.main.head
+        void this.getTabCompletionController().run(editor, cursorOffset)
+      },
+    })
+
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
