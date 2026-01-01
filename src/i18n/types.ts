@@ -280,6 +280,7 @@ export type TranslationKeys = {
       autoUpdateIntervalDesc?: string
       manualUpdateNow?: string
       manualUpdateNowDesc?: string
+      advanced?: string
       // Index progress header/status
       indexProgressTitle?: string
       indexing?: string

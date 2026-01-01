@@ -38,6 +38,7 @@ import { ObsidianSetting } from '../common/ObsidianSetting'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ConfirmModal } from '../modals/ConfirmModal'
+
 import { SmartSpaceQuickActionsModal } from './modals/SmartSpaceQuickActionsModal'
 
 type QuickAction = {

@@ -82,7 +82,9 @@ export const AssistantsSection: FC<AssistantsSectionProps> = ({ app }) => {
   )
 }
 
-export const AssistantsSectionContent: FC<AssistantsSectionProps> = ({ app }) => {
+export const AssistantsSectionContent: FC<AssistantsSectionProps> = ({
+  app,
+}) => {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const assistants = settings.assistants || []

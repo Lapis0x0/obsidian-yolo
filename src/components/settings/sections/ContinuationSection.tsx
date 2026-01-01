@@ -526,9 +526,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
               showAdvancedTabSettings ? ' is-expanded' : ''
             }`}
-            onClick={() =>
-              setShowAdvancedTabSettings((prev) => !prev)
-            }
+            onClick={() => setShowAdvancedTabSettings((prev) => !prev)}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
@@ -538,11 +536,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               }
             }}
           >
-            <span
-              className="smtcmp-settings-advanced-toggle-icon"
-            >
-              ▶
-            </span>
+            <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
             {t('settings.continuation.tabCompletionAdvanced')}
           </div>
 

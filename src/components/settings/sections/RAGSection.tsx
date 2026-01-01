@@ -461,7 +461,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
-
           <ObsidianSetting
             name={t('settings.rag.manualUpdateNow', '立即更新索引')}
             desc={t(
@@ -696,11 +695,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               }
             }}
           >
-            <span
-              className="smtcmp-settings-advanced-toggle-icon"
-            >
-              ▶
-            </span>
+            <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
             {t('settings.rag.advanced', '高级设置')}
           </div>
 
@@ -756,9 +751,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     }
                   }}
                   onBlur={() => {
-                    const thresholdTokens = parseIntegerInput(
-                      thresholdTokensInput,
-                    )
+                    const thresholdTokens =
+                      parseIntegerInput(thresholdTokensInput)
                     if (thresholdTokens === null) {
                       setThresholdTokensInput(
                         String(settings.ragOptions.thresholdTokens),
@@ -865,7 +859,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               </ObsidianSetting>
             </>
           )}
-
         </>
       )}
     </div>
