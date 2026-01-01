@@ -272,16 +272,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       })
     }
 
-    // Note: Image upload is now handled via drag/drop and paste only
-    // This function is kept for potential future use
-    const _handleUploadImages = (images: File[]) => {
-      void Promise.all(
-        images.map((image) => fileToMentionableImage(image)),
-      ).then(handleCreateImageMentionables, (error) => {
-        console.error('[Smart Composer] Failed to upload images:', error)
-      })
-    }
-
     const handleSubmit = (options: ChatSubmitOptions = {}) => {
       const content = editorRef.current?.getEditorState()?.toJSON()
       // Use vault search from conversation overrides if available, otherwise use the passed option
