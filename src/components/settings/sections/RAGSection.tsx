@@ -461,194 +461,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
-          <div
-            className="smtcmp-settings-advanced-toggle smtcmp-clickable"
-            onClick={() =>
-              setShowAdvancedRagSettings((prev) => !prev)
-            }
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                setShowAdvancedRagSettings((prev) => !prev)
-              }
-            }}
-          >
-            <span
-              className="smtcmp-settings-advanced-toggle-icon"
-              style={{
-                transform: showAdvancedRagSettings
-                  ? 'rotate(90deg)'
-                  : 'rotate(0deg)',
-              }}
-            >
-              ▶
-            </span>
-            {t('settings.rag.advanced', '高级设置')}
-          </div>
-
-          {showAdvancedRagSettings && (
-            <>
-              <ObsidianSetting
-                name={t('settings.rag.chunkSize')}
-                desc={t('settings.rag.chunkSizeDesc')}
-              >
-                <ObsidianTextInput
-                  value={chunkSizeInput}
-                  placeholder="1000"
-                  onChange={(value) => {
-                    setChunkSizeInput(value)
-                    const chunkSize = parseIntegerInput(value)
-                    if (chunkSize !== null) {
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          chunkSize,
-                        },
-                      })
-                    }
-                  }}
-                  onBlur={() => {
-                    const chunkSize = parseIntegerInput(chunkSizeInput)
-                    if (chunkSize === null) {
-                      setChunkSizeInput(String(settings.ragOptions.chunkSize))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.thresholdTokens')}
-                desc={t('settings.rag.thresholdTokensDesc')}
-              >
-                <ObsidianTextInput
-                  value={thresholdTokensInput}
-                  placeholder="8192"
-                  onChange={(value) => {
-                    setThresholdTokensInput(value)
-                    const thresholdTokens = parseIntegerInput(value)
-                    if (thresholdTokens !== null) {
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          thresholdTokens,
-                        },
-                      })
-                    }
-                  }}
-                  onBlur={() => {
-                    const thresholdTokens = parseIntegerInput(
-                      thresholdTokensInput,
-                    )
-                    if (thresholdTokens === null) {
-                      setThresholdTokensInput(
-                        String(settings.ragOptions.thresholdTokens),
-                      )
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.minSimilarity')}
-                desc={t('settings.rag.minSimilarityDesc')}
-              >
-                <ObsidianTextInput
-                  value={minSimilarityInput}
-                  placeholder="0.0"
-                  onChange={(value) => {
-                    setMinSimilarityInput(value)
-                    const minSimilarity = parseFloatInput(value)
-                    if (minSimilarity !== null) {
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          minSimilarity,
-                        },
-                      })
-                    }
-                  }}
-                  onBlur={() => {
-                    const minSimilarity = parseFloatInput(minSimilarityInput)
-                    if (minSimilarity === null) {
-                      setMinSimilarityInput(
-                        String(settings.ragOptions.minSimilarity),
-                      )
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.limit')}
-                desc={t('settings.rag.limitDesc')}
-              >
-                <ObsidianTextInput
-                  value={limitInput}
-                  placeholder="10"
-                  onChange={(value) => {
-                    setLimitInput(value)
-                    const limit = parseIntegerInput(value)
-                    if (limit !== null) {
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          limit,
-                        },
-                      })
-                    }
-                  }}
-                  onBlur={() => {
-                    const limit = parseIntegerInput(limitInput)
-                    if (limit === null) {
-                      setLimitInput(String(settings.ragOptions.limit))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.autoUpdateInterval', '最小间隔(小时)')}
-                desc={t(
-                  'settings.rag.autoUpdateIntervalDesc',
-                  '到达该间隔才会触发自动更新；用于避免频繁重建。',
-                )}
-              >
-                <ObsidianTextInput
-                  value={autoUpdateIntervalInput}
-                  placeholder="24"
-                  onChange={(v) => {
-                    setAutoUpdateIntervalInput(v)
-                    const n = parseIntegerInput(v)
-                    if (n !== null && n > 0) {
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          autoUpdateIntervalHours: n,
-                        },
-                      })
-                    }
-                  }}
-                  onBlur={() => {
-                    const n = parseIntegerInput(autoUpdateIntervalInput)
-                    if (n === null || n <= 0) {
-                      setAutoUpdateIntervalInput(
-                        String(
-                          settings.ragOptions.autoUpdateIntervalHours ?? 24,
-                        ),
-                      )
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-            </>
-          )}
 
           <ObsidianSetting
             name={t('settings.rag.manualUpdateNow', '立即更新索引')}
@@ -869,6 +681,191 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               </div>
             )}
           </div>
+
+          <div
+            className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
+              showAdvancedRagSettings ? ' is-expanded' : ''
+            }`}
+            onClick={() => setShowAdvancedRagSettings((prev) => !prev)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setShowAdvancedRagSettings((prev) => !prev)
+              }
+            }}
+          >
+            <span
+              className="smtcmp-settings-advanced-toggle-icon"
+            >
+              ▶
+            </span>
+            {t('settings.rag.advanced', '高级设置')}
+          </div>
+
+          {showAdvancedRagSettings && (
+            <>
+              <ObsidianSetting
+                name={t('settings.rag.chunkSize')}
+                desc={t('settings.rag.chunkSizeDesc')}
+              >
+                <ObsidianTextInput
+                  value={chunkSizeInput}
+                  placeholder="1000"
+                  onChange={(value) => {
+                    setChunkSizeInput(value)
+                    const chunkSize = parseIntegerInput(value)
+                    if (chunkSize !== null) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          chunkSize,
+                        },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    const chunkSize = parseIntegerInput(chunkSizeInput)
+                    if (chunkSize === null) {
+                      setChunkSizeInput(String(settings.ragOptions.chunkSize))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.rag.thresholdTokens')}
+                desc={t('settings.rag.thresholdTokensDesc')}
+              >
+                <ObsidianTextInput
+                  value={thresholdTokensInput}
+                  placeholder="8192"
+                  onChange={(value) => {
+                    setThresholdTokensInput(value)
+                    const thresholdTokens = parseIntegerInput(value)
+                    if (thresholdTokens !== null) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          thresholdTokens,
+                        },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    const thresholdTokens = parseIntegerInput(
+                      thresholdTokensInput,
+                    )
+                    if (thresholdTokens === null) {
+                      setThresholdTokensInput(
+                        String(settings.ragOptions.thresholdTokens),
+                      )
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.rag.minSimilarity')}
+                desc={t('settings.rag.minSimilarityDesc')}
+              >
+                <ObsidianTextInput
+                  value={minSimilarityInput}
+                  placeholder="0.0"
+                  onChange={(value) => {
+                    setMinSimilarityInput(value)
+                    const minSimilarity = parseFloatInput(value)
+                    if (minSimilarity !== null) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          minSimilarity,
+                        },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    const minSimilarity = parseFloatInput(minSimilarityInput)
+                    if (minSimilarity === null) {
+                      setMinSimilarityInput(
+                        String(settings.ragOptions.minSimilarity),
+                      )
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.rag.limit')}
+                desc={t('settings.rag.limitDesc')}
+              >
+                <ObsidianTextInput
+                  value={limitInput}
+                  placeholder="10"
+                  onChange={(value) => {
+                    setLimitInput(value)
+                    const limit = parseIntegerInput(value)
+                    if (limit !== null) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          limit,
+                        },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    const limit = parseIntegerInput(limitInput)
+                    if (limit === null) {
+                      setLimitInput(String(settings.ragOptions.limit))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.rag.autoUpdateInterval', '最小间隔(小时)')}
+                desc={t(
+                  'settings.rag.autoUpdateIntervalDesc',
+                  '到达该间隔才会触发自动更新；用于避免频繁重建。',
+                )}
+              >
+                <ObsidianTextInput
+                  value={autoUpdateIntervalInput}
+                  placeholder="24"
+                  onChange={(v) => {
+                    setAutoUpdateIntervalInput(v)
+                    const n = parseIntegerInput(v)
+                    if (n !== null && n > 0) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          autoUpdateIntervalHours: n,
+                        },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    const n = parseIntegerInput(autoUpdateIntervalInput)
+                    if (n === null || n <= 0) {
+                      setAutoUpdateIntervalInput(
+                        String(
+                          settings.ragOptions.autoUpdateIntervalHours ?? 24,
+                        ),
+                      )
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+            </>
+          )}
+
         </>
       )}
     </div>

@@ -2394,6 +2394,7 @@ button.smtcmp-chat-input-model-select {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-top: var(--size-4-2);
   padding: 8px 0;
   color: var(--text-muted);
   font-size: 0.9em;
@@ -2401,6 +2402,14 @@ button.smtcmp-chat-input-model-select {
 
 .smtcmp-settings-advanced-toggle-icon {
   transition: transform 0.2s;
+  transform: rotate(0deg);
+  transform-origin: center;
+  will-change: transform;
+}
+
+.smtcmp-settings-advanced-toggle.is-expanded
+  .smtcmp-settings-advanced-toggle-icon {
+  transform: rotate(90deg);
 }
 
 .smtcmp-settings-required::after {

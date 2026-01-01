@@ -523,25 +523,23 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
           </ObsidianSetting>
           {/* Advanced settings toggle */}
           <div
-            className="smtcmp-settings-advanced-toggle"
-            onClick={() => setShowAdvancedTabSettings(!showAdvancedTabSettings)}
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '8px 0',
-              color: 'var(--text-muted)',
-              fontSize: '0.9em',
+            className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
+              showAdvancedTabSettings ? ' is-expanded' : ''
+            }`}
+            onClick={() =>
+              setShowAdvancedTabSettings((prev) => !prev)
+            }
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setShowAdvancedTabSettings((prev) => !prev)
+              }
             }}
           >
             <span
-              style={{
-                transform: showAdvancedTabSettings
-                  ? 'rotate(90deg)'
-                  : 'rotate(0deg)',
-                transition: 'transform 0.2s',
-              }}
+              className="smtcmp-settings-advanced-toggle-icon"
             >
               ▶
             </span>
