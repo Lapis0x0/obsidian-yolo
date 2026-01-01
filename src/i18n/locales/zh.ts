@@ -110,6 +110,8 @@ export const zh: TranslationKeys = {
     smartSpace: {
       quickActionsTitle: 'Smart Space 快捷选项',
       quickActionsDesc: '自定义 Smart Space 中显示的快捷选项和提示词',
+      configureActions: '配置快捷选项',
+      actionsCount: '已配置 {count} 个快捷选项',
       addAction: '添加选项',
       resetToDefault: '恢复默认',
       confirmReset: '确定要恢复默认的快捷选项吗？这将删除所有自定义设置。',

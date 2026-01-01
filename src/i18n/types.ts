@@ -409,6 +409,8 @@ export type TranslationKeys = {
     smartSpace?: {
       quickActionsTitle: string
       quickActionsDesc: string
+      configureActions: string
+      actionsCount: string
       addAction: string
       resetToDefault: string
       confirmReset: string

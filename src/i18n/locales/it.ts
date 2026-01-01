@@ -135,6 +135,8 @@ export const it: TranslationKeys = {
       quickActionsTitle: 'Azioni rapide smart space',
       quickActionsDesc:
         'Personalizza le azioni rapide e i prompt visualizzati nello smart space',
+      configureActions: 'Configura azioni rapide',
+      actionsCount: 'Azioni rapide configurate: {count}',
       addAction: 'Aggiungi azione',
       resetToDefault: 'Ripristina predefiniti',
       confirmReset:

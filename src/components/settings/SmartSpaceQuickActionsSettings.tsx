@@ -38,6 +38,7 @@ import { ObsidianSetting } from '../common/ObsidianSetting'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ConfirmModal } from '../modals/ConfirmModal'
+import { SmartSpaceQuickActionsModal } from './modals/SmartSpaceQuickActionsModal'
 
 type QuickAction = {
   id: string
@@ -250,6 +251,43 @@ type GroupedActions = {
 }
 
 export function SmartSpaceQuickActionsSettings() {
+  const plugin = usePlugin()
+  const { settings } = useSettings()
+  const { t } = useLanguage()
+  const quickActions =
+    settings.continuationOptions.smartSpaceQuickActions ||
+    getDefaultQuickActions(t)
+  const actionsCountLabel = t(
+    'settings.smartSpace.actionsCount',
+    '已配置 {count} 个快捷选项',
+  ).replace('{count}', String(quickActions.length))
+
+  return (
+    <div className="smtcmp-smart-space-settings">
+      <ObsidianSetting
+        name={t(
+          'settings.smartSpace.quickActionsTitle',
+          'Smart Space 快捷选项',
+        )}
+        desc={t(
+          'settings.smartSpace.quickActionsDesc',
+          '自定义 Smart Space 中显示的快捷选项和提示词',
+        )}
+      >
+        <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
+        <ObsidianButton
+          text={t('settings.smartSpace.configureActions', '配置快捷选项')}
+          onClick={() => {
+            const modal = new SmartSpaceQuickActionsModal(plugin.app, plugin)
+            modal.open()
+          }}
+        />
+      </ObsidianSetting>
+    </div>
+  )
+}
+
+export function SmartSpaceQuickActionsSettingsContent() {
   const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()

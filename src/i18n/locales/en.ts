@@ -133,6 +133,8 @@ export const en: TranslationKeys = {
       quickActionsTitle: 'Smart space quick actions',
       quickActionsDesc:
         'Customize the quick actions and prompts displayed in smart space',
+      configureActions: 'Configure quick actions',
+      actionsCount: 'Configured {count} quick actions',
       addAction: 'Add action',
       resetToDefault: 'Reset to default',
       confirmReset:
