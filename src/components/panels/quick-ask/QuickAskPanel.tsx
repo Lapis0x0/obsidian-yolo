@@ -57,6 +57,8 @@ import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
+const FIRST_TOKEN_TIMEOUT_MS = 12000
+
 type QuickAskPanelProps = {
   plugin: SmartComposerPlugin
   editor: Editor
@@ -572,6 +574,7 @@ export function QuickAskPanel({
           promptGenerator,
           mcpManager,
           abortSignal: abortController.signal,
+          firstTokenTimeoutMs: FIRST_TOKEN_TIMEOUT_MS,
           requestParams: {
             stream: true,
           },

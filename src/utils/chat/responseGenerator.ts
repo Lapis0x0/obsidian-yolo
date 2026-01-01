@@ -29,6 +29,7 @@ export type ResponseGeneratorParams = {
   promptGenerator: PromptGenerator
   mcpManager: McpManager
   abortSignal?: AbortSignal
+  firstTokenTimeoutMs?: number
   requestParams?: {
     stream?: boolean
     temperature?: number
@@ -49,6 +50,7 @@ export class ResponseGenerator {
   private readonly promptGenerator: PromptGenerator
   private readonly mcpManager: McpManager
   private readonly abortSignal?: AbortSignal
+  private readonly firstTokenTimeoutMs?: number
   private readonly receivedMessages: ChatMessage[]
   private readonly maxAutoIterations: number
   private readonly requestParams?: {
@@ -75,6 +77,7 @@ export class ResponseGenerator {
     this.promptGenerator = params.promptGenerator
     this.mcpManager = params.mcpManager
     this.abortSignal = params.abortSignal
+    this.firstTokenTimeoutMs = params.firstTokenTimeoutMs
     this.requestParams = params.requestParams
     this.maxContextOverride = params.maxContextOverride
     this.geminiTools = params.geminiTools
@@ -198,8 +201,9 @@ export class ResponseGenerator {
 
     const shouldStream = this.requestParams?.stream ?? true
 
-    if (!shouldStream) {
-      // Non-streaming path
+    const runNonStreaming = async (): Promise<{
+      toolCallRequests: ToolCallRequest[]
+    }> => {
       const response = await this.providerClient.generateResponse(
         this.model,
         {
@@ -273,9 +277,39 @@ export class ResponseGenerator {
       return { toolCallRequests }
     }
 
+    if (!shouldStream) {
+      // Non-streaming path
+      return runNonStreaming()
+    }
+
     // Streaming path (with fallback on protocol/EOF errors)
     let responseIterable: AsyncIterable<LLMResponseStreaming>
+    let streamAbortController: AbortController | null = null
+    let abortListener: (() => void) | null = null
+    const firstTokenTimeoutMs =
+      typeof this.firstTokenTimeoutMs === 'number'
+        ? this.firstTokenTimeoutMs
+        : null
+    const shouldUseFirstTokenTimeout =
+      firstTokenTimeoutMs !== null && firstTokenTimeoutMs > 0
     try {
+      const signal = shouldUseFirstTokenTimeout
+        ? (() => {
+            streamAbortController = new AbortController()
+            if (this.abortSignal) {
+              if (this.abortSignal.aborted) {
+                streamAbortController.abort()
+              } else {
+                const onAbort = () => streamAbortController?.abort()
+                this.abortSignal.addEventListener('abort', onAbort, {
+                  once: true,
+                })
+                abortListener = onAbort
+              }
+            }
+            return streamAbortController.signal
+          })()
+        : this.abortSignal
       responseIterable = await this.providerClient.streamResponse(
         this.model,
         {
@@ -287,88 +321,19 @@ export class ResponseGenerator {
           top_p: this.requestParams?.top_p,
         },
         {
-          signal: this.abortSignal,
+          signal,
           geminiTools: this.geminiTools,
         },
       )
     } catch (error) {
+      if (abortListener && this.abortSignal) {
+        this.abortSignal.removeEventListener('abort', abortListener)
+      }
       const msg = String(error?.message ?? '')
       const shouldFallback =
         /protocol error|unexpected EOF|incomplete envelope/i.test(msg)
       if (shouldFallback) {
-        const response = await this.providerClient.generateResponse(
-          this.model,
-          {
-            model: this.model.model,
-            messages: requestMessages,
-            tools,
-            stream: false,
-            temperature: this.requestParams?.temperature,
-            top_p: this.requestParams?.top_p,
-          },
-          {
-            signal: this.abortSignal,
-            geminiTools: this.geminiTools,
-          },
-        )
-
-        // Ensure assistant message exists and populate content and metadata
-        this.responseMessages.push({
-          role: 'assistant',
-          content: response.choices[0]?.message?.content ?? '',
-          id: uuidv4(),
-          metadata: {
-            model: this.model,
-            usage: response.usage,
-          },
-        })
-        const responseMessageId = this.responseMessages.at(-1)!.id
-
-        // Merge annotations (if any)
-        const annotations = response.choices[0]?.message?.annotations
-        if (annotations) {
-          this.updateResponseMessages((messages) =>
-            messages.map((message) =>
-              message.id === responseMessageId && message.role === 'assistant'
-                ? {
-                    ...message,
-                    annotations,
-                  }
-                : message,
-            ),
-          )
-        }
-
-        // Tool call requests from non-streaming response
-        const toolCallRequests = (
-          response.choices[0]?.message?.tool_calls ?? []
-        )
-          .map((toolCall): ToolCallRequest | null => {
-            if (!toolCall.function?.name) return null
-            const base: ToolCallRequest = {
-              id: toolCall.id ?? uuidv4(),
-              name: toolCall.function.name,
-            }
-            return toolCall.function.arguments
-              ? { ...base, arguments: toolCall.function.arguments }
-              : base
-          })
-          .filter((t): t is ToolCallRequest => t !== null)
-
-        // Update assistant message with toolCallRequests
-        this.updateResponseMessages((messages) =>
-          messages.map((message) =>
-            message.id === responseMessageId && message.role === 'assistant'
-              ? {
-                  ...message,
-                  toolCallRequests:
-                    toolCallRequests.length > 0 ? toolCallRequests : undefined,
-                }
-              : message,
-          ),
-        )
-
-        return { toolCallRequests }
+        return runNonStreaming()
       }
       throw error
     }
@@ -390,13 +355,62 @@ export class ResponseGenerator {
     }
     const responseMessageId = lastMessage.id
     let responseToolCalls: Record<number, ToolCallDelta> = {}
-    for await (const chunk of responseIterable) {
-      const { updatedToolCalls } = this.processChunk(
-        chunk,
-        responseMessageId,
-        responseToolCalls,
-      )
-      responseToolCalls = updatedToolCalls
+    const cleanupAbortListener = () => {
+      if (abortListener && this.abortSignal) {
+        this.abortSignal.removeEventListener('abort', abortListener)
+      }
+    }
+    try {
+      if (shouldUseFirstTokenTimeout && streamAbortController) {
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+        const iterator = responseIterable[Symbol.asyncIterator]()
+        const timeoutPromise = new Promise<{ timeout: true }>((resolve) => {
+          timeoutHandle = setTimeout(
+            () => resolve({ timeout: true }),
+            firstTokenTimeoutMs,
+          )
+        })
+        const firstResult = await Promise.race([
+          iterator.next(),
+          timeoutPromise,
+        ])
+        if ('timeout' in firstResult) {
+          streamAbortController.abort()
+          if (timeoutHandle) clearTimeout(timeoutHandle)
+          cleanupAbortListener()
+          return runNonStreaming()
+        }
+        if (timeoutHandle) clearTimeout(timeoutHandle)
+        if (!firstResult.done) {
+          const { updatedToolCalls } = this.processChunk(
+            firstResult.value,
+            responseMessageId,
+            responseToolCalls,
+          )
+          responseToolCalls = updatedToolCalls
+        }
+        for await (const chunk of {
+          [Symbol.asyncIterator]: () => iterator,
+        }) {
+          const { updatedToolCalls } = this.processChunk(
+            chunk,
+            responseMessageId,
+            responseToolCalls,
+          )
+          responseToolCalls = updatedToolCalls
+        }
+      } else {
+        for await (const chunk of responseIterable) {
+          const { updatedToolCalls } = this.processChunk(
+            chunk,
+            responseMessageId,
+            responseToolCalls,
+          )
+          responseToolCalls = updatedToolCalls
+        }
+      }
+    } finally {
+      cleanupAbortListener()
     }
     const toolCallRequests: ToolCallRequest[] = Object.values(responseToolCalls)
       .map((toolCall) => {

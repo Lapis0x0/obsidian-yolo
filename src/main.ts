@@ -58,6 +58,7 @@ import {
 } from './utils/obsidian'
 
 const inlineSuggestionExtensionViews = new WeakSet<EditorView>()
+const FIRST_TOKEN_TIMEOUT_MS = 12000
 
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
@@ -1952,37 +1953,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         }
       }
 
-      if (streamPreference) {
-        const streamIterator = await providerClient.streamResponse(
-          model,
-          { ...baseRequest, stream: true },
-          { signal: controller.signal, geminiTools },
-        )
-
-        for await (const chunk of streamIterator) {
-          // 每次循环都检查是否已被中止
-          if (controller.signal.aborted) {
-            break
-          }
-
-          const delta = chunk?.choices?.[0]?.delta
-          const piece = delta?.content ?? ''
-          const reasoningDelta = delta?.reasoning ?? ''
-          if (reasoningDelta) {
-            reasoningPreviewBuffer += reasoningDelta
-            if (reasoningPreviewBuffer.length > MAX_REASONING_BUFFER) {
-              reasoningPreviewBuffer =
-                reasoningPreviewBuffer.slice(-MAX_REASONING_BUFFER)
-            }
-            updateThinkingReasoningPreview()
-          }
-          if (!piece) continue
-
-          suggestionText += piece
-          closeSmartSpaceWidgetOnce()
-          updateContinuationSuggestion(suggestionText)
-        }
-      } else {
+      const runNonStreaming = async () => {
         const response = await providerClient.generateResponse(
           model,
           { ...baseRequest, stream: false },
@@ -1995,6 +1966,73 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           closeSmartSpaceWidgetOnce()
           updateContinuationSuggestion(suggestionText)
         }
+      }
+
+      if (streamPreference) {
+        const streamController = new AbortController()
+        const handleAbort = () => streamController.abort()
+        controller.signal.addEventListener('abort', handleAbort, { once: true })
+        let firstTokenTimeoutId: ReturnType<typeof setTimeout> | null = null
+        let didTimeout = false
+        let hasReceivedFirstChunk = false
+        const clearFirstTokenTimeout = () => {
+          if (firstTokenTimeoutId) {
+            clearTimeout(firstTokenTimeoutId)
+            firstTokenTimeoutId = null
+          }
+        }
+        try {
+          firstTokenTimeoutId = setTimeout(() => {
+            didTimeout = true
+            streamController.abort()
+          }, FIRST_TOKEN_TIMEOUT_MS)
+
+          const streamIterator = await providerClient.streamResponse(
+            model,
+            { ...baseRequest, stream: true },
+            { signal: streamController.signal, geminiTools },
+          )
+
+          for await (const chunk of streamIterator) {
+            if (!hasReceivedFirstChunk) {
+              hasReceivedFirstChunk = true
+              clearFirstTokenTimeout()
+            }
+            // 每次循环都检查是否已被中止
+            if (controller.signal.aborted) {
+              break
+            }
+
+            const delta = chunk?.choices?.[0]?.delta
+            const piece = delta?.content ?? ''
+            const reasoningDelta = delta?.reasoning ?? ''
+            if (reasoningDelta) {
+              reasoningPreviewBuffer += reasoningDelta
+              if (reasoningPreviewBuffer.length > MAX_REASONING_BUFFER) {
+                reasoningPreviewBuffer =
+                  reasoningPreviewBuffer.slice(-MAX_REASONING_BUFFER)
+              }
+              updateThinkingReasoningPreview()
+            }
+            if (!piece) continue
+
+            suggestionText += piece
+            closeSmartSpaceWidgetOnce()
+            updateContinuationSuggestion(suggestionText)
+          }
+        } catch (error) {
+          clearFirstTokenTimeout()
+          if (didTimeout && !controller.signal.aborted) {
+            await runNonStreaming()
+          } else {
+            throw error
+          }
+        } finally {
+          clearFirstTokenTimeout()
+          controller.signal.removeEventListener('abort', handleAbort)
+        }
+      } else {
+        await runNonStreaming()
       }
 
       if (suggestionText.trim().length > 0) {
