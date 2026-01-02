@@ -365,6 +365,13 @@ export function ChatListDropdown({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      const target = e.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
       const activeList = displayChatList
       if (e.key === 'ArrowUp') {
         setFocusedIndex(Math.max(0, focusedIndex - 1))
@@ -410,18 +417,19 @@ export function ChatListDropdown({
               <input
                 type="search"
                 value={searchQuery}
-                placeholder={t(
-                  'sidebar.chatList.searchPlaceholder',
-                  'Search conversations',
-                )}
+              placeholder={t(
+                'sidebar.chatList.searchPlaceholder',
+                'Search conversations',
+              )}
                 aria-label={t(
                   'sidebar.chatList.searchPlaceholder',
                   'Search conversations',
                 )}
-                className="smtcmp-chat-list-search-input"
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+              className="smtcmp-chat-list-search-input"
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </div>
           </div>
           <ul className="smtcmp-model-select-list">
             {chatList.length === 0 ? (
