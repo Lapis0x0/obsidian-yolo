@@ -189,6 +189,7 @@ export function ChatListDropdown({
   const [contentMatches, setContentMatches] = useState<Set<string>>(new Set())
   const triggerRef = useRef<HTMLButtonElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const prevOpenRef = useRef(false)
   const searchCacheRef = useRef<
     Map<string, { updatedAt: number; text: string }>
   >(new Map())
@@ -256,7 +257,9 @@ export function ChatListDropdown({
   }, [])
 
   useEffect(() => {
-    if (open) {
+    const wasOpen = prevOpenRef.current
+    prevOpenRef.current = open
+    if (open && !wasOpen) {
       const currentIndex = displayChatList.findIndex(
         (chat) => chat.id === currentConversationId,
       )
@@ -265,7 +268,7 @@ export function ChatListDropdown({
       setSearchQuery('')
       setContentMatches(new Set())
     }
-  }, [open, chatList, currentConversationId, displayChatList])
+  }, [open, currentConversationId, displayChatList])
 
   useEffect(() => {
     if (!open) return
