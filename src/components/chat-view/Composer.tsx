@@ -155,9 +155,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     ? continuationTemperature
                     : ''
                 }
-                placeholder={
-                  t('common.modelDefault', '模型默认')
-                }
+                placeholder={t('common.modelDefault', '模型默认')}
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   if (value === '') {
@@ -189,9 +187,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                 value={
                   typeof continuationTopP === 'number' ? continuationTopP : ''
                 }
-                placeholder={
-                  t('common.modelDefault', '模型默认')
-                }
+                placeholder={t('common.modelDefault', '模型默认')}
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   if (value === '') {

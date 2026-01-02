@@ -151,9 +151,7 @@ export default function ChatSettingsButton({
                 min={0}
                 max={2}
                 step={0.1}
-                placeholder={
-                  t('common.modelDefault', 'Model default')
-                }
+                placeholder={t('common.modelDefault', 'Model default')}
                 value={value.temperature ?? ''}
                 onChange={(e) =>
                   update({
@@ -176,9 +174,7 @@ export default function ChatSettingsButton({
                 min={0}
                 max={1}
                 step={0.01}
-                placeholder={
-                  t('common.modelDefault', 'Model default')
-                }
+                placeholder={t('common.modelDefault', 'Model default')}
                 value={value.top_p ?? ''}
                 onChange={(e) =>
                   update({

@@ -1,13 +1,14 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Search, Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { ChatConversationMetadata } from '../../database/json/chat/types'
-import { ContentPart } from '../../types/llm/request'
-import { SerializedChatMessage } from '../../types/chat'
-import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { useChatManager } from '../../hooks/useJsonManagers'
+import { SerializedChatMessage } from '../../types/chat'
+import { ContentPart } from '../../types/llm/request'
+
+import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
 function TitleInput({
   title,
@@ -171,9 +172,9 @@ export function ChatListDropdown({
   const [contentMatches, setContentMatches] = useState<Set<string>>(new Set())
   const triggerRef = useRef<HTMLButtonElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const searchCacheRef = useRef<Map<string, { updatedAt: number; text: string }>>(
-    new Map(),
-  )
+  const searchCacheRef = useRef<
+    Map<string, { updatedAt: number; text: string }>
+  >(new Map())
   const searchIdRef = useRef(0)
 
   const normalizedQuery = useMemo(
@@ -337,13 +338,7 @@ export function ChatListDropdown({
           })
       }
     },
-    [
-      chatList,
-      filteredChatList,
-      focusedIndex,
-      normalizedQuery,
-      onSelect,
-    ],
+    [chatList, filteredChatList, focusedIndex, normalizedQuery, onSelect],
   )
 
   return (

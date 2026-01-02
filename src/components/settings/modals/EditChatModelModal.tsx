@@ -60,9 +60,7 @@ function EditChatModelModalComponent({
     { key: 'temperature', value: '0.8' },
     { key: 'top_p', value: '' },
   ]
-  const withSamplingDefaults = (
-    entries?: { key: string; value: string }[],
-  ) => {
+  const withSamplingDefaults = (entries?: { key: string; value: string }[]) => {
     const base = Array.isArray(entries) ? entries : []
     const existingKeys = new Set(
       base.map((entry) => entry.key.trim().toLowerCase()),
@@ -148,9 +146,7 @@ function EditChatModelModalComponent({
   )
   const [customParameters, setCustomParameters] = useState<
     { key: string; value: string }[]
-  >(() =>
-    withSamplingDefaults(editableModel.customParameters),
-  )
+  >(() => withSamplingDefaults(editableModel.customParameters))
 
   const handleSubmit = () => {
     if (!formData.model.trim()) {
