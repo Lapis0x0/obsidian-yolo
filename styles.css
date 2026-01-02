@@ -1134,7 +1134,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 8px 10px;
+  padding: 6px 10px;
   background: var(--huisede1, var(--background-secondary));
   border-bottom: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
@@ -1143,16 +1143,11 @@
 .smtcmp-chat-list-search-field {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-hover) 80%,
-    transparent
-  );
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+  gap: 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .smtcmp-chat-list-search-icon {
@@ -1163,10 +1158,22 @@
   flex: 1;
   min-width: 0;
   border: 0;
+  box-shadow: none;
   outline: none;
   background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
   color: var(--text-normal);
   font-size: var(--font-ui-small);
+}
+
+.smtcmp-chat-list-search input.smtcmp-chat-list-search-input {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  outline: none !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
 }
 
 .smtcmp-chat-list-search-input::placeholder {

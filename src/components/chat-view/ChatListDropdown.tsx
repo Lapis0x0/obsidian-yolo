@@ -367,7 +367,7 @@ export function ChatListDropdown({
         >
           <div className="smtcmp-chat-list-search">
             <div className="smtcmp-chat-list-search-field">
-              <Search size={16} className="smtcmp-chat-list-search-icon" />
+              <Search size={13} className="smtcmp-chat-list-search-icon" />
               <input
                 type="search"
                 value={searchQuery}
