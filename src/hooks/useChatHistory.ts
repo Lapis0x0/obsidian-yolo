@@ -33,6 +33,7 @@ type UseChatHistory = {
     overrides: ConversationOverrideSettings | null | undefined
   } | null>
   updateConversationTitle: (id: string, title: string) => Promise<void>
+  toggleConversationPinned: (id: string) => Promise<void>
   generateConversationTitle: (
     id: string,
     messages: ChatMessage[],
@@ -177,6 +178,20 @@ export function useChatHistory(): UseChatHistory {
     [chatManager, fetchChatList],
   )
 
+  const toggleConversationPinned = useCallback(
+    async (id: string): Promise<void> => {
+      const conversation = await chatManager.findById(id)
+      if (!conversation) {
+        throw new Error('Conversation not found')
+      }
+      await chatManager.updateChat(conversation.id, {
+        isPinned: !conversation.isPinned,
+      })
+      await fetchChatList()
+    },
+    [chatManager, fetchChatList],
+  )
+
   const generateConversationTitle = useCallback(
     async (id: string, messages: ChatMessage[]): Promise<void> => {
       // 等待对话存在（最多等待 2 秒，每 200ms 检查一次）
@@ -288,6 +303,7 @@ export function useChatHistory(): UseChatHistory {
     getChatMessagesById,
     getConversationById,
     updateConversationTitle,
+    toggleConversationPinned,
     generateConversationTitle,
     chatList,
   }

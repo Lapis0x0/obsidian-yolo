@@ -90,6 +90,7 @@ export type ChatConversation = {
   title: string
   createdAt: number
   updatedAt: number
+  isPinned?: boolean
   messages: SerializedChatMessage[]
 }
 export type ChatConversationMeta = {
@@ -98,4 +99,5 @@ export type ChatConversationMeta = {
   title: string
   createdAt: number
   updatedAt: number
+  isPinned?: boolean
 }

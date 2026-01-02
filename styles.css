@@ -1257,6 +1257,30 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   }
 }
 
+.smtcmp-chat-list-pin-button {
+  color: var(--text-muted);
+}
+
+.smtcmp-chat-list-pin-button svg {
+  fill: transparent;
+}
+
+.smtcmp-popover li .smtcmp-chat-list-pin-button:not(.is-pinned) {
+  visibility: hidden;
+}
+
+.smtcmp-popover li:hover .smtcmp-chat-list-pin-button {
+  visibility: visible;
+}
+
+.smtcmp-chat-list-pin-button.is-pinned {
+  color: var(--text-normal);
+}
+
+.smtcmp-chat-list-pin-button.is-pinned svg {
+  fill: currentColor;
+}
+
 .smtcmp-code-block {
   position: relative;
   border: 1px solid var(--background-modifier-border);

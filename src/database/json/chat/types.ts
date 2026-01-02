@@ -10,6 +10,7 @@ export type ChatConversation = {
   createdAt: number
   updatedAt: number
   schemaVersion: number
+  isPinned?: boolean
   // Optional per-conversation overrides (temperature, top_p, maxContextMessages, stream)
   overrides?: ConversationOverrideSettings | null
 }
@@ -19,4 +20,5 @@ export type ChatConversationMetadata = {
   title: string
   updatedAt: number
   schemaVersion: number
+  isPinned?: boolean
 }

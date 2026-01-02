@@ -120,6 +120,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     deleteConversation,
     getConversationById,
     updateConversationTitle,
+    toggleConversationPinned,
     generateConversationTitle,
     chatList,
   } = useChatHistory()
@@ -1034,6 +1035,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               }}
               onUpdateTitle={(conversationId, newTitle) => {
                 void updateConversationTitle(conversationId, newTitle)
+              }}
+              onTogglePinned={(conversationId) => {
+                void toggleConversationPinned(conversationId)
               }}
             >
               <History size={18} />

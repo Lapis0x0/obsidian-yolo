@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Pencil, Search, Trash2 } from 'lucide-react'
+import { Pencil, Search, Star, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -51,18 +51,22 @@ function ChatListItem({
   title,
   isFocused,
   isEditing,
+  isPinned,
   onMouseEnter,
   onSelect,
   onDelete,
+  onTogglePinned,
   onStartEdit,
   onFinishEdit,
 }: {
   title: string
   isFocused: boolean
   isEditing: boolean
+  isPinned: boolean
   onMouseEnter: () => void
   onSelect: () => void
   onDelete: () => void
+  onTogglePinned: () => void
   onStartEdit: () => void
   onFinishEdit: (title: string) => void
 }) {
@@ -110,6 +114,17 @@ function ChatListItem({
         >
           <Trash2 />
         </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePinned()
+          }}
+          className={`clickable-icon smtcmp-chat-list-pin-button${
+            isPinned ? ' is-pinned' : ''
+          }`}
+        >
+          <Star />
+        </button>
       </div>
     </li>
   )
@@ -151,6 +166,7 @@ export function ChatListDropdown({
   onSelect,
   onDelete,
   onUpdateTitle,
+  onTogglePinned,
   children,
 }: {
   chatList: ChatConversationMetadata[]
@@ -161,6 +177,7 @@ export function ChatListDropdown({
     conversationId: string,
     newTitle: string,
   ) => void | Promise<void>
+  onTogglePinned: (conversationId: string) => void | Promise<void>
   children: React.ReactNode
 }) {
   const { t } = useLanguage()
@@ -193,12 +210,31 @@ export function ChatListDropdown({
     return matches
   }, [chatList, normalizedQuery])
 
+  const pinnedSortedChatList = useMemo(() => {
+    if (chatList.length === 0) return chatList
+    const pinned: ChatConversationMetadata[] = []
+    const unpinned: ChatConversationMetadata[] = []
+    chatList.forEach((chat) => {
+      if (chat.isPinned) {
+        pinned.push(chat)
+      } else {
+        unpinned.push(chat)
+      }
+    })
+    return pinned.concat(unpinned)
+  }, [chatList])
+
   const filteredChatList = useMemo(() => {
     if (!normalizedQuery) return chatList
     return chatList.filter(
       (chat) => titleMatches.has(chat.id) || contentMatches.has(chat.id),
     )
   }, [chatList, contentMatches, normalizedQuery, titleMatches])
+
+  const displayChatList = useMemo(() => {
+    if (normalizedQuery) return filteredChatList
+    return pinnedSortedChatList
+  }, [filteredChatList, normalizedQuery, pinnedSortedChatList])
 
   const syncPopoverWidth = useCallback(() => {
     const content = contentRef.current
@@ -216,7 +252,7 @@ export function ChatListDropdown({
 
   useEffect(() => {
     if (open) {
-      const currentIndex = chatList.findIndex(
+      const currentIndex = displayChatList.findIndex(
         (chat) => chat.id === currentConversationId,
       )
       setFocusedIndex(currentIndex === -1 ? 0 : currentIndex)
@@ -224,23 +260,23 @@ export function ChatListDropdown({
       setSearchQuery('')
       setContentMatches(new Set())
     }
-  }, [open, chatList, currentConversationId])
+  }, [open, chatList, currentConversationId, displayChatList])
 
   useEffect(() => {
     if (!open) return
     if (!normalizedQuery) {
-      const currentIndex = chatList.findIndex(
+      const currentIndex = displayChatList.findIndex(
         (chat) => chat.id === currentConversationId,
       )
       setFocusedIndex(currentIndex === -1 ? 0 : currentIndex)
       return
     }
     setFocusedIndex(0)
-  }, [chatList, currentConversationId, normalizedQuery, open])
+  }, [chatList, currentConversationId, displayChatList, normalizedQuery, open])
 
   useEffect(() => {
     if (!open) return
-    const activeList = normalizedQuery ? filteredChatList : chatList
+    const activeList = displayChatList
     if (activeList.length === 0) {
       setFocusedIndex(0)
       return
@@ -248,7 +284,7 @@ export function ChatListDropdown({
     if (focusedIndex >= activeList.length) {
       setFocusedIndex(activeList.length - 1)
     }
-  }, [chatList, filteredChatList, focusedIndex, normalizedQuery, open])
+  }, [displayChatList, focusedIndex, open])
 
   useEffect(() => {
     if (!open) return
@@ -321,7 +357,7 @@ export function ChatListDropdown({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const activeList = normalizedQuery ? filteredChatList : chatList
+      const activeList = displayChatList
       if (e.key === 'ArrowUp') {
         setFocusedIndex(Math.max(0, focusedIndex - 1))
       } else if (e.key === 'ArrowDown') {
@@ -338,7 +374,7 @@ export function ChatListDropdown({
           })
       }
     },
-    [chatList, filteredChatList, focusedIndex, normalizedQuery, onSelect],
+    [displayChatList, focusedIndex, onSelect],
   )
 
   return (
@@ -389,12 +425,13 @@ export function ChatListDropdown({
                 {t('common.noResults', 'No matches found')}
               </li>
             ) : (
-              filteredChatList.map((chat, index) => (
+              displayChatList.map((chat, index) => (
                 <ChatListItem
                   key={chat.id}
                   title={chat.title}
                   isFocused={focusedIndex === index}
                   isEditing={editingId === chat.id}
+                  isPinned={Boolean(chat.isPinned)}
                   onMouseEnter={() => {
                     setFocusedIndex(index)
                   }}
@@ -411,6 +448,13 @@ export function ChatListDropdown({
                     void Promise.resolve(onDelete(chat.id)).catch((error) => {
                       console.error('Failed to delete conversation', error)
                     })
+                  }}
+                  onTogglePinned={() => {
+                    void Promise.resolve(onTogglePinned(chat.id)).catch(
+                      (error) => {
+                        console.error('Failed to toggle pin', error)
+                      },
+                    )
                   }}
                   onStartEdit={() => {
                     setEditingId(chat.id)
