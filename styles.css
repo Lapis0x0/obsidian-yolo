@@ -1143,7 +1143,7 @@
 .smtcmp-chat-list-search-field {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -1152,11 +1152,13 @@
 
 .smtcmp-chat-list-search-icon {
   color: var(--text-muted);
+  margin-left: 4px;
 }
 
 .smtcmp-chat-list-search-input {
   flex: 1;
   min-width: 0;
+  padding-left: 0;
   border: 0;
   box-shadow: none;
   outline: none;
