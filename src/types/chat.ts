@@ -91,6 +91,7 @@ export type ChatConversation = {
   createdAt: number
   updatedAt: number
   isPinned?: boolean
+  pinnedAt?: number
   messages: SerializedChatMessage[]
 }
 export type ChatConversationMeta = {
@@ -100,4 +101,5 @@ export type ChatConversationMeta = {
   createdAt: number
   updatedAt: number
   isPinned?: boolean
+  pinnedAt?: number
 }

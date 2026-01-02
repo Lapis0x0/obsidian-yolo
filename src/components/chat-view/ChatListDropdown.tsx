@@ -212,16 +212,21 @@ export function ChatListDropdown({
 
   const pinnedSortedChatList = useMemo(() => {
     if (chatList.length === 0) return chatList
-    const pinned: ChatConversationMetadata[] = []
-    const unpinned: ChatConversationMetadata[] = []
-    chatList.forEach((chat) => {
-      if (chat.isPinned) {
-        pinned.push(chat)
-      } else {
-        unpinned.push(chat)
+    return [...chatList].sort((a, b) => {
+      const aPinned = a.isPinned ? 1 : 0
+      const bPinned = b.isPinned ? 1 : 0
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned
       }
+      if (aPinned && bPinned) {
+        const aPinnedAt = a.pinnedAt ?? 0
+        const bPinnedAt = b.pinnedAt ?? 0
+        if (aPinnedAt !== bPinnedAt) {
+          return bPinnedAt - aPinnedAt
+        }
+      }
+      return b.updatedAt - a.updatedAt
     })
-    return pinned.concat(unpinned)
   }, [chatList])
 
   const filteredChatList = useMemo(() => {

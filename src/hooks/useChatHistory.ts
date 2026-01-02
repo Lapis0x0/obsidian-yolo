@@ -184,10 +184,29 @@ export function useChatHistory(): UseChatHistory {
       if (!conversation) {
         throw new Error('Conversation not found')
       }
-      await chatManager.updateChat(conversation.id, {
-        isPinned: !conversation.isPinned,
+      const isPinned = !conversation.isPinned
+      const pinnedAt = isPinned ? Date.now() : undefined
+      setChatList((prev) => {
+        const now = Date.now()
+        return prev.map((chat) =>
+          chat.id === id
+            ? {
+                ...chat,
+                isPinned,
+                pinnedAt,
+                updatedAt: now,
+              }
+            : chat,
+        )
       })
-      await fetchChatList()
+      try {
+        await chatManager.updateChat(conversation.id, {
+          isPinned,
+          pinnedAt,
+        })
+      } finally {
+        await fetchChatList()
+      }
     },
     [chatManager, fetchChatList],
   )
