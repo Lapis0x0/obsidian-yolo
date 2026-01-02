@@ -417,19 +417,19 @@ export function ChatListDropdown({
               <input
                 type="search"
                 value={searchQuery}
-              placeholder={t(
-                'sidebar.chatList.searchPlaceholder',
-                'Search conversations',
-              )}
+                placeholder={t(
+                  'sidebar.chatList.searchPlaceholder',
+                  'Search conversations',
+                )}
                 aria-label={t(
                   'sidebar.chatList.searchPlaceholder',
                   'Search conversations',
                 )}
-              className="smtcmp-chat-list-search-input"
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-            />
-          </div>
+                className="smtcmp-chat-list-search-input"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
           </div>
           <ul className="smtcmp-model-select-list">
             {chatList.length === 0 ? (
