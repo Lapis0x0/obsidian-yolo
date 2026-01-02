@@ -130,6 +130,22 @@ export function ChatListDropdown({
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState<number>(0)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  const syncPopoverWidth = useCallback(() => {
+    const content = contentRef.current
+    const trigger = triggerRef.current
+    if (!content || !trigger) return
+    const sidebar = trigger.closest('.smtcmp-chat-container')
+    if (!sidebar) return
+    const { width } = sidebar.getBoundingClientRect()
+    if (width > 0) {
+      const maxWidth = 420
+      const nextWidth = `${Math.round(Math.min(width, maxWidth))}px`
+      content.style.width = nextWidth
+    }
+  }, [])
 
   useEffect(() => {
     if (open) {
@@ -140,6 +156,28 @@ export function ChatListDropdown({
       setEditingId(null)
     }
   }, [open, chatList, currentConversationId])
+
+  useEffect(() => {
+    if (!open) return
+    syncPopoverWidth()
+    const sidebar = triggerRef.current?.closest('.smtcmp-chat-container')
+    if (!sidebar) return
+    const handleResize = () => {
+      syncPopoverWidth()
+    }
+    let resizeObserver: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        syncPopoverWidth()
+      })
+      resizeObserver.observe(sidebar)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      resizeObserver?.disconnect()
+    }
+  }, [open, syncPopoverWidth])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -165,13 +203,18 @@ export function ChatListDropdown({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button className="clickable-icon" aria-label="Chat History">
+        <button
+          ref={triggerRef}
+          className="clickable-icon"
+          aria-label="Chat History"
+        >
           {children}
         </button>
       </Popover.Trigger>
 
       <Popover.Portal>
         <Popover.Content
+          ref={contentRef}
           className="smtcmp-popover smtcmp-chat-sidebar-popover smtcmp-chat-list-dropdown-content"
           sideOffset={8}
           onKeyDown={handleKeyDown}

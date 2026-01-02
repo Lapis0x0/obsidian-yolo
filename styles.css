@@ -1125,9 +1125,9 @@
 .smtcmp-chat-list-dropdown-content {
   display: inline-flex;
   flex-direction: column;
-  width: 200px !important;
-  max-width: 200px !important;
-  min-width: 0 !important;
+  width: 100%;
+  max-width: 400px;
+  min-width: 0;
 }
 
 .smtcmp-chat-list-dropdown-content li,
@@ -1136,7 +1136,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-l) !important;
   margin: 4px 0;
   width: auto;
