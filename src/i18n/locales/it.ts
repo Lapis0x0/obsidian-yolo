@@ -46,6 +46,10 @@ export const it: TranslationKeys = {
       chat: 'Chat',
       composer: 'Sparkle',
     },
+    chatList: {
+      searchPlaceholder: 'Cerca conversazioni',
+      empty: 'Nessuna conversazione',
+    },
     composer: {
       title: 'Sparkle',
       subtitle:

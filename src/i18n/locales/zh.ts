@@ -46,6 +46,10 @@ export const zh: TranslationKeys = {
       chat: 'Chat',
       composer: 'Sparkle',
     },
+    chatList: {
+      searchPlaceholder: '搜索聊天记录',
+      empty: '暂无聊天记录',
+    },
     composer: {
       title: 'Sparkle 模式',
       subtitle: '在续写之前先配置模型、上下文与规则',

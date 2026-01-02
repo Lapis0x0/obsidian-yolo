@@ -49,6 +49,10 @@ export type TranslationKeys = {
       chat: string
       composer: string
     }
+    chatList?: {
+      searchPlaceholder?: string
+      empty?: string
+    }
     composer: {
       title: string
       subtitle: string

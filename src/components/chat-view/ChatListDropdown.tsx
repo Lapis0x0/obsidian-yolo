@@ -1,8 +1,13 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Pencil, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Search, Pencil, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useLanguage } from '../../contexts/language-context'
 import { ChatConversationMetadata } from '../../database/json/chat/types'
+import { ContentPart } from '../../types/llm/request'
+import { SerializedChatMessage } from '../../types/chat'
+import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { useChatManager } from '../../hooks/useJsonManagers'
 
 function TitleInput({
   title,
@@ -109,6 +114,36 @@ function ChatListItem({
   )
 }
 
+function extractPromptContent(
+  promptContent: string | ContentPart[] | null | undefined,
+): string {
+  if (!promptContent) return ''
+  if (typeof promptContent === 'string') return promptContent
+  return promptContent
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .join(' ')
+}
+
+function extractConversationText(messages: SerializedChatMessage[]): string {
+  const text = messages
+    .map((message) => {
+      if (message.role === 'assistant') {
+        return message.content ?? ''
+      }
+      if (message.role === 'user') {
+        const editorText = message.content
+          ? editorStateToPlainText(message.content)
+          : ''
+        const promptText = extractPromptContent(message.promptContent)
+        return `${editorText} ${promptText}`.trim()
+      }
+      return ''
+    })
+    .filter(Boolean)
+    .join(' ')
+  return text.toLowerCase()
+}
+
 export function ChatListDropdown({
   chatList,
   currentConversationId,
@@ -127,11 +162,42 @@ export function ChatListDropdown({
   ) => void | Promise<void>
   children: React.ReactNode
 }) {
+  const { t } = useLanguage()
+  const chatManager = useChatManager()
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState<number>(0)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [contentMatches, setContentMatches] = useState<Set<string>>(new Set())
   const triggerRef = useRef<HTMLButtonElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const searchCacheRef = useRef<Map<string, { updatedAt: number; text: string }>>(
+    new Map(),
+  )
+  const searchIdRef = useRef(0)
+
+  const normalizedQuery = useMemo(
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery],
+  )
+
+  const titleMatches = useMemo(() => {
+    if (!normalizedQuery) return new Set<string>()
+    const matches = new Set<string>()
+    chatList.forEach((chat) => {
+      if (chat.title.toLowerCase().includes(normalizedQuery)) {
+        matches.add(chat.id)
+      }
+    })
+    return matches
+  }, [chatList, normalizedQuery])
+
+  const filteredChatList = useMemo(() => {
+    if (!normalizedQuery) return chatList
+    return chatList.filter(
+      (chat) => titleMatches.has(chat.id) || contentMatches.has(chat.id),
+    )
+  }, [chatList, contentMatches, normalizedQuery, titleMatches])
 
   const syncPopoverWidth = useCallback(() => {
     const content = contentRef.current
@@ -154,8 +220,81 @@ export function ChatListDropdown({
       )
       setFocusedIndex(currentIndex === -1 ? 0 : currentIndex)
       setEditingId(null)
+      setSearchQuery('')
+      setContentMatches(new Set())
     }
   }, [open, chatList, currentConversationId])
+
+  useEffect(() => {
+    if (!open) return
+    if (!normalizedQuery) {
+      const currentIndex = chatList.findIndex(
+        (chat) => chat.id === currentConversationId,
+      )
+      setFocusedIndex(currentIndex === -1 ? 0 : currentIndex)
+      return
+    }
+    setFocusedIndex(0)
+  }, [chatList, currentConversationId, normalizedQuery, open])
+
+  useEffect(() => {
+    if (!open) return
+    const activeList = normalizedQuery ? filteredChatList : chatList
+    if (activeList.length === 0) {
+      setFocusedIndex(0)
+      return
+    }
+    if (focusedIndex >= activeList.length) {
+      setFocusedIndex(activeList.length - 1)
+    }
+  }, [chatList, filteredChatList, focusedIndex, normalizedQuery, open])
+
+  useEffect(() => {
+    if (!open) return
+    if (!normalizedQuery) {
+      setContentMatches(new Set())
+      return
+    }
+
+    const currentSearchId = searchIdRef.current + 1
+    searchIdRef.current = currentSearchId
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        const nextMatches = new Set<string>()
+        for (const chat of chatList) {
+          if (titleMatches.has(chat.id)) continue
+          const cached = searchCacheRef.current.get(chat.id)
+          if (cached && cached.updatedAt === chat.updatedAt) {
+            if (cached.text.includes(normalizedQuery)) {
+              nextMatches.add(chat.id)
+            }
+            continue
+          }
+          const conversation = await chatManager.findById(chat.id)
+          if (!conversation) continue
+          const text = extractConversationText(conversation.messages)
+          searchCacheRef.current.set(chat.id, {
+            updatedAt: chat.updatedAt,
+            text,
+          })
+          if (text.includes(normalizedQuery)) {
+            nextMatches.add(chat.id)
+          }
+          if (searchIdRef.current !== currentSearchId) {
+            return
+          }
+        }
+        if (searchIdRef.current === currentSearchId) {
+          setContentMatches(nextMatches)
+        }
+      })()
+    }, 160)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      searchIdRef.current += 1
+    }
+  }, [chatList, chatManager, normalizedQuery, open, titleMatches])
 
   useEffect(() => {
     if (!open) return
@@ -181,12 +320,13 @@ export function ChatListDropdown({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      const activeList = normalizedQuery ? filteredChatList : chatList
       if (e.key === 'ArrowUp') {
         setFocusedIndex(Math.max(0, focusedIndex - 1))
       } else if (e.key === 'ArrowDown') {
-        setFocusedIndex(Math.min(chatList.length - 1, focusedIndex + 1))
+        setFocusedIndex(Math.min(activeList.length - 1, focusedIndex + 1))
       } else if (e.key === 'Enter') {
-        const conversationId = chatList[focusedIndex]?.id
+        const conversationId = activeList[focusedIndex]?.id
         if (!conversationId) return
         void Promise.resolve(onSelect(conversationId))
           .then(() => {
@@ -197,7 +337,13 @@ export function ChatListDropdown({
           })
       }
     },
-    [chatList, focusedIndex, setFocusedIndex, onSelect],
+    [
+      chatList,
+      filteredChatList,
+      focusedIndex,
+      normalizedQuery,
+      onSelect,
+    ],
   )
 
   return (
@@ -219,13 +365,36 @@ export function ChatListDropdown({
           sideOffset={8}
           onKeyDown={handleKeyDown}
         >
+          <div className="smtcmp-chat-list-search">
+            <div className="smtcmp-chat-list-search-field">
+              <Search size={16} className="smtcmp-chat-list-search-icon" />
+              <input
+                type="search"
+                value={searchQuery}
+                placeholder={t(
+                  'sidebar.chatList.searchPlaceholder',
+                  'Search conversations',
+                )}
+                aria-label={t(
+                  'sidebar.chatList.searchPlaceholder',
+                  'Search conversations',
+                )}
+                className="smtcmp-chat-list-search-input"
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
           <ul className="smtcmp-model-select-list">
             {chatList.length === 0 ? (
               <li className="smtcmp-chat-list-dropdown-empty">
-                No conversations
+                {t('sidebar.chatList.empty', 'No conversations')}
+              </li>
+            ) : filteredChatList.length === 0 ? (
+              <li className="smtcmp-chat-list-dropdown-empty">
+                {t('common.noResults', 'No matches found')}
               </li>
             ) : (
-              chatList.map((chat, index) => (
+              filteredChatList.map((chat, index) => (
                 <ChatListItem
                   key={chat.id}
                   title={chat.title}
