@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { DEFAULT_PROVIDERS } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { getProviderClient } from '../../../core/llm/manager'
+import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
 import { supportedDimensionsForIndex } from '../../../database/schema'
 import SmartComposerPlugin from '../../../main'
 import {
@@ -283,12 +284,7 @@ function AddEmbeddingModelModalComponent({
         formData.model,
         'test',
       )
-
-      if (!Array.isArray(embeddingResult) || embeddingResult.length === 0) {
-        throw new Error('Embedding model returned an invalid result')
-      }
-
-      const dimension = embeddingResult.length
+      const dimension = extractEmbeddingVector(embeddingResult).length
 
       if (!supportedDimensionsForIndex.includes(dimension)) {
         const confirmed = await new Promise<boolean>((resolve) => {

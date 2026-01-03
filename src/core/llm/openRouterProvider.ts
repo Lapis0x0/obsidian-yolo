@@ -11,6 +11,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import { extractEmbeddingVector } from './embedding-utils'
 
 import { BaseLLMProvider } from './base'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
@@ -67,7 +68,7 @@ export class OpenRouterProvider extends BaseLLMProvider<
         model: model,
         input: text,
       })
-      return embedding.data[0].embedding
+      return extractEmbeddingVector(embedding)
     } catch (error) {
       throw new Error(
         `Failed to get embedding from OpenRouter: ${error instanceof Error ? error.message : 'Unknown error'}`,

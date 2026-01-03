@@ -11,6 +11,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import { extractEmbeddingVector } from './embedding-utils'
 
 import { BaseLLMProvider } from './base'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
@@ -65,6 +66,6 @@ export class LmStudioProvider extends BaseLLMProvider<
       input: text,
       encoding_format: 'float',
     })
-    return embedding.data[0].embedding
+    return extractEmbeddingVector(embedding)
   }
 }

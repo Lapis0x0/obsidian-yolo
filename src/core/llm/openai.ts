@@ -20,6 +20,7 @@ import {
   LLMRateLimitExceededException,
 } from './exception'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { extractEmbeddingVector } from './embedding-utils'
 
 export class OpenAIAuthenticatedProvider extends BaseLLMProvider<
   Extract<LLMProvider, { type: 'openai' }>
@@ -163,7 +164,7 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<
         model: model,
         input: text,
       })
-      return embedding.data[0].embedding
+      return extractEmbeddingVector(embedding)
     } catch (error) {
       if (error.status === 429) {
         throw new LLMRateLimitExceededException(
