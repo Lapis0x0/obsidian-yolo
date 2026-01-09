@@ -39,7 +39,8 @@ import {
   SmartSpaceDraftState,
 } from './features/editor/smart-space/smartSpaceController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
-import { createTranslationFunction } from './i18n'
+import { getLanguage } from 'obsidian'
+import { Language, createTranslationFunction } from './i18n'
 import {
   SmartComposerSettings,
   smartComposerSettingsSchema,
@@ -520,8 +521,36 @@ export default class SmartComposerPlugin extends Plugin {
     return { temperature, topP, stream, useVaultSearch }
   }
 
+  private resolveObsidianLanguage(): Language {
+    const rawLanguage = getLanguage()
+    const domLanguage =
+      typeof document !== 'undefined'
+        ? document.documentElement.lang || navigator.language || ''
+        : ''
+    const storedLanguage =
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem('language') || ''
+        : ''
+    const candidates = [rawLanguage, domLanguage, storedLanguage]
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+    const normalized =
+      candidates.find((value) => value !== 'en') ?? candidates[0] ?? 'en'
+    if (normalized.startsWith('zh')) return 'zh'
+    if (normalized.startsWith('it')) return 'it'
+    return 'en'
+  }
+
+  private resolvePreferredLanguage(): Language {
+    const preference = this.settings.languagePreference
+    if (preference && preference !== 'auto') {
+      return preference
+    }
+    return this.resolveObsidianLanguage()
+  }
+
   get t() {
-    return createTranslationFunction(this.settings.language || 'en')
+    return createTranslationFunction(this.resolvePreferredLanguage())
   }
 
   private cancelAllAiTasks() {
@@ -1027,21 +1056,11 @@ export default class SmartComposerPlugin extends Plugin {
             new Notice(
               this.t(
                 'notices.pgliteUnavailable',
-                'PGlite resources unavailable. Please check your network connection.',
+                'PGlite resources unavailable. Please reinstall the plugin.',
               ),
               5000,
             )
             return
-          }
-
-          if (resourceCheck.needsDownload && resourceCheck.fromCDN) {
-            new Notice(
-              this.t(
-                'notices.downloadingPglite',
-                'Downloading PGlite dependencies (~20MB). This may take a moment...',
-              ),
-              5000,
-            )
           }
         } catch (error) {
           console.warn('Failed to check PGlite resources:', error)

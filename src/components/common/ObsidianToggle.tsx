@@ -20,6 +20,7 @@ export function ObsidianToggle({ value, onChange }: ObsidianToggleProps) {
       let newToggleComponent: ToggleComponent | null = null
       setting.addToggle((component) => {
         newToggleComponent = component
+        newToggleComponent?.toggleEl.addClass('smtcmp-checkbox-container')
       })
       setToggleComponent(newToggleComponent)
 
@@ -28,6 +29,7 @@ export function ObsidianToggle({ value, onChange }: ObsidianToggleProps) {
       }
     } else if (containerRef.current) {
       const newToggleComponent = new ToggleComponent(containerRef.current)
+      newToggleComponent.toggleEl.addClass('smtcmp-checkbox-container')
       setToggleComponent(newToggleComponent)
 
       return () => {

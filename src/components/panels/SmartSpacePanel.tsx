@@ -1039,7 +1039,7 @@ function SmartSpacePanelBody({
                     mentionMenuContainerRef={inputCardRef}
                     mentionMenuPlacement={mentionMenuPlacement}
                     autoFocus
-                    contentClassName="obsidian-default-textarea smtcmp-content-editable smtcmp-smart-space-content-editable"
+                    contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-smart-space-content-editable"
                   />
                 </div>
                 {(instructionText.length > 0 ||

@@ -1,16 +1,26 @@
 import { useLanguage } from '../../../contexts/language-context'
-import { Language } from '../../../i18n'
+import { useSettings } from '../../../contexts/settings-context'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 
-const languageOptions: Record<string, string> = {
-  en: 'English',
-  zh: '中文',
-  it: 'Italiano',
-}
+const LANGUAGE_KEYS = ['auto', 'en', 'zh', 'it'] as const
 
 export function LanguageSection() {
-  const { language, setLanguage, t } = useLanguage()
+  const { t } = useLanguage()
+  const { settings, setSettings } = useSettings()
+
+  const languageOptions: Record<string, string> = {
+    auto: t('settings.language.auto', 'Auto (Follow Obsidian)'),
+    en: 'English',
+    zh: '中文',
+    it: 'Italiano',
+  }
+
+  const currentPreference =
+    LANGUAGE_KEYS.includes(settings.languagePreference) &&
+    settings.languagePreference
+      ? settings.languagePreference
+      : 'auto'
 
   return (
     <ObsidianSetting
@@ -20,8 +30,20 @@ export function LanguageSection() {
     >
       <ObsidianDropdown
         options={languageOptions}
-        value={language}
-        onChange={(value) => setLanguage(value as Language)}
+        value={currentPreference}
+        onChange={(value) => {
+          if (!LANGUAGE_KEYS.includes(value as typeof LANGUAGE_KEYS[number])) {
+            return
+          }
+          void Promise.resolve(
+            setSettings({
+              ...settings,
+              languagePreference: value as typeof LANGUAGE_KEYS[number],
+            }),
+          ).catch((error) => {
+            console.error('Failed to update language preference', error)
+          })
+        }}
       />
     </ObsidianSetting>
   )

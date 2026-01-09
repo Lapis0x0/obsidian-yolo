@@ -69,6 +69,6 @@ describe('parseSmartComposerSettings', () => {
     expect(result.continuationOptions.smartSpaceQuickActions).toBeUndefined()
 
     expect(result.assistants).toEqual([])
-    expect(result.language).toBe('en')
+    expect(result.languagePreference).toBe('auto')
   })
 })

@@ -529,6 +529,7 @@ export const en: TranslationKeys = {
     language: {
       title: 'Language',
       select: 'Select language',
+      auto: 'Auto (Follow Obsidian)',
     },
   },
 
@@ -648,7 +649,7 @@ export const en: TranslationKeys = {
     rebuildComplete: 'Rebuilding vault index complete.',
     rebuildFailed: 'Rebuilding vault index failed.',
     pgliteUnavailable:
-      'PGlite resources unavailable; please check your network connection.',
+      'PGlite resources unavailable; please reinstall the plugin.',
     downloadingPglite:
       'Downloading PGlite dependencies from the content delivery network (~20 megabytes); this may take a moment…',
     updatingIndex: 'Updating vault index…',

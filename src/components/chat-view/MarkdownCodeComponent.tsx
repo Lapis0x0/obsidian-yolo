@@ -135,7 +135,7 @@ export default function MarkdownCodeComponent({
           >
             {isApplying ? (
               <>
-                <Loader2 className="spinner" size={14} />
+                <Loader2 className="smtcmp-spinner" size={14} />
                 <span>{t('chat.codeBlock.applying', 'Applying...')}</span>
               </>
             ) : (

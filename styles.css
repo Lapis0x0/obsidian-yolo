@@ -413,12 +413,12 @@
 }
 
 .smtcmp-composer-option-control .smtcmp-display-contents,
-.smtcmp-composer-option-control .checkbox-container {
+.smtcmp-composer-option-control .smtcmp-checkbox-container {
   margin-left: auto;
 }
 
 .smtcmp-composer-option-control .checkbox-component,
-.smtcmp-composer-option-control .checkbox-container,
+.smtcmp-composer-option-control .smtcmp-checkbox-container,
 .smtcmp-composer-option-control .setting-item-control {
   margin-left: auto;
 }
@@ -495,14 +495,14 @@
 }
 
 /* 改进开关控件样式 */
-.checkbox-container {
+.smtcmp-checkbox-container {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--size-2-2);
 }
 
-.checkbox-container input[type='checkbox'] {
+.smtcmp-checkbox-container input[type='checkbox'] {
   width: 44px;
   height: 24px;
   appearance: none;
@@ -514,12 +514,12 @@
   border: 2px solid transparent;
 }
 
-.checkbox-container input[type='checkbox']:checked {
+.smtcmp-checkbox-container input[type='checkbox']:checked {
   background: var(--interactive-accent);
   border-color: var(--interactive-accent);
 }
 
-.checkbox-container input[type='checkbox']::before {
+.smtcmp-checkbox-container input[type='checkbox']::before {
   content: '';
   position: absolute;
   width: 18px;
@@ -532,7 +532,7 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.checkbox-container input[type='checkbox']:checked::before {
+.smtcmp-checkbox-container input[type='checkbox']:checked::before {
   transform: translateX(20px);
 }
 
@@ -592,7 +592,7 @@
   }
 }
 
-.obsidian-default-textarea {
+.smtcmp-obsidian-textarea {
   -webkit-app-region: no-drag;
   background: var(--background-modifier-form-field);
   color: var(--text-normal);
@@ -608,24 +608,24 @@
 }
 
 @media (hover: hover) {
-  .obsidian-default-textarea:hover {
+  .smtcmp-obsidian-textarea:hover {
     border-color: var(--background-modifier-border-hover);
     transition:
       box-shadow 0.15s ease-in-out,
       border 0.15s ease-in-out;
   }
 }
-.obsidian-default-textarea:active {
+.smtcmp-obsidian-textarea:active {
   border-color: var(--background-modifier-border-focus);
   transition:
     box-shadow 0.15s ease-in-out,
     border 0.15s ease-in-out;
 }
 
-/* .obsidian-default-textarea::placeholder {
+/* .smtcmp-obsidian-textarea::placeholder {
   color: var(--text-faint);
 } */
-.obsidian-default-textarea {
+.smtcmp-obsidian-textarea {
   line-height: var(--line-height-tight);
 }
 
@@ -1579,7 +1579,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   }
 }
 
-.spinner {
+.smtcmp-spinner {
   animation: spin 1s linear infinite;
 }
 
@@ -6597,23 +6597,23 @@ button.smtcmp-chat-input-model-select {
 /* ==================== Emoji Icon Styles (No Background) ==================== */
 
 /* 助手选择器当前图标 - emoji 无背景 */
-.smtcmp-assistant-selector-current-icon:has(.icon-emoji) {
+.smtcmp-assistant-selector-current-icon:has(.smtcmp-icon-emoji) {
   background: none;
   box-shadow: none;
 }
 
 /* 助手选择器列表项图标 - emoji 无背景 */
-.smtcmp-assistant-selector-item-icon:has(.icon-emoji) {
+.smtcmp-assistant-selector-item-icon:has(.smtcmp-icon-emoji) {
   background: none;
 }
 
 /* 设置面板助手列表图标 - emoji 无背景 */
-.smtcmp-assistant-icon:has(.icon-emoji) {
+.smtcmp-assistant-icon:has(.smtcmp-icon-emoji) {
   background: none;
 }
 
 /* Emoji 图标字体大小调整 */
-.icon-emoji {
+.smtcmp-icon-emoji {
   font-size: 1.2em;
 }
 

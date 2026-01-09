@@ -188,7 +188,7 @@ function EmbeddingDbManageModalComponent({
           }}
           disabled={isFetching}
         >
-          <RefreshCw size={16} className={cx(isFetching && 'spinner')} />
+          <RefreshCw size={16} className={cx(isFetching && 'smtcmp-spinner')} />
         </button>
 
         <span className="smtcmp-settings-embedding-db-manage-last-updated">
@@ -212,7 +212,7 @@ function EmbeddingDbManageModalComponent({
               <td>{(stat.totalDataBytes / 1000 / 1000).toFixed(2)}</td>
               {indexProgressMap.get(stat.model) ? (
                 <td className="smtcmp-settings-embedding-db-manage-actions-loading">
-                  <Loader2 className="spinner" size={14} />
+                  <Loader2 className="smtcmp-spinner" size={14} />
                   <div>
                     {Math.round(
                       ((indexProgressMap.get(stat.model)?.completedChunks ??

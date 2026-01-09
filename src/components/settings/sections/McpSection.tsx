@@ -277,7 +277,7 @@ function McpServerStatusBadge({ status }: { status: McpServerStatus }) {
       statusClass: 'smtcmp-mcp-server-status-badge--connected',
     },
     [McpServerStatus.Connecting]: {
-      icon: <Loader2 size={16} className="spinner" />,
+      icon: <Loader2 size={16} className="smtcmp-spinner" />,
       label: t('settings.mcp.connecting'),
       statusClass: 'smtcmp-mcp-server-status-badge--connecting',
     },

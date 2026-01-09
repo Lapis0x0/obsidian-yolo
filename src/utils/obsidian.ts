@@ -63,8 +63,11 @@ export function getMentionableBlockData(
 export function getOpenFiles(app: App): TFile[] {
   try {
     const leaves = app.workspace.getLeavesOfType('markdown')
-
-    return leaves.map((v) => (v.view as MarkdownView).file).filter((v) => !!v)
+    return leaves
+      .map((leaf) =>
+        leaf.view instanceof MarkdownView ? leaf.view.file : null,
+      )
+      .filter((file): file is TFile => Boolean(file))
   } catch {
     return []
   }

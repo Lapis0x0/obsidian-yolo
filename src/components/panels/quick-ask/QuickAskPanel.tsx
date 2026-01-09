@@ -1133,7 +1133,7 @@ export function QuickAskPanel({
             mentionMenuContainerRef={inputRowRef}
             mentionMenuPlacement={mentionMenuPlacement}
             autoFocus
-            contentClassName="obsidian-default-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
+            contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
           />
           {inputText.length === 0 && (
             <div className="smtcmp-quick-ask-input-placeholder">

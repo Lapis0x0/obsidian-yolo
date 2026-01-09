@@ -137,7 +137,7 @@ export const renderAssistantIcon = (
 
   // 为不同类型的图标添加不同的类名
   const iconTypeClass =
-    iconConfig.type === 'emoji' ? 'icon-emoji' : 'icon-lucide'
+    iconConfig.type === 'emoji' ? 'smtcmp-icon-emoji' : 'smtcmp-icon-lucide'
   const combinedClassName = className
     ? `${className} ${iconTypeClass}`
     : iconTypeClass

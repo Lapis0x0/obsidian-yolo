@@ -30,13 +30,6 @@ const hasDrizzleMigrationSupport = (
   )
 }
 
-// PGlite 版本和 CDN 备用地址
-const PGLITE_VERSION = '0.2.12'
-const PGLITE_CDN_URLS = [
-  `https://cdn.jsdelivr.net/npm/@electric-sql/pglite@${PGLITE_VERSION}/dist/`,
-  `https://unpkg.com/@electric-sql/pglite@${PGLITE_VERSION}/dist/`,
-]
-
 export class DatabaseManager {
   private app: App
   private dbPath: string
@@ -236,8 +229,7 @@ export class DatabaseManager {
   }
 
   /**
-   * 检查是否需要首次下载 PGlite 资源
-   * 逻辑：如果数据库文件不存在，说明是首次使用，需要提示下载
+   * 检查 PGlite 资源是否可用（不依赖 CDN）
    * @returns { available: boolean, needsDownload: boolean, fromCDN: boolean }
    */
   async checkPGliteResources(): Promise<{
@@ -268,23 +260,7 @@ export class DatabaseManager {
           return { available: true, needsDownload: false, fromCDN: false }
         }
       } catch {
-        // 本地不可用，继续检查 CDN
-      }
-
-      // 检查 CDN 是否可用（首次使用需要从 CDN 下载）
-      for (const cdnUrl of PGLITE_CDN_URLS) {
-        try {
-          const wasmUrl = new URL('postgres.wasm', cdnUrl)
-          const response = await requestUrl({
-            url: wasmUrl.href,
-            method: 'HEAD',
-          })
-          if (response.status >= 200 && response.status < 300) {
-            return { available: true, needsDownload: true, fromCDN: true }
-          }
-        } catch {
-          continue
-        }
+        // 本地不可用
       }
 
       return { available: false, needsDownload: false, fromCDN: false }
@@ -365,11 +341,6 @@ export class DatabaseManager {
 
       // 最后尝试使用相对路径（开发模式）
       addCandidateUrl(new URL('./vendor/pglite/', import.meta.url))
-
-      // 添加 CDN 备用方案
-      for (const cdnUrl of PGLITE_CDN_URLS) {
-        addCandidateUrl(cdnUrl)
-      }
 
       let lastError: unknown = null
 

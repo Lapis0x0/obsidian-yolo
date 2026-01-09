@@ -125,7 +125,7 @@ export default function LexicalContentEditable({
           <ContentEditable
             className={
               contentClassName ??
-              'obsidian-default-textarea smtcmp-content-editable'
+              'smtcmp-obsidian-textarea smtcmp-content-editable'
             }
             onFocus={onFocus}
             onKeyDown={onKeyDown}

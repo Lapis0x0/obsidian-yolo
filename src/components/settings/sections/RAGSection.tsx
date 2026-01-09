@@ -540,24 +540,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         new Notice(
                           t(
                             'notices.pgliteUnavailable',
-                            'PGlite resources unavailable. Please check your network connection.',
+                            'PGlite resources unavailable. Please reinstall the plugin.',
                           ),
                           5000,
                         )
                         return
-                      }
-
-                      if (
-                        resourceCheck.needsDownload &&
-                        resourceCheck.fromCDN
-                      ) {
-                        new Notice(
-                          t(
-                            'notices.downloadingPglite',
-                            'Downloading PGlite dependencies (~20MB). This may take a moment...',
-                          ),
-                          5000,
-                        )
                       }
                     } catch (error) {
                       console.warn('Failed to check PGlite resources:', error)

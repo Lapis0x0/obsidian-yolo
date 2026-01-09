@@ -461,6 +461,7 @@ export type TranslationKeys = {
     language: {
       title: string
       select: string
+      auto: string
     }
   }
 

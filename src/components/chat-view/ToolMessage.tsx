@@ -328,7 +328,7 @@ function StatusIcon({ status }: { status: ToolCallResponseStatus }) {
     case ToolCallResponseStatus.Error:
       return <X size={16} className="smtcmp-icon-error" />
     case ToolCallResponseStatus.Running:
-      return <Loader2 size={16} className="spinner" />
+      return <Loader2 size={16} className="smtcmp-spinner" />
     case ToolCallResponseStatus.Success:
       return <Check size={16} className="smtcmp-icon-success" />
     default:

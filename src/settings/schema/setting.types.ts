@@ -362,8 +362,8 @@ export const smartComposerSettingsSchema = z.object({
   // Currently selected assistant ID
   currentAssistantId: z.string().optional(),
 
-  // Language setting
-  language: z.enum(['en', 'zh', 'it']).catch('en'),
+  // Language preference (auto follows Obsidian)
+  languagePreference: z.enum(['auto', 'en', 'zh', 'it']).catch('auto'),
 })
 export type SmartComposerSettings = z.infer<typeof smartComposerSettingsSchema>
 
