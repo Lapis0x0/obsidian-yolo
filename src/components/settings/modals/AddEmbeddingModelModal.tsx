@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 
 import { DEFAULT_PROVIDERS } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
-import { getProviderClient } from '../../../core/llm/manager'
 import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
+import { getProviderClient } from '../../../core/llm/manager'
 import { supportedDimensionsForIndex } from '../../../database/schema'
 import SmartComposerPlugin from '../../../main'
 import {

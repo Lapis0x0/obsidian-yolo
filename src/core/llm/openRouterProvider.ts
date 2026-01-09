@@ -11,9 +11,9 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
-import { extractEmbeddingVector } from './embedding-utils'
 
 import { BaseLLMProvider } from './base'
+import { extractEmbeddingVector } from './embedding-utils'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 export class OpenRouterProvider extends BaseLLMProvider<

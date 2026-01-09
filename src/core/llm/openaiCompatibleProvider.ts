@@ -13,10 +13,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
-import { extractEmbeddingVector } from './embedding-utils'
 import { formatMessages } from '../../utils/llm/request'
 
 import { BaseLLMProvider } from './base'
+import { extractEmbeddingVector } from './embedding-utils'
 import { LLMBaseUrlNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'

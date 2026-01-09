@@ -32,13 +32,15 @@ export function LanguageSection() {
         options={languageOptions}
         value={currentPreference}
         onChange={(value) => {
-          if (!LANGUAGE_KEYS.includes(value as typeof LANGUAGE_KEYS[number])) {
+          if (
+            !LANGUAGE_KEYS.includes(value as (typeof LANGUAGE_KEYS)[number])
+          ) {
             return
           }
           void Promise.resolve(
             setSettings({
               ...settings,
-              languagePreference: value as typeof LANGUAGE_KEYS[number],
+              languagePreference: value as (typeof LANGUAGE_KEYS)[number],
             }),
           ).catch((error) => {
             console.error('Failed to update language preference', error)

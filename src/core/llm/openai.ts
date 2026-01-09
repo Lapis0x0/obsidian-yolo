@@ -14,13 +14,13 @@ import {
 import { LLMProvider } from '../../types/provider.types'
 
 import { BaseLLMProvider } from './base'
+import { extractEmbeddingVector } from './embedding-utils'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
   LLMRateLimitExceededException,
 } from './exception'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
-import { extractEmbeddingVector } from './embedding-utils'
 
 export class OpenAIAuthenticatedProvider extends BaseLLMProvider<
   Extract<LLMProvider, { type: 'openai' }>

@@ -11,6 +11,7 @@ import {
   TFolder,
   normalizePath,
 } from 'obsidian'
+import { getLanguage } from 'obsidian'
 
 import { ApplyView, ApplyViewState } from './ApplyView'
 import { ChatView } from './ChatView'
@@ -39,7 +40,6 @@ import {
   SmartSpaceDraftState,
 } from './features/editor/smart-space/smartSpaceController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
-import { getLanguage } from 'obsidian'
 import { Language, createTranslationFunction } from './i18n'
 import {
   SmartComposerSettings,

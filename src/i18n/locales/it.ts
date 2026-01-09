@@ -664,8 +664,7 @@ export const it: TranslationKeys = {
     rebuildingIndex: 'Ricostruzione indice vault in corso…',
     rebuildComplete: 'Ricostruzione indice vault completata.',
     rebuildFailed: 'Ricostruzione indice vault fallita.',
-    pgliteUnavailable:
-      'Risorse PGlite non disponibili; reinstalla il plugin.',
+    pgliteUnavailable: 'Risorse PGlite non disponibili; reinstalla il plugin.',
     downloadingPglite:
       'Download dipendenze PGlite da CDN (~20MB); potrebbe richiedere un momento…',
     updatingIndex: 'Aggiornamento indice vault in corso…',

@@ -3,7 +3,7 @@ type EmbeddingResponseShape = Record<string, unknown>
 export const extractEmbeddingVector = (response: unknown): number[] => {
   if (Array.isArray(response) && response.length > 0) {
     if (response.every((value) => typeof value === 'number')) {
-      return response as number[]
+      return response
     }
     const first = response[0] as EmbeddingResponseShape
     if (Array.isArray(first.embedding)) {

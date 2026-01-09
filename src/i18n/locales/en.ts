@@ -529,7 +529,7 @@ export const en: TranslationKeys = {
     language: {
       title: 'Language',
       select: 'Select language',
-      auto: 'Auto (Follow Obsidian)',
+      auto: 'Auto (follow Obsidian)',
     },
   },
 

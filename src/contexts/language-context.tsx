@@ -52,9 +52,7 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
     }
     return getObsidianLanguage()
   }
-  const [language, setLanguageState] = useState<Language>(
-    resolveLanguage(),
-  )
+  const [language, setLanguageState] = useState<Language>(resolveLanguage())
 
   useEffect(() => {
     const updateLanguage = () => {
@@ -65,10 +63,9 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
 
   useEffect(() => {
     const unsubscribe = plugin.addSettingsChangeListener((newSettings) => {
-      const nextPreference = (newSettings.languagePreference as
-        | 'auto'
-        | Language
-        | undefined) ?? 'auto'
+      const nextPreference =
+        (newSettings.languagePreference as 'auto' | Language | undefined) ??
+        'auto'
       setLanguagePreference(nextPreference)
     })
     return unsubscribe
