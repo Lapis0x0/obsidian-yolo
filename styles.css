@@ -7381,8 +7381,8 @@ button.smtcmp-chat-input-model-select {
 }
 
 .smtcmp-quick-ask-drag-indicator {
-  width: 32px;
-  height: 3px;
+  width: 64px;
+  height: 5px;
   border-radius: 2px;
   background: color-mix(in srgb, var(--text-muted) 40%, transparent);
   transition: background-color 0.15s ease;
