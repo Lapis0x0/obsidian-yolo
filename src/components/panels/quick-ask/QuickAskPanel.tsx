@@ -184,11 +184,7 @@ export function QuickAskPanel({
     panelY: number
   } | null>(null)
   const resizeStartRef = useRef<{
-    direction:
-      | 'right'
-      | 'bottom'
-      | 'bottom-right'
-      | 'bottom-left'
+    direction: 'right' | 'bottom' | 'bottom-right' | 'bottom-left'
     x: number
     y: number
     width: number
@@ -1010,7 +1006,7 @@ export function QuickAskPanel({
       let newWidth = resizeStartRef.current.width
       let newHeight = resizeStartRef.current.height
       let newX = resizeStartRef.current.panelX
-      let newY = resizeStartRef.current.panelY
+      const newY = resizeStartRef.current.panelY
 
       if (
         resizeStartRef.current.direction === 'right' ||
@@ -1089,13 +1085,7 @@ export function QuickAskPanel({
 
   // Resize handle mouse down
   const handleResizeStart = useCallback(
-    (
-      direction:
-        | 'right'
-        | 'bottom'
-        | 'bottom-right'
-        | 'bottom-left'
-    ) =>
+    (direction: 'right' | 'bottom' | 'bottom-right' | 'bottom-left') =>
       (e: React.MouseEvent) => {
         if (!containerRef?.current) return
 
