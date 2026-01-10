@@ -7204,7 +7204,6 @@ button.smtcmp-chat-input-model-select {
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
 }
 
 .smtcmp-quick-ask-toolbar-right {
