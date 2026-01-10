@@ -173,6 +173,7 @@ export function QuickAskPanel({
     right?: HTMLDivElement | null
     bottom?: HTMLDivElement | null
     bottomRight?: HTMLDivElement | null
+    bottomLeft?: HTMLDivElement | null
   }>({})
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
@@ -183,11 +184,17 @@ export function QuickAskPanel({
     panelY: number
   } | null>(null)
   const resizeStartRef = useRef<{
-    direction: 'right' | 'bottom' | 'bottom-right'
+    direction:
+      | 'right'
+      | 'bottom'
+      | 'bottom-right'
+      | 'bottom-left'
     x: number
     y: number
     width: number
     height: number
+    panelX: number
+    panelY: number
   } | null>(null)
   const [panelSize, setPanelSize] = useState<{
     width: number
@@ -990,7 +997,9 @@ export function QuickAskPanel({
         ? 'ew-resize'
         : direction === 'bottom'
           ? 'ns-resize'
-          : 'nwse-resize'
+          : direction === 'bottom-left'
+            ? 'nesw-resize'
+            : 'nwse-resize'
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeStartRef.current || !containerRef?.current) return
@@ -1000,6 +1009,8 @@ export function QuickAskPanel({
 
       let newWidth = resizeStartRef.current.width
       let newHeight = resizeStartRef.current.height
+      let newX = resizeStartRef.current.panelX
+      let newY = resizeStartRef.current.panelY
 
       if (
         resizeStartRef.current.direction === 'right' ||
@@ -1007,15 +1018,31 @@ export function QuickAskPanel({
       ) {
         newWidth = Math.max(300, resizeStartRef.current.width + deltaX)
       }
+      if (resizeStartRef.current.direction === 'bottom-left') {
+        const proposedWidth = resizeStartRef.current.width - deltaX
+        newWidth = Math.max(300, proposedWidth)
+        newX =
+          resizeStartRef.current.panelX +
+          (resizeStartRef.current.width - newWidth)
+      }
       if (
         resizeStartRef.current.direction === 'bottom' ||
         resizeStartRef.current.direction === 'bottom-right'
       ) {
         newHeight = Math.max(200, resizeStartRef.current.height + deltaY)
       }
+      if (resizeStartRef.current.direction === 'bottom-left') {
+        newHeight = Math.max(200, resizeStartRef.current.height + deltaY)
+      }
 
       setPanelSize({ width: newWidth, height: newHeight })
       onResize?.(newWidth, newHeight)
+      if (
+        newX !== resizeStartRef.current.panelX ||
+        newY !== resizeStartRef.current.panelY
+      ) {
+        onDragOffset?.(newX, newY)
+      }
     }
 
     const handleMouseUp = () => {
@@ -1062,7 +1089,13 @@ export function QuickAskPanel({
 
   // Resize handle mouse down
   const handleResizeStart = useCallback(
-    (direction: 'right' | 'bottom' | 'bottom-right') =>
+    (
+      direction:
+        | 'right'
+        | 'bottom'
+        | 'bottom-right'
+        | 'bottom-left'
+    ) =>
       (e: React.MouseEvent) => {
         if (!containerRef?.current) return
 
@@ -1073,6 +1106,8 @@ export function QuickAskPanel({
           y: e.clientY,
           width: rect.width,
           height: rect.height,
+          panelX: rect.left,
+          panelY: rect.top,
         }
         setIsResizing(true)
         e.preventDefault()
@@ -1436,20 +1471,21 @@ export function QuickAskPanel({
         onMouseDown={handleResizeStart('right')}
         ref={(el) => (resizeHandlesRef.current.right = el)}
       />
-      {hasMessages && (
-        <>
-          <div
-            className="smtcmp-quick-ask-resize-handle smtcmp-quick-ask-resize-handle-bottom"
-            onMouseDown={handleResizeStart('bottom')}
-            ref={(el) => (resizeHandlesRef.current.bottom = el)}
-          />
-          <div
-            className="smtcmp-quick-ask-resize-handle smtcmp-quick-ask-resize-handle-bottom-right"
-            onMouseDown={handleResizeStart('bottom-right')}
-            ref={(el) => (resizeHandlesRef.current.bottomRight = el)}
-          />
-        </>
-      )}
+      <div
+        className="smtcmp-quick-ask-resize-handle smtcmp-quick-ask-resize-handle-bottom"
+        onMouseDown={handleResizeStart('bottom')}
+        ref={(el) => (resizeHandlesRef.current.bottom = el)}
+      />
+      <div
+        className="smtcmp-quick-ask-resize-handle smtcmp-quick-ask-resize-handle-bottom-left"
+        onMouseDown={handleResizeStart('bottom-left')}
+        ref={(el) => (resizeHandlesRef.current.bottomLeft = el)}
+      />
+      <div
+        className="smtcmp-quick-ask-resize-handle smtcmp-quick-ask-resize-handle-bottom-right"
+        onMouseDown={handleResizeStart('bottom-right')}
+        ref={(el) => (resizeHandlesRef.current.bottomRight = el)}
+      />
     </div>
   )
 }
