@@ -6770,6 +6770,7 @@ button.smtcmp-chat-input-model-select {
   display: flex;
   align-items: center;
   margin-left: 0px;
+  min-width: 0;
 }
 
 .smtcmp-quick-ask-toolbar
@@ -6780,6 +6781,9 @@ button.smtcmp-chat-input-model-select {
   gap: 0px;
   padding: 6px 10px;
   min-height: 28px;
+  min-width: 0;
+  max-width: 220px;
+  flex-shrink: 1;
   border: none !important;
   border-radius: 6px;
   background: transparent !important;
@@ -6860,6 +6864,7 @@ button.smtcmp-chat-input-model-select {
   display: flex;
   align-items: center;
   margin-left: 0px;
+  min-width: 0;
 }
 
 .smtcmp-quick-ask-toolbar .smtcmp-quick-ask-mode-select .smtcmp-mode-select {
@@ -6868,6 +6873,9 @@ button.smtcmp-chat-input-model-select {
   gap: 4px;
   padding: 6px 10px;
   min-height: 28px;
+  min-width: 0;
+  max-width: 180px;
+  flex-shrink: 1;
   border: none !important;
   border-radius: 6px;
   background: transparent !important;
@@ -6876,6 +6884,15 @@ button.smtcmp-chat-input-model-select {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-medium);
   transition: all 0.15s ease;
+}
+
+.smtcmp-quick-ask-toolbar
+  .smtcmp-quick-ask-mode-select
+  .smtcmp-chat-input-model-select__model-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .smtcmp-quick-ask-toolbar
@@ -7185,12 +7202,16 @@ button.smtcmp-chat-input-model-select {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .smtcmp-quick-ask-toolbar-right {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 /* Toolbar action buttons */
