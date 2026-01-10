@@ -7101,15 +7101,20 @@ button.smtcmp-chat-input-model-select {
   margin-right: 0;
   min-height: 20px;
   max-height: 200px;
-  padding: 2px 6px 1px 6px;
+  padding: 13px 6px 1px 6px !important;
   background: transparent;
   border: none;
   font-size: var(--font-ui-small);
-  line-height: 1.25;
+  line-height: 1.6 !important;
   outline: none;
   overflow-y: auto;
   scrollbar-gutter: stable; /* keep gutter on the right */
   color: var(--text-normal);
+}
+
+.smtcmp-quick-ask-content-editable .smtcmp-lexical-content-editable-paragraph {
+  line-height: 1.6 !important;
+  padding-top: 0 !important;
 }
 
 .smtcmp-quick-ask-content-editable::-webkit-scrollbar {
@@ -7125,7 +7130,7 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-quick-ask-input-placeholder {
   position: absolute;
   left: 6px;
-  top: 4px;
+  top: 14px;
   transform: none;
   color: color-mix(in srgb, var(--text-muted) 78%, transparent);
   pointer-events: none;
@@ -7139,7 +7144,7 @@ button.smtcmp-chat-input-model-select {
   justify-content: center;
   width: 26px;
   height: 26px;
-  margin-top: 0;
+  margin-top: 6px;
   padding: 0;
   background: transparent !important;
   border: none !important;
