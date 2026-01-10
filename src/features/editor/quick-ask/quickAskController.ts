@@ -1,9 +1,9 @@
 import type { Extension } from '@codemirror/state'
-import { StateEffect, StateField } from '@codemirror/state'
-import { Decoration, DecorationSet, EditorView } from '@codemirror/view'
+import { StateEffect } from '@codemirror/state'
+import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
-import { QuickAskWidget } from '../../../components/panels/quick-ask'
+import { QuickAskOverlay } from '../../../components/panels/quick-ask'
 import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 
@@ -22,7 +22,7 @@ type QuickAskWidgetPayload = {
 type QuickAskWidgetState = {
   view: EditorView
   pos: number
-  close: () => void
+  close: (restoreFocus?: boolean) => void
 } | null
 
 type QuickAskControllerDeps = {
@@ -31,58 +31,78 @@ type QuickAskControllerDeps = {
   getActiveMarkdownView: () => MarkdownView | null
   getEditorView: (editor: Editor) => EditorView | null
   getActiveFileTitle: () => string
-  closeSmartSpace: () => void
+  closeSmartSpace: (restoreFocus?: boolean) => void
 }
 
 const quickAskWidgetEffect = StateEffect.define<QuickAskWidgetPayload | null>()
 
-const quickAskWidgetField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none
-  },
-  update(decorations, tr) {
-    let updated = decorations.map(tr.changes)
-    for (const effect of tr.effects) {
-      if (effect.is(quickAskWidgetEffect)) {
-        updated = Decoration.none
-        const payload = effect.value
-        if (payload) {
-          updated = Decoration.set([
-            Decoration.widget({
-              widget: new QuickAskWidget(payload.options),
-              side: 1,
-              block: false,
-            }).range(payload.pos),
-          ])
+const quickAskOverlayPlugin = ViewPlugin.fromClass(
+  class {
+    private overlay: QuickAskOverlay | null = null
+    private pos: number | null = null
+
+    constructor(private readonly view: EditorView) {}
+
+    update(update: ViewUpdate) {
+      for (const tr of update.transactions) {
+        for (const effect of tr.effects) {
+          if (!effect.is(quickAskWidgetEffect)) continue
+          const payload = effect.value
+          if (!payload) {
+            this.overlay?.destroy()
+            this.overlay = null
+            this.pos = null
+            continue
+          }
+          this.overlay?.destroy()
+          this.pos = payload.pos
+          this.overlay = new QuickAskOverlay(payload.options)
+          this.overlay.mount(payload.pos)
         }
       }
+
+      if (this.overlay && this.pos !== null && update.docChanged) {
+        this.pos = update.changes.mapPos(this.pos)
+        this.overlay.updatePosition(this.pos)
+      }
     }
-    return updated
+
+    destroy() {
+      this.overlay?.destroy()
+      this.overlay = null
+      this.pos = null
+    }
   },
-  provide: (field) => EditorView.decorations.from(field),
-})
+)
 
 export class QuickAskController {
   private quickAskWidgetState: QuickAskWidgetState = null
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
-  close() {
+  close(restoreFocus = true) {
     const state = this.quickAskWidgetState
-    if (!state) return
+    if (!state) {
+      return
+    }
+
+    if (!restoreFocus) {
+      this.quickAskWidgetState = null
+      state.view.dispatch({ effects: quickAskWidgetEffect.of(null) })
+      return
+    }
 
     // Clear state to prevent duplicate close
     this.quickAskWidgetState = null
 
     // Try to trigger close animation
-    const hasAnimation = QuickAskWidget.closeCurrentWithAnimation()
+    const hasAnimation = QuickAskOverlay.closeCurrentWithAnimation()
 
     if (!hasAnimation) {
       // If no animation instance, dispatch close effect directly
       state.view.dispatch({ effects: quickAskWidgetEffect.of(null) })
+      state.view.focus()
     }
-
-    state.view.focus()
   }
 
   show(editor: Editor, view: EditorView) {
@@ -94,11 +114,11 @@ export class QuickAskController {
     const fileTitle = this.deps.getActiveFileTitle()
 
     // Close any existing Quick Ask panel
-    this.close()
+    this.close(false)
     // Also close Smart Space if open
-    this.deps.closeSmartSpace()
+    this.deps.closeSmartSpace(false)
 
-    const close = () => {
+    const close = (restoreFocus = true) => {
       const isCurrentView =
         !this.quickAskWidgetState || this.quickAskWidgetState.view === view
 
@@ -108,7 +128,9 @@ export class QuickAskController {
       view.dispatch({ effects: quickAskWidgetEffect.of(null) })
 
       if (isCurrentView) {
-        view.focus()
+        if (restoreFocus) {
+          view.focus()
+        }
       }
     }
 
@@ -123,7 +145,7 @@ export class QuickAskController {
             view,
             contextText,
             fileTitle,
-            onClose: close,
+            onClose: () => close(true),
           },
         }),
       ],
@@ -134,9 +156,9 @@ export class QuickAskController {
 
   createTriggerExtension(): Extension {
     return [
-      quickAskWidgetField,
+      quickAskOverlayPlugin,
       EditorView.domEventHandlers({
-        keydown: (event, view) => {
+        beforeinput: (event, view) => {
           // Check if Quick Ask feature is enabled (default: true)
           const enableQuickAsk =
             this.deps.getSettings().continuationOptions?.enableQuickAsk ?? true
@@ -148,21 +170,20 @@ export class QuickAskController {
             return false
           }
 
-          // Don't trigger with modifier keys (except Shift for special chars like @)
-          if (event.altKey || event.metaKey || event.ctrlKey) {
-            return false
-          }
-
           // Get trigger string from settings (default: @)
           const triggerStr =
             this.deps.getSettings().continuationOptions?.quickAskTrigger ?? '@'
 
-          // Determine what character the user is typing
-          let typedChar = event.key
-          // Special handling for @ which may be Shift+2 on some keyboards
-          if (event.key === '2' && event.shiftKey) {
-            typedChar = '@'
+          const inputEvent = event
+          if (inputEvent.inputType !== 'insertText') {
+            return false
           }
+          if (inputEvent.isComposing) {
+            return false
+          }
+
+          // Determine what character the user is typing
+          const typedChar = inputEvent.data ?? ''
 
           // Only proceed if the typed character could be part of the trigger
           if (typedChar.length !== 1) {
@@ -227,14 +248,6 @@ export class QuickAskController {
           this.show(editor, view)
           return true
         },
-      }),
-      EditorView.updateListener.of((update) => {
-        const state = this.quickAskWidgetState
-        if (!state || state.view !== update.view) return
-
-        if (update.docChanged) {
-          state.pos = update.changes.mapPos(state.pos)
-        }
       }),
     ]
   }

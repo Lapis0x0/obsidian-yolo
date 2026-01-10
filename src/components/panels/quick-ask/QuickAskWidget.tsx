@@ -1,4 +1,4 @@
-import { EditorView, WidgetType } from '@codemirror/view'
+import { EditorView } from '@codemirror/view'
 import { Editor } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
@@ -17,13 +17,12 @@ import {
 
 import { QuickAskPanel } from './QuickAskPanel'
 
-export class QuickAskWidget extends WidgetType {
+export class QuickAskOverlay {
   private static overlayRoot: HTMLElement | null = null
-  private static currentInstance: QuickAskWidget | null = null
+  private static currentInstance: QuickAskOverlay | null = null
 
   private root: Root | null = null
   private overlayContainer: HTMLDivElement | null = null
-  private anchor: HTMLSpanElement | null = null
   private cleanupListeners: (() => void) | null = null
   private cleanupCallbacks: (() => void)[] = []
   private overlayHost: HTMLElement | null = null
@@ -38,6 +37,7 @@ export class QuickAskWidget extends WidgetType {
   private dragPosition: { x: number; y: number } | null = null
   // Resize state - when set, override panel size
   private resizeSize: { width: number; height: number } | null = null
+  private pos: number | null = null
 
   constructor(
     private readonly options: {
@@ -48,34 +48,20 @@ export class QuickAskWidget extends WidgetType {
       fileTitle: string
       onClose: () => void
     },
-  ) {
-    super()
-  }
+  ) {}
 
-  eq(): boolean {
-    return false
-  }
-
-  toDOM(): HTMLElement {
-    const anchor = document.createElement('span')
-    anchor.className = 'smtcmp-quick-ask-inline-anchor'
-    anchor.setAttribute('aria-hidden', 'true')
-    this.anchor = anchor
-
-    // Save current instance reference
-    QuickAskWidget.currentInstance = this
-
+  mount(pos: number): void {
+    this.pos = pos
+    QuickAskOverlay.currentInstance = this
     this.mountOverlay()
     this.setupGlobalListeners()
     this.schedulePositionUpdate()
-
-    return anchor
   }
 
   destroy(): void {
     // Clear current instance reference
-    if (QuickAskWidget.currentInstance === this) {
-      QuickAskWidget.currentInstance = null
+    if (QuickAskOverlay.currentInstance === this) {
+      QuickAskOverlay.currentInstance = null
     }
 
     if (this.closeAnimationTimeout !== null) {
@@ -113,42 +99,42 @@ export class QuickAskWidget extends WidgetType {
       clearDynamicStyleClass(this.overlayContainer)
     }
     this.overlayContainer = null
-    const overlayRoot = QuickAskWidget.overlayRoot
+    const overlayRoot = QuickAskOverlay.overlayRoot
     if (overlayRoot && overlayRoot.childElementCount === 0) {
       const host = overlayRoot.parentElement
       overlayRoot.remove()
-      QuickAskWidget.overlayRoot = null
+      QuickAskOverlay.overlayRoot = null
       host?.classList.remove('smtcmp-quick-ask-overlay-host')
     }
-    this.anchor = null
+    this.pos = null
   }
 
   private static getOverlayRoot(host: HTMLElement): HTMLElement {
     if (
-      QuickAskWidget.overlayRoot &&
-      QuickAskWidget.overlayRoot.parentElement !== host
+      QuickAskOverlay.overlayRoot &&
+      QuickAskOverlay.overlayRoot.parentElement !== host
     ) {
-      QuickAskWidget.overlayRoot.parentElement?.classList.remove(
+      QuickAskOverlay.overlayRoot.parentElement?.classList.remove(
         'smtcmp-quick-ask-overlay-host',
       )
-      QuickAskWidget.overlayRoot.remove()
-      QuickAskWidget.overlayRoot = null
+      QuickAskOverlay.overlayRoot.remove()
+      QuickAskOverlay.overlayRoot = null
     }
 
-    if (QuickAskWidget.overlayRoot) return QuickAskWidget.overlayRoot
+    if (QuickAskOverlay.overlayRoot) return QuickAskOverlay.overlayRoot
 
     const root = document.createElement('div')
     root.className = 'smtcmp-quick-ask-overlay-root'
     host.appendChild(root)
     host.classList.add('smtcmp-quick-ask-overlay-host')
-    QuickAskWidget.overlayRoot = root
+    QuickAskOverlay.overlayRoot = root
     return root
   }
 
   // Static method: trigger close animation from outside
   static closeCurrentWithAnimation(): boolean {
-    if (QuickAskWidget.currentInstance) {
-      QuickAskWidget.currentInstance.closeWithAnimation()
+    if (QuickAskOverlay.currentInstance) {
+      QuickAskOverlay.currentInstance.closeWithAnimation()
       return true
     }
     return false
@@ -176,7 +162,7 @@ export class QuickAskWidget extends WidgetType {
     const overlayHost = this.options.view.dom ?? document.body
     this.overlayHost = overlayHost
 
-    const overlayRoot = QuickAskWidget.getOverlayRoot(overlayHost)
+    const overlayRoot = QuickAskOverlay.getOverlayRoot(overlayHost)
     const overlayContainer = document.createElement('div')
     overlayContainer.className = 'smtcmp-quick-ask-overlay'
     overlayRoot.appendChild(overlayContainer)
@@ -275,8 +261,15 @@ export class QuickAskWidget extends WidgetType {
     })
   }
 
+  updatePosition(pos?: number): void {
+    if (typeof pos === 'number') {
+      this.pos = pos
+    }
+    this.schedulePositionUpdate()
+  }
+
   private updateOverlayPosition() {
-    if (!this.overlayContainer || !this.anchor) return
+    if (!this.overlayContainer || this.pos === null) return
 
     // If panel has been dragged, use drag position instead
     if (this.dragPosition) {
@@ -284,12 +277,10 @@ export class QuickAskWidget extends WidgetType {
       return
     }
 
-    if (!this.anchor.isConnected) {
-      // Anchor not mounted yet, try again on next frame
-      this.schedulePositionUpdate()
+    const anchorRect = this.options.view.coordsAtPos(this.pos)
+    if (!anchorRect) {
       return
     }
-    const anchorRect = this.anchor.getBoundingClientRect()
 
     const hostRect =
       this.overlayHost?.getBoundingClientRect() ??
