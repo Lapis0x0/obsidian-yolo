@@ -6678,7 +6678,7 @@ button.smtcmp-chat-input-model-select {
   position: relative;
   min-width: min(420px, 83vw);
   max-width: min(560px, 90vw);
-  width: fit-content;
+  width: min(420px, 83vw);
   margin: 0;
   display: flex;
   flex-direction: column;
