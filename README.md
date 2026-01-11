@@ -75,7 +75,7 @@ Add it with one click—always within reach.
 
 ## **⌨️ Tab Completion**
 
-<!-- TODO: Add video link -->
+https://github.com/user-attachments/assets/d19b17c8-92ac-408d-8e98-4403d5341540
 
 Get real-time AI-powered completion suggestions, making your writing flow naturally.
 

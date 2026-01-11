@@ -23,6 +23,7 @@ Con YOLO puoi:
 - 📚 Utilizzare l'intero vault come base di conoscenza per l'AI
 - ✍️ Richiamare Smart Space per continuare le tue idee ovunque
 - ⚡ Usare Quick Ask per assistenza AI inline istantanea con editing intelligente
+- ⌨️ Usare il completamento Tab per un'esperienza di scrittura fluida con AI
 - 🧩 Abilitare funzionalità sperimentali come Learning Mode e sub-agent per esplorare workflow personalizzati
 - 🎨 Godere di numerosi miglioramenti UX e perfezionamenti dell'interfaccia
 
@@ -71,6 +72,12 @@ L'AI sceglie intelligentemente il formato appropriato in base alle tue istruzion
 https://github.com/user-attachments/assets/21b775d7-b427-4da2-b20c-f2ede85c2b69
 
 Aggiungilo con un clic—sempre a portata di mano.
+
+## **⌨️ Completamento Tab**
+
+https://github.com/user-attachments/assets/d19b17c8-92ac-408d-8e98-4403d5341540
+
+Ottieni suggerimenti di completamento AI in tempo reale, rendendo la tua scrittura fluida e naturale.
 
 ## **🎛️ Supporto Multi-Modello + i18n**
 
