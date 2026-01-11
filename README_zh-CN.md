@@ -76,7 +76,7 @@ https://github.com/user-attachments/assets/21b775d7-b427-4da2-b20c-f2ede85c2b69
 
 ## **⌨️ Tab 补全**
 
-<!-- TODO: 添加视频链接 -->
+https://github.com/user-attachments/assets/d19b17c8-92ac-408d-8e98-4403d5341540
 
 实时获得 AI 智能补全建议，让写作更加流畅自然。
 
