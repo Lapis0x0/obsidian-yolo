@@ -423,8 +423,11 @@ const Composer: React.FC<ComposerProps> = (_props) => {
         style={
           {
             '--smtcmp-tab-count': 3,
-            '--smtcmp-tab-index': ['smart-space', 'quick-ask', 'tab-completion']
-              .indexOf(activeTab),
+            '--smtcmp-tab-index': [
+              'smart-space',
+              'quick-ask',
+              'tab-completion',
+            ].indexOf(activeTab),
           } as React.CSSProperties
         }
       >

@@ -91,8 +91,7 @@ const TAB_COMPLETION_LENGTH_CONSTRAINTS: Record<
     'Keep the completion short (about 1-2 sentences, roughly 40-120 characters). Avoid starting a new section.',
   medium:
     'Keep the completion medium length (about 2-5 sentences, roughly 120-300 characters).',
-  long:
-    'Prefer a longer continuation (multiple sentences or paragraphs, roughly 300-800 characters) when appropriate.',
+  long: 'Prefer a longer continuation (multiple sentences or paragraphs, roughly 300-800 characters) when appropriate.',
 }
 
 const buildTabCompletionConstraints = (

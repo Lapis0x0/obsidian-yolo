@@ -303,9 +303,7 @@ export const smartComposerSettingsSchema = z.object({
       // extra prompt constraints for tab completion
       tabCompletionConstraints: z.string().optional(),
       // length preset for tab completion prompt constraints
-      tabCompletionLengthPreset: z
-        .enum(['short', 'medium', 'long'])
-        .optional(),
+      tabCompletionLengthPreset: z.enum(['short', 'medium', 'long']).optional(),
       // Smart Space custom quick actions
       smartSpaceQuickActions: z
         .array(

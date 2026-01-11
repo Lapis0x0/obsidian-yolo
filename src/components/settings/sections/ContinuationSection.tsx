@@ -1,5 +1,5 @@
 import { App } from 'obsidian'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -423,7 +423,9 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             >
               <div className="smtcmp-segmented-glider" aria-hidden="true" />
               <button
-                className={tabCompletionLengthPreset === 'short' ? 'active' : ''}
+                className={
+                  tabCompletionLengthPreset === 'short' ? 'active' : ''
+                }
                 onClick={() => {
                   updateContinuationOptions(
                     { tabCompletionLengthPreset: 'short' },
@@ -434,7 +436,9 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
                 {t('settings.continuation.tabCompletionLengthPresetShort')}
               </button>
               <button
-                className={tabCompletionLengthPreset === 'medium' ? 'active' : ''}
+                className={
+                  tabCompletionLengthPreset === 'medium' ? 'active' : ''
+                }
                 onClick={() => {
                   updateContinuationOptions(
                     { tabCompletionLengthPreset: 'medium' },
