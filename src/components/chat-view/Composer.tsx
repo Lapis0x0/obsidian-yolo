@@ -1,5 +1,5 @@
 import { Notice } from 'obsidian'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../constants'
 import { useApp } from '../../contexts/app-context'
@@ -23,6 +23,7 @@ import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
 } from '../common/ObsidianDropdown'
+import { SimpleSelect } from '../common/SimpleSelect'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ObsidianToggle } from '../common/ObsidianToggle'
@@ -47,6 +48,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   const plugin = usePlugin()
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
+  const composerRef = useRef<HTMLDivElement>(null)
 
   const [activeTab, setActiveTab] = useState<SparkleTab>('smart-space')
   const [showRagAdvanced, setShowRagAdvanced] = useState(false)
@@ -371,7 +373,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   }
 
   return (
-    <div className="smtcmp-composer-container">
+    <div className="smtcmp-composer-container" ref={composerRef}>
       <div className="smtcmp-composer-tabs" role="tablist">
         <button
           className={`smtcmp-composer-tab${
@@ -458,32 +460,47 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     )}
                   </div>
                 </div>
-                <div className="smtcmp-composer-option-control">
-                  <ObsidianDropdown
-                    value={smartSpaceTriggerMode}
-                    options={{
-                      'single-space': t(
-                        'settings.continuation.smartSpaceTriggerModeSingle',
-                        '单空格触发',
-                      ),
-                      'double-space': t(
-                        'settings.continuation.smartSpaceTriggerModeDouble',
-                        '双空格触发',
-                      ),
-                      off: t(
-                        'settings.continuation.smartSpaceTriggerModeOff',
-                        '关闭',
-                      ),
-                    }}
-                    onChange={(value) => {
-                      updateContinuationOptions({
-                        smartSpaceTriggerMode: value as
-                          | 'single-space'
-                          | 'double-space'
-                          | 'off',
-                      })
-                    }}
-                  />
+                <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
+                  <div className="smtcmp-simple-select-wrapper">
+                    <SimpleSelect
+                      value={smartSpaceTriggerMode}
+                      options={[
+                        {
+                          value: 'single-space',
+                          label: t(
+                            'settings.continuation.smartSpaceTriggerModeSingle',
+                            '单空格触发',
+                          ),
+                        },
+                        {
+                          value: 'double-space',
+                          label: t(
+                            'settings.continuation.smartSpaceTriggerModeDouble',
+                            '双空格触发',
+                          ),
+                        },
+                        {
+                          value: 'off',
+                          label: t(
+                            'settings.continuation.smartSpaceTriggerModeOff',
+                            '关闭',
+                          ),
+                        },
+                      ]}
+                      onChange={(value) => {
+                        updateContinuationOptions({
+                          smartSpaceTriggerMode: value as
+                            | 'single-space'
+                            | 'double-space'
+                            | 'off',
+                        })
+                      }}
+                      align="end"
+                      side="bottom"
+                      sideOffset={6}
+                      collisionBoundary={composerRef.current}
+                    />
+                  </div>
                 </div>
               </div>
 

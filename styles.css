@@ -430,6 +430,13 @@
   margin-left: auto;
 }
 
+.smtcmp-composer-option-control--fluid {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .smtcmp-composer-option-control--stack {
   flex-wrap: wrap;
   justify-content: flex-start;
@@ -455,6 +462,161 @@
 .smtcmp-composer-option-control select {
   width: 100%;
   max-width: 100%;
+}
+
+/* Simple select (custom dropdown for Sparkle sidebar) */
+.smtcmp-simple-select__trigger {
+  width: 100%;
+  min-height: 30px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.smtcmp-simple-select__trigger:hover,
+.smtcmp-simple-select__trigger:focus,
+.smtcmp-simple-select__trigger:focus-visible {
+  border-color: var(--background-modifier-border);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  outline: none;
+}
+
+.smtcmp-simple-select__trigger[data-state='open'] {
+  border-color: var(--background-modifier-border);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.smtcmp-simple-select__trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.smtcmp-simple-select__label {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtcmp-simple-select__icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.smtcmp-simple-select__content {
+  z-index: 10000;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  padding: 4px;
+  width: var(--radix-dropdown-menu-trigger-width);
+  min-width: max(var(--radix-dropdown-menu-trigger-width, 0px), 180px);
+  max-width: min(320px, calc(100vw - 24px));
+  overflow: hidden;
+  animation: smtcmp-simple-select-pop 0.16s cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes smtcmp-simple-select-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.smtcmp-simple-select__list {
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.smtcmp-simple-select__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  outline: none;
+}
+
+.smtcmp-simple-select__item[data-highlighted] {
+  background: var(--background-modifier-hover);
+}
+
+.smtcmp-simple-select__item[data-state='checked'] {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+}
+
+.smtcmp-simple-select__item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.smtcmp-simple-select__item-label {
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-simple-select__item-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-simple-select__item-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive-accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.smtcmp-simple-select__item[data-state='checked']
+  .smtcmp-simple-select__item-indicator {
+  opacity: 1;
 }
 
 .smtcmp-composer-option--model .smtcmp-composer-option-control {
@@ -7567,4 +7729,15 @@ body.smtcmp-quick-ask-global-interaction * {
     auto
   ) !important;
   user-select: var(--smtcmp-quick-ask-global-user-select, auto) !important;
+}
+.smtcmp-simple-select-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.smtcmp-simple-select-wrapper > .smtcmp-simple-select__trigger {
+  width: 100%;
+  max-width: 100%;
 }
