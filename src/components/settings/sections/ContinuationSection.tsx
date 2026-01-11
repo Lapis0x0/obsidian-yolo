@@ -408,22 +408,41 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             name={t('settings.continuation.tabCompletionLengthPreset')}
             desc={t('settings.continuation.tabCompletionLengthPresetDesc')}
           >
-            <ObsidianDropdown
-              value={tabCompletionLengthPreset}
-              options={{
-                short: t('settings.continuation.tabCompletionLengthPresetShort'),
-                medium: t(
-                  'settings.continuation.tabCompletionLengthPresetMedium',
-                ),
-                long: t('settings.continuation.tabCompletionLengthPresetLong'),
-              }}
-              onChange={(value) => {
-                updateContinuationOptions(
-                  { tabCompletionLengthPreset: value },
-                  'tabCompletionLengthPreset',
-                )
-              }}
-            />
+            <div className="smtcmp-segmented">
+              <button
+                className={tabCompletionLengthPreset === 'short' ? 'active' : ''}
+                onClick={() => {
+                  updateContinuationOptions(
+                    { tabCompletionLengthPreset: 'short' },
+                    'tabCompletionLengthPreset',
+                  )
+                }}
+              >
+                {t('settings.continuation.tabCompletionLengthPresetShort')}
+              </button>
+              <button
+                className={tabCompletionLengthPreset === 'medium' ? 'active' : ''}
+                onClick={() => {
+                  updateContinuationOptions(
+                    { tabCompletionLengthPreset: 'medium' },
+                    'tabCompletionLengthPreset',
+                  )
+                }}
+              >
+                {t('settings.continuation.tabCompletionLengthPresetMedium')}
+              </button>
+              <button
+                className={tabCompletionLengthPreset === 'long' ? 'active' : ''}
+                onClick={() => {
+                  updateContinuationOptions(
+                    { tabCompletionLengthPreset: 'long' },
+                    'tabCompletionLengthPreset',
+                  )
+                }}
+              >
+                {t('settings.continuation.tabCompletionLengthPresetLong')}
+              </button>
+            </div>
           </ObsidianSetting>
 
           <div className="smtcmp-settings-sub-header">

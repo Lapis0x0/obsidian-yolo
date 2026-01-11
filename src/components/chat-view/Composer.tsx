@@ -1429,25 +1429,54 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       </div>
                     </div>
                     <div className="smtcmp-composer-option-control">
-                      <ObsidianDropdown
-                        value={tabCompletionLengthPreset}
-                        options={{
-                          short: t(
+                      <div className="smtcmp-segmented">
+                        <button
+                          className={
+                            tabCompletionLengthPreset === 'short'
+                              ? 'active'
+                              : ''
+                          }
+                          onClick={() => {
+                            updateContinuationOptions({
+                              tabCompletionLengthPreset: 'short',
+                            })
+                          }}
+                        >
+                          {t(
                             'settings.continuation.tabCompletionLengthPresetShort',
-                          ),
-                          medium: t(
+                          )}
+                        </button>
+                        <button
+                          className={
+                            tabCompletionLengthPreset === 'medium'
+                              ? 'active'
+                              : ''
+                          }
+                          onClick={() => {
+                            updateContinuationOptions({
+                              tabCompletionLengthPreset: 'medium',
+                            })
+                          }}
+                        >
+                          {t(
                             'settings.continuation.tabCompletionLengthPresetMedium',
-                          ),
-                          long: t(
+                          )}
+                        </button>
+                        <button
+                          className={
+                            tabCompletionLengthPreset === 'long' ? 'active' : ''
+                          }
+                          onClick={() => {
+                            updateContinuationOptions({
+                              tabCompletionLengthPreset: 'long',
+                            })
+                          }}
+                        >
+                          {t(
                             'settings.continuation.tabCompletionLengthPresetLong',
-                          ),
-                        }}
-                        onChange={(value) => {
-                          updateContinuationOptions({
-                            tabCompletionLengthPreset: value,
-                          })
-                        }}
-                      />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
