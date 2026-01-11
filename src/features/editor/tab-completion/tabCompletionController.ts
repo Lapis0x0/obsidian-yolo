@@ -103,41 +103,6 @@ const buildTabCompletionConstraints = (
   return [presetConstraint, trimmedCustom].filter(Boolean).join('\n')
 }
 
-const findBoundaryIndex = (text: string): number | null => {
-  let earliest = text.indexOf('\n\n')
-  const limit = earliest === -1 ? text.length : earliest
-
-  const boundaryPatterns = [
-    /^#{1,6}\s/,
-    /^-\s+\[[ xX]\]\s+/,
-    /^[-*+]\s+/,
-    /^\d+\.\s+/,
-    /^>\s+/,
-    /^```/,
-  ]
-
-  let lineStart = 0
-  while (lineStart < text.length) {
-    if (lineStart > limit) break
-    const lineEnd = text.indexOf('\n', lineStart)
-    const actualEnd = lineEnd === -1 ? text.length : lineEnd
-    if (lineStart > 0) {
-      const line = text.slice(lineStart, actualEnd)
-      const trimmed = line.trimStart()
-      if (boundaryPatterns.some((pattern) => pattern.test(trimmed))) {
-        const boundaryIndex = Math.max(0, lineStart - 1)
-        earliest =
-          earliest === -1 ? boundaryIndex : Math.min(earliest, boundaryIndex)
-        break
-      }
-    }
-    if (lineEnd === -1) break
-    lineStart = lineEnd + 1
-  }
-
-  return earliest === -1 ? null : earliest
-}
-
 const extractAfterContext = (window: string): string => {
   if (!window) return ''
   return window
