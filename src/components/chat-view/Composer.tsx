@@ -74,6 +74,42 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     )
   }, [settings.chatModels, settings.providers])
 
+  const tabCompletionOptionGroups = useMemo(() => {
+    const providerOrder = settings.providers.map((p) => p.id)
+    const providerIdsInModels = Array.from(
+      new Set(orderedEnabledModels.map((model) => model.providerId)),
+    )
+    const orderedProviderIds = [
+      ...providerOrder.filter((id) => providerIdsInModels.includes(id)),
+      ...providerIdsInModels.filter((id) => !providerOrder.includes(id)),
+    ]
+
+    return orderedProviderIds
+      .map((providerId) => {
+        const models = orderedEnabledModels.filter(
+          (model) => model.providerId === providerId,
+        )
+        if (models.length === 0) return null
+        return {
+          label: providerId,
+          options: models.map((model) => ({
+            value: model.id,
+            label: model.name?.trim()
+              ? model.name.trim()
+              : model.model || getModelDisplayName(model.id),
+          })),
+        }
+      })
+      .filter(
+        (
+          group,
+        ): group is {
+          label: string
+          options: { value: string; label: string }[]
+        } => group !== null,
+      )
+  }, [orderedEnabledModels, settings.providers])
+
   const updateContinuationOptions = useCallback(
     (updates: Partial<SmartComposerSettings['continuationOptions']>) => {
       void setSettings({
@@ -600,25 +636,37 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         )}
                       </div>
                     </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianDropdown
-                        value={settings.embeddingModelId}
-                        groupedOptions={embeddingModelOptionGroups}
-                        onChange={(value) => {
-                          applySettingsUpdate(
-                            {
-                              ...settings,
-                              embeddingModelId: value,
-                            },
-                            t(
-                              'notices.indexUpdateFailed',
-                              'Failed to update embedding model.',
-                            ),
-                          )
-                        }}
-                      />
-                    </div>
+                <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
+                  <div className="smtcmp-simple-select-wrapper">
+                    <SimpleSelect
+                      value={settings.embeddingModelId}
+                      groupedOptions={embeddingModelOptionGroups.map((group) => ({
+                        label: group.label,
+                        options: group.options.map((option) => ({
+                          value: option.value,
+                          label: option.label,
+                        })),
+                      }))}
+                      onChange={(value) => {
+                        applySettingsUpdate(
+                          {
+                            ...settings,
+                            embeddingModelId: value,
+                          },
+                          t(
+                            'notices.indexUpdateFailed',
+                            'Failed to update embedding model.',
+                          ),
+                        )
+                      }}
+                      align="end"
+                      side="bottom"
+                      sideOffset={6}
+                      collisionBoundary={composerRef.current}
+                    />
                   </div>
+                </div>
+              </div>
 
                   <div className="smtcmp-composer-option">
                     <div className="smtcmp-composer-option-info">
@@ -1249,23 +1297,22 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         )}
                       </div>
                     </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianDropdown
-                        value={tabCompletionModelId}
-                        options={Object.fromEntries(
-                          orderedEnabledModels.map((model) => {
-                            const label = model.name?.trim()
-                              ? model.name.trim()
-                              : model.model || getModelDisplayName(model.id)
-                            return [model.id, label]
-                          }),
-                        )}
-                        onChange={(value) => {
-                          updateContinuationOptions({
-                            tabCompletionModelId: value,
-                          })
-                        }}
-                      />
+                    <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
+                      <div className="smtcmp-simple-select-wrapper">
+                        <SimpleSelect
+                          value={tabCompletionModelId}
+                          groupedOptions={tabCompletionOptionGroups}
+                          onChange={(value) => {
+                            updateContinuationOptions({
+                              tabCompletionModelId: value,
+                            })
+                          }}
+                          align="end"
+                          side="bottom"
+                          sideOffset={6}
+                          collisionBoundary={composerRef.current}
+                        />
+                      </div>
                     </div>
                   </div>
 

@@ -8,9 +8,15 @@ export type SimpleSelectOption = {
   description?: string
 }
 
+export type SimpleSelectOptionGroup = {
+  label: string
+  options: SimpleSelectOption[]
+}
+
 type SimpleSelectProps = {
   value: string
-  options: SimpleSelectOption[]
+  options?: SimpleSelectOption[]
+  groupedOptions?: SimpleSelectOptionGroup[]
   onChange: (value: string) => void
   disabled?: boolean
   placeholder?: string
@@ -25,7 +31,8 @@ type SimpleSelectProps = {
 
 export function SimpleSelect({
   value,
-  options,
+  options = [],
+  groupedOptions,
   onChange,
   disabled = false,
   placeholder = 'Select',
@@ -38,9 +45,16 @@ export function SimpleSelect({
   contentClassName,
 }: SimpleSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const flattenedOptions = useMemo(() => {
+    if (groupedOptions && groupedOptions.length > 0) {
+      return groupedOptions.flatMap((group) => group.options)
+    }
+    return options
+  }, [groupedOptions, options])
   const selected = useMemo(
-    () => options.find((option) => option.value === value) ?? null,
-    [options, value],
+    () =>
+      flattenedOptions.find((option) => option.value === value) ?? null,
+    [flattenedOptions, value],
   )
 
   return (
@@ -86,27 +100,56 @@ export function SimpleSelect({
               onChange(nextValue)
             }}
           >
-            {options.map((option) => (
-              <DropdownMenu.RadioItem
-                key={option.value}
-                className="smtcmp-simple-select__item"
-                value={option.value}
-              >
-                <div className="smtcmp-simple-select__item-text">
-                  <div className="smtcmp-simple-select__item-label">
-                    {option.label}
-                  </div>
-                  {option.description ? (
-                    <div className="smtcmp-simple-select__item-desc">
-                      {option.description}
+            {(groupedOptions && groupedOptions.length > 0
+              ? groupedOptions
+              : [{ label: '', options }]).flatMap((group, groupIndex) => {
+              const items = group.options.map((option) => (
+                <DropdownMenu.RadioItem
+                  key={option.value}
+                  className="smtcmp-simple-select__item"
+                  value={option.value}
+                >
+                  <div className="smtcmp-simple-select__item-text">
+                    <div className="smtcmp-simple-select__item-label">
+                      {option.label}
                     </div>
-                  ) : null}
-                </div>
-                <DropdownMenu.ItemIndicator className="smtcmp-simple-select__item-indicator">
-                  <Check size={12} />
-                </DropdownMenu.ItemIndicator>
-              </DropdownMenu.RadioItem>
-            ))}
+                    {option.description ? (
+                      <div className="smtcmp-simple-select__item-desc">
+                        {option.description}
+                      </div>
+                    ) : null}
+                  </div>
+                  <DropdownMenu.ItemIndicator className="smtcmp-simple-select__item-indicator">
+                    <Check size={12} />
+                  </DropdownMenu.ItemIndicator>
+                </DropdownMenu.RadioItem>
+              ))
+
+              const label = group.label ? (
+                <DropdownMenu.Label
+                  key={`group-${groupIndex}`}
+                  className="smtcmp-simple-select__group-label"
+                >
+                  {group.label}
+                </DropdownMenu.Label>
+              ) : null
+
+              const totalGroups =
+                groupedOptions && groupedOptions.length > 0
+                  ? groupedOptions.length
+                  : 1
+              const separator =
+                groupIndex < totalGroups - 1 ? (
+                  <DropdownMenu.Separator
+                    key={`sep-${groupIndex}`}
+                    className="smtcmp-simple-select__group-separator"
+                  />
+                ) : null
+
+              return [label, ...items, separator].filter(
+                (node) => node !== null,
+              )
+            })}
           </DropdownMenu.RadioGroup>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

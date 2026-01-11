@@ -566,9 +566,35 @@
   padding: 6px 8px;
   border-radius: var(--radius-s);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-smaller);
   cursor: pointer;
   outline: none;
+}
+
+.smtcmp-simple-select__group-label {
+  display: block;
+  margin: 0;
+  padding: 8px 8px 6px 8px;
+  color: color-mix(in srgb, var(--text-muted) 85%, transparent);
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  user-select: none;
+  opacity: 0.8;
+}
+
+.smtcmp-simple-select__group-separator {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 4px,
+    color-mix(in srgb, var(--background-modifier-border) 50%, transparent) 16px,
+    color-mix(in srgb, var(--background-modifier-border) 50%, transparent)
+      calc(100% - 16px),
+    transparent calc(100% - 4px)
+  );
+  margin: 6px 0;
 }
 
 .smtcmp-simple-select__item[data-highlighted] {
