@@ -417,9 +417,8 @@
 }
 
 .smtcmp-composer-option:hover {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 4px 12px
-    color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  border-color: var(--background-modifier-border-hover);
+  box-shadow: none;
   transform: translateY(-1px);
 }
 
@@ -747,7 +746,7 @@
 
 .smtcmp-composer-section--toggles .smtcmp-composer-option:hover {
   background: var(--background-modifier-hover);
-  border-color: var(--interactive-accent);
+  border-color: var(--background-modifier-border-hover);
 }
 
 /* 高级设置区域 */
