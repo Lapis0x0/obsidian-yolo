@@ -1,13 +1,14 @@
 import { PGlite } from '@electric-sql/pglite'
 import { PgliteDatabase, drizzle } from 'drizzle-orm/pglite'
-import { App, normalizePath, requestUrl } from 'obsidian'
+import { App, normalizePath } from 'obsidian'
 
-import { PGLITE_DB_PATH, PLUGIN_ID } from '../constants'
+import { PGLITE_DB_PATH } from '../constants'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
 import { PGLiteAbortedException } from './exception'
 import migrations from './migrations.json'
 import { VectorManager } from './modules/vector/VectorManager'
+import { loadEmbeddedPgliteResources } from './pgliteAssets'
 
 type DrizzleMigratableDatabase = PgliteDatabase & {
   dialect: {
@@ -238,32 +239,8 @@ export class DatabaseManager {
     fromCDN: boolean
   }> {
     try {
-      // 检查数据库文件是否存在
-      const dbExists = await this.app.vault.adapter.exists(this.dbPath)
-
-      // 如果数据库已存在，说明之前已经初始化过，资源已经缓存
-      if (dbExists) {
-        return { available: true, needsDownload: false, fromCDN: false }
-      }
-
-      // 数据库不存在，检查是否有本地资源
-      try {
-        const localPath = this.app.vault.adapter.getResourcePath(
-          this.pgliteResourcePath,
-        )
-        const localUrl = new URL('postgres.wasm', localPath)
-        const response = await requestUrl({
-          url: localUrl.href,
-          method: 'HEAD',
-        })
-        if (response.status >= 200 && response.status < 300) {
-          return { available: true, needsDownload: false, fromCDN: false }
-        }
-      } catch {
-        // 本地不可用
-      }
-
-      return { available: false, needsDownload: false, fromCDN: false }
+      // 资源已经内联到 main.js，不依赖运行时下载
+      return { available: true, needsDownload: false, fromCDN: false }
     } catch (error) {
       console.error('Error checking PGlite resources:', error)
       return { available: false, needsDownload: false, fromCDN: false }
@@ -277,145 +254,7 @@ export class DatabaseManager {
     vectorExtensionBundlePath: URL
   }> {
     try {
-      const candidateBaseUrls: URL[] = []
-      const seen = new Set<string>()
-
-      const addCandidateUrl = (candidate: string | URL | null | undefined) => {
-        if (!candidate) {
-          return
-        }
-        try {
-          const rawUrl =
-            candidate instanceof URL
-              ? new URL(candidate.href)
-              : new URL(candidate)
-          // Obsidian 会追加缓存参数 (?123)，需要移除查询与哈希，避免相对路径被错误解析
-          rawUrl.search = ''
-          rawUrl.hash = ''
-
-          const href = rawUrl.href.endsWith('/')
-            ? rawUrl.href
-            : `${rawUrl.href}/`
-          const key = href
-          if (!seen.has(key)) {
-            seen.add(key)
-            candidateBaseUrls.push(new URL(key))
-          }
-        } catch {
-          // ignore invalid candidate
-        }
-      }
-
-      const addFromResourcePath = (path: string | undefined) => {
-        if (!path) {
-          return
-        }
-        try {
-          const resourcePath = this.app.vault.adapter.getResourcePath(path)
-          console.debug(
-            `[PGlite] Resolving resource path:`,
-            path,
-            '→',
-            resourcePath,
-          )
-          addCandidateUrl(resourcePath)
-        } catch (error) {
-          console.warn(`[PGlite] Failed to resolve resource path:`, path, error)
-        }
-      }
-
-      // 优先使用传入的 pgliteResourcePath（基于 manifest.id）
-      addFromResourcePath(this.pgliteResourcePath)
-
-      // 作为备选，尝试使用固定的插件 ID（向后兼容旧版本）
-      if (
-        this.pgliteResourcePath &&
-        !this.pgliteResourcePath.includes(PLUGIN_ID)
-      ) {
-        addFromResourcePath(
-          normalizePath(
-            `${this.app.vault.configDir}/plugins/${PLUGIN_ID}/vendor/pglite`,
-          ),
-        )
-      }
-
-      // 最后尝试使用相对路径（开发模式）
-      addCandidateUrl(new URL('./vendor/pglite/', import.meta.url))
-
-      let lastError: unknown = null
-
-      for (const baseUrl of candidateBaseUrls) {
-        try {
-          const fsUrl = new URL('postgres.data', baseUrl)
-          const wasmUrl = new URL('postgres.wasm', baseUrl)
-
-          const [fsResponse, wasmResponse] = await Promise.all([
-            requestUrl({ url: fsUrl.href }),
-            requestUrl({ url: wasmUrl.href }),
-          ])
-
-          if (
-            fsResponse.status < 200 ||
-            fsResponse.status >= 300 ||
-            wasmResponse.status < 200 ||
-            wasmResponse.status >= 300
-          ) {
-            lastError = new Error(
-              'Failed to load PGlite assets from local bundle',
-            )
-            continue
-          }
-
-          const fsBundle = new Blob([fsResponse.arrayBuffer], {
-            type: 'application/octet-stream',
-          })
-          const wasmModule = await WebAssembly.compile(wasmResponse.arrayBuffer)
-          const vectorExtensionBundlePath = new URL('vector.tar.gz', baseUrl)
-
-          return { fsBundle, wasmModule, vectorExtensionBundlePath }
-        } catch (error) {
-          lastError = error
-        }
-      }
-
-      if (lastError) {
-        console.error(
-          'All PGlite resource paths failed. Attempted URLs:',
-          candidateBaseUrls.map((u) => u.href),
-        )
-        if (lastError instanceof Error) {
-          throw lastError
-        }
-        const fallbackMessage = (() => {
-          if (typeof lastError === 'string') return lastError
-          if (lastError === null) return 'null'
-          if (typeof lastError === 'undefined') return 'undefined'
-          if (
-            typeof lastError === 'number' ||
-            typeof lastError === 'boolean' ||
-            typeof lastError === 'bigint'
-          ) {
-            return String(lastError)
-          }
-          if (typeof lastError === 'symbol') {
-            return lastError.description ?? lastError.toString()
-          }
-          if (typeof lastError === 'function') {
-            return lastError.name
-              ? `[Function: ${lastError.name}]`
-              : '[Function]'
-          }
-          try {
-            return JSON.stringify(lastError)
-          } catch {
-            return Object.prototype.toString.call(lastError)
-          }
-        })()
-        throw new Error(fallbackMessage)
-      }
-      throw new Error(
-        'Failed to resolve PGlite bundle path - no candidate URLs generated',
-      )
+      return await loadEmbeddedPgliteResources()
     } catch (error) {
       console.error('Error loading PGlite resources:', error)
       console.error('Plugin resource path:', this.pgliteResourcePath)
