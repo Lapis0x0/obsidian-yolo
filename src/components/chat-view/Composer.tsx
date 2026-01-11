@@ -1868,11 +1868,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     }
                   }}
                 >
-                  <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
-                  {t(
-                    'settings.continuation.tabCompletionAdvanced',
-                    '高级设置',
-                  )}
+                  <span className="smtcmp-settings-advanced-toggle-icon">
+                    ▶
+                  </span>
+                  {t('settings.continuation.tabCompletionAdvanced', '高级设置')}
                 </div>
 
                 {showTabAdvanced && (

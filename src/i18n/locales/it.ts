@@ -487,7 +487,8 @@ export const it: TranslationKeys = {
       tabCompletionAutoTriggerDelay: 'Ritardo completamento automatico (ms)',
       tabCompletionAutoTriggerDelayDesc:
         'Quanto tempo attendere dopo la pausa prima di avviare il completamento automatico.',
-      tabCompletionAutoTriggerCooldown: 'Cooldown completamento automatico (ms)',
+      tabCompletionAutoTriggerCooldown:
+        'Cooldown completamento automatico (ms)',
       tabCompletionAutoTriggerCooldownDesc:
         'Periodo di raffreddamento dopo il completamento automatico per evitare richieste frequenti.',
       tabCompletionMaxSuggestionLength: 'Lunghezza massima suggerimento',
