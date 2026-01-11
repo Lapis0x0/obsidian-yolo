@@ -55,7 +55,7 @@
   align-items: center;
   gap: var(--size-2-1);
   padding: 0;
-  background: transparent;
+  background: transparent !important;
   border: none;
   border-radius: 0;
   color: inherit;
@@ -262,6 +262,51 @@
   padding: var(--size-4-3) var(--size-4-3) var(--size-4-2);
 }
 
+.smtcmp-composer-tabs {
+  display: flex;
+  gap: var(--size-2-2);
+  padding: var(--size-2-2);
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+  width: 100%;
+  align-self: stretch;
+  margin: 0 calc(var(--size-4-3) * -1);
+  width: calc(100% + (var(--size-4-3) * 2));
+}
+
+.smtcmp-composer-tab {
+  flex: 1 1 0;
+  border: 1px solid transparent;
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  box-shadow: none !important;
+}
+
+.smtcmp-composer-tab:hover {
+  color: var(--text-normal);
+  background: transparent !important;
+}
+
+.smtcmp-composer-tab.is-active {
+  color: var(--text-normal);
+  background: transparent !important;
+  border: 2px solid var(--h1-color, var(--interactive-accent));
+  box-shadow:
+    0 2px 10px
+      color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
+
 .smtcmp-composer-scroll {
   flex: 1;
   min-height: 0;
@@ -277,11 +322,10 @@
   flex-direction: column;
   gap: var(--size-4-2);
   padding: var(--size-4-4);
-  background: var(--background-primary);
+  background: transparent !important;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l);
-  box-shadow: 0 2px 8px
-    color-mix(in srgb, var(--background-modifier-box-shadow) 40%, transparent);
+  box-shadow: none;
   position: relative;
   overflow: hidden;
   flex: 0 0 auto;
@@ -329,7 +373,7 @@
   gap: var(--size-4-3);
   padding: var(--size-4-3);
   border-radius: var(--radius-m);
-  background: var(--background-secondary);
+  background: transparent;
   border: 1px solid var(--background-modifier-border);
   transition: all 0.2s ease;
   position: relative;
@@ -345,6 +389,10 @@
 .smtcmp-composer-option--model {
   flex-wrap: wrap;
   gap: var(--size-4-3);
+}
+
+.smtcmp-composer-option--table {
+  align-items: stretch;
 }
 
 .smtcmp-composer-option-info {
@@ -376,6 +424,12 @@
   gap: var(--size-2-1);
   min-width: auto;
   margin-left: auto;
+}
+
+.smtcmp-composer-option-control--stack {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-left: 0;
 }
 
 .smtcmp-composer-option-control--full {
@@ -443,14 +497,9 @@
 
 /* 特殊样式：模型选择区域 */
 .smtcmp-composer-section--primary {
-  background: linear-gradient(
-    135deg,
-    var(--background-primary) 0%,
-    var(--background-secondary) 100%
-  );
+  background: transparent !important;
   border: 2px solid var(--interactive-accent);
-  box-shadow: 0 4px 16px
-    color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  box-shadow: none;
 }
 
 .smtcmp-composer-section--primary .smtcmp-composer-heading-title::before {
@@ -478,7 +527,7 @@
 
 /* 高级设置区域 */
 .smtcmp-composer-section--advanced {
-  background: var(--background-secondary);
+  background: transparent !important;
   border-style: dashed;
   opacity: 0.9;
 }
