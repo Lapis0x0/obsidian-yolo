@@ -13,7 +13,7 @@ type EmbeddedPgliteResources = {
 }
 
 const decodeBase64ToBytes = (input: string): Uint8Array => {
-  const base64 = input.includes(',') ? input.split(',')[1] ?? '' : input
+  const base64 = input.includes(',') ? (input.split(',')[1] ?? '') : input
   const binary = atob(base64)
   const length = binary.length
   const bytes = new Uint8Array(length)

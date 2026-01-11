@@ -261,7 +261,7 @@ export const en: TranslationKeys = {
         'Enable this if you encounter cross-origin errors related to stainless headers.',
       useObsidianRequestUrl: 'Use Obsidian requestUrl',
       useObsidianRequestUrlDesc:
-        'Use Obsidian requestUrl to bypass CORS restrictions. Streaming responses will be buffered.',
+        'Use Obsidian requestUrl to bypass cross-origin restrictions. Streaming responses are buffered.',
     },
     models: {
       title: 'Models',

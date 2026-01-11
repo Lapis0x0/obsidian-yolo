@@ -1,6 +1,9 @@
 import { requestUrl } from 'obsidian'
 
-type ObsidianFetch = (input: RequestInfo, init?: RequestInit) => Promise<Response>
+type ObsidianFetch = (
+  input: RequestInfo,
+  init?: RequestInit,
+) => Promise<Response>
 
 const toHeadersRecord = (
   headers?: HeadersInit,
@@ -65,7 +68,7 @@ const toRequestUrlBody = async (
   throw new Error('Unsupported request body type for requestUrl')
 }
 
-const throwIfAborted = (signal?: AbortSignal): void => {
+const throwIfAborted = (signal?: AbortSignal | null): void => {
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
