@@ -481,102 +481,113 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                 </div>
               </div>
 
-              <div className="smtcmp-composer-option">
-                <div className="smtcmp-composer-option-info">
-                  <div className="smtcmp-composer-option-title">
-                    {t(
-                      'settings.continuation.smartSpaceTriggerMode',
-                      '触发模式',
-                    )}
+              {enableSmartSpace && (
+                <>
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.smartSpaceTriggerMode',
+                          '触发模式',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.smartSpaceTriggerModeDesc',
+                          '定义在空行按下空格时的触发方式。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
+                      <div className="smtcmp-simple-select-wrapper">
+                        <SimpleSelect
+                          value={smartSpaceTriggerMode}
+                          options={[
+                            {
+                              value: 'single-space',
+                              label: t(
+                                'settings.continuation.smartSpaceTriggerModeSingle',
+                                '单空格触发',
+                              ),
+                            },
+                            {
+                              value: 'double-space',
+                              label: t(
+                                'settings.continuation.smartSpaceTriggerModeDouble',
+                                '双空格触发',
+                              ),
+                            },
+                            {
+                              value: 'off',
+                              label: t(
+                                'settings.continuation.smartSpaceTriggerModeOff',
+                                '关闭',
+                              ),
+                            },
+                          ]}
+                          onChange={(value) => {
+                            updateContinuationOptions({
+                              smartSpaceTriggerMode: value as
+                                | 'single-space'
+                                | 'double-space'
+                                | 'off',
+                            })
+                          }}
+                          align="end"
+                          side="bottom"
+                          sideOffset={6}
+                          collisionBoundary={composerRef.current}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="smtcmp-composer-option-desc">
-                    {t(
-                      'settings.continuation.smartSpaceTriggerModeDesc',
-                      '定义在空行按下空格时的触发方式。',
-                    )}
-                  </div>
-                </div>
-                <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
-                  <div className="smtcmp-simple-select-wrapper">
-                    <SimpleSelect
-                      value={smartSpaceTriggerMode}
-                      options={[
-                        {
-                          value: 'single-space',
-                          label: t(
-                            'settings.continuation.smartSpaceTriggerModeSingle',
-                            '单空格触发',
-                          ),
-                        },
-                        {
-                          value: 'double-space',
-                          label: t(
-                            'settings.continuation.smartSpaceTriggerModeDouble',
-                            '双空格触发',
-                          ),
-                        },
-                        {
-                          value: 'off',
-                          label: t(
-                            'settings.continuation.smartSpaceTriggerModeOff',
-                            '关闭',
-                          ),
-                        },
-                      ]}
-                      onChange={(value) => {
-                        updateContinuationOptions({
-                          smartSpaceTriggerMode: value as
-                            | 'single-space'
-                            | 'double-space'
-                            | 'off',
-                        })
-                      }}
-                      align="end"
-                      side="bottom"
-                      sideOffset={6}
-                      collisionBoundary={composerRef.current}
-                    />
-                  </div>
-                </div>
-              </div>
 
-              <div className="smtcmp-composer-option">
-                <div className="smtcmp-composer-option-info">
-                  <div className="smtcmp-composer-option-title">
-                    {t('settings.continuation.selectionChatToggle', 'Selection Chat')}
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.selectionChatToggle',
+                          'Selection Chat',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.selectionChatToggleDesc',
+                          '选中文本后显示快捷操作面板。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianToggle
+                        value={enableSelectionChat}
+                        onChange={(value) =>
+                          updateContinuationOptions({
+                            enableSelectionChat: value,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
-                  <div className="smtcmp-composer-option-desc">
-                    {t(
-                      'settings.continuation.selectionChatToggleDesc',
-                      '选中文本后显示快捷操作面板。',
-                    )}
-                  </div>
-                </div>
-                <div className="smtcmp-composer-option-control">
-                  <ObsidianToggle
-                    value={enableSelectionChat}
-                    onChange={(value) =>
-                      updateContinuationOptions({ enableSelectionChat: value })
-                    }
-                  />
-                </div>
-              </div>
+                </>
+              )}
             </section>
 
-            <section className="smtcmp-composer-section">
-              <header className="smtcmp-composer-heading">
-                <div className="smtcmp-composer-heading-title">
-                  {t('settings.smartSpace.quickActionsTitle', '快捷动作')}
-                </div>
-                <div className="smtcmp-composer-heading-desc">
-                  {t(
-                    'settings.smartSpace.quickActionsDesc',
-                    '自定义 Smart Space 中显示的快捷选项和提示词。',
-                  )}
-                </div>
-              </header>
-              <SmartSpaceQuickActionsSettings />
-            </section>
+            {enableSmartSpace && (
+              <section className="smtcmp-composer-section">
+                <header className="smtcmp-composer-heading">
+                  <div className="smtcmp-composer-heading-title">
+                    {t('settings.smartSpace.quickActionsTitle', '快捷动作')}
+                  </div>
+                  <div className="smtcmp-composer-heading-desc">
+                    {t(
+                      'settings.smartSpace.quickActionsDesc',
+                      '自定义 Smart Space 中显示的快捷选项和提示词。',
+                    )}
+                  </div>
+                </header>
+                <SmartSpaceQuickActionsSettings />
+              </section>
+            )}
 
             <section className="smtcmp-composer-section">
               <header className="smtcmp-composer-heading">
