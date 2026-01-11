@@ -476,11 +476,6 @@ export type TranslationKeys = {
       copySuffix?: string
       dragHandleAria?: string
     }
-    language: {
-      title: string
-      select: string
-      auto: string
-    }
   }
 
   // Selection Chat

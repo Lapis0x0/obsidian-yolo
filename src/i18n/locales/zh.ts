@@ -501,11 +501,6 @@ export const zh: TranslationKeys = {
         '确定要重置供应商与模型配置为默认吗？此操作将覆盖现有配置。',
       resetProvidersSuccess: '供应商与模型配置已重置为默认',
     },
-    language: {
-      title: '语言',
-      select: '选择语言',
-      auto: '跟随 Obsidian',
-    },
   },
 
   smartSpace: {

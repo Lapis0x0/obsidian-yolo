@@ -12,7 +12,6 @@ import { ChatPreferencesSection } from './sections/ChatPreferencesSection'
 import { ContinuationSection } from './sections/ContinuationSection'
 import { DefaultModelsAndPromptsSection } from './sections/DefaultModelsAndPromptsSection'
 import { EtcSection } from './sections/EtcSection'
-import { LanguageSection } from './sections/LanguageSection'
 import { McpSection } from './sections/McpSection'
 import { ProvidersAndModelsSection } from './sections/ProvidersAndModelsSection'
 import { RAGSection } from './sections/RAGSection'
@@ -27,7 +26,6 @@ function SettingsContent({ app, plugin }: SettingsTabRootProps) {
 
   return (
     <>
-      <LanguageSection />
       <ObsidianSetting
         name={t('settings.supportSmartComposer.name')}
         desc={t('settings.supportSmartComposer.desc')}

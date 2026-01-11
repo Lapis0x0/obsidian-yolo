@@ -360,16 +360,8 @@ export default class SmartComposerPlugin extends Plugin {
     return 'en'
   }
 
-  private resolvePreferredLanguage(): Language {
-    const preference = this.settings.languagePreference
-    if (preference && preference !== 'auto') {
-      return preference
-    }
-    return this.resolveObsidianLanguage()
-  }
-
   get t() {
-    return createTranslationFunction(this.resolvePreferredLanguage())
+    return createTranslationFunction(this.resolveObsidianLanguage())
   }
 
   private cancelAllAiTasks() {

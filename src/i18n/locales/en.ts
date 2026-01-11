@@ -550,11 +550,6 @@ export const en: TranslationKeys = {
         'Are you sure you want to reset providers and models to defaults and overwrite the existing configuration?',
       resetProvidersSuccess: 'Providers and models have been reset to defaults',
     },
-    language: {
-      title: 'Language',
-      select: 'Select language',
-      auto: 'Auto (follow Obsidian)',
-    },
   },
 
   chat: {

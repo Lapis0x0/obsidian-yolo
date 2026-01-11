@@ -550,11 +550,6 @@ export const it: TranslationKeys = {
         'Sei sicuro di voler ripristinare tutti i provider? Questa azione non può essere annullata.',
       resetProvidersSuccess: 'Provider ripristinati con successo.',
     },
-    language: {
-      title: 'Lingua',
-      select: 'Seleziona lingua',
-      auto: 'Automatico (segui Obsidian)',
-    },
   },
 
   chat: {

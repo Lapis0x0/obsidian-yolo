@@ -1,11 +1,10 @@
-export const migrateFrom21To22 = (
+export const migrateFrom25To26 = (
   data: Record<string, unknown>,
 ): Record<string, unknown> => {
   const {
-    language: _legacyLanguage,
     languagePreference: _languagePreference,
+    language: _legacyLanguage,
     ...rest
   } = data
-
   return rest
 }
