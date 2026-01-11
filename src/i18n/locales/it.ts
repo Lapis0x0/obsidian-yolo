@@ -463,6 +463,15 @@ export const it: TranslationKeys = {
         'Mostra il menu Quick Ask quando selezioni il testo e premi Cmd/Ctrl+Shift+K.',
       quickAskTrigger: 'Scorciatoia Quick Ask',
       quickAskTriggerDesc: 'Scorciatoia da tastiera per aprire Quick Ask.',
+      tabCompletionBasicTitle: 'Impostazioni di base',
+      tabCompletionBasicDesc:
+        'Abilita il completamento tab e imposta i parametri principali.',
+      tabCompletionTriggersSectionTitle: 'Impostazioni trigger',
+      tabCompletionTriggersSectionDesc:
+        'Configura quando deve attivarsi il completamento.',
+      tabCompletionAutoSectionTitle: 'Impostazioni completamento automatico',
+      tabCompletionAutoSectionDesc:
+        'Regola il completamento dopo pausa e le opzioni avanzate.',
       tabCompletion: 'Completamento tab',
       tabCompletionDesc:
         'Genera suggerimenti quando una regola trigger corrisponde.',

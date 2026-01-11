@@ -366,6 +366,12 @@ export type TranslationKeys = {
       quickAskTrigger?: string
       quickAskTriggerDesc?: string
       // Tab completion settings
+      tabCompletionBasicTitle: string
+      tabCompletionBasicDesc: string
+      tabCompletionTriggersSectionTitle: string
+      tabCompletionTriggersSectionDesc: string
+      tabCompletionAutoSectionTitle: string
+      tabCompletionAutoSectionDesc: string
       tabCompletion: string
       tabCompletionDesc: string
       tabCompletionModel: string

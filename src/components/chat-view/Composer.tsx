@@ -1314,12 +1314,15 @@ const Composer: React.FC<ComposerProps> = (_props) => {
             <section className="smtcmp-composer-section">
               <header className="smtcmp-composer-heading">
                 <div className="smtcmp-composer-heading-title">
-                  {t('settings.continuation.tabSubsectionTitle', 'Tab 补全')}
+                  {t(
+                    'settings.continuation.tabCompletionBasicTitle',
+                    '基础设置',
+                  )}
                 </div>
                 <div className="smtcmp-composer-heading-desc">
                   {t(
-                    'settings.continuation.tabCompletionDesc',
-                    '使用模型自动补全文本。',
+                    'settings.continuation.tabCompletionBasicDesc',
+                    '启用 Tab 补全并设置基础参数。',
                   )}
                 </div>
               </header>
@@ -1516,542 +1519,578 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t(
-                          'settings.continuation.tabCompletionTriggerDelay',
-                          '触发延迟',
-                        )}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.continuation.tabCompletionTriggerDelayDesc',
-                          '输入后延迟触发的毫秒数。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianTextInput
-                        type="number"
-                        value={tabNumberInputs.triggerDelayMs}
-                        onChange={(value) => {
-                          setTabNumberInputs((prev) => ({
-                            ...prev,
-                            triggerDelayMs: value,
-                          }))
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) return
-                          const next = Math.max(200, parsed)
-                          updateTabCompletionOptions({ triggerDelayMs: next })
-                        }}
-                        onBlur={(value) => {
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              triggerDelayMs: String(
-                                tabCompletionOptions.triggerDelayMs,
-                              ),
-                            }))
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t(
-                          'settings.continuation.tabCompletionAutoTrigger',
-                          '自动补全（停顿后）',
-                        )}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.continuation.tabCompletionAutoTriggerDesc',
-                          '启用后，停止输入一段时间也会触发补全。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianToggle
-                        value={tabCompletionOptions.idleTriggerEnabled}
-                        onChange={(value) => {
-                          updateTabCompletionOptions({
-                            idleTriggerEnabled: value,
-                          })
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {tabCompletionOptions.idleTriggerEnabled && (
-                    <>
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionAutoTriggerDelay',
-                              '自动补全停顿时间（毫秒）',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionAutoTriggerDelayDesc',
-                              '停止输入后等待多久再触发自动补全。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={tabNumberInputs.autoTriggerDelayMs}
-                            onChange={(value) => {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                autoTriggerDelayMs: value,
-                              }))
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) return
-                              const next = Math.max(200, parsed)
-                              updateTabCompletionOptions({
-                                autoTriggerDelayMs: next,
-                              })
-                            }}
-                            onBlur={(value) => {
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) {
-                                setTabNumberInputs((prev) => ({
-                                  ...prev,
-                                  autoTriggerDelayMs: String(
-                                    tabCompletionOptions.autoTriggerDelayMs,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionAutoTriggerCooldown',
-                              '自动补全冷却时间（毫秒）',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionAutoTriggerCooldownDesc',
-                              '自动补全触发后冷却一段时间，避免频繁请求。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={tabNumberInputs.autoTriggerCooldownMs}
-                            onChange={(value) => {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                autoTriggerCooldownMs: value,
-                              }))
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) return
-                              const next = Math.max(0, parsed)
-                              updateTabCompletionOptions({
-                                autoTriggerCooldownMs: next,
-                              })
-                            }}
-                            onBlur={(value) => {
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) {
-                                setTabNumberInputs((prev) => ({
-                                  ...prev,
-                                  autoTriggerCooldownMs: String(
-                                    tabCompletionOptions.autoTriggerCooldownMs,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="smtcmp-composer-option smtcmp-composer-option--table">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t(
-                          'settings.continuation.tabCompletionTriggersTitle',
-                          '触发器',
-                        )}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.continuation.tabCompletionTriggersDesc',
-                          '配置补全触发规则。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control smtcmp-composer-option-control--full">
-                      <div className="smtcmp-settings-table-container">
-                        <table className="smtcmp-settings-table">
-                          <thead>
-                            <tr>
-                              <th>
-                                {t(
-                                  'settings.continuation.tabCompletionTriggerEnabled',
-                                )}
-                              </th>
-                              <th>
-                                {t(
-                                  'settings.continuation.tabCompletionTriggerType',
-                                )}
-                              </th>
-                              <th>
-                                {t(
-                                  'settings.continuation.tabCompletionTriggerPattern',
-                                )}
-                              </th>
-                              <th>
-                                {t(
-                                  'settings.continuation.tabCompletionTriggerDescription',
-                                )}
-                              </th>
-                              <th>
-                                {t(
-                                  'settings.continuation.tabCompletionTriggerRemove',
-                                )}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {tabCompletionTriggers.map((trigger) => (
-                              <tr key={trigger.id}>
-                                <td>
-                                  <ObsidianToggle
-                                    value={trigger.enabled}
-                                    onChange={(value) => {
-                                      handleTriggerChange(trigger.id, {
-                                        enabled: value,
-                                      })
-                                    }}
-                                  />
-                                </td>
-                                <td>
-                                  <ObsidianDropdown
-                                    value={trigger.type}
-                                    options={{
-                                      string: t(
-                                        'settings.continuation.tabCompletionTriggerTypeString',
-                                      ),
-                                      regex: t(
-                                        'settings.continuation.tabCompletionTriggerTypeRegex',
-                                      ),
-                                    }}
-                                    onChange={(value) => {
-                                      handleTriggerChange(trigger.id, {
-                                        type: value as 'string' | 'regex',
-                                      })
-                                    }}
-                                  />
-                                </td>
-                                <td>
-                                  <ObsidianTextInput
-                                    value={trigger.pattern}
-                                    onChange={(value) => {
-                                      handleTriggerChange(trigger.id, {
-                                        pattern: value,
-                                      })
-                                    }}
-                                  />
-                                </td>
-                                <td>
-                                  <ObsidianTextInput
-                                    value={trigger.description ?? ''}
-                                    onChange={(value) => {
-                                      handleTriggerChange(trigger.id, {
-                                        description: value,
-                                      })
-                                    }}
-                                  />
-                                </td>
-                                <td>
-                                  <ObsidianButton
-                                    text={t(
-                                      'settings.continuation.tabCompletionTriggerRemove',
-                                    )}
-                                    onClick={() =>
-                                      handleRemoveTrigger(trigger.id)
-                                    }
-                                  />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          <tfoot>
-                            <tr>
-                              <td colSpan={5}>
-                                <ObsidianButton
-                                  text={t(
-                                    'settings.continuation.tabCompletionTriggerAdd',
-                                  )}
-                                  onClick={handleAddTrigger}
-                                />
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
-                      showTabAdvanced ? ' is-expanded' : ''
-                    }`}
-                    onClick={() => setShowTabAdvanced((prev) => !prev)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        setShowTabAdvanced((prev) => !prev)
-                      }
-                    }}
-                  >
-                    <span className="smtcmp-settings-advanced-toggle-icon">
-                      ▶
-                    </span>
-                    {t(
-                      'settings.continuation.tabCompletionAdvanced',
-                      '高级设置',
-                    )}
-                  </div>
-
-                  {showTabAdvanced && (
-                    <>
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionContextRange',
-                              '上下文范围',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionContextRangeDesc',
-                              '控制上下文范围大小。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={tabNumberInputs.contextRange}
-                            onChange={(value) => {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                contextRange: value,
-                              }))
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) return
-                              const next = Math.max(500, parsed)
-                              updateTabCompletionOptions({ contextRange: next })
-                            }}
-                            onBlur={(value) => {
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) {
-                                setTabNumberInputs((prev) => ({
-                                  ...prev,
-                                  contextRange: String(
-                                    tabCompletionOptions.contextRange,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionMinContextLength',
-                              '最小上下文长度',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionMinContextLengthDesc',
-                              '低于该长度不会触发补全。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={tabNumberInputs.minContextLength}
-                            onChange={(value) => {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                minContextLength: value,
-                              }))
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) return
-                              const next = Math.max(0, parsed)
-                              updateTabCompletionOptions({
-                                minContextLength: next,
-                              })
-                            }}
-                            onBlur={(value) => {
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) {
-                                setTabNumberInputs((prev) => ({
-                                  ...prev,
-                                  minContextLength: String(
-                                    tabCompletionOptions.minContextLength,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionTemperature',
-                              '温度',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionTemperatureDesc',
-                              '控制生成的发散程度。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={tabNumberInputs.temperature}
-                            onChange={(value) => {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                temperature: value,
-                              }))
-                              const parsed = parseFloatInput(value)
-                              if (parsed === null) return
-                              updateTabCompletionOptions({
-                                temperature: Math.min(Math.max(parsed, 0), 2),
-                              })
-                            }}
-                            onBlur={(value) => {
-                              const parsed = parseFloatInput(value)
-                              if (parsed === null) {
-                                setTabNumberInputs((prev) => ({
-                                  ...prev,
-                                  temperature: String(
-                                    tabCompletionOptions.temperature,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionRequestTimeout',
-                              '请求超时',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionRequestTimeoutDesc',
-                              '超过该时间将取消请求。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={tabNumberInputs.requestTimeoutMs}
-                            onChange={(value) => {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                requestTimeoutMs: value,
-                              }))
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) return
-                              const next = Math.max(1000, parsed)
-                              updateTabCompletionOptions({
-                                requestTimeoutMs: next,
-                              })
-                            }}
-                            onBlur={(value) => {
-                              const parsed = parseIntegerInput(value)
-                              if (parsed === null) {
-                                setTabNumberInputs((prev) => ({
-                                  ...prev,
-                                  requestTimeoutMs: String(
-                                    tabCompletionOptions.requestTimeoutMs,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.continuation.tabCompletionConstraints',
-                              '补全约束',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.continuation.tabCompletionConstraintsDesc',
-                              '插入到补全提示词中的附加规则。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control smtcmp-composer-option-control--full">
-                          <ObsidianTextArea
-                            value={
-                              settings.continuationOptions
-                                .tabCompletionConstraints ?? ''
-                            }
-                            onChange={(value: string) => {
-                              updateContinuationOptions({
-                                tabCompletionConstraints: value,
-                              })
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
                 </>
               )}
             </section>
+
+            {enableTabCompletion && (
+              <section className="smtcmp-composer-section">
+                <header className="smtcmp-composer-heading">
+                  <div className="smtcmp-composer-heading-title">
+                    {t(
+                      'settings.continuation.tabCompletionTriggersSectionTitle',
+                      '触发器设置',
+                    )}
+                  </div>
+                  <div className="smtcmp-composer-heading-desc">
+                    {t(
+                      'settings.continuation.tabCompletionTriggersSectionDesc',
+                      '配置补全触发条件与规则。',
+                    )}
+                  </div>
+                </header>
+
+                <div className="smtcmp-composer-option">
+                  <div className="smtcmp-composer-option-info">
+                    <div className="smtcmp-composer-option-title">
+                      {t(
+                        'settings.continuation.tabCompletionTriggerDelay',
+                        '触发延迟',
+                      )}
+                    </div>
+                    <div className="smtcmp-composer-option-desc">
+                      {t(
+                        'settings.continuation.tabCompletionTriggerDelayDesc',
+                        '输入后延迟触发的毫秒数。',
+                      )}
+                    </div>
+                  </div>
+                  <div className="smtcmp-composer-option-control">
+                    <ObsidianTextInput
+                      type="number"
+                      value={tabNumberInputs.triggerDelayMs}
+                      onChange={(value) => {
+                        setTabNumberInputs((prev) => ({
+                          ...prev,
+                          triggerDelayMs: value,
+                        }))
+                        const parsed = parseIntegerInput(value)
+                        if (parsed === null) return
+                        const next = Math.max(200, parsed)
+                        updateTabCompletionOptions({ triggerDelayMs: next })
+                      }}
+                      onBlur={(value) => {
+                        const parsed = parseIntegerInput(value)
+                        if (parsed === null) {
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            triggerDelayMs: String(
+                              tabCompletionOptions.triggerDelayMs,
+                            ),
+                          }))
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="smtcmp-composer-option smtcmp-composer-option--table">
+                  <div className="smtcmp-composer-option-info">
+                    <div className="smtcmp-composer-option-title">
+                      {t(
+                        'settings.continuation.tabCompletionTriggersTitle',
+                        '触发器',
+                      )}
+                    </div>
+                    <div className="smtcmp-composer-option-desc">
+                      {t(
+                        'settings.continuation.tabCompletionTriggersDesc',
+                        '配置补全触发规则。',
+                      )}
+                    </div>
+                  </div>
+                  <div className="smtcmp-composer-option-control smtcmp-composer-option-control--full">
+                    <div className="smtcmp-settings-table-container">
+                      <table className="smtcmp-settings-table">
+                        <thead>
+                          <tr>
+                            <th>
+                              {t(
+                                'settings.continuation.tabCompletionTriggerEnabled',
+                              )}
+                            </th>
+                            <th>
+                              {t(
+                                'settings.continuation.tabCompletionTriggerType',
+                              )}
+                            </th>
+                            <th>
+                              {t(
+                                'settings.continuation.tabCompletionTriggerPattern',
+                              )}
+                            </th>
+                            <th>
+                              {t(
+                                'settings.continuation.tabCompletionTriggerDescription',
+                              )}
+                            </th>
+                            <th>
+                              {t(
+                                'settings.continuation.tabCompletionTriggerRemove',
+                              )}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tabCompletionTriggers.map((trigger) => (
+                            <tr key={trigger.id}>
+                              <td>
+                                <ObsidianToggle
+                                  value={trigger.enabled}
+                                  onChange={(value) => {
+                                    handleTriggerChange(trigger.id, {
+                                      enabled: value,
+                                    })
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <ObsidianDropdown
+                                  value={trigger.type}
+                                  options={{
+                                    string: t(
+                                      'settings.continuation.tabCompletionTriggerTypeString',
+                                    ),
+                                    regex: t(
+                                      'settings.continuation.tabCompletionTriggerTypeRegex',
+                                    ),
+                                  }}
+                                  onChange={(value) => {
+                                    handleTriggerChange(trigger.id, {
+                                      type: value as 'string' | 'regex',
+                                    })
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <ObsidianTextInput
+                                  value={trigger.pattern}
+                                  onChange={(value) => {
+                                    handleTriggerChange(trigger.id, {
+                                      pattern: value,
+                                    })
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <ObsidianTextInput
+                                  value={trigger.description ?? ''}
+                                  onChange={(value) => {
+                                    handleTriggerChange(trigger.id, {
+                                      description: value,
+                                    })
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <ObsidianButton
+                                  text={t(
+                                    'settings.continuation.tabCompletionTriggerRemove',
+                                  )}
+                                  onClick={() =>
+                                    handleRemoveTrigger(trigger.id)
+                                  }
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={5}>
+                              <ObsidianButton
+                                text={t(
+                                  'settings.continuation.tabCompletionTriggerAdd',
+                                )}
+                                onClick={handleAddTrigger}
+                              />
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {enableTabCompletion && (
+              <section className="smtcmp-composer-section">
+                <header className="smtcmp-composer-heading">
+                  <div className="smtcmp-composer-heading-title">
+                    {t(
+                      'settings.continuation.tabCompletionAutoSectionTitle',
+                      '自动补全设置',
+                    )}
+                  </div>
+                  <div className="smtcmp-composer-heading-desc">
+                    {t(
+                      'settings.continuation.tabCompletionAutoSectionDesc',
+                      '配置停顿自动补全与高级参数。',
+                    )}
+                  </div>
+                </header>
+
+                <div className="smtcmp-composer-option">
+                  <div className="smtcmp-composer-option-info">
+                    <div className="smtcmp-composer-option-title">
+                      {t(
+                        'settings.continuation.tabCompletionAutoTrigger',
+                        '自动补全（停顿后）',
+                      )}
+                    </div>
+                    <div className="smtcmp-composer-option-desc">
+                      {t(
+                        'settings.continuation.tabCompletionAutoTriggerDesc',
+                        '启用后，停止输入一段时间也会触发补全。',
+                      )}
+                    </div>
+                  </div>
+                  <div className="smtcmp-composer-option-control">
+                    <ObsidianToggle
+                      value={tabCompletionOptions.idleTriggerEnabled}
+                      onChange={(value) => {
+                        updateTabCompletionOptions({
+                          idleTriggerEnabled: value,
+                        })
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {tabCompletionOptions.idleTriggerEnabled && (
+                  <>
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionAutoTriggerDelay',
+                            '自动补全停顿时间（毫秒）',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionAutoTriggerDelayDesc',
+                            '停止输入后等待多久再触发自动补全。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control">
+                        <ObsidianTextInput
+                          type="number"
+                          value={tabNumberInputs.autoTriggerDelayMs}
+                          onChange={(value) => {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              autoTriggerDelayMs: value,
+                            }))
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) return
+                            const next = Math.max(200, parsed)
+                            updateTabCompletionOptions({
+                              autoTriggerDelayMs: next,
+                            })
+                          }}
+                          onBlur={(value) => {
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                autoTriggerDelayMs: String(
+                                  tabCompletionOptions.autoTriggerDelayMs,
+                                ),
+                              }))
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionAutoTriggerCooldown',
+                            '自动补全冷却时间（毫秒）',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionAutoTriggerCooldownDesc',
+                            '自动补全触发后冷却一段时间，避免频繁请求。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control">
+                        <ObsidianTextInput
+                          type="number"
+                          value={tabNumberInputs.autoTriggerCooldownMs}
+                          onChange={(value) => {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              autoTriggerCooldownMs: value,
+                            }))
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) return
+                            const next = Math.max(0, parsed)
+                            updateTabCompletionOptions({
+                              autoTriggerCooldownMs: next,
+                            })
+                          }}
+                          onBlur={(value) => {
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                autoTriggerCooldownMs: String(
+                                  tabCompletionOptions.autoTriggerCooldownMs,
+                                ),
+                              }))
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div
+                  className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
+                    showTabAdvanced ? ' is-expanded' : ''
+                  }`}
+                  onClick={() => setShowTabAdvanced((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setShowTabAdvanced((prev) => !prev)
+                    }
+                  }}
+                >
+                  <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
+                  {t(
+                    'settings.continuation.tabCompletionAdvanced',
+                    '高级设置',
+                  )}
+                </div>
+
+                {showTabAdvanced && (
+                  <>
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionContextRange',
+                            '上下文范围',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionContextRangeDesc',
+                            '控制上下文范围大小。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control">
+                        <ObsidianTextInput
+                          type="number"
+                          value={tabNumberInputs.contextRange}
+                          onChange={(value) => {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              contextRange: value,
+                            }))
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) return
+                            const next = Math.max(500, parsed)
+                            updateTabCompletionOptions({ contextRange: next })
+                          }}
+                          onBlur={(value) => {
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                contextRange: String(
+                                  tabCompletionOptions.contextRange,
+                                ),
+                              }))
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionMinContextLength',
+                            '最小上下文长度',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionMinContextLengthDesc',
+                            '低于该长度不会触发补全。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control">
+                        <ObsidianTextInput
+                          type="number"
+                          value={tabNumberInputs.minContextLength}
+                          onChange={(value) => {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              minContextLength: value,
+                            }))
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) return
+                            const next = Math.max(0, parsed)
+                            updateTabCompletionOptions({
+                              minContextLength: next,
+                            })
+                          }}
+                          onBlur={(value) => {
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                minContextLength: String(
+                                  tabCompletionOptions.minContextLength,
+                                ),
+                              }))
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionTemperature',
+                            '温度',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionTemperatureDesc',
+                            '控制生成的发散程度。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control">
+                        <ObsidianTextInput
+                          type="number"
+                          value={tabNumberInputs.temperature}
+                          onChange={(value) => {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              temperature: value,
+                            }))
+                            const parsed = parseFloatInput(value)
+                            if (parsed === null) return
+                            updateTabCompletionOptions({
+                              temperature: Math.min(Math.max(parsed, 0), 2),
+                            })
+                          }}
+                          onBlur={(value) => {
+                            const parsed = parseFloatInput(value)
+                            if (parsed === null) {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                temperature: String(
+                                  tabCompletionOptions.temperature,
+                                ),
+                              }))
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionRequestTimeout',
+                            '请求超时',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionRequestTimeoutDesc',
+                            '超过该时间将取消请求。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control">
+                        <ObsidianTextInput
+                          type="number"
+                          value={tabNumberInputs.requestTimeoutMs}
+                          onChange={(value) => {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              requestTimeoutMs: value,
+                            }))
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) return
+                            const next = Math.max(1000, parsed)
+                            updateTabCompletionOptions({
+                              requestTimeoutMs: next,
+                            })
+                          }}
+                          onBlur={(value) => {
+                            const parsed = parseIntegerInput(value)
+                            if (parsed === null) {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                requestTimeoutMs: String(
+                                  tabCompletionOptions.requestTimeoutMs,
+                                ),
+                              }))
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="smtcmp-composer-option">
+                      <div className="smtcmp-composer-option-info">
+                        <div className="smtcmp-composer-option-title">
+                          {t(
+                            'settings.continuation.tabCompletionConstraints',
+                            '补全约束',
+                          )}
+                        </div>
+                        <div className="smtcmp-composer-option-desc">
+                          {t(
+                            'settings.continuation.tabCompletionConstraintsDesc',
+                            '插入到补全提示词中的附加规则。',
+                          )}
+                        </div>
+                      </div>
+                      <div className="smtcmp-composer-option-control smtcmp-composer-option-control--full">
+                        <ObsidianTextArea
+                          value={
+                            settings.continuationOptions
+                              .tabCompletionConstraints ?? ''
+                          }
+                          onChange={(value: string) => {
+                            updateContinuationOptions({
+                              tabCompletionConstraints: value,
+                            })
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
           </>
         )}
       </div>

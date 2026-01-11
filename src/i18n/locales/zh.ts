@@ -428,6 +428,12 @@ export const zh: TranslationKeys = {
       quickAskTrigger: '触发字符',
       quickAskTriggerDesc:
         '在空行输入此字符时触发 Quick Ask（默认：@）。支持 1-3 个字符。',
+      tabCompletionBasicTitle: '基础设置',
+      tabCompletionBasicDesc: '启用 Tab 补全并设置基础参数。',
+      tabCompletionTriggersSectionTitle: '触发器设置',
+      tabCompletionTriggersSectionDesc: '配置补全触发条件与规则。',
+      tabCompletionAutoSectionTitle: '自动补全设置',
+      tabCompletionAutoSectionDesc: '配置停顿自动补全与高级参数。',
       tabCompletion: '启用 Tab 补全',
       tabCompletionDesc:
         '当触发规则命中时自动请求补全，并以灰色幽灵文本形式给出建议，按下 Tab 接受。',
