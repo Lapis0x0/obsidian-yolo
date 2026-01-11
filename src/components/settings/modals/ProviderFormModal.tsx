@@ -269,11 +269,15 @@ function ProviderFormComponent({
         const label =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeaders')
-            : setting.label
+            : setting.key === 'useObsidianRequestUrl'
+              ? t('settings.providers.useObsidianRequestUrl')
+              : setting.label
         const description =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeadersDesc')
-            : (setting as { description?: string }).description
+            : setting.key === 'useObsidianRequestUrl'
+              ? t('settings.providers.useObsidianRequestUrlDesc')
+              : (setting as { description?: string }).description
 
         return (
           <ObsidianSetting

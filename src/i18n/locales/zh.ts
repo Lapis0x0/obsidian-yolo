@@ -234,6 +234,9 @@ export const zh: TranslationKeys = {
       noStainlessHeaders: '无 Stainless 请求头',
       noStainlessHeadersDesc:
         '如果你遇到与 Stainless 请求头相关的 CORS 错误（x-stainless-os 等），请启用此选项',
+      useObsidianRequestUrl: '使用 Obsidian requestUrl',
+      useObsidianRequestUrlDesc:
+        '使用 Obsidian requestUrl 绕过 CORS 限制。流式响应将会被缓冲后再返回。',
     },
     models: {
       title: '模型',

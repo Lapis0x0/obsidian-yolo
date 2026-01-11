@@ -86,6 +86,7 @@ export const llmProviderSchema = z.discriminatedUnion('type', [
     additionalSettings: z
       .object({
         noStainless: z.boolean().optional(),
+        useObsidianRequestUrl: z.boolean().optional(),
       })
       .optional(),
   }),

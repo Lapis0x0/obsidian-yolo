@@ -20,6 +20,7 @@ import { extractEmbeddingVector } from './embedding-utils'
 import { LLMBaseUrlNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 
 type GeminiThinkingConfig = {
   thinking_budget: number
@@ -54,6 +55,8 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
   constructor(provider: Extract<LLMProvider, { type: 'openai-compatible' }>) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
+    const useObsidianRequestUrl =
+      provider.additionalSettings?.useObsidianRequestUrl
     // Prefer standard OpenAI SDK; allow opting into NoStainless to bypass headers/validation when needed
     this.client = new (
       provider.additionalSettings?.noStainless ? NoStainlessOpenAI : OpenAI
@@ -61,6 +64,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
       apiKey: provider.apiKey ?? '',
       baseURL: provider.baseUrl ? provider.baseUrl?.replace(/\/+$/, '') : '',
       dangerouslyAllowBrowser: true,
+      fetch: useObsidianRequestUrl ? createObsidianFetch() : undefined,
     })
   }
 

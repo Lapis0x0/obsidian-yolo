@@ -155,6 +155,14 @@ export const PROVIDER_TYPES_INFO = {
         description:
           'Enable this if you encounter CORS errors related to Stainless headers (x-stainless-os, etc.)',
       },
+      {
+        label: 'Use Obsidian requestUrl',
+        key: 'useObsidianRequestUrl',
+        type: 'toggle',
+        required: false,
+        description:
+          'Use Obsidian requestUrl to bypass CORS restrictions. Streaming responses will be buffered.',
+      },
     ],
   },
 } as const satisfies Record<

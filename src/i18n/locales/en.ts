@@ -259,6 +259,9 @@ export const en: TranslationKeys = {
       noStainlessHeaders: 'No stainless headers',
       noStainlessHeadersDesc:
         'Enable this if you encounter cross-origin errors related to stainless headers.',
+      useObsidianRequestUrl: 'Use Obsidian requestUrl',
+      useObsidianRequestUrlDesc:
+        'Use Obsidian requestUrl to bypass CORS restrictions. Streaming responses will be buffered.',
     },
     models: {
       title: 'Models',

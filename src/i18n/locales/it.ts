@@ -267,6 +267,9 @@ export const it: TranslationKeys = {
       noStainlessHeaders: 'Nessun header stainless',
       noStainlessHeadersDesc:
         'Disabilita gli header SDK stainless (richiesto per alcuni provider compatibili).',
+      useObsidianRequestUrl: 'Usa requestUrl di Obsidian',
+      useObsidianRequestUrlDesc:
+        'Usa requestUrl di Obsidian per aggirare le restrizioni CORS. Le risposte in streaming verranno bufferizzate.',
     },
     models: {
       title: 'Modelli',

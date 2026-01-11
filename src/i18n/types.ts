@@ -195,6 +195,8 @@ export type TranslationKeys = {
       baseUrlPlaceholder: string
       noStainlessHeaders: string
       noStainlessHeadersDesc: string
+      useObsidianRequestUrl: string
+      useObsidianRequestUrlDesc: string
     }
     models: {
       title: string
