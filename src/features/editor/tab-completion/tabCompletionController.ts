@@ -140,15 +140,7 @@ const findBoundaryIndex = (text: string): number | null => {
 
 const extractAfterContext = (window: string): string => {
   if (!window) return ''
-  const boundary = findBoundaryIndex(window)
-  const candidate = boundary === null ? window : window.slice(0, boundary)
-  if (candidate.trim().length > 0) return candidate
-
-  const firstNonWhitespace = window.search(/\S/)
-  if (firstNonWhitespace === -1) return ''
-  const trimmed = window.slice(firstNonWhitespace)
-  const nextBoundary = findBoundaryIndex(trimmed)
-  return nextBoundary === null ? trimmed : trimmed.slice(0, nextBoundary)
+  return window
 }
 
 const extractBeforeContext = (window: string): string => {
