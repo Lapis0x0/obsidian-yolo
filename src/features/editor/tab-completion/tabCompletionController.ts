@@ -64,7 +64,6 @@ type TabCompletionDeps = {
 }
 
 const MASK_TAG = '<mask/>'
-const ANSWER_PREFIX = 'answer:'
 const TAB_COMPLETION_CONSTRAINTS_BLOCK = `\n\nAdditional constraints:\n${TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER}`
 
 const applyTabCompletionConstraints = (
@@ -103,20 +102,6 @@ const buildTabCompletionConstraints = (
   const presetConstraint = TAB_COMPLETION_LENGTH_CONSTRAINTS[preset] ?? ''
   const trimmedCustom = customConstraints.trim()
   return [presetConstraint, trimmedCustom].filter(Boolean).join('\n')
-}
-
-const parseMaskedAnswer = (raw: string): string => {
-  const normalized = raw.trim()
-  const markerIndex = normalized.toLowerCase().indexOf(ANSWER_PREFIX)
-  if (markerIndex === -1) return normalized
-  return normalized.slice(markerIndex + ANSWER_PREFIX.length).trim()
-}
-
-const parseMaskedAnswerStreaming = (raw: string): string => {
-  const normalized = raw.trim()
-  const markerIndex = normalized.toLowerCase().indexOf(ANSWER_PREFIX)
-  if (markerIndex === -1) return ''
-  return normalized.slice(markerIndex + ANSWER_PREFIX.length).trim()
 }
 
 const findBoundaryIndex = (text: string): number | null => {
@@ -544,8 +529,7 @@ export class TabCompletionController {
               baseRequest,
               { signal: controller.signal },
             )
-            let suggestion = response.choices?.[0]?.message?.content ?? ''
-            suggestion = parseMaskedAnswer(suggestion)
+            const suggestion = response.choices?.[0]?.message?.content ?? ''
 
             const currentView = this.deps.getEditorView(editor)
             if (!currentView) return
@@ -570,20 +554,18 @@ export class TabCompletionController {
               return
             if (editor.getSelection()?.length) return
 
-            const suggestion = parseMaskedAnswerStreaming(rawText)
-            if (!suggestion) continue
-            updateSuggestion(suggestion, currentView)
+            if (!rawText.trim()) continue
+            updateSuggestion(rawText, currentView)
           }
 
           if (rawText.length === 0) return
-          const finalSuggestion = parseMaskedAnswer(rawText)
           const currentView = this.deps.getEditorView(editor)
           if (!currentView) return
           if (currentView.state.selection.main.head !== scheduledCursorOffset)
             return
           if (editor.getSelection()?.length) return
 
-          updateSuggestion(finalSuggestion, currentView)
+          updateSuggestion(rawText, currentView)
           if (timeoutHandle) clearTimeout(timeoutHandle)
           return
         } catch (error) {

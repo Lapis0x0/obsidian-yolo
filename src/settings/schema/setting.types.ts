@@ -61,7 +61,7 @@ export const TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER =
 export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
   'Your job is to predict the most logical text that should be written at the location of the <mask/>. Your answer can be either code, a single word, or multiple sentences. Your answer must be in the same language as the text that is already there.' +
   `\n\nAdditional constraints:\n${TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER}` +
-  '\n\nYour response must have the following format:\nANSWER: here, you write the text that should be at the location of <mask/>.'
+  '\n\nOutput only the text that should appear at the <mask/>. Do not include explanations, labels, or formatting.'
 
 export const DEFAULT_TAB_COMPLETION_LENGTH_PRESET: TabCompletionLengthPreset =
   'medium'
