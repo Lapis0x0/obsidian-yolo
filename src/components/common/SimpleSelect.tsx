@@ -52,16 +52,12 @@ export function SimpleSelect({
     return options
   }, [groupedOptions, options])
   const selected = useMemo(
-    () =>
-      flattenedOptions.find((option) => option.value === value) ?? null,
+    () => flattenedOptions.find((option) => option.value === value) ?? null,
     [flattenedOptions, value],
   )
 
   return (
-    <DropdownMenu.Root
-      open={isOpen}
-      onOpenChange={(open) => setIsOpen(open)}
-    >
+    <DropdownMenu.Root open={isOpen} onOpenChange={(open) => setIsOpen(open)}>
       <DropdownMenu.Trigger
         className="smtcmp-simple-select__trigger"
         disabled={disabled}
@@ -102,7 +98,8 @@ export function SimpleSelect({
           >
             {(groupedOptions && groupedOptions.length > 0
               ? groupedOptions
-              : [{ label: '', options }]).flatMap((group, groupIndex) => {
+              : [{ label: '', options }]
+            ).flatMap((group, groupIndex) => {
               const items = group.options.map((option) => (
                 <DropdownMenu.RadioItem
                   key={option.value}

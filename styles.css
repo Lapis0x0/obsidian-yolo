@@ -301,11 +301,9 @@
   color: var(--text-normal);
   background: transparent !important;
   border: 2px solid var(--h1-color, var(--interactive-accent));
-  box-shadow:
-    0 2px 10px
-      color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
 }
-
 
 .smtcmp-composer-scroll {
   flex: 1;

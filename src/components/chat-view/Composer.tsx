@@ -23,10 +23,10 @@ import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
 } from '../common/ObsidianDropdown'
-import { SimpleSelect } from '../common/SimpleSelect'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ObsidianToggle } from '../common/ObsidianToggle'
+import { SimpleSelect } from '../common/SimpleSelect'
 import { FolderSelectionList } from '../settings/inputs/FolderSelectionList'
 import { EmbeddingDbManageModal } from '../settings/modals/EmbeddingDbManageModal'
 import { ExcludedFilesModal } from '../settings/modals/ExcludedFilesModal'
@@ -170,16 +170,15 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     return Number.isFinite(parsed) ? parsed : null
   }
 
-  const [ragNumberInputs, setRagNumberInputs] =
-    useState<NumberInputState>({
-      chunkSize: String(settings.ragOptions.chunkSize),
-      thresholdTokens: String(settings.ragOptions.thresholdTokens),
-      minSimilarity: String(settings.ragOptions.minSimilarity),
-      limit: String(settings.ragOptions.limit),
-      autoUpdateIntervalHours: String(
-        settings.ragOptions.autoUpdateIntervalHours ?? 24,
-      ),
-    })
+  const [ragNumberInputs, setRagNumberInputs] = useState<NumberInputState>({
+    chunkSize: String(settings.ragOptions.chunkSize),
+    thresholdTokens: String(settings.ragOptions.thresholdTokens),
+    minSimilarity: String(settings.ragOptions.minSimilarity),
+    limit: String(settings.ragOptions.limit),
+    autoUpdateIntervalHours: String(
+      settings.ragOptions.autoUpdateIntervalHours ?? 24,
+    ),
+  })
 
   useEffect(() => {
     setRagNumberInputs((prev) => ({
@@ -296,7 +295,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     })
   }
 
-  const updateTabCompletionTriggers = (nextTriggers: TabCompletionTrigger[]) => {
+  const updateTabCompletionTriggers = (
+    nextTriggers: TabCompletionTrigger[],
+  ) => {
     updateContinuationOptions({ tabCompletionTriggers: nextTriggers })
   }
 
@@ -380,9 +381,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
         })
 
         new Notice(
-          reindexAll
-            ? t('notices.rebuildComplete')
-            : t('notices.indexUpdated'),
+          reindexAll ? t('notices.rebuildComplete') : t('notices.indexUpdated'),
         )
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -449,7 +448,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
             <section className="smtcmp-composer-section">
               <header className="smtcmp-composer-heading">
                 <div className="smtcmp-composer-heading-title">
-                  {t('settings.continuation.smartSpaceToggle', '启用 Smart Space')}
+                  {t(
+                    'settings.continuation.smartSpaceToggle',
+                    '启用 Smart Space',
+                  )}
                 </div>
                 <div className="smtcmp-composer-heading-desc">
                   {t(
@@ -462,7 +464,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               <div className="smtcmp-composer-option">
                 <div className="smtcmp-composer-option-info">
                   <div className="smtcmp-composer-option-title">
-                    {t('settings.continuation.smartSpaceToggle', '启用 Smart Space')}
+                    {t(
+                      'settings.continuation.smartSpaceToggle',
+                      '启用 Smart Space',
+                    )}
                   </div>
                   <div className="smtcmp-composer-option-desc">
                     {t(
@@ -626,7 +631,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                             enabled: value,
                           },
                         },
-                        t('notices.indexUpdateFailed', 'Failed to update RAG settings.'),
+                        t(
+                          'notices.indexUpdateFailed',
+                          'Failed to update RAG settings.',
+                        ),
                       )
                     }}
                   />
@@ -647,37 +655,39 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         )}
                       </div>
                     </div>
-                <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
-                  <div className="smtcmp-simple-select-wrapper">
-                    <SimpleSelect
-                      value={settings.embeddingModelId}
-                      groupedOptions={embeddingModelOptionGroups.map((group) => ({
-                        label: group.label,
-                        options: group.options.map((option) => ({
-                          value: option.value,
-                          label: option.label,
-                        })),
-                      }))}
-                      onChange={(value) => {
-                        applySettingsUpdate(
-                          {
-                            ...settings,
-                            embeddingModelId: value,
-                          },
-                          t(
-                            'notices.indexUpdateFailed',
-                            'Failed to update embedding model.',
-                          ),
-                        )
-                      }}
-                      align="end"
-                      side="bottom"
-                      sideOffset={6}
-                      collisionBoundary={composerRef.current}
-                    />
+                    <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
+                      <div className="smtcmp-simple-select-wrapper">
+                        <SimpleSelect
+                          value={settings.embeddingModelId}
+                          groupedOptions={embeddingModelOptionGroups.map(
+                            (group) => ({
+                              label: group.label,
+                              options: group.options.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                              })),
+                            }),
+                          )}
+                          onChange={(value) => {
+                            applySettingsUpdate(
+                              {
+                                ...settings,
+                                embeddingModelId: value,
+                              },
+                              t(
+                                'notices.indexUpdateFailed',
+                                'Failed to update embedding model.',
+                              ),
+                            )
+                          }}
+                          align="end"
+                          side="bottom"
+                          sideOffset={6}
+                          collisionBoundary={composerRef.current}
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
                   <div className="smtcmp-composer-option">
                     <div className="smtcmp-composer-option-info">
@@ -697,17 +707,21 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         onClick={() => {
                           void (async () => {
                             const patterns = settings.ragOptions.includePatterns
-                            const includedFiles = await findFilesMatchingPatterns(
-                              patterns,
-                              plugin.app.vault,
-                            )
+                            const includedFiles =
+                              await findFilesMatchingPatterns(
+                                patterns,
+                                plugin.app.vault,
+                              )
                             new IncludedFilesModal(
                               app,
                               includedFiles,
                               patterns,
                             ).open()
                           })().catch((error) => {
-                            console.error('Failed to test include patterns', error)
+                            console.error(
+                              'Failed to test include patterns',
+                              error,
+                            )
                           })
                         }}
                       />
@@ -718,7 +732,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     <FolderSelectionList
                       app={app}
                       vault={plugin.app.vault}
-                      title={t('settings.rag.selectedFolders', '已选择的文件夹')}
+                      title={t(
+                        'settings.rag.selectedFolders',
+                        '已选择的文件夹',
+                      )}
                       value={includeFolders}
                       onChange={(folders: string[]) => {
                         const patterns = folderPathsToIncludePatterns(folders)
@@ -757,17 +774,17 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         onClick={() => {
                           void (async () => {
                             const patterns = settings.ragOptions.excludePatterns
-                            const excludedFiles = await findFilesMatchingPatterns(
-                              patterns,
-                              plugin.app.vault,
-                            )
-                            new ExcludedFilesModal(
-                              app,
-                              excludedFiles,
-                              patterns,
-                            ).open()
+                            const excludedFiles =
+                              await findFilesMatchingPatterns(
+                                patterns,
+                                plugin.app.vault,
+                              )
+                            new ExcludedFilesModal(app, excludedFiles).open()
                           })().catch((error) => {
-                            console.error('Failed to test exclude patterns', error)
+                            console.error(
+                              'Failed to test exclude patterns',
+                              error,
+                            )
                           })
                         }}
                       />
@@ -778,7 +795,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     <FolderSelectionList
                       app={app}
                       vault={plugin.app.vault}
-                      title={t('settings.rag.excludedFolders', '已排除的文件夹')}
+                      title={t(
+                        'settings.rag.excludedFolders',
+                        '已排除的文件夹',
+                      )}
                       placeholder={t(
                         'settings.rag.selectExcludeFoldersPlaceholder',
                         '点击此处选择要排除的文件夹（留空则不排除）',
@@ -872,7 +892,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                   <div className="smtcmp-composer-option">
                     <div className="smtcmp-composer-option-info">
                       <div className="smtcmp-composer-option-title">
-                        {t('settings.rag.manageEmbeddingDatabase', '管理索引数据')}
+                        {t(
+                          'settings.rag.manageEmbeddingDatabase',
+                          '管理索引数据',
+                        )}
                       </div>
                       <div className="smtcmp-composer-option-desc">
                         {t(
@@ -885,10 +908,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       <ObsidianButton
                         text={t('settings.rag.manage', '管理')}
                         onClick={() => {
-                          const modal = new EmbeddingDbManageModal(
-                            app,
-                            plugin,
-                          )
+                          const modal = new EmbeddingDbManageModal(app, plugin)
                           modal.open()
                         }}
                       />
@@ -909,7 +929,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       }
                     }}
                   >
-                    <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
+                    <span className="smtcmp-settings-advanced-toggle-icon">
+                      ▶
+                    </span>
                     {t('settings.rag.advanced', '高级设置')}
                   </div>
 
@@ -957,7 +979,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                               if (chunkSize === null) {
                                 setRagNumberInputs((prev) => ({
                                   ...prev,
-                                  chunkSize: String(settings.ragOptions.chunkSize),
+                                  chunkSize: String(
+                                    settings.ragOptions.chunkSize,
+                                  ),
                                 }))
                               }
                             }}
@@ -1122,7 +1146,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       <div className="smtcmp-composer-option">
                         <div className="smtcmp-composer-option-info">
                           <div className="smtcmp-composer-option-title">
-                            {t('settings.rag.autoUpdateInterval', '最小更新间隔(小时)')}
+                            {t(
+                              'settings.rag.autoUpdateInterval',
+                              '最小更新间隔(小时)',
+                            )}
                           </div>
                           <div className="smtcmp-composer-option-desc">
                             {t(
@@ -1162,8 +1189,8 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                                 setRagNumberInputs((prev) => ({
                                   ...prev,
                                   autoUpdateIntervalHours: String(
-                                    settings.ragOptions.autoUpdateIntervalHours ??
-                                      24,
+                                    settings.ragOptions
+                                      .autoUpdateIntervalHours ?? 24,
                                   ),
                                 }))
                               }
@@ -1184,7 +1211,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
             <section className="smtcmp-composer-section">
               <header className="smtcmp-composer-heading">
                 <div className="smtcmp-composer-heading-title">
-                  {t('settings.continuation.quickAskSubsectionTitle', 'Quick Ask')}
+                  {t(
+                    'settings.continuation.quickAskSubsectionTitle',
+                    'Quick Ask',
+                  )}
                 </div>
                 <div className="smtcmp-composer-heading-desc">
                   {t(
@@ -1197,7 +1227,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               <div className="smtcmp-composer-option">
                 <div className="smtcmp-composer-option-info">
                   <div className="smtcmp-composer-option-title">
-                    {t('settings.continuation.quickAskToggle', '启用 Quick Ask')}
+                    {t(
+                      'settings.continuation.quickAskToggle',
+                      '启用 Quick Ask',
+                    )}
                   </div>
                   <div className="smtcmp-composer-option-desc">
                     {t(
@@ -1284,8 +1317,8 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         tabCompletionOptions: value
                           ? {
                               ...DEFAULT_TAB_COMPLETION_OPTIONS,
-                              ...(settings.continuationOptions.tabCompletionOptions ??
-                                {}),
+                              ...(settings.continuationOptions
+                                .tabCompletionOptions ?? {}),
                             }
                           : settings.continuationOptions.tabCompletionOptions,
                       })
@@ -1299,7 +1332,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                   <div className="smtcmp-composer-option">
                     <div className="smtcmp-composer-option-info">
                       <div className="smtcmp-composer-option-title">
-                        {t('settings.continuation.tabCompletionModel', '补全模型')}
+                        {t(
+                          'settings.continuation.tabCompletionModel',
+                          '补全模型',
+                        )}
                       </div>
                       <div className="smtcmp-composer-option-desc">
                         {t(
@@ -1437,11 +1473,31 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         <table className="smtcmp-settings-table">
                           <thead>
                             <tr>
-                              <th>{t('settings.continuation.tabCompletionTriggerEnabled')}</th>
-                              <th>{t('settings.continuation.tabCompletionTriggerType')}</th>
-                              <th>{t('settings.continuation.tabCompletionTriggerPattern')}</th>
-                              <th>{t('settings.continuation.tabCompletionTriggerDescription')}</th>
-                              <th>{t('settings.continuation.tabCompletionTriggerRemove')}</th>
+                              <th>
+                                {t(
+                                  'settings.continuation.tabCompletionTriggerEnabled',
+                                )}
+                              </th>
+                              <th>
+                                {t(
+                                  'settings.continuation.tabCompletionTriggerType',
+                                )}
+                              </th>
+                              <th>
+                                {t(
+                                  'settings.continuation.tabCompletionTriggerPattern',
+                                )}
+                              </th>
+                              <th>
+                                {t(
+                                  'settings.continuation.tabCompletionTriggerDescription',
+                                )}
+                              </th>
+                              <th>
+                                {t(
+                                  'settings.continuation.tabCompletionTriggerRemove',
+                                )}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1500,7 +1556,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                                     text={t(
                                       'settings.continuation.tabCompletionTriggerRemove',
                                     )}
-                                    onClick={() => handleRemoveTrigger(trigger.id)}
+                                    onClick={() =>
+                                      handleRemoveTrigger(trigger.id)
+                                    }
                                   />
                                 </td>
                               </tr>
@@ -1537,8 +1595,13 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       }
                     }}
                   >
-                    <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
-                    {t('settings.continuation.tabCompletionAdvanced', '高级设置')}
+                    <span className="smtcmp-settings-advanced-toggle-icon">
+                      ▶
+                    </span>
+                    {t(
+                      'settings.continuation.tabCompletionAdvanced',
+                      '高级设置',
+                    )}
                   </div>
 
                   {showTabAdvanced && (
@@ -1742,8 +1805,8 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         <div className="smtcmp-composer-option-control smtcmp-composer-option-control--full">
                           <ObsidianTextArea
                             value={
-                              settings.continuationOptions.tabCompletionConstraints ??
-                              ''
+                              settings.continuationOptions
+                                .tabCompletionConstraints ?? ''
                             }
                             onChange={(value: string) => {
                               updateContinuationOptions({
