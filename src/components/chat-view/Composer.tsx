@@ -417,7 +417,18 @@ const Composer: React.FC<ComposerProps> = (_props) => {
 
   return (
     <div className="smtcmp-composer-container" ref={composerRef}>
-      <div className="smtcmp-composer-tabs" role="tablist">
+      <div
+        className="smtcmp-composer-tabs smtcmp-composer-tabs--glider"
+        role="tablist"
+        style={
+          {
+            '--smtcmp-tab-count': 3,
+            '--smtcmp-tab-index': ['smart-space', 'quick-ask', 'tab-completion']
+              .indexOf(activeTab),
+          } as React.CSSProperties
+        }
+      >
+        <div className="smtcmp-composer-tabs-glider" aria-hidden="true" />
         <button
           className={`smtcmp-composer-tab${
             activeTab === 'smart-space' ? ' is-active' : ''

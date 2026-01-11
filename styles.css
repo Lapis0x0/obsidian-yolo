@@ -292,6 +292,41 @@
   box-shadow: none !important;
 }
 
+.smtcmp-composer-tabs--glider {
+  position: relative;
+  overflow: visible;
+  gap: 0;
+  --smtcmp-tab-count: 3;
+  --smtcmp-tab-index: 0;
+  --smtcmp-tab-padding: var(--size-2-2);
+}
+.smtcmp-composer-tabs--glider .smtcmp-composer-tab {
+  position: relative;
+  z-index: 2;
+}
+.smtcmp-composer-tabs--glider .smtcmp-composer-tab.is-active {
+  border-color: transparent;
+  box-shadow: none;
+}
+.smtcmp-composer-tabs-glider {
+  position: absolute;
+  top: var(--smtcmp-tab-padding);
+  left: var(--smtcmp-tab-padding);
+  width: calc(
+    (100% - (var(--smtcmp-tab-padding) * 2)) / var(--smtcmp-tab-count)
+  );
+  height: calc(100% - (var(--smtcmp-tab-padding) * 2));
+  background: transparent;
+  border: 2px solid var(--h1-color, var(--interactive-accent));
+  border-radius: var(--radius-s);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  transform: translateX(calc(100% * var(--smtcmp-tab-index)));
+  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
 .smtcmp-composer-tab:hover {
   color: var(--text-normal);
   background: transparent !important;
