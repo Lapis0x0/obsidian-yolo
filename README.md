@@ -23,6 +23,7 @@ With YOLO you can:
 - 📚 Treat your entire vault as the AI's knowledge base
 - ✍️ Summon Smart Space to continue your ideas anywhere
 - ⚡ Use Quick Ask for instant inline AI assistance with intelligent editing
+- ⌨️ Use Tab completion for a smooth AI-powered writing experience
 - 🧩 Enable experimental features like Learning Mode and sub-agents to explore personalized workflows
 - 🎨 Enjoy numerous UX improvements and UI polish
 
@@ -71,6 +72,12 @@ The AI intelligently chooses the appropriate format based on your instructions, 
 https://github.com/user-attachments/assets/21b775d7-b427-4da2-b20c-f2ede85c2b69
 
 Add it with one click—always within reach.
+
+## **⌨️ Tab Completion**
+
+<!-- TODO: Add video link -->
+
+Get real-time AI-powered completion suggestions, making your writing flow naturally.
 
 ## **🎛️ Multi-Model Support + i18n**
 
