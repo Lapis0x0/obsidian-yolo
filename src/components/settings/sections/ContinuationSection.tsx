@@ -1,10 +1,9 @@
 import { App } from 'obsidian'
-import { type CSSProperties, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
-  DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type TabCompletionTrigger,
@@ -70,13 +69,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
       }
   const tabCompletionConstraints =
     settings.continuationOptions.tabCompletionConstraints ?? ''
-  const tabCompletionLengthPreset =
-    settings.continuationOptions.tabCompletionLengthPreset ??
-    DEFAULT_TAB_COMPLETION_LENGTH_PRESET
-  const tabCompletionLengthPresetIndex = Math.max(
-    0,
-    ['short', 'medium', 'long'].indexOf(tabCompletionLengthPreset),
-  )
   const [tabNumberInputs, setTabNumberInputs] = useState({
     maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
@@ -412,60 +404,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
                 }
               }}
             />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionLengthPreset')}
-            desc={t('settings.continuation.tabCompletionLengthPresetDesc')}
-          >
-            <div
-              className="smtcmp-segmented smtcmp-segmented--glider"
-              style={
-                {
-                  '--smtcmp-segment-count': 3,
-                  '--smtcmp-segment-index': tabCompletionLengthPresetIndex,
-                } as CSSProperties
-              }
-            >
-              <div className="smtcmp-segmented-glider" aria-hidden="true" />
-              <button
-                className={
-                  tabCompletionLengthPreset === 'short' ? 'active' : ''
-                }
-                onClick={() => {
-                  updateContinuationOptions(
-                    { tabCompletionLengthPreset: 'short' },
-                    'tabCompletionLengthPreset',
-                  )
-                }}
-              >
-                {t('settings.continuation.tabCompletionLengthPresetShort')}
-              </button>
-              <button
-                className={
-                  tabCompletionLengthPreset === 'medium' ? 'active' : ''
-                }
-                onClick={() => {
-                  updateContinuationOptions(
-                    { tabCompletionLengthPreset: 'medium' },
-                    'tabCompletionLengthPreset',
-                  )
-                }}
-              >
-                {t('settings.continuation.tabCompletionLengthPresetMedium')}
-              </button>
-              <button
-                className={tabCompletionLengthPreset === 'long' ? 'active' : ''}
-                onClick={() => {
-                  updateContinuationOptions(
-                    { tabCompletionLengthPreset: 'long' },
-                    'tabCompletionLengthPreset',
-                  )
-                }}
-              >
-                {t('settings.continuation.tabCompletionLengthPresetLong')}
-              </button>
-            </div>
           </ObsidianSetting>
 
           <div className="smtcmp-settings-sub-header">
