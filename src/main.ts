@@ -1,12 +1,10 @@
 import { type Extension, Prec, StateEffect } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { minimatch } from 'minimatch'
 import {
   Editor,
   MarkdownView,
   Notice,
   Plugin,
-  TAbstractFile,
   TFile,
   TFolder,
   normalizePath,
@@ -17,16 +15,15 @@ import { ApplyView, ApplyViewState } from './ApplyView'
 import { ChatView } from './ChatView'
 import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
-import { SelectionChatWidget } from './components/selection/SelectionChatWidget'
-import { SelectionManager } from './components/selection/SelectionManager'
-import type { SelectionInfo } from './components/selection/SelectionManager'
 import { APPLY_VIEW_TYPE, CHAT_VIEW_TYPE } from './constants'
 import { getChatModelClient } from './core/llm/manager'
 import { McpManager } from './core/mcp/mcpManager'
+import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RAGEngine } from './core/rag/ragEngine'
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
+import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import {
   InlineSuggestionGhostPayload,
   inlineSuggestionGhostEffect,
@@ -35,6 +32,7 @@ import {
   thinkingIndicatorField,
 } from './features/editor/inline-suggestion/inlineSuggestion'
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
+import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,
@@ -52,7 +50,6 @@ import { LLMRequestBase, RequestMessage } from './types/llm/request'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { escapeMarkdownSpecialChars } from './utils/markdown-escape'
 import {
-  getMentionableBlockData,
   getNestedFiles,
   readMultipleTFiles,
   readTFileContent,
@@ -73,8 +70,6 @@ export default class SmartComposerPlugin extends Plugin {
   private timeoutIds: ReturnType<typeof setTimeout>[] = [] // Use ReturnType instead of number
   private pgliteResourcePath?: string
   private isContinuationInProgress = false
-  private autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
-  private isAutoUpdating = false
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private activeInlineSuggestion: {
@@ -94,14 +89,9 @@ export default class SmartComposerPlugin extends Plugin {
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
   // Selection chat state
-  private selectionManager: SelectionManager | null = null
-  private selectionChatWidget: SelectionChatWidget | null = null
-  private pendingSelectionRewrite: {
-    editor: Editor
-    selectedText: string
-    from: { line: number; ch: number }
-    to: { line: number; ch: number }
-  } | null = null
+  private selectionChatController: SelectionChatController | null = null
+  private chatViewNavigator: ChatViewNavigator | null = null
+  private ragAutoUpdateService: RagAutoUpdateService | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -186,7 +176,7 @@ export default class SmartComposerPlugin extends Plugin {
           this.app.workspace.getActiveViewOfType(MarkdownView),
         getEditorView: (editor) => this.getEditorView(editor),
         clearPendingSelectionRewrite: () => {
-          this.pendingSelectionRewrite = null
+          this.selectionChatController?.clearPendingSelectionRewrite()
         },
       })
     }
@@ -235,215 +225,46 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   // Selection Chat methods
-  private initializeSelectionManager() {
-    // Check if Selection Chat is enabled
-    const enableSelectionChat =
-      this.settings.continuationOptions?.enableSelectionChat ?? true
-
-    // Clean up existing manager
-    if (this.selectionManager) {
-      this.selectionManager.destroy()
-      this.selectionManager = null
-    }
-
-    // Don't initialize if disabled
-    if (!enableSelectionChat) {
-      return
-    }
-
-    // Get the active editor container
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!view) return
-
-    const editorContainer = view.containerEl.querySelector('.cm-editor')
-    if (!editorContainer) return
-
-    // Create new selection manager
-    this.selectionManager = new SelectionManager(
-      editorContainer as HTMLElement,
-      {
-        enabled: true,
-        minSelectionLength: 6,
-        debounceDelay: 300,
-      },
-    )
-
-    // Initialize with callback
-    this.selectionManager.init((selection: SelectionInfo | null) => {
-      this.handleSelectionChange(selection, view.editor)
-    })
-  }
-
-  private handleSelectionChange(
-    selection: SelectionInfo | null,
-    editor: Editor,
-  ) {
-    // Close existing widget
-    if (this.selectionChatWidget) {
-      this.selectionChatWidget.destroy()
-      this.selectionChatWidget = null
-    }
-
-    // Don't show if Smart Space is active
-    if (this.smartSpaceController?.isOpen()) {
-      return
-    }
-
-    // Show new widget if selection is valid
-    if (selection) {
-      const currentView = this.app.workspace.getActiveViewOfType(MarkdownView)
-      const editorContainer =
-        currentView?.containerEl.querySelector('.cm-editor')
-      if (!editorContainer) {
-        return
-      }
-
-      this.selectionChatWidget = new SelectionChatWidget({
+  private getSelectionChatController(): SelectionChatController {
+    if (!this.selectionChatController) {
+      this.selectionChatController = new SelectionChatController({
         plugin: this,
-        editor,
-        selection,
-        editorContainer: editorContainer as HTMLElement,
-        onClose: () => {
-          if (this.selectionChatWidget) {
-            this.selectionChatWidget.destroy()
-            this.selectionChatWidget = null
-          }
-        },
-        onAction: async (actionId: string, sel: SelectionInfo) => {
-          await this.handleSelectionAction(actionId, sel, editor)
-        },
+        app: this.app,
+        getSettings: () => this.settings,
+        t: (key, fallback) => this.t(key, fallback),
+        getEditorView: (editor) => this.getEditorView(editor),
+        showSmartSpace: (editor, view, showQuickActions) =>
+          this.showSmartSpace(editor, view, showQuickActions),
+        activateChatView: (chatProps) => this.activateChatView(chatProps),
+        addSelectionToChat: (editor, view) =>
+          this.addSelectionToChat(editor, view),
+        isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
       })
-      this.selectionChatWidget.mount()
     }
+    return this.selectionChatController
   }
 
-  private async handleSelectionAction(
-    actionId: string,
-    selection: SelectionInfo,
-    editor: Editor,
-  ) {
-    const selectedText = selection.text
-
-    switch (actionId) {
-      case 'add-to-chat':
-        // Add selected text to chat
-        await this.addTextToChat(selectedText)
-        break
-
-      case 'rewrite':
-        // Trigger rewrite with selected text
-        this.rewriteSelection(editor, selectedText)
-        break
-
-      case 'explain':
-        // Add selection as badge and pre-fill explanation prompt
-        await this.explainSelection(editor)
-        break
-
-      default:
-        console.warn('Unknown selection action:', actionId)
-    }
+  private initializeSelectionChat() {
+    this.getSelectionChatController().initialize()
   }
 
-  private async addTextToChat(_text: string) {
-    // Get current file and editor info for context
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    const editor = view?.editor
-
-    if (!editor || !view) {
-      new Notice('无法获取当前编辑器')
-      return
+  private getChatViewNavigator(): ChatViewNavigator {
+    if (!this.chatViewNavigator) {
+      this.chatViewNavigator = new ChatViewNavigator({ plugin: this })
     }
+    return this.chatViewNavigator
+  }
 
-    // Create mentionable block data from selection
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
-      new Notice('无法创建选区数据')
-      return
-    }
-
-    // Get or open chat view
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
-      await this.activateChatView({
-        selectedBlock: data,
+  private getRagAutoUpdateService(): RagAutoUpdateService {
+    if (!this.ragAutoUpdateService) {
+      this.ragAutoUpdateService = new RagAutoUpdateService({
+        getSettings: () => this.settings,
+        setSettings: (settings) => this.setSettings(settings),
+        getRagEngine: () => this.getRAGEngine(),
+        t: (key, fallback) => this.t(key, fallback),
       })
-      return
     }
-
-    // Use existing chat view
-    await this.app.workspace.revealLeaf(leaves[0])
-    const chatView = leaves[0].view
-    chatView.addSelectionToChat(data)
-    chatView.focusMessage()
-  }
-
-  private rewriteSelection(editor: Editor, selectedText: string) {
-    // Show Smart Space-like input for rewrite instruction
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!view) return
-
-    // Get CodeMirror view
-    const cmEditor = this.getEditorView(editor)
-    if (!cmEditor) return
-
-    // Save selection positions before they get lost
-    const from = editor.getCursor('from')
-    const to = editor.getCursor('to')
-
-    // Set pending rewrite state so continueWriting knows to call handleCustomRewrite
-    this.pendingSelectionRewrite = {
-      editor,
-      selectedText,
-      from,
-      to,
-    }
-
-    // Show custom continue widget for user to input rewrite instruction
-    this.showSmartSpace(editor, cmEditor, true)
-  }
-
-  private async explainSelection(editor: Editor) {
-    // Add selection as badge to chat and pre-fill explanation prompt
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!editor || !view) {
-      new Notice('无法获取当前编辑器')
-      return
-    }
-
-    // Create mentionable block data from selection
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
-      new Notice('无法创建选区数据')
-      return
-    }
-
-    // Get or open chat view
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
-      await this.activateChatView({
-        selectedBlock: data,
-      })
-      // After opening, insert the prompt
-      const newLeaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-      if (newLeaves.length > 0 && newLeaves[0].view instanceof ChatView) {
-        const chatView = newLeaves[0].view
-        chatView.insertTextToInput(
-          this.t('selection.actions.explain', '请深入解释') + '：',
-        )
-        chatView.focusMessage()
-      }
-      return
-    }
-
-    // Use existing chat view
-    await this.app.workspace.revealLeaf(leaves[0])
-    const chatView = leaves[0].view
-    chatView.addSelectionToChat(data)
-    chatView.insertTextToInput(
-      this.t('selection.actions.explain', '请深入解释') + '：',
-    )
-    chatView.focusMessage()
+    return this.ragAutoUpdateService
   }
 
   private createSmartSpaceTriggerExtension(): Extension {
@@ -1028,18 +849,25 @@ export default class SmartComposerPlugin extends Plugin {
 
     // Auto update: listen to vault file changes and schedule incremental index updates
     this.registerEvent(
-      this.app.vault.on('create', (file) => this.onVaultFileChanged(file)),
+      this.app.vault.on('create', (file) =>
+        this.getRagAutoUpdateService().onVaultFileChanged(file),
+      ),
     )
     this.registerEvent(
-      this.app.vault.on('modify', (file) => this.onVaultFileChanged(file)),
+      this.app.vault.on('modify', (file) =>
+        this.getRagAutoUpdateService().onVaultFileChanged(file),
+      ),
     )
     this.registerEvent(
-      this.app.vault.on('delete', (file) => this.onVaultFileChanged(file)),
+      this.app.vault.on('delete', (file) =>
+        this.getRagAutoUpdateService().onVaultFileChanged(file),
+      ),
     )
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
-        this.onVaultFileChanged(file)
-        if (oldPath) this.onVaultPathChanged(oldPath)
+        const service = this.getRagAutoUpdateService()
+        service.onVaultFileChanged(file)
+        if (oldPath) service.onVaultPathChanged(oldPath)
       }),
     )
 
@@ -1146,7 +974,7 @@ export default class SmartComposerPlugin extends Plugin {
           if (!editor) return
           this.handleTabCompletionEditorChange(editor)
           // Update selection manager with new editor container
-          this.initializeSelectionManager()
+          this.initializeSelectionChat()
         } catch (err) {
           console.error('Editor change handler error:', err)
         }
@@ -1154,17 +982,17 @@ export default class SmartComposerPlugin extends Plugin {
     )
 
     // Initialize selection chat
-    this.initializeSelectionManager()
+    this.initializeSelectionChat()
 
     // Listen for settings changes to reinitialize Selection Chat
     this.addSettingsChangeListener((newSettings) => {
       const enableSelectionChat =
         newSettings.continuationOptions?.enableSelectionChat ?? true
-      const wasEnabled = this.selectionManager !== null
+      const wasEnabled = this.selectionChatController?.isActive() ?? false
 
       if (enableSelectionChat !== wasEnabled) {
         // Re-initialize when the setting changes
-        this.initializeSelectionManager()
+        this.initializeSelectionChat()
       }
     })
   }
@@ -1173,14 +1001,9 @@ export default class SmartComposerPlugin extends Plugin {
     this.closeSmartSpace()
 
     // Selection chat cleanup
-    if (this.selectionChatWidget) {
-      this.selectionChatWidget.destroy()
-      this.selectionChatWidget = null
-    }
-    if (this.selectionManager) {
-      this.selectionManager.destroy()
-      this.selectionManager = null
-    }
+    this.selectionChatController?.destroy()
+    this.selectionChatController = null
+    this.chatViewNavigator = null
 
     // clear all timers
     this.timeoutIds.forEach((id) => clearTimeout(id))
@@ -1205,10 +1028,8 @@ export default class SmartComposerPlugin extends Plugin {
       this.mcpManager.cleanup()
     }
     this.mcpManager = null
-    if (this.autoUpdateTimer) {
-      clearTimeout(this.autoUpdateTimer)
-      this.autoUpdateTimer = null
-    }
+    this.ragAutoUpdateService?.cleanup()
+    this.ragAutoUpdateService = null
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
     this.clearTabCompletionTimer()
@@ -1248,108 +1069,23 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   async openChatView(openNewChat = false) {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    const editor = view?.editor
-    if (!view || !editor) {
-      await this.activateChatView(undefined, openNewChat)
-      return
-    }
-    const selectedBlockData = getMentionableBlockData(editor, view)
-    await this.activateChatView(
-      {
-        selectedBlock: selectedBlockData ?? undefined,
-      },
-      openNewChat,
-    )
+    await this.getChatViewNavigator().openChatView(openNewChat)
   }
 
   async activateChatView(chatProps?: ChatProps, openNewChat = false) {
-    // chatProps is consumed in ChatView.tsx
-    this.initialChatProps = chatProps
-
-    const leaf = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0]
-    if (leaf && leaf.view instanceof ChatView) {
-      leaf.view.setInitialChatProps(chatProps)
-    }
-
-    await (leaf ?? this.app.workspace.getRightLeaf(false))?.setViewState({
-      type: CHAT_VIEW_TYPE,
-      active: true,
-    })
-
-    if (openNewChat && leaf && leaf.view instanceof ChatView) {
-      leaf.view.openNewChat(chatProps?.selectedBlock)
-    }
-
-    const leafToReveal =
-      leaf ?? this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0]
-    if (leafToReveal) {
-      await this.app.workspace.revealLeaf(leafToReveal)
-    }
+    await this.getChatViewNavigator().activateChatView(chatProps, openNewChat)
   }
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
-    const data = getMentionableBlockData(editor, view)
-    if (!data) return
-
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
-      await this.activateChatView({
-        selectedBlock: data,
-      })
-      return
-    }
-
-    // bring leaf to foreground (uncollapse sidebar if it's collapsed)
-    await this.app.workspace.revealLeaf(leaves[0])
-
-    const chatView = leaves[0].view
-    chatView.addSelectionToChat(data)
-    chatView.focusMessage()
+    await this.getChatViewNavigator().addSelectionToChat(editor, view)
   }
 
   async addFileToChat(file: TFile) {
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
-      await this.activateChatView()
-      // Get the newly created chat view
-      const newLeaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-      if (newLeaves.length > 0 && newLeaves[0].view instanceof ChatView) {
-        const chatView = newLeaves[0].view
-        chatView.addFileToChat(file)
-        chatView.focusMessage()
-      }
-      return
-    }
-
-    // bring leaf to foreground (uncollapse sidebar if it's collapsed)
-    await this.app.workspace.revealLeaf(leaves[0])
-
-    const chatView = leaves[0].view
-    chatView.addFileToChat(file)
-    chatView.focusMessage()
+    await this.getChatViewNavigator().addFileToChat(file)
   }
 
   async addFolderToChat(folder: TFolder) {
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
-      await this.activateChatView()
-      // Get the newly created chat view
-      const newLeaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-      if (newLeaves.length > 0 && newLeaves[0].view instanceof ChatView) {
-        const chatView = newLeaves[0].view
-        chatView.addFolderToChat(folder)
-        chatView.focusMessage()
-      }
-      return
-    }
-
-    // bring leaf to foreground (uncollapse sidebar if it's collapsed)
-    await this.app.workspace.revealLeaf(leaves[0])
-
-    const chatView = leaves[0].view
-    chatView.addFolderToChat(folder)
-    chatView.focusMessage()
+    await this.getChatViewNavigator().addFolderToChat(folder)
   }
 
   async getDbManager(): Promise<DatabaseManager> {
@@ -1442,67 +1178,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.timeoutIds.push(timeoutId)
   }
 
-  // ===== Auto Update helpers =====
-  private onVaultFileChanged(file: TAbstractFile) {
-    try {
-      // 使用严格类型判断，避免通过 any 访问 path
-      if (file instanceof TFile || file instanceof TFolder) {
-        this.onVaultPathChanged(file.path)
-      }
-    } catch {
-      // Ignore unexpected file type changes during event handling.
-    }
-  }
-
-  private onVaultPathChanged(path: string) {
-    if (!this.settings?.ragOptions?.autoUpdateEnabled) return
-    if (!this.isPathSelectedByIncludeExclude(path)) return
-    // Check minimal interval
-    const intervalMs =
-      (this.settings.ragOptions.autoUpdateIntervalHours ?? 24) * 60 * 60 * 1000
-    const last = this.settings.ragOptions.lastAutoUpdateAt ?? 0
-    const now = Date.now()
-    if (now - last < intervalMs) {
-      // Still within cool-down; no action
-      return
-    }
-    // Debounce multiple changes within a short window
-    if (this.autoUpdateTimer) clearTimeout(this.autoUpdateTimer)
-    this.autoUpdateTimer = setTimeout(() => void this.runAutoUpdate(), 3000)
-  }
-
-  private isPathSelectedByIncludeExclude(path: string): boolean {
-    const { includePatterns = [], excludePatterns = [] } =
-      this.settings?.ragOptions ?? {}
-    // Exclude has priority
-    if (excludePatterns.some((p) => minimatch(path, p))) return false
-    if (!includePatterns || includePatterns.length === 0) return true
-    return includePatterns.some((p) => minimatch(path, p))
-  }
-
-  private async runAutoUpdate() {
-    if (this.isAutoUpdating) return
-    this.isAutoUpdating = true
-    try {
-      const ragEngine = await this.getRAGEngine()
-      await ragEngine.updateVaultIndex({ reindexAll: false }, undefined)
-      await this.setSettings({
-        ...this.settings,
-        ragOptions: {
-          ...this.settings.ragOptions,
-          lastAutoUpdateAt: Date.now(),
-        },
-      })
-      new Notice(this.t('notices.indexUpdated'))
-    } catch (e) {
-      console.error('Auto update index failed:', e)
-      new Notice(this.t('notices.indexUpdateFailed'))
-    } finally {
-      this.isAutoUpdating = false
-      this.autoUpdateTimer = null
-    }
-  }
-
   // Public wrapper for use in React modal
   async continueWriting(
     editor: Editor,
@@ -1511,13 +1186,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     mentionables?: (MentionableFile | MentionableFolder)[],
   ) {
     // Check if this is actually a rewrite request from Selection Chat
-    if (this.pendingSelectionRewrite) {
-      const {
-        editor: rewriteEditor,
-        selectedText,
-        from,
-      } = this.pendingSelectionRewrite
-      this.pendingSelectionRewrite = null // Clear the pending state
+    const pendingRewrite =
+      this.selectionChatController?.consumePendingSelectionRewrite() ?? null
+    if (pendingRewrite) {
+      const { editor: rewriteEditor, selectedText, from } = pendingRewrite
 
       // Pass the pre-saved selectedText and position directly to handleCustomRewrite
       // No need to re-select or check current selection
