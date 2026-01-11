@@ -1,5 +1,5 @@
-import { type Extension, Prec, StateEffect } from '@codemirror/state'
-import { EditorView, keymap } from '@codemirror/view'
+import { type Extension } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import {
   Editor,
   MarkdownView,
@@ -11,12 +11,11 @@ import {
 } from 'obsidian'
 import { getLanguage } from 'obsidian'
 
-import { ApplyView, ApplyViewState } from './ApplyView'
+import { ApplyView } from './ApplyView'
 import { ChatView } from './ChatView'
 import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { APPLY_VIEW_TYPE, CHAT_VIEW_TYPE } from './constants'
-import { getChatModelClient } from './core/llm/manager'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
@@ -26,13 +25,8 @@ import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
-import {
-  InlineSuggestionGhostPayload,
-  inlineSuggestionGhostEffect,
-  inlineSuggestionGhostField,
-  thinkingIndicatorEffect,
-  thinkingIndicatorField,
-} from './features/editor/inline-suggestion/inlineSuggestion'
+import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
+import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import {
@@ -40,6 +34,7 @@ import {
   SmartSpaceDraftState,
 } from './features/editor/smart-space/smartSpaceController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
+import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { Language, createTranslationFunction } from './i18n'
 import {
   SmartComposerSettings,
@@ -48,17 +43,7 @@ import {
 import { parseSmartComposerSettings } from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import { LLMRequestBase, RequestMessage } from './types/llm/request'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
-import { escapeMarkdownSpecialChars } from './utils/markdown-escape'
-import {
-  getNestedFiles,
-  readMultipleTFiles,
-  readTFileContent,
-} from './utils/obsidian'
-
-const inlineSuggestionExtensionViews = new WeakSet<EditorView>()
-const FIRST_TOKEN_TIMEOUT_MS = 12000
 
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
@@ -72,20 +57,7 @@ export default class SmartComposerPlugin extends Plugin {
   private isContinuationInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
-  private activeInlineSuggestion: {
-    source: 'tab' | 'continuation'
-    editor: Editor
-    view: EditorView
-    fromOffset: number
-    text: string
-  } | null = null
-  private continuationInlineSuggestion: {
-    editor: Editor
-    view: EditorView
-    text: string
-    fromOffset: number
-    startPos: ReturnType<Editor['getCursor']>
-  } | null = null
+  private inlineSuggestionController: InlineSuggestionController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
   // Selection chat state
@@ -94,6 +66,7 @@ export default class SmartComposerPlugin extends Plugin {
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
   private mcpCoordinator: McpCoordinator | null = null
+  private writeAssistController: WriteAssistController | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -438,38 +411,14 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private ensureInlineSuggestionExtension(view: EditorView) {
-    if (inlineSuggestionExtensionViews.has(view)) return
-    view.dispatch({
-      effects: StateEffect.appendConfig.of([
-        inlineSuggestionGhostField,
-        thinkingIndicatorField,
-        Prec.high(
-          keymap.of([
-            {
-              key: 'Tab',
-              run: (v) => this.tryAcceptInlineSuggestionFromView(v),
-            },
-            {
-              key: 'Shift-Tab',
-              run: (v) => this.tryRejectInlineSuggestionFromView(v),
-            },
-            {
-              key: 'Escape',
-              run: (v) => this.tryRejectInlineSuggestionFromView(v),
-            },
-          ]),
-        ),
-      ]),
-    })
-    inlineSuggestionExtensionViews.add(view)
+    this.getInlineSuggestionController().ensureInlineSuggestionExtension(view)
   }
 
   private setInlineSuggestionGhost(
     view: EditorView,
     payload: InlineSuggestionGhostPayload,
   ) {
-    this.ensureInlineSuggestionExtension(view)
-    view.dispatch({ effects: inlineSuggestionGhostEffect.of(payload) })
+    this.getInlineSuggestionController().setInlineSuggestionGhost(view, payload)
   }
 
   private showThinkingIndicator(
@@ -478,22 +427,21 @@ export default class SmartComposerPlugin extends Plugin {
     label: string,
     snippet?: string,
   ) {
-    this.ensureInlineSuggestionExtension(view)
-    view.dispatch({
-      effects: thinkingIndicatorEffect.of({
-        from,
-        label,
-        snippet,
-      }),
-    })
+    this.getInlineSuggestionController().showThinkingIndicator(
+      view,
+      from,
+      label,
+      snippet,
+    )
   }
 
   private hideThinkingIndicator(view: EditorView) {
-    view.dispatch({ effects: thinkingIndicatorEffect.of(null) })
+    this.getInlineSuggestionController().hideThinkingIndicator(view)
   }
 
   private getTabCompletionController(): TabCompletionController {
     if (!this.tabCompletionController) {
+      const inlineSuggestionController = this.getInlineSuggestionController()
       this.tabCompletionController = new TabCompletionController({
         getSettings: () => this.settings,
         getEditorView: (editor) => this.getEditorView(editor),
@@ -506,11 +454,11 @@ export default class SmartComposerPlugin extends Plugin {
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
         setInlineSuggestionGhost: (view, payload) =>
-          this.setInlineSuggestionGhost(view, payload),
-        clearInlineSuggestion: () => this.clearInlineSuggestion(),
-        setActiveInlineSuggestion: (suggestion) => {
-          this.activeInlineSuggestion = suggestion
-        },
+          inlineSuggestionController.setInlineSuggestionGhost(view, payload),
+        clearInlineSuggestion: () =>
+          inlineSuggestionController.clearInlineSuggestion(),
+        setActiveInlineSuggestion: (suggestion) =>
+          inlineSuggestionController.setActiveInlineSuggestion(suggestion),
         addAbortController: (controller) =>
           this.activeAbortControllers.add(controller),
         removeAbortController: (controller) =>
@@ -519,6 +467,56 @@ export default class SmartComposerPlugin extends Plugin {
       })
     }
     return this.tabCompletionController
+  }
+
+  private getInlineSuggestionController(): InlineSuggestionController {
+    if (!this.inlineSuggestionController) {
+      this.inlineSuggestionController = new InlineSuggestionController({
+        getEditorView: (editor) => this.getEditorView(editor),
+        getTabCompletionController: () => this.getTabCompletionController(),
+      })
+    }
+    return this.inlineSuggestionController
+  }
+
+  private getWriteAssistController(): WriteAssistController {
+    if (!this.writeAssistController) {
+      this.writeAssistController = new WriteAssistController({
+        app: this.app,
+        getSettings: () => this.settings,
+        t: (key, fallback) => this.t(key, fallback),
+        getActiveConversationOverrides: () =>
+          this.getActiveConversationOverrides(),
+        resolveContinuationParams: (overrides) =>
+          this.resolveContinuationParams(overrides),
+        getRagEngine: () => this.getRAGEngine(),
+        getEditorView: (editor) => this.getEditorView(editor),
+        closeSmartSpace: () => this.closeSmartSpace(),
+        registerTimeout: (callback, timeout) =>
+          this.registerTimeout(callback, timeout),
+        addAbortController: (controller) =>
+          this.activeAbortControllers.add(controller),
+        removeAbortController: (controller) =>
+          this.activeAbortControllers.delete(controller),
+        setContinuationInProgress: (value) => {
+          this.isContinuationInProgress = value
+        },
+        cancelAllAiTasks: () => this.cancelAllAiTasks(),
+        clearInlineSuggestion: () => this.clearInlineSuggestion(),
+        ensureInlineSuggestionExtension: (view) =>
+          this.ensureInlineSuggestionExtension(view),
+        setInlineSuggestionGhost: (view, payload) =>
+          this.setInlineSuggestionGhost(view, payload),
+        showThinkingIndicator: (view, from, label, snippet) =>
+          this.showThinkingIndicator(view, from, label, snippet),
+        hideThinkingIndicator: (view) => this.hideThinkingIndicator(view),
+        setContinuationSuggestion: (params) =>
+          this.getInlineSuggestionController().setContinuationSuggestion(
+            params,
+          ),
+      })
+    }
+    return this.writeAssistController
   }
 
   private cancelTabCompletionRequest() {
@@ -530,85 +528,7 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private clearInlineSuggestion() {
-    this.tabCompletionController?.clearSuggestion()
-    if (this.continuationInlineSuggestion) {
-      const { view } = this.continuationInlineSuggestion
-      if (view) {
-        this.setInlineSuggestionGhost(view, null)
-      }
-      this.continuationInlineSuggestion = null
-    }
-    this.activeInlineSuggestion = null
-  }
-
-  private tryAcceptInlineSuggestionFromView(view: EditorView): boolean {
-    const suggestion = this.activeInlineSuggestion
-    if (!suggestion) return false
-    if (suggestion.view !== view) return false
-
-    if (suggestion.source === 'tab') {
-      return this.getTabCompletionController().tryAcceptFromView(view)
-    }
-
-    if (suggestion.source === 'continuation') {
-      return this.tryAcceptContinuationFromView(view)
-    }
-
-    return false
-  }
-
-  private tryRejectInlineSuggestionFromView(view: EditorView): boolean {
-    const suggestion = this.activeInlineSuggestion
-    if (!suggestion) return false
-    if (suggestion.view !== view) return false
-    this.clearInlineSuggestion()
-    return true
-  }
-
-  private tryAcceptContinuationFromView(view: EditorView): boolean {
-    const suggestion = this.continuationInlineSuggestion
-    if (!suggestion) return false
-    if (suggestion.view !== view) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    const active = this.activeInlineSuggestion
-    if (!active || active.source !== 'continuation') return false
-
-    const { editor, text, startPos } = suggestion
-    if (!text || text.length === 0) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    if (this.getEditorView(editor) !== view) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    if (editor.getSelection()?.length) {
-      this.clearInlineSuggestion()
-      return false
-    }
-
-    const insertionText = escapeMarkdownSpecialChars(text, {
-      escapeAngleBrackets: true,
-      preserveCodeBlocks: true,
-    })
-    this.clearInlineSuggestion()
-    editor.replaceRange(insertionText, startPos, startPos)
-
-    const parts = insertionText.split('\n')
-    const endCursor =
-      parts.length === 1
-        ? { line: startPos.line, ch: startPos.ch + parts[0].length }
-        : {
-            line: startPos.line + parts.length - 1,
-            ch: parts[parts.length - 1].length,
-          }
-    editor.setCursor(endCursor)
-    return true
+    this.getInlineSuggestionController().clearInlineSuggestion()
   }
 
   private handleTabCompletionEditorChange(editor: Editor) {
@@ -621,157 +541,12 @@ export default class SmartComposerPlugin extends Plugin {
     preSelectedText?: string,
     preSelectionFrom?: { line: number; ch: number },
   ) {
-    // Use pre-selected text if provided (from Selection Chat), otherwise get current selection
-    const selected = preSelectedText ?? editor.getSelection()
-    if (!selected || selected.trim().length === 0) {
-      new Notice('请先选择要改写的文本。')
-      return
-    }
-
-    // Use pre-saved selection start position if provided, otherwise get current
-    const from = preSelectionFrom ?? editor.getCursor('from')
-
-    const notice = new Notice('正在生成改写...', 0)
-    // 立即创建并注册 AbortController
-    const controller = new AbortController()
-    this.activeAbortControllers.add(controller)
-
-    try {
-      const sidebarOverrides = this.getActiveConversationOverrides()
-      const {
-        temperature,
-        topP,
-        stream: streamPreference,
-      } = this.resolveContinuationParams(sidebarOverrides)
-
-      const rewriteModelId =
-        this.settings.continuationOptions?.continuationModelId ??
-        this.settings.chatModelId
-
-      const { providerClient, model } = getChatModelClient({
-        settings: this.settings,
-        modelId: rewriteModelId,
-      })
-
-      const systemPrompt =
-        'You are an intelligent assistant that rewrites ONLY the provided markdown text according to the instruction. Preserve the original meaning, structure, and any markdown (links, emphasis, code) unless explicitly told otherwise. Output ONLY the rewritten text without code fences or extra explanations.'
-
-      const instruction = (customPrompt ?? '').trim()
-      const isBaseModel = Boolean(model.isBaseModel)
-      const baseModelSpecialPrompt = (
-        this.settings.chatOptions.baseModelSpecialPrompt ?? ''
-      ).trim()
-      const basePromptSection =
-        isBaseModel && baseModelSpecialPrompt.length > 0
-          ? `${baseModelSpecialPrompt}\n\n`
-          : ''
-      const requestMessages: RequestMessage[] = [
-        ...(isBaseModel
-          ? []
-          : [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]),
-        {
-          role: 'user' as const,
-          content: `${basePromptSection}Instruction:\n${instruction}\n\nSelected text:\n${selected}\n\nRewrite the selected text accordingly. Output only the rewritten text.`,
-        },
-      ]
-
-      const rewriteRequestBase: LLMRequestBase = {
-        model: model.model,
-        messages: requestMessages,
-      }
-      if (typeof temperature === 'number') {
-        rewriteRequestBase.temperature = temperature
-      }
-      if (typeof topP === 'number') {
-        rewriteRequestBase.top_p = topP
-      }
-
-      const stripFences = (s: string) => {
-        const lines = (s ?? '').split('\n')
-        if (lines.length > 0 && lines[0].startsWith('```')) lines.shift()
-        if (lines.length > 0 && lines[lines.length - 1].startsWith('```'))
-          lines.pop()
-        return lines.join('\n')
-      }
-
-      let rewritten = ''
-      if (streamPreference) {
-        const streamIterator = await providerClient.streamResponse(
-          model,
-          { ...rewriteRequestBase, stream: true },
-          { signal: controller.signal },
-        )
-        let accumulated = ''
-        for await (const chunk of streamIterator) {
-          // 每次循环都检查是否已被中止
-          if (controller.signal.aborted) {
-            break
-          }
-
-          const delta = chunk?.choices?.[0]?.delta
-          const piece = delta?.content ?? ''
-          if (!piece) continue
-          accumulated += piece
-        }
-        rewritten = stripFences(accumulated).trim()
-      } else {
-        const response = await providerClient.generateResponse(
-          model,
-          { ...rewriteRequestBase, stream: false },
-          { signal: controller.signal },
-        )
-        rewritten = stripFences(
-          response.choices?.[0]?.message?.content ?? '',
-        ).trim()
-      }
-      if (!rewritten) {
-        notice.setMessage('未生成改写内容。')
-        this.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      // Open ApplyView with a preview diff and let user choose; ApplyView will close back to doc
-      const activeFile = this.app.workspace.getActiveFile()
-      if (!activeFile) {
-        notice.setMessage('未找到当前文件。')
-        this.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      const head = editor.getRange({ line: 0, ch: 0 }, from)
-      const originalContent = await readTFileContent(activeFile, this.app.vault)
-      const tail = originalContent.slice(head.length + selected.length)
-      const newContent = head + rewritten + tail
-
-      await this.app.workspace.getLeaf(true).setViewState({
-        type: APPLY_VIEW_TYPE,
-        active: true,
-        state: {
-          file: activeFile,
-          originalContent,
-          newContent,
-        } satisfies ApplyViewState,
-      })
-
-      notice.setMessage('改写结果已生成。')
-      this.registerTimeout(() => notice.hide(), 1200)
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        notice.setMessage('已取消生成。')
-        this.registerTimeout(() => notice.hide(), 1000)
-      } else {
-        console.error(error)
-        notice.setMessage('改写失败。')
-        this.registerTimeout(() => notice.hide(), 1200)
-      }
-    } finally {
-      this.activeAbortControllers.delete(controller)
-    }
+    return this.getWriteAssistController().handleCustomRewrite(
+      editor,
+      customPrompt,
+      preSelectedText,
+      preSelectionFrom,
+    )
   }
 
   async onload() {
@@ -1029,6 +804,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.selectionChatController?.destroy()
     this.selectionChatController = null
     this.chatViewNavigator = null
+    this.inlineSuggestionController = null
+    this.writeAssistController = null
 
     // clear all timers
     this.timeoutIds.forEach((id) => clearTimeout(id))
@@ -1208,503 +985,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
     mentionables?: (MentionableFile | MentionableFolder)[],
   ) {
-    // 先取消所有进行中的任务，避免旧任务的流式响应覆盖新任务的状态
-    this.cancelAllAiTasks()
-    this.clearInlineSuggestion()
-
-    // 立即创建并注册 AbortController，确保整个流程都能被中止
-    const controller = new AbortController()
-    this.activeAbortControllers.add(controller)
-    let view: EditorView | null = null
-
-    try {
-      const notice = new Notice('Generating continuation...', 0)
-      const cursor = editor.getCursor()
-      const selected = editor.getSelection()
-      const headText = editor.getRange({ line: 0, ch: 0 }, cursor)
-
-      // Prefer selected text as context when available; otherwise use preceding content
-      const hasSelection = !!selected && selected.trim().length > 0
-      const baseContext = hasSelection ? selected : headText
-      const fallbackInstruction = (customPrompt ?? '').trim()
-      const fileTitleCandidate =
-        this.app.workspace.getActiveFile()?.basename?.trim() ?? ''
-
-      if (!baseContext || baseContext.trim().length === 0) {
-        // 没有前文时，如果既没有自定义指令也没有文件标题，则提示无法续写；
-        // 否则允许基于标题或自定义指令开始写作
-        if (!fallbackInstruction && !fileTitleCandidate) {
-          notice.setMessage('No preceding content to continue.')
-          this.registerTimeout(() => notice.hide(), 1000)
-          return
-        }
-      }
-
-      const referenceRuleFolders =
-        this.settings.continuationOptions?.referenceRuleFolders ??
-        this.settings.continuationOptions?.manualContextFolders ??
-        []
-
-      let referenceRulesSection = ''
-      if (referenceRuleFolders.length > 0) {
-        try {
-          const referenceFilesMap = new Map<string, TFile>()
-          const isSupportedReferenceFile = (file: TFile) => {
-            const ext = file.extension?.toLowerCase?.() ?? ''
-            return ext === 'md' || ext === 'markdown' || ext === 'txt'
-          }
-
-          for (const rawPath of referenceRuleFolders) {
-            const folderPath = rawPath.trim()
-            if (!folderPath) continue
-            const abstract = this.app.vault.getAbstractFileByPath(folderPath)
-            if (abstract instanceof TFolder) {
-              for (const file of getNestedFiles(abstract, this.app.vault)) {
-                if (isSupportedReferenceFile(file)) {
-                  referenceFilesMap.set(file.path, file)
-                }
-              }
-            } else if (abstract instanceof TFile) {
-              if (isSupportedReferenceFile(abstract)) {
-                referenceFilesMap.set(abstract.path, abstract)
-              }
-            }
-          }
-
-          const referenceFiles = Array.from(referenceFilesMap.values())
-          if (referenceFiles.length > 0) {
-            const referenceContents = await readMultipleTFiles(
-              referenceFiles,
-              this.app.vault,
-            )
-            const referenceLabel = this.t(
-              'sidebar.composer.referenceRulesTitle',
-              'Reference rules',
-            )
-            const blocks = referenceFiles.map((file, index) => {
-              const content = referenceContents[index] ?? ''
-              return `File: ${file.path}\n${content}`
-            })
-            const combinedReference = blocks.join('\n\n')
-            if (combinedReference.trim().length > 0) {
-              referenceRulesSection = `${referenceLabel}:\n\n${combinedReference}\n\n`
-            }
-          }
-        } catch (error) {
-          console.warn(
-            'Failed to load reference rule folders for continuation',
-            error,
-          )
-        }
-      }
-
-      let mentionableContextSection = ''
-      if (mentionables && mentionables.length > 0) {
-        try {
-          const fileMap = new Map<string, TFile>()
-          for (const mentionable of mentionables) {
-            if (mentionable.type === 'file') {
-              fileMap.set(mentionable.file.path, mentionable.file)
-            } else if (mentionable.type === 'folder') {
-              for (const file of getNestedFiles(
-                mentionable.folder,
-                this.app.vault,
-              )) {
-                fileMap.set(file.path, file)
-              }
-            }
-          }
-          const files = Array.from(fileMap.values())
-          if (files.length > 0) {
-            const contents = await readMultipleTFiles(files, this.app.vault)
-            const mentionLabel = this.t(
-              'smartSpace.mentionContextLabel',
-              'Mentioned files',
-            )
-            const combined = files
-              .map((file, index) => {
-                const content = contents[index] ?? ''
-                return `File: ${file.path}\n${content}`
-              })
-              .join('\n\n')
-            if (combined.trim().length > 0) {
-              mentionableContextSection = `${mentionLabel}:\n\n${combined}\n\n`
-            }
-          }
-        } catch (error) {
-          console.warn(
-            'Failed to include mentioned files for Smart Space continuation',
-            error,
-          )
-        }
-      }
-
-      // Truncate context to avoid exceeding model limits (simple char-based cap)
-      const continuationCharLimit = Math.max(
-        0,
-        this.settings.continuationOptions?.maxContinuationChars ?? 8000,
-      )
-      const limitedContext =
-        continuationCharLimit > 0 && baseContext.length > continuationCharLimit
-          ? baseContext.slice(-continuationCharLimit)
-          : continuationCharLimit === 0
-            ? ''
-            : baseContext
-
-      const continuationModelId =
-        this.settings.continuationOptions?.continuationModelId ??
-        this.settings.chatModelId
-
-      const sidebarOverrides = this.getActiveConversationOverrides()
-      const {
-        temperature,
-        topP,
-        stream: streamPreference,
-        useVaultSearch,
-      } = this.resolveContinuationParams(sidebarOverrides)
-
-      const { providerClient, model } = getChatModelClient({
-        settings: this.settings,
-        modelId: continuationModelId,
-      })
-
-      const userInstruction = (customPrompt ?? '').trim()
-      const instructionSection = userInstruction
-        ? `Instruction:\n${userInstruction}\n\n`
-        : ''
-
-      const systemPrompt = (this.settings.systemPrompt ?? '').trim()
-
-      const activeFileForTitle = this.app.workspace.getActiveFile()
-      const fileTitle = activeFileForTitle?.basename?.trim() ?? ''
-      const titleLine = fileTitle ? `File title: ${fileTitle}\n\n` : ''
-      const hasContext = (baseContext ?? '').trim().length > 0
-
-      let ragContextSection = ''
-      const knowledgeBaseRaw =
-        this.settings.continuationOptions?.knowledgeBaseFolders ?? []
-      const knowledgeBaseFolders: string[] = []
-      const knowledgeBaseFiles: string[] = []
-      for (const raw of knowledgeBaseRaw) {
-        const trimmed = raw.trim()
-        if (!trimmed) continue
-        const abstract = this.app.vault.getAbstractFileByPath(trimmed)
-        if (abstract instanceof TFolder) {
-          knowledgeBaseFolders.push(abstract.path)
-        } else if (abstract instanceof TFile) {
-          knowledgeBaseFiles.push(abstract.path)
-        }
-      }
-      const ragGloballyEnabled = Boolean(this.settings.ragOptions?.enabled)
-      if (useVaultSearch && ragGloballyEnabled) {
-        try {
-          const querySource = (
-            baseContext ||
-            userInstruction ||
-            fileTitle
-          ).trim()
-          if (querySource.length > 0) {
-            const ragEngine = await this.getRAGEngine()
-            const ragResults = await ragEngine.processQuery({
-              query: querySource.slice(-4000),
-              scope:
-                knowledgeBaseFolders.length > 0 || knowledgeBaseFiles.length > 0
-                  ? {
-                      folders: knowledgeBaseFolders,
-                      files: knowledgeBaseFiles,
-                    }
-                  : undefined,
-            })
-            const snippetLimit = Math.max(
-              1,
-              Math.min(this.settings.ragOptions?.limit ?? 10, 10),
-            )
-            const snippets = ragResults.slice(0, snippetLimit)
-            if (snippets.length > 0) {
-              const formatted = snippets
-                .map((snippet, index) => {
-                  const content = (snippet.content ?? '').trim()
-                  const truncated =
-                    content.length > 600
-                      ? `${content.slice(0, 600)}...`
-                      : content
-                  return `Snippet ${index + 1} (from ${snippet.path}):\n${truncated}`
-                })
-                .join('\n\n')
-              if (formatted.trim().length > 0) {
-                ragContextSection = `Vault snippets:\n\n${formatted}\n\n`
-              }
-            }
-          }
-        } catch (error) {
-          console.warn('Continuation RAG lookup failed:', error)
-        }
-      }
-
-      // 检查是否已被中止（RAG 查询可能耗时较长）
-      if (controller.signal.aborted) {
-        return
-      }
-
-      const limitedContextHasContent = limitedContext.trim().length > 0
-      const contextSection =
-        hasContext && limitedContextHasContent
-          ? `Context (up to recent portion):\n\n${limitedContext}\n\n`
-          : ''
-      const baseModelContextSection = `${
-        referenceRulesSection
-      }${mentionableContextSection}${
-        hasContext && limitedContextHasContent ? `${limitedContext}\n\n` : ''
-      }${ragContextSection}`
-      const combinedContextSection = `${referenceRulesSection}${mentionableContextSection}${contextSection}${ragContextSection}`
-
-      const isBaseModel = Boolean(model.isBaseModel)
-      const baseModelSpecialPrompt = (
-        this.settings.chatOptions.baseModelSpecialPrompt ?? ''
-      ).trim()
-      const basePromptSection =
-        isBaseModel && baseModelSpecialPrompt.length > 0
-          ? `${baseModelSpecialPrompt}\n\n`
-          : ''
-      const baseModelCoreContent = `${basePromptSection}${titleLine}${instructionSection}${baseModelContextSection}`
-
-      const userMessageContent = isBaseModel
-        ? `${baseModelCoreContent}`
-        : `${basePromptSection}${titleLine}${instructionSection}${combinedContextSection}`
-
-      const requestMessages: RequestMessage[] = [
-        ...(!isBaseModel && systemPrompt.length > 0
-          ? [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]
-          : []),
-        {
-          role: 'user' as const,
-          content: userMessageContent,
-        },
-      ]
-
-      // Mark in-progress to avoid re-entrancy from keyword trigger during insertion
-      this.isContinuationInProgress = true
-
-      view = this.getEditorView(editor)
-      if (!view) {
-        notice.setMessage('Unable to access editor view.')
-        this.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      this.ensureInlineSuggestionExtension(view)
-
-      // 在光标位置显示思考指示器
-      const currentCursor = editor.getCursor()
-      const line = view.state.doc.line(currentCursor.line + 1)
-      const cursorOffset = line.from + currentCursor.ch
-      const thinkingText = this.t('chat.customContinueProcessing', 'Thinking')
-      this.showThinkingIndicator(view, cursorOffset, thinkingText)
-
-      let hasClosedSmartSpaceWidget = false
-      const closeSmartSpaceWidgetOnce = () => {
-        if (!hasClosedSmartSpaceWidget) {
-          this.closeSmartSpace()
-          hasClosedSmartSpaceWidget = true
-        }
-      }
-
-      // 立即关闭 Smart Space 面板，避免与内联指示器重复显示
-      closeSmartSpaceWidgetOnce()
-
-      // Stream response and progressively update ghost suggestion
-      const baseRequest: LLMRequestBase = {
-        model: model.model,
-        messages: requestMessages,
-      }
-      if (typeof temperature === 'number') {
-        baseRequest.temperature = temperature
-      }
-      if (typeof topP === 'number') {
-        baseRequest.top_p = topP
-      }
-
-      console.debug('Continuation request params', {
-        overrides: sidebarOverrides,
-        request: baseRequest,
-        streamPreference,
-        useVaultSearch,
-      })
-
-      // Insert at current cursor by default; if a selection exists, insert at selection end
-      let insertStart = editor.getCursor()
-      if (hasSelection) {
-        const endPos = editor.getCursor('to')
-        editor.setCursor(endPos)
-        insertStart = endPos
-      }
-      const startLine = view.state.doc.line(insertStart.line + 1)
-      const startOffset = startLine.from + insertStart.ch
-      let suggestionText = ''
-      let hasHiddenThinkingIndicator = false
-      const nonNullView = view // TypeScript 类型细化
-      let reasoningPreviewBuffer = ''
-      let lastReasoningPreview = ''
-      const MAX_REASONING_BUFFER = 400
-
-      const formatReasoningPreview = (text: string) => {
-        const normalized = text.replace(/\s+/g, ' ').trim()
-        if (!normalized) return ''
-        if (normalized.length <= 120) {
-          return normalized
-        }
-        return normalized.slice(-120)
-      }
-
-      const updateThinkingReasoningPreview = () => {
-        if (hasHiddenThinkingIndicator) return
-        const preview = formatReasoningPreview(reasoningPreviewBuffer)
-        if (!preview || preview === lastReasoningPreview) {
-          return
-        }
-        lastReasoningPreview = preview
-        this.showThinkingIndicator(
-          nonNullView,
-          cursorOffset,
-          thinkingText,
-          preview,
-        )
-      }
-
-      const updateContinuationSuggestion = (text: string) => {
-        // 首次接收到内容时隐藏思考指示器
-        if (!hasHiddenThinkingIndicator) {
-          this.hideThinkingIndicator(nonNullView)
-          hasHiddenThinkingIndicator = true
-        }
-        this.setInlineSuggestionGhost(nonNullView, { from: startOffset, text })
-        this.activeInlineSuggestion = {
-          source: 'continuation',
-          editor,
-          view: nonNullView,
-          fromOffset: startOffset,
-          text,
-        }
-        this.continuationInlineSuggestion = {
-          editor,
-          view: nonNullView,
-          text,
-          fromOffset: startOffset,
-          startPos: insertStart,
-        }
-      }
-
-      const runNonStreaming = async () => {
-        const response = await providerClient.generateResponse(
-          model,
-          { ...baseRequest, stream: false },
-          { signal: controller.signal, geminiTools },
-        )
-
-        const fullText = response.choices?.[0]?.message?.content ?? ''
-        if (fullText) {
-          suggestionText = fullText
-          closeSmartSpaceWidgetOnce()
-          updateContinuationSuggestion(suggestionText)
-        }
-      }
-
-      if (streamPreference) {
-        const streamController = new AbortController()
-        const handleAbort = () => streamController.abort()
-        controller.signal.addEventListener('abort', handleAbort, { once: true })
-        let firstTokenTimeoutId: ReturnType<typeof setTimeout> | null = null
-        let didTimeout = false
-        let hasReceivedFirstChunk = false
-        const clearFirstTokenTimeout = () => {
-          if (firstTokenTimeoutId) {
-            clearTimeout(firstTokenTimeoutId)
-            firstTokenTimeoutId = null
-          }
-        }
-        try {
-          firstTokenTimeoutId = setTimeout(() => {
-            didTimeout = true
-            streamController.abort()
-          }, FIRST_TOKEN_TIMEOUT_MS)
-
-          const streamIterator = await providerClient.streamResponse(
-            model,
-            { ...baseRequest, stream: true },
-            { signal: streamController.signal, geminiTools },
-          )
-
-          for await (const chunk of streamIterator) {
-            if (!hasReceivedFirstChunk) {
-              hasReceivedFirstChunk = true
-              clearFirstTokenTimeout()
-            }
-            // 每次循环都检查是否已被中止
-            if (controller.signal.aborted) {
-              break
-            }
-
-            const delta = chunk?.choices?.[0]?.delta
-            const piece = delta?.content ?? ''
-            const reasoningDelta = delta?.reasoning ?? ''
-            if (reasoningDelta) {
-              reasoningPreviewBuffer += reasoningDelta
-              if (reasoningPreviewBuffer.length > MAX_REASONING_BUFFER) {
-                reasoningPreviewBuffer =
-                  reasoningPreviewBuffer.slice(-MAX_REASONING_BUFFER)
-              }
-              updateThinkingReasoningPreview()
-            }
-            if (!piece) continue
-
-            suggestionText += piece
-            closeSmartSpaceWidgetOnce()
-            updateContinuationSuggestion(suggestionText)
-          }
-        } catch (error) {
-          clearFirstTokenTimeout()
-          if (didTimeout && !controller.signal.aborted) {
-            await runNonStreaming()
-          } else {
-            throw error
-          }
-        } finally {
-          clearFirstTokenTimeout()
-          controller.signal.removeEventListener('abort', handleAbort)
-        }
-      } else {
-        await runNonStreaming()
-      }
-
-      if (suggestionText.trim().length > 0) {
-        notice.setMessage('Continuation suggestion ready. Press Tab to accept.')
-      } else {
-        this.clearInlineSuggestion()
-        notice.setMessage('No continuation generated.')
-      }
-      this.registerTimeout(() => notice.hide(), 1200)
-    } catch (error) {
-      this.clearInlineSuggestion()
-      if (error?.name === 'AbortError') {
-        const n = new Notice('已取消生成。')
-        this.registerTimeout(() => n.hide(), 1000)
-      } else {
-        console.error(error)
-        new Notice('Failed to generate continuation.')
-      }
-    } finally {
-      // 确保思考指示器被移除
-      if (view) {
-        this.hideThinkingIndicator(view)
-      }
-      this.isContinuationInProgress = false
-      this.activeAbortControllers.delete(controller)
-    }
+    return this.getWriteAssistController().handleContinueWriting(
+      editor,
+      customPrompt,
+      geminiTools,
+      mentionables,
+    )
   }
 
   // removed migrateToJsonStorage (templates)
