@@ -65,7 +65,7 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   triggerDelayMs: 3000,
   minContextLength: 20,
   contextRange: 4000, // Total context chars, split 4:1 (3200 before, 800 after)
-  maxSuggestionLength: 240,
+  maxSuggestionLength: 2000,
   temperature: 0.5,
   requestTimeoutMs: 12000,
 }

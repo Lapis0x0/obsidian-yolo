@@ -10,7 +10,7 @@ const LEGACY_TAB_COMPLETION_DEFAULTS = {
   minContextLength: 20,
   maxBeforeChars: 3000,
   maxAfterChars: 1000,
-  maxSuggestionLength: 240,
+  maxSuggestionLength: 2000,
   maxTokens: 64,
   temperature: 0.5,
   requestTimeoutMs: 12000,

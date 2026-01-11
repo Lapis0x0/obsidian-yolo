@@ -24,7 +24,7 @@ describe('migrateFrom13To14', () => {
       minContextLength: 20,
       maxBeforeChars: 3000,
       maxAfterChars: 1000,
-      maxSuggestionLength: 240,
+      maxSuggestionLength: 2000,
       temperature: 0.5,
       requestTimeoutMs: 12000,
       maxRetries: 0,

@@ -23,7 +23,7 @@ describe('migrateFrom14To15', () => {
     }
     expect(tabOptions).toMatchObject({
       maxTokens: 64,
-      maxSuggestionLength: 240,
+      maxSuggestionLength: 2000,
     })
     const systemPrompt = continuationOptions.tabCompletionSystemPrompt
     if (typeof systemPrompt !== 'string') {
