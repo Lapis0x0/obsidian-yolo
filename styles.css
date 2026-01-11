@@ -2276,6 +2276,7 @@ button.smtcmp-chat-input-model-select {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   overflow: hidden;
+  position: relative;
 }
 .smtcmp-segmented > button {
   background: var(--background-secondary);
@@ -2285,6 +2286,11 @@ button.smtcmp-chat-input-model-select {
   font-size: var(--font-smallest);
   line-height: 16px; /* tighter height */
   cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
 }
 .smtcmp-segmented > button:hover {
   background: var(--background-modifier-hover);
@@ -2488,6 +2494,53 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-segmented > button.active {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--interactive-accent) 75%, black);
+  transform: translateY(-1px);
+}
+
+.smtcmp-segmented--glider {
+  background: var(--background-secondary);
+  padding: 2px;
+  gap: 0;
+  --smtcmp-segment-count: 2;
+  --smtcmp-segment-index: 0;
+  overflow: visible;
+}
+.smtcmp-segmented--glider > button {
+  flex: 1 1 0;
+  background: transparent;
+  position: relative;
+  z-index: 2;
+  border: none;
+  box-shadow: none;
+}
+.smtcmp-segmented--glider > button:hover {
+  background: transparent;
+}
+.smtcmp-segmented--glider > button.active {
+  background: transparent;
+  color: var(--text-on-accent);
+  box-shadow: none;
+  transform: none;
+}
+.smtcmp-segmented-glider {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / var(--smtcmp-segment-count));
+  height: calc(100% - 4px);
+  background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  border: 1px solid var(--interactive-accent);
+  border-radius: calc(var(--radius-s) - 2px);
+  box-shadow: 0 0 10px
+    color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  transform: translateX(
+    calc(100% * var(--smtcmp-segment-index))
+  );
+  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .smtcmp-similarity-search-results {

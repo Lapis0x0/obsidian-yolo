@@ -257,6 +257,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   const tabCompletionLengthPreset =
     settings.continuationOptions.tabCompletionLengthPreset ??
     DEFAULT_TAB_COMPLETION_LENGTH_PRESET
+  const tabCompletionLengthPresetIndex = Math.max(
+    0,
+    ['short', 'medium', 'long'].indexOf(tabCompletionLengthPreset),
+  )
   const tabCompletionTriggers: TabCompletionTrigger[] =
     settings.continuationOptions.tabCompletionTriggers ??
     DEFAULT_TAB_COMPLETION_TRIGGERS
@@ -1429,7 +1433,20 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       </div>
                     </div>
                     <div className="smtcmp-composer-option-control">
-                      <div className="smtcmp-segmented">
+                      <div
+                        className="smtcmp-segmented smtcmp-segmented--glider"
+                        style={
+                          {
+                            '--smtcmp-segment-count': 3,
+                            '--smtcmp-segment-index':
+                              tabCompletionLengthPresetIndex,
+                          } as React.CSSProperties
+                        }
+                      >
+                        <div
+                          className="smtcmp-segmented-glider"
+                          aria-hidden="true"
+                        />
                         <button
                           className={
                             tabCompletionLengthPreset === 'short'

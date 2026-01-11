@@ -1,5 +1,5 @@
 import { App } from 'obsidian'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -73,6 +73,10 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   const tabCompletionLengthPreset =
     settings.continuationOptions.tabCompletionLengthPreset ??
     DEFAULT_TAB_COMPLETION_LENGTH_PRESET
+  const tabCompletionLengthPresetIndex = Math.max(
+    0,
+    ['short', 'medium', 'long'].indexOf(tabCompletionLengthPreset),
+  )
   const [tabNumberInputs, setTabNumberInputs] = useState({
     maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
@@ -408,7 +412,16 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             name={t('settings.continuation.tabCompletionLengthPreset')}
             desc={t('settings.continuation.tabCompletionLengthPresetDesc')}
           >
-            <div className="smtcmp-segmented">
+            <div
+              className="smtcmp-segmented smtcmp-segmented--glider"
+              style={
+                {
+                  '--smtcmp-segment-count': 3,
+                  '--smtcmp-segment-index': tabCompletionLengthPresetIndex,
+                } as CSSProperties
+              }
+            >
+              <div className="smtcmp-segmented-glider" aria-hidden="true" />
               <button
                 className={tabCompletionLengthPreset === 'short' ? 'active' : ''}
                 onClick={() => {
