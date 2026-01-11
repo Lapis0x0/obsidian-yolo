@@ -133,9 +133,8 @@ export function openMarkdownFile(
   if (existingLeaf) {
     app.workspace.setActiveLeaf(existingLeaf, { focus: true })
 
-    if (startLine) {
-      const view = existingLeaf.view as MarkdownView
-      view.setEphemeralState({ line: startLine - 1 }) // -1 because line is 0-indexed
+    if (startLine && existingLeaf.view instanceof MarkdownView) {
+      existingLeaf.view.setEphemeralState({ line: startLine - 1 }) // -1 because line is 0-indexed
     }
   } else {
     const leaf = app.workspace.getLeaf('tab')
