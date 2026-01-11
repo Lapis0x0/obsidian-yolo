@@ -16,6 +16,7 @@ export type TranslationKeys = {
     triggerSmartSpace: string
     triggerQuickAsk: string
     triggerTabCompletion: string
+    acceptInlineSuggestion: string
   }
 
   // UI Common

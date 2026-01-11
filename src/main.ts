@@ -622,6 +622,18 @@ export default class SmartComposerPlugin extends Plugin {
       },
     })
 
+    this.addCommand({
+      id: 'accept-inline-suggestion',
+      name: this.t('commands.acceptInlineSuggestion'),
+      editorCallback: (editor: Editor) => {
+        const cmView = this.getEditorView(editor)
+        if (!cmView) return
+        this.getInlineSuggestionController().tryAcceptInlineSuggestionFromView(
+          cmView,
+        )
+      },
+    })
+
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {

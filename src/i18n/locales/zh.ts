@@ -15,6 +15,7 @@ export const zh: TranslationKeys = {
     triggerSmartSpace: '触发 Smart Space',
     triggerQuickAsk: '触发 Quick Ask',
     triggerTabCompletion: '触发 Tab 补全',
+    acceptInlineSuggestion: '接受补全',
   },
 
   common: {

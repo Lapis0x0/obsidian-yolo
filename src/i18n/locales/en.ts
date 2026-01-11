@@ -15,6 +15,7 @@ export const en: TranslationKeys = {
     triggerSmartSpace: 'Trigger smart space',
     triggerQuickAsk: 'Trigger quick ask',
     triggerTabCompletion: 'Trigger tab completion',
+    acceptInlineSuggestion: 'Accept completion',
   },
 
   common: {
