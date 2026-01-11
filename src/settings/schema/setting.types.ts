@@ -18,7 +18,7 @@ import { SETTINGS_SCHEMA_VERSION } from './migrations'
 const ragOptionsSchema = z.object({
   enabled: z.boolean().catch(true),
   chunkSize: z.number().catch(1000),
-  thresholdTokens: z.number().catch(8192),
+  thresholdTokens: z.number().catch(20000),
   minSimilarity: z.number().catch(0.0),
   limit: z.number().catch(10),
   excludePatterns: z.array(z.string()).catch([]),
@@ -216,7 +216,7 @@ export const smartComposerSettingsSchema = z.object({
   ragOptions: ragOptionsSchema.catch({
     enabled: true,
     chunkSize: 1000,
-    thresholdTokens: 8192,
+    thresholdTokens: 20000,
     minSimilarity: 0.0,
     limit: 10,
     excludePatterns: [],

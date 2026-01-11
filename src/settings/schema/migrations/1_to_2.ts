@@ -296,7 +296,7 @@ const embeddingModelIdSchema = z.enum(
 )
 const ragOptionsSchema = z.object({
   chunkSize: z.number().catch(1000),
-  thresholdTokens: z.number().catch(8192),
+  thresholdTokens: z.number().catch(20000),
   minSimilarity: z.number().catch(0.0),
   limit: z.number().catch(10),
   excludePatterns: z.array(z.string()).catch([]),
@@ -351,7 +351,7 @@ const smartComposerSettingsSchemaV1 = z.object({
   // RAG Options
   ragOptions: ragOptionsSchema.catch({
     chunkSize: 1000,
-    thresholdTokens: 8192,
+    thresholdTokens: 20000,
     minSimilarity: 0.0,
     limit: 10,
     excludePatterns: [],

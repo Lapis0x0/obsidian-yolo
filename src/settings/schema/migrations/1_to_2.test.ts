@@ -45,7 +45,7 @@ describe('settings 1_to_2 migration', () => {
       systemPrompt: 'You are a helpful assistant',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0,
         limit: 10,
         excludePatterns: ['exclude/**'],
@@ -120,7 +120,7 @@ describe('settings 1_to_2 migration', () => {
       systemPrompt: 'You are a helpful assistant',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0.0,
         limit: 10,
         excludePatterns: ['exclude/**'],
@@ -152,7 +152,7 @@ describe('settings 1_to_2 migration', () => {
       systemPrompt: '',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0,
         limit: 10,
         excludePatterns: [],
@@ -183,7 +183,7 @@ describe('settings 1_to_2 migration', () => {
       systemPrompt: '',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0,
         limit: 10,
         excludePatterns: [],
@@ -490,7 +490,7 @@ describe('settings 1_to_2 migration', () => {
       systemPrompt: '',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0,
         limit: 10,
         excludePatterns: [],
@@ -521,7 +521,7 @@ describe('settings 1_to_2 migration', () => {
       systemPrompt: '',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0,
         limit: 10,
         excludePatterns: [],

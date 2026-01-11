@@ -13,7 +13,7 @@ describe('settings 0_to_1 migration', () => {
       systemPrompt: 'system prompt',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0.0,
         limit: 10,
       },
@@ -59,7 +59,7 @@ describe('settings 0_to_1 migration', () => {
       systemPrompt: 'system prompt',
       ragOptions: {
         chunkSize: 1000,
-        thresholdTokens: 8192,
+        thresholdTokens: 20000,
         minSimilarity: 0.0,
         limit: 10,
         excludePatterns: [],
