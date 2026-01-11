@@ -479,6 +479,12 @@ export const en: TranslationKeys = {
       tabCompletionMaxSuggestionLength: 'Max suggestion length',
       tabCompletionMaxSuggestionLengthDesc:
         'Cap the number of characters inserted when accepting a suggestion.',
+      tabCompletionLengthPreset: 'Completion length',
+      tabCompletionLengthPresetDesc:
+        'Ask the model to keep the completion short, medium, or long.',
+      tabCompletionLengthPresetShort: 'Short',
+      tabCompletionLengthPresetMedium: 'Medium',
+      tabCompletionLengthPresetLong: 'Long',
       tabCompletionAdvanced: 'Advanced settings',
       tabCompletionContextRange: 'Context range',
       tabCompletionContextRangeDesc:

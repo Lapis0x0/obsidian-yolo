@@ -374,6 +374,11 @@ export type TranslationKeys = {
       tabCompletionTriggerDelayDesc: string
       tabCompletionMaxSuggestionLength: string
       tabCompletionMaxSuggestionLengthDesc: string
+      tabCompletionLengthPreset: string
+      tabCompletionLengthPresetDesc: string
+      tabCompletionLengthPresetShort: string
+      tabCompletionLengthPresetMedium: string
+      tabCompletionLengthPresetLong: string
       tabCompletionAdvanced: string
       tabCompletionContextRange: string
       tabCompletionContextRangeDesc: string

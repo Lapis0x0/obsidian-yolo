@@ -475,6 +475,12 @@ export const it: TranslationKeys = {
       tabCompletionMaxSuggestionLength: 'Lunghezza massima suggerimento',
       tabCompletionMaxSuggestionLengthDesc:
         'Numero massimo di caratteri da mostrare nel suggerimento.',
+      tabCompletionLengthPreset: 'Lunghezza completamento',
+      tabCompletionLengthPresetDesc:
+        'Suggerisce al modello di generare un completamento breve, medio o lungo.',
+      tabCompletionLengthPresetShort: 'Breve',
+      tabCompletionLengthPresetMedium: 'Medio',
+      tabCompletionLengthPresetLong: 'Lungo',
       tabCompletionAdvanced: 'Impostazioni avanzate',
       tabCompletionContextRange: 'Intervallo contesto',
       tabCompletionContextRangeDesc:

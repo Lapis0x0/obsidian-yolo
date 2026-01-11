@@ -1,5 +1,6 @@
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
+  DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
@@ -59,6 +60,7 @@ describe('parseSmartComposerSettings', () => {
     expect(result.continuationOptions).toMatchObject({
       enableTabCompletion: false,
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
+      tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
     })
     expect(result.continuationOptions.tabCompletionOptions).toMatchObject(
       DEFAULT_TAB_COMPLETION_OPTIONS,

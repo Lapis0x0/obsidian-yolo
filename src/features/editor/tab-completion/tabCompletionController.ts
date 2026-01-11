@@ -4,11 +4,13 @@ import type { Editor, MarkdownView } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
 import {
+  DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type SmartComposerSettings,
   TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER,
+  type TabCompletionLengthPreset,
   type TabCompletionTrigger,
   computeMaxTokens,
   splitContextRange,
@@ -80,6 +82,27 @@ const applyTabCompletionConstraints = (
     return `${prompt}\n\nAdditional constraints:\n${trimmed}`
   }
   return prompt.replace(TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER, trimmed)
+}
+
+const TAB_COMPLETION_LENGTH_CONSTRAINTS: Record<
+  TabCompletionLengthPreset,
+  string
+> = {
+  short:
+    'Keep the completion short (about 1-2 sentences, roughly 40-120 characters). Avoid starting a new section.',
+  medium:
+    'Keep the completion medium length (about 2-5 sentences, roughly 120-300 characters).',
+  long:
+    'Prefer a longer continuation (multiple sentences or paragraphs, roughly 300-800 characters) when appropriate.',
+}
+
+const buildTabCompletionConstraints = (
+  preset: TabCompletionLengthPreset,
+  customConstraints: string,
+): string => {
+  const presetConstraint = TAB_COMPLETION_LENGTH_CONSTRAINTS[preset] ?? ''
+  const trimmedCustom = customConstraints.trim()
+  return [presetConstraint, trimmedCustom].filter(Boolean).join('\n')
 }
 
 const parseMaskedAnswer = (raw: string): string => {
@@ -394,9 +417,16 @@ export class TabCompletionController {
         DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
       const tabCompletionConstraints =
         settings.continuationOptions?.tabCompletionConstraints ?? ''
+      const tabCompletionLengthPreset =
+        settings.continuationOptions?.tabCompletionLengthPreset ??
+        DEFAULT_TAB_COMPLETION_LENGTH_PRESET
+      const combinedConstraints = buildTabCompletionConstraints(
+        tabCompletionLengthPreset,
+        tabCompletionConstraints,
+      )
       const systemPrompt = applyTabCompletionConstraints(
         baseSystemPrompt,
-        tabCompletionConstraints,
+        combinedConstraints,
       )
 
       const isBaseModel = Boolean(model.isBaseModel)

@@ -437,6 +437,11 @@ export const zh: TranslationKeys = {
       tabCompletionTriggerDelayDesc: '在停止输入后等待多久再向模型请求补全。',
       tabCompletionMaxSuggestionLength: '补全最大长度',
       tabCompletionMaxSuggestionLengthDesc: '限制接受建议时插入的最大字符数。',
+      tabCompletionLengthPreset: '补全长度',
+      tabCompletionLengthPresetDesc: '提示模型生成短、中、长三档补全。',
+      tabCompletionLengthPresetShort: '短',
+      tabCompletionLengthPresetMedium: '中',
+      tabCompletionLengthPresetLong: '长',
       tabCompletionAdvanced: '高级设置',
       tabCompletionContextRange: '上下文范围',
       tabCompletionContextRangeDesc:

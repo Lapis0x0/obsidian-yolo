@@ -7,6 +7,7 @@ import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
+  DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type TabCompletionTrigger,
@@ -253,6 +254,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     ...DEFAULT_TAB_COMPLETION_OPTIONS,
     ...(settings.continuationOptions.tabCompletionOptions ?? {}),
   }
+  const tabCompletionLengthPreset =
+    settings.continuationOptions.tabCompletionLengthPreset ??
+    DEFAULT_TAB_COMPLETION_LENGTH_PRESET
   const tabCompletionTriggers: TabCompletionTrigger[] =
     settings.continuationOptions.tabCompletionTriggers ??
     DEFAULT_TAB_COMPLETION_TRIGGERS
@@ -1404,6 +1408,44 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                               ),
                             }))
                           }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.tabCompletionLengthPreset',
+                          '补全长度',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.tabCompletionLengthPresetDesc',
+                          '提示模型生成短、中、长三档补全。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianDropdown
+                        value={tabCompletionLengthPreset}
+                        options={{
+                          short: t(
+                            'settings.continuation.tabCompletionLengthPresetShort',
+                          ),
+                          medium: t(
+                            'settings.continuation.tabCompletionLengthPresetMedium',
+                          ),
+                          long: t(
+                            'settings.continuation.tabCompletionLengthPresetLong',
+                          ),
+                        }}
+                        onChange={(value) => {
+                          updateContinuationOptions({
+                            tabCompletionLengthPreset: value,
+                          })
                         }}
                       />
                     </div>

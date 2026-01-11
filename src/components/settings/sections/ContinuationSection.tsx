@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type TabCompletionTrigger,
@@ -69,6 +70,9 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
       }
   const tabCompletionConstraints =
     settings.continuationOptions.tabCompletionConstraints ?? ''
+  const tabCompletionLengthPreset =
+    settings.continuationOptions.tabCompletionLengthPreset ??
+    DEFAULT_TAB_COMPLETION_LENGTH_PRESET
   const [tabNumberInputs, setTabNumberInputs] = useState({
     maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
@@ -396,6 +400,28 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
                     ),
                   }))
                 }
+              }}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name={t('settings.continuation.tabCompletionLengthPreset')}
+            desc={t('settings.continuation.tabCompletionLengthPresetDesc')}
+          >
+            <ObsidianDropdown
+              value={tabCompletionLengthPreset}
+              options={{
+                short: t('settings.continuation.tabCompletionLengthPresetShort'),
+                medium: t(
+                  'settings.continuation.tabCompletionLengthPresetMedium',
+                ),
+                long: t('settings.continuation.tabCompletionLengthPresetLong'),
+              }}
+              onChange={(value) => {
+                updateContinuationOptions(
+                  { tabCompletionLengthPreset: value },
+                  'tabCompletionLengthPreset',
+                )
               }}
             />
           </ObsidianSetting>
