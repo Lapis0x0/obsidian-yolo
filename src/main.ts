@@ -19,7 +19,8 @@ import { APPLY_VIEW_TYPE, CHAT_VIEW_TYPE } from './constants'
 import { getChatModelClient } from './core/llm/manager'
 import { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
-import { RAGEngine } from './core/rag/ragEngine'
+import { RagCoordinator } from './core/rag/ragCoordinator'
+import type { RAGEngine } from './core/rag/ragEngine'
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
@@ -64,9 +65,7 @@ export default class SmartComposerPlugin extends Plugin {
   settingsChangeListeners: ((newSettings: SmartComposerSettings) => void)[] = []
   mcpManager: McpManager | null = null
   dbManager: DatabaseManager | null = null
-  ragEngine: RAGEngine | null = null
   private dbManagerInitPromise: Promise<DatabaseManager> | null = null
-  private ragEngineInitPromise: Promise<RAGEngine> | null = null
   private timeoutIds: ReturnType<typeof setTimeout>[] = [] // Use ReturnType instead of number
   private pgliteResourcePath?: string
   private isContinuationInProgress = false
@@ -92,6 +91,7 @@ export default class SmartComposerPlugin extends Plugin {
   private selectionChatController: SelectionChatController | null = null
   private chatViewNavigator: ChatViewNavigator | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
+  private ragCoordinator: RagCoordinator | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -260,11 +260,22 @@ export default class SmartComposerPlugin extends Plugin {
       this.ragAutoUpdateService = new RagAutoUpdateService({
         getSettings: () => this.settings,
         setSettings: (settings) => this.setSettings(settings),
-        getRagEngine: () => this.getRAGEngine(),
+        getRagEngine: () => this.getRagCoordinator().getRagEngine(),
         t: (key, fallback) => this.t(key, fallback),
       })
     }
     return this.ragAutoUpdateService
+  }
+
+  private getRagCoordinator(): RagCoordinator {
+    if (!this.ragCoordinator) {
+      this.ragCoordinator = new RagCoordinator({
+        app: this.app,
+        getSettings: () => this.settings,
+        getDbManager: () => this.getDbManager(),
+      })
+    }
+    return this.ragCoordinator
   }
 
   private createSmartSpaceTriggerExtension(): Extension {
@@ -1010,12 +1021,11 @@ export default class SmartComposerPlugin extends Plugin {
     this.timeoutIds = []
 
     // RagEngine cleanup
-    this.ragEngine?.cleanup()
-    this.ragEngine = null
+    this.ragCoordinator?.cleanup()
+    this.ragCoordinator = null
 
     // Promise cleanup
     this.dbManagerInitPromise = null
-    this.ragEngineInitPromise = null
 
     // DatabaseManager cleanup
     if (this.dbManager) {
@@ -1053,7 +1063,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     this.settings = newSettings
     await this.saveData(newSettings)
-    this.ragEngine?.setSettings(newSettings)
+    this.ragCoordinator?.updateSettings(newSettings)
     this.settingsChangeListeners.forEach((listener) => listener(newSettings))
   }
 
@@ -1129,28 +1139,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   async getRAGEngine(): Promise<RAGEngine> {
-    if (this.ragEngine) {
-      return this.ragEngine
-    }
-
-    if (!this.ragEngineInitPromise) {
-      this.ragEngineInitPromise = (async () => {
-        try {
-          const dbManager = await this.getDbManager()
-          this.ragEngine = new RAGEngine(
-            this.app,
-            this.settings,
-            dbManager.getVectorManager(),
-          )
-          return this.ragEngine
-        } catch (error) {
-          this.ragEngineInitPromise = null
-          throw error
-        }
-      })()
-    }
-
-    return this.ragEngineInitPromise
+    return this.getRagCoordinator().getRagEngine()
   }
 
   async getMcpManager(): Promise<McpManager> {
