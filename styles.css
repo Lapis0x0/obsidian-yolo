@@ -6102,7 +6102,23 @@ button.smtcmp-chat-input-model-select {
 
 /* Override button styles for consistency with Obsidian */
 .smtcmp-smart-space-settings .setting-item-control button {
-  margin-left: var(--size-4-1);
+  margin-left: 0;
+}
+
+.smtcmp-smart-space-settings .setting-item {
+  flex-wrap: wrap;
+  column-gap: var(--size-4-3);
+  row-gap: var(--size-2-2);
+}
+
+.smtcmp-smart-space-settings .setting-item-info {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.smtcmp-smart-space-settings .setting-item-control {
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .smtcmp-smart-space-trigger-setting .setting-item-control select {
