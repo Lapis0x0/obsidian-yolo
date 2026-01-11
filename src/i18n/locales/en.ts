@@ -476,6 +476,15 @@ export const en: TranslationKeys = {
       tabCompletionTriggerDelay: 'Trigger delay (ms)',
       tabCompletionTriggerDelayDesc:
         'How long to wait after you stop typing before a prefix completion request is sent.',
+      tabCompletionAutoTrigger: 'Auto completion after idle',
+      tabCompletionAutoTriggerDesc:
+        'Trigger tab completion after you stop typing, even when no trigger matches.',
+      tabCompletionAutoTriggerDelay: 'Auto completion idle delay (ms)',
+      tabCompletionAutoTriggerDelayDesc:
+        'How long to wait after you stop typing before auto completion runs.',
+      tabCompletionAutoTriggerCooldown: 'Auto completion cooldown (ms)',
+      tabCompletionAutoTriggerCooldownDesc:
+        'Cooldown period after auto completion triggers to avoid frequent requests.',
       tabCompletionMaxSuggestionLength: 'Max suggestion length',
       tabCompletionMaxSuggestionLengthDesc:
         'Cap the number of characters inserted when accepting a suggestion.',

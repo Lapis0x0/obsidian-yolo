@@ -30,6 +30,9 @@ const ragOptionsSchema = z.object({
 })
 
 type TabCompletionOptionDefaults = {
+  idleTriggerEnabled: boolean
+  autoTriggerDelayMs: number
+  autoTriggerCooldownMs: number
   triggerDelayMs: number
   minContextLength: number
   contextRange: number // Combined context range, internally split 4:1 (before:after)
@@ -67,6 +70,9 @@ export const DEFAULT_TAB_COMPLETION_LENGTH_PRESET: TabCompletionLengthPreset =
   'medium'
 
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
+  idleTriggerEnabled: false,
+  autoTriggerDelayMs: 3000,
+  autoTriggerCooldownMs: 15000,
   triggerDelayMs: 3000,
   minContextLength: 20,
   contextRange: 4000, // Total context chars, split 4:1 (3200 before, 800 after)
@@ -130,6 +136,19 @@ export const splitContextRange = (
 
 const tabCompletionOptionsSchema = z
   .object({
+    idleTriggerEnabled: z
+      .boolean()
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.idleTriggerEnabled),
+    autoTriggerDelayMs: z
+      .number()
+      .min(200)
+      .max(30000)
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.autoTriggerDelayMs),
+    autoTriggerCooldownMs: z
+      .number()
+      .min(0)
+      .max(600000)
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.autoTriggerCooldownMs),
     triggerDelayMs: z
       .number()
       .min(200)

@@ -80,6 +80,8 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   const [tabNumberInputs, setTabNumberInputs] = useState({
     maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+    autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
+    autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
     contextRange: String(tabCompletionOptions.contextRange),
     minContextLength: String(tabCompletionOptions.minContextLength),
     temperature: String(tabCompletionOptions.temperature),
@@ -90,6 +92,8 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
     setTabNumberInputs({
       maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
       triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+      autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
+      autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
       contextRange: String(tabCompletionOptions.contextRange),
       minContextLength: String(tabCompletionOptions.minContextLength),
       temperature: String(tabCompletionOptions.temperature),
@@ -98,6 +102,8 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   }, [
     tabCompletionOptions.maxSuggestionLength,
     tabCompletionOptions.triggerDelayMs,
+    tabCompletionOptions.autoTriggerDelayMs,
+    tabCompletionOptions.autoTriggerCooldownMs,
     tabCompletionOptions.contextRange,
     tabCompletionOptions.minContextLength,
     tabCompletionOptions.temperature,
@@ -583,6 +589,91 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
               }}
             />
           </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.continuation.tabCompletionAutoTrigger')}
+            desc={t('settings.continuation.tabCompletionAutoTriggerDesc')}
+          >
+            <ObsidianToggle
+              value={tabCompletionOptions.idleTriggerEnabled}
+              onChange={(value) => {
+                updateTabCompletionOptions({ idleTriggerEnabled: value })
+              }}
+            />
+          </ObsidianSetting>
+          {tabCompletionOptions.idleTriggerEnabled && (
+            <>
+              <ObsidianSetting
+                name={t('settings.continuation.tabCompletionAutoTriggerDelay')}
+                desc={t(
+                  'settings.continuation.tabCompletionAutoTriggerDelayDesc',
+                )}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={tabNumberInputs.autoTriggerDelayMs}
+                  onChange={(value) => {
+                    setTabNumberInputs((prev) => ({
+                      ...prev,
+                      autoTriggerDelayMs: value,
+                    }))
+                    const parsed = parseIntegerInput(value)
+                    if (parsed === null) return
+                    const next = Math.max(200, parsed)
+                    updateTabCompletionOptions({ autoTriggerDelayMs: next })
+                  }}
+                  onBlur={() => {
+                    const parsed = parseIntegerInput(
+                      tabNumberInputs.autoTriggerDelayMs,
+                    )
+                    if (parsed === null) {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        autoTriggerDelayMs: String(
+                          tabCompletionOptions.autoTriggerDelayMs,
+                        ),
+                      }))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
+                name={t(
+                  'settings.continuation.tabCompletionAutoTriggerCooldown',
+                )}
+                desc={t(
+                  'settings.continuation.tabCompletionAutoTriggerCooldownDesc',
+                )}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={tabNumberInputs.autoTriggerCooldownMs}
+                  onChange={(value) => {
+                    setTabNumberInputs((prev) => ({
+                      ...prev,
+                      autoTriggerCooldownMs: value,
+                    }))
+                    const parsed = parseIntegerInput(value)
+                    if (parsed === null) return
+                    const next = Math.max(0, parsed)
+                    updateTabCompletionOptions({ autoTriggerCooldownMs: next })
+                  }}
+                  onBlur={() => {
+                    const parsed = parseIntegerInput(
+                      tabNumberInputs.autoTriggerCooldownMs,
+                    )
+                    if (parsed === null) {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        autoTriggerCooldownMs: String(
+                          tabCompletionOptions.autoTriggerCooldownMs,
+                        ),
+                      }))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+            </>
+          )}
           {/* Advanced settings toggle */}
           <div
             className={`smtcmp-settings-advanced-toggle smtcmp-clickable${

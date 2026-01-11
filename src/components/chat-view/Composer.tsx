@@ -268,6 +268,8 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   const [tabNumberInputs, setTabNumberInputs] = useState<NumberInputState>({
     maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+    autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
+    autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
     contextRange: String(tabCompletionOptions.contextRange),
     minContextLength: String(tabCompletionOptions.minContextLength),
     temperature: String(tabCompletionOptions.temperature),
@@ -278,6 +280,8 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     setTabNumberInputs({
       maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
       triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
+      autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
+      autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
       contextRange: String(tabCompletionOptions.contextRange),
       minContextLength: String(tabCompletionOptions.minContextLength),
       temperature: String(tabCompletionOptions.temperature),
@@ -286,6 +290,8 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   }, [
     tabCompletionOptions.maxSuggestionLength,
     tabCompletionOptions.triggerDelayMs,
+    tabCompletionOptions.autoTriggerDelayMs,
+    tabCompletionOptions.autoTriggerCooldownMs,
     tabCompletionOptions.contextRange,
     tabCompletionOptions.minContextLength,
     tabCompletionOptions.temperature,
@@ -1554,6 +1560,129 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       />
                     </div>
                   </div>
+
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.tabCompletionAutoTrigger',
+                          '自动补全（停顿后）',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.tabCompletionAutoTriggerDesc',
+                          '启用后，停止输入一段时间也会触发补全。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianToggle
+                        value={tabCompletionOptions.idleTriggerEnabled}
+                        onChange={(value) => {
+                          updateTabCompletionOptions({
+                            idleTriggerEnabled: value,
+                          })
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {tabCompletionOptions.idleTriggerEnabled && (
+                    <>
+                      <div className="smtcmp-composer-option">
+                        <div className="smtcmp-composer-option-info">
+                          <div className="smtcmp-composer-option-title">
+                            {t(
+                              'settings.continuation.tabCompletionAutoTriggerDelay',
+                              '自动补全停顿时间（毫秒）',
+                            )}
+                          </div>
+                          <div className="smtcmp-composer-option-desc">
+                            {t(
+                              'settings.continuation.tabCompletionAutoTriggerDelayDesc',
+                              '停止输入后等待多久再触发自动补全。',
+                            )}
+                          </div>
+                        </div>
+                        <div className="smtcmp-composer-option-control">
+                          <ObsidianTextInput
+                            type="number"
+                            value={tabNumberInputs.autoTriggerDelayMs}
+                            onChange={(value) => {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                autoTriggerDelayMs: value,
+                              }))
+                              const parsed = parseIntegerInput(value)
+                              if (parsed === null) return
+                              const next = Math.max(200, parsed)
+                              updateTabCompletionOptions({
+                                autoTriggerDelayMs: next,
+                              })
+                            }}
+                            onBlur={(value) => {
+                              const parsed = parseIntegerInput(value)
+                              if (parsed === null) {
+                                setTabNumberInputs((prev) => ({
+                                  ...prev,
+                                  autoTriggerDelayMs: String(
+                                    tabCompletionOptions.autoTriggerDelayMs,
+                                  ),
+                                }))
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="smtcmp-composer-option">
+                        <div className="smtcmp-composer-option-info">
+                          <div className="smtcmp-composer-option-title">
+                            {t(
+                              'settings.continuation.tabCompletionAutoTriggerCooldown',
+                              '自动补全冷却时间（毫秒）',
+                            )}
+                          </div>
+                          <div className="smtcmp-composer-option-desc">
+                            {t(
+                              'settings.continuation.tabCompletionAutoTriggerCooldownDesc',
+                              '自动补全触发后冷却一段时间，避免频繁请求。',
+                            )}
+                          </div>
+                        </div>
+                        <div className="smtcmp-composer-option-control">
+                          <ObsidianTextInput
+                            type="number"
+                            value={tabNumberInputs.autoTriggerCooldownMs}
+                            onChange={(value) => {
+                              setTabNumberInputs((prev) => ({
+                                ...prev,
+                                autoTriggerCooldownMs: value,
+                              }))
+                              const parsed = parseIntegerInput(value)
+                              if (parsed === null) return
+                              const next = Math.max(0, parsed)
+                              updateTabCompletionOptions({
+                                autoTriggerCooldownMs: next,
+                              })
+                            }}
+                            onBlur={(value) => {
+                              const parsed = parseIntegerInput(value)
+                              if (parsed === null) {
+                                setTabNumberInputs((prev) => ({
+                                  ...prev,
+                                  autoTriggerCooldownMs: String(
+                                    tabCompletionOptions.autoTriggerCooldownMs,
+                                  ),
+                                }))
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <div className="smtcmp-composer-option smtcmp-composer-option--table">
                     <div className="smtcmp-composer-option-info">

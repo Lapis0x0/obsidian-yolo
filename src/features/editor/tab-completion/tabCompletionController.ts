@@ -189,6 +189,7 @@ export class TabCompletionController {
     editor: Editor
     cursorOffset: number
   } | null = null
+  private lastAutoTriggerAt = 0
 
   constructor(private readonly deps: TabCompletionDeps) {}
 
@@ -332,9 +333,20 @@ export class TabCompletionController {
     const selection = editor.getSelection()
     if (selection && selection.length > 0) return
     const cursorOffset = view.state.selection.main.head
-    if (!this.shouldTrigger(view, cursorOffset)) return
     const options = this.getTabCompletionOptions()
-    const delay = Math.max(0, options.triggerDelayMs)
+    const shouldTrigger = this.shouldTrigger(view, cursorOffset)
+    if (!shouldTrigger && !options.idleTriggerEnabled) return
+    const isAutoTrigger = !shouldTrigger && options.idleTriggerEnabled
+    const delay = Math.max(
+      0,
+      isAutoTrigger ? options.autoTriggerDelayMs : options.triggerDelayMs,
+    )
+    if (isAutoTrigger) {
+      const cooldownMs = Math.max(0, options.autoTriggerCooldownMs)
+      if (cooldownMs > 0 && Date.now() - this.lastAutoTriggerAt < cooldownMs) {
+        return
+      }
+    }
     this.tabCompletionPending = { editor, cursorOffset }
     this.tabCompletionTimer = setTimeout(() => {
       if (!this.tabCompletionPending) return
@@ -345,6 +357,16 @@ export class TabCompletionController {
       const currentSelection = editor.getSelection()
       if (currentSelection && currentSelection.length > 0) return
       if (this.deps.isContinuationInProgress()) return
+      if (isAutoTrigger) {
+        const cooldownMs = Math.max(0, options.autoTriggerCooldownMs)
+        if (
+          cooldownMs > 0 &&
+          Date.now() - this.lastAutoTriggerAt < cooldownMs
+        ) {
+          return
+        }
+        this.lastAutoTriggerAt = Date.now()
+      }
       void this.run(editor, cursorOffset)
     }, delay)
   }

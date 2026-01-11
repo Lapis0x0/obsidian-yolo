@@ -435,6 +435,14 @@ export const zh: TranslationKeys = {
       tabCompletionModelDesc: '为 Tab 补全选择一个专用模型。',
       tabCompletionTriggerDelay: '触发延迟（毫秒）',
       tabCompletionTriggerDelayDesc: '在停止输入后等待多久再向模型请求补全。',
+      tabCompletionAutoTrigger: '自动补全（停顿后）',
+      tabCompletionAutoTriggerDesc:
+        '启用后，即使未命中触发器，停止输入也会触发补全。',
+      tabCompletionAutoTriggerDelay: '自动补全停顿时间（毫秒）',
+      tabCompletionAutoTriggerDelayDesc: '停止输入后等待多久再触发自动补全。',
+      tabCompletionAutoTriggerCooldown: '自动补全冷却时间（毫秒）',
+      tabCompletionAutoTriggerCooldownDesc:
+        '自动补全触发后冷却一段时间，避免频繁请求。',
       tabCompletionMaxSuggestionLength: '补全最大长度',
       tabCompletionMaxSuggestionLengthDesc: '限制接受建议时插入的最大字符数。',
       tabCompletionLengthPreset: '补全长度',
