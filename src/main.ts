@@ -17,7 +17,8 @@ import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { APPLY_VIEW_TYPE, CHAT_VIEW_TYPE } from './constants'
 import { getChatModelClient } from './core/llm/manager'
-import { McpManager } from './core/mcp/mcpManager'
+import { McpCoordinator } from './core/mcp/mcpCoordinator'
+import type { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -92,6 +93,7 @@ export default class SmartComposerPlugin extends Plugin {
   private chatViewNavigator: ChatViewNavigator | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
+  private mcpCoordinator: McpCoordinator | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -276,6 +278,18 @@ export default class SmartComposerPlugin extends Plugin {
       })
     }
     return this.ragCoordinator
+  }
+
+  private getMcpCoordinator(): McpCoordinator {
+    if (!this.mcpCoordinator) {
+      this.mcpCoordinator = new McpCoordinator({
+        getSettings: () => this.settings,
+        registerSettingsListener: (
+          listener: (settings: SmartComposerSettings) => void,
+        ) => this.addSettingsChangeListener(listener),
+      })
+    }
+    return this.mcpCoordinator
   }
 
   private createSmartSpaceTriggerExtension(): Extension {
@@ -1034,9 +1048,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.dbManager = null
 
     // McpManager cleanup
-    if (this.mcpManager) {
-      this.mcpManager.cleanup()
-    }
+    this.mcpCoordinator?.cleanup()
+    this.mcpCoordinator = null
     this.mcpManager = null
     this.ragAutoUpdateService?.cleanup()
     this.ragAutoUpdateService = null
@@ -1143,23 +1156,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   async getMcpManager(): Promise<McpManager> {
-    if (this.mcpManager) {
-      return this.mcpManager
-    }
-
-    try {
-      this.mcpManager = new McpManager({
-        settings: this.settings,
-        registerSettingsListener: (
-          listener: (settings: SmartComposerSettings) => void,
-        ) => this.addSettingsChangeListener(listener),
-      })
-      await this.mcpManager.initialize()
-      return this.mcpManager
-    } catch (error) {
-      this.mcpManager = null
-      throw error
-    }
+    const manager = await this.getMcpCoordinator().getMcpManager()
+    this.mcpManager = manager
+    return manager
   }
 
   private registerTimeout(callback: () => void, timeout: number): void {
