@@ -2568,7 +2568,8 @@ button.smtcmp-chat-input-model-select {
 }
 .smtcmp-segmented--glider > button.active {
   background: transparent;
-  color: var(--text-on-accent);
+  color: var(--h1-color, var(--interactive-accent));
+  font-weight: var(--font-semibold);
   box-shadow: none;
   transform: none;
 }
