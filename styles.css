@@ -929,6 +929,8 @@
   font-size: var(--font-ui-small);
   border-radius: var(--radius-s);
   outline: none;
+  --smtcmp-mention-max-width: 240px;
+  --smtcmp-mention-badge-max-width: 220px;
 
   &:focus-within,
   &:focus,
@@ -1154,6 +1156,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: var(--smtcmp-mention-badge-max-width, 260px);
   cursor: pointer;
 
   &.smtcmp-chat-user-input-file-badge-focused {
@@ -1210,6 +1213,7 @@
   flex-grow: 1;
   overflow: hidden;
   align-items: center;
+  min-width: 0;
 }
 
 .smtcmp-chat-user-input-file-badge-name-icon {

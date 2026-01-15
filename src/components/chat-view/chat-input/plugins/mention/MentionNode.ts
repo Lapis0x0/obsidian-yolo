@@ -27,6 +27,20 @@ export const MENTION_NODE_ATTRIBUTE = 'data-lexical-mention'
 export const MENTION_NODE_MENTION_NAME_ATTRIBUTE = 'data-lexical-mention-name'
 export const MENTION_NODE_MENTIONABLE_ATTRIBUTE = 'data-lexical-mentionable'
 
+const MAX_MENTION_NAME_LENGTH = 32
+const MENTION_ELLIPSIS = '…'
+
+function getDisplayMentionName(mentionName: string): string {
+  const characters = Array.from(mentionName)
+  if (characters.length <= MAX_MENTION_NAME_LENGTH) {
+    return mentionName
+  }
+  if (MAX_MENTION_NAME_LENGTH <= 1) {
+    return MENTION_ELLIPSIS
+  }
+  return `${characters.slice(0, MAX_MENTION_NAME_LENGTH - 1).join('')}${MENTION_ELLIPSIS}`
+}
+
 export type SerializedMentionNode = Spread<
   {
     mentionName: string
@@ -76,7 +90,7 @@ export class MentionNode extends TextNode {
       serializedNode.mentionName,
       serializedNode.mentionable,
     )
-    node.setTextContent(serializedNode.text)
+    node.setTextContent(`@${getDisplayMentionName(serializedNode.mentionName)}`)
     node.setFormat(serializedNode.format)
     node.setDetail(serializedNode.detail)
     node.setMode(serializedNode.mode)
@@ -89,7 +103,7 @@ export class MentionNode extends TextNode {
     mentionable: SerializedMentionable,
     key?: NodeKey,
   ) {
-    super(`@${mentionName}`, key)
+    super(`@${getDisplayMentionName(mentionName)}`, key)
     this.__mentionName = mentionName
     this.__mentionable = mentionable
   }
@@ -107,6 +121,7 @@ export class MentionNode extends TextNode {
   createDOM(config: EditorConfig): HTMLElement {
     const dom = super.createDOM(config)
     dom.className = MENTION_NODE_TYPE
+    dom.setAttribute('contenteditable', 'false')
     return dom
   }
 
