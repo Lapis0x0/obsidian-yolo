@@ -4,6 +4,9 @@ import {
   $getSelection,
   $isRangeSelection,
   $nodesOfType,
+  $createTextNode,
+  $createParagraphNode,
+  $isParagraphNode,
   LexicalEditor,
   SerializedEditorState,
 } from 'lexical'
@@ -29,6 +32,7 @@ import {
 import {
   deserializeMentionable,
   getMentionableKey,
+  getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 import { readTFileContent } from '../../../utils/obsidian'
@@ -38,7 +42,11 @@ import { ChatMode, ChatModeSelect } from './ChatModeSelect'
 import LexicalContentEditable from './LexicalContentEditable'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
-import { MentionNode } from './plugins/mention/MentionNode'
+import {
+  $createMentionNode,
+  $isMentionNode,
+  MentionNode,
+} from './plugins/mention/MentionNode'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import {
   ReasoningLevel,
@@ -122,6 +130,30 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const editorRef = useRef<LexicalEditor | null>(null)
     const contentEditableRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const [isEditorReady, setIsEditorReady] = useState(false)
+
+    const effectiveMentionables = useMemo(
+      () => displayMentionables ?? mentionables,
+      [displayMentionables, mentionables],
+    )
+
+    useEffect(() => {
+      if (isEditorReady) return
+      let animationFrame = 0
+      const checkEditorReady = () => {
+        if (editorRef.current) {
+          setIsEditorReady(true)
+          return
+        }
+        animationFrame = requestAnimationFrame(checkEditorReady)
+      }
+      checkEditorReady()
+      return () => {
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame)
+        }
+      }
+    }, [isEditorReady])
 
     const [displayedMentionableKey, setDisplayedMentionableKey] = useState<
       string | null
@@ -183,7 +215,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           }
         } else if (mutation.mutation === 'created') {
           if (
-            mentionables.some(
+            effectiveMentionables.some(
               (m) =>
                 getMentionableKey(serializeMentionable(m)) === mentionableKey,
             ) ||
@@ -199,22 +231,110 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         }
       })
 
-      setMentionables(
-        mentionables
-          .filter(
+      if (destroyedMentionableKeys.length > 0 && onDeleteFromAll) {
+        destroyedMentionableKeys.forEach((mentionableKey) => {
+          const mentionable = effectiveMentionables.find(
             (m) =>
-              !destroyedMentionableKeys.includes(
-                getMentionableKey(serializeMentionable(m)),
-              ),
+              getMentionableKey(serializeMentionable(m)) === mentionableKey,
           )
-          .concat(
-            addedMentionables
-              .map((m) => deserializeMentionable(m, app))
-              .filter((v) => !!v),
-          ),
-      )
+          if (mentionable) {
+            onDeleteFromAll(mentionable)
+          }
+        })
+      }
+
+      if (!onDeleteFromAll || addedMentionables.length > 0) {
+        setMentionables(
+          mentionables
+            .filter(
+              (m) =>
+                !destroyedMentionableKeys.includes(
+                  getMentionableKey(serializeMentionable(m)),
+                ),
+            )
+            .concat(
+              addedMentionables
+                .map((m) => deserializeMentionable(m, app))
+                .filter((v) => !!v),
+            ),
+        )
+      }
       // 默认保持收起状态，不自动展开新添加的徽章
     }
+
+    useEffect(() => {
+      const editor = editorRef.current
+      if (!editor || !isEditorReady || effectiveMentionables.length === 0) return
+
+      const mentionablesToMirror = effectiveMentionables.filter((m) =>
+        ['file', 'folder', 'current-file', 'image', 'block'].includes(m.type),
+      )
+      if (mentionablesToMirror.length === 0) return
+
+      const shouldMoveCursor =
+        contentEditableRef.current === document.activeElement
+
+      editor.update(() => {
+        const existingKeys = new Set(
+          $nodesOfType(MentionNode).map((node) =>
+            getMentionableKey(node.getMentionable()),
+          ),
+        )
+        const root = $getRoot()
+        let paragraph = root.getFirstChild()
+        if (!paragraph || !$isParagraphNode(paragraph)) {
+          paragraph = $createParagraphNode()
+          root.append(paragraph)
+        }
+        const insertBefore = paragraph.getFirstChild()
+
+        let didInsert = false
+        mentionablesToMirror.forEach((mentionable) => {
+          const serialized = serializeMentionable(mentionable)
+          const mentionableKey = getMentionableKey(serialized)
+          if (existingKeys.has(mentionableKey)) return
+
+          const mentionNode = $createMentionNode(
+            getMentionableName(mentionable),
+            serialized,
+          )
+          const spacer = $createTextNode(' ')
+          if (insertBefore) {
+            insertBefore.insertBefore(spacer)
+            insertBefore.insertBefore(mentionNode)
+          } else {
+            paragraph.append(mentionNode)
+            paragraph.append(spacer)
+          }
+          didInsert = true
+        })
+
+        if (!shouldMoveCursor) return
+        const selection = $getSelection()
+        if (!selection || !$isRangeSelection(selection) || !selection.isCollapsed()) {
+          return
+        }
+        const anchorNode = selection.anchor.getNode()
+        const anchorTopLevel = anchorNode.getTopLevelElement()
+        if (anchorTopLevel && anchorTopLevel !== paragraph) return
+        if (selection.anchor.offset !== 0 || anchorNode.getPreviousSibling()) {
+          return
+        }
+        const hasUserText = paragraph
+          .getChildren()
+          .some(
+            (node) =>
+              !$isMentionNode(node) &&
+              node.getTextContent().trim().length > 0,
+          )
+        if (hasUserText) return
+        const hasMentionables = paragraph
+          .getChildren()
+          .some((node) => $isMentionNode(node))
+        if (!didInsert && !hasMentionables) return
+        paragraph.selectEnd()
+      })
+    }, [effectiveMentionables, isEditorReady])
 
     const handleCreateImageMentionables = useCallback(
       (mentionableImages: MentionableImage[]) => {

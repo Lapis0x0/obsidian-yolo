@@ -749,6 +749,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const mentionableKey = getMentionableKey(
         serializeMentionable(mentionable),
       )
+      if (mentionable.type === 'current-file') {
+        setCurrentFileSuppression('deleted')
+        conversationSuppressionRef.current.set(currentConversationId, 'deleted')
+      }
 
       // 从所有历史消息中删除
       setChatMessages((prevMessages) =>
@@ -778,7 +782,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ),
       }))
     },
-    [],
+    [currentConversationId],
   )
 
   useImperativeHandle(ref, () => ({
