@@ -213,11 +213,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               .filter((v) => !!v),
           ),
       )
-      if (addedMentionables.length > 0) {
-        setDisplayedMentionableKey(
-          getMentionableKey(addedMentionables[addedMentionables.length - 1]),
-        )
-      }
+      // 默认保持收起状态，不自动展开新添加的徽章
     }
 
     const handleCreateImageMentionables = useCallback(
@@ -232,13 +228,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         )
         if (newMentionableImages.length === 0) return
         setMentionables([...mentionables, ...newMentionableImages])
-        setDisplayedMentionableKey(
-          getMentionableKey(
-            serializeMentionable(
-              newMentionableImages[newMentionableImages.length - 1],
-            ),
-          ),
-        )
+        // 默认保持收起状态，不自动展开新添加的徽章
       },
       [mentionables, setMentionables],
     )
