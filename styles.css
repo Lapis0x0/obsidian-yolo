@@ -5904,6 +5904,25 @@ button.smtcmp-chat-input-model-select {
   margin-top: var(--size-4-3);
 }
 
+.smtcmp-smart-space-settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-3);
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.smtcmp-smart-space-settings-row .smtcmp-settings-desc {
+  margin: 0;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.smtcmp-smart-space-settings-row .setting-item-control,
+.smtcmp-smart-space-settings-row button {
+  margin-left: auto;
+}
+
 .smtcmp-quick-action-editor {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);

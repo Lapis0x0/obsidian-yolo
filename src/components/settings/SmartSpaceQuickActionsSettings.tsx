@@ -251,7 +251,13 @@ type GroupedActions = {
   actions: QuickAction[]
 }
 
-export function SmartSpaceQuickActionsSettings() {
+type SmartSpaceQuickActionsSettingsProps = {
+  variant?: 'settings' | 'composer'
+}
+
+export function SmartSpaceQuickActionsSettings({
+  variant = 'settings',
+}: SmartSpaceQuickActionsSettingsProps) {
   const plugin = usePlugin()
   const { settings } = useSettings()
   const { t } = useLanguage()
@@ -262,6 +268,25 @@ export function SmartSpaceQuickActionsSettings() {
     'settings.smartSpace.actionsCount',
     '已配置 {count} 个快捷选项',
   ).replace('{count}', String(quickActions.length))
+
+  const handleOpenModal = () => {
+    const modal = new SmartSpaceQuickActionsModal(plugin.app, plugin)
+    modal.open()
+  }
+
+  if (variant === 'composer') {
+    return (
+      <div className="smtcmp-smart-space-settings">
+        <div className="smtcmp-smart-space-settings-row">
+          <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
+          <ObsidianButton
+            text={t('settings.smartSpace.configureActions', '配置快捷选项')}
+            onClick={handleOpenModal}
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="smtcmp-smart-space-settings">
@@ -278,10 +303,7 @@ export function SmartSpaceQuickActionsSettings() {
         <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
         <ObsidianButton
           text={t('settings.smartSpace.configureActions', '配置快捷选项')}
-          onClick={() => {
-            const modal = new SmartSpaceQuickActionsModal(plugin.app, plugin)
-            modal.open()
-          }}
+          onClick={handleOpenModal}
         />
       </ObsidianSetting>
     </div>
