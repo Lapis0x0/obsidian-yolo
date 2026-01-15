@@ -275,6 +275,7 @@
   align-self: stretch;
   margin: 0 calc(var(--size-4-3) * -1);
   width: calc(100% + (var(--size-4-3) * 2));
+  min-width: 0;
 }
 
 .smtcmp-composer-tab {
@@ -290,6 +291,19 @@
   transition: all 0.2s ease;
   position: relative;
   box-shadow: none !important;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.smtcmp-composer-tab-label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .smtcmp-composer-tabs--glider {

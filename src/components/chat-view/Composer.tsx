@@ -446,7 +446,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
           role="tab"
           aria-selected={activeTab === 'smart-space'}
         >
-          {t('settings.continuation.customSubsectionTitle', 'Smart Space')}
+          <span className="smtcmp-composer-tab-label">
+            {t('settings.continuation.customSubsectionTitle', 'Smart Space')}
+          </span>
         </button>
         <button
           className={`smtcmp-composer-tab${
@@ -456,7 +458,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
           role="tab"
           aria-selected={activeTab === 'quick-ask'}
         >
-          {t('settings.continuation.quickAskSubsectionTitle', 'Quick Ask')}
+          <span className="smtcmp-composer-tab-label">
+            {t('settings.continuation.quickAskSubsectionTitle', 'Quick Ask')}
+          </span>
         </button>
         <button
           className={`smtcmp-composer-tab${
@@ -466,7 +470,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
           role="tab"
           aria-selected={activeTab === 'tab-completion'}
         >
-          {t('settings.continuation.tabSubsectionTitle', 'Tab completion')}
+          <span className="smtcmp-composer-tab-label">
+            {t('settings.continuation.tabSubsectionTitle', 'Tab completion')}
+          </span>
         </button>
       </div>
 
