@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  $createParagraphNode,
+  $createTextNode,
   $getRoot,
   $getSelection,
+  $isParagraphNode,
   $isRangeSelection,
   $nodesOfType,
-  $createTextNode,
-  $createParagraphNode,
-  $isParagraphNode,
   LexicalEditor,
+  type LexicalNode,
+  type ParagraphNode,
   SerializedEditorState,
 } from 'lexical'
 import {
@@ -264,7 +266,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     useEffect(() => {
       const editor = editorRef.current
-      if (!editor || !isEditorReady || effectiveMentionables.length === 0) return
+      if (!editor || !isEditorReady || effectiveMentionables.length === 0)
+        return
 
       const mentionablesToMirror = effectiveMentionables.filter((m) =>
         ['file', 'folder', 'current-file', 'image', 'block'].includes(m.type),
@@ -281,11 +284,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           ),
         )
         const root = $getRoot()
-        let paragraph = root.getFirstChild()
-        if (!paragraph || !$isParagraphNode(paragraph)) {
-          paragraph = $createParagraphNode()
-          root.append(paragraph)
+        let paragraphNode = root.getFirstChild()
+        if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
+          const created = $createParagraphNode()
+          root.append(created)
+          paragraphNode = created
         }
+        const paragraph = paragraphNode as ParagraphNode
         const insertBefore = paragraph.getFirstChild()
 
         let didInsert = false
@@ -311,7 +316,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
         if (!shouldMoveCursor) return
         const selection = $getSelection()
-        if (!selection || !$isRangeSelection(selection) || !selection.isCollapsed()) {
+        if (
+          !selection ||
+          !$isRangeSelection(selection) ||
+          !selection.isCollapsed()
+        ) {
           return
         }
         const anchorNode = selection.anchor.getNode()
@@ -322,15 +331,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         }
         const hasUserText = paragraph
           .getChildren()
-          .some(
-            (node) =>
-              !$isMentionNode(node) &&
-              node.getTextContent().trim().length > 0,
-          )
+          .some((node: LexicalNode) => {
+            if ($isMentionNode(node)) return false
+            return node.getTextContent().trim().length > 0
+          })
         if (hasUserText) return
         const hasMentionables = paragraph
           .getChildren()
-          .some((node) => $isMentionNode(node))
+          .some((node: LexicalNode) => $isMentionNode(node))
         if (!didInsert && !hasMentionables) return
         paragraph.selectEnd()
       })
