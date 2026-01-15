@@ -154,16 +154,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return newMessage
   })
-  const [addedBlockKey, setAddedBlockKey] = useState<string | null>(
-    props.selectedBlock
-      ? getMentionableKey(
-          serializeMentionable({
-            type: 'block',
-            ...props.selectedBlock,
-          }),
-        )
-      : null,
-  )
+  const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
   const [currentConversationId, setCurrentConversationId] =
@@ -384,10 +375,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ...newInputMessage.mentionables,
         mentionableBlock,
       ]
-      setAddedBlockKey(
-        getMentionableKey(serializeMentionable(mentionableBlock)),
-      )
     }
+    setAddedBlockKey(null)
     setInputMessage(newInputMessage)
     setFocusedMessageId(newInputMessage.id)
     setQueryProgress({
@@ -801,7 +790,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ...selectedBlock,
       }
 
-      setAddedBlockKey(getMentionableKey(serializeMentionable(mentionable)))
+      setAddedBlockKey(null)
 
       if (focusedMessageId === inputMessage.id) {
         setInputMessage((prevInputMessage) => {
@@ -855,7 +844,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         file: file,
       }
 
-      setAddedBlockKey(getMentionableKey(serializeMentionable(mentionable)))
+      setAddedBlockKey(null)
 
       if (focusedMessageId === inputMessage.id) {
         setInputMessage((prevInputMessage) => {
@@ -909,7 +898,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         folder: folder,
       }
 
-      setAddedBlockKey(getMentionableKey(serializeMentionable(mentionable)))
+      setAddedBlockKey(null)
 
       if (focusedMessageId === inputMessage.id) {
         setInputMessage((prevInputMessage) => {
