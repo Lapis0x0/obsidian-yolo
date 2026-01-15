@@ -400,10 +400,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     }
 
     return (
-      <div className="smtcmp-chat-user-input-container" ref={containerRef}>
-        <div className="smtcmp-chat-user-input-files">
+      <div className="smtcmp-chat-user-input-wrapper">
+        <div className="smtcmp-chat-user-input-tools-row">
           <ToolBadge />
-          {(displayMentionables ?? mentionables).map((m) => {
+        </div>
+        <div className="smtcmp-chat-user-input-container" ref={containerRef}>
+          <div className="smtcmp-chat-user-input-files">
+            {(displayMentionables ?? mentionables).map((m) => {
             const mentionableKey = getMentionableKey(serializeMentionable(m))
             const isExpanded = mentionableKey === displayedMentionableKey
             const handleToggleExpand = () => {
@@ -425,67 +428,68 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               />
             )
           })}
-        </div>
+          </div>
 
-        <MentionableContentPreview
-          displayedMentionableKey={displayedMentionableKey}
-          mentionables={displayMentionables ?? mentionables}
-        />
+          <MentionableContentPreview
+            displayedMentionableKey={displayedMentionableKey}
+            mentionables={displayMentionables ?? mentionables}
+          />
 
-        <LexicalContentEditable
-          initialEditorState={(editor) => {
-            if (initialSerializedEditorState) {
-              editor.setEditorState(
-                editor.parseEditorState(initialSerializedEditorState),
-              )
-            }
-          }}
-          editorRef={editorRef}
-          contentEditableRef={contentEditableRef}
-          onChange={onChange}
-          onEnter={() => handleSubmit()}
-          onFocus={onFocus}
-          onMentionNodeMutation={handleMentionNodeMutation}
-          onCreateImageMentionables={handleCreateImageMentionables}
-          autoFocus={autoFocus}
-          plugins={{
-            onEnter: {
-              onVaultChat: () => {
-                handleSubmit()
+          <LexicalContentEditable
+            initialEditorState={(editor) => {
+              if (initialSerializedEditorState) {
+                editor.setEditorState(
+                  editor.parseEditorState(initialSerializedEditorState),
+                )
+              }
+            }}
+            editorRef={editorRef}
+            contentEditableRef={contentEditableRef}
+            onChange={onChange}
+            onEnter={() => handleSubmit()}
+            onFocus={onFocus}
+            onMentionNodeMutation={handleMentionNodeMutation}
+            onCreateImageMentionables={handleCreateImageMentionables}
+            autoFocus={autoFocus}
+            plugins={{
+              onEnter: {
+                onVaultChat: () => {
+                  handleSubmit()
+                },
               },
-            },
-          }}
-        />
+            }}
+          />
 
-        <div className="smtcmp-chat-user-input-controls">
-          <div className="smtcmp-chat-user-input-controls__left">
-            <ChatModeSelect
-              mode={chatMode}
-              onChange={(mode) => onModeChange?.(mode)}
-              side="top"
-              sideOffset={8}
-              contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
-            />
-            <ModelSelect
-              modelId={modelId}
-              onChange={onModelChange}
-              align="start"
-              sideOffset={8}
-              contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
-            />
-            {supportsReasoning(currentModel) && (
-              <ReasoningSelect
-                model={currentModel}
-                value={reasoningLevel}
-                onChange={(level) => onReasoningChange?.(level)}
+          <div className="smtcmp-chat-user-input-controls">
+            <div className="smtcmp-chat-user-input-controls__left">
+              <ChatModeSelect
+                mode={chatMode}
+                onChange={(mode) => onModeChange?.(mode)}
                 side="top"
                 sideOffset={8}
                 contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
               />
-            )}
-          </div>
-          <div className="smtcmp-chat-user-input-controls__right">
-            <SubmitButton onClick={() => handleSubmit()} />
+              <ModelSelect
+                modelId={modelId}
+                onChange={onModelChange}
+                align="start"
+                sideOffset={8}
+                contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+              />
+              {supportsReasoning(currentModel) && (
+                <ReasoningSelect
+                  model={currentModel}
+                  value={reasoningLevel}
+                  onChange={(level) => onReasoningChange?.(level)}
+                  side="top"
+                  sideOffset={8}
+                  contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+                />
+              )}
+            </div>
+            <div className="smtcmp-chat-user-input-controls__right">
+              <SubmitButton onClick={() => handleSubmit()} />
+            </div>
           </div>
         </div>
       </div>

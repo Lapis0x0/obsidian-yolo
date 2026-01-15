@@ -34,8 +34,8 @@
 }
 
 .smtcmp-chat-input-settings-outer:focus-within {
-  background-color: var(--background-modifier-hover);
-  box-shadow: var(--shadow-s);
+  background-color: transparent;
+  box-shadow: none;
 }
 
 .smtcmp-chat-header-right {
@@ -930,7 +930,7 @@
   border-radius: var(--radius-s);
   outline: none;
   --smtcmp-mention-max-width: 240px;
-  --smtcmp-mention-badge-max-width: 220px;
+  --smtcmp-mention-badge-max-width: 180px;
 
   &:focus-within,
   &:focus,
@@ -939,6 +939,18 @@
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
     transition: box-shadow 0.15s ease-in-out;
   }
+}
+
+.smtcmp-chat-user-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.smtcmp-chat-user-input-tools-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
 }
 
 .smtcmp-chat-user-input-files {
