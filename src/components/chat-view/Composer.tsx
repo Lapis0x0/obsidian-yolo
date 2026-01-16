@@ -362,7 +362,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
         if (reindexAll) {
           try {
             const dbManager = await plugin.getDbManager()
-            const resourceCheck = await dbManager.checkPGliteResources()
+            const resourceCheck = dbManager.checkPGliteResources()
             if (!resourceCheck.available) {
               new Notice(
                 t(

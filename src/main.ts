@@ -682,7 +682,7 @@ export default class SmartComposerPlugin extends Plugin {
         // 预检查 PGlite 资源
         try {
           const dbManager = await this.getDbManager()
-          const resourceCheck = await dbManager.checkPGliteResources()
+          const resourceCheck = dbManager.checkPGliteResources()
 
           if (!resourceCheck.available) {
             new Notice(

@@ -233,11 +233,11 @@ export class DatabaseManager {
    * 检查 PGlite 资源是否可用（不依赖 CDN）
    * @returns { available: boolean, needsDownload: boolean, fromCDN: boolean }
    */
-  async checkPGliteResources(): Promise<{
+  checkPGliteResources(): {
     available: boolean
     needsDownload: boolean
     fromCDN: boolean
-  }> {
+  } {
     try {
       // 资源已经内联到 main.js，不依赖运行时下载
       return { available: true, needsDownload: false, fromCDN: false }

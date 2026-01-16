@@ -1,11 +1,8 @@
 export const migrateFrom21To22 = (
   data: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const {
-    language: _legacyLanguage,
-    languagePreference: _languagePreference,
-    ...rest
-  } = data
-
+  const rest = { ...data }
+  delete rest['language']
+  delete rest['languagePreference']
   return rest
 }

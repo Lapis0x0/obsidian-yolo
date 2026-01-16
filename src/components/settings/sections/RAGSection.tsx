@@ -533,8 +533,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     // 预检查 PGlite 资源
                     try {
                       const dbManager = await plugin.getDbManager()
-                      const resourceCheck =
-                        await dbManager.checkPGliteResources()
+                      const resourceCheck = dbManager.checkPGliteResources()
 
                       if (!resourceCheck.available) {
                         new Notice(

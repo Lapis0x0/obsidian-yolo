@@ -407,27 +407,27 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         <div className="smtcmp-chat-user-input-container" ref={containerRef}>
           <div className="smtcmp-chat-user-input-files">
             {(displayMentionables ?? mentionables).map((m) => {
-            const mentionableKey = getMentionableKey(serializeMentionable(m))
-            const isExpanded = mentionableKey === displayedMentionableKey
-            const handleToggleExpand = () => {
-              if (isExpanded) {
-                setDisplayedMentionableKey(null)
-              } else {
-                setDisplayedMentionableKey(mentionableKey)
+              const mentionableKey = getMentionableKey(serializeMentionable(m))
+              const isExpanded = mentionableKey === displayedMentionableKey
+              const handleToggleExpand = () => {
+                if (isExpanded) {
+                  setDisplayedMentionableKey(null)
+                } else {
+                  setDisplayedMentionableKey(mentionableKey)
+                }
               }
-            }
-            return (
-              <MentionableBadge
-                key={mentionableKey}
-                mentionable={m}
-                onDelete={() => handleMentionableDelete(m)}
-                onClick={handleToggleExpand}
-                isFocused={isExpanded}
-                isExpanded={isExpanded}
-                onToggleExpand={handleToggleExpand}
-              />
-            )
-          })}
+              return (
+                <MentionableBadge
+                  key={mentionableKey}
+                  mentionable={m}
+                  onDelete={() => handleMentionableDelete(m)}
+                  onClick={handleToggleExpand}
+                  isFocused={isExpanded}
+                  isExpanded={isExpanded}
+                  onToggleExpand={handleToggleExpand}
+                />
+              )
+            })}
           </div>
 
           <MentionableContentPreview
