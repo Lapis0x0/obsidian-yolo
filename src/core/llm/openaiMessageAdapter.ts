@@ -104,6 +104,59 @@ export class OpenAIMessageAdapter {
   }):
     | ChatCompletionCreateParamsStreaming
     | ChatCompletionCreateParamsNonStreaming {
+    const parsedMessages = request.messages.map((m) =>
+      this.parseRequestMessage(m),
+    )
+
+    // Ensure assistant.tool_calls only reference tool messages that actually exist.
+    try {
+      const toolIds = new Set(
+        parsedMessages
+          .filter((m) => m.role === 'tool')
+          .map((m: any) => m.tool_call_id),
+      )
+
+      for (const pm of parsedMessages) {
+        if (pm.role === 'assistant' && Array.isArray((pm as any).tool_calls)) {
+          const filtered = (pm as any).tool_calls.filter((tc: any) =>
+            toolIds.has(tc.id),
+          )
+          if (filtered.length > 0) {
+            ;(pm as any).tool_calls = filtered
+          } else {
+            delete (pm as any).tool_calls
+          }
+        }
+      }
+
+      const toolMessages = parsedMessages.filter(
+        (m) => m.role === 'tool',
+      ) as any[]
+      const preview = parsedMessages.map((m, i) => {
+        if (m.role === 'tool') {
+          return {
+            index: i,
+            role: m.role,
+            tool_call_id: (m as any).tool_call_id,
+            contentLength:
+              typeof m.content === 'string' ? m.content.length : 'N/A',
+            contentPreview:
+              typeof m.content === 'string'
+                ? m.content.substring(0, 200)
+                : null,
+          }
+        }
+        return { index: i, role: m.role }
+      })
+      console.debug('[DEBUG] Outgoing parsedMessages preview:', {
+        totalMessagesCount: parsedMessages.length,
+        toolMessagesCount: toolMessages.length,
+        preview,
+      })
+    } catch (e) {
+      console.debug('[DEBUG] Failed to stringify parsedMessages for preview', e)
+    }
+
     if (stream) {
       const params: ChatCompletionCreateParamsStreaming &
         Record<string, unknown> = {
@@ -112,7 +165,7 @@ export class OpenAIMessageAdapter {
         tool_choice: request.tool_choice,
         reasoning_effort: request.reasoning_effort,
         web_search_options: request.web_search_options,
-        messages: request.messages.map((m) => this.parseRequestMessage(m)),
+        messages: parsedMessages,
         max_tokens: request.max_tokens,
         temperature: request.temperature,
         top_p: request.top_p,
@@ -135,7 +188,7 @@ export class OpenAIMessageAdapter {
       tool_choice: request.tool_choice,
       reasoning_effort: request.reasoning_effort,
       web_search_options: request.web_search_options,
-      messages: request.messages.map((m) => this.parseRequestMessage(m)),
+      messages: parsedMessages,
       max_tokens: request.max_tokens,
       temperature: request.temperature,
       top_p: request.top_p,
@@ -237,11 +290,17 @@ export class OpenAIMessageAdapter {
         return { role: 'system', content: message.content }
       }
       case 'tool': {
-        return {
-          role: 'tool',
+        const result = {
+          role: 'tool' as const,
           content: message.content,
           tool_call_id: message.tool_call.id,
         }
+        console.debug('[DEBUG] parseRequestMessage for tool:', {
+          tool_call_id: message.tool_call.id,
+          contentLength: message.content.length,
+          contentPreview: message.content.substring(0, 200),
+        })
+        return result
       }
     }
   }

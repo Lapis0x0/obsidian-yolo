@@ -168,9 +168,30 @@ export class PromptGenerator {
           return this.parseAssistantMessage({ message })
         } else {
           // message.role === 'tool'
-          return this.parseToolMessage({ message })
+          const toolMessages = this.parseToolMessage({ message })
+          console.debug(
+            '[DEBUG] After parseToolMessage - generated tool messages:',
+            {
+              inputChatToolMessageId: message.id,
+              inputToolCallsCount: message.toolCalls.length,
+              outputToolMessagesCount: toolMessages.length,
+              toolCallIds: (
+                toolMessages.filter(
+                  (tm) => (tm as any).role === 'tool',
+                ) as any[]
+              ).map((tm) => tm.tool_call.id),
+            },
+          )
+          return toolMessages
         }
       })
+
+    console.debug('[DEBUG] Total requestMessages after flatMap:', {
+      totalCount: requestMessages.length,
+      toolMessagesCount: requestMessages.filter((m) => m.role === 'tool')
+        .length,
+      messageRoles: requestMessages.map((m) => m.role),
+    })
 
     // TODO: Also verify that tool messages appear right after their corresponding assistant tool calls
     const filteredRequestMessages: RequestMessage[] = requestMessages
@@ -212,6 +233,16 @@ export class PromptGenerator {
       })
       .filter((m) => m !== null)
 
+    console.debug('[DEBUG] After filtering requestMessages:', {
+      totalCount: filteredRequestMessages.length,
+      toolMessagesCount: filteredRequestMessages.filter(
+        (m) => m.role === 'tool',
+      ).length,
+      toolCallIds: filteredRequestMessages
+        .filter((m) => m.role === 'tool')
+        .map((m) => (m.role === 'tool' ? m.tool_call.id : null)),
+    })
+
     return filteredRequestMessages
   }
 
@@ -250,31 +281,38 @@ ${message.annotations
   }: {
     message: ChatToolMessage
   }): RequestMessage[] {
-    return message.toolCalls.map((toolCall) => {
+    const result = message.toolCalls.map((toolCall) => {
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
         case ToolCallResponseStatus.Running:
         case ToolCallResponseStatus.Rejected:
         case ToolCallResponseStatus.Aborted:
           return {
-            role: 'tool',
+            role: 'tool' as const,
             tool_call: toolCall.request,
             content: `Tool call ${toolCall.request.id} is ${toolCall.response.status}`,
           }
         case ToolCallResponseStatus.Success:
           return {
-            role: 'tool',
+            role: 'tool' as const,
             tool_call: toolCall.request,
             content: toolCall.response.data.text,
           }
         case ToolCallResponseStatus.Error:
           return {
-            role: 'tool',
+            role: 'tool' as const,
             tool_call: toolCall.request,
             content: `Error: ${toolCall.response.error}`,
           }
       }
     })
+    console.debug('[DEBUG] parseToolMessage:', {
+      inputToolCallsCount: message.toolCalls.length,
+      outputRequestMessagesCount: result.length,
+      toolCallIds: message.toolCalls.map((tc) => tc.request.id),
+      resultToolCallIds: result.map((r) => r.tool_call.id),
+    })
+    return result
   }
 
   public async compileUserMessagePrompt({
