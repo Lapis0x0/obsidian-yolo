@@ -11,21 +11,10 @@ import { Language, createTranslationFunction } from '../i18n'
 
 const resolveObsidianLanguage = (): Language => {
   const rawLanguage = String(getLanguage() ?? '')
-  const domLanguage =
-    typeof document !== 'undefined'
-      ? document.documentElement.lang || navigator.language || ''
-      : ''
-  const storedLanguage =
-    typeof window !== 'undefined'
-      ? window.localStorage.getItem('language') || ''
-      : ''
-  const candidates = [rawLanguage, domLanguage, storedLanguage]
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean)
-  const normalized =
-    candidates.find((value) => value !== 'en') ?? candidates[0] ?? 'en'
-  if (normalized.startsWith('zh')) return 'zh'
-  if (normalized.startsWith('it')) return 'it'
+    .trim()
+    .toLowerCase()
+  if (rawLanguage.startsWith('zh')) return 'zh'
+  if (rawLanguage.startsWith('it')) return 'it'
   return 'en'
 }
 

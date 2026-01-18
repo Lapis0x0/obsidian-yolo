@@ -341,22 +341,11 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private resolveObsidianLanguage(): Language {
-    const rawLanguage = getLanguage()
-    const domLanguage =
-      typeof document !== 'undefined'
-        ? document.documentElement.lang || navigator.language || ''
-        : ''
-    const storedLanguage =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem('language') || ''
-        : ''
-    const candidates = [rawLanguage, domLanguage, storedLanguage]
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean)
-    const normalized =
-      candidates.find((value) => value !== 'en') ?? candidates[0] ?? 'en'
-    if (normalized.startsWith('zh')) return 'zh'
-    if (normalized.startsWith('it')) return 'it'
+    const rawLanguage = String(getLanguage() ?? '')
+      .trim()
+      .toLowerCase()
+    if (rawLanguage.startsWith('zh')) return 'zh'
+    if (rawLanguage.startsWith('it')) return 'it'
     return 'en'
   }
 
@@ -520,7 +509,7 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private clearInlineSuggestion() {
-    this.getInlineSuggestionController().clearInlineSuggestion()
+    this.inlineSuggestionController?.clearInlineSuggestion()
   }
 
   private handleTabCompletionEditorChange(editor: Editor) {
@@ -808,6 +797,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.selectionChatController?.destroy()
     this.selectionChatController = null
     this.chatViewNavigator = null
+    this.inlineSuggestionController?.clearInlineSuggestion()
+    this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null
     this.writeAssistController = null
 

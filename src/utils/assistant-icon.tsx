@@ -144,16 +144,7 @@ export const renderAssistantIcon = (
 
   if (iconConfig.type === 'emoji') {
     return (
-      <span
-        className={combinedClassName}
-        style={{
-          fontSize: `${size}px`,
-          lineHeight: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <span className={combinedClassName} data-size={String(size)}>
         {iconConfig.value}
       </span>
     )

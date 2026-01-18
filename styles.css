@@ -7004,7 +7004,27 @@ button.smtcmp-chat-input-model-select {
 
 /* Emoji 图标字体大小调整 */
 .smtcmp-icon-emoji {
-  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 16px;
+}
+
+.smtcmp-icon-emoji[data-size='14'] {
+  font-size: 14px;
+}
+
+.smtcmp-icon-emoji[data-size='20'] {
+  font-size: 20px;
+}
+
+.smtcmp-icon-emoji[data-size='16'] {
+  font-size: 16px;
+}
+
+.smtcmp-icon-emoji[data-size='24'] {
+  font-size: 24px;
 }
 
 /* ==================== Quick Ask Panel - Cmd+K Style ==================== */

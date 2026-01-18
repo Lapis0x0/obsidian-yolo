@@ -1,4 +1,4 @@
-import { Prec, StateEffect } from '@codemirror/state'
+import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { Editor } from 'obsidian'
 
@@ -38,7 +38,28 @@ export class InlineSuggestionController {
   private readonly getEditorView: (editor: Editor) => EditorView | null
   private readonly getTabCompletionController: () => TabCompletionController
 
-  private readonly inlineSuggestionExtensionViews = new WeakSet<EditorView>()
+  private readonly inlineSuggestionExtensionViews = new Set<EditorView>()
+  private readonly inlineSuggestionCompartment = new Compartment()
+  private readonly inlineSuggestionExtension = [
+    inlineSuggestionGhostField,
+    thinkingIndicatorField,
+    Prec.high(
+      keymap.of([
+        {
+          key: 'Tab',
+          run: (v) => this.tryAcceptInlineSuggestionFromView(v),
+        },
+        {
+          key: 'Shift-Tab',
+          run: (v) => this.tryRejectInlineSuggestionFromView(v),
+        },
+        {
+          key: 'Escape',
+          run: (v) => this.tryRejectInlineSuggestionFromView(v),
+        },
+      ]),
+    ),
+  ]
 
   private activeInlineSuggestion: ActiveInlineSuggestion | null = null
   private continuationInlineSuggestion: ContinuationInlineSuggestion | null =
@@ -53,27 +74,27 @@ export class InlineSuggestionController {
     if (this.inlineSuggestionExtensionViews.has(view)) return
     view.dispatch({
       effects: StateEffect.appendConfig.of([
-        inlineSuggestionGhostField,
-        thinkingIndicatorField,
-        Prec.high(
-          keymap.of([
-            {
-              key: 'Tab',
-              run: (v) => this.tryAcceptInlineSuggestionFromView(v),
-            },
-            {
-              key: 'Shift-Tab',
-              run: (v) => this.tryRejectInlineSuggestionFromView(v),
-            },
-            {
-              key: 'Escape',
-              run: (v) => this.tryRejectInlineSuggestionFromView(v),
-            },
-          ]),
-        ),
+        this.inlineSuggestionCompartment.of(this.inlineSuggestionExtension),
       ]),
     })
     this.inlineSuggestionExtensionViews.add(view)
+  }
+
+  removeInlineSuggestionExtension(view: EditorView) {
+    if (!this.inlineSuggestionExtensionViews.has(view)) return
+    view.dispatch({
+      effects: this.inlineSuggestionCompartment.reconfigure([]),
+    })
+    this.inlineSuggestionExtensionViews.delete(view)
+  }
+
+  destroy() {
+    for (const view of this.inlineSuggestionExtensionViews) {
+      this.removeInlineSuggestionExtension(view)
+    }
+    this.inlineSuggestionExtensionViews.clear()
+    this.activeInlineSuggestion = null
+    this.continuationInlineSuggestion = null
   }
 
   setInlineSuggestionGhost(
