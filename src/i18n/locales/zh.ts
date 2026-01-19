@@ -437,7 +437,8 @@ export const zh: TranslationKeys = {
       tabCompletionTriggersSectionTitle: '触发器设置',
       tabCompletionTriggersSectionDesc: '配置补全触发条件与规则。',
       tabCompletionAutoSectionTitle: '自动补全设置',
-      tabCompletionAutoSectionDesc: '配置停顿自动补全与高级参数。',
+      tabCompletionAutoSectionDesc: '配置停顿后的自动补全行为。',
+      tabCompletionAdvancedSectionDesc: '配置 Tab 补全的高级参数。',
       tabCompletion: '启用 Tab 补全',
       tabCompletionDesc:
         '当触发规则命中时自动请求补全，并以灰色幽灵文本形式给出建议，按下 Tab 接受。',

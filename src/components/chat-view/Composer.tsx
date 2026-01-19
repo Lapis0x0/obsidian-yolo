@@ -1732,7 +1732,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                   <div className="smtcmp-composer-heading-desc">
                     {t(
                       'settings.continuation.tabCompletionAutoSectionDesc',
-                      '配置停顿自动补全与高级参数。',
+                      '配置停顿后的自动补全行为。',
                     )}
                   </div>
                 </header>
@@ -1859,6 +1859,25 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     </div>
                   </>
                 )}
+              </section>
+            )}
+
+            {enableTabCompletion && (
+              <section className="smtcmp-composer-section smtcmp-composer-section--advanced">
+                <header className="smtcmp-composer-heading">
+                  <div className="smtcmp-composer-heading-title">
+                    {t(
+                      'settings.continuation.tabCompletionAdvanced',
+                      '高级设置',
+                    )}
+                  </div>
+                  <div className="smtcmp-composer-heading-desc">
+                    {t(
+                      'settings.continuation.tabCompletionAdvancedSectionDesc',
+                      '配置 Tab 补全的高级参数。',
+                    )}
+                  </div>
+                </header>
 
                 <div
                   className={`smtcmp-settings-advanced-toggle smtcmp-clickable${

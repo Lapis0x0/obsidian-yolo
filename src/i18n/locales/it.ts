@@ -474,8 +474,9 @@ export const it: TranslationKeys = {
       tabCompletionTriggersSectionDesc:
         'Configura quando deve attivarsi il completamento.',
       tabCompletionAutoSectionTitle: 'Impostazioni completamento automatico',
-      tabCompletionAutoSectionDesc:
-        'Regola il completamento dopo pausa e le opzioni avanzate.',
+      tabCompletionAutoSectionDesc: 'Regola il completamento dopo pausa.',
+      tabCompletionAdvancedSectionDesc:
+        'Configura le opzioni avanzate del completamento tab.',
       tabCompletion: 'Completamento tab',
       tabCompletionDesc:
         'Genera suggerimenti quando una regola trigger corrisponde.',

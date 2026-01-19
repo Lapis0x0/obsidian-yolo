@@ -477,8 +477,9 @@ export const en: TranslationKeys = {
       tabCompletionTriggersSectionDesc:
         'Configure when completion should fire.',
       tabCompletionAutoSectionTitle: 'Auto completion settings',
-      tabCompletionAutoSectionDesc:
-        'Tune idle auto completion and advanced options.',
+      tabCompletionAutoSectionDesc: 'Tune idle auto completion behavior.',
+      tabCompletionAdvancedSectionDesc:
+        'Configure advanced tab completion options.',
       tabCompletion: 'Enable tab completion',
       tabCompletionDesc:
         'Request a completion when a trigger rule matches, then show it as gray ghost text that can be accepted with the tab key.',

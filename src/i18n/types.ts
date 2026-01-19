@@ -375,6 +375,7 @@ export type TranslationKeys = {
       tabCompletionTriggersSectionDesc: string
       tabCompletionAutoSectionTitle: string
       tabCompletionAutoSectionDesc: string
+      tabCompletionAdvancedSectionDesc: string
       tabCompletion: string
       tabCompletionDesc: string
       tabCompletionModel: string

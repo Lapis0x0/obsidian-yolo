@@ -770,15 +770,11 @@
   opacity: 0.9;
 }
 
-.smtcmp-composer-section--advanced .smtcmp-composer-heading-title {
-  font-size: var(--font-ui-small);
-  opacity: 0.8;
-}
-
+/* 让高级设置标题样式与默认卡片标题完全一致 */
 .smtcmp-composer-section--advanced .smtcmp-composer-heading-title::before {
-  background: var(--text-muted);
-  width: 3px;
-  height: 16px;
+  background: var(--h1-color, var(--text-accent));
+  width: 4px;
+  height: 18px;
 }
 
 /* 改进开关控件样式 */
