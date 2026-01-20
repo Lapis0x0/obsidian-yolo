@@ -40,6 +40,9 @@ function concatenateMessageContent(
  */
 export function formatMessages(messages: RequestMessage[]): RequestMessage[] {
   const formattedMessages: RequestMessage[] = []
+  const hasToolCalls = (message: RequestMessage): boolean =>
+    message.role === 'assistant' &&
+    Array.isArray((message as { tool_calls?: unknown }).tool_calls)
 
   const systemMessages = messages.filter((msg) => msg.role === 'system')
   const nonSystemMessages = messages.filter((msg) => msg.role !== 'system')
@@ -59,11 +62,19 @@ export function formatMessages(messages: RequestMessage[]): RequestMessage[] {
     }
   }
 
-  // Merge consecutive messages of the same role
+  // Merge consecutive messages of the same role (excluding tool messages)
   for (const currentMessage of nonSystemMessages) {
     const prevMessage = formattedMessages[formattedMessages.length - 1]
 
-    if (prevMessage && prevMessage.role === currentMessage.role) {
+    const canMerge =
+      prevMessage &&
+      prevMessage.role === currentMessage.role &&
+      currentMessage.role !== 'tool' &&
+      prevMessage.role !== 'tool' &&
+      !hasToolCalls(prevMessage) &&
+      !hasToolCalls(currentMessage)
+
+    if (canMerge) {
       prevMessage.content = concatenateMessageContent(
         prevMessage.content,
         currentMessage.content,
