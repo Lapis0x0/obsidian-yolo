@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/🎉_Ora_Disponibile_su_Obsidian_Community_Plugins-6c5ce7?style=for-the-badge" alt="Now Available on Obsidian">
+  <img src="https://img.shields.io/badge/🎉_Ora_Disponibile_su_Obsidian_Community_Plugins-6c5ce7?style=for-the-badge" alt="Now Available on Obsidian" height="35">
 </p>
 
 > [!NOTE]
