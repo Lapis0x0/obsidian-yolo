@@ -12,17 +12,14 @@
   <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">Discussioni</a>
 </p>
 
-<div align="center">
-
-> [!TIP]
-> 🎉 **YOLO è ora ufficialmente disponibile nello Store dei Plugin della Community di Obsidian!**
->
-> Ora puoi cercare e installare YOLO direttamente dai plugin della community di Obsidian senza download manuale!
+<p align="center">
+  <a href="obsidian://show-plugin?id=yolo">
+    <img src="https://img.shields.io/badge/🎉_Ora_Disponibile_su_Obsidian-Installa_YOLO-6c5ce7?style=for-the-badge" alt="Install YOLO">
+  </a>
+</p>
 
 > [!NOTE]
 > **Forse l'assistente AI per Obsidian più flessibile, facile da usare e intelligente?**
-
-</div>
 
 **YOLO (You Orchestrate, LLM Operates)** è un assistente intelligente per Obsidian, progettato per l'era degli Agent.
 

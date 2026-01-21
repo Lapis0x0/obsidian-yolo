@@ -12,17 +12,14 @@
   <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">参与讨论</a>
 </p>
 
-<div align="center">
-
-> [!TIP]
-> 🎉 **YOLO 现已正式上架 Obsidian 社区插件商店！**
->
-> 你现在可以直接在 Obsidian 的社区插件中搜索并安装 YOLO，无需手动下载！
+<p align="center">
+  <a href="obsidian://show-plugin?id=yolo">
+    <img src="https://img.shields.io/badge/🎉_现已上架_Obsidian_社区插件商店-安装_YOLO-6c5ce7?style=for-the-badge" alt="Install YOLO">
+  </a>
+</p>
 
 > [!NOTE]
-> **可能是目前最灵活、易用、智能的 Obsidian AI 助手？**
-
-</div>  
+> **可能是目前最灵活、易用、智能的 Obsidian AI 助手？**  
 
 **YOLO（You Orchestrate, LLM Operates）** 是一款为 Obsidian 打造的面向 Agent 时代的智能助手。
 
