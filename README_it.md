@@ -12,6 +12,11 @@
   <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">Discussioni</a>
 </p>
 
+> [!TIP]
+> 🎉 **YOLO è ora ufficialmente disponibile nello Store dei Plugin della Community di Obsidian!**
+>
+> Ora puoi cercare e installare YOLO direttamente dai plugin della community di Obsidian senza download manuale!
+
 > [!NOTE]
 > **Forse l'assistente AI per Obsidian più flessibile, facile da usare e intelligente?**
 
@@ -88,10 +93,20 @@ Supporta più provider (OpenAI, Claude, Gemini, DeepSeek, ecc.) con cambio lingu
 > [!WARNING]
 > YOLO non può coesistere con [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer). Si prega di disabilitare o disinstallare Smart Composer prima di usare YOLO.
 
-> [!NOTE]
-> YOLO non è ancora disponibile nello Store dei Plugin della Community di Obsidian. Si prega di installarlo manualmente seguendo i passaggi seguenti.
+### Installazione dallo Store dei Plugin della Community (Consigliato)
+
+1. Apri Impostazioni di Obsidian → Plugin della community
+2. Clicca "Sfoglia" e cerca "YOLO"
+3. Clicca "Installa" e poi "Abilita"
+4. Configura la tua chiave API nelle impostazioni del plugin
+   - OpenAI : [Chiavi API ChatGPT](https://platform.openai.com/api-keys)
+   - Anthropic : [Chiavi API Claude](https://console.anthropic.com/settings/keys)
+   - Gemini : [Chiavi API Gemini](https://aistudio.google.com/apikey)
+   - Groq : [Chiavi API Groq](https://console.groq.com/keys)
 
 ### Installazione Manuale
+
+In alternativa, puoi installare YOLO manualmente:
 
 1. Vai alla pagina [Releases](https://github.com/Lapis0x0/obsidian-yolo/releases)
 2. Scarica `main.js`, `manifest.json` e `styles.css` dall'ultima release
@@ -100,10 +115,6 @@ Supporta più provider (OpenAI, Claude, Gemini, DeepSeek, ecc.) con cambio lingu
 5. Apri Impostazioni di Obsidian → Plugin della community
 6. Abilita "YOLO" nella lista dei plugin
 7. Configura la tua chiave API nelle impostazioni del plugin
-   - OpenAI : [Chiavi API ChatGPT](https://platform.openai.com/api-keys)
-   - Anthropic : [Chiavi API Claude](https://console.anthropic.com/settings/keys)
-   - Gemini : [Chiavi API Gemini](https://aistudio.google.com/apikey)
-   - Groq : [Chiavi API Groq](https://console.groq.com/keys)
 
 Per informazioni più dettagliate, consulta la [documentazione](./DOC/DOC_en/01-basic-introduction.md)
 

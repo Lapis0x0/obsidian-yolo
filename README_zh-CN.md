@@ -12,6 +12,10 @@
   <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">参与讨论</a>
 </p>
 
+> [!TIP]
+> 🎉 **YOLO 现已正式上架 Obsidian 社区插件商店！**
+>
+> 你现在可以直接在 Obsidian 的社区插件中搜索并安装 YOLO，无需手动下载！
 
 > [!NOTE]
 > **可能是目前最灵活、易用、智能的 Obsidian AI 助手？**  
@@ -89,10 +93,20 @@ https://github.com/user-attachments/assets/d19b17c8-92ac-408d-8e98-4403d5341540
 > [!WARNING]
 > YOLO 无法与 [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer) 共存，请在使用 YOLO 前禁用或卸载 Smart Composer。
 
-> [!NOTE]
-> YOLO 目前尚未上架 Obsidian 社区插件商店，请按照以下步骤手动安装。
+### 从社区插件商店安装(推荐)
+
+1. 打开 Obsidian 设置 → 社区插件
+2. 点击"浏览"并搜索"YOLO"
+3. 点击"安装"然后点击"启用"
+4. 在插件设置中配置你的 API 密钥
+   - OpenAI : [ChatGPT API 密钥](https://platform.openai.com/api-keys)
+   - Anthropic : [Claude API 密钥](https://console.anthropic.com/settings/keys)
+   - Gemini : [Gemini API 密钥](https://aistudio.google.com/apikey)
+   - Groq : [Groq API 密钥](https://console.groq.com/keys)
 
 ### 手动安装
+
+你也可以手动安装 YOLO：
 
 1. 前往 [Releases](https://github.com/Lapis0x0/obsidian-yolo/releases) 页面
 2. 下载最新版本的 `main.js`、`manifest.json` 和 `styles.css`
@@ -101,10 +115,6 @@ https://github.com/user-attachments/assets/d19b17c8-92ac-408d-8e98-4403d5341540
 5. 打开 Obsidian 设置 → 社区插件
 6. 在插件列表中启用 "YOLO"
 7. 在插件设置中配置你的 API 密钥
-   - OpenAI : [ChatGPT API 密钥](https://platform.openai.com/api-keys)
-   - Anthropic : [Claude API 密钥](https://console.anthropic.com/settings/keys)
-   - Gemini : [Gemini API 密钥](https://aistudio.google.com/apikey)
-   - Groq : [Groq API 密钥](https://console.groq.com/keys)
 
 其余详细内容请参考[文档](./DOC/DOC_zhCN/01-基本介绍.md)
 

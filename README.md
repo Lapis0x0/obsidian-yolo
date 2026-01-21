@@ -12,6 +12,11 @@
   <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">Discussions</a>
 </p>
 
+> [!TIP]
+> 🎉 **YOLO is now officially available on the Obsidian Community Plugin Store!**
+>
+> You can now search for and install YOLO directly from Obsidian's community plugins without manual download!
+
 > [!NOTE]
 > **Possibly the most flexible, easy to use, and intelligent Obsidian AI assistant?**  
 
@@ -88,10 +93,20 @@ Supports multiple providers (OpenAI, Claude, Gemini, DeepSeek, etc.) with native
 > [!WARNING]
 > YOLO cannot coexist with [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer). Please disable or uninstall Smart Composer before using YOLO.
 
-> [!NOTE]
-> YOLO is not yet available in the Obsidian Community Plugin Store. Please install it manually following the steps below.
+### Installation from Community Plugin Store (Recommended)
+
+1. Open Obsidian Settings → Community plugins
+2. Click "Browse" and search for "YOLO"
+3. Click "Install" and then "Enable"
+4. Set up your API key in plugin settings
+   - OpenAI : [ChatGPT API Keys](https://platform.openai.com/api-keys)
+   - Anthropic : [Claude API Keys](https://console.anthropic.com/settings/keys)
+   - Gemini : [Gemini API Keys](https://aistudio.google.com/apikey)
+   - Groq : [Groq API Keys](https://console.groq.com/keys)
 
 ### Manual Installation
+
+Alternatively, you can install YOLO manually:
 
 1. Go to the [Releases](https://github.com/Lapis0x0/obsidian-yolo/releases) page
 2. Download `main.js`, `manifest.json`, and `styles.css` from the latest release
@@ -100,10 +115,6 @@ Supports multiple providers (OpenAI, Claude, Gemini, DeepSeek, etc.) with native
 5. Open Obsidian Settings → Community plugins
 6. Enable "YOLO" in the plugin list
 7. Set up your API key in plugin settings
-   - OpenAI : [ChatGPT API Keys](https://platform.openai.com/api-keys)
-   - Anthropic : [Claude API Keys](https://console.anthropic.com/settings/keys)
-   - Gemini : [Gemini API Keys](https://aistudio.google.com/apikey)
-   - Groq : [Groq API Keys](https://console.groq.com/keys)
 
 For more detailed information, please refer to the [documentation](./DOC/DOC_en/01-basic-introduction.md)
 
