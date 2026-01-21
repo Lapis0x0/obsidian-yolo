@@ -13,9 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="obsidian://show-plugin?id=yolo">
-    <img src="https://img.shields.io/badge/🎉_Now_Available_on_Obsidian-Install_YOLO-6c5ce7?style=for-the-badge" alt="Install YOLO">
-  </a>
+  <img src="https://img.shields.io/badge/🎉_Now_Available_on_Obsidian_Community_Plugins-6c5ce7?style=for-the-badge" alt="Now Available on Obsidian">
 </p>
 
 > [!NOTE]
