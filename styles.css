@@ -854,6 +854,7 @@
   flex-direction: column;
   gap: var(--size-4-1);
   padding: var(--size-4-1);
+  padding-bottom: calc(var(--size-4-1) + 56px);
   margin: calc(var(--size-4-1) * -1);
 
   .smtcmp-chat-messages-user {
