@@ -10,6 +10,8 @@
   <a href="https://github.com/Lapis0x0/obsidian-yolo/issues">报告 Bug</a>
   ·
   <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">参与讨论</a>
+  ·
+  QQ 群: <code>793057867</code>
 </p>
 
 <p align="center">
