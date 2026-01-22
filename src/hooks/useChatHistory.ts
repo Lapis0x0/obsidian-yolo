@@ -303,12 +303,10 @@ export function useChatHistory(): UseChatHistory {
         const generatedTitle = await attemptGenerateTitle()
         if (!generatedTitle) return
 
-        const nextSafeTitle = generatedTitle.substring(0, 10)
-
         // 再次检查标题是否仍为"新消息"，避免竞态条件
         const currentConversation = await chatManager.findById(id)
         if (currentConversation && currentConversation.title === '新消息') {
-          await chatManager.updateChat(id, { title: nextSafeTitle })
+          await chatManager.updateChat(id, { title: generatedTitle })
           await fetchChatList()
         }
       })()
