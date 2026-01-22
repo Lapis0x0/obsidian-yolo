@@ -351,6 +351,10 @@ export const smartComposerSettingsSchema = z.object({
       quickAskTrigger: z.string().optional(),
       // quick ask mode: 'ask' for Q&A, 'edit' for document editing with preview, 'edit-direct' for direct editing
       quickAskMode: z.enum(['ask', 'edit', 'edit-direct']).optional(),
+      // quick ask context chars before cursor
+      quickAskContextBeforeChars: z.number().int().min(0).optional(),
+      // quick ask context chars after cursor
+      quickAskContextAfterChars: z.number().int().min(0).optional(),
     })
     .catch({
       continuationModelId:
@@ -381,6 +385,8 @@ export const smartComposerSettingsSchema = z.object({
       enableQuickAsk: true,
       quickAskTrigger: '@',
       quickAskMode: 'ask',
+      quickAskContextBeforeChars: 5000,
+      quickAskContextAfterChars: 2000,
     }),
 
   // Assistant list

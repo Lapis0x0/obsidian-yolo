@@ -58,6 +58,10 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   const enableTabCompletion = Boolean(
     settings.continuationOptions.enableTabCompletion,
   )
+  const quickAskContextBeforeChars =
+    settings.continuationOptions.quickAskContextBeforeChars ?? 5000
+  const quickAskContextAfterChars =
+    settings.continuationOptions.quickAskContextAfterChars ?? 2000
   const tabCompletionOptions = enableTabCompletion
     ? {
         ...DEFAULT_TAB_COMPLETION_OPTIONS,
@@ -78,6 +82,10 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
     minContextLength: String(tabCompletionOptions.minContextLength),
     temperature: String(tabCompletionOptions.temperature),
     requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+  })
+  const [quickAskNumberInputs, setQuickAskNumberInputs] = useState({
+    contextBeforeChars: String(quickAskContextBeforeChars),
+    contextAfterChars: String(quickAskContextAfterChars),
   })
 
   useEffect(() => {
@@ -101,6 +109,12 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
     tabCompletionOptions.temperature,
     tabCompletionOptions.requestTimeoutMs,
   ])
+  useEffect(() => {
+    setQuickAskNumberInputs({
+      contextBeforeChars: String(quickAskContextBeforeChars),
+      contextAfterChars: String(quickAskContextAfterChars),
+    })
+  }, [quickAskContextBeforeChars, quickAskContextAfterChars])
   const updateTabCompletionOptions = (
     updates: Partial<typeof tabCompletionOptions>,
   ) => {
@@ -289,26 +303,98 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
       </ObsidianSetting>
 
       {(settings.continuationOptions.enableQuickAsk ?? true) && (
-        <ObsidianSetting
-          name={t('settings.continuation.quickAskTrigger')}
-          desc={t('settings.continuation.quickAskTriggerDesc')}
-        >
-          <ObsidianTextInput
-            value={settings.continuationOptions.quickAskTrigger ?? '@'}
-            onChange={(value) => {
-              // Only allow single character or short string
-              const trimmed = value.trim()
-              if (trimmed.length > 0 && trimmed.length <= 3) {
+        <>
+          <ObsidianSetting
+            name={t('settings.continuation.quickAskTrigger')}
+            desc={t('settings.continuation.quickAskTriggerDesc')}
+          >
+            <ObsidianTextInput
+              value={settings.continuationOptions.quickAskTrigger ?? '@'}
+              onChange={(value) => {
+                // Only allow single character or short string
+                const trimmed = value.trim()
+                if (trimmed.length > 0 && trimmed.length <= 3) {
+                  updateContinuationOptions(
+                    {
+                      quickAskTrigger: trimmed,
+                    },
+                    'quickAskTrigger',
+                  )
+                }
+              }}
+            />
+          </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.continuation.quickAskContextBeforeChars')}
+            desc={t('settings.continuation.quickAskContextBeforeCharsDesc')}
+          >
+            <ObsidianTextInput
+              type="number"
+              value={quickAskNumberInputs.contextBeforeChars}
+              onChange={(value) => {
+                setQuickAskNumberInputs((prev) => ({
+                  ...prev,
+                  contextBeforeChars: value,
+                }))
+                const parsed = parseIntegerInput(value)
+                if (parsed === null) return
+                const next = Math.max(0, parsed)
                 updateContinuationOptions(
                   {
-                    quickAskTrigger: trimmed,
+                    quickAskContextBeforeChars: next,
                   },
-                  'quickAskTrigger',
+                  'quickAskContextBeforeChars',
                 )
-              }
-            }}
-          />
-        </ObsidianSetting>
+              }}
+              onBlur={() => {
+                const parsed = parseIntegerInput(
+                  quickAskNumberInputs.contextBeforeChars,
+                )
+                if (parsed === null) {
+                  setQuickAskNumberInputs((prev) => ({
+                    ...prev,
+                    contextBeforeChars: String(quickAskContextBeforeChars),
+                  }))
+                }
+              }}
+            />
+          </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.continuation.quickAskContextAfterChars')}
+            desc={t('settings.continuation.quickAskContextAfterCharsDesc')}
+          >
+            <ObsidianTextInput
+              type="number"
+              value={quickAskNumberInputs.contextAfterChars}
+              onChange={(value) => {
+                setQuickAskNumberInputs((prev) => ({
+                  ...prev,
+                  contextAfterChars: value,
+                }))
+                const parsed = parseIntegerInput(value)
+                if (parsed === null) return
+                const next = Math.max(0, parsed)
+                updateContinuationOptions(
+                  {
+                    quickAskContextAfterChars: next,
+                  },
+                  'quickAskContextAfterChars',
+                )
+              }}
+              onBlur={() => {
+                const parsed = parseIntegerInput(
+                  quickAskNumberInputs.contextAfterChars,
+                )
+                if (parsed === null) {
+                  setQuickAskNumberInputs((prev) => ({
+                    ...prev,
+                    contextAfterChars: String(quickAskContextAfterChars),
+                  }))
+                }
+              }}
+            />
+          </ObsidianSetting>
+        </>
       )}
 
       <div className="smtcmp-settings-sub-header">

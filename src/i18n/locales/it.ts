@@ -467,6 +467,12 @@ export const it: TranslationKeys = {
         'Mostra il menu Quick Ask quando selezioni il testo e premi Cmd/Ctrl+Shift+K.',
       quickAskTrigger: 'Scorciatoia Quick Ask',
       quickAskTriggerDesc: 'Scorciatoia da tastiera per aprire Quick Ask.',
+      quickAskContextBeforeChars: 'Contesto prima del cursore (caratteri)',
+      quickAskContextBeforeCharsDesc:
+        'Numero massimo di caratteri prima del cursore da includere (predefinito: 5000).',
+      quickAskContextAfterChars: 'Contesto dopo il cursore (caratteri)',
+      quickAskContextAfterCharsDesc:
+        'Numero massimo di caratteri dopo il cursore da includere (predefinito: 2000).',
       tabCompletionBasicTitle: 'Impostazioni di base',
       tabCompletionBasicDesc:
         'Abilita il completamento tab e imposta i parametri principali.',

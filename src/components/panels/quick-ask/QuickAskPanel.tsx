@@ -332,7 +332,7 @@ export function QuickAskPanel({
     const hasContext = contextText.trim().length > 0
     const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
     const contextBlock = hasContext
-      ? `Here is the text before the cursor (context):\n"""\n${contextText}\n"""\n`
+      ? `Here is the text around the cursor (context). The marker <<CURSOR>> indicates the cursor position:\n"""\n${contextText}\n"""\n`
       : ''
     const contextSection =
       hasTitle || hasContext

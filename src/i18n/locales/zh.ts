@@ -432,6 +432,12 @@ export const zh: TranslationKeys = {
       quickAskTrigger: '触发字符',
       quickAskTriggerDesc:
         '在空行输入此字符时触发 Quick Ask（默认：@）。支持 1-3 个字符。',
+      quickAskContextBeforeChars: '上文字符数',
+      quickAskContextBeforeCharsDesc:
+        '传递给模型的光标上方最大字符数（默认：5000）。',
+      quickAskContextAfterChars: '下文字符数',
+      quickAskContextAfterCharsDesc:
+        '传递给模型的光标下方最大字符数（默认：2000）。',
       tabCompletionBasicTitle: '基础设置',
       tabCompletionBasicDesc: '启用 Tab 补全并设置基础参数。',
       tabCompletionTriggersSectionTitle: '触发器设置',

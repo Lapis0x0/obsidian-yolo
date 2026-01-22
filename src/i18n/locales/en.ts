@@ -471,6 +471,12 @@ export const en: TranslationKeys = {
       quickAskTrigger: 'Trigger character',
       quickAskTriggerDesc:
         'Typing this character on an empty line triggers quick ask (default: @). Supports 1-3 characters.',
+      quickAskContextBeforeChars: 'Context before cursor (chars)',
+      quickAskContextBeforeCharsDesc:
+        'Maximum characters before the cursor to include (default: 5000).',
+      quickAskContextAfterChars: 'Context after cursor (chars)',
+      quickAskContextAfterCharsDesc:
+        'Maximum characters after the cursor to include (default: 2000).',
       tabCompletionBasicTitle: 'Basic settings',
       tabCompletionBasicDesc: 'Enable tab completion and set core parameters.',
       tabCompletionTriggersSectionTitle: 'Trigger settings',

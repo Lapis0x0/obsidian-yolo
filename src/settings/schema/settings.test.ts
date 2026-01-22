@@ -61,6 +61,8 @@ describe('parseSmartComposerSettings', () => {
       enableTabCompletion: false,
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
       tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
+      quickAskContextBeforeChars: 5000,
+      quickAskContextAfterChars: 2000,
     })
     expect(result.continuationOptions.tabCompletionOptions).toMatchObject(
       DEFAULT_TAB_COMPLETION_OPTIONS,

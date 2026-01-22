@@ -368,6 +368,10 @@ export type TranslationKeys = {
       quickAskToggleDesc?: string
       quickAskTrigger?: string
       quickAskTriggerDesc?: string
+      quickAskContextBeforeChars?: string
+      quickAskContextBeforeCharsDesc?: string
+      quickAskContextAfterChars?: string
+      quickAskContextAfterCharsDesc?: string
       // Tab completion settings
       tabCompletionBasicTitle: string
       tabCompletionBasicDesc: string

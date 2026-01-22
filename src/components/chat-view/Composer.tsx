@@ -246,6 +246,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
 
   const enableQuickAsk = settings.continuationOptions.enableQuickAsk ?? true
   const quickAskTrigger = settings.continuationOptions.quickAskTrigger ?? '@'
+  const quickAskContextBeforeChars =
+    settings.continuationOptions.quickAskContextBeforeChars ?? 5000
+  const quickAskContextAfterChars =
+    settings.continuationOptions.quickAskContextAfterChars ?? 2000
 
   const enableTabCompletion = Boolean(
     settings.continuationOptions.enableTabCompletion,
@@ -275,6 +279,11 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     temperature: String(tabCompletionOptions.temperature),
     requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
   })
+  const [quickAskNumberInputs, setQuickAskNumberInputs] =
+    useState<NumberInputState>({
+      contextBeforeChars: String(quickAskContextBeforeChars),
+      contextAfterChars: String(quickAskContextAfterChars),
+    })
 
   useEffect(() => {
     setTabNumberInputs({
@@ -297,6 +306,12 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     tabCompletionOptions.temperature,
     tabCompletionOptions.requestTimeoutMs,
   ])
+  useEffect(() => {
+    setQuickAskNumberInputs({
+      contextBeforeChars: String(quickAskContextBeforeChars),
+      contextAfterChars: String(quickAskContextAfterChars),
+    })
+  }, [quickAskContextBeforeChars, quickAskContextAfterChars])
 
   const updateTabCompletionOptions = (
     updates: Partial<typeof tabCompletionOptions>,
@@ -1284,32 +1299,122 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               </div>
 
               {enableQuickAsk && (
-                <div className="smtcmp-composer-option">
-                  <div className="smtcmp-composer-option-info">
-                    <div className="smtcmp-composer-option-title">
-                      {t('settings.continuation.quickAskTrigger', '触发字符')}
+                <>
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t('settings.continuation.quickAskTrigger', '触发字符')}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.quickAskTriggerDesc',
+                          '支持 1-3 个字符。',
+                        )}
+                      </div>
                     </div>
-                    <div className="smtcmp-composer-option-desc">
-                      {t(
-                        'settings.continuation.quickAskTriggerDesc',
-                        '支持 1-3 个字符。',
-                      )}
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianTextInput
+                        value={quickAskTrigger}
+                        onChange={(value) => {
+                          const trimmed = value.trim()
+                          if (trimmed.length > 0 && trimmed.length <= 3) {
+                            updateContinuationOptions({
+                              quickAskTrigger: trimmed,
+                            })
+                          }
+                        }}
+                      />
                     </div>
                   </div>
-                  <div className="smtcmp-composer-option-control">
-                    <ObsidianTextInput
-                      value={quickAskTrigger}
-                      onChange={(value) => {
-                        const trimmed = value.trim()
-                        if (trimmed.length > 0 && trimmed.length <= 3) {
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.quickAskContextBeforeChars',
+                          '上文字符数',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.quickAskContextBeforeCharsDesc',
+                          '传递给模型的光标上方最大字符数。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianTextInput
+                        type="number"
+                        value={quickAskNumberInputs.contextBeforeChars}
+                        onChange={(value) => {
+                          setQuickAskNumberInputs((prev) => ({
+                            ...prev,
+                            contextBeforeChars: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
                           updateContinuationOptions({
-                            quickAskTrigger: trimmed,
+                            quickAskContextBeforeChars: Math.max(0, parsed),
                           })
-                        }
-                      }}
-                    />
+                        }}
+                        onBlur={(value) => {
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) {
+                            setQuickAskNumberInputs((prev) => ({
+                              ...prev,
+                              contextBeforeChars: String(
+                                quickAskContextBeforeChars,
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.quickAskContextAfterChars',
+                          '下文字符数',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.quickAskContextAfterCharsDesc',
+                          '传递给模型的光标下方最大字符数。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianTextInput
+                        type="number"
+                        value={quickAskNumberInputs.contextAfterChars}
+                        onChange={(value) => {
+                          setQuickAskNumberInputs((prev) => ({
+                            ...prev,
+                            contextAfterChars: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          updateContinuationOptions({
+                            quickAskContextAfterChars: Math.max(0, parsed),
+                          })
+                        }}
+                        onBlur={(value) => {
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) {
+                            setQuickAskNumberInputs((prev) => ({
+                              ...prev,
+                              contextAfterChars: String(
+                                quickAskContextAfterChars,
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </>
               )}
             </section>
           </>
