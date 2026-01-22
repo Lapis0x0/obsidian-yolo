@@ -670,7 +670,31 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
     // Setting enabled: keep the current-file mentionable updated
     const activeFile = app.workspace.getActiveFile()
-    if (!activeFile) return
+    if (!activeFile) {
+      if (!focusedMessageId) return
+      if (inputMessage.id === focusedMessageId) {
+        setInputMessage((prevInputMessage) => ({
+          ...prevInputMessage,
+          mentionables: prevInputMessage.mentionables.filter(
+            (m) => m.type !== 'current-file',
+          ),
+        }))
+      } else {
+        setChatMessages((prevChatHistory) =>
+          prevChatHistory.map((message) =>
+            message.id === focusedMessageId && message.role === 'user'
+              ? {
+                  ...message,
+                  mentionables: message.mentionables.filter(
+                    (m) => m.type !== 'current-file',
+                  ),
+                }
+              : message,
+          ),
+        )
+      }
+      return
+    }
 
     const mentionable: Omit<MentionableCurrentFile, 'id'> = {
       type: 'current-file',
@@ -733,8 +757,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   useEffect(() => {
     app.workspace.on('active-leaf-change', handleActiveLeafChange)
+    app.workspace.on('file-open', handleActiveLeafChange)
     return () => {
       app.workspace.off('active-leaf-change', handleActiveLeafChange)
+      app.workspace.off('file-open', handleActiveLeafChange)
     }
   }, [app.workspace, handleActiveLeafChange])
 

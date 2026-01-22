@@ -6,6 +6,7 @@ import {
   $getSelection,
   $isParagraphNode,
   $isRangeSelection,
+  $isTextNode,
   $nodesOfType,
   LexicalEditor,
   type LexicalNode,
@@ -266,18 +267,51 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     useEffect(() => {
       const editor = editorRef.current
-      if (!editor || !isEditorReady || effectiveMentionables.length === 0)
-        return
+      if (!editor || !isEditorReady) return
 
+      const mirrorTypes = ['file', 'folder', 'current-file', 'image', 'block']
       const mentionablesToMirror = effectiveMentionables.filter((m) =>
-        ['file', 'folder', 'current-file', 'image', 'block'].includes(m.type),
+        mirrorTypes.includes(m.type),
       )
-      if (mentionablesToMirror.length === 0) return
+      const desiredKeys = new Set(
+        mentionablesToMirror.map((mentionable) =>
+          getMentionableKey(serializeMentionable(mentionable)),
+        ),
+      )
 
       const shouldMoveCursor =
         contentEditableRef.current === document.activeElement
 
       editor.update(() => {
+        const mirrorTypeSet = new Set(mirrorTypes)
+        $nodesOfType(MentionNode).forEach((node) => {
+          const mentionable = node.getMentionable()
+          if (!mirrorTypeSet.has(mentionable.type)) return
+          const mentionableKey = getMentionableKey(mentionable)
+          if (!desiredKeys.has(mentionableKey)) {
+            const prevSibling = node.getPreviousSibling()
+            if (
+              prevSibling &&
+              $isTextNode(prevSibling) &&
+              prevSibling.getTextContent() === ' '
+            ) {
+              prevSibling.remove()
+            } else {
+              const nextSibling = node.getNextSibling()
+              if (
+                nextSibling &&
+                $isTextNode(nextSibling) &&
+                nextSibling.getTextContent() === ' '
+              ) {
+                nextSibling.remove()
+              }
+            }
+            node.remove()
+          }
+        })
+
+        if (mentionablesToMirror.length === 0) return
+
         const existingKeys = new Set(
           $nodesOfType(MentionNode).map((node) =>
             getMentionableKey(node.getMentionable()),
