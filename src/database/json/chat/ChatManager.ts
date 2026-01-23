@@ -65,7 +65,7 @@ export class ChatManager extends AbstractJsonRepository<
     for (let i = 0; i < 3; i += 1) {
       try {
         return decodeURIComponent(candidate)
-      } catch (error) {
+      } catch (_error) {
         candidate = candidate.slice(0, -1)
       }
     }

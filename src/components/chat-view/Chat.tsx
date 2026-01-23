@@ -156,6 +156,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return newMessage
   })
+  const inputMessageRef = useRef(inputMessage)
+  const chatMessagesStateRef = useRef<ChatMessage[]>([])
   const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
@@ -197,26 +199,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return groupAssistantAndToolMessages(chatMessages)
     }, [chatMessages])
 
-  // 从所有历史消息中聚合 mentionables（排除 current-file）
-  const aggregatedMentionables = useMemo(() => {
-    const allMentionables: ChatUserMessage['mentionables'] = []
-    const seenKeys = new Set<string>()
+  useEffect(() => {
+    inputMessageRef.current = inputMessage
+  }, [inputMessage])
 
-    chatMessages.forEach((message) => {
-      if (message.role === 'user') {
-        message.mentionables.forEach((m) => {
-          // 排除 current-file，因为它是动态跟踪的
-          if (m.type === 'current-file') return
-          const key = getMentionableKey(serializeMentionable(m))
-          if (!seenKeys.has(key)) {
-            seenKeys.add(key)
-            allMentionables.push(m)
-          }
-        })
-      }
-    })
-
-    return allMentionables
+  useEffect(() => {
+    chatMessagesStateRef.current = chatMessages
   }, [chatMessages])
 
   // 底部输入框仅显示当前消息的 mentionables
@@ -296,7 +284,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         setMessageModelMap(new Map())
         const newInputMessage = getNewInputMessage(
           app,
-          settings.chatOptions.includeCurrentFileContent,
+          settings.chatOptions.includeCurrentFileContent &&
+            !conversation.messages.some((message) => message.role === 'user'),
           suppressed,
         )
         setInputMessage(newInputMessage)
@@ -611,10 +600,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // Updates the currentFile of the focused message (input or chat history)
   // This happens when active file changes or focused message changes
   const handleActiveLeafChange = useCallback(() => {
+    const inputSnapshot = inputMessageRef.current
+    const chatMessagesSnapshot = chatMessagesStateRef.current
+    const focusedMessage =
+      focusedMessageId === inputSnapshot.id
+        ? inputSnapshot
+        : chatMessagesSnapshot.find(
+            (message): message is ChatUserMessage =>
+              message.id === focusedMessageId && message.role === 'user',
+          )
+    const focusedHasCurrentFile = Boolean(
+      focusedMessage?.mentionables.some((m) => m.type === 'current-file'),
+    )
+
     // If the setting is disabled, remove any existing current-file mentionable
     if (!settings.chatOptions.includeCurrentFileContent) {
-      if (!focusedMessageId) return
-      if (inputMessage.id === focusedMessageId) {
+      if (!focusedMessageId || !focusedHasCurrentFile) return
+      if (inputSnapshot.id === focusedMessageId) {
         setInputMessage((prevInputMessage) => ({
           ...prevInputMessage,
           mentionables: prevInputMessage.mentionables.filter(
@@ -640,6 +642,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
     // If suppressed for this conversation, do not auto-add or update current-file mentionable
     if (currentFileSuppression !== 'none') return
+
+    if (!focusedHasCurrentFile) return
 
     // Setting enabled: keep the current-file mentionable updated
     const activeFile = app.workspace.getActiveFile()
@@ -675,11 +679,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
 
     if (!focusedMessageId) return
-    if (inputMessage.id === focusedMessageId) {
+    if (inputSnapshot.id === focusedMessageId) {
       setInputMessage((prevInputMessage) => {
         const existing = prevInputMessage.mentionables.find(
           (m) => m.type === 'current-file',
         )
+        if (!existing) return prevInputMessage
+        if (existing.file === null) return prevInputMessage
+        if (existing.file.path === activeFile.path) return prevInputMessage
         // Preserve temporary hidden state (file === null)
         const nextMentionable: MentionableCurrentFile =
           existing && existing.file === null
@@ -702,6 +709,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             const existing = message.mentionables.find(
               (m) => m.type === 'current-file',
             )
+            if (!existing) return message
+            if (existing.file === null) return message
+            if (existing.file.path === activeFile.path) return message
             const nextMentionable: MentionableCurrentFile =
               existing && existing.file === null
                 ? { type: 'current-file', file: null }
@@ -723,7 +733,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [
     app.workspace,
     focusedMessageId,
-    inputMessage.id,
     settings.chatOptions.includeCurrentFileContent,
     currentFileSuppression,
   ])
@@ -1422,11 +1431,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               return next
             })
             setInputMessage(
-              getNewInputMessage(
-                app,
-                settings.chatOptions.includeCurrentFileContent,
-                currentFileSuppression,
-              ),
+              getNewInputMessage(app, false, currentFileSuppression),
             )
           }}
           onFocus={() => {

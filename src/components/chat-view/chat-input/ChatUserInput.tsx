@@ -13,7 +13,6 @@ import {
   type ParagraphNode,
   SerializedEditorState,
 } from 'lexical'
-import { ChevronRight, ChevronUp } from 'lucide-react'
 import {
   forwardRef,
   useCallback,
