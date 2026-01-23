@@ -269,7 +269,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       const editor = editorRef.current
       if (!editor || !isEditorReady) return
 
-      const mirrorTypes = ['file', 'folder', 'current-file', 'image', 'block']
+      const mirrorTypes = ['file', 'folder', 'current-file', 'block']
       const mentionablesToMirror = effectiveMentionables.filter((m) =>
         mirrorTypes.includes(m.type),
       )
@@ -389,6 +389,36 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             ),
         )
         if (newMentionableImages.length === 0) return
+        const editor = editorRef.current
+        if (editor) {
+          editor.update(() => {
+            const nodesToInsert: LexicalNode[] = []
+            newMentionableImages.forEach((mentionable) => {
+              nodesToInsert.push(
+                $createMentionNode(
+                  getMentionableName(mentionable),
+                  serializeMentionable(mentionable),
+                ),
+              )
+              nodesToInsert.push($createTextNode(' '))
+            })
+            const selection = $getSelection()
+            if (selection && $isRangeSelection(selection)) {
+              selection.insertNodes(nodesToInsert)
+              return
+            }
+
+            const root = $getRoot()
+            let paragraphNode = root.getFirstChild()
+            if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
+              const created = $createParagraphNode()
+              root.append(created)
+              paragraphNode = created
+            }
+            const paragraph = paragraphNode as ParagraphNode
+            nodesToInsert.forEach((node) => paragraph.append(node))
+          })
+        }
         setMentionables([...mentionables, ...newMentionableImages])
         // 默认保持收起状态，不自动展开新添加的徽章
       },
