@@ -528,7 +528,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '询问关于你的库的任何问题...',
+    placeholder: '输入消息...「@ 添加标签引用」',
     sendMessage: '发送消息',
     newChat: '新建聊天',
     continueResponse: '继续生成',

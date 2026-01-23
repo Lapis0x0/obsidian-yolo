@@ -959,6 +959,19 @@
   padding-bottom: var(--size-4-1);
 }
 
+.smtcmp-chat-user-input-editor {
+  position: relative;
+}
+
+.smtcmp-chat-user-input-placeholder {
+  position: absolute;
+  left: var(--size-2-1);
+  top: calc(var(--size-2-1) + 0.4px);
+  color: color-mix(in srgb, var(--text-muted) 78%, transparent);
+  pointer-events: none;
+  font-size: var(--font-ui-small);
+}
+
 .smtcmp-chat-user-input-controls {
   display: flex;
   flex-direction: row;

@@ -24,6 +24,7 @@ import {
 } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ChatModel } from '../../../types/chat-model.types'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
@@ -122,6 +123,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     ref,
   ) => {
     const app = useApp()
+    const { t } = useLanguage()
     const { settings } = useSettings()
 
     // Get current model for reasoning support check
@@ -134,6 +136,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const contentEditableRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [isEditorReady, setIsEditorReady] = useState(false)
+    const [inputText, setInputText] = useState('')
 
     const effectiveMentionables = useMemo(
       () => displayMentionables ?? mentionables,
@@ -157,6 +160,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         }
       }
     }, [isEditorReady])
+
+    useEffect(() => {
+      if (!isEditorReady || !editorRef.current) return
+      editorRef.current.getEditorState().read(() => {
+        setInputText($getRoot().getTextContent())
+      })
+    }, [isEditorReady, initialSerializedEditorState])
 
     const [displayedMentionableKey, setDisplayedMentionableKey] = useState<
       string | null
@@ -499,30 +509,39 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             mentionables={effectiveMentionables}
           />
 
-          <LexicalContentEditable
-            initialEditorState={(editor) => {
-              if (initialSerializedEditorState) {
-                editor.setEditorState(
-                  editor.parseEditorState(initialSerializedEditorState),
-                )
-              }
-            }}
-            editorRef={editorRef}
-            contentEditableRef={contentEditableRef}
-            onChange={onChange}
-            onEnter={() => handleSubmit()}
-            onFocus={onFocus}
-            onMentionNodeMutation={handleMentionNodeMutation}
-            onCreateImageMentionables={handleCreateImageMentionables}
-            autoFocus={autoFocus}
-            plugins={{
-              onEnter: {
-                onVaultChat: () => {
-                  handleSubmit()
+          <div className="smtcmp-chat-user-input-editor">
+            {inputText.trim().length === 0 &&
+              effectiveMentionables.length === 0 && (
+                <div className="smtcmp-chat-user-input-placeholder">
+                  {t('chat.placeholder', '输入消息... [@ 添加标签引用]')}
+                </div>
+              )}
+            <LexicalContentEditable
+              initialEditorState={(editor) => {
+                if (initialSerializedEditorState) {
+                  editor.setEditorState(
+                    editor.parseEditorState(initialSerializedEditorState),
+                  )
+                }
+              }}
+              editorRef={editorRef}
+              contentEditableRef={contentEditableRef}
+              onChange={onChange}
+              onTextContentChange={setInputText}
+              onEnter={() => handleSubmit()}
+              onFocus={onFocus}
+              onMentionNodeMutation={handleMentionNodeMutation}
+              onCreateImageMentionables={handleCreateImageMentionables}
+              autoFocus={autoFocus}
+              plugins={{
+                onEnter: {
+                  onVaultChat: () => {
+                    handleSubmit()
+                  },
                 },
-              },
-            }}
-          />
+              }}
+            />
+          </div>
 
           <div className="smtcmp-chat-user-input-controls">
             <div className="smtcmp-chat-user-input-controls__left">

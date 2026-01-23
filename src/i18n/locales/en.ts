@@ -563,7 +563,7 @@ export const en: TranslationKeys = {
   },
 
   chat: {
-    placeholder: 'Ask anything about your vault...',
+    placeholder: 'Type a message...「@ to add references」',
     sendMessage: 'Send message',
     newChat: 'New chat',
     continueResponse: 'Continue response',
