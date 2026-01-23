@@ -29,12 +29,15 @@ export class ChatManager extends AbstractJsonRepository<
     // 预留空间给版本号、时间戳、UUID和扩展名（约80字符）
     // 文件系统通常限制255字符，保守限制编码后标题为150字符
     const maxEncodedTitleLength = 150
-    const truncatedEncodedTitle =
-      encodedTitle.length > maxEncodedTitleLength
-        ? encodedTitle.substring(0, maxEncodedTitleLength) + '...'
-        : encodedTitle
+    const shouldTruncate = encodedTitle.length > maxEncodedTitleLength
+    const truncatedEncodedTitle = shouldTruncate
+      ? encodedTitle.substring(0, maxEncodedTitleLength)
+      : encodedTitle
+    const safeEncodedTitle =
+      truncatedEncodedTitle.replace(/%(?:[0-9A-Fa-f]{0,1})$/, '') +
+      (shouldTruncate ? '...' : '')
 
-    return `v${chat.schemaVersion}_${truncatedEncodedTitle}_${chat.updatedAt}_${chat.id}.json`
+    return `v${chat.schemaVersion}_${safeEncodedTitle}_${chat.updatedAt}_${chat.id}.json`
   }
 
   protected parseFileName(fileName: string): ChatConversationMetadata | null {
@@ -45,7 +48,7 @@ export class ChatManager extends AbstractJsonRepository<
     const match = fileName.match(regex)
     if (!match) return null
 
-    const title = decodeURIComponent(match[1])
+    const title = this.decodeTitle(match[1])
     const updatedAt = parseInt(match[2], 10)
     const id = match[3]
 
@@ -55,6 +58,18 @@ export class ChatManager extends AbstractJsonRepository<
       title,
       updatedAt,
     }
+  }
+
+  private decodeTitle(encodedTitle: string): string {
+    let candidate = encodedTitle
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        return decodeURIComponent(candidate)
+      } catch (error) {
+        candidate = candidate.slice(0, -1)
+      }
+    }
+    return encodedTitle
   }
 
   public async createChat(

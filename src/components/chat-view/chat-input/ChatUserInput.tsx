@@ -13,6 +13,7 @@ import {
   type ParagraphNode,
   SerializedEditorState,
 } from 'lexical'
+import { ChevronRight, ChevronUp } from 'lucide-react'
 import {
   forwardRef,
   useCallback,
@@ -470,7 +471,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         </div>
         <div className="smtcmp-chat-user-input-container" ref={containerRef}>
           <div className="smtcmp-chat-user-input-files">
-            {(displayMentionables ?? mentionables).map((m) => {
+            {effectiveMentionables.map((m) => {
               const mentionableKey = getMentionableKey(serializeMentionable(m))
               const isExpanded = mentionableKey === displayedMentionableKey
               const handleToggleExpand = () => {
@@ -496,7 +497,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
           <MentionableContentPreview
             displayedMentionableKey={displayedMentionableKey}
-            mentionables={displayMentionables ?? mentionables}
+            mentionables={effectiveMentionables}
           />
 
           <LexicalContentEditable

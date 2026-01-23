@@ -219,40 +219,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return allMentionables
   }, [chatMessages])
 
-  // 计算底部输入框显示的 mentionables（合并 current-file + 聚合 + 当前输入）
-  const displayMentionablesForInput = useMemo(() => {
-    const result: ChatUserMessage['mentionables'] = []
-    const seenKeys = new Set<string>()
-
-    // 1. 先添加 current-file（如果有）
-    const currentFileMentionable = inputMessage.mentionables.find(
-      (m) => m.type === 'current-file',
-    )
-    if (currentFileMentionable) {
-      result.push(currentFileMentionable)
-    }
-
-    // 2. 添加聚合的历史 mentionables
-    aggregatedMentionables.forEach((m) => {
-      const key = getMentionableKey(serializeMentionable(m))
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key)
-        result.push(m)
-      }
-    })
-
-    // 3. 添加当前输入的新增（去重）
-    inputMessage.mentionables.forEach((m) => {
-      if (m.type === 'current-file') return // 已经添加过了
-      const key = getMentionableKey(serializeMentionable(m))
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key)
-        result.push(m)
-      }
-    })
-
-    return result
-  }, [inputMessage.mentionables, aggregatedMentionables])
+  // 底部输入框仅显示当前消息的 mentionables
+  const displayMentionablesForInput = useMemo(
+    () => inputMessage.mentionables,
+    [inputMessage.mentionables],
+  )
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
@@ -1336,11 +1307,30 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 }
 
                 setChatMessages((prevChatHistory) =>
-                  prevChatHistory.map((msg) =>
-                    msg.id === messageOrGroup.id
-                      ? { ...msg, mentionables }
-                      : msg,
-                  ),
+                  prevChatHistory.map((msg) => {
+                    if (msg.id !== messageOrGroup.id) return msg
+                    if (msg.role !== 'user') return msg
+                    const prevKeys = msg.mentionables.map((m) =>
+                      getMentionableKey(serializeMentionable(m)),
+                    )
+                    const nextKeys = mentionables.map((m) =>
+                      getMentionableKey(serializeMentionable(m)),
+                    )
+                    const nextKeySet = new Set(nextKeys)
+                    const isSameMentionables =
+                      prevKeys.length === nextKeys.length &&
+                      prevKeys.every((key) => nextKeySet.has(key))
+                    return {
+                      ...msg,
+                      mentionables,
+                      promptContent: isSameMentionables
+                        ? msg.promptContent
+                        : null,
+                      similaritySearchResults: isSameMentionables
+                        ? msg.similaritySearchResults
+                        : undefined,
+                    }
+                  }),
                 )
               }}
               modelId={
