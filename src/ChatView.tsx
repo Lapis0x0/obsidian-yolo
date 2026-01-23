@@ -136,6 +136,14 @@ export class ChatView extends ItemView {
     this.chatRef.current?.addSelectionToChat(selectedBlock)
   }
 
+  syncSelectionToChat(selectedBlock: MentionableBlockData) {
+    this.chatRef.current?.syncSelectionToChat(selectedBlock)
+  }
+
+  clearSelectionFromChat() {
+    this.chatRef.current?.clearSelectionFromChat()
+  }
+
   addFileToChat(file: TFile) {
     this.chatRef.current?.addFileToChat(file)
   }

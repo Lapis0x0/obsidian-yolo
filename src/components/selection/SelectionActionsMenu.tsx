@@ -1,4 +1,4 @@
-import { BookOpen, MessageCircle, PenLine } from 'lucide-react'
+import { BookOpen, PenLine } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -37,12 +37,6 @@ export function SelectionActionsMenu({
 
   const actions: SelectionAction[] = useMemo(
     () => [
-      {
-        id: 'add-to-chat',
-        label: t('selection.actions.addToChat', '添加到对话'),
-        icon: <MessageCircle size={14} />,
-        handler: () => onAction('add-to-chat'),
-      },
       {
         id: 'rewrite',
         label: t('selection.actions.rewrite', 'AI 改写'),

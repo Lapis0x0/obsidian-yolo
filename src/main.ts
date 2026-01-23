@@ -211,8 +211,6 @@ export default class SmartComposerPlugin extends Plugin {
         showSmartSpace: (editor, view, showQuickActions) =>
           this.showSmartSpace(editor, view, showQuickActions),
         activateChatView: (chatProps) => this.activateChatView(chatProps),
-        addSelectionToChat: (editor, view) =>
-          this.addSelectionToChat(editor, view),
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
       })
     }

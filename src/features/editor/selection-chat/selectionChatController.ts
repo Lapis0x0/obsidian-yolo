@@ -32,7 +32,6 @@ type SelectionChatControllerDeps = {
     showQuickActions: boolean,
   ) => void
   activateChatView: (chatProps?: ChatProps) => Promise<void>
-  addSelectionToChat: (editor: Editor, view: MarkdownView) => Promise<void>
   isSmartSpaceOpen: () => boolean
 }
 
@@ -48,10 +47,6 @@ export class SelectionChatController {
     showQuickActions: boolean,
   ) => void
   private readonly activateChatView: (chatProps?: ChatProps) => Promise<void>
-  private readonly addSelectionToChat: (
-    editor: Editor,
-    view: MarkdownView,
-  ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
 
   private selectionManager: SelectionManager | null = null
@@ -66,7 +61,6 @@ export class SelectionChatController {
     this.getEditorView = deps.getEditorView
     this.showSmartSpace = deps.showSmartSpace
     this.activateChatView = deps.activateChatView
-    this.addSelectionToChat = deps.addSelectionToChat
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
   }
 
@@ -132,6 +126,8 @@ export class SelectionChatController {
     selection: SelectionInfo | null,
     editor: Editor,
   ) {
+    this.syncSelectionBadge(selection, editor)
+
     if (this.selectionChatWidget) {
       this.selectionChatWidget.destroy()
       this.selectionChatWidget = null
@@ -176,9 +172,6 @@ export class SelectionChatController {
     const selectedText = selection.text
 
     switch (actionId) {
-      case 'add-to-chat':
-        await this.addTextToChat()
-        break
       case 'rewrite':
         this.rewriteSelection(editor, selectedText)
         break
@@ -190,16 +183,35 @@ export class SelectionChatController {
     }
   }
 
-  private async addTextToChat() {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    const editor = view?.editor
-
-    if (!editor || !view) {
-      new Notice('无法获取当前编辑器')
+  private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {
+    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
+    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
       return
     }
 
-    await this.addSelectionToChat(editor, view)
+    const chatView = leaves[0].view
+
+    if (!selection) {
+      const activeMarkdownView =
+        this.app.workspace.getActiveViewOfType(MarkdownView)
+      if (!activeMarkdownView) {
+        return
+      }
+      chatView.clearSelectionFromChat()
+      return
+    }
+
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!view) {
+      return
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      return
+    }
+
+    chatView.syncSelectionToChat(data)
   }
 
   private rewriteSelection(editor: Editor, selectedText: string) {

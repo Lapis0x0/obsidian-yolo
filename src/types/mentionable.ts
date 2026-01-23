@@ -20,6 +20,7 @@ export type MentionableBlockData = {
   file: TFile
   startLine: number
   endLine: number
+  source?: 'selection'
 }
 export type MentionableBlock = MentionableBlockData & {
   type: 'block'

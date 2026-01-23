@@ -91,6 +91,8 @@ const getNewInputMessage = (
 export type ChatRef = {
   openNewChat: (selectedBlock?: MentionableBlockData) => void
   addSelectionToChat: (selectedBlock: MentionableBlockData) => void
+  syncSelectionToChat: (selectedBlock: MentionableBlockData) => void
+  clearSelectionFromChat: () => void
   addFileToChat: (file: TFile) => void
   addFolderToChat: (folder: TFolder) => void
   insertTextToInput: (text: string) => void
@@ -769,6 +771,134 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     handleActiveLeafChange()
   }, [handleActiveLeafChange, settings.chatOptions.includeCurrentFileContent])
 
+  const buildSelectionMentionable = useCallback(
+    (selectedBlock: MentionableBlockData): MentionableBlock => ({
+      type: 'block',
+      source: 'selection',
+      ...selectedBlock,
+    }),
+    [],
+  )
+
+  const removeSelectionMentionable = useCallback(
+    (mentionables: ChatUserMessage['mentionables']) =>
+      mentionables.filter(
+        (mentionable) =>
+          !(mentionable.type === 'block' && mentionable.source === 'selection'),
+      ),
+    [],
+  )
+
+  const syncSelectionMentionable = useCallback(
+    (selectedBlock: MentionableBlockData) => {
+      if (!focusedMessageId) return
+
+      const mentionable = buildSelectionMentionable(selectedBlock)
+      const mentionableKey = getMentionableKey(
+        serializeMentionable(mentionable),
+      )
+
+      if (focusedMessageId === inputMessage.id) {
+        setInputMessage((prevInputMessage) => {
+          const existingSelection = prevInputMessage.mentionables.find(
+            (m) => m.type === 'block' && m.source === 'selection',
+          )
+          if (existingSelection) {
+            const existingKey = getMentionableKey(
+              serializeMentionable(existingSelection),
+            )
+            if (existingKey === mentionableKey) {
+              return prevInputMessage
+            }
+          }
+          const nextMentionables = [
+            ...removeSelectionMentionable(prevInputMessage.mentionables),
+            mentionable,
+          ]
+          return {
+            ...prevInputMessage,
+            mentionables: nextMentionables,
+            promptContent: null,
+          }
+        })
+        return
+      }
+
+      setChatMessages((prevChatHistory) =>
+        prevChatHistory.map((message) => {
+          if (message.id === focusedMessageId && message.role === 'user') {
+            const existingSelection = message.mentionables.find(
+              (m) => m.type === 'block' && m.source === 'selection',
+            )
+            if (existingSelection) {
+              const existingKey = getMentionableKey(
+                serializeMentionable(existingSelection),
+              )
+              if (existingKey === mentionableKey) {
+                return message
+              }
+            }
+            return {
+              ...message,
+              mentionables: [
+                ...removeSelectionMentionable(message.mentionables),
+                mentionable,
+              ],
+              promptContent: null,
+            }
+          }
+          return message
+        }),
+      )
+    },
+    [
+      buildSelectionMentionable,
+      focusedMessageId,
+      inputMessage.id,
+      removeSelectionMentionable,
+    ],
+  )
+
+  const clearSelectionMentionable = useCallback(() => {
+    if (!focusedMessageId) return
+
+    if (focusedMessageId === inputMessage.id) {
+      setInputMessage((prevInputMessage) => {
+        const nextMentionables = removeSelectionMentionable(
+          prevInputMessage.mentionables,
+        )
+        if (nextMentionables.length === prevInputMessage.mentionables.length) {
+          return prevInputMessage
+        }
+        return {
+          ...prevInputMessage,
+          mentionables: nextMentionables,
+          promptContent: null,
+        }
+      })
+      return
+    }
+
+    setChatMessages((prevChatHistory) =>
+      prevChatHistory.map((message) => {
+        if (message.id === focusedMessageId && message.role === 'user') {
+          const nextMentionables = removeSelectionMentionable(
+            message.mentionables,
+          )
+          if (nextMentionables.length === message.mentionables.length) {
+            return message
+          }
+          return {
+            ...message,
+            mentionables: nextMentionables,
+            promptContent: null,
+          }
+        }
+        return message
+      }),
+    )
+  }, [focusedMessageId, inputMessage.id, removeSelectionMentionable])
+
   // 从所有消息中删除指定的 mentionable，并清空 promptContent 以便重新编译
   const handleMentionableDeleteFromAll = useCallback(
     (mentionable: ChatUserMessage['mentionables'][number]) => {
@@ -867,6 +997,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           }),
         )
       }
+    },
+    syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
+      syncSelectionMentionable(selectedBlock)
+    },
+    clearSelectionFromChat: () => {
+      clearSelectionMentionable()
     },
     addFileToChat: (file: TFile) => {
       const mentionable: { type: 'file'; file: TFile } = {
