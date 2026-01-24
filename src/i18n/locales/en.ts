@@ -299,7 +299,7 @@ export const en: TranslationKeys = {
       reasoningType: 'Model type',
       reasoningTypeNone: 'No special configuration',
       reasoningTypeOpenAI: 'OpenAI reasoning (o3 / o4-mini / gpt-5)',
-      reasoningTypeGemini: 'Gemini reasoning (2.5 pro / flash / flash-lite)',
+      reasoningTypeGemini: 'Gemini reasoning (3 pro / flash / flash-lite)',
       reasoningTypeAnthropic: 'Claude extended thinking',
       reasoningTypeGeneric: 'Generic reasoning model',
       reasoningTypeBase: 'Special: base model',

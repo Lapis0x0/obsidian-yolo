@@ -274,7 +274,7 @@ export const zh: TranslationKeys = {
       reasoningType: '模型类型',
       reasoningTypeNone: '无特殊配置',
       reasoningTypeOpenAI: 'OpenAI 推理（o3 / o4-mini / GPT-5）',
-      reasoningTypeGemini: 'Gemini 推理（2.5 Pro / Flash / Flash-Lite）',
+      reasoningTypeGemini: 'Gemini 推理（3 Pro / Flash / Flash-Lite）',
       reasoningTypeAnthropic: 'Claude 扩展思考（Extended thinking）',
       reasoningTypeGeneric: '通用推理模型',
       reasoningTypeBase: '特殊：base 模型',
