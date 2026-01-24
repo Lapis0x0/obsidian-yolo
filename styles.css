@@ -7946,3 +7946,84 @@ body.smtcmp-quick-ask-global-interaction * {
   width: 100%;
   max-width: 100%;
 }
+
+/* ========================================
+   Settings Tabs Styles
+   ======================================== */
+
+.smtcmp-settings-tabs-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.smtcmp-settings-tabs-nav {
+  display: flex;
+  gap: var(--size-2-1);
+  padding: var(--size-4-2) 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: var(--size-4-4);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.smtcmp-settings-tabs-nav::-webkit-scrollbar {
+  height: 6px;
+}
+
+.smtcmp-settings-tabs-nav::-webkit-scrollbar-track {
+  background: var(--background-secondary);
+}
+
+.smtcmp-settings-tabs-nav::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+}
+
+.smtcmp-settings-tab-button {
+  padding: var(--size-4-1) var(--size-4-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.smtcmp-settings-tab-button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.smtcmp-settings-tab-button--active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.smtcmp-settings-tab-button--active:hover {
+  background: var(--interactive-accent-hover);
+  color: var(--text-on-accent);
+}
+
+.smtcmp-settings-tabs-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--size-4-4);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .smtcmp-settings-tabs-nav {
+    padding: var(--size-2-3) 0;
+  }
+  
+  .smtcmp-settings-tab-button {
+    padding: var(--size-2-3) var(--size-4-2);
+    font-size: var(--font-ui-smaller);
+  }
+}

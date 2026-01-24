@@ -113,6 +113,14 @@ export const it: TranslationKeys = {
 
   settings: {
     title: 'Impostazioni Yolo',
+    tabs: {
+      models: 'Modelli',
+      chat: 'Chat',
+      editor: 'Editor',
+      knowledge: 'Conoscenza',
+      tools: 'Strumenti',
+      others: 'Altro',
+    },
     supportSmartComposer: {
       name: 'Supporta il progetto',
       desc: 'Se trovi utile questo plugin, considera di supportarne lo sviluppo!',

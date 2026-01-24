@@ -104,6 +104,14 @@ export type TranslationKeys = {
   // Settings
   settings: {
     title: string
+    tabs: {
+      models: string
+      chat: string
+      editor: string
+      knowledge: string
+      tools: string
+      others: string
+    }
     supportSmartComposer: {
       name: string
       desc: string

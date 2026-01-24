@@ -94,6 +94,14 @@ export const zh: TranslationKeys = {
 
   settings: {
     title: 'YOLO 设置',
+    tabs: {
+      models: '模型',
+      chat: '聊天',
+      editor: '编辑器',
+      knowledge: '知识库',
+      tools: '工具',
+      others: '其他',
+    },
     supportSmartComposer: {
       name: '支持 YOLO',
       desc: '如果你觉得 YOLO 有价值，请考虑支持它的开发！',
