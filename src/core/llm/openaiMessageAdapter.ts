@@ -40,6 +40,44 @@ function extractReasoningContent(source: unknown): string | undefined {
       return reasoning
     }
   }
+  if (typeof source === 'object' && source !== null && 'reasoning' in source) {
+    const reasoning = (source as { reasoning?: unknown }).reasoning
+    if (typeof reasoning === 'string') {
+      return reasoning
+    }
+  }
+  if (
+    typeof source === 'object' &&
+    source !== null &&
+    'reasoning_details' in source
+  ) {
+    const details = (source as { reasoning_details?: unknown })
+      .reasoning_details
+    if (Array.isArray(details)) {
+      const parts = details
+        .map((detail) => {
+          if (!detail || typeof detail !== 'object') return null
+          const record = detail as Record<string, unknown>
+          if (
+            record.type === 'reasoning.text' &&
+            typeof record.text === 'string'
+          ) {
+            return record.text
+          }
+          if (
+            record.type === 'reasoning.summary' &&
+            typeof record.summary === 'string'
+          ) {
+            return record.summary
+          }
+          return null
+        })
+        .filter((part): part is string => Boolean(part))
+      if (parts.length > 0) {
+        return parts.join('\n')
+      }
+    }
+  }
   return undefined
 }
 
@@ -171,6 +209,14 @@ export class OpenAIMessageAdapter {
         request.thinkingConfig)
     if (thinkingConfig) {
       mutable.thinking_config = thinkingConfig
+    }
+
+    if (
+      hasObjectProperty(request, 'reasoning') &&
+      request.reasoning &&
+      typeof request.reasoning === 'object'
+    ) {
+      mutable.reasoning = request.reasoning
     }
 
     if (

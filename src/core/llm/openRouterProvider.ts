@@ -11,6 +11,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
 
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
@@ -88,26 +89,33 @@ export class OpenRouterProvider extends BaseLLMProvider<
     const formattedRequest = { ...request } as RequestType &
       Record<string, unknown>
 
-    const thinkingModel = model as ChatModel & {
-      thinking?: { enabled: boolean; thinking_budget: number }
-    }
-    if (thinkingModel.thinking) {
-      const budget = thinkingModel.thinking.thinking_budget
-      if (thinkingModel.thinking.enabled === false) {
-        formattedRequest.reasoning = { effort: 'none' }
-      } else if (budget === -1) {
-        formattedRequest.reasoning = { enabled: true }
-      } else if (typeof budget === 'number') {
-        formattedRequest.reasoning = { max_tokens: budget }
+    const resolveReasoningType = () => {
+      if (model.reasoningType && model.reasoningType !== 'none') {
+        return model.reasoningType
       }
+      const detected = detectReasoningTypeFromModelId(model.model)
+      return detected === 'none' ? null : detected
     }
 
-    const reasoningModel = model as ChatModel & {
-      reasoning?: { enabled: boolean; reasoning_effort?: string }
+    const reasoningType = resolveReasoningType()
+    const thinkingModel = model as ChatModel & {
+      thinking?: {
+        enabled?: boolean
+        thinking_budget?: number
+        budget_tokens?: number
+      }
     }
-    if (reasoningModel.reasoning) {
+    const reasoningModel = model as ChatModel & {
+      reasoning?: { enabled?: boolean; reasoning_effort?: string }
+    }
+
+    const budget =
+      thinkingModel.thinking?.thinking_budget ??
+      thinkingModel.thinking?.budget_tokens
+
+    if (reasoningType === 'openai' && reasoningModel.reasoning) {
       if (reasoningModel.reasoning.enabled === false) {
-        formattedRequest.reasoning = { effort: 'none' }
+        formattedRequest.reasoning = { effort: 'none', exclude: true }
       } else {
         const effort = reasoningModel.reasoning.reasoning_effort as
           | 'low'
@@ -116,6 +124,32 @@ export class OpenRouterProvider extends BaseLLMProvider<
           | undefined
         if (effort) {
           formattedRequest.reasoning = { effort }
+        } else if (reasoningModel.reasoning.enabled) {
+          formattedRequest.reasoning = { enabled: true }
+        }
+      }
+    }
+
+    if (reasoningType !== 'openai' && thinkingModel.thinking) {
+      if (thinkingModel.thinking.enabled === false) {
+        formattedRequest.reasoning = { max_tokens: 0, exclude: true }
+      } else if (budget === -1) {
+        formattedRequest.reasoning = { enabled: true }
+      } else if (typeof budget === 'number') {
+        if (budget <= 0) {
+          formattedRequest.reasoning = { max_tokens: 0, exclude: true }
+        } else {
+          formattedRequest.reasoning = { max_tokens: budget }
+        }
+      }
+    }
+
+    if (!reasoningType && reasoningModel.reasoning) {
+      if (reasoningModel.reasoning.enabled === false) {
+        formattedRequest.reasoning = { effort: 'none', exclude: true }
+      } else if (reasoningModel.reasoning.reasoning_effort) {
+        formattedRequest.reasoning = {
+          effort: reasoningModel.reasoning.reasoning_effort,
         }
       }
     }
