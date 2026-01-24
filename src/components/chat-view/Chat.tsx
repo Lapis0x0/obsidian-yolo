@@ -68,7 +68,6 @@ import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
-// Add an empty line here
 const getNewInputMessage = (
   app: App,
   includeCurrentFile: boolean,
