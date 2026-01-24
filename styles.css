@@ -7956,6 +7956,7 @@ body.smtcmp-quick-ask-global-interaction * {
   flex-direction: column;
   width: 100%;
   height: 100%;
+  align-items: center;
 }
 
 .smtcmp-settings-tabs-nav {
@@ -7972,6 +7973,8 @@ body.smtcmp-quick-ask-global-interaction * {
   scrollbar-width: thin;
   align-items: stretch;
   min-width: 0;
+  max-width: 450px;
+  width: 100%;
 }
 
 .smtcmp-settings-tabs-nav::-webkit-scrollbar {
@@ -8028,7 +8031,7 @@ body.smtcmp-quick-ask-global-interaction * {
 
 .smtcmp-settings-tab-button {
   flex: 1 1 0;
-  padding: 6px 8px;
+  padding: 6px 12px;
   background: transparent !important;
   background-color: transparent !important;
   border: 1px solid transparent;
@@ -8072,6 +8075,8 @@ body.smtcmp-quick-ask-global-interaction * {
   flex: 1;
   overflow-y: auto;
   padding-bottom: var(--size-4-4);
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Mobile responsive adjustments */
