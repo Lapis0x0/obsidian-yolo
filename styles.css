@@ -7960,12 +7960,18 @@ body.smtcmp-quick-ask-global-interaction * {
 
 .smtcmp-settings-tabs-nav {
   display: flex;
-  gap: var(--size-2-1);
-  padding: var(--size-4-2) 0;
-  border-bottom: 1px solid var(--background-modifier-border);
+  gap: var(--size-2-2);
+  padding: var(--size-2-2);
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
   margin-bottom: var(--size-4-4);
   overflow-x: auto;
   scrollbar-width: thin;
+  align-items: stretch;
+  min-width: 0;
 }
 
 .smtcmp-settings-tabs-nav::-webkit-scrollbar {
@@ -7973,7 +7979,7 @@ body.smtcmp-quick-ask-global-interaction * {
 }
 
 .smtcmp-settings-tabs-nav::-webkit-scrollbar-track {
-  background: var(--background-secondary);
+  background: transparent;
 }
 
 .smtcmp-settings-tabs-nav::-webkit-scrollbar-thumb {
@@ -7981,33 +7987,85 @@ body.smtcmp-quick-ask-global-interaction * {
   border-radius: 3px;
 }
 
-.smtcmp-settings-tab-button {
-  padding: var(--size-4-1) var(--size-4-3);
+/* Glider variant for smooth animated indicator */
+.smtcmp-settings-tabs-nav--glider {
+  position: relative;
+  overflow: visible;
+  gap: 0;
+  --smtcmp-tab-count: 6;
+  --smtcmp-tab-index: 0;
+  --smtcmp-tab-padding: var(--size-2-2);
+}
+
+.smtcmp-settings-tabs-nav--glider .smtcmp-settings-tab-button {
+  position: relative;
+  z-index: 2;
+}
+
+.smtcmp-settings-tabs-nav--glider .smtcmp-settings-tab-button.is-active {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.smtcmp-settings-tabs-glider {
+  position: absolute;
+  top: var(--smtcmp-tab-padding);
+  left: var(--smtcmp-tab-padding);
+  width: calc(
+    (100% - (var(--smtcmp-tab-padding) * 2)) / var(--smtcmp-tab-count)
+  );
+  height: calc(100% - (var(--smtcmp-tab-padding) * 2));
   background: transparent;
-  border: none;
+  border: 2px solid var(--h1-color, var(--interactive-accent));
+  border-radius: var(--radius-s);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  transform: translateX(calc(100% * var(--smtcmp-tab-index)));
+  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.smtcmp-settings-tab-button {
+  flex: 1 1 0;
+  padding: 6px 8px;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 1px solid transparent;
   border-radius: var(--radius-s);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
-  flex-shrink: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+}
+
+.smtcmp-settings-tab-label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .smtcmp-settings-tab-button:hover {
-  background: var(--background-modifier-hover);
   color: var(--text-normal);
+  background: transparent !important;
 }
 
-.smtcmp-settings-tab-button--active {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-}
-
-.smtcmp-settings-tab-button--active:hover {
-  background: var(--interactive-accent-hover);
-  color: var(--text-on-accent);
+.smtcmp-settings-tab-button.is-active {
+  color: var(--text-normal);
+  background: transparent !important;
+  border: 2px solid var(--h1-color, var(--interactive-accent));
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
 }
 
 .smtcmp-settings-tabs-content {
@@ -8019,11 +8077,11 @@ body.smtcmp-quick-ask-global-interaction * {
 /* Mobile responsive adjustments */
 @media (max-width: 768px) {
   .smtcmp-settings-tabs-nav {
-    padding: var(--size-2-3) 0;
+    padding: var(--size-2-2);
   }
-  
+
   .smtcmp-settings-tab-button {
-    padding: var(--size-2-3) var(--size-4-2);
+    padding: 6px 8px;
     font-size: var(--font-ui-smaller);
   }
 }

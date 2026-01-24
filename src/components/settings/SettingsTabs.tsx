@@ -84,18 +84,32 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const ActiveComponent =
     SETTINGS_TABS.find((tab) => tab.id === activeTab)?.component || ModelsTab
 
+  const activeTabIndex = SETTINGS_TABS.findIndex((tab) => tab.id === activeTab)
+
   return (
     <div className="smtcmp-settings-tabs-container">
-      <div className="smtcmp-settings-tabs-nav">
+      <div
+        className="smtcmp-settings-tabs-nav smtcmp-settings-tabs-nav--glider"
+        role="tablist"
+        style={
+          {
+            '--smtcmp-tab-count': SETTINGS_TABS.length,
+            '--smtcmp-tab-index': activeTabIndex,
+          } as React.CSSProperties
+        }
+      >
+        <div className="smtcmp-settings-tabs-glider" aria-hidden="true" />
         {SETTINGS_TABS.map((tab) => (
           <button
             key={tab.id}
             className={`smtcmp-settings-tab-button ${
-              activeTab === tab.id ? 'smtcmp-settings-tab-button--active' : ''
+              activeTab === tab.id ? 'is-active' : ''
             }`}
             onClick={() => setActiveTab(tab.id)}
+            role="tab"
+            aria-selected={activeTab === tab.id}
           >
-            {t(tab.labelKey)}
+            <span className="smtcmp-settings-tab-label">{t(tab.labelKey)}</span>
           </button>
         ))}
       </div>
