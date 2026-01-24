@@ -46,11 +46,7 @@ export function getMentionableBlockData(
 
   const startLine = editor.getCursor('from').line
   const endLine = editor.getCursor('to').line
-  const selectionContent = editor
-    .getValue()
-    .split('\n')
-    .slice(startLine, endLine + 1)
-    .join('\n')
+  const selectionContent = selection
 
   return {
     content: selectionContent,

@@ -62,6 +62,7 @@ export type SerializedMentionableBlock = {
   file: string
   startLine: number
   endLine: number
+  source?: 'selection'
 }
 export type SerializedMentionableUrl = MentionableUrl
 export type SerializedMentionableImage = MentionableImage

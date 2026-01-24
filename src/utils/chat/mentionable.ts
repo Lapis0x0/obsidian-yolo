@@ -32,6 +32,7 @@ export const serializeMentionable = (
         file: mentionable.file.path,
         startLine: mentionable.startLine,
         endLine: mentionable.endLine,
+        source: mentionable.source,
       }
     case 'url':
       return {
@@ -102,6 +103,7 @@ export const deserializeMentionable = (
           file: file,
           startLine: mentionable.startLine,
           endLine: mentionable.endLine,
+          source: mentionable.source,
         }
       }
       case 'url': {
@@ -155,7 +157,9 @@ export function getMentionableName(mentionable: Mentionable): string {
     case 'current-file':
       return mentionable.file?.name ?? 'Current file'
     case 'block':
-      return `${mentionable.file.name} (${mentionable.startLine}:${mentionable.endLine})`
+      return `${mentionable.file.name} (${
+        Array.from(mentionable.content ?? '').length
+      } chars)`
     case 'url':
       return mentionable.url
     case 'image':

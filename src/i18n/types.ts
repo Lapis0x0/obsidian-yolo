@@ -37,6 +37,9 @@ export type TranslationKeys = {
     retry: string
     copy: string
     paste: string
+    characters: string
+    words: string
+    wordsCharacters: string
     // additions
     default?: string
     modelDefault?: string

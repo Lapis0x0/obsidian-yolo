@@ -283,10 +283,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       const mentionablesToMirror = effectiveMentionables.filter((m) =>
         mirrorTypes.includes(m.type),
       )
-      const desiredKeys = new Set(
-        mentionablesToMirror.map((mentionable) =>
+      const mentionablesByKey = new Map(
+        mentionablesToMirror.map((mentionable) => [
           getMentionableKey(serializeMentionable(mentionable)),
-        ),
+          mentionable,
+        ]),
       )
 
       const shouldMoveCursor =
@@ -298,7 +299,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           const mentionable = node.getMentionable()
           if (!mirrorTypeSet.has(mentionable.type)) return
           const mentionableKey = getMentionableKey(mentionable)
-          if (!desiredKeys.has(mentionableKey)) {
+          const desiredMentionable = mentionablesByKey.get(mentionableKey)
+          if (!desiredMentionable) {
             const prevSibling = node.getPreviousSibling()
             if (
               prevSibling &&
@@ -317,6 +319,15 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               }
             }
             node.remove()
+            return
+          }
+
+          if (mentionable.type === 'block') {
+            const updatedMentionNode = $createMentionNode(
+              getMentionableName(desiredMentionable),
+              serializeMentionable(desiredMentionable),
+            )
+            node.replace(updatedMentionNode)
           }
         })
 
@@ -617,6 +628,10 @@ function MentionableContentPreview({
         if (!displayedMentionable.file) return null
         return await readTFileContent(displayedMentionable.file, app.vault)
       } else if (displayedMentionable.type === 'block') {
+        if (displayedMentionable.content) {
+          return displayedMentionable.content
+        }
+
         const fileContent = await readTFileContent(
           displayedMentionable.file,
           app.vault,

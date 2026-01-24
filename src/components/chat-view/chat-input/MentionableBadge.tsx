@@ -3,6 +3,7 @@ import { ChevronRight, ChevronUp, X } from 'lucide-react'
 import { PropsWithChildren } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { useLanguage } from '../../../contexts/language-context'
 import {
   Mentionable,
   MentionableBlock,
@@ -250,6 +251,58 @@ function BlockBadge({
   showDeleteButton?: boolean
 }) {
   const Icon = getMentionableIcon(mentionable)
+  const { t } = useLanguage()
+  const content = mentionable.content ?? ''
+  const trimmedContent = content.trim()
+  const hasCjk = /[\u3400-\u9fff]/.test(content)
+  const hasNonCjkWord = /[A-Za-z0-9]/.test(content)
+  const fallbackWordCount = (text: string) => {
+    const SegmenterCtor = (
+      Intl as typeof Intl & {
+        Segmenter?: new (
+          locales?: string | string[],
+          options?: { granularity: 'word' | 'sentence' | 'grapheme' },
+        ) => {
+          segment: (
+            input: string,
+          ) => Iterable<{ isWordLike?: boolean; segment: string }>
+        }
+      }
+    ).Segmenter
+    if (SegmenterCtor) {
+      const segmenter = new SegmenterCtor(undefined, { granularity: 'word' })
+      let total = 0
+      for (const segment of segmenter.segment(text)) {
+        if (segment.isWordLike) {
+          const segmentHasCjk = /[\u3400-\u9fff]/.test(segment.segment)
+          if (segmentHasCjk) {
+            total += Array.from(
+              segment.segment.replace(/[^\u3400-\u9fff]/g, ''),
+            ).length
+          } else {
+            total += 1
+          }
+        }
+      }
+      return total
+    }
+    const matches = text.match(/[\p{L}\p{N}]+/gu)
+    if (!matches) return 0
+    return matches.reduce((sum, match) => {
+      if (/[\u3400-\u9fff]/.test(match)) {
+        return sum + Array.from(match.replace(/[^\u3400-\u9fff]/g, '')).length
+      }
+      return sum + 1
+    }, 0)
+  }
+  const count =
+    trimmedContent.length === 0 ? 0 : fallbackWordCount(trimmedContent)
+  const unitLabel =
+    hasCjk && hasNonCjkWord
+      ? t('common.wordsCharacters', 'words/characters')
+      : hasCjk
+        ? t('common.characters', 'chars')
+        : t('common.words', 'words')
   return (
     <BadgeBase
       onDelete={onDelete}
@@ -270,7 +323,7 @@ function BlockBadge({
         <span>{mentionable.file.name}</span>
       </div>
       <div className="smtcmp-chat-user-input-file-badge-name-suffix">
-        {` (${mentionable.startLine}:${mentionable.endLine})`}
+        {` (${count} ${unitLabel})`}
       </div>
     </BadgeBase>
   )
