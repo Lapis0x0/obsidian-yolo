@@ -510,6 +510,7 @@ export type TranslationKeys = {
   // Chat Interface
   chat: {
     placeholder: string
+    placeholderCompact?: string
     sendMessage: string
     newChat: string
     continueResponse?: string

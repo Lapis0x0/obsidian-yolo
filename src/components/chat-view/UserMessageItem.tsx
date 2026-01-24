@@ -1,4 +1,5 @@
 import { SerializedEditorState } from 'lexical'
+import { useRef } from 'react'
 
 import { ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
@@ -13,7 +14,9 @@ export type UserMessageItemProps = {
   onInputChange: (content: SerializedEditorState) => void
   onSubmit: (content: SerializedEditorState, useVaultSearch: boolean) => void
   onFocus: () => void
+  onBlur: () => void
   onMentionablesChange: (mentionables: Mentionable[]) => void
+  isFocused: boolean
   modelId?: string
   onModelChange?: (modelId: string) => void
   reasoningLevel?: ReasoningLevel
@@ -26,26 +29,46 @@ export default function UserMessageItem({
   onInputChange,
   onSubmit,
   onFocus,
+  onBlur,
   onMentionablesChange,
+  isFocused,
   modelId,
   onModelChange,
   reasoningLevel,
   onReasoningChange,
 }: UserMessageItemProps) {
+  const localInputRef = useRef<ChatUserInputRef | null>(null)
+
+  const handleRegisterRef = (ref: ChatUserInputRef | null) => {
+    localInputRef.current = ref
+    chatUserInputRef(ref)
+  }
+
+  const handleExpand = () => {
+    if (isFocused) return
+    onFocus()
+    requestAnimationFrame(() => {
+      localInputRef.current?.focus()
+    })
+  }
+
   return (
     <div className="smtcmp-chat-messages-user">
       <ChatUserInput
-        ref={chatUserInputRef}
+        ref={handleRegisterRef}
         initialSerializedEditorState={message.content}
         onChange={onInputChange}
         onSubmit={onSubmit}
         onFocus={onFocus}
+        onBlur={onBlur}
         mentionables={message.mentionables}
         setMentionables={onMentionablesChange}
         modelId={modelId}
         onModelChange={onModelChange}
         reasoningLevel={reasoningLevel}
         onReasoningChange={onReasoningChange}
+        compact={!isFocused}
+        onToggleCompact={handleExpand}
       />
       {message.similaritySearchResults && (
         <SimilaritySearchResults

@@ -861,6 +861,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--size-4-1);
+    align-items: flex-end;
   }
 
   .smtcmp-chat-messages-assistant {
@@ -942,6 +943,116 @@
   display: flex;
   flex-direction: column;
   gap: var(--size-2-2);
+  width: 100%;
+}
+
+.smtcmp-chat-user-input-wrapper--compact {
+  max-width: 85%;
+  align-self: flex-end;
+  width: fit-content;
+}
+
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-chat-user-input-container {
+  --smtcmp-chat-user-bubble-bg: color-mix(
+    in srgb,
+    var(--interactive-accent) 18%,
+    var(--background-primary)
+  );
+  --smtcmp-chat-user-bubble-border: color-mix(
+    in srgb,
+    var(--interactive-accent) 28%,
+    var(--background-modifier-border)
+  );
+  background: var(--smtcmp-chat-user-bubble-bg);
+  border-radius: var(--radius-l);
+  border: 1px solid var(--smtcmp-chat-user-bubble-border);
+  padding: var(--size-2-3) var(--size-4-2);
+  transition:
+    background 0.2s ease-in-out,
+    border-color 0.2s ease-in-out,
+    box-shadow 0.2s ease-in-out;
+  cursor: pointer;
+  gap: var(--size-2-2);
+}
+
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-container:hover {
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 24%,
+    var(--background-primary)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 40%,
+    var(--background-modifier-border)
+  );
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* Disable focus effects in compact mode */
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-container:focus-within,
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-container:focus,
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-container:focus-visible,
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-container:active {
+  box-shadow: none;
+}
+
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-chat-user-input-files {
+  padding-bottom: 0;
+  gap: var(--size-2-2);
+}
+
+/* Only add bottom margin if there are mentionables */
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-files:not(:empty) {
+  margin-bottom: var(--size-2-2);
+}
+
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-chat-user-input-editor {
+  line-height: var(--line-height-normal);
+  pointer-events: none;
+  min-height: unset;
+}
+
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-obsidian-textarea,
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-content-editable {
+  min-height: unset;
+  max-height: none;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-lexical-content-editable-paragraph {
+  margin: 0;
+  line-height: var(--line-height-normal);
+}
+
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-chat-user-input-placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-size: var(--font-ui-smaller);
+  position: static;
+  padding: 0;
+}
+
+/* Hide delete button in badges within compact mode */
+.smtcmp-chat-user-input-wrapper--compact
+  .smtcmp-chat-user-input-file-badge-delete {
+  display: none;
+}
+
+/* Make badges non-interactive in compact mode */
+.smtcmp-chat-user-input-wrapper--compact .smtcmp-chat-user-input-file-badge {
+  cursor: default;
+  pointer-events: none;
 }
 
 .smtcmp-chat-user-input-tools-row {

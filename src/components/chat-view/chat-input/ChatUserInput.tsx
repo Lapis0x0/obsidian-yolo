@@ -15,6 +15,8 @@ import {
 } from 'lexical'
 import {
   forwardRef,
+  type FocusEvent,
+  type MouseEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -82,7 +84,7 @@ export type ChatUserInputProps = {
   showConversationSettingsButton?: boolean
   modelId?: string
   onModelChange?: (modelId: string) => void
-  // 用于显示聚合后的 mentionables（包含历史消息中的文件）
+  // 用于显示聚合后的 mentionables(包含历史消息中的文件)
   displayMentionables?: Mentionable[]
   // 删除时从所有消息中删除的回调
   onDeleteFromAll?: (mentionable: Mentionable) => void
@@ -92,6 +94,10 @@ export type ChatUserInputProps = {
   // Reasoning level
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
+  // Compact mode: hide controls for historical messages
+  compact?: boolean
+  onToggleCompact?: () => void
+  onBlur?: () => void
 }
 
 type ChatSubmitOptions = {
@@ -120,6 +126,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onModeChange,
       reasoningLevel,
       onReasoningChange,
+      compact = false,
+      onToggleCompact,
+      onBlur,
     },
     ref,
   ) => {
@@ -148,6 +157,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       if (reasoningLevel) return reasoningLevel
       return getDefaultReasoningLevel(currentModel)
     }, [currentModel, reasoningLevel])
+
+    const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
+      if (!onBlur) return
+      const nextTarget = event.relatedTarget as Node | null
+      if (nextTarget && event.currentTarget.contains(nextTarget)) return
+      onBlur()
+    }
 
     useEffect(() => {
       if (isEditorReady) return
@@ -491,43 +507,75 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     }
 
     return (
-      <div className="smtcmp-chat-user-input-wrapper">
-        <div className="smtcmp-chat-user-input-tools-row">
-          <ToolBadge />
-        </div>
-        <div className="smtcmp-chat-user-input-container" ref={containerRef}>
+      <div
+        className={`smtcmp-chat-user-input-wrapper${compact ? ' smtcmp-chat-user-input-wrapper--compact' : ''}`}
+        onBlur={handleBlur}
+      >
+        {!compact && (
+          <div className="smtcmp-chat-user-input-tools-row">
+            <ToolBadge />
+          </div>
+        )}
+        <div
+          className="smtcmp-chat-user-input-container"
+          ref={containerRef}
+          onClick={compact ? onToggleCompact : undefined}
+        >
           <div className="smtcmp-chat-user-input-files">
             {effectiveMentionables.map((m) => {
               const mentionableKey = getMentionableKey(serializeMentionable(m))
               const isExpanded = mentionableKey === displayedMentionableKey
-              const handleToggleExpand = () => {
+              const handleToggleExpand = (e?: MouseEvent) => {
+                if (compact) {
+                  // In compact mode, don't expand mentionables, expand the whole input instead
+                  return
+                }
+                if (e) {
+                  e.stopPropagation()
+                }
                 if (isExpanded) {
                   setDisplayedMentionableKey(null)
                 } else {
                   setDisplayedMentionableKey(mentionableKey)
                 }
               }
+              const handleDelete = (e?: MouseEvent) => {
+                if (e) {
+                  e.stopPropagation()
+                }
+                handleMentionableDelete(m)
+              }
               return (
                 <MentionableBadge
                   key={mentionableKey}
                   mentionable={m}
-                  onDelete={() => handleMentionableDelete(m)}
-                  onClick={handleToggleExpand}
+                  onDelete={compact ? () => {} : handleDelete}
+                  onClick={() => handleToggleExpand()}
                   isFocused={isExpanded}
                   isExpanded={isExpanded}
-                  onToggleExpand={handleToggleExpand}
+                  onToggleExpand={() => handleToggleExpand()}
                 />
               )
             })}
           </div>
 
-          <MentionableContentPreview
-            displayedMentionableKey={displayedMentionableKey}
-            mentionables={effectiveMentionables}
-          />
+          {!compact && (
+            <MentionableContentPreview
+              displayedMentionableKey={displayedMentionableKey}
+              mentionables={effectiveMentionables}
+            />
+          )}
 
           <div className="smtcmp-chat-user-input-editor">
             {inputText.trim().length === 0 &&
+              effectiveMentionables.length === 0 &&
+              compact && (
+                <div className="smtcmp-chat-user-input-placeholder">
+                  {t('chat.placeholderCompact', '点击展开编辑...')}
+                </div>
+              )}
+            {!compact &&
+              inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
                   {t('chat.placeholder', '输入消息... [@ 添加标签引用]')}
@@ -560,38 +608,40 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             />
           </div>
 
-          <div className="smtcmp-chat-user-input-controls">
-            <div className="smtcmp-chat-user-input-controls__left">
-              <ChatModeSelect
-                mode={chatMode}
-                onChange={(mode) => onModeChange?.(mode)}
-                side="top"
-                sideOffset={8}
-                contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
-              />
-              <ModelSelect
-                modelId={modelId}
-                onChange={onModelChange}
-                align="start"
-                sideOffset={8}
-                alignOffset={-6}
-                contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
-              />
-              {supportsReasoning(currentModel) && (
-                <ReasoningSelect
-                  model={currentModel}
-                  value={resolvedReasoningLevel}
-                  onChange={(level) => onReasoningChange?.(level)}
+          {!compact && (
+            <div className="smtcmp-chat-user-input-controls">
+              <div className="smtcmp-chat-user-input-controls__left">
+                <ChatModeSelect
+                  mode={chatMode}
+                  onChange={(mode) => onModeChange?.(mode)}
                   side="top"
                   sideOffset={8}
                   contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
                 />
-              )}
+                <ModelSelect
+                  modelId={modelId}
+                  onChange={onModelChange}
+                  align="start"
+                  sideOffset={8}
+                  alignOffset={-6}
+                  contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+                />
+                {supportsReasoning(currentModel) && (
+                  <ReasoningSelect
+                    model={currentModel}
+                    value={resolvedReasoningLevel}
+                    onChange={(level) => onReasoningChange?.(level)}
+                    side="top"
+                    sideOffset={8}
+                    contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+                  />
+                )}
+              </div>
+              <div className="smtcmp-chat-user-input-controls__right">
+                <SubmitButton onClick={() => handleSubmit()} />
+              </div>
             </div>
-            <div className="smtcmp-chat-user-input-controls__right">
-              <SubmitButton onClick={() => handleSubmit()} />
-            </div>
-          </div>
+          )}
         </div>
       </div>
     )

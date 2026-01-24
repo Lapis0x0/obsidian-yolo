@@ -1332,9 +1332,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <UserMessageItem
               key={messageOrGroup.id}
               message={messageOrGroup}
+              isFocused={focusedMessageId === messageOrGroup.id}
               chatUserInputRef={(ref) =>
                 registerChatUserInputRef(messageOrGroup.id, ref)
               }
+              onBlur={() => {
+                if (focusedMessageId === messageOrGroup.id) {
+                  setFocusedMessageId(inputMessage.id)
+                }
+              }}
               onInputChange={(content) => {
                 setChatMessages((prevChatHistory) =>
                   prevChatHistory.map((msg) =>
