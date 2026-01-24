@@ -69,7 +69,7 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState<SettingsTabId>(() => {
     // Load from localStorage
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = app.loadLocalStorage(STORAGE_KEY)
     if (stored && SETTINGS_TABS.some((tab) => tab.id === stored)) {
       return stored as SettingsTabId
     }
@@ -78,7 +78,7 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
 
   useEffect(() => {
     // Save to localStorage when tab changes
-    localStorage.setItem(STORAGE_KEY, activeTab)
+    void app.saveLocalStorage(STORAGE_KEY, activeTab)
   }, [activeTab])
 
   const ActiveComponent =
