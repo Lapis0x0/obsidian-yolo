@@ -2413,6 +2413,64 @@ button.smtcmp-chat-input-model-select {
   } */
 }
 
+.smtcmp-assistant-message-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-2);
+}
+
+.smtcmp-llm-inline-info {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: calc(var(--font-smallest) * 0.9);
+  color: var(--text-faint);
+  padding-left: var(--size-4-2);
+}
+
+.smtcmp-llm-inline-info-content {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-llm-inline-info-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.smtcmp-llm-inline-info-icon {
+  height: var(--size-4-3);
+  width: var(--size-4-3);
+}
+
+.smtcmp-llm-inline-info-icon--input {
+  color: inherit;
+}
+
+.smtcmp-llm-inline-info-icon--output {
+  color: inherit;
+}
+
+.smtcmp-llm-inline-info-icon--speed {
+  color: inherit;
+}
+
+.smtcmp-llm-inline-info-icon--time {
+  color: inherit;
+}
+
 .smtcmp-popover-content {
   z-index: 1000;
   background-color: var(--background-primary);

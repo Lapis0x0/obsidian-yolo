@@ -29,6 +29,7 @@ export type ChatAssistantMessage = {
   metadata?: {
     usage?: ResponseUsage
     model?: ChatModel // TODO: migrate legacy data to new model type
+    durationMs?: number
   }
 }
 export type ChatToolMessage = {
@@ -71,6 +72,7 @@ export type SerializedChatAssistantMessage = {
   metadata?: {
     usage?: ResponseUsage
     model?: ChatModel // TODO: migrate legacy data to new model type
+    durationMs?: number
   }
 }
 export type SerializedChatToolMessage = {

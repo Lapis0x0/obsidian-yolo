@@ -8,6 +8,7 @@ import AssistantMessageAnnotations from './AssistantMessageAnnotations'
 import AssistantMessageContent from './AssistantMessageContent'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
+import LLMResponseInlineInfo from './LLMResponseInlineInfo'
 import ToolMessage from './ToolMessage'
 
 export type AssistantToolMessageGroupItemProps = {
@@ -63,7 +64,10 @@ export default function AssistantToolMessageGroupItem({
         ),
       )}
       {messages.length > 0 && (
-        <AssistantToolMessageGroupActions messages={messages} />
+        <div className="smtcmp-assistant-message-footer">
+          <LLMResponseInlineInfo messages={messages} />
+          <AssistantToolMessageGroupActions messages={messages} />
+        </div>
       )}
     </div>
   )

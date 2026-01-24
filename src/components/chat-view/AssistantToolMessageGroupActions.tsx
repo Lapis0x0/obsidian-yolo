@@ -2,16 +2,10 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import { Check, CopyIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import {
-  AssistantToolMessageGroup,
-  ChatAssistantMessage,
-} from '../../types/chat'
-import { ChatModel } from '../../types/chat-model.types'
-import { ResponseUsage } from '../../types/llm/response'
-import { calculateLLMCost } from '../../utils/llm/price-calculator'
-
+import { AssistantToolMessageGroup } from '../../types/chat'
 import LLMResponseInfoPopover from './LLMResponseInfoPopover'
 import { getToolMessageContent } from './ToolMessage'
+import { useLLMResponseInfo } from './useLLMResponseInfo'
 
 function CopyButton({ messages }: { messages: AssistantToolMessageGroup }) {
   const [copied, setCopied] = useState(false)
@@ -76,42 +70,7 @@ function LLMResponseInfoButton({
 }: {
   messages: AssistantToolMessageGroup
 }) {
-  const usage = useMemo<ResponseUsage | null>(() => {
-    return messages.reduce((acc: ResponseUsage | null, message) => {
-      if (message.role === 'assistant' && message.metadata?.usage) {
-        if (!acc) {
-          return message.metadata.usage
-        }
-        return {
-          prompt_tokens:
-            acc.prompt_tokens + message.metadata.usage.prompt_tokens,
-          completion_tokens:
-            acc.completion_tokens + message.metadata.usage.completion_tokens,
-          total_tokens: acc.total_tokens + message.metadata.usage.total_tokens,
-        }
-      }
-      return acc
-    }, null)
-  }, [messages])
-
-  // TODO: Handle multiple models in the same message group
-  const model = useMemo<ChatModel | undefined>(() => {
-    const assistantMessageWithModel = messages.find(
-      (message): message is ChatAssistantMessage =>
-        message.role === 'assistant' && !!message.metadata?.model,
-    )
-    return assistantMessageWithModel?.metadata?.model
-  }, [messages])
-
-  const cost = useMemo<number | null>(() => {
-    if (!model || !usage) {
-      return null
-    }
-    return calculateLLMCost({
-      model,
-      usage,
-    })
-  }, [model, usage])
+  const { usage, model, cost } = useLLMResponseInfo(messages)
 
   return (
     <Tooltip.Provider delayDuration={0}>

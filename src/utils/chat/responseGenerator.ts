@@ -206,6 +206,8 @@ export class ResponseGenerator {
           }))
         : undefined
 
+    const responseStart = Date.now()
+
     const shouldStream = this.requestParams?.stream ?? true
 
     const effectiveModel = this.reasoningLevel
@@ -242,6 +244,7 @@ export class ResponseGenerator {
         metadata: {
           model: effectiveModel,
           usage: response.usage,
+          durationMs: Date.now() - responseStart,
         },
       })
       const responseMessageId = this.responseMessages.at(-1)!.id
@@ -426,6 +429,20 @@ export class ResponseGenerator {
     } finally {
       cleanupAbortListener()
     }
+    const durationMs = Date.now() - responseStart
+    this.updateResponseMessages((messages) =>
+      messages.map((message) =>
+        message.id === responseMessageId && message.role === 'assistant'
+          ? {
+              ...message,
+              metadata: {
+                ...message.metadata,
+                durationMs,
+              },
+            }
+          : message,
+      ),
+    )
     const toolCallRequests: ToolCallRequest[] = Object.values(responseToolCalls)
       .map((toolCall) => {
         // filter out invalid tool calls without a name
