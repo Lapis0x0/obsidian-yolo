@@ -1,11 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 
+import {
+  ReasoningLevel,
+  reasoningLevelToConfig,
+} from '../../components/chat-view/chat-input/ReasoningSelect'
 import { BaseLLMProvider } from '../../core/llm/base'
 import { McpManager } from '../../core/mcp/mcpManager'
-import {
-  reasoningLevelToConfig,
-  ReasoningLevel,
-} from '../../components/chat-view/chat-input/ReasoningSelect'
 import { ChatMessage, ChatToolMessage } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestTool } from '../../types/llm/request'

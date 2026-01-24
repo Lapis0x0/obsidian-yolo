@@ -55,11 +55,11 @@ import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import ChatSettingsButton from './chat-input/ChatSettingsButton'
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
-import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import {
-  getDefaultReasoningLevel,
   ReasoningLevel,
+  getDefaultReasoningLevel,
 } from './chat-input/ReasoningSelect'
+import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
 import QueryProgress, { QueryProgressState } from './QueryProgress'

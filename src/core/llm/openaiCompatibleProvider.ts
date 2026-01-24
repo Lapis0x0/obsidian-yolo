@@ -33,9 +33,7 @@ type OpenAICompatibleExtras = {
     thinkingBudget: number
     includeThoughts: boolean
   }
-  reasoning?: {
-    effort: string
-  }
+  reasoning?: Record<string, unknown>
   extra_body?: Record<string, unknown>
 }
 

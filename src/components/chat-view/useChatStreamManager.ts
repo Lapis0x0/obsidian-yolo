@@ -17,6 +17,7 @@ import { ConversationOverrideSettings } from '../../types/conversation-settings.
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
 import { ResponseGenerator } from '../../utils/chat/responseGenerator'
 import { ErrorModal } from '../modals/ErrorModal'
+
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
 
 type UseChatStreamManagerParams = {

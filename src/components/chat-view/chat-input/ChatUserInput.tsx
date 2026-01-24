@@ -53,9 +53,9 @@ import {
 } from './plugins/mention/MentionNode'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import {
-  getDefaultReasoningLevel,
   ReasoningLevel,
   ReasoningSelect,
+  getDefaultReasoningLevel,
   supportsReasoning,
 } from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
