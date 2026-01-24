@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Clock, Zap } from 'lucide-react'
 
 import { AssistantToolMessageGroup } from '../../types/chat'
+
 import { useLLMResponseInfo } from './useLLMResponseInfo'
 
 const formatTokenCount = (value: number) => {

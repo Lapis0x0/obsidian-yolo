@@ -1136,6 +1136,9 @@
   gap: var(--size-4-1);
   font-size: var(--font-smallest);
   color: var(--text-muted);
+  background: transparent;
+  border: none;
+  box-shadow: none;
   padding: 0 var(--size-2-1);
   cursor: pointer;
   transition: all 0.1s ease-in-out;

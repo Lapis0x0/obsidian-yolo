@@ -3,6 +3,7 @@ import { Check, CopyIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { AssistantToolMessageGroup } from '../../types/chat'
+
 import LLMResponseInfoPopover from './LLMResponseInfoPopover'
 import { getToolMessageContent } from './ToolMessage'
 import { useLLMResponseInfo } from './useLLMResponseInfo'

@@ -161,6 +161,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
       if (!onBlur) return
       const nextTarget = event.relatedTarget as Node | null
+      if (
+        nextTarget &&
+        nextTarget instanceof HTMLElement &&
+        nextTarget.closest('.smtcmp-chat-sidebar-popover')
+      ) {
+        return
+      }
       if (nextTarget && event.currentTarget.contains(nextTarget)) return
       onBlur()
     }
