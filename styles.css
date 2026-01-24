@@ -8198,9 +8198,35 @@ body.smtcmp-quick-ask-global-interaction * {
 .smtcmp-settings-tabs-content {
   flex: 1;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: var(--size-4-6);
+  box-sizing: border-box;
   padding-bottom: var(--size-4-4);
   width: 100%;
   max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
+}
+
+.smtcmp-settings-tabs-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.smtcmp-settings-tabs-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.smtcmp-settings-tabs-content::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.smtcmp-settings-tabs-content::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-normal) 40%, transparent);
+  background-clip: content-box;
 }
 
 /* Mobile responsive adjustments */
