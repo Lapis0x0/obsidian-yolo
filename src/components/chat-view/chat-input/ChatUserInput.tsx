@@ -14,9 +14,9 @@ import {
   SerializedEditorState,
 } from 'lexical'
 import {
-  forwardRef,
   type FocusEvent,
   type MouseEvent,
+  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
