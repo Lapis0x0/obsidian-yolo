@@ -2,7 +2,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--size-4-2);
+  margin-bottom: var(--size-4-4);
   gap: var(--size-4-2);
   padding: var(--size-2-1) 0;
 }
@@ -3148,6 +3148,7 @@ button.smtcmp-chat-input-model-select {
   display: flex;
   flex-direction: column;
   margin-top: var(--size-4-1);
+  margin-bottom: var(--size-4-2);
   border-left: 2px solid var(--background-modifier-border);
   padding-left: var(--size-4-1);
 }
