@@ -17,24 +17,6 @@ jobs:
         with:
           node-version: '18.x'
 
-      - name: Set Tag variable
-        run: |
-          echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
-
-      - name: Determine target branch
-        run: |
-          tag="${TAG}"
-          major_minor=$(echo "$tag" | awk -F. '{print $1"."$2}')
-          candidate_branch="${major_minor}.x"
-          if git ls-remote --exit-code --heads origin "$candidate_branch" >/dev/null 2>&1; then
-            echo "TARGET_BRANCH=$candidate_branch" >> $GITHUB_ENV
-          else
-            echo "TARGET_BRANCH=main" >> $GITHUB_ENV
-          fi
-
-      - name: Bump version
-        run: npm run version $TAG
-
       - name: Build plugin
         run: |
           npm install
@@ -47,17 +29,5 @@ jobs:
           tag="${GITHUB_REF#refs/tags/}"
           gh release create "$tag" \
             --title="$tag" \
+            --generate-notes \
             main.js manifest.json styles.css
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          commit-message: 'version bump: ${{ env.TAG }}'
-          title: 'Version bump: ${{ env.TAG }}'
-          body: |
-            Automated version bump after release ${{ env.TAG }}
-
-            This PR was automatically created by the release workflow.
-          branch: 'version-bump/${{ env.TAG }}'
-          base: '${{ env.TARGET_BRANCH }}'
-          delete-branch: true
