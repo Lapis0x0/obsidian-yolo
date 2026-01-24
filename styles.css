@@ -2244,13 +2244,14 @@ button.smtcmp-chat-input-model-select {
   display: block;
   border-top: none;
   padding: 0;
+  margin-bottom: var(--size-4-3);
 
   .smtcmp-item-control {
     width: 100%;
   }
 
   .setting-item-control {
-    padding-bottom: var(--size-4-3);
+    padding-bottom: 0;
   }
 
   textarea {
@@ -2280,6 +2281,21 @@ button.smtcmp-chat-input-model-select {
       margin-top: var(--size-4-2);
     }
   }
+}
+
+.smtcmp-settings-plain.setting-item {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.smtcmp-settings-plain.setting-item .setting-item-info {
+  display: none;
+}
+
+.smtcmp-settings-plain.setting-item .setting-item-control {
+  padding: 0;
 }
 
 .smtcmp-dialog-content {

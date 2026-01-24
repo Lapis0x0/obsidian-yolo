@@ -322,7 +322,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting>
+          <ObsidianSetting className="smtcmp-settings-plain">
             <FolderSelectionList
               app={app}
               vault={plugin.app.vault}
@@ -362,7 +362,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting>
+          <ObsidianSetting className="smtcmp-settings-plain">
             <FolderSelectionList
               app={app}
               vault={plugin.app.vault}
