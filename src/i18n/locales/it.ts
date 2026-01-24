@@ -308,6 +308,8 @@ export const it: TranslationKeys = {
       reasoningTypeNone: 'Nessuno',
       reasoningTypeOpenAI: 'OpenAI',
       reasoningTypeGemini: 'Gemini',
+      reasoningTypeAnthropic: 'Claude Extended Thinking',
+      reasoningTypeGeneric: 'Modello di ragionamento generico',
       reasoningTypeBase: 'Base',
       baseModelWarning:
         'I modelli base mostrano il processo di ragionamento completo nelle risposte. Non adatto per la maggior parte degli usi.',
@@ -316,7 +318,7 @@ export const it: TranslationKeys = {
         'Controlla quanto tempo il modello dedica al ragionamento (basso/medio/alto).',
       geminiThinkingBudget: 'Budget di pensiero Gemini',
       geminiThinkingBudgetDesc:
-        'Tempo massimo di pensiero in millisecondi per richiesta.',
+        'Unità: token di thinking. 0 = off; -1 = dinamico (solo Gemini).',
       geminiThinkingBudgetPlaceholder: 'Ad esempio, 10000',
       toolType: 'Tipo di strumento',
       toolTypeDesc:
@@ -786,6 +788,8 @@ export const it: TranslationKeys = {
   reasoning: {
     selectReasoning: 'Seleziona ragionamento',
     off: 'Disattivato',
+    on: 'Attivato',
+    auto: 'Auto',
     low: 'Basso',
     medium: 'Medio',
     high: 'Alto',

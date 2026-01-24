@@ -20,6 +20,9 @@ const baseChatModelSchema = z.object({
   name: z.string().optional(),
   enable: z.boolean().default(true).optional(),
   isBaseModel: z.boolean().default(false).optional(),
+  reasoningType: z
+    .enum(['none', 'openai', 'gemini', 'anthropic', 'generic'])
+    .optional(),
   customParameters: z
     .array(
       z.object({

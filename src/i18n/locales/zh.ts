@@ -275,6 +275,8 @@ export const zh: TranslationKeys = {
       reasoningTypeNone: '无特殊配置',
       reasoningTypeOpenAI: 'OpenAI 推理（o3 / o4-mini / GPT-5）',
       reasoningTypeGemini: 'Gemini 推理（2.5 Pro / Flash / Flash-Lite）',
+      reasoningTypeAnthropic: 'Claude 扩展思考（Extended thinking）',
+      reasoningTypeGeneric: '通用推理模型',
       reasoningTypeBase: '特殊：base 模型',
       baseModelWarning:
         '启用后将不会为此模型注入任何 system prompt（包括助手提示词）。仅在你了解 base 模型含义时再勾选。',
@@ -283,7 +285,7 @@ export const zh: TranslationKeys = {
         '选择推理强度：minimal（更快更省，仅 GPT-5）/ low / medium / high',
       geminiThinkingBudget: '思考预算 (thinkingBudget)',
       geminiThinkingBudgetDesc:
-        '单位为“思考 tokens”。0=关闭（Flash/Flash-Lite 支持）；-1=动态；具体范围因模型而异。',
+        '单位为“思考 tokens”。0=关闭；-1=动态（Gemini 支持）；具体范围因模型而异。',
       geminiThinkingBudgetPlaceholder: '例如：-1（动态，0=关闭）',
       toolType: '工具类型',
       toolTypeDesc: '选择模型支持的工具类型',
@@ -725,6 +727,8 @@ export const zh: TranslationKeys = {
   reasoning: {
     selectReasoning: '选择推理强度',
     off: '关闭',
+    on: '开启',
+    auto: '自动',
     low: '低',
     medium: '中',
     high: '高',

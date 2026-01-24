@@ -4,6 +4,7 @@ import { ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
 
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
+import { ReasoningLevel } from './chat-input/ReasoningSelect'
 import SimilaritySearchResults from './SimilaritySearchResults'
 
 export type UserMessageItemProps = {
@@ -15,6 +16,8 @@ export type UserMessageItemProps = {
   onMentionablesChange: (mentionables: Mentionable[]) => void
   modelId?: string
   onModelChange?: (modelId: string) => void
+  reasoningLevel?: ReasoningLevel
+  onReasoningChange?: (level: ReasoningLevel) => void
 }
 
 export default function UserMessageItem({
@@ -26,6 +29,8 @@ export default function UserMessageItem({
   onMentionablesChange,
   modelId,
   onModelChange,
+  reasoningLevel,
+  onReasoningChange,
 }: UserMessageItemProps) {
   return (
     <div className="smtcmp-chat-messages-user">
@@ -39,6 +44,8 @@ export default function UserMessageItem({
         setMentionables={onMentionablesChange}
         modelId={modelId}
         onModelChange={onModelChange}
+        reasoningLevel={reasoningLevel}
+        onReasoningChange={onReasoningChange}
       />
       {message.similaritySearchResults && (
         <SimilaritySearchResults

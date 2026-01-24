@@ -14,6 +14,7 @@ export type ChatUserMessage = {
   promptContent: string | ContentPart[] | null
   id: string
   mentionables: Mentionable[]
+  reasoningLevel?: string
   similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
     similarity: number
   })[]
@@ -55,6 +56,7 @@ export type SerializedChatUserMessage = {
   promptContent: string | ContentPart[] | null
   id: string
   mentionables: SerializedMentionable[]
+  reasoningLevel?: string
   similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
     similarity: number
   })[]
@@ -93,6 +95,7 @@ export type ChatConversation = {
   isPinned?: boolean
   pinnedAt?: number
   messages: SerializedChatMessage[]
+  reasoningLevel?: string
 }
 export type ChatConversationMeta = {
   schemaVersion: number

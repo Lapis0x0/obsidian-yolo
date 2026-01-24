@@ -300,6 +300,8 @@ export const en: TranslationKeys = {
       reasoningTypeNone: 'No special configuration',
       reasoningTypeOpenAI: 'OpenAI reasoning (o3 / o4-mini / gpt-5)',
       reasoningTypeGemini: 'Gemini reasoning (2.5 pro / flash / flash-lite)',
+      reasoningTypeAnthropic: 'Claude Extended Thinking',
+      reasoningTypeGeneric: 'Generic reasoning model',
       reasoningTypeBase: 'Special: base model',
       baseModelWarning:
         'When enabled, no system prompts (including assistant prompts) will be injected for this model; enable only if you understand how base models behave.',
@@ -308,7 +310,7 @@ export const en: TranslationKeys = {
         'Choose effort: minimal (gpt-5 only) / low / medium / high',
       geminiThinkingBudget: 'Thinking budget (thinkingBudget)',
       geminiThinkingBudgetDesc:
-        'Unit: thinking tokens. 0 = off (flash/flash-lite), -1 = dynamic; ranges vary by model.',
+        'Unit: thinking tokens. 0 = off; -1 = dynamic (Gemini only); ranges vary by model.',
       geminiThinkingBudgetPlaceholder: 'For example, -1 (dynamic, 0=off)',
       toolType: 'Tool type',
       toolTypeDesc: 'Select the tool type supported by the model',
@@ -770,6 +772,8 @@ export const en: TranslationKeys = {
   reasoning: {
     selectReasoning: 'Select reasoning',
     off: 'Off',
+    on: 'On',
+    auto: 'Auto',
     low: 'Low',
     medium: 'Medium',
     high: 'High',

@@ -236,6 +236,8 @@ export type TranslationKeys = {
       reasoningTypeNone?: string
       reasoningTypeOpenAI?: string
       reasoningTypeGemini?: string
+      reasoningTypeAnthropic?: string
+      reasoningTypeGeneric?: string
       reasoningTypeBase?: string
       baseModelWarning?: string
       openaiReasoningEffort?: string
@@ -676,6 +678,8 @@ export type TranslationKeys = {
   reasoning?: {
     selectReasoning?: string
     off?: string
+    on?: string
+    auto?: string
     low?: string
     medium?: string
     high?: string

@@ -56,6 +56,10 @@ import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import ChatSettingsButton from './chat-input/ChatSettingsButton'
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import {
+  getDefaultReasoningLevel,
+  ReasoningLevel,
+} from './chat-input/ReasoningSelect'
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
 import QueryProgress, { QueryProgressState } from './QueryProgress'
@@ -69,12 +73,14 @@ const getNewInputMessage = (
   app: App,
   includeCurrentFile: boolean,
   suppression: 'none' | 'hidden' | 'deleted',
+  reasoningLevel: ReasoningLevel,
 ): ChatUserMessage => {
   return {
     role: 'user',
     content: null,
     promptContent: null,
     id: uuidv4(),
+    reasoningLevel,
     mentionables:
       includeCurrentFile && suppression !== 'deleted'
         ? [
@@ -130,6 +136,31 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return new PromptGenerator(getRAGEngine, app, settings)
   }, [getRAGEngine, app, settings])
 
+  const initialReasoningLevel = useMemo(() => {
+    const initialModel =
+      settings.chatModels.find((m) => m.id === settings.chatModelId) ?? null
+    return getDefaultReasoningLevel(initialModel)
+  }, [settings.chatModelId, settings.chatModels])
+
+  const normalizeReasoningLevel = useCallback(
+    (value?: string): ReasoningLevel | null => {
+      if (!value) return null
+      const candidates: ReasoningLevel[] = [
+        'off',
+        'on',
+        'auto',
+        'low',
+        'medium',
+        'high',
+        'extra-high',
+      ]
+      return candidates.includes(value as ReasoningLevel)
+        ? (value as ReasoningLevel)
+        : null
+    },
+    [],
+  )
+
   // Per-conversation suppression: 'none' | 'hidden' | 'deleted'
   // hidden: show badge with strike-through; deleted: remove entirely
   const [currentFileSuppression, setCurrentFileSuppression] = useState<
@@ -144,6 +175,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       app,
       settings.chatOptions.includeCurrentFileContent,
       'none',
+      initialReasoningLevel,
     )
     if (props.selectedBlock) {
       newMessage.mentionables = [
@@ -163,6 +195,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
   const [currentConversationId, setCurrentConversationId] =
     useState<string>(uuidv4())
+  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
+    initialReasoningLevel,
+  )
+  const conversationReasoningLevelRef = useRef<Map<string, ReasoningLevel>>(
+    new Map(),
+  )
+  const [messageReasoningMap, setMessageReasoningMap] = useState<
+    Map<string, ReasoningLevel>
+  >(new Map())
   const [queryProgress, setQueryProgress] = useState<QueryProgressState>({
     type: 'idle',
   })
@@ -236,13 +277,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           currentConversationId,
           messages,
           conversationOverrides ?? null,
+          conversationReasoningLevelRef.current.get(currentConversationId) ??
+            reasoningLevel,
         )
       } catch (error) {
         new Notice('Failed to save chat history')
         console.error('Failed to save chat history', error)
       }
     },
-    [conversationOverrides, createOrUpdateConversation, currentConversationId],
+    [
+      conversationOverrides,
+      createOrUpdateConversation,
+      currentConversationId,
+      reasoningLevel,
+    ],
   )
 
   const registerChatUserInputRef = (
@@ -279,14 +327,36 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const modelFromRef =
           conversationModelIdRef.current.get(conversationId) ??
           settings.chatModelId
+        const modelForConversation =
+          settings.chatModels.find((m) => m.id === modelFromRef) ?? null
         setConversationModelId(modelFromRef)
+        const storedReasoningLevel = normalizeReasoningLevel(
+          conversation.reasoningLevel,
+        )
+        const resolvedReasoningLevel =
+          storedReasoningLevel ?? getDefaultReasoningLevel(modelForConversation)
+        setReasoningLevel(resolvedReasoningLevel)
+        conversationReasoningLevelRef.current.set(
+          conversationId,
+          resolvedReasoningLevel,
+        )
         // Reset per-message model mapping when switching conversation
         setMessageModelMap(new Map())
+        const nextMessageReasoningMap = new Map<string, ReasoningLevel>()
+        conversation.messages.forEach((message) => {
+          if (message.role !== 'user') return
+          const messageLevel = normalizeReasoningLevel(message.reasoningLevel)
+          if (messageLevel) {
+            nextMessageReasoningMap.set(message.id, messageLevel)
+          }
+        })
+        setMessageReasoningMap(nextMessageReasoningMap)
         const newInputMessage = getNewInputMessage(
           app,
           settings.chatOptions.includeCurrentFileContent &&
             !conversation.messages.some((message) => message.role === 'user'),
           suppressed,
+          resolvedReasoningLevel,
         )
         setInputMessage(newInputMessage)
         setFocusedMessageId(newInputMessage.id)
@@ -303,7 +373,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       app,
       getConversationById,
       settings.chatModelId,
+      settings.chatModels,
       settings.chatOptions.includeCurrentFileContent,
+      normalizeReasoningLevel,
     ],
   )
 
@@ -321,12 +393,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setConversationOverrides(null)
     conversationModelIdRef.current.set(newId, settings.chatModelId)
     setConversationModelId(settings.chatModelId)
+    const defaultReasoningLevel = getDefaultReasoningLevel(
+      settings.chatModels.find((m) => m.id === settings.chatModelId) ?? null,
+    )
+    setReasoningLevel(defaultReasoningLevel)
+    conversationReasoningLevelRef.current.set(newId, defaultReasoningLevel)
     setMessageModelMap(new Map())
+    setMessageReasoningMap(new Map())
     setChatMessages([])
     const newInputMessage = getNewInputMessage(
       app,
       settings.chatOptions.includeCurrentFileContent,
       'none',
+      defaultReasoningLevel,
     )
     if (selectedBlock) {
       const mentionableBlock: MentionableBlock = {
@@ -346,6 +425,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     })
     abortActiveStreams()
   }
+
+  const resolveReasoningLevelForMessages = useCallback(
+    (messages: ChatMessage[]) => {
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find((message): message is ChatUserMessage => message.role === 'user')
+      const storedLevel = normalizeReasoningLevel(
+        lastUserMessage?.reasoningLevel,
+      )
+      return storedLevel ?? reasoningLevel
+    },
+    [normalizeReasoningLevel, reasoningLevel],
+  )
 
   const handleUserMessageSubmit = useCallback(
     async ({
@@ -404,9 +496,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
       setChatMessages(compiledMessages)
       void persistConversation(compiledMessages)
+      const requestReasoningLevel =
+        resolveReasoningLevelForMessages(compiledMessages)
       submitChatMutation.mutate({
         chatMessages: compiledMessages,
         conversationId: currentConversationId,
+        reasoningLevel: requestReasoningLevel,
       })
     },
     [
@@ -416,6 +511,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       abortActiveStreams,
       forceScrollToBottom,
       persistConversation,
+      resolveReasoningLevelForMessages,
     ],
   )
 
@@ -524,6 +620,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         submitChatMutation.mutate({
           chatMessages: updatedMessages,
           conversationId: currentConversationId,
+          reasoningLevel: resolveReasoningLevelForMessages(updatedMessages),
         })
         requestAnimationFrame(() => {
           forceScrollToBottom()
@@ -537,6 +634,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setChatMessages,
       getMcpManager,
       forceScrollToBottom,
+      resolveReasoningLevelForMessages,
     ],
   )
 
@@ -567,8 +665,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     submitChatMutation.mutate({
       chatMessages: chatMessages,
       conversationId: currentConversationId,
+      reasoningLevel: resolveReasoningLevelForMessages(chatMessages),
     })
-  }, [submitChatMutation, chatMessages, currentConversationId])
+  }, [
+    submitChatMutation,
+    chatMessages,
+    currentConversationId,
+    resolveReasoningLevelForMessages,
+  ])
 
   useEffect(() => {
     setFocusedMessageId(inputMessage.id)
@@ -1198,8 +1302,33 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     <div className="smtcmp-chat-container">
       {header}
       <div className="smtcmp-chat-messages" ref={chatMessagesRef}>
-        {groupedChatMessages.map((messageOrGroup, index) =>
-          !Array.isArray(messageOrGroup) ? (
+        {groupedChatMessages.map((messageOrGroup, index) => {
+          if (Array.isArray(messageOrGroup)) {
+            return (
+              <AssistantToolMessageGroupItem
+                key={messageOrGroup.at(0)?.id}
+                messages={messageOrGroup}
+                contextMessages={groupedChatMessages
+                  .slice(0, index + 1)
+                  .flatMap((messageOrGroup): ChatMessage[] =>
+                    !Array.isArray(messageOrGroup)
+                      ? [messageOrGroup]
+                      : messageOrGroup,
+                  )}
+                conversationId={currentConversationId}
+                isApplying={applyMutation.isPending}
+                onApply={handleApply}
+                onToolMessageUpdate={handleToolMessageUpdate}
+              />
+            )
+          }
+
+          const messageReasoningLevel =
+            messageReasoningMap.get(messageOrGroup.id) ??
+            normalizeReasoningLevel(messageOrGroup.reasoningLevel) ??
+            reasoningLevel
+
+          return (
             <UserMessageItem
               key={messageOrGroup.id}
               message={messageOrGroup}
@@ -1223,6 +1352,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 // Use the model mapping for this message if exists, otherwise current conversation model
                 const modelForThisMessage =
                   messageModelMap.get(messageOrGroup.id) ?? conversationModelId
+                const reasoningForThisMessage =
+                  messageReasoningMap.get(messageOrGroup.id) ??
+                  messageReasoningLevel
                 void handleUserMessageSubmit({
                   inputChatMessages: [
                     ...groupedChatMessages
@@ -1237,6 +1369,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       content: content,
                       promptContent: null,
                       id: messageOrGroup.id,
+                      reasoningLevel: reasoningForThisMessage,
                       mentionables: messageOrGroup.mentionables,
                     },
                   ],
@@ -1247,6 +1380,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 setMessageModelMap((prev) => {
                   const next = new Map(prev)
                   next.set(messageOrGroup.id, modelForThisMessage)
+                  return next
+                })
+                setMessageReasoningMap((prev) => {
+                  const next = new Map(prev)
+                  next.set(messageOrGroup.id, reasoningForThisMessage)
                   return next
                 })
               }}
@@ -1355,25 +1493,32 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 setConversationModelId(id)
                 conversationModelIdRef.current.set(currentConversationId, id)
               }}
+              reasoningLevel={messageReasoningLevel}
+              onReasoningChange={(level) => {
+                setMessageReasoningMap((prev) => {
+                  const next = new Map(prev)
+                  next.set(messageOrGroup.id, level)
+                  return next
+                })
+                setChatMessages((prevChatHistory) =>
+                  prevChatHistory.map((msg) =>
+                    msg.role === 'user' && msg.id === messageOrGroup.id
+                      ? {
+                          ...msg,
+                          reasoningLevel: level,
+                        }
+                      : msg,
+                  ),
+                )
+                setReasoningLevel(level)
+                conversationReasoningLevelRef.current.set(
+                  currentConversationId,
+                  level,
+                )
+              }}
             />
-          ) : (
-            <AssistantToolMessageGroupItem
-              key={messageOrGroup.at(0)?.id}
-              messages={messageOrGroup}
-              contextMessages={groupedChatMessages
-                .slice(0, index + 1)
-                .flatMap((messageOrGroup): ChatMessage[] =>
-                  !Array.isArray(messageOrGroup)
-                    ? [messageOrGroup]
-                    : messageOrGroup,
-                )}
-              conversationId={currentConversationId}
-              isApplying={applyMutation.isPending}
-              onApply={handleApply}
-              onToolMessageUpdate={handleToolMessageUpdate}
-            />
-          ),
-        )}
+          )
+        })}
         <QueryProgress state={queryProgress} />
         {showContinueResponseButton && (
           <div className="smtcmp-continue-response-button-container">
@@ -1420,7 +1565,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             void handleUserMessageSubmit({
               inputChatMessages: [
                 ...chatMessages,
-                { ...inputMessage, content },
+                { ...inputMessage, content, reasoningLevel },
               ],
               useVaultSearch,
             })
@@ -1430,8 +1575,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               next.set(inputMessage.id, conversationModelId)
               return next
             })
+            setMessageReasoningMap((prev) => {
+              const next = new Map(prev)
+              next.set(inputMessage.id, reasoningLevel)
+              return next
+            })
             setInputMessage(
-              getNewInputMessage(app, false, currentFileSuppression),
+              getNewInputMessage(
+                app,
+                false,
+                currentFileSuppression,
+                reasoningLevel,
+              ),
             )
           }}
           onFocus={() => {
@@ -1484,6 +1639,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onModelChange={(id) => {
             setConversationModelId(id)
             conversationModelIdRef.current.set(currentConversationId, id)
+          }}
+          reasoningLevel={reasoningLevel}
+          onReasoningChange={(level) => {
+            setReasoningLevel(level)
+            conversationReasoningLevelRef.current.set(
+              currentConversationId,
+              level,
+            )
+            setInputMessage((prev) => ({
+              ...prev,
+              reasoningLevel: level,
+            }))
           }}
           autoFocus
           addedBlockKey={addedBlockKey}

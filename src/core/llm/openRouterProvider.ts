@@ -43,7 +43,10 @@ export class OpenRouterProvider extends BaseLLMProvider<
       throw new Error('Model is not an OpenRouter model')
     }
 
-    const mergedRequest = this.applyCustomModelParameters(model, request)
+    const mergedRequest = this.applyCustomModelParameters(
+      model,
+      this.applyReasoningConfig(model, request),
+    )
 
     return this.adapter.generateResponse(this.client, mergedRequest, options)
   }
@@ -57,7 +60,10 @@ export class OpenRouterProvider extends BaseLLMProvider<
       throw new Error('Model is not an OpenRouter model')
     }
 
-    const mergedRequest = this.applyCustomModelParameters(model, request)
+    const mergedRequest = this.applyCustomModelParameters(
+      model,
+      this.applyReasoningConfig(model, request),
+    )
 
     return this.adapter.streamResponse(this.client, mergedRequest, options)
   }
@@ -74,5 +80,46 @@ export class OpenRouterProvider extends BaseLLMProvider<
         `Failed to get embedding from OpenRouter: ${error instanceof Error ? error.message : 'Unknown error'}`,
       )
     }
+  }
+
+  private applyReasoningConfig<
+    RequestType extends LLMRequestNonStreaming | LLMRequestStreaming,
+  >(model: ChatModel, request: RequestType): RequestType {
+    const formattedRequest = { ...request } as RequestType &
+      Record<string, unknown>
+
+    const thinkingModel = model as ChatModel & {
+      thinking?: { enabled: boolean; thinking_budget: number }
+    }
+    if (thinkingModel.thinking) {
+      const budget = thinkingModel.thinking.thinking_budget
+      if (thinkingModel.thinking.enabled === false) {
+        formattedRequest.reasoning = { effort: 'none' }
+      } else if (budget === -1) {
+        formattedRequest.reasoning = { enabled: true }
+      } else if (typeof budget === 'number') {
+        formattedRequest.reasoning = { max_tokens: budget }
+      }
+    }
+
+    const reasoningModel = model as ChatModel & {
+      reasoning?: { enabled: boolean; reasoning_effort?: string }
+    }
+    if (reasoningModel.reasoning) {
+      if (reasoningModel.reasoning.enabled === false) {
+        formattedRequest.reasoning = { effort: 'none' }
+      } else {
+        const effort = reasoningModel.reasoning.reasoning_effort as
+          | 'low'
+          | 'medium'
+          | 'high'
+          | undefined
+        if (effort) {
+          formattedRequest.reasoning = { effort }
+        }
+      }
+    }
+
+    return formattedRequest as RequestType
   }
 }

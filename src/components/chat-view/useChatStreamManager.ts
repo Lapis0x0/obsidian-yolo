@@ -17,6 +17,7 @@ import { ConversationOverrideSettings } from '../../types/conversation-settings.
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
 import { ResponseGenerator } from '../../utils/chat/responseGenerator'
 import { ErrorModal } from '../modals/ErrorModal'
+import { ReasoningLevel } from './chat-input/ReasoningSelect'
 
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
@@ -31,7 +32,11 @@ export type UseChatStreamManager = {
   submitChatMutation: UseMutationResult<
     void,
     Error,
-    { chatMessages: ChatMessage[]; conversationId: string }
+    {
+      chatMessages: ChatMessage[]
+      conversationId: string
+      reasoningLevel?: ReasoningLevel
+    }
   >
 }
 
@@ -79,9 +84,11 @@ export function useChatStreamManager({
     mutationFn: async ({
       chatMessages,
       conversationId,
+      reasoningLevel,
     }: {
       chatMessages: ChatMessage[]
       conversationId: string
+      reasoningLevel?: ReasoningLevel
     }) => {
       const lastMessage = chatMessages.at(-1)
       if (!lastMessage) {
@@ -107,6 +114,7 @@ export function useChatStreamManager({
           promptGenerator,
           mcpManager,
           abortSignal: abortController.signal,
+          reasoningLevel,
           requestParams: {
             stream: conversationOverrides?.stream ?? true,
             temperature: conversationOverrides?.temperature ?? undefined,

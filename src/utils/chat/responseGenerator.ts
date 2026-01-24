@@ -2,6 +2,10 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { BaseLLMProvider } from '../../core/llm/base'
 import { McpManager } from '../../core/mcp/mcpManager'
+import {
+  reasoningLevelToConfig,
+  ReasoningLevel,
+} from '../../components/chat-view/chat-input/ReasoningSelect'
 import { ChatMessage, ChatToolMessage } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestTool } from '../../types/llm/request'
@@ -35,6 +39,7 @@ export type ResponseGeneratorParams = {
     temperature?: number
     top_p?: number
   }
+  reasoningLevel?: ReasoningLevel
   maxContextOverride?: number
   geminiTools?: {
     useWebSearch?: boolean
@@ -58,6 +63,7 @@ export class ResponseGenerator {
     temperature?: number
     top_p?: number
   }
+  private readonly reasoningLevel?: ReasoningLevel
   private readonly maxContextOverride?: number
   private readonly geminiTools?: {
     useWebSearch?: boolean
@@ -79,6 +85,7 @@ export class ResponseGenerator {
     this.abortSignal = params.abortSignal
     this.firstTokenTimeoutMs = params.firstTokenTimeoutMs
     this.requestParams = params.requestParams
+    this.reasoningLevel = params.reasoningLevel
     this.maxContextOverride = params.maxContextOverride
     this.geminiTools = params.geminiTools
   }
@@ -201,13 +208,20 @@ export class ResponseGenerator {
 
     const shouldStream = this.requestParams?.stream ?? true
 
+    const effectiveModel = this.reasoningLevel
+      ? ({
+          ...this.model,
+          ...reasoningLevelToConfig(this.reasoningLevel, this.model),
+        } as ChatModel)
+      : this.model
+
     const runNonStreaming = async (): Promise<{
       toolCallRequests: ToolCallRequest[]
     }> => {
       const response = await this.providerClient.generateResponse(
-        this.model,
+        effectiveModel,
         {
-          model: this.model.model,
+          model: effectiveModel.model,
           messages: requestMessages,
           tools,
           stream: false,
@@ -226,7 +240,7 @@ export class ResponseGenerator {
         content: response.choices[0]?.message?.content ?? '',
         id: uuidv4(),
         metadata: {
-          model: this.model,
+          model: effectiveModel,
           usage: response.usage,
         },
       })
@@ -311,9 +325,9 @@ export class ResponseGenerator {
           })()
         : this.abortSignal
       responseIterable = await this.providerClient.streamResponse(
-        this.model,
+        effectiveModel,
         {
-          model: this.model.model,
+          model: effectiveModel.model,
           messages: requestMessages,
           tools,
           stream: true,
@@ -345,7 +359,7 @@ export class ResponseGenerator {
         content: '',
         id: uuidv4(),
         metadata: {
-          model: this.model,
+          model: effectiveModel,
         },
       })
     }

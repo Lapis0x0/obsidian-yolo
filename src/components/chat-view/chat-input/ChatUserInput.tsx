@@ -53,6 +53,7 @@ import {
 } from './plugins/mention/MentionNode'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import {
+  getDefaultReasoningLevel,
   ReasoningLevel,
   ReasoningSelect,
   supportsReasoning,
@@ -117,7 +118,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onDeleteFromAll,
       chatMode = 'chat',
       onModeChange,
-      reasoningLevel = 'medium',
+      reasoningLevel,
       onReasoningChange,
     },
     ref,
@@ -142,6 +143,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
+
+    const resolvedReasoningLevel = useMemo(() => {
+      if (reasoningLevel) return reasoningLevel
+      return getDefaultReasoningLevel(currentModel)
+    }, [currentModel, reasoningLevel])
 
     useEffect(() => {
       if (isEditorReady) return
@@ -574,7 +580,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               {supportsReasoning(currentModel) && (
                 <ReasoningSelect
                   model={currentModel}
-                  value={reasoningLevel}
+                  value={resolvedReasoningLevel}
                   onChange={(level) => onReasoningChange?.(level)}
                   side="top"
                   sideOffset={8}

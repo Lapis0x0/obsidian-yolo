@@ -14,6 +14,7 @@ export type ChatConversation = {
   pinnedAt?: number
   // Optional per-conversation overrides (temperature, top_p, maxContextMessages, stream)
   overrides?: ConversationOverrideSettings | null
+  reasoningLevel?: string
 }
 
 export type ChatConversationMetadata = {

@@ -26,10 +26,14 @@ type AddChatModelModalComponentProps = {
 
 const MODEL_IDENTIFIER_KEYS = ['id', 'name', 'model'] as const
 
-const OPENAI_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'] as const
-type OpenAIReasoningEffort = (typeof OPENAI_REASONING_EFFORTS)[number]
-
-const REASONING_TYPES = ['none', 'openai', 'gemini', 'base'] as const
+const REASONING_TYPES = [
+  'none',
+  'openai',
+  'gemini',
+  'anthropic',
+  'generic',
+  'base',
+] as const
 type ReasoningType = (typeof REASONING_TYPES)[number]
 
 const GEMINI_TOOL_TYPES = ['none', 'gemini'] as const
@@ -83,11 +87,6 @@ const normalizeGeminiBaseUrl = (raw?: string): string | undefined => {
 
 const isReasoningType = (value: string): value is ReasoningType =>
   REASONING_TYPES.includes(value as ReasoningType)
-
-const isOpenAIReasoningEffort = (
-  value: string,
-): value is OpenAIReasoningEffort =>
-  OPENAI_REASONING_EFFORTS.includes(value as OpenAIReasoningEffort)
 
 const isGeminiToolType = (
   value: string,
@@ -156,13 +155,10 @@ function AddChatModelModalComponent({
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState<boolean>(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // Reasoning type selection: none | openai | gemini
+  // Reasoning type selection: none | openai | gemini | anthropic | generic | base
   const [reasoningType, setReasoningType] = useState<ReasoningType>('none')
   // When user manually changes reasoning type, stop auto-detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
-  const [openaiEffort, setOpenaiEffort] =
-    useState<OpenAIReasoningEffort>('medium')
-  const [geminiBudget, setGeminiBudget] = useState<string>('-1')
   // Tool type (only meaningful for Gemini provider)
   const [toolType, setToolType] =
     useState<(typeof GEMINI_TOOL_TYPES)[number]>('none')
@@ -351,6 +347,7 @@ function AddChatModelModalComponent({
       modelDataWithPrefix = {
         ...modelDataWithPrefix,
         isBaseModel: true,
+        reasoningType: undefined,
       }
     } else {
       const withoutBaseFlag = Object.fromEntries(
@@ -358,51 +355,24 @@ function AddChatModelModalComponent({
           ([key]) => key !== 'isBaseModel',
         ),
       ) as ChatModel
-      modelDataWithPrefix = withoutBaseFlag
+      modelDataWithPrefix = {
+        ...withoutBaseFlag,
+        reasoningType: reasoningType === 'none' ? undefined : reasoningType,
+      }
 
-      if (reasoningType === 'openai') {
-        if (!isReasoningConfigurable(modelDataWithPrefix)) {
-          new Notice(t('common.error'))
-          return
-        }
-        modelDataWithPrefix = {
-          ...modelDataWithPrefix,
-          reasoning: {
-            enabled: true,
-            reasoning_effort: openaiEffort,
-          },
-        }
-      } else if (reasoningType === 'gemini') {
-        const budget = parseInt(geminiBudget, 10)
-        if (Number.isNaN(budget)) {
-          new Notice(t('common.error'))
-          return
-        }
-        if (!isThinkingConfigurable(modelDataWithPrefix)) {
-          new Notice(t('common.error'))
-          return
-        }
-        modelDataWithPrefix =
-          modelDataWithPrefix.providerType === 'anthropic'
-            ? ({
-                ...modelDataWithPrefix,
-                thinking: {
-                  enabled: true,
-                  budget_tokens: budget,
-                },
-              } as Extract<ChatModel, { providerType: 'anthropic' }>)
-            : ({
-                ...modelDataWithPrefix,
-                thinking: {
-                  enabled: true,
-                  thinking_budget: budget,
-                },
-              } as Extract<
-                ChatModel,
-                {
-                  providerType: 'gemini' | 'openrouter' | 'openai-compatible'
-                }
-              >)
+      if (
+        reasoningType === 'openai' &&
+        !isReasoningConfigurable(modelDataWithPrefix)
+      ) {
+        new Notice(t('common.error'))
+        return
+      }
+      if (
+        (reasoningType === 'gemini' || reasoningType === 'anthropic') &&
+        !isThinkingConfigurable(modelDataWithPrefix)
+      ) {
+        new Notice(t('common.error'))
+        return
       }
     }
 
@@ -511,6 +481,8 @@ function AddChatModelModalComponent({
             none: t('settings.models.reasoningTypeNone'),
             openai: t('settings.models.reasoningTypeOpenAI'),
             gemini: t('settings.models.reasoningTypeGemini'),
+            anthropic: t('settings.models.reasoningTypeAnthropic'),
+            generic: t('settings.models.reasoningTypeGeneric'),
             base: t('settings.models.reasoningTypeBase'),
           }}
           onChange={(value: string) => {
@@ -528,45 +500,7 @@ function AddChatModelModalComponent({
         </div>
       )}
 
-      {/* OpenAI reasoning options */}
-      {reasoningType === 'openai' && (
-        <ObsidianSetting
-          name={t('settings.models.openaiReasoningEffort')}
-          desc={t('settings.models.openaiReasoningEffortDesc')}
-        >
-          <ObsidianDropdown
-            value={openaiEffort}
-            options={{
-              minimal: 'minimal',
-              low: 'low',
-              medium: 'medium',
-              high: 'high',
-            }}
-            onChange={(value: string) =>
-              setOpenaiEffort(
-                isOpenAIReasoningEffort(value)
-                  ? value
-                  : OPENAI_REASONING_EFFORTS[2],
-              )
-            }
-          />
-        </ObsidianSetting>
-      )}
-
-      {/* Gemini thinking options */}
-      {reasoningType === 'gemini' && (
-        <ObsidianSetting
-          name={t('settings.models.geminiThinkingBudget')}
-          desc={t('settings.models.geminiThinkingBudgetDesc')}
-        >
-          <ObsidianTextInput
-            value={geminiBudget}
-            placeholder={t('settings.models.geminiThinkingBudgetPlaceholder')}
-            onChange={(v: string) => setGeminiBudget(v)}
-          />
-        </ObsidianSetting>
-      )}
-
+      {/* Reasoning strength is controlled in the chat sidebar */}
       {/* Tool type for Gemini provider */}
       {selectedProvider?.type === 'gemini' && (
         <ObsidianSetting

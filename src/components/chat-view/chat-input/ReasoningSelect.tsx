@@ -4,74 +4,210 @@ import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { ChatModel } from '../../../types/chat-model.types'
+import { detectReasoningTypeFromModelId } from '../../../utils/model-id-utils'
 
-export type ReasoningLevel = 'off' | 'low' | 'medium' | 'high' | 'extra-high'
+export type ReasoningLevel =
+  | 'off'
+  | 'on'
+  | 'auto'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'extra-high'
+
+type ReasoningModelType = 'openai' | 'gemini' | 'anthropic' | 'generic'
+
+const REASONING_LEVELS: ReasoningLevel[] = [
+  'off',
+  'on',
+  'auto',
+  'low',
+  'medium',
+  'high',
+  'extra-high',
+]
 
 const isReasoningLevel = (value: string): value is ReasoningLevel =>
-  ['off', 'low', 'medium', 'high', 'extra-high'].includes(value)
+  REASONING_LEVELS.includes(value as ReasoningLevel)
 
 type ReasoningOption = {
   value: ReasoningLevel
   labelKey: string
   labelFallback: string
-  // For OpenAI reasoning_effort
   reasoningEffort?: string
-  // For Anthropic/Gemini thinking budget
+  thinkingBudget?: number
   budgetTokens?: number
 }
 
-const REASONING_OPTIONS: ReasoningOption[] = [
-  {
-    value: 'off',
-    labelKey: 'reasoning.off',
-    labelFallback: 'Off',
-    reasoningEffort: undefined,
-    budgetTokens: 0,
-  },
-  {
-    value: 'low',
-    labelKey: 'reasoning.low',
-    labelFallback: 'Low',
-    reasoningEffort: 'low',
-    budgetTokens: 4096,
-  },
-  {
-    value: 'medium',
-    labelKey: 'reasoning.medium',
-    labelFallback: 'Medium',
-    reasoningEffort: 'medium',
-    budgetTokens: 8192,
-  },
-  {
-    value: 'high',
-    labelKey: 'reasoning.high',
-    labelFallback: 'High',
-    reasoningEffort: 'high',
-    budgetTokens: 16384,
-  },
-  {
-    value: 'extra-high',
-    labelKey: 'reasoning.extraHigh',
-    labelFallback: 'Extra high',
-    reasoningEffort: 'high',
-    budgetTokens: 32768,
-  },
-]
+const DEFAULT_ANTHROPIC_BUDGET_TOKENS = 8192
 
-// Provider types that support reasoning configuration
-const REASONING_PROVIDER_TYPES = [
-  'openai',
-  'anthropic',
-  'gemini',
-  'openrouter',
-  'openai-compatible',
-] as const
+const REASONING_OPTIONS_MAP: Record<ReasoningModelType, ReasoningOption[]> = {
+  openai: [
+    {
+      value: 'off',
+      labelKey: 'reasoning.off',
+      labelFallback: 'Off',
+    },
+    {
+      value: 'low',
+      labelKey: 'reasoning.low',
+      labelFallback: 'Low',
+      reasoningEffort: 'low',
+    },
+    {
+      value: 'medium',
+      labelKey: 'reasoning.medium',
+      labelFallback: 'Medium',
+      reasoningEffort: 'medium',
+    },
+    {
+      value: 'high',
+      labelKey: 'reasoning.high',
+      labelFallback: 'High',
+      reasoningEffort: 'high',
+    },
+  ],
+  gemini: [
+    {
+      value: 'off',
+      labelKey: 'reasoning.off',
+      labelFallback: 'Off',
+      thinkingBudget: 0,
+    },
+    {
+      value: 'auto',
+      labelKey: 'reasoning.auto',
+      labelFallback: 'Auto',
+      thinkingBudget: -1,
+    },
+    {
+      value: 'low',
+      labelKey: 'reasoning.low',
+      labelFallback: 'Low',
+      thinkingBudget: 4096,
+    },
+    {
+      value: 'medium',
+      labelKey: 'reasoning.medium',
+      labelFallback: 'Medium',
+      thinkingBudget: 8192,
+    },
+    {
+      value: 'high',
+      labelKey: 'reasoning.high',
+      labelFallback: 'High',
+      thinkingBudget: 16384,
+    },
+  ],
+  anthropic: [
+    {
+      value: 'off',
+      labelKey: 'reasoning.off',
+      labelFallback: 'Off',
+    },
+    {
+      value: 'on',
+      labelKey: 'reasoning.on',
+      labelFallback: 'On',
+      budgetTokens: DEFAULT_ANTHROPIC_BUDGET_TOKENS,
+    },
+  ],
+  generic: [
+    {
+      value: 'off',
+      labelKey: 'reasoning.off',
+      labelFallback: 'Off',
+    },
+    {
+      value: 'low',
+      labelKey: 'reasoning.low',
+      labelFallback: 'Low',
+      reasoningEffort: 'low',
+      thinkingBudget: 4096,
+      budgetTokens: 4096,
+    },
+    {
+      value: 'medium',
+      labelKey: 'reasoning.medium',
+      labelFallback: 'Medium',
+      reasoningEffort: 'medium',
+      thinkingBudget: 8192,
+      budgetTokens: 8192,
+    },
+    {
+      value: 'high',
+      labelKey: 'reasoning.high',
+      labelFallback: 'High',
+      reasoningEffort: 'high',
+      thinkingBudget: 16384,
+      budgetTokens: 16384,
+    },
+  ],
+}
+
+const resolveReasoningModelType = (
+  model: ChatModel | null,
+): ReasoningModelType | null => {
+  if (!model) return null
+  if (model.reasoningType && model.reasoningType !== 'none') {
+    return model.reasoningType
+  }
+  const detected = detectReasoningTypeFromModelId(model.model)
+  if (detected === 'openai') return 'openai'
+  if (detected === 'gemini') return 'gemini'
+  if (detected === 'anthropic') return 'anthropic'
+  if (detected === 'generic') return 'generic'
+  if ('reasoning' in model && model.reasoning?.enabled) {
+    return 'openai'
+  }
+  if ('thinking' in model && model.thinking?.enabled) {
+    if (model.providerType === 'anthropic') return 'anthropic'
+    if (model.providerType === 'gemini') return 'gemini'
+    return 'generic'
+  }
+  return null
+}
 
 export function supportsReasoning(model: ChatModel | null): boolean {
-  if (!model) return false
-  return (REASONING_PROVIDER_TYPES as readonly string[]).includes(
-    model.providerType,
-  )
+  return resolveReasoningModelType(model) !== null
+}
+
+export function getDefaultReasoningLevel(
+  model: ChatModel | null,
+): ReasoningLevel {
+  if (!model) return 'off'
+  const modelType = resolveReasoningModelType(model)
+  if (!modelType) return 'off'
+
+  if (modelType === 'openai') {
+    const effort =
+      'reasoning' in model ? model.reasoning?.reasoning_effort : undefined
+    if (effort === 'low') return 'low'
+    if (effort === 'high') return 'high'
+    return 'medium'
+  }
+
+  if (modelType === 'gemini') {
+    const typedModel = model as Extract<
+      ChatModel,
+      { providerType: 'gemini' | 'openrouter' | 'openai-compatible' }
+    >
+    const budget = typedModel.thinking?.thinking_budget
+    if (budget === -1) return 'auto'
+    if (budget === 0) return 'off'
+    if (typeof budget === 'number') {
+      if (budget <= 4096) return 'low'
+      if (budget <= 8192) return 'medium'
+      return 'high'
+    }
+    return 'medium'
+  }
+
+  if (modelType === 'anthropic') {
+    return 'on'
+  }
+
+  return 'medium'
 }
 
 export const ReasoningSelect = forwardRef<
@@ -109,6 +245,8 @@ export const ReasoningSelect = forwardRef<
     const triggerRef = useRef<HTMLButtonElement | null>(null)
     const itemRefs = useRef<Record<ReasoningLevel, HTMLDivElement | null>>({
       off: null,
+      on: null,
+      auto: null,
       low: null,
       medium: null,
       high: null,
@@ -127,28 +265,33 @@ export const ReasoningSelect = forwardRef<
       [ref],
     )
 
-    const currentOption = REASONING_OPTIONS.find((opt) => opt.value === value)
+    const modelType = resolveReasoningModelType(model)
+    if (!modelType) {
+      return null
+    }
+    const availableOptions = REASONING_OPTIONS_MAP[modelType]
+    const fallbackValue = getDefaultReasoningLevel(model)
+    const safeValue = availableOptions.some((opt) => opt.value === value)
+      ? value
+      : fallbackValue
+    const currentOption =
+      availableOptions.find((opt) => opt.value === safeValue) ??
+      availableOptions[0]
 
     const focusSelectedItem = useCallback(() => {
-      const target = itemRefs.current[value]
+      const target = itemRefs.current[safeValue]
       if (!target) return
       target.focus({ preventScroll: true })
       target.scrollIntoView({
         block: 'nearest',
         inline: 'nearest',
       })
-    }, [value])
+    }, [safeValue])
 
     const focusByDelta = useCallback(
       (delta: number) => {
-        const values: ReasoningLevel[] = [
-          'off',
-          'low',
-          'medium',
-          'high',
-          'extra-high',
-        ]
-        const currentIndex = values.indexOf(value)
+        const values = availableOptions.map((option) => option.value)
+        const currentIndex = values.indexOf(safeValue)
         const nextIndex = (currentIndex + delta + values.length) % values.length
         const nextValue = values[nextIndex]
         const target = itemRefs.current[nextValue]
@@ -157,7 +300,7 @@ export const ReasoningSelect = forwardRef<
           target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
         }
       },
-      [value],
+      [availableOptions, safeValue],
     )
 
     useEffect(() => {
@@ -191,11 +334,6 @@ export const ReasoningSelect = forwardRef<
         event.preventDefault()
         handleOpenChange(false)
       }
-    }
-
-    // Don't render if model doesn't support reasoning
-    if (!supportsReasoning(model)) {
-      return null
     }
 
     return (
@@ -245,7 +383,7 @@ export const ReasoningSelect = forwardRef<
             </DropdownMenu.Label>
             <DropdownMenu.RadioGroup
               className="smtcmp-model-select-list smtcmp-reasoning-select-list"
-              value={value}
+              value={safeValue}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') {
                   event.preventDefault()
@@ -261,7 +399,7 @@ export const ReasoningSelect = forwardRef<
                 }
               }}
             >
-              {REASONING_OPTIONS.map((option) => (
+              {availableOptions.map((option) => (
                 <DropdownMenu.RadioItem
                   key={option.value}
                   className="smtcmp-popover-item smtcmp-reasoning-select-item"
@@ -292,7 +430,7 @@ ReasoningSelect.displayName = 'ReasoningSelect'
 // Helper to convert ReasoningLevel to model config
 export function reasoningLevelToConfig(
   level: ReasoningLevel,
-  providerType: string,
+  model: ChatModel,
 ): {
   reasoning?: { enabled: boolean; reasoning_effort?: string }
   thinking?: {
@@ -301,12 +439,33 @@ export function reasoningLevelToConfig(
     thinking_budget?: number
   }
 } {
-  const option = REASONING_OPTIONS.find((o) => o.value === level)
-  if (!option || level === 'off') {
+  const modelType = resolveReasoningModelType(model)
+  if (!modelType) {
+    return {}
+  }
+  if (level === 'off') {
+    if (modelType === 'openai') {
+      return { reasoning: { enabled: false } }
+    }
+    if (modelType === 'gemini') {
+      return { thinking: { enabled: false, thinking_budget: 0 } }
+    }
+    if (modelType === 'anthropic') {
+      return { thinking: { enabled: false, budget_tokens: 0 } }
+    }
+    return {
+      reasoning: { enabled: false },
+      thinking: { enabled: false },
+    }
+  }
+  const option = REASONING_OPTIONS_MAP[modelType].find(
+    (opt) => opt.value === level,
+  )
+  if (!option) {
     return {}
   }
 
-  if (providerType === 'openai') {
+  if (modelType === 'openai') {
     return {
       reasoning: {
         enabled: true,
@@ -315,34 +474,75 @@ export function reasoningLevelToConfig(
     }
   }
 
-  if (providerType === 'anthropic') {
+  if (modelType === 'gemini') {
     return {
       thinking: {
         enabled: true,
-        budget_tokens: option.budgetTokens,
+        thinking_budget: option.thinkingBudget,
       },
     }
   }
 
-  if (providerType === 'gemini') {
+  if (modelType === 'anthropic') {
+    if (level !== 'on') {
+      return {}
+    }
+    const typedModel = model as Extract<
+      ChatModel,
+      { providerType: 'anthropic' }
+    >
     return {
       thinking: {
         enabled: true,
-        thinking_budget: option.budgetTokens,
+        budget_tokens:
+          typedModel.thinking?.budget_tokens ??
+          option.budgetTokens ??
+          DEFAULT_ANTHROPIC_BUDGET_TOKENS,
       },
     }
   }
 
-  // For openrouter and openai-compatible, return both
+  const reasoningEffort =
+    option.reasoningEffort ?? (level === 'high' ? 'high' : 'medium')
+  const thinkingBudget = option.thinkingBudget ?? option.budgetTokens
+  const budgetTokens = option.budgetTokens ?? thinkingBudget
+
+  if (model.providerType === 'openai') {
+    return {
+      reasoning: {
+        enabled: true,
+        reasoning_effort: reasoningEffort,
+      },
+    }
+  }
+
+  if (model.providerType === 'anthropic') {
+    return {
+      thinking: {
+        enabled: true,
+        budget_tokens: budgetTokens ?? DEFAULT_ANTHROPIC_BUDGET_TOKENS,
+      },
+    }
+  }
+
+  if (model.providerType === 'gemini') {
+    return {
+      thinking: {
+        enabled: true,
+        thinking_budget: thinkingBudget,
+      },
+    }
+  }
+
   return {
     reasoning: {
       enabled: true,
-      reasoning_effort: option.reasoningEffort,
+      reasoning_effort: reasoningEffort,
     },
     thinking: {
       enabled: true,
-      budget_tokens: option.budgetTokens,
-      thinking_budget: option.budgetTokens,
+      budget_tokens: budgetTokens,
+      thinking_budget: thinkingBudget,
     },
   }
 }

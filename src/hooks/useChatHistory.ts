@@ -25,12 +25,14 @@ type UseChatHistory = {
     id: string,
     messages: ChatMessage[],
     overrides?: ConversationOverrideSettings | null,
+    reasoningLevel?: string,
   ) => Promise<void> | undefined
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
   getConversationById: (id: string) => Promise<{
     messages: ChatMessage[]
     overrides: ConversationOverrideSettings | null | undefined
+    reasoningLevel?: string
   } | null>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   toggleConversationPinned: (id: string) => Promise<void>
@@ -74,6 +76,7 @@ export function useChatHistory(): UseChatHistory {
           id: string,
           messages: ChatMessage[],
           overrides?: ConversationOverrideSettings | null,
+          reasoningLevel?: string,
         ): Promise<void> => {
           const serializedMessages = messages.map(serializeChatMessage)
           const existingConversation = await chatManager.findById(id)
@@ -88,7 +91,8 @@ export function useChatHistory(): UseChatHistory {
               isEqual(
                 existingConversation.overrides ?? null,
                 nextOverrides ?? null,
-              )
+              ) &&
+              existingConversation.reasoningLevel === reasoningLevel
             ) {
               return
             }
@@ -98,6 +102,7 @@ export function useChatHistory(): UseChatHistory {
                 overrides === undefined
                   ? (existingConversation.overrides ?? null)
                   : overrides,
+              reasoningLevel,
             })
           } else {
             // 默认标题统一为"新消息"，待第一轮模型回答完成后由工具模型自动改名
@@ -108,6 +113,7 @@ export function useChatHistory(): UseChatHistory {
               title: defaultTitle,
               messages: serializedMessages,
               overrides: overrides ?? null,
+              reasoningLevel,
             })
           }
 
@@ -148,6 +154,7 @@ export function useChatHistory(): UseChatHistory {
     ): Promise<{
       messages: ChatMessage[]
       overrides: ConversationOverrideSettings | null | undefined
+      reasoningLevel?: string
     } | null> => {
       const conversation = await chatManager.findById(id)
       if (!conversation) return null
@@ -156,6 +163,7 @@ export function useChatHistory(): UseChatHistory {
           deserializeChatMessage(m, app),
         ),
         overrides: conversation.overrides,
+        reasoningLevel: conversation.reasoningLevel,
       }
     },
     [chatManager, app],
@@ -335,6 +343,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         promptContent: message.promptContent,
         id: message.id,
         mentionables: message.mentionables.map(serializeMentionable),
+        reasoningLevel: message.reasoningLevel,
         similaritySearchResults: message.similaritySearchResults,
       }
     case 'assistant':
@@ -370,6 +379,7 @@ const deserializeChatMessage = (
         mentionables: message.mentionables
           .map((m) => deserializeMentionable(m, app))
           .filter((m): m is Mentionable => m !== null),
+        reasoningLevel: message.reasoningLevel,
         similaritySearchResults: message.similaritySearchResults,
       }
     }
