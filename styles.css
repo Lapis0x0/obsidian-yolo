@@ -1008,6 +1008,17 @@
   }
 }
 
+.smtcmp-chat-user-input-controls__left .smtcmp-chat-input-model-select {
+  max-width: 160px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.smtcmp-chat-user-input-controls__left
+  .smtcmp-chat-input-model-select__model-name {
+  max-width: 120px;
+}
+
 .smtcmp-chat-user-input-controls .smtcmp-chat-user-input-submit-button {
   display: flex;
   align-items: center;
@@ -5524,6 +5535,7 @@ button.smtcmp-chat-input-model-select {
   min-width: max(var(--radix-dropdown-menu-trigger-width, 0px), 280px);
   max-height: 400px;
   overflow: hidden;
+  margin-left: -64px;
 }
 
 @keyframes smtcmp-smart-space-popover-fade-in {
