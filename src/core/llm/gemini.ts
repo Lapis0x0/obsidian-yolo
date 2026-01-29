@@ -138,10 +138,10 @@ export class GeminiProvider extends BaseLLMProvider<
               config: {
                 ...config,
                 ...(tools ? { tools } : {}),
+				...(systemInstruction ? { systemInstruction } : {}),
               },
             }
           : {}),
-        ...(systemInstruction ? { systemInstruction } : {}),
       }
 
       const payload = this.applyCustomModelParameters(
@@ -229,10 +229,10 @@ export class GeminiProvider extends BaseLLMProvider<
               config: {
                 ...config,
                 ...(tools ? { tools } : {}),
+				...(systemInstruction ? { systemInstruction } : {}),
               },
             }
           : {}),
-        ...(systemInstruction ? { systemInstruction } : {}),
       }
 
       const payload = this.applyCustomModelParameters(
