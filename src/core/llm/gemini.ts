@@ -41,6 +41,9 @@ type GeminiStreamGenerator = Awaited<
 >
 type GeminiStreamChunk =
   GeminiStreamGenerator extends AsyncGenerator<infer Chunk> ? Chunk : never
+type GeminiRequestConfig = GeminiGenerateContentConfig & {
+  abortSignal?: AbortSignal
+}
 
 /**
  * TODO: Consider future migration from '@google/generative-ai' to '@google/genai' (https://github.com/googleapis/js-genai)
@@ -105,7 +108,7 @@ export class GeminiProvider extends BaseLLMProvider<
         : undefined
 
     try {
-      const config: GeminiGenerateContentConfig = {
+      const config: GeminiRequestConfig = {
         maxOutputTokens: request.max_tokens ?? undefined,
         temperature: request.temperature ?? undefined,
       }
@@ -115,6 +118,9 @@ export class GeminiProvider extends BaseLLMProvider<
           thinkingBudget: budget,
           includeThoughts: true,
         }
+      }
+      if (options?.signal) {
+        config.abortSignal = options.signal
       }
 
       // Prepare tools including Gemini native tools
@@ -129,7 +135,8 @@ export class GeminiProvider extends BaseLLMProvider<
       const shouldIncludeConfig =
         (tools?.length ?? 0) > 0 ||
         Object.values(config).some((value) => value !== undefined) ||
-        Boolean(systemInstruction)
+        Boolean(systemInstruction) ||
+        Boolean(options?.signal)
 
       const payloadBase: GeminiGenerateContentParams = {
         model: request.model,
@@ -197,7 +204,10 @@ export class GeminiProvider extends BaseLLMProvider<
         : undefined
 
     try {
-      const config: GeminiGenerateContentConfig = {
+      if (options?.signal?.aborted) {
+        throw GeminiProvider.createAbortError()
+      }
+      const config: GeminiRequestConfig = {
         maxOutputTokens: request.max_tokens ?? undefined,
         temperature: request.temperature ?? undefined,
       }
@@ -207,6 +217,9 @@ export class GeminiProvider extends BaseLLMProvider<
           thinkingBudget: budget,
           includeThoughts: true,
         }
+      }
+      if (options?.signal) {
+        config.abortSignal = options.signal
       }
 
       // Prepare tools including Gemini native tools
@@ -221,7 +234,8 @@ export class GeminiProvider extends BaseLLMProvider<
       const shouldIncludeConfig =
         (tools?.length ?? 0) > 0 ||
         Object.values(config).some((value) => value !== undefined) ||
-        Boolean(systemInstruction)
+        Boolean(systemInstruction) ||
+        Boolean(options?.signal)
 
       const payloadBase: GeminiGenerateContentParams = {
         model: request.model,
@@ -245,7 +259,12 @@ export class GeminiProvider extends BaseLLMProvider<
       const stream = await this.client.models.generateContentStream(payload)
 
       const messageId = crypto.randomUUID()
-      return this.streamResponseGenerator(stream, request.model, messageId)
+      return this.streamResponseGenerator(
+        stream,
+        request.model,
+        messageId,
+        options?.signal,
+      )
     } catch (error) {
       const message = GeminiProvider.getErrorMessage(error)
       const isInvalidApiKey =
@@ -302,10 +321,49 @@ export class GeminiProvider extends BaseLLMProvider<
     stream: AsyncIterable<GeminiStreamChunk>,
     model: string,
     messageId: string,
+    signal?: AbortSignal,
   ): AsyncIterable<LLMResponseStreaming> {
-    for await (const chunk of stream) {
-      yield GeminiProvider.parseStreamingResponseChunk(chunk, model, messageId)
+    const iterator = stream[Symbol.asyncIterator]()
+    let abortListener: (() => void) | null = null
+    try {
+      if (signal) {
+        if (signal.aborted) {
+          throw GeminiProvider.createAbortError()
+        }
+        const onAbort = () => {
+          if (typeof iterator.return === 'function') {
+            void iterator.return()
+          }
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        abortListener = onAbort
+      }
+      while (true) {
+        if (signal?.aborted) {
+          throw GeminiProvider.createAbortError()
+        }
+        const { value, done } = await iterator.next()
+        if (done) break
+        if (signal?.aborted) {
+          throw GeminiProvider.createAbortError()
+        }
+        yield GeminiProvider.parseStreamingResponseChunk(
+          value,
+          model,
+          messageId,
+        )
+      }
+    } finally {
+      if (abortListener && signal) {
+        signal.removeEventListener('abort', abortListener)
+      }
     }
+  }
+
+  private static createAbortError(): Error {
+    const error = new Error('Aborted')
+    error.name = 'AbortError'
+    return error
   }
 
   static parseRequestMessage(message: RequestMessage): GeminiContent | null {
