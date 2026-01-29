@@ -128,7 +128,8 @@ export class GeminiProvider extends BaseLLMProvider<
 
       const shouldIncludeConfig =
         (tools?.length ?? 0) > 0 ||
-        Object.values(config).some((value) => value !== undefined)
+        Object.values(config).some((value) => value !== undefined) ||
+        Boolean(systemInstruction)
 
       const payloadBase: GeminiGenerateContentParams = {
         model: request.model,
@@ -138,7 +139,7 @@ export class GeminiProvider extends BaseLLMProvider<
               config: {
                 ...config,
                 ...(tools ? { tools } : {}),
-				...(systemInstruction ? { systemInstruction } : {}),
+                ...(systemInstruction ? { systemInstruction } : {}),
               },
             }
           : {}),
@@ -219,7 +220,8 @@ export class GeminiProvider extends BaseLLMProvider<
 
       const shouldIncludeConfig =
         (tools?.length ?? 0) > 0 ||
-        Object.values(config).some((value) => value !== undefined)
+        Object.values(config).some((value) => value !== undefined) ||
+        Boolean(systemInstruction)
 
       const payloadBase: GeminiGenerateContentParams = {
         model: request.model,
@@ -229,7 +231,7 @@ export class GeminiProvider extends BaseLLMProvider<
               config: {
                 ...config,
                 ...(tools ? { tools } : {}),
-				...(systemInstruction ? { systemInstruction } : {}),
+                ...(systemInstruction ? { systemInstruction } : {}),
               },
             }
           : {}),
