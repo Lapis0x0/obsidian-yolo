@@ -16,11 +16,13 @@ export default function AssistantMessageContent({
   contextMessages,
   handleApply,
   isApplying,
+  generationState,
 }: {
   content: ChatAssistantMessage['content']
   contextMessages: ChatMessage[]
   handleApply: (blockToApply: string, chatMessages: ChatMessage[]) => void
   isApplying: boolean
+  generationState?: 'streaming' | 'completed' | 'aborted'
 }) {
   const onApply = useCallback(
     (blockToApply: string) => {
@@ -30,7 +32,11 @@ export default function AssistantMessageContent({
   )
 
   return (
-    <AssistantTextRenderer onApply={onApply} isApplying={isApplying}>
+    <AssistantTextRenderer
+      onApply={onApply}
+      isApplying={isApplying}
+      generationState={generationState}
+    >
       {content}
     </AssistantTextRenderer>
   )
@@ -39,11 +45,13 @@ export default function AssistantMessageContent({
 const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   onApply,
   isApplying,
+  generationState,
   children,
 }: {
   onApply: (blockToApply: string) => void
   children: string
   isApplying: boolean
+  generationState?: 'streaming' | 'completed' | 'aborted'
 }) {
   const blocks: ParsedTagContent[] = useMemo(
     () => parseTagContents(children),
@@ -62,6 +70,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             key={index}
             reasoning={block.content}
             content={children}
+            generationState={generationState}
           />
         ) : block.startLine && block.endLine && block.filename ? (
           <MarkdownReferenceBlock

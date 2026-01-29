@@ -9,10 +9,12 @@ import { ObsidianMarkdown } from './ObsidianMarkdown'
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoning,
   content,
+  generationState,
   MarkdownComponent = ObsidianMarkdown,
 }: {
   reasoning: string
   content: string
+  generationState?: 'streaming' | 'completed' | 'aborted'
   MarkdownComponent?: React.ComponentType<{
     content: string
     scale?: 'xs' | 'sm' | 'base'
@@ -38,7 +40,16 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   )
   const previousHasReasoningText = useRef(hasReasoningText)
   const previousReasoning = useRef(reasoning)
-  const [showLoader, setShowLoader] = useState(() => !hasAnswerContent)
+  const isStreaming = generationState ? generationState === 'streaming' : true
+  const [showLoader, setShowLoader] = useState(() =>
+    generationState ? isStreaming && !hasAnswerContent : !hasAnswerContent,
+  )
+
+  useEffect(() => {
+    if (generationState && generationState !== 'streaming') {
+      setShowLoader(false)
+    }
+  }, [generationState])
 
   useEffect(() => {
     if (
@@ -60,13 +71,13 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     const currentLength = reasoning.trim().length
     previousReasoning.current = reasoning
 
-    if (currentLength > previousLength && !showLoader) {
+    if (currentLength > previousLength && !showLoader && isStreaming) {
       setShowLoader(true)
     }
-  }, [reasoning, showLoader])
+  }, [reasoning, showLoader, isStreaming])
 
   useEffect(() => {
-    if (!hasAnswerContent) {
+    if (!hasAnswerContent && isStreaming) {
       if (!showLoader) {
         setShowLoader(true)
       }

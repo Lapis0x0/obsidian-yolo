@@ -38,6 +38,7 @@ export default function AssistantToolMessageGroupItem({
                 <AssistantMessageReasoning
                   reasoning={message.reasoning}
                   content={message.content}
+                  generationState={message.metadata?.generationState}
                 />
               )}
               {message.annotations && (
@@ -50,6 +51,7 @@ export default function AssistantToolMessageGroupItem({
                 contextMessages={contextMessages}
                 handleApply={onApply}
                 isApplying={isApplying}
+                generationState={message.metadata?.generationState}
               />
             </div>
           ) : null

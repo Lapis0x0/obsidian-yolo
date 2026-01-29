@@ -197,7 +197,10 @@ export function QuickAskPanel({
     height: number
   } | null>(null)
   const renderAssistantBlocks = useCallback(
-    (rawContent: string | undefined | null) => {
+    (
+      rawContent: string | undefined | null,
+      generationState?: 'streaming' | 'completed' | 'aborted',
+    ) => {
       const parsed = parseTagContents(rawContent ?? '')
       const rendered: React.JSX.Element[] = []
 
@@ -209,6 +212,7 @@ export function QuickAskPanel({
               key={index}
               reasoning={block.content}
               content={rawContent ?? ''}
+              generationState={generationState}
               MarkdownComponent={({ content }) => (
                 <SimpleMarkdownContent content={content} component={plugin} />
               )}
@@ -1205,6 +1209,7 @@ export function QuickAskPanel({
                     <AssistantMessageReasoning
                       reasoning={message.reasoning}
                       content={message.content}
+                      generationState={message.metadata?.generationState}
                       MarkdownComponent={({ content }) => (
                         <SimpleMarkdownContent
                           content={content}
@@ -1213,7 +1218,10 @@ export function QuickAskPanel({
                       )}
                     />
                   )}
-                  {renderAssistantBlocks(message.content)}
+                  {renderAssistantBlocks(
+                    message.content,
+                    message.metadata?.generationState,
+                  )}
                   {isLatestAssistant && (
                     <div className="smtcmp-quick-ask-assistant-actions">
                       <button

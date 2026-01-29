@@ -245,6 +245,7 @@ export class ResponseGenerator {
           model: effectiveModel,
           usage: response.usage,
           durationMs: Date.now() - responseStart,
+          generationState: 'completed',
         },
       })
       const responseMessageId = this.responseMessages.at(-1)!.id
@@ -363,6 +364,7 @@ export class ResponseGenerator {
         id: uuidv4(),
         metadata: {
           model: effectiveModel,
+          generationState: 'streaming',
         },
       })
     }
@@ -372,6 +374,30 @@ export class ResponseGenerator {
     }
     const responseMessageId = lastMessage.id
     let responseToolCalls: Record<number, ToolCallDelta> = {}
+    let finalizedState: 'completed' | 'aborted' | null = null
+    const finalizeGenerationState = (state: 'completed' | 'aborted'): void => {
+      if (finalizedState) return
+      finalizedState = state
+      this.updateResponseMessages((messages) =>
+        messages.map((message) =>
+          message.id === responseMessageId && message.role === 'assistant'
+            ? {
+                ...message,
+                metadata: {
+                  ...message.metadata,
+                  generationState: state,
+                },
+              }
+            : message,
+        ),
+      )
+    }
+    let generationAbortListener: (() => void) | null = null
+    if (this.abortSignal) {
+      const onAbort = () => finalizeGenerationState('aborted')
+      this.abortSignal.addEventListener('abort', onAbort, { once: true })
+      generationAbortListener = onAbort
+    }
     const cleanupAbortListener = () => {
       if (abortListener && this.abortSignal) {
         this.abortSignal.removeEventListener('abort', abortListener)
@@ -428,6 +454,12 @@ export class ResponseGenerator {
       }
     } finally {
       cleanupAbortListener()
+      if (generationAbortListener && this.abortSignal) {
+        this.abortSignal.removeEventListener('abort', generationAbortListener)
+      }
+    }
+    if (!this.abortSignal?.aborted) {
+      finalizeGenerationState('completed')
     }
     const durationMs = Date.now() - responseStart
     this.updateResponseMessages((messages) =>
@@ -438,6 +470,8 @@ export class ResponseGenerator {
               metadata: {
                 ...message.metadata,
                 durationMs,
+                generationState:
+                  message.metadata?.generationState ?? 'completed',
               },
             }
           : message,
