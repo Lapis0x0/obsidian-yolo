@@ -4,6 +4,7 @@ import path from 'path-browserify'
 export abstract class AbstractJsonRepository<T, M> {
   protected dataDir: string
   protected app: App
+  private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(app: App, dataDir: string) {
     this.app = app
@@ -22,6 +23,25 @@ export abstract class AbstractJsonRepository<T, M> {
     }
   }
 
+  protected enqueueWrite<R>(operation: () => Promise<R>): Promise<R> {
+    const next = this.writeQueue.then(operation, operation)
+    this.writeQueue = next.then(
+      () => undefined,
+      () => undefined,
+    )
+    return next
+  }
+
+  protected writeFile(filePath: string, content: string): Promise<void> {
+    return this.enqueueWrite(() =>
+      this.app.vault.adapter.write(filePath, content),
+    )
+  }
+
+  protected removeFile(filePath: string): Promise<void> {
+    return this.enqueueWrite(() => this.app.vault.adapter.remove(filePath))
+  }
+
   // Each subclass implements how to generate a file name from a data row.
   protected abstract generateFileName(row: T): string
 
@@ -37,7 +57,7 @@ export abstract class AbstractJsonRepository<T, M> {
       throw new Error(`File already exists: ${filePath}`)
     }
 
-    await this.app.vault.adapter.write(filePath, content)
+    await this.writeFile(filePath, content)
   }
 
   public async update(oldRow: T, newRow: T): Promise<void> {
@@ -48,11 +68,11 @@ export abstract class AbstractJsonRepository<T, M> {
     if (oldFileName === newFileName) {
       // Simple update - filename hasn't changed
       const filePath = normalizePath(path.join(this.dataDir, oldFileName))
-      await this.app.vault.adapter.write(filePath, content)
+      await this.writeFile(filePath, content)
     } else {
       // Filename has changed - create new file and delete old one
       const newFilePath = normalizePath(path.join(this.dataDir, newFileName))
-      await this.app.vault.adapter.write(newFilePath, content)
+      await this.writeFile(newFilePath, content)
       await this.delete(oldFileName)
     }
   }
@@ -83,7 +103,7 @@ export abstract class AbstractJsonRepository<T, M> {
   public async delete(fileName: string): Promise<void> {
     const filePath = normalizePath(path.join(this.dataDir, fileName))
     if (await this.app.vault.adapter.exists(filePath)) {
-      await this.app.vault.adapter.remove(filePath)
+      await this.removeFile(filePath)
     }
   }
 }

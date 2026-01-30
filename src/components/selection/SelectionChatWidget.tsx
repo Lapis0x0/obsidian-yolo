@@ -90,8 +90,8 @@ function SelectionChatWidgetBody({
   }, [isHoveringIndicator, isHoveringMenu])
 
   const handleAction = async (actionId: string) => {
-    await onAction(actionId, selection)
     onClose()
+    await onAction(actionId, selection)
   }
 
   return (

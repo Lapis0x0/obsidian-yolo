@@ -169,7 +169,7 @@ export class ChatManager extends AbstractJsonRepository<
   private async writeIndex(list: ChatConversationMetadata[]): Promise<void> {
     await this.ensureDataDir()
     const filePath = this.getIndexPath()
-    await this.app.vault.adapter.write(filePath, JSON.stringify(list, null, 2))
+    await this.writeFile(filePath, JSON.stringify(list, null, 2))
   }
 
   private async writeIndexIfChanged(

@@ -82,6 +82,11 @@ export class SelectionChatController {
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true
 
+    if (this.selectionChatWidget) {
+      this.selectionChatWidget.destroy()
+      this.selectionChatWidget = null
+    }
+
     if (this.selectionManager) {
       this.selectionManager.destroy()
       this.selectionManager = null
