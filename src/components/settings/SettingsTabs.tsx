@@ -1,5 +1,11 @@
 import { App } from 'obsidian'
-import React, { type FC, useEffect, useState } from 'react'
+import React, {
+  type FC,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import SmartComposerPlugin from '../../main'
@@ -85,12 +91,61 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
     SETTINGS_TABS.find((tab) => tab.id === activeTab)?.component || ModelsTab
 
   const activeTabIndex = SETTINGS_TABS.findIndex((tab) => tab.id === activeTab)
+  const activeTabIndexRef = useRef(activeTabIndex)
+  const navRef = useRef<HTMLDivElement | null>(null)
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const updateGlider = () => {
+    const nav = navRef.current
+    const index = activeTabIndexRef.current
+    const activeButton = tabRefs.current[index]
+    if (!nav || !activeButton) {
+      return
+    }
+
+    nav.style.setProperty(
+      '--smtcmp-tab-glider-left',
+      `${activeButton.offsetLeft}px`,
+    )
+    nav.style.setProperty(
+      '--smtcmp-tab-glider-width',
+      `${activeButton.offsetWidth}px`,
+    )
+  }
+
+  useLayoutEffect(() => {
+    activeTabIndexRef.current = activeTabIndex
+    updateGlider()
+  }, [activeTabIndex])
+
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) {
+      return
+    }
+
+    if (typeof ResizeObserver === 'undefined') {
+      updateGlider()
+      return
+    }
+
+    const observer = new ResizeObserver(() => updateGlider())
+    observer.observe(nav)
+    tabRefs.current.forEach((button) => {
+      if (button) {
+        observer.observe(button)
+      }
+    })
+
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <div className="smtcmp-settings-tabs-container">
       <div
         className="smtcmp-settings-tabs-nav smtcmp-settings-tabs-nav--glider"
         role="tablist"
+        ref={navRef}
         style={
           {
             '--smtcmp-tab-count': SETTINGS_TABS.length,
@@ -99,7 +154,7 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
         }
       >
         <div className="smtcmp-settings-tabs-glider" aria-hidden="true" />
-        {SETTINGS_TABS.map((tab) => (
+        {SETTINGS_TABS.map((tab, index) => (
           <button
             key={tab.id}
             className={`smtcmp-settings-tab-button ${
@@ -108,6 +163,9 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
             onClick={() => setActiveTab(tab.id)}
             role="tab"
             aria-selected={activeTab === tab.id}
+            ref={(element) => {
+              tabRefs.current[index] = element
+            }}
           >
             <span className="smtcmp-settings-tab-label">{t(tab.labelKey)}</span>
           </button>

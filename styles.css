@@ -8206,8 +8206,8 @@ body.smtcmp-quick-ask-global-interaction * {
   scrollbar-width: thin;
   align-items: stretch;
   min-width: 0;
-  max-width: 450px;
-  width: 100%;
+  max-width: 100%;
+  width: max-content;
 }
 
 .smtcmp-settings-tabs-nav::-webkit-scrollbar {
@@ -8231,6 +8231,8 @@ body.smtcmp-quick-ask-global-interaction * {
   --smtcmp-tab-count: 6;
   --smtcmp-tab-index: 0;
   --smtcmp-tab-padding: var(--size-2-2);
+  --smtcmp-tab-glider-left: 0px;
+  --smtcmp-tab-glider-width: 0px;
 }
 
 .smtcmp-settings-tabs-nav--glider .smtcmp-settings-tab-button {
@@ -8246,24 +8248,24 @@ body.smtcmp-quick-ask-global-interaction * {
 .smtcmp-settings-tabs-glider {
   position: absolute;
   top: var(--smtcmp-tab-padding);
-  left: var(--smtcmp-tab-padding);
-  width: calc(
-    (100% - (var(--smtcmp-tab-padding) * 2)) / var(--smtcmp-tab-count)
-  );
+  left: 0;
+  width: var(--smtcmp-tab-glider-width);
   height: calc(100% - (var(--smtcmp-tab-padding) * 2));
   background: transparent;
   border: 2px solid var(--h1-color, var(--interactive-accent));
   border-radius: var(--radius-s);
   box-shadow: 0 2px 10px
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  transform: translateX(calc(100% * var(--smtcmp-tab-index)));
-  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
+  transform: translateX(var(--smtcmp-tab-glider-left));
+  transition:
+    transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1),
+    width 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
   pointer-events: none;
   z-index: 1;
 }
 
 .smtcmp-settings-tab-button {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   padding: 6px 12px;
   background: transparent !important;
   background-color: transparent !important;
@@ -8275,7 +8277,6 @@ body.smtcmp-quick-ask-global-interaction * {
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
-  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8284,10 +8285,6 @@ body.smtcmp-quick-ask-global-interaction * {
 
 .smtcmp-settings-tab-label {
   display: block;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
