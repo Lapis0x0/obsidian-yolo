@@ -2416,6 +2416,37 @@ button.smtcmp-chat-input-model-select {
   } */
 }
 
+.smtcmp-assistant-message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  margin-top: var(--size-2-2);
+}
+
+.smtcmp-assistant-message-editor-textarea {
+  width: 100%;
+  min-height: 120px;
+  max-height: 320px;
+  padding: var(--size-2-2);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-modifier-form-field);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
+  resize: vertical;
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.smtcmp-assistant-message-editor-textarea:focus,
+.smtcmp-assistant-message-editor-textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
 .smtcmp-assistant-message-footer {
   display: flex;
   align-items: center;

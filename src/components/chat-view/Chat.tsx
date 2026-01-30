@@ -203,6 +203,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [messageReasoningMap, setMessageReasoningMap] = useState<
     Map<string, ReasoningLevel>
   >(new Map())
+  const [editingAssistantMessageId, setEditingAssistantMessageId] = useState<
+    string | null
+  >(null)
   const [queryProgress, setQueryProgress] = useState<QueryProgressState>({
     type: 'idle',
   })
@@ -359,6 +362,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
         setInputMessage(newInputMessage)
         setFocusedMessageId(newInputMessage.id)
+        setEditingAssistantMessageId(null)
         setQueryProgress({
           type: 'idle',
         })
@@ -400,6 +404,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setMessageModelMap(new Map())
     setMessageReasoningMap(new Map())
     setChatMessages([])
+    setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(
       app,
       settings.chatOptions.includeCurrentFileContent,
@@ -424,6 +429,46 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     })
     abortActiveStreams()
   }
+
+  const handleAssistantMessageEditSave = useCallback(
+    (messageId: string, content: string) => {
+      setChatMessages((prevChatHistory) => {
+        const nextMessages = prevChatHistory.map((message) =>
+          message.role === 'assistant' && message.id === messageId
+            ? {
+                ...message,
+                content,
+              }
+            : message,
+        )
+        void persistConversation(nextMessages)
+        return nextMessages
+      })
+      setEditingAssistantMessageId(null)
+    },
+    [persistConversation],
+  )
+
+  const handleAssistantMessageEditCancel = useCallback(() => {
+    setEditingAssistantMessageId(null)
+  }, [])
+
+  const handleAssistantMessageGroupDelete = useCallback(
+    (messageIds: string[]) => {
+      const idsToRemove = new Set(messageIds)
+      setChatMessages((prevChatHistory) => {
+        const nextMessages = prevChatHistory.filter(
+          (message) => !idsToRemove.has(message.id),
+        )
+        void persistConversation(nextMessages)
+        return nextMessages
+      })
+      setEditingAssistantMessageId((prev) =>
+        prev && idsToRemove.has(prev) ? null : prev,
+      )
+    },
+    [persistConversation],
+  )
 
   const resolveReasoningLevelForMessages = useCallback(
     (messages: ChatMessage[]) => {
@@ -1318,6 +1363,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 isApplying={applyMutation.isPending}
                 onApply={handleApply}
                 onToolMessageUpdate={handleToolMessageUpdate}
+                editingAssistantMessageId={editingAssistantMessageId}
+                onEditStart={(messageId) => {
+                  setEditingAssistantMessageId(messageId)
+                }}
+                onEditCancel={handleAssistantMessageEditCancel}
+                onEditSave={handleAssistantMessageEditSave}
+                onDeleteGroup={handleAssistantMessageGroupDelete}
               />
             )
           }
