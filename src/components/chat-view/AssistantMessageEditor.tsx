@@ -33,8 +33,12 @@ export default function AssistantMessageEditor({
 
   const syncHeight = useCallback(() => {
     if (!textareaRef.current) return
-    textareaRef.current.style.height = 'auto'
-    textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+    textareaRef.current.setCssProps({
+      '--smtcmp-assistant-editor-height': 'auto',
+    })
+    textareaRef.current.setCssProps({
+      '--smtcmp-assistant-editor-height': `${textareaRef.current.scrollHeight}px`,
+    })
   }, [])
 
   useEffect(() => {

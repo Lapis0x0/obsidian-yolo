@@ -2427,6 +2427,7 @@ button.smtcmp-chat-input-model-select {
   width: 100%;
   min-height: 120px;
   max-height: 320px;
+  height: var(--smtcmp-assistant-editor-height, auto);
   padding: var(--size-2-2);
   border-radius: var(--radius-s);
   border: 1px solid var(--background-modifier-border);
