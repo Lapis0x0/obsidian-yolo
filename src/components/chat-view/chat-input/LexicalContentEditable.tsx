@@ -10,7 +10,7 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
-import { RefObject, useCallback, useEffect, useMemo } from 'react'
+import { RefObject, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { MentionableImage } from '../../../types/mentionable'
@@ -73,6 +73,9 @@ export default function LexicalContentEditable({
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(
+    app.workspace.getActiveFile()?.path ?? null,
+  )
 
   const initialConfig: InitialConfigType = {
     namespace: 'LexicalContentEditable',
@@ -92,10 +95,10 @@ export default function LexicalContentEditable({
     [app],
   )
 
-  const resolvedSearch = useMemo(
-    () => searchResultByQuery ?? defaultSearch,
-    [defaultSearch, searchResultByQuery],
-  )
+  const resolvedSearch = useMemo(() => {
+    const searchFn = searchResultByQuery ?? defaultSearch
+    return (query: string) => searchFn(query)
+  }, [defaultSearch, searchResultByQuery, activeFilePath])
 
   /*
    * Using requestAnimationFrame for autoFocus instead of using editor.focus()
@@ -109,6 +112,16 @@ export default function LexicalContentEditable({
       })
     }
   }, [autoFocus, contentEditableRef])
+
+  useEffect(() => {
+    const handleActiveLeafChange = () => {
+      setActiveFilePath(app.workspace.getActiveFile()?.path ?? null)
+    }
+    app.workspace.on('active-leaf-change', handleActiveLeafChange)
+    return () => {
+      app.workspace.off('active-leaf-change', handleActiveLeafChange)
+    }
+  }, [app])
 
   return (
     <LexicalComposer initialConfig={initialConfig}>

@@ -101,6 +101,7 @@ function scoreFnWithBoost({
 function getEmptyQueryResult(
   searchItems: SearchItem[],
   limit: number,
+  currentFile?: TFile | null,
 ): SearchableMentionable[] {
   // Sort files based on a custom scoring function
   const sortedFiles = searchItems.sort((a, b) => {
@@ -116,6 +117,16 @@ function getEmptyQueryResult(
     })
     return scoreB - scoreA // Sort in descending order
   })
+
+  if (currentFile) {
+    const currentIndex = sortedFiles.findIndex(
+      (item) => item.type === 'file' && item.file.path === currentFile.path,
+    )
+    if (currentIndex > 0) {
+      const [currentItem] = sortedFiles.splice(currentIndex, 1)
+      sortedFiles.unshift(currentItem)
+    }
+  }
 
   // Return only the top 'limit' files
   return sortedFiles
@@ -168,7 +179,7 @@ export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
   ]
 
   if (!query) {
-    return getEmptyQueryResult(searchItems, 20)
+    return getEmptyQueryResult(searchItems, 20, currentFile)
   }
 
   const results = fuzzysort.go(query, searchItems, {
