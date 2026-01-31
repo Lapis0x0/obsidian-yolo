@@ -791,7 +791,32 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     // If suppressed for this conversation, do not auto-add or update current-file mentionable
     if (currentFileSuppression !== 'none') return
 
-    if (!focusedHasCurrentFile) return
+    if (!focusedHasCurrentFile) {
+      const activeFile = app.workspace.getActiveFile()
+      if (!activeFile || !focusedMessageId) return
+      const mentionable: MentionableCurrentFile = {
+        type: 'current-file',
+        file: activeFile,
+      }
+      if (inputSnapshot.id === focusedMessageId) {
+        setInputMessage((prevInputMessage) => ({
+          ...prevInputMessage,
+          mentionables: [mentionable, ...prevInputMessage.mentionables],
+        }))
+      } else {
+        setChatMessages((prevChatHistory) =>
+          prevChatHistory.map((message) =>
+            message.id === focusedMessageId && message.role === 'user'
+              ? {
+                  ...message,
+                  mentionables: [mentionable, ...message.mentionables],
+                }
+              : message,
+          ),
+        )
+      }
+      return
+    }
 
     // Setting enabled: keep the current-file mentionable updated
     const activeFile = app.workspace.getActiveFile()
@@ -1640,7 +1665,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             setInputMessage(
               getNewInputMessage(
                 app,
-                false,
+                settings.chatOptions.includeCurrentFileContent,
                 currentFileSuppression,
                 reasoningLevel,
               ),
