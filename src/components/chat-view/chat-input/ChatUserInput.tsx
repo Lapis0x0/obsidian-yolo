@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import {
   $createParagraphNode,
   $createTextNode,
@@ -15,7 +14,6 @@ import {
 } from 'lexical'
 import {
   type FocusEvent,
-  type MouseEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -41,12 +39,9 @@ import {
   getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { readTFileContent } from '../../../utils/obsidian'
-import { ObsidianMarkdown } from '../ObsidianMarkdown'
 
 import { ChatMode, ChatModeSelect } from './ChatModeSelect'
 import LexicalContentEditable from './LexicalContentEditable'
-import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
 import {
   $createMentionNode,
@@ -114,7 +109,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       mentionables,
       setMentionables,
       autoFocus = false,
-      addedBlockKey,
       conversationOverrides = null,
       onConversationOverridesChange: _onConversationOverridesChange,
       showConversationSettingsButton: _showConversationSettingsButton = false,
@@ -134,6 +128,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
   ) => {
     const app = useApp()
     const { t } = useLanguage()
+    const mentionableUnitLabel = useMemo(
+      () => t('common.characters', 'chars'),
+      [t],
+    )
     const { settings } = useSettings()
 
     // Get current model for reasoning support check
@@ -196,16 +194,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         setInputText($getRoot().getTextContent())
       })
     }, [isEditorReady, initialSerializedEditorState])
-
-    const [displayedMentionableKey, setDisplayedMentionableKey] = useState<
-      string | null
-    >(addedBlockKey ?? null)
-
-    useEffect(() => {
-      if (addedBlockKey) {
-        setDisplayedMentionableKey(addedBlockKey)
-      }
-    }, [addedBlockKey])
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -353,7 +341,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
           if (mentionable.type === 'block') {
             const updatedMentionNode = $createMentionNode(
-              getMentionableName(desiredMentionable),
+              getMentionableName(desiredMentionable, {
+                unitLabel: mentionableUnitLabel,
+              }),
               serializeMentionable(desiredMentionable),
             )
             node.replace(updatedMentionNode)
@@ -384,7 +374,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           if (existingKeys.has(mentionableKey)) return
 
           const mentionNode = $createMentionNode(
-            getMentionableName(mentionable),
+            getMentionableName(mentionable, {
+              unitLabel: mentionableUnitLabel,
+            }),
             serialized,
           )
           const spacer = $createTextNode(' ')
@@ -446,7 +438,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             newMentionableImages.forEach((mentionable) => {
               nodesToInsert.push(
                 $createMentionNode(
-                  getMentionableName(mentionable),
+                  getMentionableName(mentionable, {
+                    unitLabel: mentionableUnitLabel,
+                  }),
                   serializeMentionable(mentionable),
                 ),
               )
@@ -475,34 +469,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [mentionables, setMentionables],
     )
 
-    const handleMentionableDelete = (mentionable: Mentionable) => {
-      const mentionableKey = getMentionableKey(
-        serializeMentionable(mentionable),
-      )
-
-      // 如果提供了 onDeleteFromAll，调用它来从所有消息中删除
-      if (onDeleteFromAll) {
-        onDeleteFromAll(mentionable)
-      } else {
-        // 否则只从当前消息中删除
-        setMentionables(
-          mentionables.filter(
-            (m) =>
-              getMentionableKey(serializeMentionable(m)) !== mentionableKey,
-          ),
-        )
-      }
-
-      // 从编辑器中移除对应的 MentionNode
-      editorRef.current?.update(() => {
-        $nodesOfType(MentionNode).forEach((node) => {
-          if (getMentionableKey(node.getMentionable()) === mentionableKey) {
-            node.remove()
-          }
-        })
-      })
-    }
-
     const handleSubmit = (options: ChatSubmitOptions = {}) => {
       const content = editorRef.current?.getEditorState()?.toJSON()
       // Use vault search from conversation overrides if available, otherwise use the passed option
@@ -528,51 +494,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           ref={containerRef}
           onClick={compact ? onToggleCompact : undefined}
         >
-          <div className="smtcmp-chat-user-input-files">
-            {effectiveMentionables.map((m) => {
-              const mentionableKey = getMentionableKey(serializeMentionable(m))
-              const isExpanded = mentionableKey === displayedMentionableKey
-              const handleToggleExpand = (e?: MouseEvent) => {
-                if (compact) {
-                  // In compact mode, don't expand mentionables, expand the whole input instead
-                  return
-                }
-                if (e) {
-                  e.stopPropagation()
-                }
-                if (isExpanded) {
-                  setDisplayedMentionableKey(null)
-                } else {
-                  setDisplayedMentionableKey(mentionableKey)
-                }
-              }
-              const handleDelete = (e?: MouseEvent) => {
-                if (e) {
-                  e.stopPropagation()
-                }
-                handleMentionableDelete(m)
-              }
-              return (
-                <MentionableBadge
-                  key={mentionableKey}
-                  mentionable={m}
-                  onDelete={compact ? () => {} : handleDelete}
-                  onClick={() => handleToggleExpand()}
-                  isFocused={isExpanded}
-                  isExpanded={isExpanded}
-                  onToggleExpand={() => handleToggleExpand()}
-                />
-              )
-            })}
-          </div>
-
-          {!compact && (
-            <MentionableContentPreview
-              displayedMentionableKey={displayedMentionableKey}
-              mentionables={effectiveMentionables}
-            />
-          )}
-
           <div className="smtcmp-chat-user-input-editor">
             {inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
@@ -654,80 +575,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
   },
 )
-
-function MentionableContentPreview({
-  displayedMentionableKey,
-  mentionables,
-}: {
-  displayedMentionableKey: string | null
-  mentionables: Mentionable[]
-}) {
-  const app = useApp()
-
-  const displayedMentionable: Mentionable | null = useMemo(() => {
-    return (
-      mentionables.find(
-        (m) =>
-          getMentionableKey(serializeMentionable(m)) ===
-          displayedMentionableKey,
-      ) ?? null
-    )
-  }, [displayedMentionableKey, mentionables])
-
-  const { data: displayFileContent } = useQuery({
-    enabled:
-      !!displayedMentionable &&
-      ['file', 'current-file', 'block'].includes(displayedMentionable.type),
-    queryKey: [
-      'file',
-      displayedMentionableKey,
-      mentionables.map((m) => getMentionableKey(serializeMentionable(m))), // should be updated when mentionables change (especially on delete)
-    ],
-    queryFn: async () => {
-      if (!displayedMentionable) return null
-      if (
-        displayedMentionable.type === 'file' ||
-        displayedMentionable.type === 'current-file'
-      ) {
-        if (!displayedMentionable.file) return null
-        return await readTFileContent(displayedMentionable.file, app.vault)
-      } else if (displayedMentionable.type === 'block') {
-        if (displayedMentionable.content) {
-          return displayedMentionable.content
-        }
-
-        const fileContent = await readTFileContent(
-          displayedMentionable.file,
-          app.vault,
-        )
-
-        return fileContent
-          .split('\n')
-          .slice(
-            displayedMentionable.startLine - 1,
-            displayedMentionable.endLine,
-          )
-          .join('\n')
-      }
-
-      return null
-    },
-  })
-
-  const displayImage: MentionableImage | null = useMemo(() => {
-    return displayedMentionable?.type === 'image' ? displayedMentionable : null
-  }, [displayedMentionable])
-
-  return displayFileContent ? (
-    <div className="smtcmp-chat-user-input-file-content-preview">
-      <ObsidianMarkdown content={displayFileContent} scale="xs" />
-    </div>
-  ) : displayImage ? (
-    <div className="smtcmp-chat-user-input-file-content-preview">
-      <img src={displayImage.data} alt={displayImage.name} />
-    </div>
-  ) : null
-}
 
 ChatUserInput.displayName = 'ChatUserInput'
 

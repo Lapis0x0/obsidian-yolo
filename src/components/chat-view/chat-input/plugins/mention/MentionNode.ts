@@ -35,6 +35,21 @@ function getDisplayMentionName(mentionName: string): string {
   if (characters.length <= MAX_MENTION_NAME_LENGTH) {
     return mentionName
   }
+  const suffixMatch = mentionName.match(/\s\([0-9]+\s[^)]+\)$/)
+  if (suffixMatch) {
+    const suffix = suffixMatch[0]
+    const suffixCharacters = Array.from(suffix)
+    if (suffixCharacters.length >= MAX_MENTION_NAME_LENGTH) {
+      return `${suffixCharacters
+        .slice(0, MAX_MENTION_NAME_LENGTH - 1)
+        .join('')}${MENTION_ELLIPSIS}`
+    }
+    const prefixText = mentionName.slice(0, mentionName.length - suffix.length)
+    const prefixCharacters = Array.from(prefixText)
+    const prefixLength = MAX_MENTION_NAME_LENGTH - 1 - suffixCharacters.length
+    const prefix = prefixCharacters.slice(0, prefixLength).join('')
+    return `${prefix}${MENTION_ELLIPSIS}${suffix}`
+  }
   if (MAX_MENTION_NAME_LENGTH <= 1) {
     return MENTION_ELLIPSIS
   }

@@ -253,13 +253,8 @@ function BlockBadge({
 }) {
   const Icon = getMentionableIcon(mentionable)
   const { t } = useLanguage()
-  const { count, unit } = getBlockMentionableCountInfo(mentionable.content)
-  const unitLabel =
-    unit === 'wordsCharacters'
-      ? t('common.wordsCharacters', 'words/characters')
-      : unit === 'characters'
-        ? t('common.characters', 'chars')
-        : t('common.words', 'words')
+  const { count } = getBlockMentionableCountInfo(mentionable.content)
+  const unitLabel = t('common.characters', 'chars')
   return (
     <BadgeBase
       onDelete={onDelete}

@@ -207,7 +207,12 @@ export function getBlockMentionableCountInfo(
   return { count, unit }
 }
 
-export function getMentionableName(mentionable: Mentionable): string {
+export function getMentionableName(
+  mentionable: Mentionable,
+  options?: {
+    unitLabel?: string
+  },
+): string {
   switch (mentionable.type) {
     case 'file':
       return mentionable.file.name
@@ -218,13 +223,8 @@ export function getMentionableName(mentionable: Mentionable): string {
     case 'current-file':
       return mentionable.file?.name ?? 'Current file'
     case 'block': {
-      const { count, unit } = getBlockMentionableCountInfo(mentionable.content)
-      const unitLabel =
-        unit === 'wordsCharacters'
-          ? 'words/characters'
-          : unit === 'characters'
-            ? 'chars'
-            : 'words'
+      const { count } = getBlockMentionableCountInfo(mentionable.content)
+      const unitLabel = options?.unitLabel ?? 'chars'
       return `${mentionable.file.name} (${count} ${unitLabel})`
     }
     case 'url':
