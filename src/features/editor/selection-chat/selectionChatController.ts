@@ -2,7 +2,6 @@ import { EditorView } from '@codemirror/view'
 import { App, Editor, MarkdownView, Notice } from 'obsidian'
 
 import { ChatView } from '../../../ChatView'
-import { ChatProps } from '../../../components/chat-view/Chat'
 import { SelectionChatWidget } from '../../../components/selection/SelectionChatWidget'
 import {
   SelectionInfo,
@@ -11,6 +10,7 @@ import {
 import { CHAT_VIEW_TYPE } from '../../../constants'
 import type SmartComposerPlugin from '../../../main'
 import { SmartComposerSettings } from '../../../settings/schema/setting.types'
+import type { Mentionable } from '../../../types/mentionable'
 import { getMentionableBlockData } from '../../../utils/obsidian'
 
 export type PendingSelectionRewrite = {
@@ -31,7 +31,11 @@ type SelectionChatControllerDeps = {
     view: EditorView,
     showQuickActions: boolean,
   ) => void
-  activateChatView: (chatProps?: ChatProps) => Promise<void>
+  showQuickAskWithAutoSend: (
+    editor: Editor,
+    view: EditorView,
+    options: { prompt: string; mentionables: Mentionable[] },
+  ) => void
   isSmartSpaceOpen: () => boolean
 }
 
@@ -46,7 +50,11 @@ export class SelectionChatController {
     view: EditorView,
     showQuickActions: boolean,
   ) => void
-  private readonly activateChatView: (chatProps?: ChatProps) => Promise<void>
+  private readonly showQuickAskWithAutoSend: (
+    editor: Editor,
+    view: EditorView,
+    options: { prompt: string; mentionables: Mentionable[] },
+  ) => void
   private readonly isSmartSpaceOpen: () => boolean
 
   private selectionManager: SelectionManager | null = null
@@ -61,7 +69,7 @@ export class SelectionChatController {
     this.t = deps.t
     this.getEditorView = deps.getEditorView
     this.showSmartSpace = deps.showSmartSpace
-    this.activateChatView = deps.activateChatView
+    this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
   }
 
@@ -104,7 +112,7 @@ export class SelectionChatController {
       editorContainer as HTMLElement,
       {
         enabled: true,
-        minSelectionLength: 6,
+        minSelectionLength: 0,
         debounceDelay: 300,
       },
     )
@@ -256,28 +264,21 @@ export class SelectionChatController {
       return
     }
 
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
-      await this.activateChatView({
-        selectedBlock: data,
-      })
-      const newLeaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-      if (newLeaves.length > 0 && newLeaves[0].view instanceof ChatView) {
-        const chatView = newLeaves[0].view
-        chatView.insertTextToInput(
-          this.t('selection.actions.explain', '请深入解释') + '：',
-        )
-        chatView.focusMessage()
-      }
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      new Notice('无法获取编辑器视图')
       return
     }
 
-    await this.app.workspace.revealLeaf(leaves[0])
-    const chatView = leaves[0].view
-    chatView.addSelectionToChat(data)
-    chatView.insertTextToInput(
-      this.t('selection.actions.explain', '请深入解释') + '：',
-    )
-    chatView.focusMessage()
+    const mentionable: Mentionable = {
+      type: 'block',
+      ...data,
+      source: 'selection',
+    }
+
+    this.showQuickAskWithAutoSend(editor, editorView, {
+      prompt: this.t('selection.actions.explain', '请深入解释'),
+      mentionables: [mentionable],
+    })
   }
 }

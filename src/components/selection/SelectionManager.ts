@@ -152,6 +152,15 @@ export class SelectionManager {
 
     let current: Node | null = node
     while (current) {
+      if (current instanceof HTMLElement) {
+        if (
+          current.closest(
+            '.smtcmp-quick-ask-overlay-root, .smtcmp-quick-ask-overlay',
+          )
+        ) {
+          return false
+        }
+      }
       if (current === this.editorContainer) {
         return true
       }

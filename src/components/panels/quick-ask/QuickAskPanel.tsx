@@ -1,15 +1,17 @@
 import { EditorView } from '@codemirror/view'
 import {
   $getRoot,
+  $createParagraphNode,
+  $createTextNode,
   $nodesOfType,
   LexicalEditor,
   SerializedEditorState,
 } from 'lexical'
 import {
+  Check,
   ChevronDown,
   ChevronUp,
-  Copy,
-  ExternalLink,
+  CopyIcon,
   RotateCcw,
   Send,
   Square,
@@ -37,8 +39,10 @@ import { generateEditContent } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
   getMentionableKey,
+  getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
+import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
 import { ResponseGenerator } from '../../../utils/chat/responseGenerator'
@@ -50,7 +54,10 @@ import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
-import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
+import {
+  $createMentionNode,
+  MentionNode,
+} from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
 
@@ -65,11 +72,47 @@ type QuickAskPanelProps = {
   view: EditorView
   contextText: string
   fileTitle: string
+  initialPrompt?: string
+  initialMentionables?: Mentionable[]
+  autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
   onOverlayStateChange?: (isOverlayActive: boolean) => void
   onDragOffset?: (offsetX: number, offsetY: number) => void
   onResize?: (width: number, height: number) => void
+}
+
+function createPlainTextEditorState(text: string): SerializedEditorState {
+  const state = {
+    root: {
+      children: [
+        {
+          children: [
+            {
+              detail: 0,
+              format: 0,
+              mode: 'normal',
+              style: '',
+              text,
+              type: 'text',
+              version: 1,
+            },
+          ],
+          direction: 'ltr',
+          format: '',
+          indent: 0,
+          type: 'paragraph',
+          version: 1,
+        },
+      ],
+      direction: 'ltr',
+      format: '',
+      indent: 0,
+      type: 'root',
+      version: 1,
+    },
+  } as unknown
+  return state as SerializedEditorState
 }
 
 // Simple markdown renderer component for Quick Ask
@@ -111,6 +154,9 @@ export function QuickAskPanel({
   view: _view,
   contextText,
   fileTitle,
+  initialPrompt,
+  initialMentionables,
+  autoSend,
   onClose,
   containerRef,
   onOverlayStateChange,
@@ -150,6 +196,11 @@ export function QuickAskPanel({
     'top' | 'bottom'
   >('top')
   const [mentionables, setMentionables] = useState<Mentionable[]>([])
+  const [copied, setCopied] = useState(false)
+  const mentionableUnitLabel = useMemo(
+    () => t('common.characters', 'chars'),
+    [t],
+  )
   const [mode, setMode] = useState<QuickAskMode>(
     () => settings.continuationOptions?.quickAskMode ?? 'ask',
   )
@@ -166,6 +217,7 @@ export function QuickAskPanel({
   const shouldAutoScrollRef = useRef(true)
   const userDisabledAutoScrollRef = useRef(false)
   const lastScrollTopRef = useRef(0)
+  const autoSendRef = useRef(false)
 
   // Drag & Resize state
   const dragHandleRef = useRef<HTMLDivElement>(null)
@@ -250,6 +302,9 @@ export function QuickAskPanel({
     },
     [plugin],
   )
+
+  const noop = useCallback(() => {}, [])
+  const noopSetMentionables = useCallback((_items: Mentionable[]) => {}, [])
 
   const updateMentionMenuPlacement = useCallback(() => {
     const container = inputRowRef.current
@@ -527,7 +582,10 @@ export function QuickAskPanel({
 
   // Submit message
   const submitMessage = useCallback(
-    async (editorState: SerializedEditorState) => {
+    async (
+      editorState: SerializedEditorState,
+      mentionablesOverride?: Mentionable[],
+    ) => {
       if (isStreaming) return
 
       // Extract text from editor state
@@ -555,7 +613,7 @@ export function QuickAskPanel({
         content: editorState,
         promptContent: null,
         id: uuidv4(),
-        mentionables: mentionables,
+        mentionables: mentionablesOverride ?? mentionables,
       }
 
       // Clear mentionables after creating the message
@@ -654,6 +712,63 @@ export function QuickAskPanel({
       t,
     ],
   )
+
+  useEffect(() => {
+    if (!autoSend || autoSendRef.current) return
+    const prompt = initialPrompt?.trim()
+    if (!prompt) return
+
+    let cancelled = false
+    const tryAutoSend = () => {
+      if (cancelled || autoSendRef.current) return
+      const editor = lexicalEditorRef.current
+      if (!editor) {
+        requestAnimationFrame(tryAutoSend)
+        return
+      }
+
+      autoSendRef.current = true
+      const mentionablesToInsert = initialMentionables ?? []
+      if (mentionablesToInsert.length > 0) {
+        setMentionables(mentionablesToInsert)
+      }
+
+      editor.update(() => {
+        const root = $getRoot()
+        root.clear()
+        const paragraph = $createParagraphNode()
+        root.append(paragraph)
+
+        mentionablesToInsert.forEach((mentionable) => {
+          const mentionNode = $createMentionNode(
+            getMentionableName(mentionable, {
+              unitLabel: mentionableUnitLabel,
+            }),
+            serializeMentionable(mentionable),
+          )
+          paragraph.append(mentionNode)
+          paragraph.append($createTextNode(' '))
+        })
+
+        paragraph.append($createTextNode(prompt))
+        paragraph.selectEnd()
+      })
+
+      const editorState = createPlainTextEditorState(prompt)
+      void submitMessage(editorState, mentionablesToInsert)
+    }
+
+    requestAnimationFrame(tryAutoSend)
+    return () => {
+      cancelled = true
+    }
+  }, [
+    autoSend,
+    initialMentionables,
+    initialPrompt,
+    mentionableUnitLabel,
+    submitMessage,
+  ])
 
   // Submit edit mode - generate SEARCH/REPLACE and open ApplyView
   const submitEditMode = useCallback(
@@ -885,26 +1000,15 @@ export function QuickAskPanel({
     if (lastAssistantMessage && lastAssistantMessage.role === 'assistant') {
       void navigator.clipboard
         .writeText(lastAssistantMessage.content || '')
+        .then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        })
         .catch((error) => {
           console.error('Failed to copy to clipboard', error)
         })
-      new Notice(t('quickAsk.copied', 'Copied to clipboard'))
     }
-  }, [chatMessages, t])
-
-  // Insert last assistant message at cursor
-  const insertLastResponse = useCallback(() => {
-    const lastAssistantMessage = [...chatMessages]
-      .reverse()
-      .find((m) => m.role === 'assistant')
-    if (lastAssistantMessage && lastAssistantMessage.role === 'assistant') {
-      const content = lastAssistantMessage.content || ''
-      const cursor = editor.getCursor()
-      editor.replaceRange(content, cursor)
-      new Notice(t('quickAsk.inserted', 'Inserted at cursor'))
-      onClose()
-    }
-  }, [chatMessages, editor, onClose, t])
+  }, [chatMessages])
 
   // Clear conversation
   const clearConversation = useCallback(() => {
@@ -1188,13 +1292,18 @@ export function QuickAskPanel({
         >
           {chatMessages.map((message) => {
             if (message.role === 'user') {
-              const textContent =
-                message.content && typeof message.content === 'object'
-                  ? editorStateToPlainText(message.content)
-                  : ''
               return (
                 <div key={message.id} className="smtcmp-quick-ask-user-message">
-                  {textContent}
+                  <ChatUserInput
+                    initialSerializedEditorState={message.content}
+                    onChange={noop}
+                    onSubmit={noop}
+                    onFocus={noop}
+                    onBlur={noop}
+                    mentionables={message.mentionables ?? []}
+                    setMentionables={noopSetMentionables}
+                    compact={true}
+                  />
                 </div>
               )
             }
@@ -1223,21 +1332,20 @@ export function QuickAskPanel({
                     message.metadata?.generationState,
                   )}
                   {isLatestAssistant && (
-                    <div className="smtcmp-quick-ask-assistant-actions">
-                      <button
-                        className="smtcmp-quick-ask-toolbar-button"
-                        onClick={copyLastResponse}
-                        title={t('quickAsk.copy', 'Copy')}
-                      >
-                        <Copy size={14} />
-                      </button>
-                      <button
-                        className="smtcmp-quick-ask-toolbar-button"
-                        onClick={insertLastResponse}
-                        title={t('quickAsk.insert', 'Insert')}
-                      >
-                        <ExternalLink size={14} />
-                      </button>
+                    <div className="smtcmp-quick-ask-assistant-footer">
+                      <div className="smtcmp-assistant-message-actions">
+                        <button
+                          className="clickable-icon"
+                          onClick={copyLastResponse}
+                          title={t('quickAsk.copy', 'Copy')}
+                        >
+                          {copied ? (
+                            <Check size={12} />
+                          ) : (
+                            <CopyIcon size={12} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
