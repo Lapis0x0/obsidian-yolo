@@ -1,8 +1,8 @@
 import { EditorView } from '@codemirror/view'
 import {
-  $getRoot,
   $createParagraphNode,
   $createTextNode,
+  $getRoot,
   $nodesOfType,
   LexicalEditor,
   SerializedEditorState,
@@ -42,7 +42,6 @@ import {
   getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
 import { ResponseGenerator } from '../../../utils/chat/responseGenerator'
@@ -52,6 +51,7 @@ import {
 } from '../../../utils/chat/searchReplace'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
+import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import {
@@ -150,7 +150,7 @@ function SimpleMarkdownContent({
 
 export function QuickAskPanel({
   plugin,
-  editor,
+  editor: _editor,
   view: _view,
   contextText,
   fileTitle,

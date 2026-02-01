@@ -40,10 +40,10 @@ import {
   SmartComposerSettings,
   smartComposerSettingsSchema,
 } from './settings/schema/setting.types'
-import type { Mentionable } from './types/mentionable'
 import { parseSmartComposerSettings } from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
+import type { Mentionable } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 
 export default class SmartComposerPlugin extends Plugin {
