@@ -465,7 +465,7 @@ export const it: TranslationKeys = {
         'Disattiva trigger con spazio su riga vuota (solo "/" + spazio)',
       selectionChatToggle: 'Abilita chat selezione',
       selectionChatToggleDesc:
-        'Mostra il menu contestuale quando selezioni il testo.',
+        "Mostra l'indicatore e il menu azioni (riscrivi/spiega). La selezione continua a sincronizzarsi con la chat laterale.",
       keywordTrigger: 'Trigger parola chiave',
       keywordTriggerDesc:
         'Trigger automaticamente la continuazione quando digiti una parola chiave specifica.',

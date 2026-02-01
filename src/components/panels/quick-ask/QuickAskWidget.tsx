@@ -10,6 +10,7 @@ import { PluginProvider } from '../../../contexts/plugin-context'
 import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
 import SmartComposerPlugin from '../../../main'
+import type { Mentionable } from '../../../types/mentionable'
 import {
   clearDynamicStyleClass,
   updateDynamicStyleClass,
@@ -46,6 +47,9 @@ export class QuickAskOverlay {
       view: EditorView
       contextText: string
       fileTitle: string
+      initialPrompt?: string
+      initialMentionables?: Mentionable[]
+      autoSend?: boolean
       onClose: () => void
     },
   ) {}
@@ -194,6 +198,9 @@ export class QuickAskOverlay {
                     view={this.options.view}
                     contextText={this.options.contextText}
                     fileTitle={this.options.fileTitle}
+                    initialPrompt={this.options.initialPrompt}
+                    initialMentionables={this.options.initialMentionables}
+                    autoSend={this.options.autoSend}
                     onClose={this.closeWithAnimation}
                     containerRef={this.containerRef}
                     onOverlayStateChange={this.handleOverlayStateChange}

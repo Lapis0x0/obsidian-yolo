@@ -20,6 +20,7 @@ import {
 import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
+import { useLanguage } from '../../../../../contexts/language-context'
 import { Mentionable } from '../../../../../types/mentionable'
 import {
   getMentionableName,
@@ -206,6 +207,11 @@ export default function NewMentionsPlugin({
   const [editor] = useLexicalComposerContext()
 
   const [queryString, setQueryString] = useState<string | null>(null)
+  const { t } = useLanguage()
+  const mentionableUnitLabel = useMemo(
+    () => t('common.characters', 'chars'),
+    [t],
+  )
 
   useEffect(() => {
     return () => {
@@ -238,7 +244,9 @@ export default function NewMentionsPlugin({
     ) => {
       editor.update(() => {
         const mentionNode = $createMentionNode(
-          getMentionableName(selectedOption.mentionable),
+          getMentionableName(selectedOption.mentionable, {
+            unitLabel: mentionableUnitLabel,
+          }),
           serializeMentionable(selectedOption.mentionable),
         )
         if (nodeToReplace) {

@@ -22,7 +22,7 @@ export class SelectionManager {
     | null = null
   private isEnabled = true
   private minSelectionLength = 6
-  private debounceDelay = 300
+  private debounceDelay = 150
   private editorContainer: HTMLElement | null = null
 
   constructor(
@@ -152,6 +152,15 @@ export class SelectionManager {
 
     let current: Node | null = node
     while (current) {
+      if (current instanceof HTMLElement) {
+        if (
+          current.closest(
+            '.smtcmp-quick-ask-overlay-root, .smtcmp-quick-ask-overlay',
+          )
+        ) {
+          return false
+        }
+      }
       if (current === this.editorContainer) {
         return true
       }

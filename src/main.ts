@@ -43,6 +43,7 @@ import {
 import { parseSmartComposerSettings } from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
+import type { Mentionable } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 
 export default class SmartComposerPlugin extends Plugin {
@@ -195,6 +196,14 @@ export default class SmartComposerPlugin extends Plugin {
     this.getQuickAskController().show(editor, view)
   }
 
+  private showQuickAskWithAutoSend(
+    editor: Editor,
+    view: EditorView,
+    options: { prompt: string; mentionables: Mentionable[] },
+  ) {
+    this.getQuickAskController().showWithAutoSend(editor, view, options)
+  }
+
   private createQuickAskTriggerExtension(): Extension {
     return this.getQuickAskController().createTriggerExtension()
   }
@@ -210,7 +219,8 @@ export default class SmartComposerPlugin extends Plugin {
         getEditorView: (editor) => this.getEditorView(editor),
         showSmartSpace: (editor, view, showQuickActions) =>
           this.showSmartSpace(editor, view, showQuickActions),
-        activateChatView: (chatProps) => this.activateChatView(chatProps),
+        showQuickAskWithAutoSend: (editor, view, options) =>
+          this.showQuickAskWithAutoSend(editor, view, options),
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
       })
     }

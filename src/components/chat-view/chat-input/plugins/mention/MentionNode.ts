@@ -30,15 +30,66 @@ export const MENTION_NODE_MENTIONABLE_ATTRIBUTE = 'data-lexical-mentionable'
 const MAX_MENTION_NAME_LENGTH = 32
 const MENTION_ELLIPSIS = '…'
 
+function isWideCodePoint(codePoint: number): boolean {
+  return (
+    codePoint >= 0x1100 &&
+    (codePoint <= 0x115f ||
+      codePoint === 0x2329 ||
+      codePoint === 0x232a ||
+      (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+      (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+      (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+      (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+      (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+      (codePoint >= 0x20000 && codePoint <= 0x3fffd))
+  )
+}
+
+function getVisualWidth(text: string): number {
+  let width = 0
+  for (const char of text) {
+    const codePoint = char.codePointAt(0)
+    width += codePoint && isWideCodePoint(codePoint) ? 2 : 1
+  }
+  return width
+}
+
+function truncateByWidth(text: string, maxWidth: number): string {
+  if (maxWidth <= 0) return ''
+  let width = 0
+  let result = ''
+  for (const char of text) {
+    const codePoint = char.codePointAt(0)
+    const charWidth = codePoint && isWideCodePoint(codePoint) ? 2 : 1
+    if (width + charWidth > maxWidth) break
+    result += char
+    width += charWidth
+  }
+  return result
+}
+
 function getDisplayMentionName(mentionName: string): string {
-  const characters = Array.from(mentionName)
-  if (characters.length <= MAX_MENTION_NAME_LENGTH) {
+  if (getVisualWidth(mentionName) <= MAX_MENTION_NAME_LENGTH) {
     return mentionName
   }
   if (MAX_MENTION_NAME_LENGTH <= 1) {
     return MENTION_ELLIPSIS
   }
-  return `${characters.slice(0, MAX_MENTION_NAME_LENGTH - 1).join('')}${MENTION_ELLIPSIS}`
+  const suffixMatch = mentionName.match(/\s\([0-9]+\s[^)]+\)$/)
+  if (suffixMatch) {
+    const suffix = suffixMatch[0]
+    const suffixWidth = getVisualWidth(suffix)
+    if (suffixWidth >= MAX_MENTION_NAME_LENGTH) {
+      return `${truncateByWidth(suffix, MAX_MENTION_NAME_LENGTH - 1)}${MENTION_ELLIPSIS}`
+    }
+    const prefixText = mentionName.slice(0, mentionName.length - suffix.length)
+    const prefixLength = MAX_MENTION_NAME_LENGTH - 1 - suffixWidth
+    const prefix = truncateByWidth(prefixText, prefixLength)
+    return `${prefix}${MENTION_ELLIPSIS}${suffix}`
+  }
+  return `${truncateByWidth(mentionName, MAX_MENTION_NAME_LENGTH - 1)}${MENTION_ELLIPSIS}`
 }
 
 export type SerializedMentionNode = Spread<

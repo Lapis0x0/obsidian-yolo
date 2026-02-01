@@ -6643,7 +6643,9 @@ button.smtcmp-chat-input-model-select {
   z-index: 2;
   opacity: 0;
   transform: scale(0.85);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .smtcmp-selection-indicator.visible {
@@ -7969,13 +7971,14 @@ button.smtcmp-chat-input-model-select {
 }
 
 .smtcmp-quick-ask-user-message {
-  align-self: flex-end;
-  max-width: 85%;
-  padding: 8px 12px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border-radius: var(--radius-m);
-  border-bottom-right-radius: var(--radius-s);
+  align-self: stretch;
+  max-width: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
   font-size: var(--font-ui-small);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -7985,14 +7988,20 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-quick-ask-assistant-message {
   align-self: flex-start;
   max-width: 95%;
-  padding: 8px 12px;
-  background: var(--background-secondary);
-  border-radius: var(--radius-m);
-  border-bottom-left-radius: var(--radius-s);
+  padding: 0 0 var(--size-2-2);
+  background: transparent;
+  border-radius: 0;
   font-size: var(--font-ui-small);
   line-height: 1.5;
   user-select: text;
   pointer-events: auto;
+}
+
+.smtcmp-quick-ask-assistant-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--size-2-2);
 }
 
 .smtcmp-quick-ask-assistant-message .markdown-rendered {

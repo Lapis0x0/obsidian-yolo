@@ -6,6 +6,7 @@ import type { Editor, MarkdownView } from 'obsidian'
 import { QuickAskOverlay } from '../../../components/panels/quick-ask'
 import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
+import type { Mentionable } from '../../../types/mentionable'
 
 type QuickAskWidgetPayload = {
   pos: number
@@ -15,6 +16,9 @@ type QuickAskWidgetPayload = {
     view: EditorView
     contextText: string
     fileTitle: string
+    initialPrompt?: string
+    initialMentionables?: Mentionable[]
+    autoSend?: boolean
     onClose: () => void
   }
 }
@@ -32,6 +36,12 @@ type QuickAskControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getActiveFileTitle: () => string
   closeSmartSpace: (restoreFocus?: boolean) => void
+}
+
+type QuickAskShowOptions = {
+  initialPrompt?: string
+  initialMentionables?: Mentionable[]
+  autoSend?: boolean
 }
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
@@ -110,6 +120,26 @@ export class QuickAskController {
   }
 
   show(editor: Editor, view: EditorView) {
+    this.showWithOptions(editor, view)
+  }
+
+  showWithAutoSend(
+    editor: Editor,
+    view: EditorView,
+    options: { prompt: string; mentionables?: Mentionable[] },
+  ) {
+    this.showWithOptions(editor, view, {
+      autoSend: true,
+      initialPrompt: options.prompt,
+      initialMentionables: options.mentionables,
+    })
+  }
+
+  private showWithOptions(
+    editor: Editor,
+    view: EditorView,
+    options?: QuickAskShowOptions,
+  ) {
     const selection = view.state.selection.main
     const pos = selection.head
 
@@ -135,6 +165,9 @@ export class QuickAskController {
         ? `${before}${QUICK_ASK_CURSOR_MARKER}${after}`
         : ''
     const fileTitle = this.deps.getActiveFileTitle()
+    const initialPrompt = options?.initialPrompt
+    const initialMentionables = options?.initialMentionables
+    const autoSend = options?.autoSend
 
     // Close any existing Quick Ask panel
     this.close(false)
@@ -168,6 +201,9 @@ export class QuickAskController {
             view,
             contextText,
             fileTitle,
+            initialPrompt,
+            initialMentionables,
+            autoSend,
             onClose: () => close(true),
           },
         }),
