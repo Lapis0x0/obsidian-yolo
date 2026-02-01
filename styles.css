@@ -6643,7 +6643,9 @@ button.smtcmp-chat-input-model-select {
   z-index: 2;
   opacity: 0;
   transform: scale(0.85);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .smtcmp-selection-indicator.visible {

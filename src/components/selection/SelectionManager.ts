@@ -22,7 +22,7 @@ export class SelectionManager {
     | null = null
   private isEnabled = true
   private minSelectionLength = 6
-  private debounceDelay = 300
+  private debounceDelay = 150
   private editorContainer: HTMLElement | null = null
 
   constructor(
