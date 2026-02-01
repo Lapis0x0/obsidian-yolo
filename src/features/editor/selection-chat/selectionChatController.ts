@@ -52,6 +52,7 @@ export class SelectionChatController {
   private selectionManager: SelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
   private pendingSelectionRewrite: PendingSelectionRewrite | null = null
+  private enableSelectionChat = true
 
   constructor(deps: SelectionChatControllerDeps) {
     this.plugin = deps.plugin
@@ -65,7 +66,7 @@ export class SelectionChatController {
   }
 
   isActive(): boolean {
-    return this.selectionManager !== null
+    return this.enableSelectionChat
   }
 
   clearPendingSelectionRewrite() {
@@ -81,6 +82,7 @@ export class SelectionChatController {
   initialize() {
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true
+    this.enableSelectionChat = enableSelectionChat
 
     if (this.selectionChatWidget) {
       this.selectionChatWidget.destroy()
@@ -90,10 +92,6 @@ export class SelectionChatController {
     if (this.selectionManager) {
       this.selectionManager.destroy()
       this.selectionManager = null
-    }
-
-    if (!enableSelectionChat) {
-      return
     }
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
@@ -139,6 +137,12 @@ export class SelectionChatController {
     }
 
     if (this.isSmartSpaceOpen()) {
+      return
+    }
+
+    const enableSelectionChat =
+      this.getSettings().continuationOptions?.enableSelectionChat ?? true
+    if (!enableSelectionChat) {
       return
     }
 

@@ -431,7 +431,7 @@ export const zh: TranslationKeys = {
       smartSpaceTriggerModeOff: '关闭空行空格触发（仅保留 "/"+空格）',
       selectionChatToggle: '启用 Cursor Chat',
       selectionChatToggleDesc:
-        '选中文本时在右下角显示小标识，悬停后展开操作菜单（添加到对话、AI 改写、深入解释）。',
+        '控制选区右下角操作菜单（改写/解释）。选区内容仍会自动同步到侧边 Chat。',
       keywordTrigger: '启用关键词触发AI续写',
       keywordTriggerDesc:
         '在编辑器中检测到指定关键词时自动触发续写。建议使用"cc"。',

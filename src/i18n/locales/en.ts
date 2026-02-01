@@ -468,7 +468,7 @@ export const en: TranslationKeys = {
         'Disable empty-line space trigger (keep "/"+space only)',
       selectionChatToggle: 'Enable cursor chat',
       selectionChatToggleDesc:
-        'Show a small indicator at the bottom-right of selected text with actions (add to chat, AI rewrite, explain in depth).',
+        'Show the selection indicator and actions menu (rewrite/explain). Selection still syncs to the sidebar chat.',
       keywordTrigger: 'Enable keyword trigger for AI continuation',
       keywordTriggerDesc:
         'Automatically trigger continuation when the specified keyword is detected in the editor; recommended value: cc.',
