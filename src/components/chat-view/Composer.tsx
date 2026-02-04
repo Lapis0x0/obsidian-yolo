@@ -32,6 +32,7 @@ import { FolderSelectionList } from '../settings/inputs/FolderSelectionList'
 import { EmbeddingDbManageModal } from '../settings/modals/EmbeddingDbManageModal'
 import { ExcludedFilesModal } from '../settings/modals/ExcludedFilesModal'
 import { IncludedFilesModal } from '../settings/modals/IncludedFilesModal'
+import { SelectionChatActionsSettings } from '../settings/SelectionChatActionsSettings'
 import { SmartSpaceQuickActionsSettings } from '../settings/SmartSpaceQuickActionsSettings'
 
 type ComposerProps = {
@@ -641,6 +642,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     />
                   </div>
                 </div>
+                {enableSelectionChat && (
+                  <SelectionChatActionsSettings variant="composer" />
+                )}
               </section>
             )}
 

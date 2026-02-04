@@ -108,6 +108,8 @@ export const en: TranslationKeys = {
       addToChat: 'Add to chat',
       rewrite: 'AI rewrite',
       explain: 'Explain in depth',
+      suggest: 'Provide suggestions',
+      translateToChinese: 'Translate to Chinese',
     },
   },
 
@@ -159,6 +161,7 @@ export const en: TranslationKeys = {
       resetToDefault: 'Reset to default',
       confirmReset:
         'Are you sure you want to reset to default quick actions and delete all custom settings?',
+      resetConfirmTitle: 'Reset Smart Space quick actions',
       actionLabel: 'Action label',
       actionLabelDesc: 'Text displayed in the quick action',
       actionLabelPlaceholder: 'For example, continue writing',
@@ -194,6 +197,28 @@ export const en: TranslationKeys = {
         message: 'Message',
         settings: 'Settings',
       },
+      copySuffix: ' (copy)',
+      dragHandleAria: 'Drag to reorder',
+    },
+    selectionChat: {
+      quickActionsTitle: 'Cursor commands',
+      quickActionsDesc:
+        'Customize the commands and prompts displayed after selecting text',
+      configureActions: 'Configure commands',
+      actionsCount: 'Configured {count} commands',
+      addAction: 'Add command',
+      resetToDefault: 'Reset to default',
+      confirmReset:
+        'Are you sure you want to reset to default commands and delete all custom settings?',
+      resetConfirmTitle: 'Reset Cursor commands',
+      actionLabel: 'Command label',
+      actionLabelDesc: 'Text displayed in the command',
+      actionLabelPlaceholder: 'For example, explain',
+      actionInstruction: 'Prompt',
+      actionInstructionDesc: 'Instruction sent to AI',
+      actionInstructionPlaceholder:
+        'For example, explain the selected content.',
+      duplicate: 'Duplicate',
       copySuffix: ' (copy)',
       dragHandleAria: 'Drag to reorder',
     },

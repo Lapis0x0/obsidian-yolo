@@ -4,6 +4,7 @@ import { Root, createRoot } from 'react-dom/client'
 
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
+import { SettingsProvider } from '../../contexts/settings-context'
 import SmartComposerPlugin from '../../main'
 
 import { SelectionActionsMenu } from './SelectionActionsMenu'
@@ -16,7 +17,11 @@ type SelectionChatWidgetProps = {
   selection: SelectionInfo
   editorContainer: HTMLElement
   onClose: () => void
-  onAction: (actionId: string, selection: SelectionInfo) => void | Promise<void>
+  onAction: (
+    actionId: string,
+    selection: SelectionInfo,
+    instruction: string,
+  ) => void | Promise<void>
 }
 
 function SelectionChatWidgetBody({
@@ -89,9 +94,9 @@ function SelectionChatWidgetBody({
     }
   }, [isHoveringIndicator, isHoveringMenu])
 
-  const handleAction = async (actionId: string) => {
+  const handleAction = async (actionId: string, instruction: string) => {
     onClose()
-    await onAction(actionId, selection)
+    await onAction(actionId, selection, instruction)
   }
 
   return (
@@ -133,6 +138,7 @@ export class SelectionChatWidget {
       onAction: (
         actionId: string,
         selection: SelectionInfo,
+        instruction: string,
       ) => void | Promise<void>
     },
   ) {
@@ -307,14 +313,24 @@ export class SelectionChatWidget {
     this.root.render(
       <PluginProvider plugin={this.options.plugin}>
         <LanguageProvider>
-          <SelectionChatWidgetBody
-            plugin={this.options.plugin}
-            editor={this.options.editor}
-            selection={this.currentSelection}
-            editorContainer={this.options.editorContainer}
-            onClose={this.handleClose}
-            onAction={this.options.onAction}
-          />
+          <SettingsProvider
+            settings={this.options.plugin.settings}
+            setSettings={(newSettings) =>
+              this.options.plugin.setSettings(newSettings)
+            }
+            addSettingsChangeListener={(listener) =>
+              this.options.plugin.addSettingsChangeListener(listener)
+            }
+          >
+            <SelectionChatWidgetBody
+              plugin={this.options.plugin}
+              editor={this.options.editor}
+              selection={this.currentSelection}
+              editorContainer={this.options.editorContainer}
+              onClose={this.handleClose}
+              onAction={this.options.onAction}
+            />
+          </SettingsProvider>
         </LanguageProvider>
       </PluginProvider>,
     )

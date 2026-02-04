@@ -1,14 +1,14 @@
-import { BookOpen, PenLine } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import { useSettings } from '../../contexts/settings-context'
 
 import type { SelectionInfo } from './SelectionManager'
 
 export type SelectionAction = {
   id: string
   label: string
-  icon: React.ReactNode
+  instruction: string
   handler: () => void | Promise<void>
 }
 
@@ -17,7 +17,7 @@ type SelectionActionsMenuProps = {
   containerEl: HTMLElement
   indicatorPosition: { left: number; top: number }
   visible: boolean
-  onAction: (actionId: string) => void | Promise<void>
+  onAction: (actionId: string, instruction: string) => void | Promise<void>
   onHoverChange: (isHovering: boolean) => void
 }
 
@@ -30,28 +30,55 @@ export function SelectionActionsMenu({
   onHoverChange,
 }: SelectionActionsMenuProps) {
   const { t } = useLanguage()
+  const { settings } = useSettings()
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: 0, top: 0 })
   const [isVisible, setIsVisible] = useState(false)
   const showTimerRef = useRef<number | null>(null)
 
-  const actions: SelectionAction[] = useMemo(
+  const defaultActions = useMemo(
     () => [
-      {
-        id: 'rewrite',
-        label: t('selection.actions.rewrite', 'AI 改写'),
-        icon: <PenLine size={14} />,
-        handler: () => onAction('rewrite'),
-      },
       {
         id: 'explain',
         label: t('selection.actions.explain', '深入解释'),
-        icon: <BookOpen size={14} />,
-        handler: () => onAction('explain'),
+        instruction: t('selection.actions.explain', '深入解释'),
+      },
+      {
+        id: 'suggest',
+        label: t('selection.actions.suggest', '提供建议'),
+        instruction: t('selection.actions.suggest', '提供建议'),
+      },
+      {
+        id: 'translate-to-chinese',
+        label: t('selection.actions.translateToChinese', '翻译成中文'),
+        instruction: t('selection.actions.translateToChinese', '翻译成中文'),
       },
     ],
-    [onAction, t],
+    [t],
   )
+
+  const actions: SelectionAction[] = useMemo(() => {
+    const customActions = settings?.continuationOptions?.selectionChatActions
+    const resolvedActions =
+      customActions && customActions.length > 0
+        ? customActions.filter((action) => action.enabled)
+        : defaultActions
+
+    return resolvedActions.map((action) => {
+      const label = action.label?.trim() || ''
+      const instruction = action.instruction?.trim() || label
+      return {
+        id: action.id,
+        label: label || action.id,
+        instruction: instruction || label || action.id,
+        handler: () => onAction(action.id, instruction || label || action.id),
+      }
+    })
+  }, [
+    defaultActions,
+    onAction,
+    settings?.continuationOptions?.selectionChatActions,
+  ])
 
   const updatePosition = useCallback(() => {
     const containerRect = containerEl.getBoundingClientRect()
@@ -158,9 +185,6 @@ export function SelectionActionsMenu({
             className="smtcmp-selection-menu-item"
             onClick={() => void handleActionClick(action)}
           >
-            <span className="smtcmp-selection-menu-item-icon">
-              {action.icon}
-            </span>
             <span className="smtcmp-selection-menu-item-label">
               {action.label}
             </span>

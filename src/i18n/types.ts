@@ -461,6 +461,7 @@ export type TranslationKeys = {
       addAction: string
       resetToDefault: string
       confirmReset: string
+      resetConfirmTitle?: string
       actionLabel: string
       actionLabelDesc: string
       actionLabelPlaceholder: string
@@ -498,6 +499,25 @@ export type TranslationKeys = {
       copySuffix?: string
       dragHandleAria?: string
     }
+    selectionChat?: {
+      quickActionsTitle: string
+      quickActionsDesc: string
+      configureActions: string
+      actionsCount: string
+      addAction: string
+      resetToDefault: string
+      confirmReset: string
+      resetConfirmTitle?: string
+      actionLabel: string
+      actionLabelDesc: string
+      actionLabelPlaceholder: string
+      actionInstruction: string
+      actionInstructionDesc: string
+      actionInstructionPlaceholder: string
+      duplicate: string
+      copySuffix?: string
+      dragHandleAria?: string
+    }
   }
 
   // Selection Chat
@@ -506,6 +526,8 @@ export type TranslationKeys = {
       addToChat?: string
       rewrite?: string
       explain?: string
+      suggest?: string
+      translateToChinese?: string
     }
   }
 

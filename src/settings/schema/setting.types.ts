@@ -338,6 +338,17 @@ export const smartComposerSettingsSchema = z.object({
           }),
         )
         .optional(),
+      // Selection Chat custom actions (Quick Ask only)
+      selectionChatActions: z
+        .array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            instruction: z.string(),
+            enabled: z.boolean().default(true),
+          }),
+        )
+        .optional(),
       // Empty-line trigger mode for Smart Space
       smartSpaceTriggerMode: z
         .enum(['single-space', 'double-space', 'off'])
@@ -379,6 +390,7 @@ export const smartComposerSettingsSchema = z.object({
       tabCompletionConstraints: '',
       tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
       smartSpaceQuickActions: undefined,
+      selectionChatActions: undefined,
       smartSpaceTriggerMode: 'single-space',
       smartSpaceUseWebSearch: false,
       smartSpaceUseUrlContext: false,

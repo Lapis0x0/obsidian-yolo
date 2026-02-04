@@ -173,8 +173,12 @@ export class SelectionChatController {
             this.selectionChatWidget = null
           }
         },
-        onAction: (actionId: string, sel: SelectionInfo) => {
-          void this.handleSelectionAction(actionId, sel, editor)
+        onAction: (
+          actionId: string,
+          sel: SelectionInfo,
+          instruction: string,
+        ) => {
+          void this.handleSelectionAction(actionId, sel, editor, instruction)
         },
       })
       this.selectionChatWidget.mount()
@@ -183,21 +187,15 @@ export class SelectionChatController {
 
   private async handleSelectionAction(
     actionId: string,
-    selection: SelectionInfo,
+    _selection: SelectionInfo,
     editor: Editor,
+    instruction: string,
   ) {
-    const selectedText = selection.text
-
-    switch (actionId) {
-      case 'rewrite':
-        this.rewriteSelection(editor, selectedText)
-        break
-      case 'explain':
-        await this.explainSelection(editor)
-        break
-      default:
-        console.warn('Unknown selection action:', actionId)
+    const prompt = instruction.trim()
+    if (!prompt) {
+      console.warn('Selection action has empty prompt:', actionId)
     }
+    await this.explainSelection(editor, prompt)
   }
 
   private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {
@@ -251,7 +249,7 @@ export class SelectionChatController {
     this.showSmartSpace(editor, cmEditor, true)
   }
 
-  private async explainSelection(editor: Editor) {
+  private async explainSelection(editor: Editor, prompt?: string) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!editor || !view) {
       new Notice('无法获取当前编辑器')
@@ -276,8 +274,10 @@ export class SelectionChatController {
       source: 'selection',
     }
 
+    const resolvedPrompt =
+      prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     this.showQuickAskWithAutoSend(editor, editorView, {
-      prompt: this.t('selection.actions.explain', '请深入解释'),
+      prompt: resolvedPrompt,
       mentionables: [mentionable],
     })
   }

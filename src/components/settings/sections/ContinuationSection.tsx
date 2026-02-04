@@ -14,6 +14,7 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { SelectionChatActionsSettings } from '../SelectionChatActionsSettings'
 import { SmartSpaceQuickActionsSettings } from '../SmartSpaceQuickActionsSettings'
 
 type ContinuationSectionProps = {
@@ -53,6 +54,8 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   )
 
   const enableSmartSpace = settings.continuationOptions.enableSmartSpace ?? true
+  const enableSelectionChat =
+    settings.continuationOptions.enableSelectionChat ?? true
   const smartSpaceTriggerMode =
     settings.continuationOptions.smartSpaceTriggerMode ?? 'single-space'
   const enableTabCompletion = Boolean(
@@ -267,7 +270,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
         desc={t('settings.continuation.selectionChatToggleDesc')}
       >
         <ObsidianToggle
-          value={settings.continuationOptions.enableSelectionChat ?? true}
+          value={enableSelectionChat}
           onChange={(value) => {
             updateContinuationOptions(
               {
@@ -278,6 +281,8 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
           }}
         />
       </ObsidianSetting>
+
+      {enableSelectionChat && <SelectionChatActionsSettings />}
 
       <div className="smtcmp-settings-sub-header">
         {t('settings.continuation.quickAskSubsectionTitle')}

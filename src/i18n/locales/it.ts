@@ -108,6 +108,8 @@ export const it: TranslationKeys = {
       addToChat: 'Aggiungi alla chat',
       rewrite: 'AI riscrivi',
       explain: 'Spiega in dettaglio',
+      suggest: 'Fornisci suggerimenti',
+      translateToChinese: 'Traduci in cinese',
     },
   },
 
@@ -161,6 +163,7 @@ export const it: TranslationKeys = {
       resetToDefault: 'Ripristina predefiniti',
       confirmReset:
         'Sei sicuro di voler ripristinare le azioni rapide predefinite ed eliminare tutte le impostazioni personalizzate?',
+      resetConfirmTitle: 'Ripristina azioni rapide smart space',
       actionLabel: 'Etichetta azione',
       actionLabelDesc: "Testo visualizzato nell'azione rapida",
       actionLabelPlaceholder: 'Ad esempio, continua a scrivere',
@@ -196,6 +199,28 @@ export const it: TranslationKeys = {
         message: 'Messaggio',
         settings: 'Impostazioni',
       },
+      copySuffix: '(copia)',
+      dragHandleAria: 'Trascina per riordinare',
+    },
+    selectionChat: {
+      quickActionsTitle: 'Comandi Cursor',
+      quickActionsDesc:
+        'Personalizza i comandi e i prompt visualizzati dopo la selezione del testo',
+      configureActions: 'Configura comandi',
+      actionsCount: 'Comandi configurati: {count}',
+      addAction: 'Aggiungi comando',
+      resetToDefault: 'Ripristina predefiniti',
+      confirmReset:
+        'Sei sicuro di voler ripristinare i comandi predefiniti ed eliminare tutte le impostazioni personalizzate?',
+      resetConfirmTitle: 'Ripristina comandi Cursor',
+      actionLabel: 'Etichetta comando',
+      actionLabelDesc: 'Testo visualizzato nel comando',
+      actionLabelPlaceholder: 'Ad esempio, spiega',
+      actionInstruction: 'Prompt',
+      actionInstructionDesc: "Istruzione inviata all'AI",
+      actionInstructionPlaceholder:
+        'Ad esempio, spiega il contenuto selezionato.',
+      duplicate: 'Duplica',
       copySuffix: '(copia)',
       dragHandleAria: 'Trascina per riordinare',
     },
