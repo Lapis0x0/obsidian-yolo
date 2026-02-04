@@ -16,6 +16,9 @@ const commonRules = {
   'react/react-in-jsx-scope': 'off',
   'react/prop-types': 'off',
   'import/no-unresolved': 'off',
+  'obsidianmd/ui/sentence-case': 'off',
+  'obsidianmd/ui/sentence-case-json': 'off',
+  'obsidianmd/ui/sentence-case-locale-module': 'off',
   'sort-imports': [
     'error',
     {
