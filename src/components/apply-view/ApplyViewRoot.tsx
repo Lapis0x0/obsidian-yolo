@@ -1,4 +1,3 @@
-import { Check, X } from 'lucide-react'
 import { Component, MarkdownRenderer, MarkdownView } from 'obsidian'
 import {
   forwardRef,
@@ -33,7 +32,6 @@ export default function ApplyViewRoot({
   const [, setCurrentDiffIndex] = useState(0)
   const diffBlockRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
-  const autoScrollTimeoutRef = useRef<number | null>(null)
 
   const app = useApp()
   const plugin = usePlugin()
@@ -69,31 +67,6 @@ export default function ApplyViewRoot({
     [decisions, modifiedBlockIndices],
   )
   const totalModifiedBlocks = modifiedBlockIndices.length
-
-  const scrollToDiffBlock = useCallback(
-    (index: number) => {
-      if (index >= 0 && index < modifiedBlockIndices.length) {
-        const element = diffBlockRefs.current[modifiedBlockIndices[index]]
-        if (element) {
-          element.scrollIntoView({ block: 'start' })
-          setCurrentDiffIndex(index)
-        }
-      }
-    },
-    [modifiedBlockIndices],
-  )
-
-  // Scroll to the next undecided block
-  const scrollToNextUndecided = useCallback(() => {
-    for (let i = 0; i < modifiedBlockIndices.length; i++) {
-      const idx = modifiedBlockIndices[i]
-      const decision = decisions.get(idx)
-      if (!decision || decision === 'pending') {
-        scrollToDiffBlock(i)
-        return
-      }
-    }
-  }, [decisions, modifiedBlockIndices, scrollToDiffBlock])
 
   // Generate final content based on decisions
   const generateFinalContent = useCallback(
@@ -152,24 +125,13 @@ export default function ApplyViewRoot({
   }
 
   // Individual block decisions (don't close, just mark decision)
-  const makeDecision = useCallback(
-    (index: number, decision: BlockDecision) => {
-      setDecisions((prev) => {
-        const next = new Map(prev)
-        next.set(index, decision)
-        return next
-      })
-      // Auto-scroll to next undecided block after a short delay
-      if (autoScrollTimeoutRef.current !== null) {
-        window.clearTimeout(autoScrollTimeoutRef.current)
-      }
-      autoScrollTimeoutRef.current = window.setTimeout(
-        scrollToNextUndecided,
-        100,
-      )
-    },
-    [scrollToNextUndecided],
-  )
+  const makeDecision = useCallback((index: number, decision: BlockDecision) => {
+    setDecisions((prev) => {
+      const next = new Map(prev)
+      next.set(index, decision)
+      return next
+    })
+  }, [])
 
   const acceptIncomingBlock = useCallback(
     (index: number) => {
@@ -258,21 +220,6 @@ export default function ApplyViewRoot({
     return () => scroller.removeEventListener('scroll', handleScroll)
   }, [updateCurrentDiffFromScroll])
 
-  useEffect(() => {
-    return () => {
-      if (autoScrollTimeoutRef.current !== null) {
-        window.clearTimeout(autoScrollTimeoutRef.current)
-        autoScrollTimeoutRef.current = null
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (modifiedBlockIndices.length > 0) {
-      scrollToDiffBlock(0)
-    }
-  }, [modifiedBlockIndices, scrollToDiffBlock])
-
   return (
     <div id="smtcmp-apply-view">
       <div className="view-header">
@@ -283,8 +230,44 @@ export default function ApplyViewRoot({
         </div>
       </div>
 
-      {/* Global actions toolbar */}
-      <div className="smtcmp-apply-toolbar">
+      <div className="view-content">
+        <div className="markdown-source-view cm-s-obsidian mod-cm6 node-insert-event is-readable-line-width is-live-preview is-folding show-properties">
+          <div className="cm-editor">
+            <div className="cm-scroller" ref={scrollerRef}>
+              <div className="cm-sizer">
+                <div className="smtcmp-apply-content">
+                  <div className="inline-title smtcmp-inline-title">
+                    {state?.file?.name
+                      ? state.file.name.replace(/\.[^/.]+$/, '')
+                      : ''}
+                  </div>
+
+                  {diff.map((block, index) => (
+                    <DiffBlockView
+                      key={index}
+                      block={block}
+                      decision={decisions.get(index)}
+                      sourcePath={state.file.path}
+                      onAcceptIncoming={() => acceptIncomingBlock(index)}
+                      onAcceptCurrent={() => acceptCurrentBlock(index)}
+                      onAcceptBoth={() => acceptBothBlocks(index)}
+                      onUndo={() => undoDecision(index)}
+                      t={t}
+                      pluginComponent={plugin}
+                      ref={(el) => {
+                        diffBlockRefs.current[index] = el
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Global actions toolbar (bottom) */}
+      <div className="smtcmp-apply-toolbar smtcmp-apply-toolbar-bottom">
         <div className="smtcmp-apply-toolbar-left">
           <span className="smtcmp-apply-progress">
             {decidedCount} / {totalModifiedBlocks}{' '}
@@ -330,40 +313,6 @@ export default function ApplyViewRoot({
           </button>
         </div>
       </div>
-
-      <div className="view-content">
-        <div className="markdown-source-view cm-s-obsidian mod-cm6 node-insert-event is-readable-line-width is-live-preview is-folding show-properties">
-          <div className="cm-editor">
-            <div className="cm-scroller" ref={scrollerRef}>
-              <div className="cm-sizer">
-                <div className="smtcmp-inline-title">
-                  {state?.file?.name
-                    ? state.file.name.replace(/\.[^/.]+$/, '')
-                    : ''}
-                </div>
-
-                {diff.map((block, index) => (
-                  <DiffBlockView
-                    key={index}
-                    block={block}
-                    decision={decisions.get(index)}
-                    sourcePath={state.file.path}
-                    onAcceptIncoming={() => acceptIncomingBlock(index)}
-                    onAcceptCurrent={() => acceptCurrentBlock(index)}
-                    onAcceptBoth={() => acceptBothBlocks(index)}
-                    onUndo={() => undoDecision(index)}
-                    t={t}
-                    pluginComponent={plugin}
-                    ref={(el) => {
-                      diffBlockRefs.current[index] = el
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
@@ -390,7 +339,8 @@ const DiffBlockView = forwardRef<
       onAcceptIncoming,
       onAcceptCurrent,
       onAcceptBoth,
-      onUndo,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Required by parent component interface
+      onUndo: _onUndo,
       t,
       pluginComponent,
     },
@@ -446,33 +396,12 @@ const DiffBlockView = forwardRef<
         }
       }
 
-      const decisionLabel = {
-        incoming: t('applyView.acceptedIncoming', 'Accepted incoming'),
-        current: t('applyView.keptCurrent', 'Kept current'),
-        both: t('applyView.mergedBoth', 'Merged both'),
-      }
-
       return (
-        <div
-          className={`smtcmp-diff-block-container ${isDecided ? 'decided' : ''}`}
-          ref={ref}
-        >
+        <div className="smtcmp-diff-block-container" ref={ref}>
           {isDecided ? (
-            // Show decided state with preview
+            // Show resolved content only
             <>
-              <div className="smtcmp-diff-block decided-preview">
-                <div className="smtcmp-decided-header">
-                  <span className="smtcmp-decided-label">
-                    ✓ {decisionLabel[decision]}
-                  </span>
-                  <button
-                    onClick={onUndo}
-                    className="smtcmp-undo-btn"
-                    title={t('applyView.undo', 'Undo this decision')}
-                  >
-                    {t('applyView.undo', 'Undo')}
-                  </button>
-                </div>
+              <div className="smtcmp-diff-block smtcmp-diff-block--resolved">
                 <div className="smtcmp-diff-block-content">
                   <ApplyMarkdownContent
                     content={getDecisionPreview() ?? ''}
@@ -528,7 +457,12 @@ const DiffBlockView = forwardRef<
                                 'Accept incoming',
                               )}
                             >
-                              <Check size={16} />
+                              <span
+                                className="smtcmp-apply-action-icon"
+                                aria-hidden="true"
+                              >
+                                ✓
+                              </span>
                             </button>
                             <button
                               onClick={onAcceptCurrent}
@@ -542,14 +476,28 @@ const DiffBlockView = forwardRef<
                                 'Accept current',
                               )}
                             >
-                              <X size={16} />
+                              <span
+                                className="smtcmp-apply-action-icon"
+                                aria-hidden="true"
+                              >
+                                ×
+                              </span>
                             </button>
                             <button
                               onClick={onAcceptBoth}
                               className="smtcmp-apply-action smtcmp-apply-action-both"
                               title={t('applyView.acceptBoth', 'Accept both')}
+                              aria-label={t(
+                                'applyView.acceptBoth',
+                                'Accept both',
+                              )}
                             >
-                              {t('applyView.acceptBoth', 'Accept both')}
+                              <span
+                                className="smtcmp-apply-action-icon smtcmp-apply-action-icon--merge"
+                                aria-hidden="true"
+                              >
+                                ∪
+                              </span>
                             </button>
                           </div>
                         )}
@@ -577,7 +525,12 @@ const DiffBlockView = forwardRef<
                           'Accept incoming',
                         )}
                       >
-                        <Check size={16} />
+                        <span
+                          className="smtcmp-apply-action-icon"
+                          aria-hidden="true"
+                        >
+                          ✓
+                        </span>
                       </button>
                       <button
                         onClick={onAcceptCurrent}
@@ -588,14 +541,25 @@ const DiffBlockView = forwardRef<
                           'Accept current',
                         )}
                       >
-                        <X size={16} />
+                        <span
+                          className="smtcmp-apply-action-icon"
+                          aria-hidden="true"
+                        >
+                          ×
+                        </span>
                       </button>
                       <button
                         onClick={onAcceptBoth}
                         className="smtcmp-apply-action smtcmp-apply-action-both"
                         title={t('applyView.acceptBoth', 'Accept both')}
+                        aria-label={t('applyView.acceptBoth', 'Accept both')}
                       >
-                        {t('applyView.acceptBoth', 'Accept both')}
+                        <span
+                          className="smtcmp-apply-action-icon smtcmp-apply-action-icon--merge"
+                          aria-hidden="true"
+                        >
+                          ∪
+                        </span>
                       </button>
                     </div>
                   </div>
