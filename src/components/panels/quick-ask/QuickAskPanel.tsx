@@ -80,6 +80,7 @@ type QuickAskPanelProps = {
   onOverlayStateChange?: (isOverlayActive: boolean) => void
   onDragOffset?: (offsetX: number, offsetY: number) => void
   onResize?: (width: number, height: number) => void
+  onDockToTopRight?: () => void
 }
 
 function createPlainTextEditorState(text: string): SerializedEditorState {
@@ -162,6 +163,7 @@ export function QuickAskPanel({
   onOverlayStateChange,
   onDragOffset,
   onResize,
+  onDockToTopRight,
 }: QuickAskPanelProps) {
   const app = useApp()
   const { settings } = useSettings()
@@ -197,6 +199,9 @@ export function QuickAskPanel({
   >('top')
   const [mentionables, setMentionables] = useState<Mentionable[]>([])
   const [copied, setCopied] = useState(false)
+  const hasDockedRef = useRef(false)
+  const enableAutoDock =
+    settings.continuationOptions.quickAskAutoDockToTopRight ?? true
   const mentionableUnitLabel = useMemo(
     () => t('common.characters', 'chars'),
     [t],
@@ -570,6 +575,14 @@ export function QuickAskPanel({
 
     return getChatModelClient({ settings, modelId: preferredModelId })
   }, [settings])
+
+  useEffect(() => {
+    if (hasDockedRef.current) return
+    if (!enableAutoDock) return
+    if (chatMessages.length === 0) return
+    hasDockedRef.current = true
+    onDockToTopRight?.()
+  }, [chatMessages.length, enableAutoDock, onDockToTopRight])
 
   // Abort current stream
   const abortStream = useCallback(() => {

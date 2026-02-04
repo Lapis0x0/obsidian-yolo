@@ -455,6 +455,9 @@ export const zh: TranslationKeys = {
       selectionChatToggle: '启用 Cursor Chat',
       selectionChatToggleDesc:
         '控制选区右下角操作菜单（改写/解释）。选区内容仍会自动同步到侧边 Chat。',
+      selectionChatAutoDock: '自动停靠到右上角',
+      selectionChatAutoDockDesc:
+        '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
       keywordTrigger: '启用关键词触发AI续写',
       keywordTriggerDesc:
         '在编辑器中检测到指定关键词时自动触发续写。建议使用"cc"。',

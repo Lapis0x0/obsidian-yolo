@@ -7294,6 +7294,14 @@ button.smtcmp-chat-input-model-select {
     forwards;
 }
 
+.smtcmp-quick-ask-overlay.smtcmp-quick-ask-overlay--docking {
+  transition:
+    left 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    top 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .smtcmp-quick-ask-overlay.closing {
   animation: smtcmp-quick-ask-fade-out 0.15s cubic-bezier(0.4, 0, 1, 1) forwards;
 }

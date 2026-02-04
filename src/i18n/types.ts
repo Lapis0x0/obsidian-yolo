@@ -372,6 +372,8 @@ export type TranslationKeys = {
       selectionChatDescription: string
       selectionChatToggle: string
       selectionChatToggleDesc: string
+      selectionChatAutoDock?: string
+      selectionChatAutoDockDesc?: string
       keywordTrigger: string
       keywordTriggerDesc: string
       triggerKeyword: string

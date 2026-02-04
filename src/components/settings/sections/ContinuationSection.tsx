@@ -282,7 +282,35 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
         />
       </ObsidianSetting>
 
-      {enableSelectionChat && <SelectionChatActionsSettings />}
+      {enableSelectionChat && (
+        <>
+          <ObsidianSetting
+            name={t(
+              'settings.continuation.selectionChatAutoDock',
+              '自动停靠到右上角',
+            )}
+            desc={t(
+              'settings.continuation.selectionChatAutoDockDesc',
+              '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
+            )}
+          >
+            <ObsidianToggle
+              value={
+                settings.continuationOptions.quickAskAutoDockToTopRight ?? true
+              }
+              onChange={(value) => {
+                updateContinuationOptions(
+                  {
+                    quickAskAutoDockToTopRight: value,
+                  },
+                  'quickAskAutoDockToTopRight',
+                )
+              }}
+            />
+          </ObsidianSetting>
+          <SelectionChatActionsSettings />
+        </>
+      )}
 
       <div className="smtcmp-settings-sub-header">
         {t('settings.continuation.quickAskSubsectionTitle')}

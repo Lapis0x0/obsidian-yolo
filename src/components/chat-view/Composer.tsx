@@ -643,6 +643,37 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                   </div>
                 </div>
                 {enableSelectionChat && (
+                  <div className="smtcmp-composer-option">
+                    <div className="smtcmp-composer-option-info">
+                      <div className="smtcmp-composer-option-title">
+                        {t(
+                          'settings.continuation.selectionChatAutoDock',
+                          '自动停靠到右上角',
+                        )}
+                      </div>
+                      <div className="smtcmp-composer-option-desc">
+                        {t(
+                          'settings.continuation.selectionChatAutoDockDesc',
+                          '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="smtcmp-composer-option-control">
+                      <ObsidianToggle
+                        value={
+                          settings.continuationOptions
+                            .quickAskAutoDockToTopRight ?? true
+                        }
+                        onChange={(value) =>
+                          updateContinuationOptions({
+                            quickAskAutoDockToTopRight: value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+                {enableSelectionChat && (
                   <SelectionChatActionsSettings variant="composer" />
                 )}
               </section>

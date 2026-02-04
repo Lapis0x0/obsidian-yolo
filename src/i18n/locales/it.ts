@@ -494,6 +494,9 @@ export const it: TranslationKeys = {
       selectionChatToggle: 'Abilita chat selezione',
       selectionChatToggleDesc:
         "Mostra l'indicatore e il menu azioni (riscrivi/spiega). La selezione continua a sincronizzarsi con la chat laterale.",
+      selectionChatAutoDock: 'Dock automatico in alto a destra',
+      selectionChatAutoDockDesc:
+        "Dopo l'invio, sposta in alto a destra (il trascinamento manuale disattiva il follow).",
       keywordTrigger: 'Trigger parola chiave',
       keywordTriggerDesc:
         'Trigger automaticamente la continuazione quando digiti una parola chiave specifica.',

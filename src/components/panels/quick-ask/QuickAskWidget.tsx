@@ -31,9 +31,12 @@ export class QuickAskOverlay {
   private resizeObserver: ResizeObserver | null = null
   private isClosing = false
   private closeAnimationTimeout: number | null = null
+  private dockAnimationTimeout: number | null = null
   private containerRef: React.RefObject<HTMLDivElement> =
     React.createRef<HTMLDivElement>()
   private hasBlockingOverlay = false
+  private hasUserDragged = false
+  private isDockedTopRight = false
   // Drag state - when set, use fixed position instead of anchor-based
   private dragPosition: { x: number; y: number } | null = null
   // Resize state - when set, override panel size
@@ -71,6 +74,11 @@ export class QuickAskOverlay {
     if (this.closeAnimationTimeout !== null) {
       window.clearTimeout(this.closeAnimationTimeout)
       this.closeAnimationTimeout = null
+    }
+
+    if (this.dockAnimationTimeout !== null) {
+      window.clearTimeout(this.dockAnimationTimeout)
+      this.dockAnimationTimeout = null
     }
 
     if (this.cleanupListeners) {
@@ -206,6 +214,7 @@ export class QuickAskOverlay {
                     onOverlayStateChange={this.handleOverlayStateChange}
                     onDragOffset={this.handleDragOffset}
                     onResize={this.handleResize}
+                    onDockToTopRight={this.handleDockToTopRight}
                   />
                 </McpProvider>
               </RAGProvider>
@@ -278,6 +287,11 @@ export class QuickAskOverlay {
   private updateOverlayPosition() {
     if (!this.overlayContainer || this.pos === null) return
 
+    if (this.isDockedTopRight && !this.hasUserDragged) {
+      this.dockToTopRight()
+      return
+    }
+
     // If panel has been dragged, use drag position instead
     if (this.dragPosition) {
       this.updateDragPosition()
@@ -344,7 +358,15 @@ export class QuickAskOverlay {
     this.hasBlockingOverlay = isActive
   }
 
+  private handleDockToTopRight = () => {
+    if (this.hasUserDragged) return
+    this.isDockedTopRight = true
+    this.dockToTopRight()
+  }
+
   private handleDragOffset = (x: number, y: number) => {
+    this.hasUserDragged = true
+    this.isDockedTopRight = false
     this.dragPosition = { x, y }
     this.updateDragPosition()
   }
@@ -360,6 +382,8 @@ export class QuickAskOverlay {
     const hostRect =
       this.overlayHost?.getBoundingClientRect() ??
       document.body.getBoundingClientRect()
+
+    const measuredWidth = this.getPanelWidth()
 
     // Get panel dimensions for width calculation
     const scrollDom = this.options.view.scrollDOM
@@ -383,6 +407,7 @@ export class QuickAskOverlay {
     // Use resized width if available, otherwise use default max width
     const panelWidth =
       this.resizeSize?.width ??
+      measuredWidth ??
       Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
 
     const panelHeight = this.resizeSize?.height
@@ -397,5 +422,69 @@ export class QuickAskOverlay {
         top: Math.round(this.dragPosition.y - hostRect.top),
       },
     )
+  }
+
+  private dockToTopRight() {
+    if (!this.overlayContainer) return
+
+    this.startDockAnimation()
+
+    const hostRect =
+      this.overlayHost?.getBoundingClientRect() ??
+      document.body.getBoundingClientRect()
+
+    const measuredWidth = this.getPanelWidth()
+
+    const scrollDom = this.options.view.scrollDOM
+    const scrollRect = scrollDom?.getBoundingClientRect()
+    const sizer = scrollDom?.querySelector('.cm-sizer')
+    const sizerRect = sizer?.getBoundingClientRect()
+
+    const fallbackWidth = parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--file-line-width',
+      ) || '720',
+      10,
+    )
+
+    const viewportWidth = hostRect.width
+    const margin = 12
+
+    const editorContentWidth =
+      sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
+
+    const panelWidth =
+      this.resizeSize?.width ??
+      measuredWidth ??
+      Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
+
+    const left = hostRect.right - margin - panelWidth
+    const top = hostRect.top + margin
+
+    this.dragPosition = { x: left, y: top }
+    this.updateDragPosition()
+  }
+
+  private startDockAnimation() {
+    if (!this.overlayContainer) return
+    this.overlayContainer.classList.add('smtcmp-quick-ask-overlay--docking')
+
+    if (this.dockAnimationTimeout !== null) {
+      window.clearTimeout(this.dockAnimationTimeout)
+    }
+
+    this.dockAnimationTimeout = window.setTimeout(() => {
+      this.dockAnimationTimeout = null
+      this.overlayContainer?.classList.remove(
+        'smtcmp-quick-ask-overlay--docking',
+      )
+    }, 220)
+  }
+
+  private getPanelWidth(): number | null {
+    const rect = this.containerRef.current?.getBoundingClientRect()
+    if (!rect || !Number.isFinite(rect.width)) return null
+    if (rect.width <= 0) return null
+    return rect.width
   }
 }

@@ -497,6 +497,9 @@ export const en: TranslationKeys = {
       selectionChatToggle: 'Enable cursor chat',
       selectionChatToggleDesc:
         'Show the selection indicator and actions menu (rewrite/explain). Selection still syncs to the sidebar chat.',
+      selectionChatAutoDock: 'Auto dock to top right',
+      selectionChatAutoDockDesc:
+        'After sending, move to the editor top right (manual drag disables auto follow).',
       keywordTrigger: 'Enable keyword trigger for AI continuation',
       keywordTriggerDesc:
         'Automatically trigger continuation when the specified keyword is detected in the editor; recommended value: cc.',
