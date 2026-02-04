@@ -1,3 +1,4 @@
+import { Check, X } from 'lucide-react'
 import { Component, MarkdownRenderer, MarkdownView } from 'obsidian'
 import {
   forwardRef,
@@ -7,7 +8,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Check, X } from 'lucide-react'
 
 import { ApplyViewState } from '../../ApplyView'
 import { useApp } from '../../contexts/app-context'
@@ -33,6 +33,7 @@ export default function ApplyViewRoot({
   const [, setCurrentDiffIndex] = useState(0)
   const diffBlockRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const autoScrollTimeoutRef = useRef<number | null>(null)
 
   const app = useApp()
   const plugin = usePlugin()
@@ -159,9 +160,13 @@ export default function ApplyViewRoot({
         return next
       })
       // Auto-scroll to next undecided block after a short delay
-      setTimeout(() => {
-        scrollToNextUndecided()
-      }, 100)
+      if (autoScrollTimeoutRef.current !== null) {
+        window.clearTimeout(autoScrollTimeoutRef.current)
+      }
+      autoScrollTimeoutRef.current = window.setTimeout(
+        scrollToNextUndecided,
+        100,
+      )
     },
     [scrollToNextUndecided],
   )
@@ -252,6 +257,15 @@ export default function ApplyViewRoot({
     scroller.addEventListener('scroll', handleScroll)
     return () => scroller.removeEventListener('scroll', handleScroll)
   }, [updateCurrentDiffFromScroll])
+
+  useEffect(() => {
+    return () => {
+      if (autoScrollTimeoutRef.current !== null) {
+        window.clearTimeout(autoScrollTimeoutRef.current)
+        autoScrollTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (modifiedBlockIndices.length > 0) {
