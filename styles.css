@@ -1791,6 +1791,18 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
   --smtcmp-current-color-rgb: 185, 28, 28; /* red-700 */
   --smtcmp-incoming-color-rgb: 4, 120, 87; /* emerald-700 */
+  --smtcmp-apply-gutter: 48px;
+  --smtcmp-apply-text-color: color-mix(
+    in srgb,
+    var(--text-normal) 78%,
+    var(--text-accent) 22%
+  );
+  --smtcmp-inline-add-color: var(--text-accent);
+  --smtcmp-inline-del-color: color-mix(
+    in srgb,
+    var(--text-faint) 80%,
+    var(--text-muted) 20%
+  );
 
   .view-content {
     padding: 0;
@@ -1823,13 +1835,15 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   }
 
   .cm-sizer {
-    max-width: var(--file-line-width);
+    max-width: calc(var(--file-line-width) + (var(--smtcmp-apply-gutter) * 2));
     width: 100%;
     margin-left: auto;
     margin-right: auto;
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    padding-left: var(--smtcmp-apply-gutter);
+    padding-right: var(--smtcmp-apply-gutter);
     padding-bottom: 488px;
   }
 
@@ -1860,21 +1874,18 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   }
 
   .smtcmp-diff-block {
-    white-space: pre-wrap;
-    word-break: break-word;
-    display: flex;
-    align-items: start;
-    gap: var(--size-4-1);
-    color: var(--text-normal);
-    line-height: var(--line-height-normal);
+    display: block;
+    padding: var(--size-4-1) 0;
+    color: var(--smtcmp-apply-text-color);
+    line-height: 1.6;
   }
 
   .smtcmp-diff-block.added {
-    background-color: rgba(var(--smtcmp-incoming-color-rgb), 0.3);
+    background-color: rgba(var(--smtcmp-incoming-color-rgb), 0.12);
   }
 
   .smtcmp-diff-block.removed {
-    background-color: rgba(var(--smtcmp-current-color-rgb), 0.3);
+    background-color: rgba(var(--smtcmp-current-color-rgb), 0.12);
   }
 
   .smtcmp-diff-block-container {
@@ -1884,20 +1895,99 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
   .smtcmp-diff-block-actions {
     position: absolute;
-    right: 0;
-    top: 0;
-    transform: translateY(-100%);
+    right: calc(-1 * var(--smtcmp-apply-gutter) + 10px);
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
-    gap: 0;
-    border-radius: var(--radius-s) var(--radius-s) 0 0;
-    overflow: hidden;
+    flex-direction: column;
+    gap: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+  }
 
-    button {
-      padding: var(--size-4-1) var(--size-4-2);
-      font-size: var(--font-ui-smaller);
-      border-radius: 0;
-      height: fit-content;
-    }
+  .smtcmp-apply-paragraph {
+    pointer-events: auto;
+    position: relative;
+  }
+
+  .smtcmp-apply-paragraph-indicator {
+    position: absolute;
+    right: calc(-1 * var(--smtcmp-apply-gutter) + 6px);
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+    opacity: 0.6;
+    transition:
+      background 0.15s ease,
+      opacity 0.15s ease;
+  }
+
+  .smtcmp-apply-paragraph.has-changes:hover .smtcmp-apply-paragraph-indicator,
+  .smtcmp-apply-paragraph.has-changes:focus-within
+    .smtcmp-apply-paragraph-indicator {
+    background: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+    opacity: 0.95;
+  }
+
+  .smtcmp-apply-paragraph.is-empty {
+    min-height: 20px;
+  }
+
+  .smtcmp-apply-empty-line {
+    height: 12px;
+  }
+
+  .smtcmp-apply-paragraph:hover .smtcmp-diff-block-actions,
+  .smtcmp-apply-paragraph:focus-within .smtcmp-diff-block-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .smtcmp-apply-action {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-s);
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .smtcmp-apply-action:hover {
+    transform: translateY(-1px);
+    color: var(--text-normal);
+    background: var(--background-secondary);
+  }
+
+  .smtcmp-apply-action-accept {
+    color: rgba(var(--smtcmp-incoming-color-rgb), 0.9);
+  }
+
+  .smtcmp-apply-action-reject {
+    color: rgba(var(--smtcmp-current-color-rgb), 0.9);
+  }
+
+  .smtcmp-apply-action-both {
+    width: auto;
+    height: auto;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: var(--font-ui-smallest);
+    color: var(--text-muted);
+    box-shadow: none;
   }
 
   .smtcmp-accept {
@@ -2015,6 +2105,52 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
       color: var(--text-normal);
     }
   }
+}
+
+#smtcmp-apply-view .smtcmp-apply-markdown.markdown-rendered {
+  --render-scale: 0.95;
+  color: var(--smtcmp-apply-text-color);
+  line-height: 1.7;
+  pointer-events: auto;
+}
+
+#smtcmp-apply-view .smtcmp-apply-markdown h1,
+#smtcmp-apply-view .smtcmp-apply-markdown h2,
+#smtcmp-apply-view .smtcmp-apply-markdown h3,
+#smtcmp-apply-view .smtcmp-apply-markdown h4,
+#smtcmp-apply-view .smtcmp-apply-markdown h5,
+#smtcmp-apply-view .smtcmp-apply-markdown h6 {
+  color: var(--text-accent);
+}
+
+#smtcmp-apply-view .smtcmp-apply-inline-markdown p {
+  margin: 0.4em 0;
+}
+
+#smtcmp-apply-view .smtcmp-inline-diff {
+  padding: 0 1px;
+  border-radius: 2px;
+  text-decoration-skip-ink: none;
+}
+
+#smtcmp-apply-view .smtcmp-inline-diff-del {
+  color: var(--smtcmp-inline-del-color);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--smtcmp-inline-del-color) 70%,
+    transparent
+  );
+  border-bottom: 1px dashed
+    color-mix(in srgb, var(--smtcmp-inline-del-color) 55%, transparent);
+}
+
+#smtcmp-apply-view .smtcmp-inline-diff-add {
+  color: var(--smtcmp-inline-add-color);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--interactive-accent) 45%, transparent);
 }
 
 .smtcmp-spinner {

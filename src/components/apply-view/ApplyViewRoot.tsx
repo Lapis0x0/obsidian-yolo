@@ -1,4 +1,4 @@
-import { MarkdownView } from 'obsidian'
+import { Component, MarkdownRenderer, MarkdownView } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -7,11 +7,18 @@ import {
   useRef,
   useState,
 } from 'react'
+import { Check, X } from 'lucide-react'
 
 import { ApplyViewState } from '../../ApplyView'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { DiffBlock, createDiffBlocks } from '../../utils/chat/diff'
+import { usePlugin } from '../../contexts/plugin-context'
+import {
+  DiffBlock,
+  InlineDiffLine,
+  InlineDiffToken,
+  createDiffBlocks,
+} from '../../utils/chat/diff'
 
 // Decision type for each diff block
 type BlockDecision = 'pending' | 'incoming' | 'current' | 'both'
@@ -28,6 +35,7 @@ export default function ApplyViewRoot({
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   const app = useApp()
+  const plugin = usePlugin()
   const { t } = useLanguage()
 
   const diff = useMemo(
@@ -325,11 +333,13 @@ export default function ApplyViewRoot({
                     key={index}
                     block={block}
                     decision={decisions.get(index)}
+                    sourcePath={state.file.path}
                     onAcceptIncoming={() => acceptIncomingBlock(index)}
                     onAcceptCurrent={() => acceptCurrentBlock(index)}
                     onAcceptBoth={() => acceptBothBlocks(index)}
                     onUndo={() => undoDecision(index)}
                     t={t}
+                    pluginComponent={plugin}
                     ref={(el) => {
                       diffBlockRefs.current[index] = el
                     }}
@@ -349,29 +359,56 @@ const DiffBlockView = forwardRef<
   {
     block: DiffBlock
     decision?: BlockDecision
+    sourcePath: string
     onAcceptIncoming: () => void
     onAcceptCurrent: () => void
     onAcceptBoth: () => void
     onUndo: () => void
     t: (keyPath: string, fallback?: string) => string
+    pluginComponent: Component
   }
 >(
   (
     {
       block: part,
       decision,
+      sourcePath,
       onAcceptIncoming,
       onAcceptCurrent,
       onAcceptBoth,
       onUndo,
       t,
+      pluginComponent,
     },
     ref,
   ) => {
+    const inlineLines = part.type === 'modified' ? part.inlineLines : undefined
+    const modifiedValue =
+      part.type === 'modified' ? part.modifiedValue : undefined
+    const originalValue =
+      part.type === 'modified' ? part.originalValue : undefined
+    const inlineMarkdown = useMemo(() => {
+      if (part.type !== 'modified') return ''
+      const markdown = buildInlineDiffMarkdown(inlineLines ?? [])
+      if (markdown.trim().length > 0) return markdown
+      return modifiedValue ?? originalValue ?? ''
+    }, [inlineLines, modifiedValue, originalValue, part.type])
+    const inlineParagraphs = useMemo<ApplyParagraph[]>(() => {
+      if (part.type !== 'modified') return []
+      return splitInlineLinesIntoParagraphs(inlineLines ?? [])
+    }, [inlineLines, part.type])
+
     if (part.type === 'unchanged') {
       return (
         <div className="smtcmp-diff-block">
-          <div className="smtcmp-diff-block-content">{part.value}</div>
+          <div className="smtcmp-diff-block-content">
+            <ApplyMarkdownContent
+              content={part.value}
+              component={pluginComponent}
+              sourcePath={sourcePath}
+              className="smtcmp-apply-markdown"
+            />
+          </div>
         </div>
       )
     } else if (part.type === 'modified') {
@@ -423,37 +460,132 @@ const DiffBlockView = forwardRef<
                   </button>
                 </div>
                 <div className="smtcmp-diff-block-content">
-                  {getDecisionPreview()}
+                  <ApplyMarkdownContent
+                    content={getDecisionPreview() ?? ''}
+                    component={pluginComponent}
+                    sourcePath={sourcePath}
+                    className="smtcmp-apply-markdown smtcmp-apply-markdown-preview"
+                  />
                 </div>
               </div>
             </>
           ) : (
             // Show original diff view with actions
             <>
-              {part.originalValue && part.originalValue.length > 0 && (
-                <div className="smtcmp-diff-block removed">
-                  <div className="smtcmp-diff-block-content">
-                    {part.originalValue}
+              <div className="smtcmp-diff-block smtcmp-diff-block--inline">
+                {inlineParagraphs.length > 0 ? (
+                  inlineParagraphs.map((paragraph, paragraphIndex) => {
+                    const paragraphContent = paragraph.isEmpty
+                      ? ''
+                      : buildInlineDiffMarkdown(paragraph.lines)
+                    return (
+                      <div
+                        key={`${paragraphIndex}-${paragraph.isEmpty ? 'empty' : 'content'}`}
+                        className={`smtcmp-apply-paragraph${
+                          paragraph.isEmpty ? ' is-empty' : ''
+                        }${paragraph.hasChanges ? ' has-changes' : ''}`}
+                      >
+                        <div className="smtcmp-diff-block-content">
+                          {paragraph.isEmpty ? (
+                            <div className="smtcmp-apply-empty-line" />
+                          ) : (
+                            <ApplyMarkdownContent
+                              content={paragraphContent}
+                              component={pluginComponent}
+                              sourcePath={sourcePath}
+                              className="smtcmp-apply-markdown smtcmp-apply-inline-markdown"
+                            />
+                          )}
+                        </div>
+                        {paragraph.hasChanges && (
+                          <span className="smtcmp-apply-paragraph-indicator" />
+                        )}
+                        {paragraph.hasChanges && (
+                          <div className="smtcmp-diff-block-actions">
+                            <button
+                              onClick={onAcceptIncoming}
+                              className="smtcmp-apply-action smtcmp-apply-action-accept"
+                              title={t(
+                                'applyView.acceptIncoming',
+                                'Accept incoming',
+                              )}
+                              aria-label={t(
+                                'applyView.acceptIncoming',
+                                'Accept incoming',
+                              )}
+                            >
+                              <Check size={16} />
+                            </button>
+                            <button
+                              onClick={onAcceptCurrent}
+                              className="smtcmp-apply-action smtcmp-apply-action-reject"
+                              title={t(
+                                'applyView.acceptCurrent',
+                                'Accept current',
+                              )}
+                              aria-label={t(
+                                'applyView.acceptCurrent',
+                                'Accept current',
+                              )}
+                            >
+                              <X size={16} />
+                            </button>
+                            <button
+                              onClick={onAcceptBoth}
+                              className="smtcmp-apply-action smtcmp-apply-action-both"
+                              title={t('applyView.acceptBoth', 'Accept both')}
+                            >
+                              {t('applyView.acceptBoth', 'Accept both')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="smtcmp-apply-paragraph has-changes">
+                    <div className="smtcmp-diff-block-content">
+                      <ApplyMarkdownContent
+                        content={inlineMarkdown}
+                        component={pluginComponent}
+                        sourcePath={sourcePath}
+                        className="smtcmp-apply-markdown smtcmp-apply-inline-markdown"
+                      />
+                    </div>
+                    <span className="smtcmp-apply-paragraph-indicator" />
+                    <div className="smtcmp-diff-block-actions">
+                      <button
+                        onClick={onAcceptIncoming}
+                        className="smtcmp-apply-action smtcmp-apply-action-accept"
+                        title={t('applyView.acceptIncoming', 'Accept incoming')}
+                        aria-label={t(
+                          'applyView.acceptIncoming',
+                          'Accept incoming',
+                        )}
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={onAcceptCurrent}
+                        className="smtcmp-apply-action smtcmp-apply-action-reject"
+                        title={t('applyView.acceptCurrent', 'Accept current')}
+                        aria-label={t(
+                          'applyView.acceptCurrent',
+                          'Accept current',
+                        )}
+                      >
+                        <X size={16} />
+                      </button>
+                      <button
+                        onClick={onAcceptBoth}
+                        className="smtcmp-apply-action smtcmp-apply-action-both"
+                        title={t('applyView.acceptBoth', 'Accept both')}
+                      >
+                        {t('applyView.acceptBoth', 'Accept both')}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-              {part.modifiedValue && part.modifiedValue.length > 0 && (
-                <div className="smtcmp-diff-block added">
-                  <div className="smtcmp-diff-block-content">
-                    {part.modifiedValue}
-                  </div>
-                </div>
-              )}
-              <div className="smtcmp-diff-block-actions">
-                <button onClick={onAcceptIncoming} className="smtcmp-accept">
-                  {t('applyView.acceptIncoming', 'Accept incoming')}
-                </button>
-                <button onClick={onAcceptCurrent} className="smtcmp-exclude">
-                  {t('applyView.acceptCurrent', 'Accept current')}
-                </button>
-                <button onClick={onAcceptBoth}>
-                  {t('applyView.acceptBoth', 'Accept both')}
-                </button>
+                )}
               </div>
             </>
           )}
@@ -464,3 +596,125 @@ const DiffBlockView = forwardRef<
 )
 
 DiffBlockView.displayName = 'DiffBlockView'
+
+function ApplyMarkdownContent({
+  content,
+  component,
+  sourcePath,
+  className,
+}: {
+  content: string
+  component: Component
+  sourcePath: string
+  className?: string
+}) {
+  const app = useApp()
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    containerRef.current.replaceChildren()
+    void MarkdownRenderer.render(
+      app,
+      content,
+      containerRef.current,
+      sourcePath,
+      component,
+    )
+  }, [app, component, content, sourcePath])
+
+  return (
+    <div
+      ref={containerRef}
+      className={`markdown-rendered smtcmp-markdown-rendered ${className ?? ''}`}
+    />
+  )
+}
+
+type ApplyParagraph = {
+  lines: InlineDiffLine[]
+  hasChanges: boolean
+  isEmpty: boolean
+}
+
+function splitInlineLinesIntoParagraphs(
+  lines: InlineDiffLine[],
+): ApplyParagraph[] {
+  if (lines.length === 0) return []
+
+  const paragraphs: ApplyParagraph[] = []
+  let currentLines: InlineDiffLine[] = []
+
+  const flushCurrent = () => {
+    if (currentLines.length === 0) return
+    paragraphs.push({
+      lines: currentLines,
+      hasChanges: currentLines.some((line) => lineHasChanges(line)),
+      isEmpty: false,
+    })
+    currentLines = []
+  }
+
+  lines.forEach((line) => {
+    if (isInlineLineEmpty(line)) {
+      flushCurrent()
+      paragraphs.push({ lines: [], hasChanges: false, isEmpty: true })
+      return
+    }
+    currentLines.push(line)
+  })
+
+  flushCurrent()
+  const hasAnyChanges = paragraphs.some(
+    (paragraph) => !paragraph.isEmpty && paragraph.hasChanges,
+  )
+  if (!hasAnyChanges) {
+    const firstContentParagraph = paragraphs.find(
+      (paragraph) => !paragraph.isEmpty,
+    )
+    if (firstContentParagraph) {
+      firstContentParagraph.hasChanges = true
+    }
+  }
+  return paragraphs
+}
+
+function isInlineLineEmpty(line: InlineDiffLine): boolean {
+  const content = line.tokens.map((token) => token.text).join('')
+  return content.trim().length === 0
+}
+
+function lineHasChanges(line: InlineDiffLine): boolean {
+  if (line.type === 'added' || line.type === 'removed') return true
+  return line.tokens.some(
+    (token) => token.type === 'add' || token.type === 'del',
+  )
+}
+
+function buildInlineDiffMarkdown(lines: InlineDiffLine[]): string {
+  return lines.map((line) => inlineTokensToMarkdown(line.tokens)).join('\n')
+}
+
+function inlineTokensToMarkdown(tokens: InlineDiffToken[]): string {
+  return tokens
+    .map((token) => {
+      const text = escapeHtml(token.text)
+      if (token.type === 'add') {
+        return `<span class="smtcmp-inline-diff smtcmp-inline-diff-add">${text}</span>`
+      }
+      if (token.type === 'del') {
+        return `<span class="smtcmp-inline-diff smtcmp-inline-diff-del">${text}</span>`
+      }
+      return text
+    })
+    .join('')
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
