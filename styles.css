@@ -8008,6 +8008,8 @@ button.smtcmp-chat-input-model-select {
   padding: 0px 8px 6px;
   border-top: none;
   background: color-mix(in srgb, var(--background-primary) 96%, transparent);
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
   order: 3;
 }
 
