@@ -429,6 +429,9 @@ export const zh: TranslationKeys = {
       smartSpaceTriggerModeSingle: '单空格触发（原行为）',
       smartSpaceTriggerModeDouble: '双空格触发（600ms 内；首个空格正常输入）',
       smartSpaceTriggerModeOff: '关闭空行空格触发（仅保留 "/"+空格）',
+      selectionChatSubsectionTitle: 'Cursor Chat',
+      selectionChatDescription:
+        'Cursor Chat 在选区右下角提供改写/解释等快捷操作，并保持选区内容同步到侧边 Chat。',
       selectionChatToggle: '启用 Cursor Chat',
       selectionChatToggleDesc:
         '控制选区右下角操作菜单（改写/解释）。选区内容仍会自动同步到侧边 Chat。',

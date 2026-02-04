@@ -368,6 +368,8 @@ export type TranslationKeys = {
       smartSpaceTriggerModeSingle: string
       smartSpaceTriggerModeDouble: string
       smartSpaceTriggerModeOff: string
+      selectionChatSubsectionTitle: string
+      selectionChatDescription: string
       selectionChatToggle: string
       selectionChatToggleDesc: string
       keywordTrigger: string

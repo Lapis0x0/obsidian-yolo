@@ -463,6 +463,9 @@ export const it: TranslationKeys = {
         'Doppio spazio per aprire (~600ms; il primo spazio inserisce davvero uno spazio)',
       smartSpaceTriggerModeOff:
         'Disattiva trigger con spazio su riga vuota (solo "/" + spazio)',
+      selectionChatSubsectionTitle: 'Cursor chat',
+      selectionChatDescription:
+        'Cursor chat aggiunge un menu azioni sulla selezione (riscrivi/spiega) e mantiene la selezione sincronizzata con la chat laterale.',
       selectionChatToggle: 'Abilita chat selezione',
       selectionChatToggleDesc:
         "Mostra l'indicatore e il menu azioni (riscrivi/spiega). La selezione continua a sincronizzarsi con la chat laterale.",

@@ -595,36 +595,54 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t(
-                          'settings.continuation.selectionChatToggle',
-                          'Selection Chat',
-                        )}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.continuation.selectionChatToggleDesc',
-                          '选中文本后显示快捷操作面板。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianToggle
-                        value={enableSelectionChat}
-                        onChange={(value) =>
-                          updateContinuationOptions({
-                            enableSelectionChat: value,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
                 </>
               )}
             </section>
+
+            {enableSmartSpace && (
+              <section className="smtcmp-composer-section">
+                <header className="smtcmp-composer-heading">
+                  <div className="smtcmp-composer-heading-title">
+                    {t(
+                      'settings.continuation.selectionChatSubsectionTitle',
+                      'Cursor Chat',
+                    )}
+                  </div>
+                  <div className="smtcmp-composer-heading-desc">
+                    {t(
+                      'settings.continuation.selectionChatDescription',
+                      '选中文本后显示快捷操作面板，并保持同步到侧边 Chat。',
+                    )}
+                  </div>
+                </header>
+                <div className="smtcmp-composer-option">
+                  <div className="smtcmp-composer-option-info">
+                    <div className="smtcmp-composer-option-title">
+                      {t(
+                        'settings.continuation.selectionChatToggle',
+                        'Selection Chat',
+                      )}
+                    </div>
+                    <div className="smtcmp-composer-option-desc">
+                      {t(
+                        'settings.continuation.selectionChatToggleDesc',
+                        '选中文本后显示快捷操作面板。',
+                      )}
+                    </div>
+                  </div>
+                  <div className="smtcmp-composer-option-control">
+                    <ObsidianToggle
+                      value={enableSelectionChat}
+                      onChange={(value) =>
+                        updateContinuationOptions({
+                          enableSelectionChat: value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
 
             {enableSmartSpace && (
               <section className="smtcmp-composer-section">

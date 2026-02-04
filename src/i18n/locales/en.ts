@@ -466,6 +466,9 @@ export const en: TranslationKeys = {
         'Double space to trigger (~600ms; first space inserts a real space)',
       smartSpaceTriggerModeOff:
         'Disable empty-line space trigger (keep "/"+space only)',
+      selectionChatSubsectionTitle: 'Cursor chat',
+      selectionChatDescription:
+        'Cursor chat adds a selection actions menu for rewrite/explain and keeps selection synced to the sidebar chat.',
       selectionChatToggle: 'Enable cursor chat',
       selectionChatToggleDesc:
         'Show the selection indicator and actions menu (rewrite/explain). Selection still syncs to the sidebar chat.',
