@@ -1788,6 +1788,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   display: flex;
   flex-direction: column;
   font-family: var(--font-interface);
+  position: relative;
 
   --smtcmp-current-color-rgb: 185, 28, 28; /* red-700 */
   --smtcmp-incoming-color-rgb: 4, 120, 87; /* emerald-700 */
@@ -1946,6 +1947,12 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
     opacity: 0.95;
   }
 
+  .smtcmp-apply-paragraph.has-changes.is-active
+    .smtcmp-apply-paragraph-indicator {
+    background: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+    opacity: 0.95;
+  }
+
   .smtcmp-apply-paragraph.is-empty {
     min-height: 20px;
   }
@@ -1956,6 +1963,11 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
   .smtcmp-apply-paragraph:hover .smtcmp-diff-block-actions,
   .smtcmp-apply-paragraph:focus-within .smtcmp-diff-block-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .smtcmp-apply-paragraph.is-active .smtcmp-diff-block-actions {
     opacity: 1;
     pointer-events: auto;
   }
@@ -2050,46 +2062,103 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
   /* Toolbar styles */
   .smtcmp-apply-toolbar {
+    position: absolute;
+    left: 50%;
+    bottom: var(--size-4-3);
+    transform: translateX(-50%);
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
+    width: 100%;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .smtcmp-apply-toolbar-pill {
+    pointer-events: auto;
+    display: flex;
     align-items: center;
+    gap: var(--size-4-3);
     padding: var(--size-4-2) var(--size-4-3);
-    background-color: var(--background-secondary);
-    border-top: 1px solid var(--background-modifier-border);
-    gap: var(--size-4-2);
+    border-radius: 999px;
+    max-width: calc(100% - var(--size-4-6));
     flex-wrap: wrap;
+    justify-content: center;
+    background: color-mix(
+      in srgb,
+      var(--background-secondary) 86%,
+      transparent
+    );
+    border: 1px solid
+      color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
   }
 
-  .smtcmp-apply-toolbar-left {
+  .smtcmp-apply-toolbar-nav,
+  .smtcmp-apply-toolbar-actions {
     display: flex;
     align-items: center;
     gap: var(--size-4-2);
-  }
-
-  .smtcmp-apply-toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: var(--size-4-2);
-    flex-wrap: wrap;
   }
 
   .smtcmp-apply-progress {
     font-size: var(--font-ui-small);
     color: var(--text-muted);
+    min-width: 52px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
   .smtcmp-toolbar-btn {
-    padding: var(--size-4-1) var(--size-4-2);
-    font-size: var(--font-ui-smaller);
-    border-radius: var(--radius-s);
+    padding: 6px var(--size-4-3);
+    font-size: var(--font-ui-small);
+    border-radius: 999px;
     cursor: pointer;
     border: 1px solid var(--background-modifier-border);
-    background: var(--background-primary);
+    background: color-mix(in srgb, var(--background-primary) 88%, transparent);
     color: var(--text-normal);
 
     &:hover {
-      background: var(--background-modifier-hover);
+      background: color-mix(
+        in srgb,
+        var(--background-modifier-hover) 88%,
+        transparent
+      );
     }
+  }
+
+  .smtcmp-toolbar-btn:disabled,
+  .smtcmp-toolbar-icon-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .smtcmp-toolbar-icon-btn {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--background-modifier-border);
+    background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+    color: var(--text-muted);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text-normal);
+      background: color-mix(
+        in srgb,
+        var(--background-modifier-hover) 88%,
+        transparent
+      );
+    }
+  }
+
+  .smtcmp-toolbar-icon {
+    font-size: 14px;
+    line-height: 1;
+    font-weight: 600;
   }
 
   .smtcmp-apply-btn {

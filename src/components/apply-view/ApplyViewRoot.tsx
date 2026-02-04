@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, MarkdownView } from 'obsidian'
+import { Component, MarkdownRenderer } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -29,9 +29,15 @@ export default function ApplyViewRoot({
   state: ApplyViewState
   close: () => void
 }) {
-  const [, setCurrentDiffIndex] = useState(0)
+  const [currentDiffIndex, setCurrentDiffIndex] = useState(0)
   const diffBlockRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const applyChangesRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  const diffOffsetsRef = useRef<number[]>([])
+  const suppressScrollRef = useRef(false)
+  const suppressRafRef = useRef<number | null>(null)
+  const scrollRafRef = useRef<number | null>(null)
+  const manualNavLockRef = useRef(false)
 
   const app = useApp()
   const plugin = usePlugin()
@@ -61,15 +67,11 @@ export default function ApplyViewRoot({
     [diff],
   )
 
+  const activeBlockIndex =
+    modifiedBlockIndices[currentDiffIndex] ?? Number.POSITIVE_INFINITY
+  const autoCloseRef = useRef(false)
+
   // Count of decided and pending blocks
-  const decidedCount = useMemo(
-    () =>
-      modifiedBlockIndices.filter(
-        (idx) => decisions.get(idx) && decisions.get(idx) !== 'pending',
-      ).length,
-    [decisions, modifiedBlockIndices],
-  )
-  const totalModifiedBlocks = modifiedBlockIndices.length
 
   // Generate final content based on decisions
   const generateFinalContent = useCallback(
@@ -101,32 +103,10 @@ export default function ApplyViewRoot({
     [diff, decisions],
   )
 
-  const applyAndClose = async () => {
+  const applyChanges = useCallback(async () => {
     const newContent = generateFinalContent('current')
     await app.vault.modify(state.file, newContent)
-
-    // Try to focus an existing leaf showing this file to avoid duplicates
-    const targetLeaf = app.workspace
-      .getLeavesOfType('markdown')
-      .find((leaf) => {
-        const view = leaf.view
-        return (
-          view instanceof MarkdownView && view.file?.path === state.file.path
-        )
-      })
-
-    close()
-
-    if (targetLeaf) {
-      app.workspace.setActiveLeaf(targetLeaf, { focus: true })
-      return
-    }
-
-    // If no existing leaf, open the file once
-    const leaf = app.workspace.getLeaf(true)
-    await leaf.openFile(state.file)
-    app.workspace.setActiveLeaf(leaf, { focus: true })
-  }
+  }, [app.vault, generateFinalContent, state.file])
 
   // Individual block decisions (don't close, just mark decision)
   const makeDecision = useCallback((index: number, decision: BlockDecision) => {
@@ -177,44 +157,252 @@ export default function ApplyViewRoot({
     setDecisions(newDecisions)
   }, [modifiedBlockIndices])
 
-  const resetAllDecisions = useCallback(() => {
-    setDecisions(new Map())
+  useEffect(() => {
+    applyChangesRef.current = applyChanges
+  }, [applyChanges])
+
+  useEffect(() => {
+    if (autoCloseRef.current) return
+    if (modifiedBlockIndices.length === 0) return
+    const allDecided = modifiedBlockIndices.every((idx) => {
+      const decision = decisions.get(idx)
+      return decision && decision !== 'pending'
+    })
+    if (!allDecided) return
+    autoCloseRef.current = true
+    close()
+  }, [close, decisions, modifiedBlockIndices])
+
+  useEffect(() => {
+    return () => {
+      void applyChangesRef.current()
+    }
   }, [])
+
+  const getOffsetTopFromScroller = useCallback(
+    (element: HTMLElement, scroller: HTMLElement) => {
+      let offset = 0
+      let current: HTMLElement | null = element
+      while (current && current !== scroller) {
+        offset += current.offsetTop
+        current = current.offsetParent as HTMLElement | null
+      }
+      if (current === scroller) {
+        return offset
+      }
+      const scrollerRect = scroller.getBoundingClientRect()
+      const rect = element.getBoundingClientRect()
+      return scroller.scrollTop + (rect.top - scrollerRect.top)
+    },
+    [],
+  )
+
+  const updateDiffOffsets = useCallback(() => {
+    const scroller = scrollerRef.current
+    if (!scroller) return
+    let lastOffset = 0
+    diffOffsetsRef.current = modifiedBlockIndices.map((blockIndex) => {
+      const element = diffBlockRefs.current[blockIndex]
+      if (!element) return lastOffset
+      const offset = getOffsetTopFromScroller(element, scroller)
+      lastOffset = offset
+      return offset
+    })
+  }, [getOffsetTopFromScroller, modifiedBlockIndices])
+
+  const findClosestDiffIndex = useCallback(
+    (scrollTop: number, anchorOffset: number) => {
+      const offsets = diffOffsetsRef.current
+      if (offsets.length === 0) return 0
+      const target = scrollTop + anchorOffset
+
+      let left = 0
+      let right = offsets.length - 1
+      while (left < right) {
+        const mid = Math.floor((left + right) / 2)
+        if (offsets[mid] < target) {
+          left = mid + 1
+        } else {
+          right = mid
+        }
+      }
+
+      const nextIndex = left
+      const prevIndex = Math.max(0, left - 1)
+      const nextDistance = Math.abs(offsets[nextIndex] - target)
+      const prevDistance = Math.abs(offsets[prevIndex] - target)
+      return nextDistance < prevDistance ? nextIndex : prevIndex
+    },
+    [],
+  )
 
   const updateCurrentDiffFromScroll = useCallback(() => {
     const scroller = scrollerRef.current
     if (!scroller) return
+    if (suppressScrollRef.current) return
+    if (manualNavLockRef.current) return
+    updateDiffOffsets()
+    const maxScrollTop = scroller.scrollHeight - scroller.clientHeight
+    if (maxScrollTop <= 0) {
+      setCurrentDiffIndex(0)
+      return
+    }
+    const distanceToTop = scroller.scrollTop
+    const distanceToBottom = maxScrollTop - scroller.scrollTop
+    let anchorOffset = scroller.clientHeight / 2
+    if (distanceToTop < anchorOffset) {
+      anchorOffset = distanceToTop
+    }
+    if (distanceToBottom < anchorOffset) {
+      anchorOffset = scroller.clientHeight - distanceToBottom
+    }
+    const nextIndex = findClosestDiffIndex(scroller.scrollTop, anchorOffset)
+    setCurrentDiffIndex(nextIndex)
+  }, [findClosestDiffIndex, updateDiffOffsets])
 
-    const scrollerRect = scroller.getBoundingClientRect()
-    const scrollerTop = scrollerRect.top
-    const visibleThreshold = 10 // pixels from top to consider element "visible"
+  const scrollToDiffIndex = useCallback(
+    (index: number) => {
+      const blockIndex = modifiedBlockIndices[index]
+      if (blockIndex === undefined) return
+      const element = diffBlockRefs.current[blockIndex]
+      if (!element) return
+      const scroller = scrollerRef.current
+      if (!scroller) return
+      manualNavLockRef.current = true
+      const elementOffsetTop = getOffsetTopFromScroller(element, scroller)
+      const targetTop =
+        elementOffsetTop -
+        (scroller.clientHeight / 2 - element.offsetHeight / 2)
+      const maxScrollTop = scroller.scrollHeight - scroller.clientHeight
+      const clampedTop = Math.max(0, Math.min(maxScrollTop, targetTop))
+      if (suppressRafRef.current) {
+        cancelAnimationFrame(suppressRafRef.current)
+      }
+      suppressScrollRef.current = true
+      const start = performance.now()
+      const releaseWhenSettled = () => {
+        const currentScroller = scrollerRef.current
+        if (!currentScroller) {
+          suppressScrollRef.current = false
+          suppressRafRef.current = null
+          return
+        }
+        const diff = Math.abs(currentScroller.scrollTop - clampedTop)
+        const elapsed = performance.now() - start
+        if (diff < 1 || elapsed > 700) {
+          suppressScrollRef.current = false
+          suppressRafRef.current = null
+          return
+        }
+        suppressRafRef.current = requestAnimationFrame(releaseWhenSettled)
+      }
+      suppressRafRef.current = requestAnimationFrame(releaseWhenSettled)
+      scroller.scrollTo({ top: clampedTop, behavior: 'smooth' })
+      setCurrentDiffIndex(index)
+    },
+    [getOffsetTopFromScroller, modifiedBlockIndices],
+  )
 
-    // Find the first visible diff block
-    for (let i = 0; i < modifiedBlockIndices.length; i++) {
-      const element = diffBlockRefs.current[modifiedBlockIndices[i]]
-      if (!element) continue
+  const goToPreviousDiff = useCallback(() => {
+    if (modifiedBlockIndices.length === 0) return
+    const nextIndex = Math.max(0, currentDiffIndex - 1)
+    scrollToDiffIndex(nextIndex)
+  }, [currentDiffIndex, modifiedBlockIndices.length, scrollToDiffIndex])
 
-      const rect = element.getBoundingClientRect()
-      const relativeTop = rect.top - scrollerTop
+  const goToNextDiff = useCallback(() => {
+    if (modifiedBlockIndices.length === 0) return
+    const nextIndex = Math.min(
+      modifiedBlockIndices.length - 1,
+      currentDiffIndex + 1,
+    )
+    scrollToDiffIndex(nextIndex)
+  }, [currentDiffIndex, modifiedBlockIndices.length, scrollToDiffIndex])
 
-      // If element is visible (slightly below the top of the viewport)
-      if (relativeTop >= -visibleThreshold) {
-        setCurrentDiffIndex(i)
-        break
+  useEffect(() => {
+    if (modifiedBlockIndices.length === 0) {
+      setCurrentDiffIndex(0)
+      return
+    }
+    if (currentDiffIndex > modifiedBlockIndices.length - 1) {
+      setCurrentDiffIndex(modifiedBlockIndices.length - 1)
+    }
+  }, [currentDiffIndex, modifiedBlockIndices.length])
+
+  useEffect(() => {
+    return () => {
+      if (suppressRafRef.current) {
+        cancelAnimationFrame(suppressRafRef.current)
+      }
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current)
       }
     }
-  }, [modifiedBlockIndices])
+  }, [])
 
   useEffect(() => {
     const scroller = scrollerRef.current
     if (!scroller) return
 
+    const updateAll = () => {
+      updateDiffOffsets()
+      updateCurrentDiffFromScroll()
+    }
+
+    const scheduleUpdate = () => {
+      requestAnimationFrame(updateAll)
+    }
+
+    scheduleUpdate()
+    window.addEventListener('resize', scheduleUpdate)
+    return () => window.removeEventListener('resize', scheduleUpdate)
+  }, [updateCurrentDiffFromScroll, updateDiffOffsets])
+
+  useEffect(() => {
+    const scheduleUpdate = () => {
+      requestAnimationFrame(() => {
+        updateDiffOffsets()
+        updateCurrentDiffFromScroll()
+      })
+    }
+
+    scheduleUpdate()
+  }, [decisions, diff, updateCurrentDiffFromScroll, updateDiffOffsets])
+
+  useEffect(() => {
+    const scroller = scrollerRef.current
+    if (!scroller) return
+
+    updateDiffOffsets()
+    updateCurrentDiffFromScroll()
+
     const handleScroll = () => {
+      if (scrollRafRef.current) return
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null
+        updateCurrentDiffFromScroll()
+      })
+    }
+
+    const handleUserScrollIntent = () => {
+      if (!manualNavLockRef.current) return
+      manualNavLockRef.current = false
       updateCurrentDiffFromScroll()
     }
 
     scroller.addEventListener('scroll', handleScroll)
-    return () => scroller.removeEventListener('scroll', handleScroll)
+    scroller.addEventListener('wheel', handleUserScrollIntent, {
+      passive: true,
+    })
+    scroller.addEventListener('touchmove', handleUserScrollIntent, {
+      passive: true,
+    })
+    scroller.addEventListener('pointerdown', handleUserScrollIntent)
+    return () => {
+      scroller.removeEventListener('scroll', handleScroll)
+      scroller.removeEventListener('wheel', handleUserScrollIntent)
+      scroller.removeEventListener('touchmove', handleUserScrollIntent)
+      scroller.removeEventListener('pointerdown', handleUserScrollIntent)
+    }
   }, [updateCurrentDiffFromScroll])
 
   return (
@@ -244,6 +432,7 @@ export default function ApplyViewRoot({
                       key={index}
                       block={block}
                       decision={decisions.get(index)}
+                      isActive={index === activeBlockIndex}
                       sourcePath={state.file.path}
                       onAcceptIncoming={() => acceptIncomingBlock(index)}
                       onAcceptCurrent={() => acceptCurrentBlock(index)}
@@ -264,49 +453,61 @@ export default function ApplyViewRoot({
 
       {/* Global actions toolbar (bottom) */}
       <div className="smtcmp-apply-toolbar smtcmp-apply-toolbar-bottom">
-        <div className="smtcmp-apply-toolbar-left">
-          <span className="smtcmp-apply-progress">
-            {decidedCount} / {totalModifiedBlocks}{' '}
-            {t('applyView.changesResolved', 'changes resolved')}
-          </span>
-        </div>
-        <div className="smtcmp-apply-toolbar-right">
-          <button
-            onClick={acceptAllIncoming}
-            className="smtcmp-toolbar-btn smtcmp-accept"
-            title={t(
-              'applyView.acceptAllIncoming',
-              'Accept all incoming changes',
-            )}
-          >
-            {t('applyView.acceptAllIncoming', 'Accept All Incoming')}
-          </button>
-          <button
-            onClick={acceptAllCurrent}
-            className="smtcmp-toolbar-btn smtcmp-exclude"
-            title={t(
-              'applyView.rejectAll',
-              'Reject all changes (keep original)',
-            )}
-          >
-            {t('applyView.rejectAll', 'Reject All')}
-          </button>
-          {decidedCount > 0 && (
+        <div className="smtcmp-apply-toolbar-pill" role="group">
+          <div className="smtcmp-apply-toolbar-nav">
             <button
-              onClick={resetAllDecisions}
-              className="smtcmp-toolbar-btn"
-              title={t('applyView.reset', 'Reset all decisions')}
+              onClick={goToPreviousDiff}
+              className="smtcmp-toolbar-icon-btn"
+              title={t('applyView.prevChange', 'Previous change')}
+              aria-label={t('applyView.prevChange', 'Previous change')}
+              disabled={
+                modifiedBlockIndices.length === 0 || currentDiffIndex === 0
+              }
             >
-              {t('applyView.reset', 'Reset')}
+              <span className="smtcmp-toolbar-icon">↑</span>
             </button>
-          )}
-          <button
-            onClick={() => void applyAndClose()}
-            className="smtcmp-toolbar-btn smtcmp-apply-btn"
-            title={t('applyView.applyAndClose', 'Apply changes and close')}
-          >
-            {t('applyView.applyAndClose', 'Apply & Close')}
-          </button>
+            <span className="smtcmp-apply-progress">
+              {modifiedBlockIndices.length === 0
+                ? '0/0'
+                : `${currentDiffIndex + 1}/${modifiedBlockIndices.length}`}
+            </span>
+            <button
+              onClick={goToNextDiff}
+              className="smtcmp-toolbar-icon-btn"
+              title={t('applyView.nextChange', 'Next change')}
+              aria-label={t('applyView.nextChange', 'Next change')}
+              disabled={
+                modifiedBlockIndices.length === 0 ||
+                currentDiffIndex >= modifiedBlockIndices.length - 1
+              }
+            >
+              <span className="smtcmp-toolbar-icon">↓</span>
+            </button>
+          </div>
+          <div className="smtcmp-apply-toolbar-actions">
+            <button
+              onClick={acceptAllIncoming}
+              className="smtcmp-toolbar-btn smtcmp-accept"
+              title={t(
+                'applyView.acceptAllIncoming',
+                'Accept all incoming changes',
+              )}
+              disabled={modifiedBlockIndices.length === 0}
+            >
+              {t('applyView.acceptAllIncoming', 'Accept All Incoming')}
+            </button>
+            <button
+              onClick={acceptAllCurrent}
+              className="smtcmp-toolbar-btn smtcmp-exclude"
+              title={t(
+                'applyView.rejectAll',
+                'Reject all changes (keep original)',
+              )}
+              disabled={modifiedBlockIndices.length === 0}
+            >
+              {t('applyView.rejectAll', 'Reject All')}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -318,6 +519,7 @@ const DiffBlockView = forwardRef<
   {
     block: DiffBlock
     decision?: BlockDecision
+    isActive: boolean
     sourcePath: string
     onAcceptIncoming: () => void
     onAcceptCurrent: () => void
@@ -330,10 +532,11 @@ const DiffBlockView = forwardRef<
     {
       block: part,
       decision,
+      isActive,
       sourcePath,
       onAcceptIncoming,
       onAcceptCurrent,
-       
+
       onUndo: _onUndo,
       t,
       pluginComponent,
@@ -392,7 +595,10 @@ const DiffBlockView = forwardRef<
       }
 
       return (
-        <div className="smtcmp-diff-block-container" ref={ref}>
+        <div
+          className={`smtcmp-diff-block-container${isActive ? ' is-active' : ''}`}
+          ref={ref}
+        >
           {isDecided ? (
             // Show resolved content only
             <>
@@ -421,7 +627,9 @@ const DiffBlockView = forwardRef<
                         key={`${paragraphIndex}-${paragraph.isEmpty ? 'empty' : 'content'}`}
                         className={`smtcmp-apply-paragraph${
                           paragraph.isEmpty ? ' is-empty' : ''
-                        }${paragraph.hasChanges ? ' has-changes' : ''}`}
+                        }${paragraph.hasChanges ? ' has-changes' : ''}${
+                          isActive ? ' is-active' : ''
+                        }`}
                       >
                         <div className="smtcmp-diff-block-content">
                           {paragraph.isEmpty ? (
@@ -484,7 +692,11 @@ const DiffBlockView = forwardRef<
                     )
                   })
                 ) : (
-                  <div className="smtcmp-apply-paragraph has-changes">
+                  <div
+                    className={`smtcmp-apply-paragraph has-changes${
+                      isActive ? ' is-active' : ''
+                    }`}
+                  >
                     <div className="smtcmp-diff-block-content">
                       <ApplyMarkdownContent
                         content={inlineMarkdown}
@@ -647,6 +859,13 @@ function splitDiffBlocksByLine(blocks: DiffBlock[]): DiffBlock[] {
         line.type === 'added' ? undefined : inlineLineToText(line, 'original')
       const modifiedLine =
         line.type === 'removed' ? undefined : inlineLineToText(line, 'modified')
+
+      const isBlankLineChange =
+        (originalLine === undefined || originalLine.trim().length === 0) &&
+        (modifiedLine === undefined || modifiedLine.trim().length === 0)
+      if (isBlankLineChange) {
+        return
+      }
 
       lineBlocks.push({
         type: 'modified',

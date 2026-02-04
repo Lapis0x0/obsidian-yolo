@@ -767,6 +767,8 @@ export const it: TranslationKeys = {
     changesResolved: 'modifiche risolte',
     acceptAllIncoming: 'Accetta tutte in arrivo',
     rejectAll: 'Rifiuta tutte',
+    prevChange: 'Modifica precedente',
+    nextChange: 'Modifica successiva',
     reset: 'Ripristina',
     applyAndClose: 'Applica e chiudi',
     acceptIncoming: 'Accetta in arrivo',

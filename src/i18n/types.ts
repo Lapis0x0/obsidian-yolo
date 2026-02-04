@@ -650,6 +650,8 @@ export type TranslationKeys = {
     changesResolved?: string
     acceptAllIncoming?: string
     rejectAll?: string
+    prevChange?: string
+    nextChange?: string
     reset?: string
     applyAndClose?: string
     acceptIncoming?: string

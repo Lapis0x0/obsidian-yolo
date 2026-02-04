@@ -703,6 +703,8 @@ export const zh: TranslationKeys = {
     changesResolved: '处更改已处理',
     acceptAllIncoming: '接受所有更改',
     rejectAll: '拒绝所有',
+    prevChange: '上一处更改',
+    nextChange: '下一处更改',
     reset: '重置',
     applyAndClose: '应用并关闭',
     acceptIncoming: '接受更改',

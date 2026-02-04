@@ -750,6 +750,8 @@ export const en: TranslationKeys = {
     changesResolved: 'Changes resolved',
     acceptAllIncoming: 'Accept all incoming',
     rejectAll: 'Reject all',
+    prevChange: 'Previous change',
+    nextChange: 'Next change',
     reset: 'Reset',
     applyAndClose: 'Apply & close',
     acceptIncoming: 'Accept incoming',
