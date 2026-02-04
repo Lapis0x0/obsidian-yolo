@@ -20,7 +20,7 @@ import {
 } from '../../utils/chat/diff'
 
 // Decision type for each diff block
-type BlockDecision = 'pending' | 'incoming' | 'current' | 'both'
+type BlockDecision = 'pending' | 'incoming' | 'current'
 
 export default function ApplyViewRoot({
   state,
@@ -38,7 +38,10 @@ export default function ApplyViewRoot({
   const { t } = useLanguage()
 
   const diff = useMemo(
-    () => createDiffBlocks(state.originalContent, state.newContent),
+    () =>
+      splitDiffBlocksByLine(
+        createDiffBlocks(state.originalContent, state.newContent),
+      ),
     [state.newContent, state.originalContent],
   )
 
@@ -74,22 +77,23 @@ export default function ApplyViewRoot({
       return diff
         .map((block, index) => {
           if (block.type === 'unchanged') return block.value
-          const original = block.originalValue ?? ''
-          const incoming = block.modifiedValue ?? ''
+          const original = block.originalValue
+          const incoming = block.modifiedValue
           const decision = decisions.get(index) ?? defaultDecision
+          const resolveIncoming = () =>
+            incoming !== undefined ? incoming : (original ?? '')
+          const resolveCurrent = () => original ?? ''
 
           switch (decision) {
             case 'incoming':
-              return incoming || original
+              return resolveIncoming()
             case 'current':
             case 'pending':
               return decision === 'pending' && defaultDecision === 'incoming'
-                ? incoming || original
-                : original
-            case 'both':
-              return [original, incoming].filter(Boolean).join('\n')
+                ? resolveIncoming()
+                : resolveCurrent()
             default:
-              return original
+              return resolveCurrent()
           }
         })
         .join('\n')
@@ -143,13 +147,6 @@ export default function ApplyViewRoot({
   const acceptCurrentBlock = useCallback(
     (index: number) => {
       makeDecision(index, 'current')
-    },
-    [makeDecision],
-  )
-
-  const acceptBothBlocks = useCallback(
-    (index: number) => {
-      makeDecision(index, 'both')
     },
     [makeDecision],
   )
@@ -250,7 +247,6 @@ export default function ApplyViewRoot({
                       sourcePath={state.file.path}
                       onAcceptIncoming={() => acceptIncomingBlock(index)}
                       onAcceptCurrent={() => acceptCurrentBlock(index)}
-                      onAcceptBoth={() => acceptBothBlocks(index)}
                       onUndo={() => undoDecision(index)}
                       t={t}
                       pluginComponent={plugin}
@@ -325,7 +321,6 @@ const DiffBlockView = forwardRef<
     sourcePath: string
     onAcceptIncoming: () => void
     onAcceptCurrent: () => void
-    onAcceptBoth: () => void
     onUndo: () => void
     t: (keyPath: string, fallback?: string) => string
     pluginComponent: Component
@@ -338,8 +333,7 @@ const DiffBlockView = forwardRef<
       sourcePath,
       onAcceptIncoming,
       onAcceptCurrent,
-      onAcceptBoth,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Required by parent component interface
+       
       onUndo: _onUndo,
       t,
       pluginComponent,
@@ -381,16 +375,17 @@ const DiffBlockView = forwardRef<
       // Show preview of the decision result
       const getDecisionPreview = () => {
         if (!isDecided) return null
-        const original = part.originalValue ?? ''
-        const incoming = part.modifiedValue ?? ''
+        const original = part.originalValue
+        const incoming = part.modifiedValue
+        const resolveIncoming = () =>
+          incoming !== undefined ? incoming : (original ?? '')
+        const resolveCurrent = () => original ?? ''
 
         switch (decision) {
           case 'incoming':
-            return incoming || original
+            return resolveIncoming()
           case 'current':
-            return original
-          case 'both':
-            return [original, incoming].filter(Boolean).join('\n')
+            return resolveCurrent()
           default:
             return null
         }
@@ -483,22 +478,6 @@ const DiffBlockView = forwardRef<
                                 ×
                               </span>
                             </button>
-                            <button
-                              onClick={onAcceptBoth}
-                              className="smtcmp-apply-action smtcmp-apply-action-both"
-                              title={t('applyView.acceptBoth', 'Accept both')}
-                              aria-label={t(
-                                'applyView.acceptBoth',
-                                'Accept both',
-                              )}
-                            >
-                              <span
-                                className="smtcmp-apply-action-icon smtcmp-apply-action-icon--merge"
-                                aria-hidden="true"
-                              >
-                                ∪
-                              </span>
-                            </button>
                           </div>
                         )}
                       </div>
@@ -546,19 +525,6 @@ const DiffBlockView = forwardRef<
                           aria-hidden="true"
                         >
                           ×
-                        </span>
-                      </button>
-                      <button
-                        onClick={onAcceptBoth}
-                        className="smtcmp-apply-action smtcmp-apply-action-both"
-                        title={t('applyView.acceptBoth', 'Accept both')}
-                        aria-label={t('applyView.acceptBoth', 'Accept both')}
-                      >
-                        <span
-                          className="smtcmp-apply-action-icon smtcmp-apply-action-icon--merge"
-                          aria-hidden="true"
-                        >
-                          ∪
                         </span>
                       </button>
                     </div>
@@ -620,29 +586,14 @@ function splitInlineLinesIntoParagraphs(
 ): ApplyParagraph[] {
   if (lines.length === 0) return []
 
-  const paragraphs: ApplyParagraph[] = []
-  let currentLines: InlineDiffLine[] = []
-
-  const flushCurrent = () => {
-    if (currentLines.length === 0) return
-    paragraphs.push({
-      lines: currentLines,
-      hasChanges: currentLines.some((line) => lineHasChanges(line)),
-      isEmpty: false,
-    })
-    currentLines = []
-  }
-
-  lines.forEach((line) => {
-    if (isInlineLineEmpty(line)) {
-      flushCurrent()
-      paragraphs.push({ lines: [], hasChanges: false, isEmpty: true })
-      return
+  const paragraphs: ApplyParagraph[] = lines.map((line) => {
+    const isEmpty = isInlineLineEmpty(line)
+    return {
+      lines: isEmpty ? [] : [line],
+      hasChanges: lineHasChanges(line),
+      isEmpty,
     }
-    currentLines.push(line)
   })
-
-  flushCurrent()
   const hasAnyChanges = paragraphs.some(
     (paragraph) => !paragraph.isEmpty && paragraph.hasChanges,
   )
@@ -667,6 +618,78 @@ function lineHasChanges(line: InlineDiffLine): boolean {
   return line.tokens.some(
     (token) => token.type === 'add' || token.type === 'del',
   )
+}
+
+function splitDiffBlocksByLine(blocks: DiffBlock[]): DiffBlock[] {
+  const lineBlocks: DiffBlock[] = []
+
+  blocks.forEach((block) => {
+    if (block.type === 'unchanged') {
+      lineBlocks.push(block)
+      return
+    }
+
+    if (block.inlineLines.length === 0) {
+      lineBlocks.push(block)
+      return
+    }
+
+    block.inlineLines.forEach((line) => {
+      if (line.type === 'unchanged') {
+        lineBlocks.push({
+          type: 'unchanged',
+          value: inlineLineToText(line, 'original'),
+        })
+        return
+      }
+
+      const originalLine =
+        line.type === 'added' ? undefined : inlineLineToText(line, 'original')
+      const modifiedLine =
+        line.type === 'removed' ? undefined : inlineLineToText(line, 'modified')
+
+      lineBlocks.push({
+        type: 'modified',
+        originalValue: originalLine,
+        modifiedValue: modifiedLine,
+        inlineLines: [line],
+      })
+    })
+  })
+
+  return mergeAdjacentUnchangedBlocks(lineBlocks)
+}
+
+function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
+  const merged: DiffBlock[] = []
+  blocks.forEach((block) => {
+    const last = merged[merged.length - 1]
+    if (block.type === 'unchanged' && last?.type === 'unchanged') {
+      last.value = `${last.value}\n${block.value}`
+      return
+    }
+    merged.push(block)
+  })
+  return merged
+}
+
+function inlineLineToText(
+  line: InlineDiffLine,
+  variant: 'original' | 'modified',
+): string {
+  return inlineTokensToText(line.tokens, variant)
+}
+
+function inlineTokensToText(
+  tokens: InlineDiffToken[],
+  variant: 'original' | 'modified',
+): string {
+  return tokens
+    .filter((token) =>
+      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
+    )
+    .map((token) => token.text)
+    .join('')
 }
 
 function buildInlineDiffMarkdown(lines: InlineDiffLine[]): string {

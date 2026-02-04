@@ -1971,7 +1971,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 12px color-mix(in srgb, black 35%, transparent);
+    box-shadow: none;
     transition:
       background 0.15s ease,
       color 0.15s ease,
@@ -2140,7 +2140,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 }
 
 #smtcmp-apply-view .smtcmp-apply-inline-markdown p {
-  margin: var(--p-spacing) 0;
+  margin: 2px 0;
 }
 
 #smtcmp-apply-view .smtcmp-inline-diff {
