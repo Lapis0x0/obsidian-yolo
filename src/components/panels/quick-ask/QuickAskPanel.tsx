@@ -21,8 +21,6 @@ import { Component, Editor, MarkdownRenderer, Notice } from 'obsidian'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
-import { ApplyViewState } from '../../../ApplyView'
-import { APPLY_VIEW_TYPE } from '../../../constants'
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useMcp } from '../../../contexts/mcp-context'
@@ -31,6 +29,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
+import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
 import { ChatMessage, ChatUserMessage } from '../../../types/chat'
 import { Mentionable, SerializedMentionable } from '../../../types/mentionable'
@@ -844,16 +843,12 @@ export function QuickAskPanel({
           console.warn('Some replacements failed:', errors)
         }
 
-        // Open ApplyView
-        await app.workspace.getLeaf(true).setViewState({
-          type: APPLY_VIEW_TYPE,
-          active: true,
-          state: {
-            file: activeFile,
-            originalContent: currentContent,
-            newContent,
-          } satisfies ApplyViewState,
-        })
+        // Open Apply Review
+        await plugin.openApplyReview({
+          file: activeFile,
+          originalContent: currentContent,
+          newContent,
+        } satisfies ApplyViewState)
 
         // Close Quick Ask
         onClose()

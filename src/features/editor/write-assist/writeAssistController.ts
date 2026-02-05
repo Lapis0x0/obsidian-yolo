@@ -1,11 +1,10 @@
 import type { EditorView } from '@codemirror/view'
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 
-import type { ApplyViewState } from '../../../ApplyView'
-import { APPLY_VIEW_TYPE } from '../../../constants'
 import { getChatModelClient } from '../../../core/llm/manager'
 import type { RAGEngine } from '../../../core/rag/ragEngine'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
+import type { ApplyViewState } from '../../../types/apply-view.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'
 import type {
@@ -57,6 +56,7 @@ type WriteAssistDeps = {
     fromOffset: number
     startPos: ReturnType<Editor['getCursor']>
   }) => void
+  openApplyReview: (state: ApplyViewState) => Promise<void>
 }
 
 const FIRST_TOKEN_TIMEOUT_MS = 12000
@@ -200,15 +200,11 @@ export class WriteAssistController {
       const tail = originalContent.slice(head.length + selected.length)
       const newContent = head + rewritten + tail
 
-      await this.deps.app.workspace.getLeaf(true).setViewState({
-        type: APPLY_VIEW_TYPE,
-        active: true,
-        state: {
-          file: activeFile,
-          originalContent,
-          newContent,
-        } satisfies ApplyViewState,
-      })
+      await this.deps.openApplyReview({
+        file: activeFile,
+        originalContent,
+        newContent,
+      } satisfies ApplyViewState)
 
       notice.setMessage('改写结果已生成。')
       this.deps.registerTimeout(() => notice.hide(), 1200)

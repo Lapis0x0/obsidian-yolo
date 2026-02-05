@@ -11,11 +11,10 @@ import {
 } from 'obsidian'
 import { getLanguage } from 'obsidian'
 
-import { ApplyView } from './ApplyView'
 import { ChatView } from './ChatView'
 import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
-import { APPLY_VIEW_TYPE, CHAT_VIEW_TYPE } from './constants'
+import { CHAT_VIEW_TYPE } from './constants'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
@@ -25,6 +24,7 @@ import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
+import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
@@ -42,6 +42,7 @@ import {
 } from './settings/schema/setting.types'
 import { parseSmartComposerSettings } from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
+import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type { Mentionable } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
@@ -59,6 +60,7 @@ export default class SmartComposerPlugin extends Plugin {
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
+  private diffReviewController: DiffReviewController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
   // Selection chat state
@@ -482,6 +484,46 @@ export default class SmartComposerPlugin extends Plugin {
     return this.inlineSuggestionController
   }
 
+  private getDiffReviewController(): DiffReviewController {
+    if (!this.diffReviewController) {
+      this.diffReviewController = new DiffReviewController({
+        plugin: this,
+        getActiveMarkdownView: () =>
+          this.app.workspace.getActiveViewOfType(MarkdownView),
+        getEditorView: (editor) => this.getEditorView(editor),
+      })
+    }
+    return this.diffReviewController
+  }
+
+  async openApplyReview(state: ApplyViewState): Promise<void> {
+    const opened = this.getDiffReviewController().openReview(state)
+    if (opened) return
+
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
+    const targetLeaf = markdownLeaves.find((leaf) => {
+      const view = leaf.view
+      if (!(view instanceof MarkdownView)) return false
+      return view.file?.path === state.file.path
+    })
+
+    if (targetLeaf?.view instanceof MarkdownView) {
+      this.app.workspace.setActiveLeaf(targetLeaf, { focus: true })
+      const openedInTarget = this.getDiffReviewController().openReviewInView(
+        targetLeaf.view,
+        state,
+      )
+      if (openedInTarget) return
+    }
+
+    const leaf = this.app.workspace.getLeaf(false)
+    await leaf?.openFile(state.file, { active: true })
+    const openedAfterFocus = this.getDiffReviewController().openReview(state)
+    if (openedAfterFocus) return
+
+    new Notice('请先打开目标文件后再应用修改。')
+  }
+
   private getWriteAssistController(): WriteAssistController {
     if (!this.writeAssistController) {
       this.writeAssistController = new WriteAssistController({
@@ -517,6 +559,7 @@ export default class SmartComposerPlugin extends Plugin {
           this.getInlineSuggestionController().setContinuationSuggestion(
             params,
           ),
+        openApplyReview: (state) => this.openApplyReview(state),
       })
     }
     return this.writeAssistController
@@ -556,7 +599,6 @@ export default class SmartComposerPlugin extends Plugin {
     await this.loadSettings()
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
-    this.registerView(APPLY_VIEW_TYPE, (leaf) => new ApplyView(leaf, this))
 
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
@@ -822,6 +864,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null
+    this.diffReviewController?.destroy()
+    this.diffReviewController = null
     this.writeAssistController = null
 
     // clear all timers

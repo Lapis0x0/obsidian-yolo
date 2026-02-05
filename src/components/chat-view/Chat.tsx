@@ -12,11 +12,10 @@ import {
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
-import { ApplyViewState } from '../../ApplyView'
-import { APPLY_VIEW_TYPE } from '../../constants'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
@@ -26,6 +25,7 @@ import {
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
 import { useChatHistory } from '../../hooks/useChatHistory'
+import type { ApplyViewState } from '../../types/apply-view.types'
 import {
   AssistantToolMessageGroup,
   ChatMessage,
@@ -117,6 +117,7 @@ export type ChatProps = {
 
 const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const app = useApp()
+  const plugin = usePlugin()
   const { settings } = useSettings()
   const { t } = useLanguage()
   const { getRAGEngine } = useRAG()
@@ -592,15 +593,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         throw new Error('Failed to apply changes')
       }
 
-      await app.workspace.getLeaf(true).setViewState({
-        type: APPLY_VIEW_TYPE,
-        active: true,
-        state: {
-          file: activeFile,
-          originalContent: activeFileContent,
-          newContent: updatedFileContent,
-        } satisfies ApplyViewState,
-      })
+      await plugin.openApplyReview({
+        file: activeFile,
+        originalContent: activeFileContent,
+        newContent: updatedFileContent,
+      } satisfies ApplyViewState)
     },
     onError: (error) => {
       if (

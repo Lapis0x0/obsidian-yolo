@@ -1783,7 +1783,30 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   padding: var(--size-4-3);
 }
 
-#smtcmp-apply-view {
+.smtcmp-apply-overlay-host {
+  position: relative;
+}
+
+.smtcmp-apply-overlay-root {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.smtcmp-apply-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  background: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -2173,7 +2196,8 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   }
 }
 
-#smtcmp-apply-view .smtcmp-apply-markdown.markdown-rendered {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root)
+  .smtcmp-apply-markdown.markdown-rendered {
   --render-scale: 1;
   color: var(--text-normal);
   font-family: var(--font-text, var(--font-interface));
@@ -2182,43 +2206,45 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
   pointer-events: auto;
 }
 
-#smtcmp-apply-view .smtcmp-diff-block-content {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-diff-block-content {
   max-width: var(--file-line-width);
   margin-left: auto;
   margin-right: auto;
 }
 
-#smtcmp-apply-view .smtcmp-inline-title {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-title {
   text-align: left;
   max-width: var(--file-line-width);
   margin-left: auto;
   margin-right: auto;
 }
 
-#smtcmp-apply-view .inline-title {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .inline-title {
   text-align: left;
 }
 
-#smtcmp-apply-view .smtcmp-apply-markdown h1,
-#smtcmp-apply-view .smtcmp-apply-markdown h2,
-#smtcmp-apply-view .smtcmp-apply-markdown h3,
-#smtcmp-apply-view .smtcmp-apply-markdown h4,
-#smtcmp-apply-view .smtcmp-apply-markdown h5,
-#smtcmp-apply-view .smtcmp-apply-markdown h6 {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-apply-markdown h1,
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-apply-markdown h2,
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-apply-markdown h3,
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-apply-markdown h4,
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-apply-markdown h5,
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-apply-markdown h6 {
   color: inherit;
 }
 
-#smtcmp-apply-view .smtcmp-apply-inline-markdown p {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root)
+  .smtcmp-apply-inline-markdown
+  p {
   margin: 2px 0;
 }
 
-#smtcmp-apply-view .smtcmp-inline-diff {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-diff {
   padding: 0 1px;
   border-radius: 2px;
   text-decoration-skip-ink: none;
 }
 
-#smtcmp-apply-view .smtcmp-inline-diff-del {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-diff-del {
   color: var(--smtcmp-inline-del-color);
   text-decoration: line-through;
   text-decoration-thickness: 1px;
@@ -2231,7 +2257,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
     color-mix(in srgb, var(--smtcmp-inline-del-color) 55%, transparent);
 }
 
-#smtcmp-apply-view .smtcmp-inline-diff-add {
+:is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-diff-add {
   color: var(--smtcmp-inline-add-color);
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
   border-bottom: 1px solid

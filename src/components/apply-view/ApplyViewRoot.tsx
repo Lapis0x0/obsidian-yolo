@@ -8,10 +8,10 @@ import {
   useState,
 } from 'react'
 
-import { ApplyViewState } from '../../ApplyView'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
+import type { ApplyViewState } from '../../types/apply-view.types'
 import {
   DiffBlock,
   InlineDiffLine,
@@ -22,12 +22,27 @@ import {
 // Decision type for each diff block
 type BlockDecision = 'pending' | 'incoming' | 'current'
 
+export type ApplyViewActions = {
+  goToPreviousDiff: () => void
+  goToNextDiff: () => void
+  acceptIncomingActive: () => void
+  acceptCurrentActive: () => void
+  undoActive: () => void
+  close: () => void
+}
+
 export default function ApplyViewRoot({
   state,
   close,
+  onActionsReady,
+  useRootId = true,
+  showHeader = true,
 }: {
   state: ApplyViewState
   close: () => void
+  onActionsReady?: (actions: ApplyViewActions | null) => void
+  useRootId?: boolean
+  showHeader?: boolean
 }) {
   const [currentDiffIndex, setCurrentDiffIndex] = useState(0)
   const diffBlockRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -318,6 +333,42 @@ export default function ApplyViewRoot({
     scrollToDiffIndex(nextIndex)
   }, [currentDiffIndex, modifiedBlockIndices.length, scrollToDiffIndex])
 
+  const acceptIncomingActive = useCallback(() => {
+    if (activeBlockIndex === Number.POSITIVE_INFINITY) return
+    acceptIncomingBlock(activeBlockIndex)
+  }, [acceptIncomingBlock, activeBlockIndex])
+
+  const acceptCurrentActive = useCallback(() => {
+    if (activeBlockIndex === Number.POSITIVE_INFINITY) return
+    acceptCurrentBlock(activeBlockIndex)
+  }, [acceptCurrentBlock, activeBlockIndex])
+
+  const undoActive = useCallback(() => {
+    if (activeBlockIndex === Number.POSITIVE_INFINITY) return
+    undoDecision(activeBlockIndex)
+  }, [activeBlockIndex, undoDecision])
+
+  useEffect(() => {
+    if (!onActionsReady) return
+    onActionsReady({
+      goToPreviousDiff,
+      goToNextDiff,
+      acceptIncomingActive,
+      acceptCurrentActive,
+      undoActive,
+      close,
+    })
+    return () => onActionsReady(null)
+  }, [
+    acceptCurrentActive,
+    acceptIncomingActive,
+    close,
+    goToNextDiff,
+    goToPreviousDiff,
+    onActionsReady,
+    undoActive,
+  ])
+
   useEffect(() => {
     if (modifiedBlockIndices.length === 0) {
       setCurrentDiffIndex(0)
@@ -406,14 +457,19 @@ export default function ApplyViewRoot({
   }, [updateCurrentDiffFromScroll])
 
   return (
-    <div id="smtcmp-apply-view">
-      <div className="view-header">
-        <div className="view-header-title-container mod-at-start">
-          <div className="view-header-title">
-            {t('applyView.applying', 'Applying')}: {state?.file?.name ?? ''}
+    <div
+      id={useRootId ? 'smtcmp-apply-view' : undefined}
+      className="smtcmp-apply-view-root"
+    >
+      {showHeader && (
+        <div className="view-header">
+          <div className="view-header-title-container mod-at-start">
+            <div className="view-header-title">
+              {t('applyView.applying', 'Applying')}: {state?.file?.name ?? ''}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="view-content">
         <div className="markdown-source-view cm-s-obsidian mod-cm6 node-insert-event is-readable-line-width is-live-preview is-folding show-properties">
