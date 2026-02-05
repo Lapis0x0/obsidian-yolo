@@ -304,7 +304,7 @@ export const zh: TranslationKeys = {
       fetchModelsFailed: '获取模型失败',
       embeddingModelsFirst: '嵌入模型优先显示',
       reasoningType: '模型类型',
-      reasoningTypeNone: '无特殊配置',
+      reasoningTypeNone: '非推理模型/默认',
       reasoningTypeOpenAI: 'OpenAI 推理（o3 / o4-mini / GPT-5）',
       reasoningTypeGemini: 'Gemini 推理（3 Pro / Flash / Flash-Lite）',
       reasoningTypeAnthropic: 'Claude 扩展思考（Extended thinking）',

@@ -344,7 +344,7 @@ export const it: TranslationKeys = {
       fetchModelsFailed: 'Impossibile recuperare i modelli',
       embeddingModelsFirst: 'Modelli embedding (prima)',
       reasoningType: 'Tipo di ragionamento',
-      reasoningTypeNone: 'Nessuno',
+      reasoningTypeNone: 'Modello non ragionante / predefinito',
       reasoningTypeOpenAI: 'OpenAI',
       reasoningTypeGemini: 'Gemini',
       reasoningTypeAnthropic: 'Claude Extended Thinking',

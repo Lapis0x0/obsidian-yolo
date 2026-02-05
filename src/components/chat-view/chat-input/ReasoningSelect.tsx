@@ -149,8 +149,8 @@ const resolveReasoningModelType = (
   model: ChatModel | null,
 ): ReasoningModelType | null => {
   if (!model) return null
-  if (model.reasoningType && model.reasoningType !== 'none') {
-    return model.reasoningType
+  if (model.reasoningType) {
+    return model.reasoningType === 'none' ? null : model.reasoningType
   }
   const detected = detectReasoningTypeFromModelId(model.model)
   if (detected === 'openai') return 'openai'

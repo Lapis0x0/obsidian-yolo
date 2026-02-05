@@ -336,7 +336,7 @@ export const en: TranslationKeys = {
       fetchModelsFailed: 'Failed to fetch models',
       embeddingModelsFirst: 'Embedding models are listed first',
       reasoningType: 'Model type',
-      reasoningTypeNone: 'No special configuration',
+      reasoningTypeNone: 'Non-reasoning model / default',
       reasoningTypeOpenAI: 'OpenAI reasoning (o3 / o4-mini / gpt-5)',
       reasoningTypeGemini: 'Gemini reasoning (3 pro / flash / flash-lite)',
       reasoningTypeAnthropic: 'Claude extended thinking',

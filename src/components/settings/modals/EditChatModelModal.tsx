@@ -204,7 +204,7 @@ function EditChatModelModalComponent({
           delete updatedModel.reasoning
           delete updatedModel.thinking
           delete updatedModel.isBaseModel
-          delete updatedModel.reasoningType
+          updatedModel.reasoningType = 'none'
         }
 
         // Apply tool type

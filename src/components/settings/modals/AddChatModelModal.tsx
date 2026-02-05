@@ -357,7 +357,7 @@ function AddChatModelModalComponent({
       ) as ChatModel
       modelDataWithPrefix = {
         ...withoutBaseFlag,
-        reasoningType: reasoningType === 'none' ? undefined : reasoningType,
+        reasoningType: reasoningType === 'none' ? 'none' : reasoningType,
       }
 
       if (
