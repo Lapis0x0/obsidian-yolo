@@ -1,17 +1,24 @@
 import { SerializedEditorState, SerializedLexicalNode } from 'lexical'
 
 export function editorStateToPlainText(
-  editorState: SerializedEditorState,
+  editorState: SerializedEditorState | null | undefined,
 ): string {
-  return lexicalNodeToPlainText(editorState.root)
+  if (!editorState || typeof editorState !== 'object') return ''
+  const root = editorState.root
+  if (!root || typeof root !== 'object') return ''
+  return lexicalNodeToPlainText(root as SerializedLexicalNode)
 }
 
-function lexicalNodeToPlainText(node: SerializedLexicalNode): string {
+function lexicalNodeToPlainText(
+  node: SerializedLexicalNode | null | undefined,
+): string {
+  if (!node || typeof node !== 'object') return ''
   if ('children' in node) {
     // Process children recursively and join their results
-    return (node.children as SerializedLexicalNode[])
-      .map(lexicalNodeToPlainText)
-      .join('')
+    const children = (node as { children?: SerializedLexicalNode[] | null })
+      .children
+    if (!Array.isArray(children)) return ''
+    return children.map(lexicalNodeToPlainText).join('')
   } else if (node.type === 'linebreak') {
     return '\n'
   } else if ('text' in node && typeof node.text === 'string') {

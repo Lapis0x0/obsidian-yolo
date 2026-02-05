@@ -56,7 +56,12 @@ export const deserializeMentionable = (
   try {
     switch (mentionable.type) {
       case 'file': {
-        const file = app.vault.getFileByPath(mentionable.file)
+        const filePath =
+          typeof mentionable.file === 'string' ? mentionable.file : null
+        if (!filePath) {
+          return null
+        }
+        const file = app.vault.getFileByPath(filePath)
         if (!file) {
           return null
         }
@@ -66,7 +71,12 @@ export const deserializeMentionable = (
         }
       }
       case 'folder': {
-        const folder = app.vault.getFolderByPath(mentionable.folder)
+        const folderPath =
+          typeof mentionable.folder === 'string' ? mentionable.folder : null
+        if (!folderPath) {
+          return null
+        }
+        const folder = app.vault.getFolderByPath(folderPath)
         if (!folder) {
           return null
         }
@@ -80,7 +90,7 @@ export const deserializeMentionable = (
           type: 'vault',
         }
       case 'current-file': {
-        if (!mentionable.file) {
+        if (!mentionable.file || typeof mentionable.file !== 'string') {
           return {
             type: 'current-file',
             file: null,
@@ -93,7 +103,12 @@ export const deserializeMentionable = (
         }
       }
       case 'block': {
-        const file = app.vault.getFileByPath(mentionable.file)
+        const filePath =
+          typeof mentionable.file === 'string' ? mentionable.file : null
+        if (!filePath) {
+          return null
+        }
+        const file = app.vault.getFileByPath(filePath)
         if (!file) {
           return null
         }

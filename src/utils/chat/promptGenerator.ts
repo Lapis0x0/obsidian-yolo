@@ -1,4 +1,4 @@
-import { App, TFile, htmlToMarkdown, requestUrl } from 'obsidian'
+import { App, TFile, TFolder, htmlToMarkdown, requestUrl } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import { QueryProgressState } from '../../components/chat-view/QueryProgress'
@@ -23,11 +23,7 @@ import {
 } from '../../types/mentionable'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { tokenCount } from '../llm/token'
-import {
-  getNestedFiles,
-  readMultipleTFiles,
-  readTFileContent,
-} from '../obsidian'
+import { getNestedFiles, readTFileContent } from '../obsidian'
 
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 
@@ -313,15 +309,36 @@ ${message.annotations
       })
       const files = message.mentionables
         .filter((m): m is MentionableFile => m.type === 'file')
-        .map((m) => m.file)
+        .map((m) => this.app.vault.getFileByPath(m.file.path))
+        .filter((file): file is TFile => Boolean(file))
       const folders = message.mentionables
         .filter((m): m is MentionableFolder => m.type === 'folder')
-        .map((m) => m.folder)
+        .map((m) => this.app.vault.getFolderByPath(m.folder.path))
+        .filter((folder): folder is TFolder => Boolean(folder))
       const nestedFiles = folders.flatMap((folder) =>
         getNestedFiles(folder, this.app.vault),
       )
       const allFiles = [...files, ...nestedFiles]
-      const fileContents = await readMultipleTFiles(allFiles, this.app.vault)
+      const fileEntries = await Promise.all(
+        allFiles.map(async (file) => {
+          try {
+            const content = await readTFileContent(file, this.app.vault)
+            return { file, content }
+          } catch (error) {
+            console.warn(
+              '[Smart Composer] Failed to read mentioned file',
+              file.path,
+              error,
+            )
+            return null
+          }
+        }),
+      )
+      const readableFileEntries = fileEntries.filter(
+        (entry): entry is { file: TFile; content: string } => entry !== null,
+      )
+      const readableFiles = readableFileEntries.map((entry) => entry.file)
+      const fileContents = readableFileEntries.map((entry) => entry.content)
 
       // Count tokens incrementally to avoid long processing times on large content sets
       const exceedsTokenThreshold = async () => {
@@ -368,7 +385,7 @@ ${similaritySearchResults
   })
   .join('')}\n`
       } else {
-        filePrompt = allFiles
+        filePrompt = readableFiles
           .map((file, index) => {
             return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`
           })
