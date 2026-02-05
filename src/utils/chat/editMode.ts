@@ -91,6 +91,13 @@ export async function generateEditContent({
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
 }): Promise<string> {
+  const hasEditBlockMarkers = (text: string): boolean => {
+    if (!text) return false
+    const startPattern = /<<<<<<<\s+(CONTINUE|SEARCH|INSERT AFTER)/i
+    const endPattern = />>>>>>>\s+(CONTINUE|REPLACE|INSERT)/i
+    return startPattern.test(text) && endPattern.test(text)
+  }
+
   const isBaseModel = Boolean(model.isBaseModel)
   const requestMessages: RequestMessage[] = []
 
@@ -118,7 +125,15 @@ export async function generateEditContent({
     stream: false,
   })
 
-  return response.choices[0].message.content ?? ''
+  const content = response.choices[0]?.message?.content ?? ''
+  if (content.trim().length > 0) {
+    return content
+  }
+  const reasoning = response.choices[0]?.message?.reasoning ?? ''
+  if (hasEditBlockMarkers(reasoning)) {
+    return reasoning
+  }
+  return content
 }
 
 /**
