@@ -561,13 +561,15 @@ export class WriteAssistController {
         useVaultSearch,
       })
 
-      let insertStart = hasSelection
+      const insertStart = hasSelection
         ? editor.offsetToPos(selectionEndOffset)
         : currentCursor
       if (hasSelection) {
         editor.setCursor(insertStart)
       }
-      const startOffset = hasSelection ? selectionEndOffset : selectionHeadOffset
+      const startOffset = hasSelection
+        ? selectionEndOffset
+        : selectionHeadOffset
       let suggestionText = ''
       let hasHiddenThinkingIndicator = false
       const nonNullView = view
