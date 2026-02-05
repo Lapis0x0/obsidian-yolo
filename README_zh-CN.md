@@ -18,6 +18,12 @@
   <img src="https://img.shields.io/badge/🎉_现已上架_Obsidian_社区插件商店-6c5ce7?style=for-the-badge" alt="Now Available on Obsidian" height="35">
 </p>
 
+<p align="center">
+  <a href="https://kilo.ai" target="_blank">
+    <img src="https://img.shields.io/badge/赞助商-Kilo_Code-FF6B6B?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMiAyMkgyMkwxMiAyWiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+" alt="Sponsored by Kilo Code" height="35">
+  </a>
+</p>
+
 > [!NOTE]
 > **可能是目前最灵活、易用、智能的 Obsidian AI 助手？**  
 
@@ -128,6 +134,8 @@ https://github.com/user-attachments/assets/d19b17c8-92ac-408d-8e98-4403d5341540
 ## 致敬
 
 感谢原本的 [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer) 团队，没有他们就没有 YOLO。
+
+特别感谢 [Kilo Code](https://kilo.ai) 的赞助支持。Kilo 是一个开源的 AI 编程助手平台，支持 500+ AI 模型，帮助开发者在 VS Code、JetBrains、CLI 等环境中更快地构建、发布和迭代。
 
 ## 许可证
 

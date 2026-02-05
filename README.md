@@ -16,6 +16,12 @@
   <img src="https://img.shields.io/badge/🎉_Now_Available_on_Obsidian_Community_Plugins-6c5ce7?style=for-the-badge" alt="Now Available on Obsidian" height="35">
 </p>
 
+<p align="center">
+  <a href="https://kilo.ai" target="_blank">
+    <img src="https://img.shields.io/badge/Sponsored_by-Kilo_Code-FF6B6B?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMiAyMkgyMkwxMiAyWiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+" alt="Sponsored by Kilo Code" height="35">
+  </a>
+</p>
+
 > [!NOTE]
 > **Possibly the most flexible, easy to use, and intelligent Obsidian AI assistant?**  
 
@@ -135,6 +141,8 @@ If you're interested in contributing, please refer to our [CONTRIBUTING.md](CONT
 ## Acknowledgments
 
 Thanks to the original [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer) team, without them there would be no YOLO.
+
+Special thanks to [Kilo Code](https://kilo.ai) for their sponsorship support. Kilo is an open-source agentic engineering platform that helps developers build, ship, and iterate faster with 500+ AI models across VS Code, JetBrains, CLI, and more.
 
 ## License
 
