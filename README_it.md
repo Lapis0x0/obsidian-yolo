@@ -5,14 +5,6 @@
 </p>
 
 <p align="center">
-  <a href="./DOC/DOC_en/01-basic-introduction.md">Documentazione</a>
-  ·
-  <a href="https://github.com/Lapis0x0/obsidian-yolo/issues">Segnala Bug</a>
-  ·
-  <a href="https://github.com/Lapis0x0/obsidian-yolo/discussions">Discussioni</a>
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/🎉_Ora_Disponibile_su_Obsidian_Community_Plugins-6c5ce7?style=for-the-badge" alt="Now Available on Obsidian" height="35">
 </p>
 
