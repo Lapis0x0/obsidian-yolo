@@ -411,6 +411,9 @@ export const smartComposerSettingsSchema = z.object({
 
   // Currently selected assistant ID
   currentAssistantId: z.string().optional(),
+
+  // Quick Ask selected assistant ID
+  quickAskAssistantId: z.string().optional(),
 })
 export type SmartComposerSettings = z.infer<typeof smartComposerSettingsSchema>
 

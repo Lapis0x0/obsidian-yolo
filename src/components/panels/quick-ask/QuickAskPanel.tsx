@@ -180,7 +180,7 @@ export function QuickAskPanel({
     useChatHistory()
 
   const assistants = settings.assistants || []
-  const currentAssistantId = settings.currentAssistantId
+  const currentAssistantId = settings.quickAskAssistantId
 
   // State
   const [selectedAssistant, setSelectedAssistant] = useState<Assistant | null>(
@@ -1485,7 +1485,7 @@ export function QuickAskPanel({
                   setSelectedAssistant(assistant)
                   void setSettings({
                     ...settings,
-                    currentAssistantId: assistant?.id,
+                    quickAskAssistantId: assistant?.id,
                   })
                   setIsAssistantMenuOpen(false)
                   requestAnimationFrame(() => {

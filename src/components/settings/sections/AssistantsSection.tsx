@@ -201,10 +201,17 @@ export const AssistantsSectionContent: FC<AssistantsSectionProps> = ({
               updatedAssistants.length > 0 ? updatedAssistants[0].id : undefined
           }
 
+          let newQuickAskAssistantId = settings.quickAskAssistantId
+          if (id === settings.quickAskAssistantId) {
+            newQuickAskAssistantId =
+              updatedAssistants.length > 0 ? updatedAssistants[0].id : undefined
+          }
+
           await setSettings({
             ...settings,
             assistants: updatedAssistants,
             currentAssistantId: newCurrentAssistantId,
+            quickAskAssistantId: newQuickAskAssistantId,
           })
         } catch (error: unknown) {
           console.error('Failed to delete assistant', error)
