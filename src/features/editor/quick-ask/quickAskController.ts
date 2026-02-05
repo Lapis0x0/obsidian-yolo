@@ -18,6 +18,9 @@ type QuickAskWidgetPayload = {
     fileTitle: string
     initialPrompt?: string
     initialMentionables?: Mentionable[]
+    initialMode?: 'ask' | 'edit' | 'edit-direct'
+    initialInput?: string
+    editContextText?: string
     autoSend?: boolean
     onClose: () => void
   }
@@ -41,6 +44,9 @@ type QuickAskControllerDeps = {
 type QuickAskShowOptions = {
   initialPrompt?: string
   initialMentionables?: Mentionable[]
+  initialMode?: 'ask' | 'edit' | 'edit-direct'
+  initialInput?: string
+  editContextText?: string
   autoSend?: boolean
 }
 
@@ -135,7 +141,7 @@ export class QuickAskController {
     })
   }
 
-  private showWithOptions(
+  showWithOptions(
     editor: Editor,
     view: EditorView,
     options?: QuickAskShowOptions,
@@ -167,6 +173,9 @@ export class QuickAskController {
     const fileTitle = this.deps.getActiveFileTitle()
     const initialPrompt = options?.initialPrompt
     const initialMentionables = options?.initialMentionables
+    const initialMode = options?.initialMode
+    const initialInput = options?.initialInput
+    const editContextText = options?.editContextText
     const autoSend = options?.autoSend
 
     // Close any existing Quick Ask panel
@@ -203,6 +212,9 @@ export class QuickAskController {
             fileTitle,
             initialPrompt,
             initialMentionables,
+            initialMode,
+            initialInput,
+            editContextText,
             autoSend,
             onClose: () => close(true),
           },

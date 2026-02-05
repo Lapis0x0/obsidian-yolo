@@ -11,10 +11,14 @@ import { ReactFloatingPanel } from '../common/ReactFloatingPanel'
 
 export type CustomRewritePanelProps = {
   editor: Editor
+  selectedText?: string
+  selectionFrom?: { line: number; ch: number }
 }
 
 function CustomRewritePanelBody({
   editor,
+  selectedText,
+  selectionFrom,
   onClose,
 }: CustomRewritePanelProps & { onClose: () => void }) {
   const plugin = usePlugin()
@@ -27,6 +31,8 @@ function CustomRewritePanelBody({
       .customRewrite(
         editor,
         instruction.trim().length > 0 ? instruction : undefined,
+        selectedText,
+        selectionFrom,
       )
       .catch((error) => {
         console.error(
@@ -85,14 +91,18 @@ export class CustomRewritePanel {
     plugin,
     editor,
     position,
+    selectedText,
+    selectionFrom,
   }: {
     plugin: SmartComposerPlugin
     editor: Editor
     position?: { x: number; y: number }
+    selectedText?: string
+    selectionFrom?: { line: number; ch: number }
   }) {
     this.panel = new ReactFloatingPanel<CustomRewritePanelProps>({
       Component: CustomRewritePanelBody,
-      props: { editor },
+      props: { editor, selectedText, selectionFrom },
       plugin,
       options: {
         title: plugin.t('commands.customRewrite'),

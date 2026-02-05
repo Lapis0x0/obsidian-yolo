@@ -204,6 +204,20 @@ export default class SmartComposerPlugin extends Plugin {
     this.getQuickAskController().showWithAutoSend(editor, view, options)
   }
 
+  private showQuickAskWithOptions(
+    editor: Editor,
+    view: EditorView,
+    options: {
+      initialPrompt?: string
+      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialInput?: string
+      editContextText?: string
+      autoSend?: boolean
+    },
+  ) {
+    this.getQuickAskController().showWithOptions(editor, view, options)
+  }
+
   private createQuickAskTriggerExtension(): Extension {
     return this.getQuickAskController().createTriggerExtension()
   }
@@ -217,8 +231,8 @@ export default class SmartComposerPlugin extends Plugin {
         getSettings: () => this.settings,
         t: (key, fallback) => this.t(key, fallback),
         getEditorView: (editor) => this.getEditorView(editor),
-        showSmartSpace: (editor, view, showQuickActions) =>
-          this.showSmartSpace(editor, view, showQuickActions),
+        showQuickAskWithOptions: (editor, view, options) =>
+          this.showQuickAskWithOptions(editor, view, options),
         showQuickAskWithAutoSend: (editor, view, options) =>
           this.showQuickAskWithAutoSend(editor, view, options),
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
@@ -978,8 +992,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   // Public wrapper for use in React panel
-  async customRewrite(editor: Editor, customPrompt?: string) {
-    return this.handleCustomRewrite(editor, customPrompt)
+  async customRewrite(
+    editor: Editor,
+    customPrompt?: string,
+    preSelectedText?: string,
+    preSelectionFrom?: { line: number; ch: number },
+  ) {
+    return this.handleCustomRewrite(
+      editor,
+      customPrompt,
+      preSelectedText,
+      preSelectionFrom,
+    )
   }
 
   private async handleContinueWriting(

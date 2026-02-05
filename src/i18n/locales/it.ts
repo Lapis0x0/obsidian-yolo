@@ -106,6 +106,7 @@ export const it: TranslationKeys = {
   selection: {
     actions: {
       addToChat: 'Aggiungi alla chat',
+      customRewrite: 'Riscrittura personalizzata',
       rewrite: 'AI riscrivi',
       explain: 'Spiega in dettaglio',
       suggest: 'Fornisci suggerimenti',
@@ -216,10 +217,23 @@ export const it: TranslationKeys = {
       actionLabel: 'Etichetta comando',
       actionLabelDesc: 'Testo visualizzato nel comando',
       actionLabelPlaceholder: 'Ad esempio, spiega',
+      actionMode: 'Modalita',
+      actionModeDesc:
+        'Ask apre Quick Ask e invia automaticamente; rewrite apre la modalita di modifica di Quick Ask per generare un anteprima.',
+      actionModeAsk: 'Ask (Quick Ask)',
+      actionModeRewrite: 'Rewrite (anteprima)',
+      actionRewriteType: 'Tipo di riscrittura',
+      actionRewriteTypeDesc: 'Scegli se la riscrittura richiede un prompt',
+      actionRewriteTypeCustom: 'Prompt personalizzato (chiedi ogni volta)',
+      actionRewriteTypePreset: 'Prompt predefinito (esegui subito)',
       actionInstruction: 'Prompt',
       actionInstructionDesc: "Istruzione inviata all'AI",
       actionInstructionPlaceholder:
         'Ad esempio, spiega il contenuto selezionato.',
+      actionInstructionRewriteDesc:
+        'Istruzione di riscrittura (richiesta per il prompt predefinito).',
+      actionInstructionRewritePlaceholder:
+        'Ad esempio: rendilo conciso e mantieni la struttura Markdown.',
       duplicate: 'Duplica',
       copySuffix: '(copia)',
       dragHandleAria: 'Trascina per riordinare',

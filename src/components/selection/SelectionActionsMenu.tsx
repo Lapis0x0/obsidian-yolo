@@ -5,10 +5,15 @@ import { useSettings } from '../../contexts/settings-context'
 
 import type { SelectionInfo } from './SelectionManager'
 
+export type SelectionActionMode = 'ask' | 'rewrite'
+export type SelectionActionRewriteBehavior = 'custom' | 'preset'
+
 export type SelectionAction = {
   id: string
   label: string
   instruction: string
+  mode: SelectionActionMode
+  rewriteBehavior?: SelectionActionRewriteBehavior
   handler: () => void | Promise<void>
 }
 
@@ -17,7 +22,12 @@ type SelectionActionsMenuProps = {
   containerEl: HTMLElement
   indicatorPosition: { left: number; top: number }
   visible: boolean
-  onAction: (actionId: string, instruction: string) => void | Promise<void>
+  onAction: (
+    actionId: string,
+    instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
+  ) => void | Promise<void>
   onHoverChange: (isHovering: boolean) => void
 }
 
@@ -39,19 +49,29 @@ export function SelectionActionsMenu({
   const defaultActions = useMemo(
     () => [
       {
+        id: 'custom-rewrite',
+        label: t('selection.actions.customRewrite', '自定义改写'),
+        instruction: '',
+        mode: 'rewrite' as const,
+        rewriteBehavior: 'custom' as const,
+      },
+      {
         id: 'explain',
         label: t('selection.actions.explain', '深入解释'),
         instruction: t('selection.actions.explain', '深入解释'),
+        mode: 'ask' as const,
       },
       {
         id: 'suggest',
         label: t('selection.actions.suggest', '提供建议'),
         instruction: t('selection.actions.suggest', '提供建议'),
+        mode: 'ask' as const,
       },
       {
         id: 'translate-to-chinese',
         label: t('selection.actions.translateToChinese', '翻译成中文'),
         instruction: t('selection.actions.translateToChinese', '翻译成中文'),
+        mode: 'ask' as const,
       },
     ],
     [t],
@@ -64,14 +84,38 @@ export function SelectionActionsMenu({
         ? customActions.filter((action) => action.enabled)
         : defaultActions
 
-    return resolvedActions.map((action) => {
+    const hasCustomRewrite = resolvedActions.some(
+      (action) => action.id === 'custom-rewrite',
+    )
+    const displayActions = hasCustomRewrite
+      ? resolvedActions
+      : [defaultActions[0], ...resolvedActions]
+
+    return displayActions.map((action) => {
       const label = action.label?.trim() || ''
-      const instruction = action.instruction?.trim() || label
+      const mode: SelectionActionMode =
+        action.mode ??
+        (action.id === 'rewrite' || action.id === 'custom-rewrite'
+          ? 'rewrite'
+          : 'ask')
+      const rewriteBehavior: SelectionActionRewriteBehavior | undefined =
+        mode === 'rewrite'
+          ? (action.rewriteBehavior ??
+            (action.id === 'custom-rewrite' ? 'custom' : 'preset'))
+          : undefined
+      const rawInstruction = action.instruction?.trim() || ''
+      const resolvedInstruction =
+        mode === 'rewrite'
+          ? rawInstruction
+          : rawInstruction || label || action.id
       return {
         id: action.id,
         label: label || action.id,
-        instruction: instruction || label || action.id,
-        handler: () => onAction(action.id, instruction || label || action.id),
+        instruction: resolvedInstruction,
+        mode,
+        rewriteBehavior,
+        handler: () =>
+          onAction(action.id, resolvedInstruction, mode, rewriteBehavior),
       }
     })
   }, [

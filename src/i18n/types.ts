@@ -513,9 +513,19 @@ export type TranslationKeys = {
       actionLabel: string
       actionLabelDesc: string
       actionLabelPlaceholder: string
+      actionMode: string
+      actionModeDesc: string
+      actionModeAsk: string
+      actionModeRewrite: string
+      actionRewriteType: string
+      actionRewriteTypeDesc: string
+      actionRewriteTypeCustom: string
+      actionRewriteTypePreset: string
       actionInstruction: string
       actionInstructionDesc: string
       actionInstructionPlaceholder: string
+      actionInstructionRewriteDesc: string
+      actionInstructionRewritePlaceholder: string
       duplicate: string
       copySuffix?: string
       dragHandleAria?: string
@@ -526,6 +536,7 @@ export type TranslationKeys = {
   selection?: {
     actions?: {
       addToChat?: string
+      customRewrite?: string
       rewrite?: string
       explain?: string
       suggest?: string

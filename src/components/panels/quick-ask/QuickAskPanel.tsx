@@ -74,6 +74,9 @@ type QuickAskPanelProps = {
   fileTitle: string
   initialPrompt?: string
   initialMentionables?: Mentionable[]
+  initialMode?: QuickAskMode
+  initialInput?: string
+  editContextText?: string
   autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
@@ -157,6 +160,9 @@ export function QuickAskPanel({
   fileTitle,
   initialPrompt,
   initialMentionables,
+  initialMode,
+  initialInput,
+  editContextText,
   autoSend,
   onClose,
   containerRef,
@@ -207,7 +213,7 @@ export function QuickAskPanel({
     [t],
   )
   const [mode, setMode] = useState<QuickAskMode>(
-    () => settings.continuationOptions?.quickAskMode ?? 'ask',
+    () => initialMode ?? settings.continuationOptions?.quickAskMode ?? 'ask',
   )
   const assistantDropdownRef = useRef<HTMLDivElement | null>(null)
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -223,6 +229,13 @@ export function QuickAskPanel({
   const userDisabledAutoScrollRef = useRef(false)
   const lastScrollTopRef = useRef(0)
   const autoSendRef = useRef(false)
+  const hasAppliedInitialInputRef = useRef(false)
+
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode)
+    }
+  }, [initialMode])
 
   // Drag & Resize state
   const dragHandleRef = useRef<HTMLDivElement>(null)
@@ -253,6 +266,14 @@ export function QuickAskPanel({
     width: number
     height: number
   } | null>(null)
+  const buildEditInstruction = useCallback(
+    (instruction: string) => {
+      const context = editContextText?.trim()
+      if (!context) return instruction
+      return `${instruction}\n\nOnly modify the selected context below. Do not change other parts.\nSelected context:\n${context}`
+    },
+    [editContextText],
+  )
   const renderAssistantBlocks = useCallback(
     (
       rawContent: string | undefined | null,
@@ -727,67 +748,41 @@ export function QuickAskPanel({
   )
 
   useEffect(() => {
-    if (!autoSend || autoSendRef.current) return
-    const prompt = initialPrompt?.trim()
-    if (!prompt) return
+    if (!initialInput || hasAppliedInitialInputRef.current) return
 
     let cancelled = false
-    const tryAutoSend = () => {
-      if (cancelled || autoSendRef.current) return
+    const applyInitialInput = () => {
+      if (cancelled || hasAppliedInitialInputRef.current) return
       const editor = lexicalEditorRef.current
       if (!editor) {
-        requestAnimationFrame(tryAutoSend)
+        requestAnimationFrame(applyInitialInput)
         return
       }
 
-      autoSendRef.current = true
-      const mentionablesToInsert = initialMentionables ?? []
-      if (mentionablesToInsert.length > 0) {
-        setMentionables(mentionablesToInsert)
-      }
-
+      hasAppliedInitialInputRef.current = true
       editor.update(() => {
         const root = $getRoot()
         root.clear()
         const paragraph = $createParagraphNode()
         root.append(paragraph)
-
-        mentionablesToInsert.forEach((mentionable) => {
-          const mentionNode = $createMentionNode(
-            getMentionableName(mentionable, {
-              unitLabel: mentionableUnitLabel,
-            }),
-            serializeMentionable(mentionable),
-          )
-          paragraph.append(mentionNode)
-          paragraph.append($createTextNode(' '))
-        })
-
-        paragraph.append($createTextNode(prompt))
+        paragraph.append($createTextNode(initialInput))
         paragraph.selectEnd()
       })
-
-      const editorState = createPlainTextEditorState(prompt)
-      void submitMessage(editorState, mentionablesToInsert)
+      setInputText(initialInput)
     }
 
-    requestAnimationFrame(tryAutoSend)
+    requestAnimationFrame(applyInitialInput)
     return () => {
       cancelled = true
     }
-  }, [
-    autoSend,
-    initialMentionables,
-    initialPrompt,
-    mentionableUnitLabel,
-    submitMessage,
-  ])
+  }, [initialInput])
 
   // Submit edit mode - generate SEARCH/REPLACE and open ApplyView
   const submitEditMode = useCallback(
     async (instruction: string) => {
       if (isStreaming) return
       if (!instruction.trim()) return
+      const resolvedInstruction = buildEditInstruction(instruction.trim())
 
       const activeFile = app.workspace.getActiveFile()
       if (!activeFile) {
@@ -813,7 +808,7 @@ export function QuickAskPanel({
 
         // Generate SEARCH/REPLACE blocks
         const response = await generateEditContent({
-          instruction,
+          instruction: resolvedInstruction,
           currentFile: activeFile,
           currentFileContent: currentContent,
           providerClient,
@@ -869,7 +864,7 @@ export function QuickAskPanel({
         setIsStreaming(false)
       }
     },
-    [app, isStreaming, model, onClose, providerClient, t],
+    [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
   )
 
   // Submit edit-direct mode - generate and apply edits directly without confirmation
@@ -877,6 +872,7 @@ export function QuickAskPanel({
     async (instruction: string) => {
       if (isStreaming) return
       if (!instruction.trim()) return
+      const resolvedInstruction = buildEditInstruction(instruction.trim())
 
       const activeFile = app.workspace.getActiveFile()
       if (!activeFile) {
@@ -902,7 +898,7 @@ export function QuickAskPanel({
 
         // Generate edit blocks
         const response = await generateEditContent({
-          instruction,
+          instruction: resolvedInstruction,
           currentFile: activeFile,
           currentFileContent: currentContent,
           providerClient,
@@ -965,8 +961,79 @@ export function QuickAskPanel({
         setIsStreaming(false)
       }
     },
-    [app, isStreaming, model, onClose, providerClient, t],
+    [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
   )
+
+  useEffect(() => {
+    if (!autoSend || autoSendRef.current) return
+    const prompt = initialPrompt?.trim()
+    if (!prompt) return
+
+    let cancelled = false
+    const tryAutoSend = () => {
+      if (cancelled || autoSendRef.current) return
+      const editor = lexicalEditorRef.current
+      if (!editor) {
+        requestAnimationFrame(tryAutoSend)
+        return
+      }
+
+      autoSendRef.current = true
+
+      if (mode === 'edit') {
+        void submitEditMode(prompt)
+        return
+      }
+
+      if (mode === 'edit-direct') {
+        void submitEditDirect(prompt)
+        return
+      }
+
+      const mentionablesToInsert = initialMentionables ?? []
+      if (mentionablesToInsert.length > 0) {
+        setMentionables(mentionablesToInsert)
+      }
+
+      editor.update(() => {
+        const root = $getRoot()
+        root.clear()
+        const paragraph = $createParagraphNode()
+        root.append(paragraph)
+
+        mentionablesToInsert.forEach((mentionable) => {
+          const mentionNode = $createMentionNode(
+            getMentionableName(mentionable, {
+              unitLabel: mentionableUnitLabel,
+            }),
+            serializeMentionable(mentionable),
+          )
+          paragraph.append(mentionNode)
+          paragraph.append($createTextNode(' '))
+        })
+
+        paragraph.append($createTextNode(prompt))
+        paragraph.selectEnd()
+      })
+
+      const editorState = createPlainTextEditorState(prompt)
+      void submitMessage(editorState, mentionablesToInsert)
+    }
+
+    requestAnimationFrame(tryAutoSend)
+    return () => {
+      cancelled = true
+    }
+  }, [
+    autoSend,
+    initialMentionables,
+    initialPrompt,
+    mentionableUnitLabel,
+    mode,
+    submitEditDirect,
+    submitEditMode,
+    submitMessage,
+  ])
 
   // Handle mode change
   const handleModeChange = useCallback(

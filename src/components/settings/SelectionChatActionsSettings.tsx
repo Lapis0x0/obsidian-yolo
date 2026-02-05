@@ -20,6 +20,7 @@ import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import { ObsidianButton } from '../common/ObsidianButton'
+import { ObsidianDropdown } from '../common/ObsidianDropdown'
 import { ObsidianSetting } from '../common/ObsidianSetting'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
@@ -32,7 +33,12 @@ type SelectionChatAction = {
   label: string
   instruction: string
   enabled: boolean
+  mode?: SelectionChatActionMode
+  rewriteBehavior?: SelectionChatActionRewriteBehavior
 }
+
+type SelectionChatActionMode = 'ask' | 'rewrite'
+type SelectionChatActionRewriteBehavior = 'custom' | 'preset'
 
 type TranslateFn = (key: string, fallback?: string) => string
 
@@ -40,6 +46,9 @@ type DefaultActionConfig = {
   id: string
   labelKey: string
   labelFallback: string
+  mode?: SelectionChatActionMode
+  rewriteBehavior?: SelectionChatActionRewriteBehavior
+  allowEmptyInstruction?: boolean
 }
 
 const DEFAULT_ACTION_CONFIGS: DefaultActionConfig[] = [
@@ -47,23 +56,48 @@ const DEFAULT_ACTION_CONFIGS: DefaultActionConfig[] = [
     id: 'explain',
     labelKey: 'selection.actions.explain',
     labelFallback: '深入解释',
+    mode: 'ask',
   },
   {
     id: 'suggest',
     labelKey: 'selection.actions.suggest',
     labelFallback: '提供建议',
+    mode: 'ask',
   },
   {
     id: 'translate-to-chinese',
     labelKey: 'selection.actions.translateToChinese',
     labelFallback: '翻译成中文',
+    mode: 'ask',
   },
 ]
+
+const FIXED_ACTION_IDS = new Set(['custom-rewrite'])
 
 const DEFAULT_ACTION_LOOKUP: Record<string, DefaultActionConfig> =
   Object.fromEntries(
     DEFAULT_ACTION_CONFIGS.map((config) => [config.id, config]),
   )
+
+const resolveSelectionActionMode = (
+  action: SelectionChatAction,
+): SelectionChatActionMode => {
+  if (action.mode) return action.mode
+  if (action.id === 'rewrite' || action.id === 'custom-rewrite') {
+    return 'rewrite'
+  }
+  return 'ask'
+}
+
+const resolveRewriteBehavior = (
+  action: SelectionChatAction,
+  mode: SelectionChatActionMode,
+): SelectionChatActionRewriteBehavior | undefined => {
+  if (mode !== 'rewrite') return undefined
+  if (action.rewriteBehavior) return action.rewriteBehavior
+  if (action.id === 'custom-rewrite') return 'custom'
+  return 'preset'
+}
 
 const generateId = () => {
   return `action_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
@@ -77,8 +111,10 @@ const getDefaultSelectionChatActions = (
     return {
       id: config.id,
       label,
-      instruction: label,
+      instruction: config.allowEmptyInstruction ? '' : label,
       enabled: true,
+      mode: config.mode ?? 'ask',
+      rewriteBehavior: config.rewriteBehavior,
     }
   })
 }
@@ -99,8 +135,13 @@ export function SelectionChatActionsSettings({
   const actionsCountLabel = t(
     'settings.selectionChat.actionsCount',
     '已配置 {count} 个快捷选项',
-  ).replace('{count}', String(selectionChatActions.length))
-
+  ).replace(
+    '{count}',
+    String(
+      selectionChatActions.filter((action) => !FIXED_ACTION_IDS.has(action.id))
+        .length,
+    ),
+  )
   const handleOpenModal = () => {
     const modal = new SelectionChatActionsModal(plugin.app, plugin)
     modal.open()
@@ -149,6 +190,23 @@ export function SelectionChatActionsSettingsContent() {
   const [editingAction, setEditingAction] =
     useState<SelectionChatAction | null>(null)
   const [isAddingAction, setIsAddingAction] = useState(false)
+  const actionModeOptions: Record<SelectionChatActionMode, string> = {
+    ask: t('settings.selectionChat.actionModeAsk', '问答（Quick Ask）'),
+    rewrite: t('settings.selectionChat.actionModeRewrite', '改写（生成预览）'),
+  }
+  const actionRewriteTypeOptions: Record<
+    SelectionChatActionRewriteBehavior,
+    string
+  > = {
+    custom: t(
+      'settings.selectionChat.actionRewriteTypeCustom',
+      '自定义指令（弹出输入）',
+    ),
+    preset: t(
+      'settings.selectionChat.actionRewriteTypePreset',
+      '预置指令（直接生成）',
+    ),
+  }
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -162,6 +220,8 @@ export function SelectionChatActionsSettingsContent() {
     const config = DEFAULT_ACTION_LOOKUP[action.id]
     let label = action.label
     let instruction = action.instruction
+    const mode = resolveSelectionActionMode(action)
+    const rewriteBehavior = resolveRewriteBehavior(action, mode)
 
     if (config) {
       const localizedLabel = t(config.labelKey, config.labelFallback)
@@ -173,9 +233,10 @@ export function SelectionChatActionsSettingsContent() {
         label = localizedLabel
       }
       if (
-        instruction === config.labelFallback ||
-        instruction === localizedLabel ||
-        !instruction
+        (mode !== 'rewrite' || rewriteBehavior === 'preset') &&
+        (instruction === config.labelFallback ||
+          instruction === localizedLabel ||
+          !instruction)
       ) {
         instruction = localizedLabel
       }
@@ -186,10 +247,49 @@ export function SelectionChatActionsSettingsContent() {
       label,
       instruction,
       enabled: true,
+      mode,
+      rewriteBehavior,
     }
   })
 
-  const actionIds = selectionChatActions.map((action) => action.id)
+  const editableActions = selectionChatActions.filter(
+    (action: SelectionChatAction) => !FIXED_ACTION_IDS.has(action.id),
+  )
+
+  const getInstructionDesc = (mode: SelectionChatActionMode) =>
+    mode === 'rewrite'
+      ? t(
+          'settings.selectionChat.actionInstructionRewriteDesc',
+          '改写指令（仅在“预置指令”类型时必填）',
+        )
+      : t('settings.selectionChat.actionInstructionDesc', '发送给 AI 的指令')
+
+  const getInstructionPlaceholder = (mode: SelectionChatActionMode) =>
+    mode === 'rewrite'
+      ? t(
+          'settings.selectionChat.actionInstructionRewritePlaceholder',
+          '例如：语气更简洁，保留 Markdown 结构。',
+        )
+      : t(
+          'settings.selectionChat.actionInstructionPlaceholder',
+          '例如：请深入解释选中的内容。',
+        )
+
+  const canSaveAction = (action: SelectionChatAction | null) => {
+    if (!action) return false
+    const mode = action.mode ?? 'ask'
+    const rewriteBehavior = action.rewriteBehavior ?? 'preset'
+    const hasLabel = Boolean(action.label?.trim())
+    const hasInstruction = Boolean(action.instruction?.trim())
+    if (mode === 'rewrite') {
+      return rewriteBehavior === 'preset'
+        ? hasLabel && hasInstruction
+        : hasLabel
+    }
+    return hasLabel && hasInstruction
+  }
+
+  const actionIds = editableActions.map((action) => action.id)
 
   const handleSaveActions = async (newActions: SelectionChatAction[]) => {
     await setSettings({
@@ -210,24 +310,33 @@ export function SelectionChatActionsSettingsContent() {
       label: '',
       instruction: '',
       enabled: true,
+      mode: 'ask',
+      rewriteBehavior: 'preset',
     }
     setEditingAction(newAction)
     setIsAddingAction(true)
   }
 
   const handleSaveAction = async () => {
-    if (!editingAction || !editingAction.label || !editingAction.instruction) {
+    const mode = editingAction?.mode ?? 'ask'
+    const rewriteBehavior = editingAction?.rewriteBehavior ?? 'preset'
+    const hasLabel = Boolean(editingAction?.label?.trim())
+    const hasInstruction = Boolean(editingAction?.instruction?.trim())
+    if (
+      !editingAction ||
+      !hasLabel ||
+      (mode === 'rewrite'
+        ? rewriteBehavior === 'preset' && !hasInstruction
+        : !hasInstruction)
+    ) {
       return
     }
 
     let newActions: SelectionChatAction[]
     if (isAddingAction) {
-      newActions = [
-        ...selectionChatActions,
-        { ...editingAction, enabled: true },
-      ]
+      newActions = [...editableActions, { ...editingAction, enabled: true }]
     } else {
-      newActions = selectionChatActions.map((action) =>
+      newActions = editableActions.map((action) =>
         action.id === editingAction.id
           ? { ...editingAction, enabled: true }
           : { ...action, enabled: true },
@@ -244,7 +353,7 @@ export function SelectionChatActionsSettingsContent() {
   }
 
   const handleDeleteAction = async (id: string) => {
-    const newActions = selectionChatActions.filter((action) => action.id !== id)
+    const newActions = editableActions.filter((action) => action.id !== id)
     try {
       await handleSaveActions(newActions)
     } catch (error: unknown) {
@@ -259,7 +368,7 @@ export function SelectionChatActionsSettingsContent() {
       label: `${action.label}${t('settings.selectionChat.copySuffix', ' (副本)')}`,
       enabled: true,
     }
-    const newActions = [...selectionChatActions, newAction]
+    const newActions = [...editableActions, newAction]
     try {
       await handleSaveActions(newActions)
     } catch (error: unknown) {
@@ -289,17 +398,17 @@ export function SelectionChatActionsSettingsContent() {
       return
     }
 
-    const oldIndex = selectionChatActions.findIndex(
+    const oldIndex = editableActions.findIndex(
       (action) => action.id === active.id,
     )
-    const newIndex = selectionChatActions.findIndex(
+    const newIndex = editableActions.findIndex(
       (action) => action.id === over.id,
     )
     if (oldIndex < 0 || newIndex < 0) {
       return
     }
 
-    const reorderedActions = arrayMove(selectionChatActions, oldIndex, newIndex)
+    const reorderedActions = arrayMove(editableActions, oldIndex, newIndex)
 
     try {
       await handleSaveActions(reorderedActions)
@@ -389,19 +498,59 @@ export function SelectionChatActionsSettingsContent() {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.selectionChat.actionInstruction', '提示词')}
+            name={t('settings.selectionChat.actionMode', '执行方式')}
             desc={t(
-              'settings.selectionChat.actionInstructionDesc',
-              '发送给 AI 的指令',
+              'settings.selectionChat.actionModeDesc',
+              '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
             )}
+          >
+            <ObsidianDropdown
+              value={editingAction.mode ?? 'ask'}
+              options={actionModeOptions}
+              onChange={(value) =>
+                setEditingAction({
+                  ...editingAction,
+                  mode: value === 'rewrite' ? 'rewrite' : 'ask',
+                  rewriteBehavior:
+                    value === 'rewrite'
+                      ? (editingAction.rewriteBehavior ?? 'preset')
+                      : editingAction.rewriteBehavior,
+                })
+              }
+            />
+          </ObsidianSetting>
+
+          {(editingAction.mode ?? 'ask') === 'rewrite' && (
+            <ObsidianSetting
+              name={t('settings.selectionChat.actionRewriteType', '改写类型')}
+              desc={t(
+                'settings.selectionChat.actionRewriteTypeDesc',
+                '选择改写是否需要输入指令',
+              )}
+            >
+              <ObsidianDropdown
+                value={editingAction.rewriteBehavior ?? 'preset'}
+                options={actionRewriteTypeOptions}
+                onChange={(value) =>
+                  setEditingAction({
+                    ...editingAction,
+                    rewriteBehavior: value === 'custom' ? 'custom' : 'preset',
+                  })
+                }
+              />
+            </ObsidianSetting>
+          )}
+
+          <ObsidianSetting
+            name={t('settings.selectionChat.actionInstruction', '提示词')}
+            desc={getInstructionDesc(editingAction.mode ?? 'ask')}
             className="smtcmp-settings-textarea-header"
           />
           <ObsidianSetting className="smtcmp-settings-textarea">
             <ObsidianTextArea
               value={editingAction.instruction}
-              placeholder={t(
-                'settings.selectionChat.actionInstructionPlaceholder',
-                '例如：请深入解释选中的内容。',
+              placeholder={getInstructionPlaceholder(
+                editingAction.mode ?? 'ask',
               )}
               onChange={(value) =>
                 setEditingAction({ ...editingAction, instruction: value })
@@ -414,7 +563,7 @@ export function SelectionChatActionsSettingsContent() {
               text={t('common.save', '保存')}
               onClick={() => void handleSaveAction()}
               cta
-              disabled={!editingAction.label || !editingAction.instruction}
+              disabled={!canSaveAction(editingAction)}
             />
             <ObsidianButton
               text={t('common.cancel', '取消')}
@@ -437,7 +586,7 @@ export function SelectionChatActionsSettingsContent() {
           strategy={verticalListSortingStrategy}
         >
           <div className="smtcmp-quick-actions-list">
-            {selectionChatActions.map((action) => {
+            {editableActions.map((action) => {
               const isEditing =
                 !isAddingAction && editingAction?.id === action.id
               return (
@@ -451,6 +600,11 @@ export function SelectionChatActionsSettingsContent() {
                   handleDuplicateAction={handleDuplicateAction}
                   handleDeleteAction={handleDeleteAction}
                   handleSaveAction={handleSaveAction}
+                  actionModeOptions={actionModeOptions}
+                  actionRewriteTypeOptions={actionRewriteTypeOptions}
+                  getInstructionDesc={getInstructionDesc}
+                  getInstructionPlaceholder={getInstructionPlaceholder}
+                  canSaveAction={canSaveAction}
                   t={t}
                 />
               )
@@ -473,6 +627,11 @@ type QuickActionItemProps = {
   handleDuplicateAction: (action: SelectionChatAction) => void | Promise<void>
   handleDeleteAction: (id: string) => void | Promise<void>
   handleSaveAction: () => void | Promise<void>
+  actionModeOptions: Record<SelectionChatActionMode, string>
+  actionRewriteTypeOptions: Record<SelectionChatActionRewriteBehavior, string>
+  getInstructionDesc: (mode: SelectionChatActionMode) => string
+  getInstructionPlaceholder: (mode: SelectionChatActionMode) => string
+  canSaveAction: (action: SelectionChatAction | null) => boolean
   t: TranslateFn
 }
 
@@ -485,6 +644,11 @@ function QuickActionItem({
   handleDuplicateAction,
   handleDeleteAction,
   handleSaveAction,
+  actionModeOptions,
+  actionRewriteTypeOptions,
+  getInstructionDesc,
+  getInstructionPlaceholder,
+  canSaveAction,
   t,
 }: QuickActionItemProps) {
   const {
@@ -579,19 +743,59 @@ function QuickActionItem({
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.selectionChat.actionInstruction', '提示词')}
+            name={t('settings.selectionChat.actionMode', '执行方式')}
             desc={t(
-              'settings.selectionChat.actionInstructionDesc',
-              '发送给 AI 的指令',
+              'settings.selectionChat.actionModeDesc',
+              '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
             )}
+          >
+            <ObsidianDropdown
+              value={currentEditing.mode ?? 'ask'}
+              options={actionModeOptions}
+              onChange={(value) =>
+                setEditingAction({
+                  ...currentEditing,
+                  mode: value === 'rewrite' ? 'rewrite' : 'ask',
+                  rewriteBehavior:
+                    value === 'rewrite'
+                      ? (currentEditing.rewriteBehavior ?? 'preset')
+                      : currentEditing.rewriteBehavior,
+                })
+              }
+            />
+          </ObsidianSetting>
+
+          {(currentEditing.mode ?? 'ask') === 'rewrite' && (
+            <ObsidianSetting
+              name={t('settings.selectionChat.actionRewriteType', '改写类型')}
+              desc={t(
+                'settings.selectionChat.actionRewriteTypeDesc',
+                '选择改写是否需要输入指令',
+              )}
+            >
+              <ObsidianDropdown
+                value={currentEditing.rewriteBehavior ?? 'preset'}
+                options={actionRewriteTypeOptions}
+                onChange={(value) =>
+                  setEditingAction({
+                    ...currentEditing,
+                    rewriteBehavior: value === 'custom' ? 'custom' : 'preset',
+                  })
+                }
+              />
+            </ObsidianSetting>
+          )}
+
+          <ObsidianSetting
+            name={t('settings.selectionChat.actionInstruction', '提示词')}
+            desc={getInstructionDesc(currentEditing.mode ?? 'ask')}
             className="smtcmp-settings-textarea-header"
           />
           <ObsidianSetting className="smtcmp-settings-textarea">
             <ObsidianTextArea
               value={currentEditing.instruction}
-              placeholder={t(
-                'settings.selectionChat.actionInstructionPlaceholder',
-                '例如：请深入解释选中的内容。',
+              placeholder={getInstructionPlaceholder(
+                currentEditing.mode ?? 'ask',
               )}
               onChange={(value) =>
                 setEditingAction({
@@ -607,7 +811,7 @@ function QuickActionItem({
               text={t('common.save', '保存')}
               onClick={() => void handleSaveAction()}
               cta
-              disabled={!currentEditing.label || !currentEditing.instruction}
+              disabled={!canSaveAction(currentEditing)}
             />
             <ObsidianButton
               text={t('common.cancel', '取消')}

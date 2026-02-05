@@ -2,6 +2,10 @@ import { EditorView } from '@codemirror/view'
 import { App, Editor, MarkdownView, Notice } from 'obsidian'
 
 import { ChatView } from '../../../ChatView'
+import type {
+  SelectionActionMode,
+  SelectionActionRewriteBehavior,
+} from '../../../components/selection/SelectionActionsMenu'
 import { SelectionChatWidget } from '../../../components/selection/SelectionChatWidget'
 import {
   SelectionInfo,
@@ -26,10 +30,16 @@ type SelectionChatControllerDeps = {
   getSettings: () => SmartComposerSettings
   t: (key: string, fallback?: string) => string
   getEditorView: (editor: Editor) => EditorView | null
-  showSmartSpace: (
+  showQuickAskWithOptions: (
     editor: Editor,
     view: EditorView,
-    showQuickActions: boolean,
+    options: {
+      initialPrompt?: string
+      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialInput?: string
+      editContextText?: string
+      autoSend?: boolean
+    },
   ) => void
   showQuickAskWithAutoSend: (
     editor: Editor,
@@ -45,10 +55,16 @@ export class SelectionChatController {
   private readonly getSettings: () => SmartComposerSettings
   private readonly t: (key: string, fallback?: string) => string
   private readonly getEditorView: (editor: Editor) => EditorView | null
-  private readonly showSmartSpace: (
+  private readonly showQuickAskWithOptions: (
     editor: Editor,
     view: EditorView,
-    showQuickActions: boolean,
+    options: {
+      initialPrompt?: string
+      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialInput?: string
+      editContextText?: string
+      autoSend?: boolean
+    },
   ) => void
   private readonly showQuickAskWithAutoSend: (
     editor: Editor,
@@ -68,7 +84,7 @@ export class SelectionChatController {
     this.getSettings = deps.getSettings
     this.t = deps.t
     this.getEditorView = deps.getEditorView
-    this.showSmartSpace = deps.showSmartSpace
+    this.showQuickAskWithOptions = deps.showQuickAskWithOptions
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
   }
@@ -177,8 +193,17 @@ export class SelectionChatController {
           actionId: string,
           sel: SelectionInfo,
           instruction: string,
+          mode: SelectionActionMode,
+          rewriteBehavior?: SelectionActionRewriteBehavior,
         ) => {
-          void this.handleSelectionAction(actionId, sel, editor, instruction)
+          void this.handleSelectionAction(
+            actionId,
+            sel,
+            editor,
+            instruction,
+            mode,
+            rewriteBehavior,
+          )
         },
       })
       this.selectionChatWidget.mount()
@@ -187,10 +212,22 @@ export class SelectionChatController {
 
   private async handleSelectionAction(
     actionId: string,
-    _selection: SelectionInfo,
+    selection: SelectionInfo,
     editor: Editor,
     instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
   ) {
+    if (mode === 'rewrite') {
+      await this.rewriteSelection(
+        editor,
+        selection,
+        instruction,
+        rewriteBehavior,
+      )
+      return
+    }
+
     const prompt = instruction.trim()
     if (!prompt) {
       console.warn('Selection action has empty prompt:', actionId)
@@ -229,24 +266,38 @@ export class SelectionChatController {
     chatView.syncSelectionToChat(data)
   }
 
-  private rewriteSelection(editor: Editor, selectedText: string) {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!view) return
-
-    const cmEditor = this.getEditorView(editor)
-    if (!cmEditor) return
-
-    const from = editor.getCursor('from')
-    const to = editor.getCursor('to')
-
-    this.pendingSelectionRewrite = {
-      editor,
-      selectedText,
-      from,
-      to,
+  private async rewriteSelection(
+    editor: Editor,
+    selection: SelectionInfo,
+    instruction: string,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
+  ) {
+    const selectedText = editor.getSelection()
+    if (!selectedText || selectedText.trim().length === 0) {
+      new Notice('请先选择要改写的文本。')
+      return
     }
 
-    this.showSmartSpace(editor, cmEditor, true)
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      new Notice('无法获取编辑器视图')
+      return
+    }
+
+    const behavior = rewriteBehavior ?? 'custom'
+    const prompt = instruction.trim()
+    if (behavior === 'preset' && !prompt) {
+      new Notice('未设置改写指令。')
+      return
+    }
+
+    this.showQuickAskWithOptions(editor, editorView, {
+      initialMode: 'edit',
+      initialPrompt: behavior === 'preset' ? prompt : undefined,
+      initialInput: behavior === 'custom' ? prompt : undefined,
+      editContextText: selectedText,
+      autoSend: behavior === 'preset',
+    })
   }
 
   private async explainSelection(editor: Editor, prompt?: string) {

@@ -345,6 +345,8 @@ export const smartComposerSettingsSchema = z.object({
             id: z.string(),
             label: z.string(),
             instruction: z.string(),
+            mode: z.enum(['ask', 'rewrite']).optional(),
+            rewriteBehavior: z.enum(['custom', 'preset']).optional(),
             enabled: z.boolean().default(true),
           }),
         )

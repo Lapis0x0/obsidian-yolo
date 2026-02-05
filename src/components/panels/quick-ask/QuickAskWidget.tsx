@@ -52,6 +52,9 @@ export class QuickAskOverlay {
       fileTitle: string
       initialPrompt?: string
       initialMentionables?: Mentionable[]
+      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialInput?: string
+      editContextText?: string
       autoSend?: boolean
       onClose: () => void
     },
@@ -208,6 +211,9 @@ export class QuickAskOverlay {
                     fileTitle={this.options.fileTitle}
                     initialPrompt={this.options.initialPrompt}
                     initialMentionables={this.options.initialMentionables}
+                    initialMode={this.options.initialMode}
+                    initialInput={this.options.initialInput}
+                    editContextText={this.options.editContextText}
                     autoSend={this.options.autoSend}
                     onClose={this.closeWithAnimation}
                     containerRef={this.containerRef}

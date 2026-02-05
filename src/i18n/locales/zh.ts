@@ -186,9 +186,21 @@ export const zh: TranslationKeys = {
       actionLabel: '指令名称',
       actionLabelDesc: '显示在 Cursor 指令中的文本',
       actionLabelPlaceholder: '例如：深入解释',
+      actionMode: '执行方式',
+      actionModeDesc:
+        '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
+      actionModeAsk: '问答（Quick Ask）',
+      actionModeRewrite: '改写（生成预览）',
+      actionRewriteType: '改写类型',
+      actionRewriteTypeDesc: '选择改写是否需要输入指令',
+      actionRewriteTypeCustom: '自定义指令（弹出输入）',
+      actionRewriteTypePreset: '预置指令（直接生成）',
       actionInstruction: '提示词',
       actionInstructionDesc: '发送给 AI 的指令',
       actionInstructionPlaceholder: '例如：请深入解释选中的内容。',
+      actionInstructionRewriteDesc: '改写指令（仅在“预置指令”类型时必填）',
+      actionInstructionRewritePlaceholder:
+        '例如：语气更简洁，保留 Markdown 结构。',
       duplicate: '复制',
       copySuffix: '（副本）',
       dragHandleAria: '拖拽排序',
@@ -561,6 +573,7 @@ export const zh: TranslationKeys = {
   selection: {
     actions: {
       addToChat: '添加到对话',
+      customRewrite: '自定义改写',
       rewrite: 'AI 改写',
       explain: '深入解释',
       suggest: '提供建议',

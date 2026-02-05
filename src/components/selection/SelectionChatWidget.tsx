@@ -7,6 +7,10 @@ import { PluginProvider } from '../../contexts/plugin-context'
 import { SettingsProvider } from '../../contexts/settings-context'
 import SmartComposerPlugin from '../../main'
 
+import type {
+  SelectionActionMode,
+  SelectionActionRewriteBehavior,
+} from './SelectionActionsMenu'
 import { SelectionActionsMenu } from './SelectionActionsMenu'
 import { SelectionIndicator } from './SelectionIndicator'
 import type { SelectionInfo } from './SelectionManager'
@@ -21,6 +25,8 @@ type SelectionChatWidgetProps = {
     actionId: string,
     selection: SelectionInfo,
     instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
   ) => void | Promise<void>
 }
 
@@ -94,9 +100,14 @@ function SelectionChatWidgetBody({
     }
   }, [isHoveringIndicator, isHoveringMenu])
 
-  const handleAction = async (actionId: string, instruction: string) => {
+  const handleAction = async (
+    actionId: string,
+    instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
+  ) => {
     onClose()
-    await onAction(actionId, selection, instruction)
+    await onAction(actionId, selection, instruction, mode, rewriteBehavior)
   }
 
   return (
@@ -139,6 +150,7 @@ export class SelectionChatWidget {
         actionId: string,
         selection: SelectionInfo,
         instruction: string,
+        mode: SelectionActionMode,
       ) => void | Promise<void>
     },
   ) {
