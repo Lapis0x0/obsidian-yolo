@@ -20,6 +20,7 @@ import { migrateFrom24To25 } from './24_to_25'
 import { migrateFrom25To26 } from './25_to_26'
 import { migrateFrom26To27 } from './26_to_27'
 import { migrateFrom27To28 } from './27_to_28'
+import { migrateFrom28To29 } from './28_to_29'
 import { migrateFrom2To3 } from './2_to_3'
 import { migrateFrom3To4 } from './3_to_4'
 import { migrateFrom4To5 } from './4_to_5'
@@ -29,7 +30,7 @@ import { migrateFrom7To8 } from './7_to_8'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
-export const SETTINGS_SCHEMA_VERSION = 28
+export const SETTINGS_SCHEMA_VERSION = 29
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {
@@ -171,5 +172,10 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 27,
     toVersion: 28,
     migrate: migrateFrom27To28,
+  },
+  {
+    fromVersion: 28,
+    toVersion: 29,
+    migrate: migrateFrom28To29,
   },
 ]
