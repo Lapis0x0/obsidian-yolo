@@ -519,9 +519,14 @@ export class WriteAssistController {
 
       this.deps.ensureInlineSuggestionExtension(view)
 
-      const currentCursor = editor.getCursor()
-      const line = view.state.doc.line(currentCursor.line + 1)
-      const cursorOffset = line.from + currentCursor.ch
+      // Ensure editor is focused so inline widgets render at the active cursor
+      view.focus()
+
+      const selection = view.state.selection.main
+      const selectionHeadOffset = selection.head
+      const selectionEndOffset = Math.max(selection.head, selection.anchor)
+      const currentCursor = editor.offsetToPos(selectionHeadOffset)
+      const cursorOffset = selectionHeadOffset
       const thinkingText = this.deps.t(
         'chat.customContinueProcessing',
         'Thinking',
@@ -556,14 +561,13 @@ export class WriteAssistController {
         useVaultSearch,
       })
 
-      let insertStart = editor.getCursor()
+      let insertStart = hasSelection
+        ? editor.offsetToPos(selectionEndOffset)
+        : currentCursor
       if (hasSelection) {
-        const endPos = editor.getCursor('to')
-        editor.setCursor(endPos)
-        insertStart = endPos
+        editor.setCursor(insertStart)
       }
-      const startLine = view.state.doc.line(insertStart.line + 1)
-      const startOffset = startLine.from + insertStart.ch
+      const startOffset = hasSelection ? selectionEndOffset : selectionHeadOffset
       let suggestionText = ''
       let hasHiddenThinkingIndicator = false
       const nonNullView = view
