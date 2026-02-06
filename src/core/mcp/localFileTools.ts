@@ -6,6 +6,10 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_BATCH_READ_FILES = 20
+const DEFAULT_READ_START_LINE = 1
+const DEFAULT_READ_MAX_LINES = 50
+const MAX_READ_MAX_LINES = 2000
+const MAX_READ_LINE_INDEX = 1_000_000
 const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
 const MAX_BATCH_WRITE_ITEMS = 50
 
@@ -45,6 +49,10 @@ const asErrorMessage = (error: unknown): string => {
     return error.message
   }
   return typeof error === 'string' ? error : JSON.stringify(error)
+}
+
+const asOptionalString = (value: unknown): string => {
+  return typeof value === 'string' ? value : ''
 }
 
 const validateVaultPath = (path: string): string => {
@@ -142,7 +150,8 @@ export function getLocalFileTools(): McpTool[] {
     },
     {
       name: 'fs_read',
-      description: 'Read text content from multiple vault files by path.',
+      description:
+        `Read line ranges from multiple vault files by path. Defaults to the first ${DEFAULT_READ_MAX_LINES} lines.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -153,9 +162,22 @@ export function getLocalFileTools(): McpTool[] {
             },
             description: `Vault-relative file paths. Maximum ${MAX_BATCH_READ_FILES} items.`,
           },
+          startLine: {
+            type: 'integer',
+            description: `1-based start line. Defaults to ${DEFAULT_READ_START_LINE}.`,
+          },
+          maxLines: {
+            type: 'integer',
+            description: `Maximum lines to return when endLine is not set. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
+          },
+          endLine: {
+            type: 'integer',
+            description:
+              'Optional 1-based inclusive end line. If set, maxLines is ignored.',
+          },
           maxCharsPerFile: {
             type: 'integer',
-            description: `Maximum returned chars per file. Defaults to ${DEFAULT_MAX_BATCH_CHARS_PER_FILE}, range 100-200000.`,
+            description: `Safety cap for returned chars per file after line slicing. Defaults to ${DEFAULT_MAX_BATCH_CHARS_PER_FILE}, range 100-200000.`,
           },
         },
         required: ['paths'],
@@ -252,6 +274,30 @@ const getOptionalIntegerArg = ({
   const value = args[key]
   if (value === undefined) {
     return defaultValue
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new Error(`${key} must be an integer.`)
+  }
+  if (value < min || value > max) {
+    throw new Error(`${key} must be between ${min} and ${max}.`)
+  }
+  return value
+}
+
+const getOptionalBoundedIntegerArg = ({
+  args,
+  key,
+  min,
+  max,
+}: {
+  args: Record<string, unknown>
+  key: string
+  min: number
+  max: number
+}): number | undefined => {
+  const value = args[key]
+  if (value === undefined) {
+    return undefined
   }
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw new Error(`${key} must be an integer.`)
@@ -543,6 +589,39 @@ export async function callLocalFileTool({
           )
         }
 
+        const startLine = getOptionalIntegerArg({
+          args,
+          key: 'startLine',
+          defaultValue: DEFAULT_READ_START_LINE,
+          min: 1,
+          max: MAX_READ_LINE_INDEX,
+        })
+
+        const maxLines = getOptionalIntegerArg({
+          args,
+          key: 'maxLines',
+          defaultValue: DEFAULT_READ_MAX_LINES,
+          min: 1,
+          max: MAX_READ_MAX_LINES,
+        })
+
+        const endLine = getOptionalBoundedIntegerArg({
+          args,
+          key: 'endLine',
+          min: 1,
+          max: MAX_READ_LINE_INDEX,
+        })
+
+        if (endLine !== undefined && endLine < startLine) {
+          throw new Error('endLine must be greater than or equal to startLine.')
+        }
+
+        if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
+          throw new Error(
+            `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
+          )
+        }
+
         const maxCharsPerFile = getOptionalIntegerArg({
           args,
           key: 'maxCharsPerFile',
@@ -555,6 +634,15 @@ export async function callLocalFileTool({
           | {
               path: string
               ok: true
+              totalLines: number
+              returnedRange: {
+                startLine: number | null
+                endLine: number | null
+                count: number
+              }
+              hasMoreAbove: boolean
+              hasMoreBelow: boolean
+              nextStartLine: number | null
               content: string
               truncated: boolean
             }
@@ -586,14 +674,41 @@ export async function callLocalFileTool({
           }
 
           const content = await app.vault.read(file)
-          const truncated = content.length > maxCharsPerFile
-          const clippedContent = truncated
-            ? `${content.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
-            : content
+          const lines = content.length === 0 ? [] : content.split('\n')
+          const totalLines = lines.length
+          const startIndex = Math.min(Math.max(startLine - 1, 0), totalLines)
+          const endExclusive = Math.min(
+            totalLines,
+            endLine ?? startIndex + maxLines,
+          )
+          const selectedLines = lines.slice(startIndex, endExclusive)
+          let lineWindowContent = selectedLines
+            .map((line, index) => `${startIndex + index + 1}|${line}`)
+            .join('\n')
+          const truncated = lineWindowContent.length > maxCharsPerFile
+          if (truncated) {
+            lineWindowContent = `${lineWindowContent.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
+          }
+
+          const returnedCount = selectedLines.length
+          const returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
+          const returnedEndLine =
+            returnedCount > 0 ? startIndex + returnedCount : null
+          const hasMoreAbove = startIndex > 0
+          const hasMoreBelow = endExclusive < totalLines
           results.push({
             path,
             ok: true,
-            content: clippedContent,
+            totalLines,
+            returnedRange: {
+              startLine: returnedStartLine,
+              endLine: returnedEndLine,
+              count: returnedCount,
+            },
+            hasMoreAbove,
+            hasMoreBelow,
+            nextStartLine: hasMoreBelow ? endExclusive + 1 : null,
+            content: lineWindowContent,
             truncated,
           })
         }
@@ -605,6 +720,12 @@ export async function callLocalFileTool({
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
             tool: 'fs_read',
+            requestedWindow: {
+              startLine,
+              endLine: endLine ?? null,
+              maxLines: endLine === undefined ? maxLines : null,
+              maxCharsPerFile,
+            },
             summary: {
               total: results.length,
               success: successCount,
@@ -955,8 +1076,8 @@ export async function callLocalFileTool({
               action,
               target:
                 action === 'move'
-                  ? `${String(item.oldPath ?? '')} -> ${String(item.newPath ?? '')}`
-                  : String(item.path ?? ''),
+                  ? `${asOptionalString(item.oldPath)} -> ${asOptionalString(item.newPath)}`
+                  : asOptionalString(item.path),
               message: asErrorMessage(error),
             })
           }
