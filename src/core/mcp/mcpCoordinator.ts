@@ -1,8 +1,11 @@
+import { App } from 'obsidian'
+
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 
 import { McpManager } from './mcpManager'
 
 type McpCoordinatorDeps = {
+  app: App
   getSettings: () => SmartComposerSettings
   registerSettingsListener: (
     listener: (settings: SmartComposerSettings) => void,
@@ -10,6 +13,7 @@ type McpCoordinatorDeps = {
 }
 
 export class McpCoordinator {
+  private readonly app: App
   private readonly getSettings: () => SmartComposerSettings
   private readonly registerSettingsListener: (
     listener: (settings: SmartComposerSettings) => void,
@@ -19,6 +23,7 @@ export class McpCoordinator {
   private mcpManagerInitPromise: Promise<McpManager> | null = null
 
   constructor(deps: McpCoordinatorDeps) {
+    this.app = deps.app
     this.getSettings = deps.getSettings
     this.registerSettingsListener = deps.registerSettingsListener
   }
@@ -32,6 +37,7 @@ export class McpCoordinator {
       this.mcpManagerInitPromise = (async () => {
         try {
           this.mcpManager = new McpManager({
+            app: this.app,
             settings: this.getSettings(),
             registerSettingsListener: this.registerSettingsListener,
           })

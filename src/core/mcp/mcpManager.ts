@@ -1,5 +1,5 @@
 import isEqual from 'lodash.isequal'
-import { Platform } from 'obsidian'
+import { App, Platform } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import {
@@ -16,6 +16,11 @@ import {
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import {
+  callLocalFileTool,
+  getLocalFileToolServerName,
+  getLocalFileTools,
+} from './localFileTools'
+import {
   getToolName,
   parseToolName,
   validateServerName,
@@ -26,6 +31,7 @@ export class McpManager {
 
   public readonly disabled = !Platform.isDesktop // MCP should be disabled on mobile since it doesn't support node.js
 
+  private readonly app: App
   private settings: SmartComposerSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
@@ -35,17 +41,20 @@ export class McpManager {
   private allowedToolsByConversation: Map<string, Set<string>> = new Map()
   private subscribers = new Set<(servers: McpServerState[]) => void>()
 
-  private availableToolsCache: McpTool[] | null = null
+  private availableToolsCache: Map<string, McpTool[]> = new Map()
 
   constructor({
+    app,
     settings,
     registerSettingsListener,
   }: {
+    app: App
     settings: SmartComposerSettings
     registerSettingsListener: (
       listener: (settings: SmartComposerSettings) => void,
     ) => () => void
   }) {
+    this.app = app
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -177,7 +186,7 @@ export class McpManager {
     }
 
     this.servers = nextServers
-    this.availableToolsCache = null // Invalidate available tools cache
+    this.availableToolsCache.clear() // Invalidate available tools cache
     this.notifySubscribers() // Should call after invalidating the cache
   }
 
@@ -269,13 +278,23 @@ export class McpManager {
     }
   }
 
-  public async listAvailableTools(): Promise<McpTool[]> {
+  private getAvailableToolsCacheKey(includeBuiltinTools: boolean): string {
+    return includeBuiltinTools ? 'with_builtin' : 'mcp_only'
+  }
+
+  public async listAvailableTools({
+    includeBuiltinTools = false,
+  }: {
+    includeBuiltinTools?: boolean
+  } = {}): Promise<McpTool[]> {
     if (this.disabled) {
       return []
     }
 
-    if (this.availableToolsCache) {
-      return this.availableToolsCache
+    const cacheKey = this.getAvailableToolsCacheKey(includeBuiltinTools)
+    const cached = this.availableToolsCache.get(cacheKey)
+    if (cached) {
+      return cached
     }
 
     const availableTools = (
@@ -302,8 +321,18 @@ export class McpManager {
       )
     ).flat()
 
-    this.availableToolsCache = [...availableTools]
-    return availableTools
+    const nextTools = includeBuiltinTools
+      ? [
+          ...availableTools,
+          ...getLocalFileTools().map((tool) => ({
+            ...tool,
+            name: getToolName(getLocalFileToolServerName(), tool.name),
+          })),
+        ]
+      : availableTools
+
+    this.availableToolsCache.set(cacheKey, [...nextTools])
+    return nextTools
   }
 
   public allowToolForConversation(
@@ -338,6 +367,9 @@ export class McpManager {
 
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
+      if (serverName === getLocalFileToolServerName()) {
+        return toolName !== 'delete_file'
+      }
       const server = this.servers.find((server) => server.name === serverName)
       if (!server) {
         return false
@@ -395,6 +427,36 @@ export class McpManager {
 
     try {
       const { serverName, toolName } = parseToolName(name)
+      const parsedArgs: Record<string, unknown> | undefined =
+        typeof args === 'string' ? (args === '' ? {} : JSON.parse(args)) : args
+
+      if (serverName === getLocalFileToolServerName()) {
+        const localResult = await callLocalFileTool({
+          app: this.app,
+          toolName,
+          args: parsedArgs ?? {},
+          signal: compositeSignal,
+        })
+        if (localResult.status === ToolCallResponseStatus.Success) {
+          return {
+            status: ToolCallResponseStatus.Success,
+            data: {
+              type: 'text',
+              text: localResult.text,
+            },
+          }
+        }
+        if (localResult.status === ToolCallResponseStatus.Aborted) {
+          return {
+            status: ToolCallResponseStatus.Aborted,
+          }
+        }
+        return {
+          status: ToolCallResponseStatus.Error,
+          error: localResult.error,
+        }
+      }
+
       const server = this.servers.find((server) => server.name === serverName)
       if (!server) {
         throw new Error(`MCP server ${serverName} not found`)
@@ -403,9 +465,6 @@ export class McpManager {
         throw new Error(`MCP server ${serverName} is not connected`)
       }
       const { client } = server
-
-      const parsedArgs: Record<string, unknown> | undefined =
-        typeof args === 'string' ? (args === '' ? {} : JSON.parse(args)) : args
 
       const result = (await client.callTool(
         {
@@ -449,7 +508,8 @@ export class McpManager {
       // Handle other errors
       return {
         status: ToolCallResponseStatus.Error,
-        error: error.message || 'Unknown error occurred',
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       }
     } finally {
       if (id !== undefined) {

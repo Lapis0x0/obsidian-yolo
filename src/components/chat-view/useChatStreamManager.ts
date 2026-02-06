@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { useSettings } from '../../contexts/settings-context'
+import { NativeAgentRuntime } from '../../core/agent/native-runtime'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -18,6 +19,7 @@ import { PromptGenerator } from '../../utils/chat/promptGenerator'
 import { ResponseGenerator } from '../../utils/chat/responseGenerator'
 import { ErrorModal } from '../modals/ErrorModal'
 
+import { ChatMode } from './chat-input/ChatModeSelect'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
 
 type UseChatStreamManagerParams = {
@@ -26,6 +28,7 @@ type UseChatStreamManagerParams = {
   promptGenerator: PromptGenerator
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
+  chatMode: ChatMode
 }
 
 export type UseChatStreamManager = {
@@ -47,6 +50,7 @@ export function useChatStreamManager({
   promptGenerator,
   conversationOverrides,
   modelId,
+  chatMode,
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
   const { settings } = useSettings()
@@ -101,57 +105,90 @@ export function useChatStreamManager({
       const abortController = new AbortController()
       activeStreamAbortControllersRef.current.push(abortController)
 
-      let unsubscribeResponseGenerator: (() => void) | undefined
+      let unsubscribeRunner: (() => void) | undefined
 
       try {
         const mcpManager = await getMcpManager()
-        const responseGenerator = new ResponseGenerator({
-          providerClient,
-          model,
-          messages: chatMessages,
-          conversationId,
-          enableTools: settings.chatOptions.enableTools,
-          maxAutoIterations: settings.chatOptions.maxAutoIterations,
-          promptGenerator,
-          mcpManager,
-          abortSignal: abortController.signal,
-          reasoningLevel,
-          requestParams: {
-            stream: conversationOverrides?.stream ?? true,
-            temperature: conversationOverrides?.temperature ?? undefined,
-            top_p: conversationOverrides?.top_p ?? undefined,
-          },
-          maxContextOverride:
-            conversationOverrides?.maxContextMessages ?? undefined,
-          geminiTools: {
-            useWebSearch: conversationOverrides?.useWebSearch ?? false,
-            useUrlContext: conversationOverrides?.useUrlContext ?? false,
-          },
-        })
+        const onRunnerMessages = (responseMessages: ChatMessage[]) => {
+          setChatMessages((prevChatMessages) => {
+            const lastMessageIndex = prevChatMessages.findIndex(
+              (message) => message.id === lastMessage.id,
+            )
+            if (lastMessageIndex === -1) {
+              // The last message no longer exists in the chat history.
+              // This likely means a new message was submitted while this stream was running.
+              // Abort this stream and keep the current chat history.
+              abortController.abort()
+              return prevChatMessages
+            }
+            return [
+              ...prevChatMessages.slice(0, lastMessageIndex + 1),
+              ...responseMessages,
+            ]
+          })
+          autoScrollToBottom()
+        }
 
-        unsubscribeResponseGenerator = responseGenerator.subscribe(
-          (responseMessages) => {
-            setChatMessages((prevChatMessages) => {
-              const lastMessageIndex = prevChatMessages.findIndex(
-                (message) => message.id === lastMessage.id,
-              )
-              if (lastMessageIndex === -1) {
-                // The last message no longer exists in the chat history.
-                // This likely means a new message was submitted while this stream was running.
-                // Abort this stream and keep the current chat history.
-                abortController.abort()
-                return prevChatMessages
-              }
-              return [
-                ...prevChatMessages.slice(0, lastMessageIndex + 1),
-                ...responseMessages,
-              ]
-            })
-            autoScrollToBottom()
-          },
-        )
+        if (chatMode === 'agent') {
+          const agentRuntime = new NativeAgentRuntime({
+            enableTools: true,
+            maxAutoIterations: Math.max(
+              8,
+              settings.chatOptions.maxAutoIterations,
+            ),
+            includeBuiltinTools: true,
+          })
+          unsubscribeRunner = agentRuntime.subscribe(onRunnerMessages)
+          await agentRuntime.run({
+            providerClient,
+            model,
+            messages: chatMessages,
+            conversationId,
+            promptGenerator,
+            mcpManager,
+            abortSignal: abortController.signal,
+            reasoningLevel,
+            requestParams: {
+              stream: conversationOverrides?.stream ?? true,
+              temperature: conversationOverrides?.temperature ?? undefined,
+              top_p: conversationOverrides?.top_p ?? undefined,
+            },
+            maxContextOverride:
+              conversationOverrides?.maxContextMessages ?? undefined,
+            geminiTools: {
+              useWebSearch: conversationOverrides?.useWebSearch ?? false,
+              useUrlContext: conversationOverrides?.useUrlContext ?? false,
+            },
+          })
+        } else {
+          const responseGenerator = new ResponseGenerator({
+            providerClient,
+            model,
+            messages: chatMessages,
+            conversationId,
+            enableTools: settings.chatOptions.enableTools,
+            maxAutoIterations: settings.chatOptions.maxAutoIterations,
+            includeBuiltinTools: false,
+            promptGenerator,
+            mcpManager,
+            abortSignal: abortController.signal,
+            reasoningLevel,
+            requestParams: {
+              stream: conversationOverrides?.stream ?? true,
+              temperature: conversationOverrides?.temperature ?? undefined,
+              top_p: conversationOverrides?.top_p ?? undefined,
+            },
+            maxContextOverride:
+              conversationOverrides?.maxContextMessages ?? undefined,
+            geminiTools: {
+              useWebSearch: conversationOverrides?.useWebSearch ?? false,
+              useUrlContext: conversationOverrides?.useUrlContext ?? false,
+            },
+          })
 
-        await responseGenerator.run()
+          unsubscribeRunner = responseGenerator.subscribe(onRunnerMessages)
+          await responseGenerator.run()
+        }
       } catch (error) {
         // Ignore AbortError
         if (error instanceof Error && error.name === 'AbortError') {
@@ -159,8 +196,8 @@ export function useChatStreamManager({
         }
         throw error
       } finally {
-        if (unsubscribeResponseGenerator) {
-          unsubscribeResponseGenerator()
+        if (unsubscribeRunner) {
+          unsubscribeRunner()
         }
         activeStreamAbortControllersRef.current =
           activeStreamAbortControllersRef.current.filter(

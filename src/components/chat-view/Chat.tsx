@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { CircleStop, History, Plus } from 'lucide-react'
-import { App, Notice, TFile, TFolder } from 'obsidian'
+import { App, Notice, Platform, TFile, TFolder } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -53,6 +53,7 @@ import { ErrorModal } from '../modals/ErrorModal'
 
 import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
+import { ChatMode } from './chat-input/ChatModeSelect'
 import ChatSettingsButton from './chat-input/ChatSettingsButton'
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
 import {
@@ -225,6 +226,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   >(new Map())
   const [conversationOverrides, setConversationOverrides] =
     useState<ConversationOverrideSettings | null>(null)
+  const [chatMode, setChatMode] = useState<ChatMode>(() => {
+    const defaultMode = settings.chatOptions.chatMode ?? 'chat'
+    if (!Platform.isDesktop && defaultMode === 'agent') {
+      return 'chat'
+    }
+    return defaultMode
+  })
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -270,16 +278,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     promptGenerator,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
+    chatMode,
   })
 
   const persistConversation = useCallback(
     async (messages: ChatMessage[]) => {
       if (messages.length === 0) return
       try {
+        const effectiveOverrides = {
+          ...(conversationOverrides ?? {}),
+          chatMode,
+        }
         await createOrUpdateConversation(
           currentConversationId,
           messages,
-          conversationOverrides ?? null,
+          effectiveOverrides,
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
         )
@@ -289,6 +302,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
     },
     [
+      chatMode,
       conversationOverrides,
       createOrUpdateConversation,
       currentConversationId,
@@ -321,6 +335,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationSuppressionRef.current.get(conversationId) ?? 'none'
         setCurrentFileSuppression(suppressed)
         setConversationOverrides(conversation.overrides ?? null)
+        const loadedChatModeRaw = conversation.overrides?.chatMode
+        const loadedChatMode: ChatMode =
+          loadedChatModeRaw === 'agent' || loadedChatModeRaw === 'chat'
+            ? loadedChatModeRaw
+            : (settings.chatOptions.chatMode ?? 'chat')
+        setChatMode(
+          !Platform.isDesktop && loadedChatMode === 'agent'
+            ? 'chat'
+            : loadedChatMode,
+        )
         if (conversation.overrides) {
           conversationOverridesRef.current.set(
             conversationId,
@@ -395,6 +419,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     conversationSuppressionRef.current.set(newId, 'none')
     setCurrentFileSuppression('none')
     setConversationOverrides(null)
+    const defaultChatMode = settings.chatOptions.chatMode ?? 'chat'
+    setChatMode(
+      !Platform.isDesktop && defaultChatMode === 'agent'
+        ? 'chat'
+        : defaultChatMode,
+    )
     conversationModelIdRef.current.set(newId, settings.chatModelId)
     setConversationModelId(settings.chatModelId)
     const defaultReasoningLevel = getDefaultReasoningLevel(
@@ -1621,8 +1651,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <ChatSettingsButton
             overrides={conversationOverrides}
             onChange={(next) => {
-              setConversationOverrides(next)
-              conversationOverridesRef.current.set(currentConversationId, next)
+              const nextOverrides = next
+                ? {
+                    ...next,
+                    chatMode,
+                  }
+                : { chatMode }
+              setConversationOverrides(nextOverrides)
+              conversationOverridesRef.current.set(
+                currentConversationId,
+                nextOverrides,
+              )
             }}
             currentModel={settings.chatModels?.find(
               (m) => m.id === conversationModelId,
@@ -1630,6 +1669,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           />
         </div>
         <ChatUserInput
+          chatMode={chatMode}
+          onModeChange={(nextMode) => {
+            const resolvedMode =
+              !Platform.isDesktop && nextMode === 'agent' ? 'chat' : nextMode
+            setChatMode(resolvedMode)
+            setConversationOverrides((prev) => ({
+              ...(prev ?? {}),
+              chatMode: resolvedMode,
+            }))
+            conversationOverridesRef.current.set(currentConversationId, {
+              ...(conversationOverridesRef.current.get(currentConversationId) ??
+                {}),
+              chatMode: resolvedMode,
+            })
+          }}
           key={inputMessage.id} // this is needed to clear the editor when the user submits a new message
           ref={(ref) => registerChatUserInputRef(inputMessage.id, ref)}
           initialSerializedEditorState={inputMessage.content}
@@ -1735,8 +1789,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           addedBlockKey={addedBlockKey}
           conversationOverrides={conversationOverrides}
           onConversationOverridesChange={(next) => {
-            setConversationOverrides(next)
-            conversationOverridesRef.current.set(currentConversationId, next)
+            const nextOverrides = next
+              ? {
+                  ...next,
+                  chatMode,
+                }
+              : { chatMode }
+            setConversationOverrides(nextOverrides)
+            conversationOverridesRef.current.set(
+              currentConversationId,
+              nextOverrides,
+            )
           }}
           showConversationSettingsButton={false}
           displayMentionables={displayMentionablesForInput}

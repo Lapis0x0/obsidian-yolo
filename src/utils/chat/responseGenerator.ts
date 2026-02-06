@@ -32,6 +32,7 @@ export type ResponseGeneratorParams = {
   maxAutoIterations: number
   promptGenerator: PromptGenerator
   mcpManager: McpManager
+  includeBuiltinTools?: boolean
   abortSignal?: AbortSignal
   firstTokenTimeoutMs?: number
   requestParams?: {
@@ -54,6 +55,7 @@ export class ResponseGenerator {
   private readonly enableTools: boolean
   private readonly promptGenerator: PromptGenerator
   private readonly mcpManager: McpManager
+  private readonly includeBuiltinTools: boolean
   private readonly abortSignal?: AbortSignal
   private readonly firstTokenTimeoutMs?: number
   private readonly receivedMessages: ChatMessage[]
@@ -82,6 +84,7 @@ export class ResponseGenerator {
     this.receivedMessages = params.messages
     this.promptGenerator = params.promptGenerator
     this.mcpManager = params.mcpManager
+    this.includeBuiltinTools = params.includeBuiltinTools ?? false
     this.abortSignal = params.abortSignal
     this.firstTokenTimeoutMs = params.firstTokenTimeoutMs
     this.requestParams = params.requestParams
@@ -178,7 +181,9 @@ export class ResponseGenerator {
     toolCallRequests: ToolCallRequest[]
   }> {
     const availableTools = this.enableTools
-      ? await this.mcpManager.listAvailableTools()
+      ? await this.mcpManager.listAvailableTools({
+          includeBuiltinTools: this.includeBuiltinTools,
+        })
       : []
     const hasTools = availableTools.length > 0
 

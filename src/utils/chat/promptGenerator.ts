@@ -246,29 +246,44 @@ ${message.annotations
   }: {
     message: ChatToolMessage
   }): RequestMessage[] {
-    return message.toolCalls.map((toolCall) => {
+    return message.toolCalls.flatMap((toolCall): RequestMessage[] => {
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
         case ToolCallResponseStatus.Running:
-        case ToolCallResponseStatus.Rejected:
+          // Skip incomplete tool calls to avoid confusing the next planning step.
+          return []
         case ToolCallResponseStatus.Aborted:
-          return {
-            role: 'tool',
-            tool_call: toolCall.request,
-            content: `Tool call ${toolCall.request.id} is ${toolCall.response.status}`,
-          }
+          return [
+            {
+              role: 'tool',
+              tool_call: toolCall.request,
+              content: `Tool call ${toolCall.request.id} is aborted`,
+            },
+          ]
+        case ToolCallResponseStatus.Rejected:
+          return [
+            {
+              role: 'tool',
+              tool_call: toolCall.request,
+              content: `Tool call ${toolCall.request.id} is rejected`,
+            },
+          ]
         case ToolCallResponseStatus.Success:
-          return {
-            role: 'tool',
-            tool_call: toolCall.request,
-            content: toolCall.response.data.text,
-          }
+          return [
+            {
+              role: 'tool',
+              tool_call: toolCall.request,
+              content: toolCall.response.data.text,
+            },
+          ]
         case ToolCallResponseStatus.Error:
-          return {
-            role: 'tool',
-            tool_call: toolCall.request,
-            content: `Error: ${toolCall.response.error}`,
-          }
+          return [
+            {
+              role: 'tool',
+              tool_call: toolCall.request,
+              content: `Error: ${toolCall.response.error}`,
+            },
+          ]
       }
     })
   }

@@ -281,6 +281,7 @@ export default class SmartComposerPlugin extends Plugin {
   private getMcpCoordinator(): McpCoordinator {
     if (!this.mcpCoordinator) {
       this.mcpCoordinator = new McpCoordinator({
+        app: this.app,
         getSettings: () => this.settings,
         registerSettingsListener: (
           listener: (settings: SmartComposerSettings) => void,

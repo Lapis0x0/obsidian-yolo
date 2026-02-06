@@ -5,6 +5,7 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import { useMcp } from '../../contexts/mcp-context'
 import { useSettings } from '../../contexts/settings-context'
 import { InvalidToolNameException } from '../../core/mcp/exception'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { ChatToolMessage } from '../../types/chat'
 import {
@@ -130,6 +131,10 @@ function ToolCallItem({
       return request.arguments
     }
   }, [request.arguments])
+  const supportsAutoAllow = useMemo(
+    () => Boolean(serverName) && serverName !== getLocalFileToolServerName(),
+    [serverName],
+  )
 
   return (
     <div className="smtcmp-toolcall">
@@ -182,24 +187,37 @@ function ToolCallItem({
                   void handleToolCall()
                   setIsOpen(false)
                 }}
-                menuOptions={[
-                  {
-                    label: 'Always allow this tool',
-                    onClick: () => {
-                      void handleToolCall()
-                      handleAllowAutoExecution()
-                      setIsOpen(false)
-                    },
-                  },
-                  {
-                    label: 'Allow for this chat',
-                    onClick: () => {
-                      void handleToolCall()
-                      void handleAllowForConversation()
-                      setIsOpen(false)
-                    },
-                  },
-                ]}
+                menuOptions={
+                  supportsAutoAllow
+                    ? [
+                        {
+                          label: 'Always allow this tool',
+                          onClick: () => {
+                            void handleToolCall()
+                            handleAllowAutoExecution()
+                            setIsOpen(false)
+                          },
+                        },
+                        {
+                          label: 'Allow for this chat',
+                          onClick: () => {
+                            void handleToolCall()
+                            void handleAllowForConversation()
+                            setIsOpen(false)
+                          },
+                        },
+                      ]
+                    : [
+                        {
+                          label: 'Allow for this chat',
+                          onClick: () => {
+                            void handleToolCall()
+                            void handleAllowForConversation()
+                            setIsOpen(false)
+                          },
+                        },
+                      ]
+                }
               />
               <button
                 onClick={() => {

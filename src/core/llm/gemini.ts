@@ -406,19 +406,12 @@ export class GeminiProvider extends BaseLLMProvider<
           contentParts.push({ text: message.content })
         }
 
-        if (message.tool_calls) {
-          for (const toolCall of message.tool_calls) {
-            const args = GeminiProvider.safeParseJsonObject(
-              toolCall.arguments ?? '{}',
-            )
-            contentParts.push({
-              functionCall: {
-                name: toolCall.name,
-                args,
-              },
-            })
-          }
-        }
+        // NOTE:
+        // For Gemini thinking/tool models, replaying historical functionCall
+        // parts without provider-issued thought signatures can trigger 400:
+        // "Function call is missing a thought_signature...".
+        // We therefore avoid rehydrating assistant tool_calls here and rely on
+        // the corresponding tool/functionResponse messages as execution context.
 
         if (contentParts.length === 0) {
           return null
