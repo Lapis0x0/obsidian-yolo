@@ -37,7 +37,9 @@ export abstract class AbstractJsonRepository<T, M> {
       try {
         await this.app.vault.adapter.write(filePath, content)
       } catch (error) {
-        if (await this.handleAtomicWriteTempFileError(error, filePath, content)) {
+        if (
+          await this.handleAtomicWriteTempFileError(error, filePath, content)
+        ) {
           return
         }
         throw error
