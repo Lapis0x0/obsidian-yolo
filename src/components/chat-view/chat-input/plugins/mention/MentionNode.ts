@@ -214,11 +214,14 @@ export class MentionNode extends TextNode {
   }
 
   canInsertTextBefore(): boolean {
-    return false
+    // Allow caret placement at the left edge of a mention token.
+    // This avoids "cannot place cursor" in blank-left click areas.
+    return true
   }
 
   canInsertTextAfter(): boolean {
-    return false
+    // Allow caret placement at the right edge as well.
+    return true
   }
 
   getMentionable(): SerializedMentionable {

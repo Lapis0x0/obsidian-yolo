@@ -14,6 +14,7 @@ import {
 } from 'lexical'
 import {
   type FocusEvent,
+  type MouseEvent as ReactMouseEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -479,6 +480,26 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       }
     }
 
+    const handleEditorBackgroundMouseDown = useCallback(
+      (event: ReactMouseEvent<HTMLDivElement>) => {
+        const editorRoot = contentEditableRef.current
+        const editor = editorRef.current
+        if (!editorRoot || !editor) return
+
+        // Only handle clicks on the contentEditable background itself.
+        // This keeps normal caret placement when clicking on real text nodes.
+        if (event.target !== editorRoot) return
+
+        requestAnimationFrame(() => {
+          editorRoot.focus()
+          editor.update(() => {
+            $getRoot().selectEnd()
+          })
+        })
+      },
+      [],
+    )
+
     return (
       <div
         className={`smtcmp-chat-user-input-wrapper${compact ? ' smtcmp-chat-user-input-wrapper--compact' : ''}`}
@@ -494,7 +515,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           ref={containerRef}
           onClick={compact ? onToggleCompact : undefined}
         >
-          <div className="smtcmp-chat-user-input-editor">
+          <div
+            className="smtcmp-chat-user-input-editor"
+            onMouseDown={handleEditorBackgroundMouseDown}
+          >
             {inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
               compact && (
