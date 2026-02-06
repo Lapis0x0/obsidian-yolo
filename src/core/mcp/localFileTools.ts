@@ -7,18 +7,18 @@ const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_BATCH_READ_FILES = 20
 const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
-const MAX_BATCH_MOVE_FILES = 50
+const MAX_BATCH_WRITE_ITEMS = 50
 
-type LocalFileToolName =
-  | 'read_files'
+type LocalFileToolName = 'fs_list' | 'fs_search' | 'fs_read' | 'fs_write'
+type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
+type FsListScope = 'files' | 'dirs' | 'all'
+type FsWriteAction =
   | 'create_file'
   | 'write_file'
   | 'delete_file'
-  | 'move_files'
-  | 'list_dir'
-  | 'search_dirs'
-  | 'search_files'
-  | 'search_content'
+  | 'create_dir'
+  | 'delete_dir'
+  | 'move'
 
 type LocalToolCallResult =
   | {
@@ -32,6 +32,13 @@ type LocalToolCallResult =
   | {
       status: ToolCallResponseStatus.Aborted
     }
+
+type FsResultItem = {
+  ok: boolean
+  action: FsWriteAction
+  target: string
+  message: string
+}
 
 const asErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -67,7 +74,74 @@ export function getLocalFileToolServerName(): string {
 export function getLocalFileTools(): McpTool[] {
   return [
     {
-      name: 'read_files',
+      name: 'fs_list',
+      description:
+        'List directory structure under a vault path. Useful for workspace orientation.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description:
+              'Optional vault-relative directory path. Omit or use "/" for vault root.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['files', 'dirs', 'all'],
+            description: 'Filter listed entries by type. Defaults to all.',
+          },
+          depth: {
+            type: 'integer',
+            description:
+              'Traversal depth from the target directory. Defaults to 1, range 1-10.',
+          },
+          maxResults: {
+            type: 'integer',
+            description:
+              'Maximum entries to return. Defaults to 200, range 1-2000.',
+          },
+        },
+      },
+    },
+    {
+      name: 'fs_search',
+      description:
+        'Search files, folders, or markdown content in vault. Scope controls target type.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          scope: {
+            type: 'string',
+            enum: ['files', 'dirs', 'content', 'all'],
+            description:
+              'Search scope. content/all reads markdown contents; files/dirs only match paths.',
+          },
+          query: {
+            type: 'string',
+            description:
+              'Keyword to search. Optional for files/dirs listing. Required when scope includes content.',
+          },
+          path: {
+            type: 'string',
+            description:
+              'Optional vault-relative directory path to scope search.',
+          },
+          maxResults: {
+            type: 'integer',
+            description:
+              'Maximum results to return. Defaults to 20, range 1-300.',
+          },
+          caseSensitive: {
+            type: 'boolean',
+            description:
+              'Whether matching should be case-sensitive. Mainly useful for content scope.',
+          },
+        },
+        required: ['scope'],
+      },
+    },
+    {
+      name: 'fs_read',
       description: 'Read text content from multiple vault files by path.',
       inputSchema: {
         type: 'object',
@@ -88,183 +162,53 @@ export function getLocalFileTools(): McpTool[] {
       },
     },
     {
-      name: 'create_file',
+      name: 'fs_write',
       description:
-        'Create a new vault file with content. Fails if file already exists.',
+        'Execute vault write operations for files/folders. delete_* actions should require approval.',
       inputSchema: {
         type: 'object',
         properties: {
-          path: {
+          action: {
             type: 'string',
-            description: 'Vault-relative file path to create.',
+            enum: [
+              'create_file',
+              'write_file',
+              'delete_file',
+              'create_dir',
+              'delete_dir',
+              'move',
+            ],
+            description: 'Write action to run for each item.',
           },
-          content: {
-            type: 'string',
-            description: 'File content.',
-          },
-        },
-        required: ['path', 'content'],
-      },
-    },
-    {
-      name: 'write_file',
-      description:
-        'Write content to an existing file, or create it if missing. Mode supports overwrite/append.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative file path to write.',
-          },
-          content: {
-            type: 'string',
-            description: 'Content to write.',
-          },
-          mode: {
-            type: 'string',
-            enum: ['overwrite', 'append'],
-            description: 'Write mode. Defaults to overwrite.',
-          },
-        },
-        required: ['path', 'content'],
-      },
-    },
-    {
-      name: 'delete_file',
-      description: 'Delete a vault file by path.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative file path to delete.',
-          },
-        },
-        required: ['path'],
-      },
-    },
-    {
-      name: 'move_files',
-      description: 'Move multiple vault files in a single call.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          moves: {
+          items: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                oldPath: {
+                path: { type: 'string' },
+                oldPath: { type: 'string' },
+                newPath: { type: 'string' },
+                content: { type: 'string' },
+                mode: {
                   type: 'string',
-                  description: 'Current vault-relative file path.',
+                  enum: ['overwrite', 'append'],
                 },
-                newPath: {
-                  type: 'string',
-                  description: 'Target vault-relative file path.',
+                recursive: {
+                  type: 'boolean',
+                  description:
+                    'Only for delete_dir. Default false; when false non-empty folders cannot be deleted.',
                 },
               },
-              required: ['oldPath', 'newPath'],
             },
-            description: `Move operations list. Maximum ${MAX_BATCH_MOVE_FILES} items.`,
+            description: `Operation items. Maximum ${MAX_BATCH_WRITE_ITEMS} items per call.`,
           },
-        },
-        required: ['moves'],
-      },
-    },
-    {
-      name: 'list_dir',
-      description: 'List files and folders in a vault directory.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description:
-              'Vault-relative directory path. Omit or use empty string for vault root.',
-          },
-          maxResults: {
-            type: 'integer',
-            description:
-              'Maximum entries to return. Defaults to 200, range 1-1000.',
-          },
-        },
-      },
-    },
-    {
-      name: 'search_files',
-      description: 'Search vault files by file path/name.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Keyword to match against file paths.',
-          },
-          path: {
-            type: 'string',
-            description:
-              'Optional vault-relative directory path to scope search.',
-          },
-          maxResults: {
-            type: 'integer',
-            description:
-              'Maximum matches to return. Defaults to 20, range 1-200.',
-          },
-        },
-        required: ['query'],
-      },
-    },
-    {
-      name: 'search_dirs',
-      description: 'Search vault folders by folder path/name.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Keyword to match against folder paths.',
-          },
-          path: {
-            type: 'string',
-            description:
-              'Optional vault-relative directory path to scope search.',
-          },
-          maxResults: {
-            type: 'integer',
-            description:
-              'Maximum matches to return. Defaults to 20, range 1-200.',
-          },
-        },
-        required: ['query'],
-      },
-    },
-    {
-      name: 'search_content',
-      description: 'Search markdown file contents by keyword.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Keyword to search in markdown contents.',
-          },
-          path: {
-            type: 'string',
-            description:
-              'Optional vault-relative directory path to scope search.',
-          },
-          maxResults: {
-            type: 'integer',
-            description:
-              'Maximum matches to return. Defaults to 20, range 1-100.',
-          },
-          caseSensitive: {
+          dryRun: {
             type: 'boolean',
-            description: 'Whether keyword matching should be case-sensitive.',
+            description:
+              'If true, validate and preview results without applying changes.',
           },
         },
-        required: ['query'],
+        required: ['action', 'items'],
       },
     },
   ]
@@ -346,33 +290,19 @@ const getStringArrayArg = (
   return value
 }
 
-type MoveOperation = {
-  oldPath: string
-  newPath: string
-}
-
-const getMoveOperationsArg = (
+const getRecordArrayArg = (
   args: Record<string, unknown>,
   key: string,
-): MoveOperation[] => {
+): Record<string, unknown>[] => {
   const value = args[key]
   if (!Array.isArray(value)) {
     throw new Error(`${key} must be an array.`)
   }
-
   return value.map((item, index) => {
     if (typeof item !== 'object' || item === null) {
       throw new Error(`${key}[${index}] must be an object.`)
     }
-    const rawOldPath = (item as Record<string, unknown>).oldPath
-    const rawNewPath = (item as Record<string, unknown>).newPath
-    if (typeof rawOldPath !== 'string' || typeof rawNewPath !== 'string') {
-      throw new Error(`${key}[${index}] oldPath/newPath must be strings.`)
-    }
-    return {
-      oldPath: validateVaultPath(rawOldPath),
-      newPath: validateVaultPath(rawNewPath),
-    }
+    return item as Record<string, unknown>
   })
 }
 
@@ -389,7 +319,8 @@ const resolveFolderByPath = (
   rawPath: string | undefined,
 ): { folder: TFolder; normalizedPath: string } => {
   const trimmedPath = rawPath?.trim()
-  if (!trimmedPath) {
+  // Treat "/" as vault root for better model compatibility.
+  if (!trimmedPath || trimmedPath === '/') {
     return { folder: app.vault.getRoot(), normalizedPath: '' }
   }
 
@@ -437,6 +368,81 @@ const makeContentSnippet = ({
   return `${prefix}${snippet}${suffix}`
 }
 
+const getFsSearchScope = (args: Record<string, unknown>): FsSearchScope => {
+  const value = args.scope
+  if (
+    value !== 'files' &&
+    value !== 'dirs' &&
+    value !== 'content' &&
+    value !== 'all'
+  ) {
+    throw new Error('scope must be one of: files, dirs, content, all.')
+  }
+  return value
+}
+
+const getFsListScope = (args: Record<string, unknown>): FsListScope => {
+  const value = args.scope
+  if (value === undefined) {
+    return 'all'
+  }
+  if (value !== 'files' && value !== 'dirs' && value !== 'all') {
+    throw new Error('scope must be one of: files, dirs, all.')
+  }
+  return value
+}
+
+const getFsWriteAction = (args: Record<string, unknown>): FsWriteAction => {
+  const value = args.action
+  if (
+    value !== 'create_file' &&
+    value !== 'write_file' &&
+    value !== 'delete_file' &&
+    value !== 'create_dir' &&
+    value !== 'delete_dir' &&
+    value !== 'move'
+  ) {
+    throw new Error(
+      'action must be one of: create_file, write_file, delete_file, create_dir, delete_dir, move.',
+    )
+  }
+  return value
+}
+
+const ensureParentFolderExists = (app: App, path: string): void => {
+  const parentFolderPath = getParentFolderPath(path)
+  if (!parentFolderPath) {
+    return
+  }
+  const parentFolder = app.vault.getAbstractFileByPath(parentFolderPath)
+  if (!parentFolder || !(parentFolder instanceof TFolder)) {
+    throw new Error(`Target parent folder not found: ${parentFolderPath}`)
+  }
+}
+
+const formatJsonResult = (payload: unknown): string => {
+  return JSON.stringify(payload, null, 2)
+}
+
+export function parseLocalFsWriteActionFromArgs(
+  args?: Record<string, unknown> | string,
+): FsWriteAction | null {
+  try {
+    const parsedArgs: Record<string, unknown> | undefined =
+      typeof args === 'string'
+        ? args.trim() === ''
+          ? {}
+          : (JSON.parse(args) as Record<string, unknown>)
+        : args
+    if (!parsedArgs) {
+      return null
+    }
+    return getFsWriteAction(parsedArgs)
+  } catch {
+    return null
+  }
+}
+
 export async function callLocalFileTool({
   app,
   toolName,
@@ -455,10 +461,79 @@ export async function callLocalFileTool({
   try {
     const name = toolName as LocalFileToolName
     switch (name) {
-      case 'read_files': {
+      case 'fs_list': {
+        const scopeFolder = resolveFolderByPath(app, getOptionalTextArg(args, 'path'))
+        const scope = getFsListScope(args)
+        const depth = getOptionalIntegerArg({
+          args,
+          key: 'depth',
+          defaultValue: 1,
+          min: 1,
+          max: 10,
+        })
+        const maxResults = getOptionalIntegerArg({
+          args,
+          key: 'maxResults',
+          defaultValue: 200,
+          min: 1,
+          max: 2000,
+        })
+
+        const includeFiles = scope === 'files' || scope === 'all'
+        const includeDirs = scope === 'dirs' || scope === 'all'
+
+        const entries: Array<{ kind: 'file' | 'dir'; path: string; depth: number }> = []
+        const queue: Array<{ folder: TFolder; level: number }> = [
+          { folder: scopeFolder.folder, level: 1 },
+        ]
+
+        while (queue.length > 0 && entries.length < maxResults) {
+          const current = queue.shift()
+          if (!current) break
+          const { folder, level } = current
+
+          const sortedChildren = [...folder.children].sort((a, b) =>
+            a.path.localeCompare(b.path),
+          )
+          for (const child of sortedChildren) {
+            if (entries.length >= maxResults) break
+
+            if (child instanceof TFolder) {
+              if (includeDirs) {
+                entries.push({ kind: 'dir', path: child.path, depth: level })
+              }
+              if (level < depth) {
+                queue.push({ folder: child, level: level + 1 })
+              }
+              continue
+            }
+
+            if (includeFiles && child instanceof TFile) {
+              entries.push({ kind: 'file', path: child.path, depth: level })
+            }
+          }
+        }
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'fs_list',
+            path: scopeFolder.normalizedPath,
+            scope,
+            depth,
+            summary: {
+              returned: entries.length,
+              maxResults,
+            },
+            entries,
+          }),
+        }
+      }
+      case 'fs_read': {
         const paths = getStringArrayArg(args, 'paths')
           .map((path) => validateVaultPath(path))
           .filter((path, index, arr) => arr.indexOf(path) === index)
+
         if (paths.length === 0) {
           throw new Error('paths cannot be empty.')
         }
@@ -467,6 +542,7 @@ export async function callLocalFileTool({
             `paths supports up to ${MAX_BATCH_READ_FILES} files per call.`,
           )
         }
+
         const maxCharsPerFile = getOptionalIntegerArg({
           args,
           key: 'maxCharsPerFile',
@@ -475,9 +551,19 @@ export async function callLocalFileTool({
           max: 200000,
         })
 
-        const sections: string[] = []
-        let successCount = 0
-        let errorCount = 0
+        const results: Array<
+          | {
+              path: string
+              ok: true
+              content: string
+              truncated: boolean
+            }
+          | {
+              path: string
+              ok: false
+              error: string
+            }
+        > = []
 
         for (const path of paths) {
           if (signal?.aborted) {
@@ -486,349 +572,415 @@ export async function callLocalFileTool({
 
           const file = app.vault.getFileByPath(path)
           if (!file) {
-            errorCount += 1
-            sections.push(`### ${path}\n[Error] File not found.`)
+            results.push({ path, ok: false, error: 'File not found.' })
             continue
           }
+
           if (file.stat.size > MAX_FILE_SIZE_BYTES) {
-            errorCount += 1
-            sections.push(
-              `### ${path}\n[Error] File too large (${file.stat.size} bytes).`,
-            )
+            results.push({
+              path,
+              ok: false,
+              error: `File too large (${file.stat.size} bytes).`,
+            })
             continue
           }
 
           const content = await app.vault.read(file)
-          const clippedContent =
-            content.length > maxCharsPerFile
-              ? `${content.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
-              : content
-
-          successCount += 1
-          sections.push(`### ${path}\n${clippedContent}`)
+          const truncated = content.length > maxCharsPerFile
+          const clippedContent = truncated
+            ? `${content.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
+            : content
+          results.push({
+            path,
+            ok: true,
+            content: clippedContent,
+            truncated,
+          })
         }
+
+        const successCount = results.filter((result) => result.ok).length
+        const errorCount = results.length - successCount
 
         return {
           status: ToolCallResponseStatus.Success,
-          text: `Batch read completed (${successCount} succeeded, ${errorCount} failed):\n\n${sections.join('\n\n---\n\n')}`,
+          text: formatJsonResult({
+            tool: 'fs_read',
+            summary: {
+              total: results.length,
+              success: successCount,
+              failed: errorCount,
+            },
+            results,
+          }),
         }
       }
-      case 'create_file': {
-        const path = validateVaultPath(getTextArg(args, 'path'))
-        const content = getTextArg(args, 'content')
-        assertContentSize(content)
-        const existing = app.vault.getAbstractFileByPath(path)
-        if (existing) {
-          throw new Error(`File already exists: ${path}`)
+
+      case 'fs_search': {
+        const scope = getFsSearchScope(args)
+        const query = (getOptionalTextArg(args, 'query') ?? '').trim()
+        const maxResults = getOptionalIntegerArg({
+          args,
+          key: 'maxResults',
+          defaultValue: 20,
+          min: 1,
+          max: 300,
+        })
+        const caseSensitive = getOptionalBooleanArg(args, 'caseSensitive') ?? false
+        const scopeFolder = resolveFolderByPath(app, getOptionalTextArg(args, 'path'))
+
+        const queryForMatch = caseSensitive ? query : query.toLowerCase()
+        const matchPath = (path: string): boolean => {
+          if (!query) {
+            return true
+          }
+          const source = caseSensitive ? path : path.toLowerCase()
+          return source.includes(queryForMatch)
         }
-        await app.vault.create(path, content)
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: `Created file: ${path}`,
+
+        const includeFiles = scope === 'files' || scope === 'all'
+        const includeDirs = scope === 'dirs' || scope === 'all'
+        const includeContent = scope === 'content' || scope === 'all'
+
+        if (includeContent && !query) {
+          throw new Error('query is required when scope includes content.')
         }
-      }
-      case 'write_file': {
-        const path = validateVaultPath(getTextArg(args, 'path'))
-        const content = getTextArg(args, 'content')
-        const mode = args.mode
-        if (mode !== undefined && mode !== 'overwrite' && mode !== 'append') {
-          throw new Error('mode must be overwrite or append.')
-        }
-        assertContentSize(content)
-        const existing = app.vault.getFileByPath(path)
-        if (!existing) {
-          await app.vault.create(path, content)
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: `Created file: ${path}`,
+
+        const results: Array<
+          | { kind: 'file'; path: string }
+          | { kind: 'dir'; path: string }
+          | { kind: 'content_match'; path: string; line: number; snippet: string }
+        > = []
+        let skippedLargeFiles = 0
+
+        if (includeFiles) {
+          const files = app.vault
+            .getFiles()
+            .filter((file) => isPathWithinFolder(file.path, scopeFolder.normalizedPath))
+            .map((file) => file.path)
+            .filter((path) => matchPath(path))
+            .sort((a, b) => a.localeCompare(b))
+
+          for (const filePath of files) {
+            if (results.length >= maxResults) break
+            results.push({ kind: 'file', path: filePath })
           }
         }
-        const nextContent =
-          mode === 'append'
-            ? `${await app.vault.read(existing)}${content}`
-            : content
-        assertContentSize(nextContent)
-        await app.vault.modify(existing, nextContent)
+
+        if (includeDirs && results.length < maxResults) {
+          const dirs = app.vault
+            .getAllLoadedFiles()
+            .filter((entry): entry is TFolder => entry instanceof TFolder)
+            .filter((folder) => folder.path.length > 0)
+            .filter((folder) =>
+              isPathWithinFolder(folder.path, scopeFolder.normalizedPath),
+            )
+            .map((folder) => folder.path)
+            .filter((path) => matchPath(path))
+            .sort((a, b) => a.localeCompare(b))
+
+          for (const dirPath of dirs) {
+            if (results.length >= maxResults) break
+            results.push({ kind: 'dir', path: dirPath })
+          }
+        }
+
+        if (includeContent && results.length < maxResults) {
+          const searchableFiles = app.vault
+            .getMarkdownFiles()
+            .filter((file) => isPathWithinFolder(file.path, scopeFolder.normalizedPath))
+            .sort((a, b) => a.path.localeCompare(b.path))
+
+          for (const file of searchableFiles) {
+            if (results.length >= maxResults) break
+            if (signal?.aborted) {
+              return { status: ToolCallResponseStatus.Aborted }
+            }
+            if (file.stat.size > MAX_FILE_SIZE_BYTES) {
+              skippedLargeFiles += 1
+              continue
+            }
+
+            const content = await app.vault.read(file)
+            const source = caseSensitive ? content : content.toLowerCase()
+            const matchIndex = source.indexOf(queryForMatch)
+            if (matchIndex === -1) {
+              continue
+            }
+
+            const line = content.slice(0, matchIndex).split('\n').length
+            const snippet = makeContentSnippet({
+              content,
+              matchIndex,
+              matchLength: query.length,
+            })
+            results.push({
+              kind: 'content_match',
+              path: file.path,
+              line,
+              snippet,
+            })
+          }
+        }
+
         return {
           status: ToolCallResponseStatus.Success,
-          text: `Updated file: ${path}`,
+          text: formatJsonResult({
+            tool: 'fs_search',
+            scope,
+            query,
+            path: scopeFolder.normalizedPath,
+            summary: {
+              returned: results.length,
+              maxResults,
+              skippedLargeFiles,
+            },
+            results,
+          }),
         }
       }
-      case 'delete_file': {
-        const path = validateVaultPath(getTextArg(args, 'path'))
-        const existing = app.vault.getAbstractFileByPath(path)
-        if (!existing || !(existing instanceof TFile)) {
-          throw new Error(`File not found: ${path}`)
+
+      case 'fs_write': {
+        const action = getFsWriteAction(args)
+        const items = getRecordArrayArg(args, 'items')
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+
+        if (items.length === 0) {
+          throw new Error('items cannot be empty.')
         }
-        await app.fileManager.trashFile(existing)
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: `Deleted file: ${path}`,
-        }
-      }
-      case 'move_files': {
-        const moves = getMoveOperationsArg(args, 'moves')
-        if (moves.length === 0) {
-          throw new Error('moves cannot be empty.')
-        }
-        if (moves.length > MAX_BATCH_MOVE_FILES) {
+        if (items.length > MAX_BATCH_WRITE_ITEMS) {
           throw new Error(
-            `moves supports up to ${MAX_BATCH_MOVE_FILES} files per call.`,
+            `items supports up to ${MAX_BATCH_WRITE_ITEMS} operations per call.`,
           )
         }
 
-        const uniqueTargetPaths = new Set<string>()
-        for (const move of moves) {
-          if (move.oldPath === move.newPath) {
-            throw new Error(
-              `oldPath and newPath must be different: ${move.oldPath}`,
-            )
-          }
-          if (uniqueTargetPaths.has(move.newPath)) {
-            throw new Error(`Duplicate newPath in moves: ${move.newPath}`)
-          }
-          uniqueTargetPaths.add(move.newPath)
-        }
+        const results: FsResultItem[] = []
 
-        const results: string[] = []
-        let successCount = 0
-        let errorCount = 0
-
-        for (const move of moves) {
+        for (const item of items) {
           if (signal?.aborted) {
             return { status: ToolCallResponseStatus.Aborted }
           }
 
-          const sourceFile = app.vault.getAbstractFileByPath(move.oldPath)
-          if (!sourceFile || !(sourceFile instanceof TFile)) {
-            errorCount += 1
-            results.push(
-              `- [Error] ${move.oldPath} -> ${move.newPath}: source file not found.`,
-            )
-            continue
-          }
+          try {
+            if (action === 'create_file') {
+              const path = validateVaultPath(getTextArg(item, 'path'))
+              const content = getTextArg(item, 'content')
+              assertContentSize(content)
 
-          const targetExists = app.vault.getAbstractFileByPath(move.newPath)
-          if (targetExists) {
-            errorCount += 1
-            results.push(
-              `- [Error] ${move.oldPath} -> ${move.newPath}: target path already exists.`,
-            )
-            continue
-          }
+              const existing = app.vault.getAbstractFileByPath(path)
+              if (existing) {
+                throw new Error(`Path already exists: ${path}`)
+              }
+              ensureParentFolderExists(app, path)
 
-          const parentFolderPath = getParentFolderPath(move.newPath)
-          if (parentFolderPath) {
-            const parentFolder =
-              app.vault.getAbstractFileByPath(parentFolderPath)
-            if (!parentFolder || !(parentFolder instanceof TFolder)) {
-              errorCount += 1
-              results.push(
-                `- [Error] ${move.oldPath} -> ${move.newPath}: target parent folder not found.`,
-              )
+              if (!dryRun) {
+                await app.vault.create(path, content)
+              }
+
+              results.push({
+                ok: true,
+                action,
+                target: path,
+                message: dryRun ? 'Would create file.' : 'Created file.',
+              })
               continue
             }
-          }
 
-          await app.fileManager.renameFile(sourceFile, move.newPath)
-          successCount += 1
-          results.push(`- [OK] ${move.oldPath} -> ${move.newPath}`)
+            if (action === 'write_file') {
+              const path = validateVaultPath(getTextArg(item, 'path'))
+              const content = getTextArg(item, 'content')
+              assertContentSize(content)
+              const mode = item.mode
+              if (mode !== undefined && mode !== 'overwrite' && mode !== 'append') {
+                throw new Error('mode must be overwrite or append.')
+              }
+
+              const existing = app.vault.getAbstractFileByPath(path)
+              if (existing && !(existing instanceof TFile)) {
+                throw new Error(`Path is not a file: ${path}`)
+              }
+
+              if (existing instanceof TFile) {
+                const nextContent =
+                  mode === 'append'
+                    ? `${await app.vault.read(existing)}${content}`
+                    : content
+                assertContentSize(nextContent)
+
+                if (!dryRun) {
+                  await app.vault.modify(existing, nextContent)
+                }
+
+                results.push({
+                  ok: true,
+                  action,
+                  target: path,
+                  message:
+                    mode === 'append'
+                      ? dryRun
+                        ? 'Would append to file.'
+                        : 'Appended to file.'
+                      : dryRun
+                        ? 'Would overwrite file.'
+                        : 'Overwrote file.',
+                })
+                continue
+              }
+
+              ensureParentFolderExists(app, path)
+              if (!dryRun) {
+                await app.vault.create(path, content)
+              }
+
+              results.push({
+                ok: true,
+                action,
+                target: path,
+                message: dryRun ? 'Would create file.' : 'Created file.',
+              })
+              continue
+            }
+
+            if (action === 'delete_file') {
+              const path = validateVaultPath(getTextArg(item, 'path'))
+              const existing = app.vault.getAbstractFileByPath(path)
+              if (!existing || !(existing instanceof TFile)) {
+                throw new Error(`File not found: ${path}`)
+              }
+
+              if (!dryRun) {
+                await app.fileManager.trashFile(existing)
+              }
+
+              results.push({
+                ok: true,
+                action,
+                target: path,
+                message: dryRun ? 'Would delete file.' : 'Deleted file.',
+              })
+              continue
+            }
+
+            if (action === 'create_dir') {
+              const path = validateVaultPath(getTextArg(item, 'path'))
+              const existing = app.vault.getAbstractFileByPath(path)
+              if (existing) {
+                throw new Error(`Path already exists: ${path}`)
+              }
+              ensureParentFolderExists(app, path)
+
+              if (!dryRun) {
+                await app.vault.createFolder(path)
+              }
+
+              results.push({
+                ok: true,
+                action,
+                target: path,
+                message: dryRun ? 'Would create folder.' : 'Created folder.',
+              })
+              continue
+            }
+
+            if (action === 'delete_dir') {
+              const path = validateVaultPath(getTextArg(item, 'path'))
+              const recursive = getOptionalBooleanArg(item, 'recursive') ?? false
+              const existing = app.vault.getAbstractFileByPath(path)
+              if (!existing || !(existing instanceof TFolder)) {
+                throw new Error(`Folder not found: ${path}`)
+              }
+              if (!recursive && existing.children.length > 0) {
+                throw new Error(
+                  `Folder is not empty: ${path}. Set recursive=true to delete non-empty folders.`,
+                )
+              }
+
+              if (!dryRun) {
+                await app.fileManager.trashFile(existing)
+              }
+
+              results.push({
+                ok: true,
+                action,
+                target: path,
+                message: dryRun ? 'Would delete folder.' : 'Deleted folder.',
+              })
+              continue
+            }
+
+            if (action === 'move') {
+              const oldPath = validateVaultPath(getTextArg(item, 'oldPath'))
+              const newPath = validateVaultPath(getTextArg(item, 'newPath'))
+
+              if (oldPath === newPath) {
+                throw new Error('oldPath and newPath must be different.')
+              }
+
+              const source = app.vault.getAbstractFileByPath(oldPath)
+              if (!source) {
+                throw new Error(`Source path not found: ${oldPath}`)
+              }
+
+              const targetExists = app.vault.getAbstractFileByPath(newPath)
+              if (targetExists) {
+                throw new Error(`Target path already exists: ${newPath}`)
+              }
+              ensureParentFolderExists(app, newPath)
+
+              if (
+                source instanceof TFolder &&
+                (newPath === source.path || newPath.startsWith(`${source.path}/`))
+              ) {
+                throw new Error(
+                  'Cannot move a folder into itself or its subfolder.',
+                )
+              }
+
+              if (!dryRun) {
+                await app.fileManager.renameFile(source, newPath)
+              }
+
+              results.push({
+                ok: true,
+                action,
+                target: `${oldPath} -> ${newPath}`,
+                message: dryRun ? 'Would move path.' : 'Moved path.',
+              })
+              continue
+            }
+
+            throw new Error(`Unsupported fs_write action: ${action}`)
+          } catch (error) {
+            results.push({
+              ok: false,
+              action,
+              target:
+                action === 'move'
+                  ? `${String(item.oldPath ?? '')} -> ${String(item.newPath ?? '')}`
+                  : String(item.path ?? ''),
+              message: asErrorMessage(error),
+            })
+          }
         }
+
+        const successCount = results.filter((item) => item.ok).length
+        const errorCount = results.length - successCount
 
         return {
           status: ToolCallResponseStatus.Success,
-          text: `Batch move completed (${successCount} succeeded, ${errorCount} failed):\n${results.join('\n')}`,
+          text: formatJsonResult({
+            tool: 'fs_write',
+            action,
+            dryRun,
+            summary: {
+              total: results.length,
+              success: successCount,
+              failed: errorCount,
+            },
+            results,
+          }),
         }
       }
-      case 'list_dir': {
-        const scope = resolveFolderByPath(app, getOptionalTextArg(args, 'path'))
-        const maxResults = getOptionalIntegerArg({
-          args,
-          key: 'maxResults',
-          defaultValue: 200,
-          min: 1,
-          max: 1000,
-        })
 
-        const entries = scope.folder.children
-          .map((entry) =>
-            entry instanceof TFolder ? `${entry.path}/` : entry.path,
-          )
-          .sort((a, b) => a.localeCompare(b))
-
-        const listedEntries = entries.slice(0, maxResults)
-        const scopeLabel = scope.normalizedPath || '/'
-        if (listedEntries.length === 0) {
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: `Directory is empty: ${scopeLabel}`,
-          }
-        }
-
-        const suffix =
-          entries.length > listedEntries.length
-            ? `\n... (${entries.length - listedEntries.length} more entries omitted)`
-            : ''
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: `Directory listing for ${scopeLabel}:\n${listedEntries.map((entry) => `- ${entry}`).join('\n')}${suffix}`,
-        }
-      }
-      case 'search_files': {
-        const query = getTextArg(args, 'query').trim()
-        if (!query) {
-          throw new Error('query cannot be empty.')
-        }
-        const scope = resolveFolderByPath(app, getOptionalTextArg(args, 'path'))
-        const maxResults = getOptionalIntegerArg({
-          args,
-          key: 'maxResults',
-          defaultValue: 20,
-          min: 1,
-          max: 200,
-        })
-
-        const queryLower = query.toLowerCase()
-        const results = app.vault
-          .getFiles()
-          .filter((file) => isPathWithinFolder(file.path, scope.normalizedPath))
-          .map((file) => file.path)
-          .filter((path) => path.toLowerCase().includes(queryLower))
-          .sort((a, b) => a.localeCompare(b))
-
-        const listedResults = results.slice(0, maxResults)
-        if (listedResults.length === 0) {
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: `No file paths matched "${query}".`,
-          }
-        }
-
-        const suffix =
-          results.length > listedResults.length
-            ? `\n... (${results.length - listedResults.length} more matches omitted)`
-            : ''
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: `Matched file paths (${listedResults.length}/${results.length}):\n${listedResults.map((path) => `- ${path}`).join('\n')}${suffix}`,
-        }
-      }
-      case 'search_dirs': {
-        const query = getTextArg(args, 'query').trim()
-        if (!query) {
-          throw new Error('query cannot be empty.')
-        }
-        const scope = resolveFolderByPath(app, getOptionalTextArg(args, 'path'))
-        const maxResults = getOptionalIntegerArg({
-          args,
-          key: 'maxResults',
-          defaultValue: 20,
-          min: 1,
-          max: 200,
-        })
-
-        const queryLower = query.toLowerCase()
-        const results = app.vault
-          .getAllLoadedFiles()
-          .filter((entry): entry is TFolder => entry instanceof TFolder)
-          .filter((folder) =>
-            isPathWithinFolder(folder.path, scope.normalizedPath),
-          )
-          .map((folder) => folder.path)
-          .filter((path) => path.toLowerCase().includes(queryLower))
-          .sort((a, b) => a.localeCompare(b))
-
-        const listedResults = results.slice(0, maxResults)
-        if (listedResults.length === 0) {
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: `No folder paths matched "${query}".`,
-          }
-        }
-
-        const suffix =
-          results.length > listedResults.length
-            ? `\n... (${results.length - listedResults.length} more matches omitted)`
-            : ''
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: `Matched folder paths (${listedResults.length}/${results.length}):\n${listedResults.map((path) => `- ${path}`).join('\n')}${suffix}`,
-        }
-      }
-      case 'search_content': {
-        const query = getTextArg(args, 'query').trim()
-        if (!query) {
-          throw new Error('query cannot be empty.')
-        }
-        const scope = resolveFolderByPath(app, getOptionalTextArg(args, 'path'))
-        const maxResults = getOptionalIntegerArg({
-          args,
-          key: 'maxResults',
-          defaultValue: 20,
-          min: 1,
-          max: 100,
-        })
-        const caseSensitive =
-          getOptionalBooleanArg(args, 'caseSensitive') ?? false
-
-        const searchableFiles = app.vault
-          .getMarkdownFiles()
-          .filter((file) => isPathWithinFolder(file.path, scope.normalizedPath))
-          .sort((a, b) => a.path.localeCompare(b.path))
-
-        const matched: string[] = []
-        let skippedLargeFiles = 0
-
-        for (const file of searchableFiles) {
-          if (matched.length >= maxResults) {
-            break
-          }
-          if (file.stat.size > MAX_FILE_SIZE_BYTES) {
-            skippedLargeFiles += 1
-            continue
-          }
-
-          const content = await app.vault.read(file)
-          const source = caseSensitive ? content : content.toLowerCase()
-          const target = caseSensitive ? query : query.toLowerCase()
-          const matchIndex = source.indexOf(target)
-          if (matchIndex === -1) {
-            continue
-          }
-
-          const line = content.slice(0, matchIndex).split('\n').length
-          const snippet = makeContentSnippet({
-            content,
-            matchIndex,
-            matchLength: query.length,
-          })
-          matched.push(`- ${file.path}:${line} ${snippet}`)
-        }
-
-        if (matched.length === 0) {
-          const skipMessage =
-            skippedLargeFiles > 0
-              ? ` (skipped ${skippedLargeFiles} oversized files)`
-              : ''
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: `No markdown content matched "${query}"${skipMessage}.`,
-          }
-        }
-
-        const suffix =
-          skippedLargeFiles > 0
-            ? `\nNote: skipped ${skippedLargeFiles} oversized files.`
-            : ''
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: `Matched markdown content (${matched.length}):\n${matched.join('\n')}${suffix}`,
-        }
-      }
       default:
         throw new Error(`Unknown local file tool: ${toolName}`)
     }

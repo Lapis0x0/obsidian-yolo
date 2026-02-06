@@ -269,7 +269,11 @@ function useToolCall(
 
   const handleAllowForConversation = useCallback(async () => {
     const mcpManager = await getMcpManager()
-    mcpManager.allowToolForConversation(request.name, conversationId)
+    mcpManager.allowToolForConversation(
+      request.name,
+      conversationId,
+      request.arguments,
+    )
   }, [request, conversationId, getMcpManager])
 
   const handleAllowAutoExecution = useCallback(() => {

@@ -19,6 +19,7 @@ import {
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
+  parseLocalFsWriteActionFromArgs,
 } from './localFileTools'
 import {
   getToolName,
@@ -42,6 +43,48 @@ export class McpManager {
   private subscribers = new Set<(servers: McpServerState[]) => void>()
 
   private availableToolsCache: Map<string, McpTool[]> = new Map()
+
+  private buildExecutionAllowanceKey({
+    requestToolName,
+    requestArgs,
+  }: {
+    requestToolName: string
+    requestArgs?: Record<string, unknown> | string
+  }): string {
+    try {
+      const { serverName, toolName } = parseToolName(requestToolName)
+      if (
+        serverName === getLocalFileToolServerName() &&
+        toolName === 'fs_write'
+      ) {
+        const action = parseLocalFsWriteActionFromArgs(requestArgs)
+        if (action) {
+          return `${requestToolName}::${action}`
+        }
+      }
+    } catch {
+      // ignore and fallback to tool-name-level key
+    }
+    return requestToolName
+  }
+
+  private isLocalToolAutoExecutable({
+    toolName,
+    requestArgs,
+  }: {
+    toolName: string
+    requestArgs?: Record<string, unknown> | string
+  }): boolean {
+    if (toolName !== 'fs_write') {
+      return true
+    }
+    const action = parseLocalFsWriteActionFromArgs(requestArgs)
+    if (!action) {
+      // Fail closed when action is missing or invalid
+      return false
+    }
+    return action !== 'delete_file' && action !== 'delete_dir'
+  }
 
   constructor({
     app,
@@ -338,29 +381,37 @@ export class McpManager {
   public allowToolForConversation(
     requestToolName: string,
     conversationId: string,
+    requestArgs?: Record<string, unknown> | string,
   ): void {
     let allowedTools = this.allowedToolsByConversation.get(conversationId)
     if (!allowedTools) {
       allowedTools = new Set<string>()
       this.allowedToolsByConversation.set(conversationId, allowedTools)
     }
-    allowedTools.add(requestToolName)
+    const allowanceKey = this.buildExecutionAllowanceKey({
+      requestToolName,
+      requestArgs,
+    })
+    allowedTools.add(allowanceKey)
   }
 
   public isToolExecutionAllowed({
     requestToolName,
     conversationId,
+    requestArgs,
   }: {
     requestToolName: string
     conversationId?: string
+    requestArgs?: Record<string, unknown> | string
   }): boolean {
+    const allowanceKey = this.buildExecutionAllowanceKey({
+      requestToolName,
+      requestArgs,
+    })
+
     // Check if the tool is allowed for the conversation
     if (conversationId) {
-      if (
-        this.allowedToolsByConversation
-          .get(conversationId)
-          ?.has(requestToolName)
-      ) {
+      if (this.allowedToolsByConversation.get(conversationId)?.has(allowanceKey)) {
         return true
       }
     }
@@ -368,7 +419,7 @@ export class McpManager {
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (serverName === getLocalFileToolServerName()) {
-        return toolName !== 'delete_file'
+        return this.isLocalToolAutoExecutable({ toolName, requestArgs })
       }
       const server = this.servers.find((server) => server.name === serverName)
       if (!server) {

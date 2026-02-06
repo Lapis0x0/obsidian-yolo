@@ -29,13 +29,16 @@ export class AgentToolGateway {
   isExecutionAllowed({
     requestToolName,
     conversationId,
+    requestArgs,
   }: {
     requestToolName: string
     conversationId: string
+    requestArgs?: Record<string, unknown> | string
   }): boolean {
     return this.mcpManager.isToolExecutionAllowed({
       requestToolName,
       conversationId,
+      requestArgs,
     })
   }
 

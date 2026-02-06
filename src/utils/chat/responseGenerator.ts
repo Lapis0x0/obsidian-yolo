@@ -117,6 +117,7 @@ export class ResponseGenerator {
             status: this.mcpManager.isToolExecutionAllowed({
               requestToolName: toolCall.name,
               conversationId: this.conversationId,
+              requestArgs: toolCall.arguments,
             })
               ? ToolCallResponseStatus.Running
               : ToolCallResponseStatus.PendingApproval,
