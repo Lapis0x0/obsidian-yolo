@@ -7,14 +7,14 @@ const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_BATCH_READ_FILES = 20
 const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
+const MAX_BATCH_MOVE_FILES = 50
 
 type LocalFileToolName =
-  | 'read_file'
   | 'read_files'
   | 'create_file'
   | 'write_file'
   | 'delete_file'
-  | 'rename_file'
+  | 'move_files'
   | 'list_dir'
   | 'search_dirs'
   | 'search_files'
@@ -66,20 +66,6 @@ export function getLocalFileToolServerName(): string {
 
 export function getLocalFileTools(): McpTool[] {
   return [
-    {
-      name: 'read_file',
-      description: 'Read text content from a vault file by path.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative file path, e.g. DOC/notes.md',
-          },
-        },
-        required: ['path'],
-      },
-    },
     {
       name: 'read_files',
       description: 'Read text content from multiple vault files by path.',
@@ -159,21 +145,31 @@ export function getLocalFileTools(): McpTool[] {
       },
     },
     {
-      name: 'rename_file',
-      description: 'Rename or move a vault file to a new vault-relative path.',
+      name: 'move_files',
+      description: 'Move multiple vault files in a single call.',
       inputSchema: {
         type: 'object',
         properties: {
-          oldPath: {
-            type: 'string',
-            description: 'Current vault-relative file path.',
-          },
-          newPath: {
-            type: 'string',
-            description: 'Target vault-relative file path.',
+          moves: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                oldPath: {
+                  type: 'string',
+                  description: 'Current vault-relative file path.',
+                },
+                newPath: {
+                  type: 'string',
+                  description: 'Target vault-relative file path.',
+                },
+              },
+              required: ['oldPath', 'newPath'],
+            },
+            description: `Move operations list. Maximum ${MAX_BATCH_MOVE_FILES} items.`,
           },
         },
-        required: ['oldPath', 'newPath'],
+        required: ['moves'],
       },
     },
     {
@@ -350,6 +346,36 @@ const getStringArrayArg = (
   return value
 }
 
+type MoveOperation = {
+  oldPath: string
+  newPath: string
+}
+
+const getMoveOperationsArg = (
+  args: Record<string, unknown>,
+  key: string,
+): MoveOperation[] => {
+  const value = args[key]
+  if (!Array.isArray(value)) {
+    throw new Error(`${key} must be an array.`)
+  }
+
+  return value.map((item, index) => {
+    if (typeof item !== 'object' || item === null) {
+      throw new Error(`${key}[${index}] must be an object.`)
+    }
+    const rawOldPath = (item as Record<string, unknown>).oldPath
+    const rawNewPath = (item as Record<string, unknown>).newPath
+    if (typeof rawOldPath !== 'string' || typeof rawNewPath !== 'string') {
+      throw new Error(`${key}[${index}] oldPath/newPath must be strings.`)
+    }
+    return {
+      oldPath: validateVaultPath(rawOldPath),
+      newPath: validateVaultPath(rawNewPath),
+    }
+  })
+}
+
 const assertContentSize = (content: string): void => {
   if (content.length > MAX_FILE_SIZE_BYTES) {
     throw new Error(
@@ -429,18 +455,6 @@ export async function callLocalFileTool({
   try {
     const name = toolName as LocalFileToolName
     switch (name) {
-      case 'read_file': {
-        const path = validateVaultPath(getTextArg(args, 'path'))
-        const file = app.vault.getFileByPath(path)
-        if (!file) {
-          throw new Error(`File not found: ${path}`)
-        }
-        const content = await app.vault.read(file)
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: content,
-        }
-      }
       case 'read_files': {
         const paths = getStringArrayArg(args, 'paths')
           .map((path) => validateVaultPath(path))
@@ -552,37 +566,78 @@ export async function callLocalFileTool({
           text: `Deleted file: ${path}`,
         }
       }
-      case 'rename_file': {
-        const oldPath = validateVaultPath(getTextArg(args, 'oldPath'))
-        const newPath = validateVaultPath(getTextArg(args, 'newPath'))
-        if (oldPath === newPath) {
-          throw new Error('oldPath and newPath must be different.')
+      case 'move_files': {
+        const moves = getMoveOperationsArg(args, 'moves')
+        if (moves.length === 0) {
+          throw new Error('moves cannot be empty.')
+        }
+        if (moves.length > MAX_BATCH_MOVE_FILES) {
+          throw new Error(
+            `moves supports up to ${MAX_BATCH_MOVE_FILES} files per call.`,
+          )
         }
 
-        const sourceFile = app.vault.getAbstractFileByPath(oldPath)
-        if (!sourceFile || !(sourceFile instanceof TFile)) {
-          throw new Error(`File not found: ${oldPath}`)
-        }
-
-        const targetExists = app.vault.getAbstractFileByPath(newPath)
-        if (targetExists) {
-          throw new Error(`Target path already exists: ${newPath}`)
-        }
-
-        const parentFolderPath = getParentFolderPath(newPath)
-        if (parentFolderPath) {
-          const parentFolder = app.vault.getAbstractFileByPath(parentFolderPath)
-          if (!parentFolder || !(parentFolder instanceof TFolder)) {
+        const uniqueTargetPaths = new Set<string>()
+        for (const move of moves) {
+          if (move.oldPath === move.newPath) {
             throw new Error(
-              `Target parent folder not found: ${parentFolderPath}`,
+              `oldPath and newPath must be different: ${move.oldPath}`,
             )
           }
+          if (uniqueTargetPaths.has(move.newPath)) {
+            throw new Error(`Duplicate newPath in moves: ${move.newPath}`)
+          }
+          uniqueTargetPaths.add(move.newPath)
         }
 
-        await app.fileManager.renameFile(sourceFile, newPath)
+        const results: string[] = []
+        let successCount = 0
+        let errorCount = 0
+
+        for (const move of moves) {
+          if (signal?.aborted) {
+            return { status: ToolCallResponseStatus.Aborted }
+          }
+
+          const sourceFile = app.vault.getAbstractFileByPath(move.oldPath)
+          if (!sourceFile || !(sourceFile instanceof TFile)) {
+            errorCount += 1
+            results.push(
+              `- [Error] ${move.oldPath} -> ${move.newPath}: source file not found.`,
+            )
+            continue
+          }
+
+          const targetExists = app.vault.getAbstractFileByPath(move.newPath)
+          if (targetExists) {
+            errorCount += 1
+            results.push(
+              `- [Error] ${move.oldPath} -> ${move.newPath}: target path already exists.`,
+            )
+            continue
+          }
+
+          const parentFolderPath = getParentFolderPath(move.newPath)
+          if (parentFolderPath) {
+            const parentFolder =
+              app.vault.getAbstractFileByPath(parentFolderPath)
+            if (!parentFolder || !(parentFolder instanceof TFolder)) {
+              errorCount += 1
+              results.push(
+                `- [Error] ${move.oldPath} -> ${move.newPath}: target parent folder not found.`,
+              )
+              continue
+            }
+          }
+
+          await app.fileManager.renameFile(sourceFile, move.newPath)
+          successCount += 1
+          results.push(`- [OK] ${move.oldPath} -> ${move.newPath}`)
+        }
+
         return {
           status: ToolCallResponseStatus.Success,
-          text: `Renamed file: ${oldPath} -> ${newPath}`,
+          text: `Batch move completed (${successCount} succeeded, ${errorCount} failed):\n${results.join('\n')}`,
         }
       }
       case 'list_dir': {
