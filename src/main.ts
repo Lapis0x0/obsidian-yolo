@@ -46,6 +46,7 @@ import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type { Mentionable } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
+import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
@@ -596,6 +597,8 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async onload() {
+    ensureBufferByteLengthCompat()
+
     await this.loadSettings()
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
