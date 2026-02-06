@@ -4,8 +4,8 @@ import { useCallback, useMemo, useRef } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
-import { NativeAgentRuntime } from '../../core/agent/native-runtime'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -53,6 +53,7 @@ export function useChatStreamManager({
   chatMode,
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
+  const plugin = usePlugin()
   const { settings } = useSettings()
   const { getMcpManager } = useMcp()
 
@@ -130,34 +131,44 @@ export function useChatStreamManager({
         }
 
         if (chatMode === 'agent') {
-          const agentRuntime = new NativeAgentRuntime({
-            enableTools: true,
-            maxAutoIterations: Math.max(
-              8,
-              settings.chatOptions.maxAutoIterations,
-            ),
-            includeBuiltinTools: true,
-          })
-          unsubscribeRunner = agentRuntime.subscribe(onRunnerMessages)
-          await agentRuntime.run({
-            providerClient,
-            model,
-            messages: chatMessages,
+          const agentService = plugin.getAgentService()
+          unsubscribeRunner = agentService.subscribe(
             conversationId,
-            promptGenerator,
-            mcpManager,
-            abortSignal: abortController.signal,
-            reasoningLevel,
-            requestParams: {
-              stream: conversationOverrides?.stream ?? true,
-              temperature: conversationOverrides?.temperature ?? undefined,
-              top_p: conversationOverrides?.top_p ?? undefined,
+            (state) => {
+              onRunnerMessages(state.messages)
             },
-            maxContextOverride:
-              conversationOverrides?.maxContextMessages ?? undefined,
-            geminiTools: {
-              useWebSearch: conversationOverrides?.useWebSearch ?? false,
-              useUrlContext: conversationOverrides?.useUrlContext ?? false,
+            { emitCurrent: false },
+          )
+          await agentService.run({
+            conversationId,
+            loopConfig: {
+              enableTools: true,
+              maxAutoIterations: Math.max(
+                8,
+                settings.chatOptions.maxAutoIterations,
+              ),
+              includeBuiltinTools: true,
+            },
+            input: {
+              providerClient,
+              model,
+              messages: chatMessages,
+              conversationId,
+              promptGenerator,
+              mcpManager,
+              abortSignal: abortController.signal,
+              reasoningLevel,
+              requestParams: {
+                stream: conversationOverrides?.stream ?? true,
+                temperature: conversationOverrides?.temperature ?? undefined,
+                top_p: conversationOverrides?.top_p ?? undefined,
+              },
+              maxContextOverride:
+                conversationOverrides?.maxContextMessages ?? undefined,
+              geminiTools: {
+                useWebSearch: conversationOverrides?.useWebSearch ?? false,
+                useUrlContext: conversationOverrides?.useUrlContext ?? false,
+              },
             },
           })
         } else {

@@ -15,6 +15,7 @@ import { ChatView } from './ChatView'
 import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CHAT_VIEW_TYPE } from './constants'
+import { AgentService } from './core/agent/service'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
@@ -76,6 +77,7 @@ export default class SmartComposerPlugin extends Plugin {
     new Map()
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
+  private agentService: AgentService | null = null
 
   getSmartSpaceDraftState(): SmartSpaceDraftState {
     return this.smartSpaceDraftState
@@ -394,6 +396,14 @@ export default class SmartComposerPlugin extends Plugin {
     this.activeAbortControllers.clear()
     this.isContinuationInProgress = false
     this.tabCompletionController?.cancelRequest()
+    this.agentService?.abortAll()
+  }
+
+  getAgentService(): AgentService {
+    if (!this.agentService) {
+      this.agentService = new AgentService()
+    }
+    return this.agentService
   }
 
   private getEditorView(editor: Editor | null | undefined): EditorView | null {
@@ -895,6 +905,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.mcpManager = null
     this.ragAutoUpdateService?.cleanup()
     this.ragAutoUpdateService = null
+    this.agentService?.abortAll()
+    this.agentService = null
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
     this.clearTabCompletionTimer()
