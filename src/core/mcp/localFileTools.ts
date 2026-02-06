@@ -14,6 +14,7 @@ type LocalFileToolName =
   | 'create_file'
   | 'write_file'
   | 'delete_file'
+  | 'rename_file'
   | 'list_dir'
   | 'search_dirs'
   | 'search_files'
@@ -155,6 +156,24 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['path'],
+      },
+    },
+    {
+      name: 'rename_file',
+      description: 'Rename or move a vault file to a new vault-relative path.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          oldPath: {
+            type: 'string',
+            description: 'Current vault-relative file path.',
+          },
+          newPath: {
+            type: 'string',
+            description: 'Target vault-relative file path.',
+          },
+        },
+        required: ['oldPath', 'newPath'],
       },
     },
     {
@@ -368,6 +387,11 @@ const isPathWithinFolder = (filePath: string, folderPath: string): boolean => {
   return filePath.startsWith(`${folderPath}/`)
 }
 
+const getParentFolderPath = (path: string): string => {
+  const lastSlashIndex = path.lastIndexOf('/')
+  return lastSlashIndex === -1 ? '' : path.slice(0, lastSlashIndex)
+}
+
 const makeContentSnippet = ({
   content,
   matchIndex,
@@ -526,6 +550,39 @@ export async function callLocalFileTool({
         return {
           status: ToolCallResponseStatus.Success,
           text: `Deleted file: ${path}`,
+        }
+      }
+      case 'rename_file': {
+        const oldPath = validateVaultPath(getTextArg(args, 'oldPath'))
+        const newPath = validateVaultPath(getTextArg(args, 'newPath'))
+        if (oldPath === newPath) {
+          throw new Error('oldPath and newPath must be different.')
+        }
+
+        const sourceFile = app.vault.getAbstractFileByPath(oldPath)
+        if (!sourceFile || !(sourceFile instanceof TFile)) {
+          throw new Error(`File not found: ${oldPath}`)
+        }
+
+        const targetExists = app.vault.getAbstractFileByPath(newPath)
+        if (targetExists) {
+          throw new Error(`Target path already exists: ${newPath}`)
+        }
+
+        const parentFolderPath = getParentFolderPath(newPath)
+        if (parentFolderPath) {
+          const parentFolder = app.vault.getAbstractFileByPath(parentFolderPath)
+          if (!parentFolder || !(parentFolder instanceof TFolder)) {
+            throw new Error(
+              `Target parent folder not found: ${parentFolderPath}`,
+            )
+          }
+        }
+
+        await app.fileManager.renameFile(sourceFile, newPath)
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: `Renamed file: ${oldPath} -> ${newPath}`,
         }
       }
       case 'list_dir': {
