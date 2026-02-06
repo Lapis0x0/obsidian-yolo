@@ -6,7 +6,11 @@ import {
 } from '../../components/chat-view/chat-input/ReasoningSelect'
 import { BaseLLMProvider } from '../../core/llm/base'
 import { McpManager } from '../../core/mcp/mcpManager'
-import { ChatMessage, ChatToolMessage } from '../../types/chat'
+import {
+  ChatAssistantMessage,
+  ChatMessage,
+  ChatToolMessage,
+} from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestTool } from '../../types/llm/request'
 import {
@@ -102,9 +106,33 @@ export class ResponseGenerator {
   }
 
   public async run() {
+    let completedToolRounds = 0
+    let geminiEmptyAfterToolRetryUsed = false
+
     for (let i = 0; i < this.maxAutoIterations; i++) {
-      const { toolCallRequests } = await this.streamSingleResponse()
+      const { toolCallRequests, assistantHasOutput } =
+        await this.streamSingleResponse()
       if (toolCallRequests.length === 0) {
+        const shouldRetryGeminiEmptyReply =
+          this.model.providerType === 'gemini' &&
+          completedToolRounds > 0 &&
+          !assistantHasOutput &&
+          !geminiEmptyAfterToolRetryUsed
+
+        if (shouldRetryGeminiEmptyReply) {
+          geminiEmptyAfterToolRetryUsed = true
+          console.warn(
+            '[Smart Composer] Gemini returned an empty assistant reply after tool execution; retrying once.',
+            {
+              conversationId: this.conversationId,
+              model: this.model.model,
+              iteration: i + 1,
+            },
+          )
+          i -= 1 // Give Gemini one extra completion chance without consuming loop budget
+          continue
+        }
+
         return
       }
 
@@ -175,11 +203,14 @@ export class ResponseGenerator {
         // Only 'success' or 'error' states are considered complete
         return
       }
+
+      completedToolRounds += 1
     }
   }
 
   private async streamSingleResponse(): Promise<{
     toolCallRequests: ToolCallRequest[]
+    assistantHasOutput: boolean
   }> {
     const availableTools = this.enableTools
       ? await this.mcpManager.listAvailableTools({
@@ -225,6 +256,7 @@ export class ResponseGenerator {
 
     const runNonStreaming = async (): Promise<{
       toolCallRequests: ToolCallRequest[]
+      assistantHasOutput: boolean
     }> => {
       const response = await this.providerClient.generateResponse(
         effectiveModel,
@@ -298,7 +330,14 @@ export class ResponseGenerator {
         ),
       )
 
-      return { toolCallRequests }
+      return {
+        toolCallRequests,
+        assistantHasOutput: this.hasAssistantOutput({
+          content: response.choices[0]?.message?.content,
+          reasoning: response.choices[0]?.message?.reasoning,
+          annotations,
+        }),
+      }
     }
 
     if (!shouldStream) {
@@ -508,8 +547,19 @@ export class ResponseGenerator {
           : message,
       ),
     )
+    const finalizedAssistantMessage = this.responseMessages.find(
+      (
+        message,
+      ): message is ChatAssistantMessage =>
+        message.id === responseMessageId && message.role === 'assistant',
+    )
     return {
       toolCallRequests: toolCallRequests,
+      assistantHasOutput: this.hasAssistantOutput({
+        content: finalizedAssistantMessage?.content,
+        reasoning: finalizedAssistantMessage?.reasoning,
+        annotations: finalizedAssistantMessage?.annotations,
+      }),
     }
   }
 
@@ -651,5 +701,21 @@ export class ResponseGenerator {
       }
     }
     return mergedAnnotations
+  }
+
+  private hasAssistantOutput({
+    content,
+    reasoning,
+    annotations,
+  }: {
+    content?: string | null
+    reasoning?: string | null
+    annotations?: Annotation[]
+  }): boolean {
+    const hasContent = typeof content === 'string' && content.trim().length > 0
+    const hasReasoning =
+      typeof reasoning === 'string' && reasoning.trim().length > 0
+    const hasAnnotations = Boolean(annotations && annotations.length > 0)
+    return hasContent || hasReasoning || hasAnnotations
   }
 }

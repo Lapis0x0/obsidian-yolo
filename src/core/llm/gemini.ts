@@ -428,6 +428,7 @@ export class GeminiProvider extends BaseLLMProvider<
           parts: [
             {
               functionResponse: {
+                id: message.tool_call.id,
                 name: message.tool_call.name,
                 response: { result: message.content },
               },
