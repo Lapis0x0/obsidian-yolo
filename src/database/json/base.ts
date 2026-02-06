@@ -33,13 +33,72 @@ export abstract class AbstractJsonRepository<T, M> {
   }
 
   protected writeFile(filePath: string, content: string): Promise<void> {
-    return this.enqueueWrite(() =>
-      this.app.vault.adapter.write(filePath, content),
-    )
+    return this.enqueueWrite(async () => {
+      try {
+        await this.app.vault.adapter.write(filePath, content)
+      } catch (error) {
+        if (await this.handleAtomicWriteTempFileError(error, filePath, content)) {
+          return
+        }
+        throw error
+      }
+    })
   }
 
   protected removeFile(filePath: string): Promise<void> {
-    return this.enqueueWrite(() => this.app.vault.adapter.remove(filePath))
+    return this.enqueueWrite(async () => {
+      try {
+        await this.app.vault.adapter.remove(filePath)
+      } catch (error) {
+        if (this.isEnoentError(error)) {
+          return
+        }
+        throw error
+      }
+    })
+  }
+
+  private async handleAtomicWriteTempFileError(
+    error: unknown,
+    filePath: string,
+    content: string,
+  ): Promise<boolean> {
+    if (!this.isAtomicWriteTempFileEnoent(error)) {
+      return false
+    }
+
+    // Obsidian adapter may throw ENOENT when cleaning tmp files even if write succeeded.
+    if (await this.app.vault.adapter.exists(filePath)) {
+      return true
+    }
+
+    await this.app.vault.adapter.write(filePath, content)
+    return true
+  }
+
+  private isAtomicWriteTempFileEnoent(error: unknown): boolean {
+    if (!this.isEnoentError(error)) {
+      return false
+    }
+
+    const message = this.getErrorMessage(error)
+    return message.includes('unlink') && message.includes('tmp_')
+  }
+
+  private isEnoentError(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) {
+      return false
+    }
+
+    const code = (error as { code?: unknown }).code
+    return code === 'ENOENT'
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message
+    }
+    return typeof error === 'string' ? error : ''
   }
 
   // Each subclass implements how to generate a file name from a data row.
