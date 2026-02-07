@@ -47,12 +47,14 @@ export default function ApplyViewRoot({
   const [currentDiffIndex, setCurrentDiffIndex] = useState(0)
   const diffBlockRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
-  const applyChangesRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const diffOffsetsRef = useRef<number[]>([])
   const suppressScrollRef = useRef(false)
   const suppressRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const manualNavLockRef = useRef(false)
+  const persistInFlightRef = useRef(false)
+  const persistOnUnmountRef = useRef(true)
+  const preferredFinalContentRef = useRef<string | null>(null)
 
   const app = useApp()
   const plugin = usePlugin()
@@ -118,10 +120,25 @@ export default function ApplyViewRoot({
     [diff, decisions],
   )
 
-  const applyChanges = useCallback(async () => {
-    const newContent = generateFinalContent('current')
-    await app.vault.modify(state.file, newContent)
-  }, [app.vault, generateFinalContent, state.file])
+  const persistAndClose = useCallback(
+    async (finalContent?: string) => {
+      if (persistInFlightRef.current) return
+      persistInFlightRef.current = true
+      if (finalContent !== undefined) {
+        preferredFinalContentRef.current = finalContent
+      }
+      const contentToWrite = finalContent ?? generateFinalContent('current')
+      try {
+        await app.vault.modify(state.file, contentToWrite)
+        persistOnUnmountRef.current = false
+      } catch (error) {
+        console.error('[ApplyView] Failed to persist changes before close', error)
+      } finally {
+        close()
+      }
+    },
+    [app.vault, close, generateFinalContent, state.file],
+  )
 
   // Individual block decisions (don't close, just mark decision)
   const makeDecision = useCallback((index: number, decision: BlockDecision) => {
@@ -157,24 +174,14 @@ export default function ApplyViewRoot({
 
   // Global actions
   const acceptAllIncoming = useCallback(() => {
-    const newDecisions = new Map<number, BlockDecision>()
-    modifiedBlockIndices.forEach((idx) => {
-      newDecisions.set(idx, 'incoming')
-    })
-    setDecisions(newDecisions)
-  }, [modifiedBlockIndices])
+    autoCloseRef.current = true
+    void persistAndClose(state.newContent)
+  }, [persistAndClose, state.newContent])
 
   const acceptAllCurrent = useCallback(() => {
-    const newDecisions = new Map<number, BlockDecision>()
-    modifiedBlockIndices.forEach((idx) => {
-      newDecisions.set(idx, 'current')
-    })
-    setDecisions(newDecisions)
-  }, [modifiedBlockIndices])
-
-  useEffect(() => {
-    applyChangesRef.current = applyChanges
-  }, [applyChanges])
+    autoCloseRef.current = true
+    void persistAndClose(state.originalContent)
+  }, [persistAndClose, state.originalContent])
 
   useEffect(() => {
     if (autoCloseRef.current) return
@@ -185,14 +192,21 @@ export default function ApplyViewRoot({
     })
     if (!allDecided) return
     autoCloseRef.current = true
-    close()
-  }, [close, decisions, modifiedBlockIndices])
+    void persistAndClose()
+  }, [decisions, modifiedBlockIndices, persistAndClose])
 
   useEffect(() => {
     return () => {
-      void applyChangesRef.current()
+      if (!persistOnUnmountRef.current) return
+      const fallbackContent =
+        preferredFinalContentRef.current ?? generateFinalContent('current')
+      void app.vault
+        .modify(state.file, fallbackContent)
+        .catch((error) => {
+          console.error('[ApplyView] Failed to persist changes on unmount', error)
+        })
     }
-  }, [])
+  }, [app.vault, generateFinalContent, state.file])
 
   const getOffsetTopFromScroller = useCallback(
     (element: HTMLElement, scroller: HTMLElement) => {
@@ -356,16 +370,16 @@ export default function ApplyViewRoot({
       acceptIncomingActive,
       acceptCurrentActive,
       undoActive,
-      close,
+      close: () => void persistAndClose(),
     })
     return () => onActionsReady(null)
   }, [
     acceptCurrentActive,
     acceptIncomingActive,
-    close,
     goToNextDiff,
     goToPreviousDiff,
     onActionsReady,
+    persistAndClose,
     undoActive,
   ])
 
