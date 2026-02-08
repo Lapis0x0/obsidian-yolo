@@ -13,7 +13,12 @@ const MAX_READ_LINE_INDEX = 1_000_000
 const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
 const MAX_BATCH_WRITE_ITEMS = 50
 
-type LocalFileToolName = 'fs_list' | 'fs_search' | 'fs_read' | 'fs_write'
+type LocalFileToolName =
+  | 'fs_list'
+  | 'fs_search'
+  | 'fs_read'
+  | 'fs_edit'
+  | 'fs_write'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsListScope = 'files' | 'dirs' | 'all'
 type FsWriteAction =
@@ -181,6 +186,39 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['paths'],
+      },
+    },
+    {
+      name: 'fs_edit',
+      description:
+        'Apply exact text replacement within a single file. Safer than full-file overwrite for localized edits.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Vault-relative file path.',
+          },
+          oldText: {
+            type: 'string',
+            description: 'Exact text to replace. Must not be empty.',
+          },
+          newText: {
+            type: 'string',
+            description: 'Replacement text.',
+          },
+          expectedOccurrences: {
+            type: 'integer',
+            description:
+              'Expected number of matches for oldText. Defaults to 1. Tool fails if actual count differs.',
+          },
+          dryRun: {
+            type: 'boolean',
+            description:
+              'If true, validate and report replacement stats without modifying file.',
+          },
+        },
+        required: ['path', 'oldText', 'newText'],
       },
     },
     {
@@ -470,6 +508,63 @@ const formatJsonResult = (payload: unknown): string => {
   return JSON.stringify(payload, null, 2)
 }
 
+const countOccurrences = (content: string, target: string): number => {
+  if (!target) {
+    return 0
+  }
+  let count = 0
+  let cursor = 0
+  while (cursor <= content.length) {
+    const index = content.indexOf(target, cursor)
+    if (index === -1) break
+    count += 1
+    cursor = index + target.length
+  }
+  return count
+}
+
+const normalizeLineEndings = (value: string): string => {
+  return value.replace(/\r\n/g, '\n')
+}
+
+const normalizeLineEndingsAndTrimLineEnd = (value: string): string => {
+  return normalizeLineEndings(value)
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+}
+
+const escapeRegExp = (value: string): string => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const createLooseEditRegex = (oldText: string): RegExp => {
+  const lines = oldText.split(/\r?\n/)
+  const pattern = lines
+    .map((line, index) => {
+      const escapedLine = escapeRegExp(line.replace(/[ \t]+$/g, ''))
+      const endWhitespace = '[ \\t]*'
+      if (index === lines.length - 1) {
+        return `${escapedLine}${endWhitespace}`
+      }
+      return `${escapedLine}${endWhitespace}\\r?\\n`
+    })
+    .join('')
+  return new RegExp(pattern, 'g')
+}
+
+const countRegexMatches = (content: string, regex: RegExp): number => {
+  let count = 0
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(content)) !== null) {
+    count += 1
+    if (match[0].length === 0) {
+      regex.lastIndex += 1
+    }
+  }
+  return count
+}
+
 export function parseLocalFsWriteActionFromArgs(
   args?: Record<string, unknown> | string,
 ): FsWriteAction | null {
@@ -732,6 +827,85 @@ export async function callLocalFileTool({
               failed: errorCount,
             },
             results,
+          }),
+        }
+      }
+
+      case 'fs_edit': {
+        const path = validateVaultPath(getTextArg(args, 'path'))
+        const oldText = getTextArg(args, 'oldText')
+        const newText = getTextArg(args, 'newText')
+        const expectedOccurrences = getOptionalIntegerArg({
+          args,
+          key: 'expectedOccurrences',
+          defaultValue: 1,
+          min: 1,
+          max: 100000,
+        })
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+
+        if (oldText.length === 0) {
+          throw new Error('oldText must not be empty.')
+        }
+
+        const file = app.vault.getAbstractFileByPath(path)
+        if (!file || !(file instanceof TFile)) {
+          throw new Error(`File not found: ${path}`)
+        }
+        if (file.stat.size > MAX_FILE_SIZE_BYTES) {
+          throw new Error(`File too large (${file.stat.size} bytes).`)
+        }
+
+        const content = await app.vault.read(file)
+        const exactOccurrences = countOccurrences(content, oldText)
+        const lineEndingOccurrences = countOccurrences(
+          normalizeLineEndings(content),
+          normalizeLineEndings(oldText),
+        )
+        const trimLineEndOccurrences = countOccurrences(
+          normalizeLineEndingsAndTrimLineEnd(content),
+          normalizeLineEndingsAndTrimLineEnd(oldText),
+        )
+
+        let nextContent = content
+        let actualOccurrences = exactOccurrences
+        let matchMode: 'exact' | 'lineEndingAndTrimLineEnd' = 'exact'
+
+        if (exactOccurrences === expectedOccurrences) {
+          nextContent = content.split(oldText).join(newText)
+        } else {
+          const looseRegex = createLooseEditRegex(oldText)
+          const looseOccurrences = countRegexMatches(content, looseRegex)
+          if (looseOccurrences === expectedOccurrences) {
+            actualOccurrences = looseOccurrences
+            matchMode = 'lineEndingAndTrimLineEnd'
+            nextContent = content.replace(
+              createLooseEditRegex(oldText),
+              () => newText,
+            )
+          } else {
+            throw new Error(
+              `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}`,
+            )
+          }
+        }
+
+        assertContentSize(nextContent)
+        if (!dryRun) {
+          await app.vault.modify(file, nextContent)
+        }
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'fs_edit',
+            path,
+            dryRun,
+            expectedOccurrences,
+            actualOccurrences,
+            matchMode,
+            changed: content !== nextContent,
+            message: dryRun ? 'Would apply edit.' : 'Applied edit.',
           }),
         }
       }
