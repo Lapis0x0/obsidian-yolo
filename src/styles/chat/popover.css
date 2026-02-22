@@ -518,9 +518,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
   .smtcmp-diff-block-actions {
     position: absolute;
-    right: calc(
-      (100% - var(--file-line-width)) / 2 - var(--smtcmp-apply-actions-offset)
-    );
+    right: -32px;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
