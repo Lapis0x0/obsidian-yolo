@@ -48,7 +48,6 @@ export type AgentWorkerInbound =
       type: 'start'
       runId: string
       maxIterations: number
-      hasTools: boolean
     }
   | {
       type: 'llm_result'
@@ -78,7 +77,7 @@ export type AgentWorkerOutbound =
   | {
       type: 'done'
       runId: string
-      reason: 'completed' | 'max_iterations' | 'aborted' | 'no_tools'
+      reason: 'completed' | 'max_iterations' | 'aborted'
     }
   | {
       type: 'error'

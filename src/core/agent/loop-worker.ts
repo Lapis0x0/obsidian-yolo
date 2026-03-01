@@ -34,10 +34,6 @@ self.onmessage = (event) => {
   try {
     switch (message.type) {
       case 'start': {
-        if (!message.hasTools) {
-          emit({ type: 'done', runId: message.runId, reason: 'no_tools' })
-          return
-        }
         state = createState(message.runId, message.maxIterations)
         emit({ type: 'llm_request', runId: message.runId, iteration: 1 })
         return
@@ -122,15 +118,6 @@ class AgentLoopWorkerDriver {
   private handleMessage(message: AgentWorkerInbound): void {
     switch (message.type) {
       case 'start': {
-        if (!message.hasTools) {
-          this.emit({
-            type: 'done',
-            runId: message.runId,
-            reason: 'no_tools',
-          })
-          return
-        }
-
         this.state = {
           runId: message.runId,
           iteration: 0,
@@ -191,7 +178,9 @@ class AgentLoopWorkerDriver {
   }
 
   private emit(message: AgentWorkerOutbound): void {
-    this.subscribers.forEach((cb) => cb(message))
+    this.subscribers.forEach((cb) => {
+      cb(message)
+    })
   }
 }
 
@@ -210,7 +199,9 @@ const createWebWorkerBridge = (): WorkerBridge | null => {
     const subscribers = new Set<WorkerSubscriber>()
 
     worker.onmessage = (event: MessageEvent<AgentWorkerOutbound>) => {
-      subscribers.forEach((cb) => cb(event.data))
+      subscribers.forEach((cb) => {
+        cb(event.data)
+      })
     }
 
     return {
