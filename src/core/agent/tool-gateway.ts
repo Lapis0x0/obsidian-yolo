@@ -6,8 +6,8 @@ import {
   ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
-import { McpManager } from '../mcp/mcpManager'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
+import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 
 export class AgentToolGateway {

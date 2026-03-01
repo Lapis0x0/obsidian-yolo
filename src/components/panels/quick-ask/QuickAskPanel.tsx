@@ -43,7 +43,6 @@ import {
 } from '../../../utils/chat/mentionable'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
-import { ResponseGenerator } from '../../../utils/chat/responseGenerator'
 import { tryApplyStructuredEdits } from '../../../utils/chat/structured-edits'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
@@ -60,8 +59,7 @@ import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
-const FIRST_TOKEN_TIMEOUT_MS = 12000
-const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
+const QUICK_ASK_MAX_ITERATIONS = 1
 
 type QuickAskPanelProps = {
   plugin: SmartComposerPlugin
@@ -656,41 +654,56 @@ export function QuickAskPanel({
       // Create abort controller
       const abortController = new AbortController()
       abortControllerRef.current = abortController
+      let unsubscribeRunner: (() => void) | null = null
 
       try {
         const mcpManager = await getMcpManager()
 
-        const responseGenerator = new ResponseGenerator({
-          providerClient,
-          model,
-          messages: newMessages,
+        const effectiveEnableTools = false
+        const effectiveIncludeBuiltinTools = false
+
+        const agentService = plugin.getAgentService()
+        unsubscribeRunner = agentService.subscribe(
           conversationId,
-          enableTools: true,
-          maxAutoIterations: DEFAULT_MAX_AUTO_TOOL_ITERATIONS,
-          promptGenerator,
-          mcpManager,
-          abortSignal: abortController.signal,
-          firstTokenTimeoutMs: FIRST_TOKEN_TIMEOUT_MS,
-          requestParams: {
-            stream: true,
+          (state) => {
+            setChatMessages((prev) => {
+              const lastMessageIndex = prev.findIndex(
+                (m) => m.id === userMessage.id,
+              )
+              if (lastMessageIndex === -1) {
+                abortController.abort()
+                return prev
+              }
+              return [...prev.slice(0, lastMessageIndex + 1), ...state.messages]
+            })
+          },
+          { emitCurrent: false },
+        )
+
+        await agentService.run({
+          conversationId,
+          loopConfig: {
+            enableTools: effectiveEnableTools,
+            maxAutoIterations: QUICK_ASK_MAX_ITERATIONS,
+            includeBuiltinTools: effectiveIncludeBuiltinTools,
+          },
+          input: {
+            providerClient,
+            model,
+            messages: newMessages,
+            conversationId,
+            promptGenerator,
+            mcpManager,
+            abortSignal: abortController.signal,
+            allowedToolNames: effectiveEnableTools
+              ? selectedAssistant?.enabledToolNames
+              : undefined,
+            requestParams: {
+              stream: true,
+            },
+            currentFileContextMode: 'summary',
           },
         })
-
-        const unsubscribe = responseGenerator.subscribe((responseMessages) => {
-          setChatMessages((prev) => {
-            const lastMessageIndex = prev.findIndex(
-              (m) => m.id === userMessage.id,
-            )
-            if (lastMessageIndex === -1) {
-              abortController.abort()
-              return prev
-            }
-            return [...prev.slice(0, lastMessageIndex + 1), ...responseMessages]
-          })
-        })
-
-        await responseGenerator.run()
-        unsubscribe()
 
         // Save conversation
         const finalMessages = [...newMessages]
@@ -727,6 +740,9 @@ export function QuickAskPanel({
         console.error('Quick ask failed:', error)
         new Notice(t('quickAsk.error', 'Failed to generate response'))
       } finally {
+        if (unsubscribeRunner) {
+          unsubscribeRunner()
+        }
         setIsStreaming(false)
         abortControllerRef.current = null
       }
@@ -740,8 +756,10 @@ export function QuickAskPanel({
       isStreaming,
       mentionables,
       model,
+      plugin,
       promptGenerator,
       providerClient,
+      selectedAssistant,
       t,
     ],
   )

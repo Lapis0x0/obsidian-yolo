@@ -8,18 +8,13 @@ import {
 import { ChatAssistantMessage, ChatMessage } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestTool } from '../../types/llm/request'
-import {
-  Annotation,
-  LLMResponseStreaming,
-  ToolCallDelta,
-} from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { ToolCallRequest } from '../../types/tool-call.types'
-import { mergeStreamingToolArguments } from '../../utils/chat/tool-arguments'
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
-import { McpManager } from '../mcp/mcpManager'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
+import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 
 type AgentLlmTurnExecutorInput = {
@@ -120,95 +115,6 @@ export class AgentLlmTurnExecutor {
           }))
         : undefined
 
-    const shouldStream = this.input.requestParams?.stream ?? true
-    if (!shouldStream) {
-      return this.runNonStreaming({ requestMessages, tools })
-    }
-
-    return this.runStreaming({ requestMessages, tools })
-  }
-
-  private async runNonStreaming({
-    requestMessages,
-    tools,
-  }: {
-    requestMessages: Awaited<
-      ReturnType<PromptGenerator['generateRequestMessages']>
-    >
-    tools: RequestTool[] | undefined
-  }): Promise<AgentLlmTurnExecutorOutput> {
-    const responseStart = Date.now()
-    const effectiveModel = this.getEffectiveModel()
-    const response = await this.input.providerClient.generateResponse(
-      effectiveModel,
-      {
-        model: effectiveModel.model,
-        messages: requestMessages,
-        tools,
-        tool_choice: tools ? 'auto' : undefined,
-        stream: false,
-        temperature: this.input.requestParams?.temperature,
-        top_p: this.input.requestParams?.top_p,
-        max_tokens: this.input.requestParams?.max_tokens,
-      },
-      {
-        signal: this.input.abortSignal,
-        geminiTools: this.input.geminiTools,
-      },
-    )
-
-    const toolCallRequests = (response.choices[0]?.message?.tool_calls ?? [])
-      .map((toolCall): ToolCallRequest | null => {
-        if (!toolCall.function?.name) {
-          return null
-        }
-        const base: ToolCallRequest = {
-          id: toolCall.id ?? uuidv4(),
-          name: this.normalizeToolCallName(toolCall.function.name),
-        }
-        return toolCall.function.arguments
-          ? { ...base, arguments: toolCall.function.arguments }
-          : base
-      })
-      .filter((item): item is ToolCallRequest => item !== null)
-
-    const assistantMessage: ChatAssistantMessage = {
-      role: 'assistant',
-      id: uuidv4(),
-      content: response.choices[0]?.message?.content ?? '',
-      annotations: response.choices[0]?.message?.annotations,
-      toolCallRequests:
-        toolCallRequests.length > 0 ? toolCallRequests : undefined,
-      metadata: {
-        model: effectiveModel,
-        usage: response.usage,
-        durationMs: Date.now() - responseStart,
-        generationState: this.input.abortSignal?.aborted
-          ? 'aborted'
-          : 'completed',
-      },
-    }
-
-    this.input.onAssistantMessage(assistantMessage)
-
-    return {
-      assistantMessage,
-      toolCallRequests,
-      modelTerminated: this.isModelTerminationFinishReason(
-        response.choices[0]?.finish_reason,
-      ),
-    }
-  }
-
-  private async runStreaming({
-    requestMessages,
-    tools,
-  }: {
-    requestMessages: Awaited<
-      ReturnType<PromptGenerator['generateRequestMessages']>
-    >
-    tools: RequestTool[] | undefined
-  }): Promise<AgentLlmTurnExecutorOutput> {
     const responseStart = Date.now()
     const effectiveModel = this.getEffectiveModel()
     const assistantMessage: ChatAssistantMessage = {
@@ -222,176 +128,71 @@ export class AgentLlmTurnExecutor {
     }
     this.input.onAssistantMessage(assistantMessage)
 
-    let responseToolCalls: Record<number, ToolCallDelta> = {}
-    let finishReason: string | null = null
-    try {
-      const responseIterable = await this.input.providerClient.streamResponse(
-        effectiveModel,
-        {
-          model: effectiveModel.model,
-          messages: requestMessages,
-          tools,
-          tool_choice: tools ? 'auto' : undefined,
-          stream: true,
-          temperature: this.input.requestParams?.temperature,
-          top_p: this.input.requestParams?.top_p,
-          max_tokens: this.input.requestParams?.max_tokens,
-        },
-        {
-          signal: this.input.abortSignal,
-          geminiTools: this.input.geminiTools,
-        },
-      )
-
-      for await (const chunk of responseIterable) {
-        const chunkFinishReason = chunk.choices[0]?.finish_reason
-        if (chunkFinishReason) {
-          finishReason = chunkFinishReason
+    const turnResult = await executeSingleTurn({
+      providerClient: this.input.providerClient,
+      model: effectiveModel,
+      request: {
+        model: effectiveModel.model,
+        messages: requestMessages,
+        temperature: this.input.requestParams?.temperature,
+        top_p: this.input.requestParams?.top_p,
+        max_tokens: this.input.requestParams?.max_tokens,
+      },
+      tools,
+      signal: this.input.abortSignal,
+      stream: this.input.requestParams?.stream ?? true,
+      geminiTools: this.input.geminiTools,
+      onStreamDelta: ({ contentDelta, reasoningDelta, chunk }) => {
+        if (contentDelta) {
+          assistantMessage.content += contentDelta
         }
+        if (reasoningDelta) {
+          assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
+        }
+        if (chunk.usage) {
+          assistantMessage.metadata = {
+            ...assistantMessage.metadata,
+            usage: chunk.usage,
+          }
+        }
+        this.input.onAssistantMessage(assistantMessage)
+      },
+    })
 
-        responseToolCalls = this.processChunk({
-          chunk,
-          responseToolCalls,
-          assistantMessage,
-        })
-      }
-    } catch (error) {
-      const message = String(
-        error instanceof Error ? error.message : String(error),
-      )
-      if (/protocol error|unexpected EOF|incomplete envelope/i.test(message)) {
-        return this.runNonStreaming({ requestMessages, tools })
-      }
-      throw error
+    if (!this.input.requestParams?.stream) {
+      assistantMessage.content = turnResult.content
+      assistantMessage.reasoning = turnResult.reasoning
+    } else if (!assistantMessage.content && turnResult.content) {
+      assistantMessage.content = turnResult.content
     }
 
-    const toolCallRequests = this.buildToolCallRequests(responseToolCalls)
-    assistantMessage.toolCallRequests =
-      toolCallRequests.length > 0 ? toolCallRequests : undefined
+    assistantMessage.annotations = turnResult.annotations
     assistantMessage.metadata = {
       ...assistantMessage.metadata,
+      usage: turnResult.usage,
       durationMs: Date.now() - responseStart,
       generationState: this.input.abortSignal?.aborted
         ? 'aborted'
         : 'completed',
     }
+
+    const toolCallRequests = turnResult.toolCalls.map((toolCall) => ({
+      id: toolCall.id ?? uuidv4(),
+      name: this.normalizeToolCallName(toolCall.name),
+      arguments: toolCall.arguments,
+    }))
+
+    assistantMessage.toolCallRequests =
+      toolCallRequests.length > 0 ? toolCallRequests : undefined
     this.input.onAssistantMessage(assistantMessage)
 
     return {
       assistantMessage,
       toolCallRequests,
-      modelTerminated: this.isModelTerminationFinishReason(finishReason),
+      modelTerminated: this.isModelTerminationFinishReason(
+        turnResult.finishReason,
+      ),
     }
-  }
-
-  private processChunk({
-    chunk,
-    responseToolCalls,
-    assistantMessage,
-  }: {
-    chunk: LLMResponseStreaming
-    responseToolCalls: Record<number, ToolCallDelta>
-    assistantMessage: ChatAssistantMessage
-  }): Record<number, ToolCallDelta> {
-    const content = chunk.choices[0]?.delta?.content ?? ''
-    const reasoning = chunk.choices[0]?.delta?.reasoning
-    const toolCalls = chunk.choices[0]?.delta?.tool_calls
-    const annotations = chunk.choices[0]?.delta?.annotations
-
-    const updatedToolCalls = toolCalls
-      ? this.mergeToolCallDeltas(toolCalls, responseToolCalls)
-      : responseToolCalls
-
-    assistantMessage.content += content
-    if (reasoning) {
-      assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoning}`
-    }
-    assistantMessage.annotations = this.mergeAnnotations(
-      assistantMessage.annotations,
-      annotations,
-    )
-    assistantMessage.metadata = {
-      ...assistantMessage.metadata,
-      usage: chunk.usage ?? assistantMessage.metadata?.usage,
-    }
-    this.input.onAssistantMessage(assistantMessage)
-
-    return updatedToolCalls
-  }
-
-  private mergeToolCallDeltas(
-    toolCalls: ToolCallDelta[],
-    existingToolCalls: Record<number, ToolCallDelta>,
-  ): Record<number, ToolCallDelta> {
-    const merged = { ...existingToolCalls }
-    for (const toolCall of toolCalls) {
-      const { index } = toolCall
-      if (!merged[index]) {
-        merged[index] = toolCall
-        continue
-      }
-
-      const mergedToolCall: ToolCallDelta = {
-        index,
-        id: merged[index].id ?? toolCall.id,
-        type: merged[index].type ?? toolCall.type,
-      }
-
-      if (merged[index].function || toolCall.function) {
-        const existingArgs = merged[index].function?.arguments
-        const newArgs = toolCall.function?.arguments
-        mergedToolCall.function = {
-          name: merged[index].function?.name ?? toolCall.function?.name,
-          arguments: mergeStreamingToolArguments({ existingArgs, newArgs }),
-        }
-      }
-
-      merged[index] = mergedToolCall
-    }
-
-    return merged
-  }
-
-  private mergeAnnotations(
-    prevAnnotations?: Annotation[],
-    newAnnotations?: Annotation[],
-  ): Annotation[] | undefined {
-    if (!prevAnnotations) {
-      return newAnnotations
-    }
-    if (!newAnnotations) {
-      return prevAnnotations
-    }
-    const merged = [...prevAnnotations]
-    for (const incoming of newAnnotations) {
-      if (
-        !merged.find(
-          (item) => item.url_citation.url === incoming.url_citation.url,
-        )
-      ) {
-        merged.push(incoming)
-      }
-    }
-    return merged
-  }
-
-  private buildToolCallRequests(
-    responseToolCalls: Record<number, ToolCallDelta>,
-  ): ToolCallRequest[] {
-    return Object.values(responseToolCalls)
-      .map((toolCall) => {
-        if (!toolCall.function?.name) {
-          return null
-        }
-        const base: ToolCallRequest = {
-          id: toolCall.id ?? uuidv4(),
-          name: this.normalizeToolCallName(toolCall.function.name),
-        }
-        return toolCall.function.arguments
-          ? { ...base, arguments: toolCall.function.arguments }
-          : base
-      })
-      .filter((item): item is ToolCallRequest => item !== null)
   }
 
   private normalizeToolCallName(toolName: string): string {

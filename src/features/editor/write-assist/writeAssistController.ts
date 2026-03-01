@@ -1,6 +1,7 @@
 import type { EditorView } from '@codemirror/view'
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 
+import { executeSingleTurn } from '../../../core/ai/single-turn'
 import { getChatModelClient } from '../../../core/llm/manager'
 import type { RAGEngine } from '../../../core/rag/ragEngine'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
@@ -150,35 +151,14 @@ export class WriteAssistController {
         return lines.join('\n')
       }
 
-      let rewritten = ''
-      if (streamPreference) {
-        const streamIterator = await providerClient.streamResponse(
-          model,
-          { ...rewriteRequestBase, stream: true },
-          { signal: controller.signal },
-        )
-        let accumulated = ''
-        for await (const chunk of streamIterator) {
-          if (controller.signal.aborted) {
-            break
-          }
-
-          const delta = chunk?.choices?.[0]?.delta
-          const piece = delta?.content ?? ''
-          if (!piece) continue
-          accumulated += piece
-        }
-        rewritten = stripFences(accumulated).trim()
-      } else {
-        const response = await providerClient.generateResponse(
-          model,
-          { ...rewriteRequestBase, stream: false },
-          { signal: controller.signal },
-        )
-        rewritten = stripFences(
-          response.choices?.[0]?.message?.content ?? '',
-        ).trim()
-      }
+      const rewriteResult = await executeSingleTurn({
+        providerClient,
+        model,
+        request: rewriteRequestBase,
+        signal: controller.signal,
+        stream: streamPreference,
+      })
+      const rewritten = stripFences(rewriteResult.content).trim()
       if (!rewritten) {
         notice.setMessage('未生成改写内容。')
         this.deps.registerTimeout(() => notice.hide(), 1200)
@@ -619,85 +599,35 @@ export class WriteAssistController {
         })
       }
 
-      const runNonStreaming = async () => {
-        const response = await providerClient.generateResponse(
-          model,
-          { ...baseRequest, stream: false },
-          { signal: controller.signal, geminiTools },
-        )
+      const continuationResult = await executeSingleTurn({
+        providerClient,
+        model,
+        request: baseRequest,
+        signal: controller.signal,
+        stream: streamPreference,
+        firstTokenTimeoutMs: FIRST_TOKEN_TIMEOUT_MS,
+        geminiTools,
+        onStreamDelta: ({ contentDelta, reasoningDelta }) => {
+          if (reasoningDelta) {
+            reasoningPreviewBuffer += reasoningDelta
+            if (reasoningPreviewBuffer.length > MAX_REASONING_BUFFER) {
+              reasoningPreviewBuffer =
+                reasoningPreviewBuffer.slice(-MAX_REASONING_BUFFER)
+            }
+            updateThinkingReasoningPreview()
+          }
+          if (!contentDelta) return
 
-        const fullText = response.choices?.[0]?.message?.content ?? ''
-        if (fullText) {
-          suggestionText = fullText
+          suggestionText += contentDelta
           closeSmartSpaceWidgetOnce()
           updateContinuationSuggestion(suggestionText)
-        }
-      }
+        },
+      })
 
-      if (streamPreference) {
-        const streamController = new AbortController()
-        const handleAbort = () => streamController.abort()
-        controller.signal.addEventListener('abort', handleAbort, { once: true })
-        let firstTokenTimeoutId: ReturnType<typeof setTimeout> | null = null
-        let didTimeout = false
-        let hasReceivedFirstChunk = false
-        const clearFirstTokenTimeout = () => {
-          if (firstTokenTimeoutId) {
-            clearTimeout(firstTokenTimeoutId)
-            firstTokenTimeoutId = null
-          }
-        }
-        try {
-          firstTokenTimeoutId = setTimeout(() => {
-            didTimeout = true
-            streamController.abort()
-          }, FIRST_TOKEN_TIMEOUT_MS)
-
-          const streamIterator = await providerClient.streamResponse(
-            model,
-            { ...baseRequest, stream: true },
-            { signal: streamController.signal, geminiTools },
-          )
-
-          for await (const chunk of streamIterator) {
-            if (!hasReceivedFirstChunk) {
-              hasReceivedFirstChunk = true
-              clearFirstTokenTimeout()
-            }
-            if (controller.signal.aborted) {
-              break
-            }
-
-            const delta = chunk?.choices?.[0]?.delta
-            const piece = delta?.content ?? ''
-            const reasoningDelta = delta?.reasoning ?? ''
-            if (reasoningDelta) {
-              reasoningPreviewBuffer += reasoningDelta
-              if (reasoningPreviewBuffer.length > MAX_REASONING_BUFFER) {
-                reasoningPreviewBuffer =
-                  reasoningPreviewBuffer.slice(-MAX_REASONING_BUFFER)
-              }
-              updateThinkingReasoningPreview()
-            }
-            if (!piece) continue
-
-            suggestionText += piece
-            closeSmartSpaceWidgetOnce()
-            updateContinuationSuggestion(suggestionText)
-          }
-        } catch (error) {
-          clearFirstTokenTimeout()
-          if (didTimeout && !controller.signal.aborted) {
-            await runNonStreaming()
-          } else {
-            throw error
-          }
-        } finally {
-          clearFirstTokenTimeout()
-          controller.signal.removeEventListener('abort', handleAbort)
-        }
-      } else {
-        await runNonStreaming()
+      if (!suggestionText && continuationResult.content) {
+        suggestionText = continuationResult.content
+        closeSmartSpaceWidgetOnce()
+        updateContinuationSuggestion(suggestionText)
       }
 
       if (suggestionText.trim().length > 0) {

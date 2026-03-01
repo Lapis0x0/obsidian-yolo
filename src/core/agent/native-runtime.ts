@@ -47,13 +47,6 @@ export class NativeAgentRuntime implements AgentRuntime {
   }
 
   async run(input: AgentRuntimeRunInput): Promise<void> {
-    const toolGateway = new AgentToolGateway(input.mcpManager, {
-      allowedToolNames: input.allowedToolNames,
-      allowedSkillIds: input.allowedSkillIds,
-      allowedSkillNames: input.allowedSkillNames,
-    })
-    const worker = createAgentLoopWorker()
-    const runId = uuidv4()
     const localAbortController = new AbortController()
     this.runAbortController = localAbortController
 
@@ -61,6 +54,25 @@ export class NativeAgentRuntime implements AgentRuntime {
       input.abortSignal,
       localAbortController.signal,
     )
+
+    if (this.shouldUseSingleTurnFastPath()) {
+      try {
+        await this.runSingleTurnFastPath(input, abortSignal)
+      } finally {
+        if (this.runAbortController === localAbortController) {
+          this.runAbortController = null
+        }
+      }
+      return
+    }
+
+    const toolGateway = new AgentToolGateway(input.mcpManager, {
+      allowedToolNames: input.allowedToolNames,
+      allowedSkillIds: input.allowedSkillIds,
+      allowedSkillNames: input.allowedSkillNames,
+    })
+    const worker = createAgentLoopWorker()
+    const runId = uuidv4()
 
     let pendingToolMessageId: string | null = null
     let pendingToolCallCount = 0
@@ -172,7 +184,11 @@ export class NativeAgentRuntime implements AgentRuntime {
               return
             }
             runSettled = true
-            reject(error)
+            reject(
+              error instanceof Error
+                ? error
+                : new Error(String(error ?? 'Unknown runtime error')),
+            )
           })
       }
 
@@ -205,6 +221,44 @@ export class NativeAgentRuntime implements AgentRuntime {
         this.runAbortController = null
       }
     }
+  }
+
+  private shouldUseSingleTurnFastPath(): boolean {
+    return (
+      !this.loopConfig.enableTools && this.loopConfig.maxAutoIterations <= 1
+    )
+  }
+
+  private async runSingleTurnFastPath(
+    input: AgentRuntimeRunInput,
+    abortSignal: AbortSignal,
+  ): Promise<void> {
+    const llmTurnExecutor = new AgentLlmTurnExecutor({
+      providerClient: input.providerClient,
+      model: input.model,
+      promptGenerator: input.promptGenerator,
+      mcpManager: input.mcpManager,
+      conversationId: input.conversationId,
+      messages: [...input.messages, ...this.messages],
+      enableTools: false,
+      includeBuiltinTools: false,
+      allowedToolNames: input.allowedToolNames,
+      allowedSkillIds: input.allowedSkillIds,
+      allowedSkillNames: input.allowedSkillNames,
+      abortSignal,
+      reasoningLevel: input.reasoningLevel,
+      requestParams: input.requestParams,
+      maxContextOverride: input.maxContextOverride,
+      currentFileContextMode: input.currentFileContextMode,
+      currentFileOverride: input.currentFileOverride,
+      geminiTools: input.geminiTools,
+      onAssistantMessage: (assistantMessage) => {
+        this.upsertAssistantMessage(assistantMessage)
+        this.notifySubscribers([...this.messages])
+      },
+    })
+
+    await llmTurnExecutor.run()
   }
 
   private notifySubscribers(messages: ChatMessage[]): void {
