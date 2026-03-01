@@ -1352,16 +1352,11 @@ export async function callLocalFileTool({
           throw new Error(`Skill not found. id=${id ?? ''} name=${name ?? ''}`)
         }
 
-        const allSkills = listLiteSkillEntries(app)
-
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
             tool: 'open_skill',
             skill: skill.entry,
-            summary: {
-              availableSkills: allSkills.length,
-            },
             content: skill.content,
           }),
         }
