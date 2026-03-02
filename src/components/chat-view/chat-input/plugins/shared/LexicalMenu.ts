@@ -562,17 +562,34 @@ export function useMenuAnchorRef(
 
           if (menuEle) {
             const available = Math.max(margin, Math.floor(rect.top - margin))
-            updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              width: '100%',
-              maxWidth: 'none',
-              boxSizing: 'border-box',
-              overflowY: 'auto',
-              maxHeight: available,
-            })
+            const isMentionPopover = menuEle.classList.contains(
+              'smtcmp-smart-space-mention-popover',
+            )
+            if (isMentionPopover) {
+              updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                maxWidth: 'none',
+                boxSizing: 'border-box',
+                overflow: 'visible',
+                '--smtcmp-typeahead-available-height': `${available}px`,
+              })
+            } else {
+              updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                maxWidth: 'none',
+                boxSizing: 'border-box',
+                overflowY: 'auto',
+                maxHeight: available,
+              })
+            }
             // Limit height to available space above the input
             // Top cleared automatically by omission
           }

@@ -567,25 +567,30 @@ export default function NewMentionsPlugin({
         anchorElementRef.current && options.length
           ? createPortal(
               <div
-                className="smtcmp-popover smtcmp-smart-space-popover smtcmp-smart-space-mention-popover smtcmp-smart-space-mention-dropdown"
+                className="smtcmp-smart-space-mention-popover"
                 data-placement={placement}
               >
-                <div className="smtcmp-smart-space-mention-list" role="listbox">
-                  {options.map((option, i: number) => (
-                    <MentionsTypeaheadMenuItem
-                      index={i}
-                      isSelected={selectedIndex === i}
-                      onClick={() => {
-                        setHighlightedIndex(i)
-                        selectOptionAndCleanUp(option)
-                      }}
-                      onMouseEnter={() => {
-                        setHighlightedIndex(i)
-                      }}
-                      key={option.key}
-                      option={option}
-                    />
-                  ))}
+                <div className="smtcmp-popover smtcmp-smart-space-popover smtcmp-smart-space-mention-dropdown">
+                  <div
+                    className="smtcmp-smart-space-mention-list"
+                    role="listbox"
+                  >
+                    {options.map((option, i: number) => (
+                      <MentionsTypeaheadMenuItem
+                        index={i}
+                        isSelected={selectedIndex === i}
+                        onClick={() => {
+                          setHighlightedIndex(i)
+                          selectOptionAndCleanUp(option)
+                        }}
+                        onMouseEnter={() => {
+                          setHighlightedIndex(i)
+                        }}
+                        key={option.key}
+                        option={option}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>,
               menuContainerRef?.current ?? anchorElementRef.current,
