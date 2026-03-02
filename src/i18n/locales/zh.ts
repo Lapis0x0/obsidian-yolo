@@ -742,6 +742,12 @@ export const zh: TranslationKeys = {
     regenerate: '重新生成',
     reasoning: '推理过程',
     annotations: '注释',
+    mentionMenu: {
+      back: '返回上一级',
+      entryAssistant: '助手',
+      entryFile: '文件',
+      entryFolder: '文件夹',
+    },
     emptyState: {
       chatTitle: '先想清楚，再落笔',
       chatDescription: '适合提问、润色与改写，专注表达本身',

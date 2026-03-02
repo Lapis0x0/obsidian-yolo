@@ -8004,6 +8004,12 @@ button.smtcmp-chat-input-model-select {
   color: var(--text-accent, var(--interactive-accent));
 }
 
+.smtcmp-smart-space-mention-option-expand {
+  margin-left: auto;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
 .smtcmp-smart-space-section-card {
   flex: 1;
   min-height: 0;

@@ -779,6 +779,12 @@ export const it: TranslationKeys = {
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
     annotations: 'Annotazioni',
+    mentionMenu: {
+      back: 'Torna indietro',
+      entryAssistant: 'Assistente',
+      entryFile: 'File',
+      entryFolder: 'Cartella',
+    },
     emptyState: {
       chatTitle: 'Pensa prima, poi scrivi',
       chatDescription:

@@ -698,6 +698,12 @@ export type TranslationKeys = {
     regenerate: string
     reasoning: string
     annotations: string
+    mentionMenu?: {
+      back?: string
+      entryAssistant?: string
+      entryFile?: string
+      entryFolder?: string
+    }
     emptyState?: {
       chatTitle?: string
       chatDescription?: string

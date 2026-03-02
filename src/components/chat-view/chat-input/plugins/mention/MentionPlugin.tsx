@@ -9,7 +9,14 @@
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $createTextNode, COMMAND_PRIORITY_NORMAL, TextNode } from 'lexical'
-import { ArrowLeft, Bot, Check, FileIcon, FolderClosedIcon } from 'lucide-react'
+import {
+  ArrowLeft,
+  Bot,
+  Check,
+  ChevronRight,
+  FileIcon,
+  FolderClosedIcon,
+} from 'lucide-react'
 import {
   type ReactNode,
   type RefObject,
@@ -296,6 +303,12 @@ function MentionsTypeaheadMenuItem({
       </div>
       {option.payload.kind === 'assistant' && option.payload.isCurrent && (
         <Check size={12} className="smtcmp-smart-space-mention-option-check" />
+      )}
+      {option.payload.kind === 'entry' && (
+        <ChevronRight
+          size={14}
+          className="smtcmp-smart-space-mention-option-expand"
+        />
       )}
     </button>
   )

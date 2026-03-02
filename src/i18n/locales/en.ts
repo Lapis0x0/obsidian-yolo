@@ -787,6 +787,12 @@ export const en: TranslationKeys = {
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
     annotations: 'Annotations',
+    mentionMenu: {
+      back: 'Back',
+      entryAssistant: 'Assistant',
+      entryFile: 'File',
+      entryFolder: 'Folder',
+    },
     emptyState: {
       chatTitle: 'Think first, then write',
       chatDescription:
