@@ -58,6 +58,8 @@ export type TranslationKeys = {
       searchPlaceholder?: string
       empty?: string
       retryTitle?: string
+      archived?: string
+      hideArchived?: string
     }
     composer: {
       title: string
@@ -140,6 +142,10 @@ export type TranslationKeys = {
       title: string
       includeCurrentFile: string
       includeCurrentFileDesc: string
+      historyArchiveEnabled?: string
+      historyArchiveEnabledDesc?: string
+      historyArchiveThreshold?: string
+      historyArchiveThresholdDesc?: string
     }
     assistants: {
       title: string

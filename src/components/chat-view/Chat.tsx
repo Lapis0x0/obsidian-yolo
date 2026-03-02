@@ -1519,6 +1519,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <ChatListDropdown
               chatList={chatList}
               currentConversationId={currentConversationId}
+              archiveEnabled={
+                settings.chatOptions.historyArchiveEnabled ?? true
+              }
+              archiveThreshold={
+                settings.chatOptions.historyArchiveThreshold ?? 50
+              }
               onSelect={(conversationId) => {
                 if (conversationId === currentConversationId) return
                 void handleLoadConversation(conversationId)

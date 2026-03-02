@@ -204,6 +204,8 @@ function extractConversationText(messages: SerializedChatMessage[]): string {
 export function ChatListDropdown({
   chatList,
   currentConversationId,
+  archiveEnabled,
+  archiveThreshold,
   onSelect,
   onDelete,
   onUpdateTitle,
@@ -213,6 +215,8 @@ export function ChatListDropdown({
 }: {
   chatList: ChatConversationMetadata[]
   currentConversationId: string
+  archiveEnabled: boolean
+  archiveThreshold: number
   onSelect: (conversationId: string) => void | Promise<void>
   onDelete: (conversationId: string) => void | Promise<void>
   onUpdateTitle: (
@@ -231,6 +235,8 @@ export function ChatListDropdown({
   >(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [isHoveringArchiveRow, setIsHoveringArchiveRow] = useState(false)
   const [contentMatches, setContentMatches] = useState<Set<string>>(new Set())
   const [retryingConversationIds, setRetryingConversationIds] = useState<
     Set<string>
@@ -284,18 +290,83 @@ export function ChatListDropdown({
     )
   }, [chatList, contentMatches, normalizedQuery, titleMatches])
 
-  const displayChatList = useMemo(() => {
+  const baseDisplayChatList = useMemo(() => {
     if (normalizedQuery) return filteredChatList
     return pinnedSortedChatList
   }, [filteredChatList, normalizedQuery, pinnedSortedChatList])
 
+  const normalizedArchiveThreshold = useMemo(
+    () => Math.max(20, Math.min(500, Math.trunc(archiveThreshold || 50))),
+    [archiveThreshold],
+  )
+
+  const shouldUseArchive =
+    archiveEnabled &&
+    normalizedQuery.length === 0 &&
+    normalizedArchiveThreshold > 0
+
+  const { activeChatList, archivedChatList } = useMemo(() => {
+    if (!shouldUseArchive) {
+      return {
+        activeChatList: baseDisplayChatList,
+        archivedChatList: [] as ChatConversationMetadata[],
+      }
+    }
+
+    const pinnedChats: ChatConversationMetadata[] = []
+    const nonPinnedChats: ChatConversationMetadata[] = []
+    baseDisplayChatList.forEach((chat) => {
+      if (chat.isPinned) {
+        pinnedChats.push(chat)
+      } else {
+        nonPinnedChats.push(chat)
+      }
+    })
+
+    const activeNonPinnedChats = nonPinnedChats.slice(
+      0,
+      normalizedArchiveThreshold,
+    )
+    const archivedNonPinnedChats = nonPinnedChats.slice(
+      normalizedArchiveThreshold,
+    )
+    const currentArchivedIndex = archivedNonPinnedChats.findIndex(
+      (chat) => chat.id === currentConversationId,
+    )
+    if (currentArchivedIndex !== -1) {
+      const [currentConversation] = archivedNonPinnedChats.splice(
+        currentArchivedIndex,
+        1,
+      )
+      if (currentConversation) {
+        activeNonPinnedChats.push(currentConversation)
+      }
+    }
+
+    return {
+      activeChatList: [...pinnedChats, ...activeNonPinnedChats],
+      archivedChatList: archivedNonPinnedChats,
+    }
+  }, [
+    baseDisplayChatList,
+    currentConversationId,
+    normalizedArchiveThreshold,
+    shouldUseArchive,
+  ])
+
+  const renderedChatList = useMemo(() => {
+    if (!shouldUseArchive) return activeChatList
+    if (showArchived) return [...activeChatList, ...archivedChatList]
+    return activeChatList
+  }, [activeChatList, archivedChatList, shouldUseArchive, showArchived])
+
   const displayChatIndexById = useMemo(() => {
     const map = new Map<string, number>()
-    displayChatList.forEach((chat, index) => {
+    renderedChatList.forEach((chat, index) => {
       map.set(chat.id, index)
     })
     return map
-  }, [displayChatList])
+  }, [renderedChatList])
 
   const clearContentMatches = useCallback(() => {
     setContentMatches((prev) => (prev.size === 0 ? prev : new Set()))
@@ -312,10 +383,13 @@ export function ChatListDropdown({
         setFocusedConversationId(nextFocusedConversationId)
         setEditingId(null)
         setSearchQuery('')
+        setShowArchived(false)
+        setIsHoveringArchiveRow(false)
         clearContentMatches()
       } else {
         setEditingId(null)
         setFocusedConversationId(null)
+        setIsHoveringArchiveRow(false)
       }
       setOpen(nextOpen)
     },
@@ -338,7 +412,7 @@ export function ChatListDropdown({
 
   useEffect(() => {
     if (!open) return
-    if (displayChatList.length === 0) {
+    if (renderedChatList.length === 0) {
       setFocusedConversationId(null)
       return
     }
@@ -354,19 +428,19 @@ export function ChatListDropdown({
       setFocusedConversationId(
         displayChatIndexById.has(currentConversationId)
           ? currentConversationId
-          : (displayChatList[0]?.id ?? null),
+          : (renderedChatList[0]?.id ?? null),
       )
       return
     }
 
-    setFocusedConversationId(displayChatList[0]?.id ?? null)
+    setFocusedConversationId(renderedChatList[0]?.id ?? null)
   }, [
     currentConversationId,
     displayChatIndexById,
-    displayChatList,
     focusedConversationId,
     normalizedQuery,
     open,
+    renderedChatList,
   ])
 
   useEffect(() => {
@@ -462,7 +536,7 @@ export function ChatListDropdown({
       ) {
         return
       }
-      const activeList = displayChatList
+      const activeList = renderedChatList
       if (e.key === 'ArrowUp') {
         if (activeList.length === 0) return
         const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
@@ -488,7 +562,7 @@ export function ChatListDropdown({
           })
       }
     },
-    [displayChatList, focusedConversationId, focusedIndex, onSelect],
+    [renderedChatList, focusedConversationId, focusedIndex, onSelect],
   )
 
   return (
@@ -541,87 +615,116 @@ export function ChatListDropdown({
                 {t('common.noResults', 'No matches found')}
               </li>
             ) : (
-              displayChatList.map((chat) => (
-                <ChatListItem
-                  key={chat.id}
-                  title={chat.title}
-                  isFocused={focusedConversationId === chat.id}
-                  isEditing={editingId === chat.id}
-                  isPinned={Boolean(chat.isPinned)}
-                  isRetrying={retryingConversationIds.has(chat.id)}
-                  onMouseEnter={() => {
-                    setFocusedConversationId(chat.id)
-                  }}
-                  onSelect={() => {
-                    void Promise.resolve(onSelect(chat.id))
-                      .then(() => {
-                        setOpen(false)
-                      })
-                      .catch((error) => {
-                        console.error('Failed to select conversation', error)
-                      })
-                  }}
-                  onDelete={() => {
-                    void Promise.resolve(onDelete(chat.id)).catch((error) => {
-                      console.error('Failed to delete conversation', error)
-                    })
-                  }}
-                  onRetryTitle={() => {
-                    if (retryingConversationIds.has(chat.id)) {
-                      return
+              <>
+                {renderedChatList.map((chat) => (
+                  <ChatListItem
+                    key={chat.id}
+                    title={chat.title}
+                    isFocused={
+                      focusedConversationId === chat.id && !isHoveringArchiveRow
                     }
-                    const retryStartedAt = Date.now()
-                    setRetryingConversationIds((prev) => {
-                      const next = new Set(prev)
-                      next.add(chat.id)
-                      return next
-                    })
-                    void Promise.resolve(onRetryTitle(chat.id))
-                      .catch((error) => {
-                        console.error(
-                          'Failed to retry conversation title generation',
-                          error,
-                        )
+                    isEditing={editingId === chat.id}
+                    isPinned={Boolean(chat.isPinned)}
+                    isRetrying={retryingConversationIds.has(chat.id)}
+                    onMouseEnter={() => {
+                      setFocusedConversationId(chat.id)
+                    }}
+                    onSelect={() => {
+                      void Promise.resolve(onSelect(chat.id))
+                        .then(() => {
+                          setOpen(false)
+                        })
+                        .catch((error) => {
+                          console.error('Failed to select conversation', error)
+                        })
+                    }}
+                    onDelete={() => {
+                      void Promise.resolve(onDelete(chat.id)).catch((error) => {
+                        console.error('Failed to delete conversation', error)
                       })
-                      .finally(() => {
-                        const elapsed = Date.now() - retryStartedAt
-                        const remaining = Math.max(0, 320 - elapsed)
-                        window.setTimeout(() => {
-                          setRetryingConversationIds((prev) => {
-                            if (!prev.has(chat.id)) {
-                              return prev
-                            }
-                            const next = new Set(prev)
-                            next.delete(chat.id)
-                            return next
-                          })
-                        }, remaining)
+                    }}
+                    onRetryTitle={() => {
+                      if (retryingConversationIds.has(chat.id)) {
+                        return
+                      }
+                      const retryStartedAt = Date.now()
+                      setRetryingConversationIds((prev) => {
+                        const next = new Set(prev)
+                        next.add(chat.id)
+                        return next
                       })
-                  }}
-                  onTogglePinned={() => {
-                    void Promise.resolve(onTogglePinned(chat.id)).catch(
-                      (error) => {
-                        console.error('Failed to toggle pin', error)
-                      },
-                    )
-                  }}
-                  onStartEdit={() => {
-                    setEditingId(chat.id)
-                  }}
-                  onFinishEdit={(title) => {
-                    void Promise.resolve(onUpdateTitle(chat.id, title))
-                      .then(() => {
-                        setEditingId(null)
-                      })
-                      .catch((error) => {
-                        console.error(
-                          'Failed to update conversation title',
-                          error,
-                        )
-                      })
-                  }}
-                />
-              ))
+                      void Promise.resolve(onRetryTitle(chat.id))
+                        .catch((error) => {
+                          console.error(
+                            'Failed to retry conversation title generation',
+                            error,
+                          )
+                        })
+                        .finally(() => {
+                          const elapsed = Date.now() - retryStartedAt
+                          const remaining = Math.max(0, 320 - elapsed)
+                          window.setTimeout(() => {
+                            setRetryingConversationIds((prev) => {
+                              if (!prev.has(chat.id)) {
+                                return prev
+                              }
+                              const next = new Set(prev)
+                              next.delete(chat.id)
+                              return next
+                            })
+                          }, remaining)
+                        })
+                    }}
+                    onTogglePinned={() => {
+                      void Promise.resolve(onTogglePinned(chat.id)).catch(
+                        (error) => {
+                          console.error('Failed to toggle pin', error)
+                        },
+                      )
+                    }}
+                    onStartEdit={() => {
+                      setEditingId(chat.id)
+                    }}
+                    onFinishEdit={(title) => {
+                      void Promise.resolve(onUpdateTitle(chat.id, title))
+                        .then(() => {
+                          setEditingId(null)
+                        })
+                        .catch((error) => {
+                          console.error(
+                            'Failed to update conversation title',
+                            error,
+                          )
+                        })
+                    }}
+                  />
+                ))}
+                {shouldUseArchive && archivedChatList.length > 0 && (
+                  <li
+                    className="smtcmp-chat-list-dropdown-archive-row"
+                    onMouseEnter={() => {
+                      setIsHoveringArchiveRow(true)
+                    }}
+                    onMouseLeave={() => {
+                      setIsHoveringArchiveRow(false)
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="smtcmp-chat-list-dropdown-archive-toggle"
+                      onClick={() => {
+                        setShowArchived((prev) => !prev)
+                      }}
+                    >
+                      <span className="smtcmp-chat-list-dropdown-archive-toggle-label">
+                        {showArchived
+                          ? t('sidebar.chatList.hideArchived', 'Hide archived')
+                          : `${t('sidebar.chatList.archived', 'Archived')} (${archivedChatList.length})`}
+                      </span>
+                    </button>
+                  </li>
+                )}
+              </>
             )}
           </ul>
         </Popover.Content>

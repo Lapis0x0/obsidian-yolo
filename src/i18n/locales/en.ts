@@ -55,6 +55,8 @@ export const en: TranslationKeys = {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
       retryTitle: 'Retry title',
+      archived: 'Archived',
+      hideArchived: 'Hide archived',
     },
     composer: {
       title: 'Sparkle',
@@ -243,6 +245,12 @@ export const en: TranslationKeys = {
       includeCurrentFile: 'Auto-include current page',
       includeCurrentFileDesc:
         'Automatically include the content of your current file in chats.',
+      historyArchiveEnabled: 'Enable history archive grouping',
+      historyArchiveEnabledDesc:
+        'Keep older non-pinned conversations collapsed under an archive section.',
+      historyArchiveThreshold: 'Recent conversation limit',
+      historyArchiveThresholdDesc:
+        'Number of latest non-pinned conversations shown before archiving the rest (20-500).',
     },
     assistants: {
       title: 'Assistants',

@@ -266,6 +266,10 @@ export const smartComposerSettingsSchema = z.object({
       chatMode: z.enum(['chat', 'agent']).optional(),
       // Whether the user has acknowledged the first-time agent mode warning
       agentModeWarningConfirmed: z.boolean().optional(),
+      // Collapse older non-pinned conversations into an archive group
+      historyArchiveEnabled: z.boolean().optional(),
+      // Maximum number of recent non-pinned conversations shown before archive
+      historyArchiveThreshold: z.number().int().min(20).max(500).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -274,6 +278,8 @@ export const smartComposerSettingsSchema = z.object({
       baseModelSpecialPrompt: '',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
+      historyArchiveEnabled: true,
+      historyArchiveThreshold: 50,
     }),
 
   // Continuation (续写) options

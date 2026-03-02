@@ -55,6 +55,8 @@ export const it: TranslationKeys = {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
       retryTitle: 'Riprova titolo',
+      archived: 'Archiviate',
+      hideArchived: 'Nascondi archiviate',
     },
     composer: {
       title: 'Sparkle',
@@ -245,6 +247,12 @@ export const it: TranslationKeys = {
       includeCurrentFile: 'Includi file corrente',
       includeCurrentFileDesc:
         'Include automaticamente il file correntemente aperto nel contesto della chat.',
+      historyArchiveEnabled: 'Abilita raggruppamento archivio cronologia',
+      historyArchiveEnabledDesc:
+        'Mantiene le conversazioni non appuntate meno recenti compresse in una sezione archivio.',
+      historyArchiveThreshold: 'Limite conversazioni recenti',
+      historyArchiveThresholdDesc:
+        'Numero di conversazioni non appuntate recenti da mostrare prima di archiviare le altre (20-500).',
     },
     assistants: {
       title: 'Assistenti',
