@@ -266,6 +266,17 @@ export const smartComposerSettingsSchema = z.object({
       chatMode: z.enum(['chat', 'agent']).optional(),
       // Whether the user has acknowledged the first-time agent mode warning
       agentModeWarningConfirmed: z.boolean().optional(),
+      // Persist preferred reasoning level per model id in Chat input
+      reasoningLevelByModelId: z
+        .record(
+          z.string(),
+          z.enum(['off', 'on', 'auto', 'low', 'medium', 'high', 'extra-high']),
+        )
+        .optional(),
+      // Collapse older non-pinned conversations into an archive group
+      historyArchiveEnabled: z.boolean().optional(),
+      // Maximum number of recent non-pinned conversations shown before archive
+      historyArchiveThreshold: z.number().int().min(20).max(500).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -274,6 +285,9 @@ export const smartComposerSettingsSchema = z.object({
       baseModelSpecialPrompt: '',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
+      reasoningLevelByModelId: {},
+      historyArchiveEnabled: true,
+      historyArchiveThreshold: 50,
     }),
 
   // Continuation (续写) options
@@ -333,14 +347,14 @@ export const smartComposerSettingsSchema = z.object({
           }),
         )
         .optional(),
-      // Selection Chat custom actions (Quick Ask only)
+      // Selection Chat custom actions
       selectionChatActions: z
         .array(
           z.object({
             id: z.string(),
             label: z.string(),
             instruction: z.string(),
-            mode: z.enum(['ask', 'rewrite']).optional(),
+            mode: z.enum(['ask', 'rewrite', 'chat-input']).optional(),
             rewriteBehavior: z.enum(['custom', 'preset']).optional(),
             enabled: z.boolean().default(true),
           }),

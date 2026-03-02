@@ -57,6 +57,9 @@ export type TranslationKeys = {
     chatList?: {
       searchPlaceholder?: string
       empty?: string
+      retryTitle?: string
+      archived?: string
+      hideArchived?: string
     }
     composer: {
       title: string
@@ -139,6 +142,10 @@ export type TranslationKeys = {
       title: string
       includeCurrentFile: string
       includeCurrentFileDesc: string
+      historyArchiveEnabled?: string
+      historyArchiveEnabledDesc?: string
+      historyArchiveThreshold?: string
+      historyArchiveThresholdDesc?: string
     }
     assistants: {
       title: string
@@ -646,6 +653,7 @@ export type TranslationKeys = {
       actionMode: string
       actionModeDesc: string
       actionModeAsk: string
+      actionModeChatInput: string
       actionModeRewrite: string
       actionRewriteType: string
       actionRewriteTypeDesc: string
@@ -691,6 +699,13 @@ export type TranslationKeys = {
     regenerate: string
     reasoning: string
     annotations: string
+    mentionMenu?: {
+      back?: string
+      entryMode?: string
+      entryAssistant?: string
+      entryFile?: string
+      entryFolder?: string
+    }
     emptyState?: {
       chatTitle?: string
       chatDescription?: string
@@ -885,6 +900,10 @@ export type TranslationKeys = {
     editNoChanges?: string
     editPartialSuccess?: string
     editApplied?: string
+    statusRequesting?: string
+    statusThinking?: string
+    statusGenerating?: string
+    statusModifying?: string
   }
 
   // Chat Mode Select

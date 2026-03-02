@@ -91,6 +91,11 @@ export type ChatUserInputProps = {
   hideBadgeMentionables?: boolean
   onToggleCompact?: () => void
   onBlur?: () => void
+  currentAssistantId?: string
+  onSelectAssistantForConversation?: (assistantId: string) => void
+  currentChatMode?: 'chat' | 'agent'
+  onSelectChatModeForConversation?: (mode: 'chat' | 'agent') => void
+  allowAgentModeOption?: boolean
 }
 
 type ChatSubmitOptions = {
@@ -122,6 +127,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       hideBadgeMentionables = false,
       onToggleCompact,
       onBlur,
+      currentAssistantId,
+      onSelectAssistantForConversation,
+      currentChatMode,
+      onSelectChatModeForConversation,
+      allowAgentModeOption = true,
     },
     ref,
   ) => {
@@ -623,6 +633,18 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               onCreateImageMentionables={handleCreateImageMentionables}
               mentionDisplayMode={mentionDisplayMode}
               onSelectMentionable={handleSelectMentionableForBadge}
+              mentionMenuMode={
+                onSelectAssistantForConversation ||
+                onSelectChatModeForConversation
+                  ? 'entry'
+                  : 'direct-search'
+              }
+              assistants={settings.assistants || []}
+              currentAssistantId={currentAssistantId}
+              onSelectAssistant={onSelectAssistantForConversation}
+              currentChatMode={currentChatMode}
+              onSelectChatMode={onSelectChatModeForConversation}
+              allowAgentModeOption={allowAgentModeOption}
               autoFocus={autoFocus}
               plugins={{
                 onEnter: {

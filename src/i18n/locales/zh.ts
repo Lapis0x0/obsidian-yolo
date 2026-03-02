@@ -54,6 +54,9 @@ export const zh: TranslationKeys = {
     chatList: {
       searchPlaceholder: '搜索聊天记录',
       empty: '暂无聊天记录',
+      retryTitle: '重试命名',
+      archived: '已归档',
+      hideArchived: '收起归档',
     },
     composer: {
       title: 'Sparkle 模式',
@@ -189,8 +192,9 @@ export const zh: TranslationKeys = {
       actionLabelPlaceholder: '例如：深入解释',
       actionMode: '执行方式',
       actionModeDesc:
-        '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
+        '问答会打开 Quick Ask 并自动发送；添加到对话框会打开 Chat 并预填输入框；改写会打开 Quick Ask 编辑模式生成预览。',
       actionModeAsk: '问答（Quick Ask）',
+      actionModeChatInput: '添加到对话框',
       actionModeRewrite: '改写（生成预览）',
       actionRewriteType: '改写类型',
       actionRewriteTypeDesc: '选择改写是否需要输入指令',
@@ -210,6 +214,11 @@ export const zh: TranslationKeys = {
       title: '聊天偏好',
       includeCurrentFile: '自动添加当前页面文件',
       includeCurrentFileDesc: '自动在聊天中包含当前文件的内容。',
+      historyArchiveEnabled: '启用历史归档分组',
+      historyArchiveEnabledDesc: '将较旧的未置顶会话折叠到归档分组中。',
+      historyArchiveThreshold: '近期会话数量',
+      historyArchiveThresholdDesc:
+        '超过该数量的未置顶会话会进入归档（20-500）。',
     },
     assistants: {
       title: '助手',
@@ -734,6 +743,13 @@ export const zh: TranslationKeys = {
     regenerate: '重新生成',
     reasoning: '推理过程',
     annotations: '注释',
+    mentionMenu: {
+      back: '返回上一级',
+      entryMode: '模式',
+      entryAssistant: '助手',
+      entryFile: '文件',
+      entryFolder: '文件夹',
+    },
     emptyState: {
       chatTitle: '先想清楚，再落笔',
       chatDescription: '适合提问、润色与改写，专注表达本身',
@@ -947,6 +963,10 @@ export const zh: TranslationKeys = {
     editPartialSuccess:
       '已应用 {appliedCount}/{totalEdits} 个编辑，详情请查看控制台',
     editApplied: '成功应用了 {appliedCount} 个编辑到 {fileName}',
+    statusRequesting: '请求中...',
+    statusThinking: '思考中...',
+    statusGenerating: '生成中...',
+    statusModifying: '修改中...',
   },
 
   chatMode: {

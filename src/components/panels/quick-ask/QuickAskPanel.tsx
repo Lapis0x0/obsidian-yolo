@@ -31,7 +31,11 @@ import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
-import { ChatMessage, ChatUserMessage } from '../../../types/chat'
+import {
+  ChatAssistantMessage,
+  ChatMessage,
+  ChatUserMessage,
+} from '../../../types/chat'
 import { Mentionable, SerializedMentionable } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { generateEditContent } from '../../../utils/chat/editMode'
@@ -43,7 +47,6 @@ import {
 } from '../../../utils/chat/mentionable'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
-import { ResponseGenerator } from '../../../utils/chat/responseGenerator'
 import { tryApplyStructuredEdits } from '../../../utils/chat/structured-edits'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
@@ -60,8 +63,14 @@ import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
-const FIRST_TOKEN_TIMEOUT_MS = 12000
-const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
+const QUICK_ASK_MAX_ITERATIONS = 1
+
+type QuickAskRunStatus =
+  | 'requesting'
+  | 'thinking'
+  | 'generating'
+  | 'modifying'
+  | null
 
 type QuickAskPanelProps = {
   plugin: SmartComposerPlugin
@@ -69,11 +78,13 @@ type QuickAskPanelProps = {
   view: EditorView
   contextText: string
   fileTitle: string
+  sourceFilePath?: string
   initialPrompt?: string
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskMode
   initialInput?: string
   editContextText?: string
+  editSelectionFrom?: { line: number; ch: number }
   autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
@@ -155,11 +166,13 @@ export function QuickAskPanel({
   view: _view,
   contextText,
   fileTitle,
+  sourceFilePath,
   initialPrompt,
   initialMentionables,
   initialMode,
   initialInput,
   editContextText,
+  editSelectionFrom,
   autoSend,
   onClose,
   containerRef,
@@ -193,6 +206,7 @@ export function QuickAskPanel({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [runStatus, setRunStatus] = useState<QuickAskRunStatus>(null)
   const [isAssistantMenuOpen, setIsAssistantMenuOpen] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false)
@@ -271,6 +285,12 @@ export function QuickAskPanel({
     },
     [editContextText],
   )
+  const resolveEditTargetFile = useCallback(() => {
+    if (sourceFilePath) {
+      return app.vault.getFileByPath(sourceFilePath)
+    }
+    return app.workspace.getActiveFile()
+  }, [app, sourceFilePath])
   const renderAssistantBlocks = useCallback(
     (
       rawContent: string | undefined | null,
@@ -325,6 +345,47 @@ export function QuickAskPanel({
     },
     [plugin],
   )
+
+  const deriveAskRunStatus = useCallback(
+    (
+      messages: ChatMessage[],
+    ): Exclude<QuickAskRunStatus, 'modifying' | null> => {
+      const lastAssistantMessage = [...messages]
+        .reverse()
+        .find((message): message is ChatAssistantMessage => {
+          return message.role === 'assistant'
+        })
+
+      if (!lastAssistantMessage) {
+        return 'requesting'
+      }
+
+      if (lastAssistantMessage.content.trim().length > 0) {
+        return 'generating'
+      }
+
+      if (lastAssistantMessage.reasoning?.trim().length) {
+        return 'thinking'
+      }
+
+      return 'requesting'
+    },
+    [],
+  )
+
+  const runStatusLabel = useMemo(() => {
+    if (!runStatus) return null
+    if (runStatus === 'requesting') {
+      return t('quickAsk.statusRequesting', 'Requesting...')
+    }
+    if (runStatus === 'thinking') {
+      return t('quickAsk.statusThinking', 'Thinking...')
+    }
+    if (runStatus === 'generating') {
+      return t('quickAsk.statusGenerating', 'Generating...')
+    }
+    return t('quickAsk.statusModifying', 'Modifying...')
+  }, [runStatus, t])
 
   const noop = useCallback(() => {}, [])
   const noopSetMentionables = useCallback((_items: Mentionable[]) => {}, [])
@@ -609,6 +670,7 @@ export function QuickAskPanel({
       abortControllerRef.current = null
     }
     setIsStreaming(false)
+    setRunStatus(null)
   }, [])
 
   // Submit message
@@ -624,6 +686,7 @@ export function QuickAskPanel({
       if (!textContent.trim()) return
 
       setIsStreaming(true)
+      setRunStatus('requesting')
       setInputText('')
 
       // Clear the lexical editor
@@ -656,41 +719,57 @@ export function QuickAskPanel({
       // Create abort controller
       const abortController = new AbortController()
       abortControllerRef.current = abortController
+      let unsubscribeRunner: (() => void) | null = null
 
       try {
         const mcpManager = await getMcpManager()
 
-        const responseGenerator = new ResponseGenerator({
-          providerClient,
-          model,
-          messages: newMessages,
+        const effectiveEnableTools = false
+        const effectiveIncludeBuiltinTools = false
+
+        const agentService = plugin.getAgentService()
+        unsubscribeRunner = agentService.subscribe(
           conversationId,
-          enableTools: true,
-          maxAutoIterations: DEFAULT_MAX_AUTO_TOOL_ITERATIONS,
-          promptGenerator,
-          mcpManager,
-          abortSignal: abortController.signal,
-          firstTokenTimeoutMs: FIRST_TOKEN_TIMEOUT_MS,
-          requestParams: {
-            stream: true,
+          (state) => {
+            setRunStatus(deriveAskRunStatus(state.messages))
+            setChatMessages((prev) => {
+              const lastMessageIndex = prev.findIndex(
+                (m) => m.id === userMessage.id,
+              )
+              if (lastMessageIndex === -1) {
+                abortController.abort()
+                return prev
+              }
+              return [...prev.slice(0, lastMessageIndex + 1), ...state.messages]
+            })
+          },
+          { emitCurrent: false },
+        )
+
+        await agentService.run({
+          conversationId,
+          loopConfig: {
+            enableTools: effectiveEnableTools,
+            maxAutoIterations: QUICK_ASK_MAX_ITERATIONS,
+            includeBuiltinTools: effectiveIncludeBuiltinTools,
+          },
+          input: {
+            providerClient,
+            model,
+            messages: newMessages,
+            conversationId,
+            promptGenerator,
+            mcpManager,
+            abortSignal: abortController.signal,
+            allowedToolNames: effectiveEnableTools
+              ? selectedAssistant?.enabledToolNames
+              : undefined,
+            requestParams: {
+              stream: true,
+            },
+            currentFileContextMode: 'summary',
           },
         })
-
-        const unsubscribe = responseGenerator.subscribe((responseMessages) => {
-          setChatMessages((prev) => {
-            const lastMessageIndex = prev.findIndex(
-              (m) => m.id === userMessage.id,
-            )
-            if (lastMessageIndex === -1) {
-              abortController.abort()
-              return prev
-            }
-            return [...prev.slice(0, lastMessageIndex + 1), ...responseMessages]
-          })
-        })
-
-        await responseGenerator.run()
-        unsubscribe()
 
         // Save conversation
         const finalMessages = [...newMessages]
@@ -727,7 +806,11 @@ export function QuickAskPanel({
         console.error('Quick ask failed:', error)
         new Notice(t('quickAsk.error', 'Failed to generate response'))
       } finally {
+        if (unsubscribeRunner) {
+          unsubscribeRunner()
+        }
         setIsStreaming(false)
+        setRunStatus(null)
         abortControllerRef.current = null
       }
     },
@@ -735,13 +818,16 @@ export function QuickAskPanel({
       chatMessages,
       conversationId,
       createOrUpdateConversationImmediately,
+      deriveAskRunStatus,
       generateConversationTitle,
       getMcpManager,
       isStreaming,
       mentionables,
       model,
+      plugin,
       promptGenerator,
       providerClient,
+      selectedAssistant,
       t,
     ],
   )
@@ -783,13 +869,14 @@ export function QuickAskPanel({
       if (!instruction.trim()) return
       const resolvedInstruction = buildEditInstruction(instruction.trim())
 
-      const activeFile = app.workspace.getActiveFile()
-      if (!activeFile) {
+      const targetFile = resolveEditTargetFile()
+      if (!targetFile) {
         new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
         return
       }
 
       setIsStreaming(true)
+      setRunStatus('requesting')
 
       // Clear the lexical editor
       lexicalEditorRef.current?.update(() => {
@@ -803,20 +890,31 @@ export function QuickAskPanel({
       setInputText('')
 
       try {
-        const currentContent = await readTFileContent(activeFile, app.vault)
+        const currentContent = await readTFileContent(targetFile, app.vault)
+        const selectedContext = editContextText ?? ''
+        const scopedToSelection =
+          mode === 'edit' &&
+          selectedContext.trim().length > 0 &&
+          !!editSelectionFrom
+
+        const editSourceText = scopedToSelection
+          ? selectedContext
+          : currentContent
 
         // Generate SEARCH/REPLACE blocks
         const response = await generateEditContent({
           instruction: resolvedInstruction,
-          currentFile: activeFile,
-          currentFileContent: currentContent,
+          currentFile: targetFile,
+          currentFileContent: editSourceText,
           providerClient,
           model,
         })
 
+        setRunStatus('modifying')
+
         const structuredEditResult = tryApplyStructuredEdits({
           rawEdits: response,
-          originalContent: currentContent,
+          originalContent: editSourceText,
         })
         if (!structuredEditResult) {
           new Notice(
@@ -828,6 +926,20 @@ export function QuickAskPanel({
         const { newContent, errors, appliedCount, blocks } =
           structuredEditResult
 
+        const finalContent =
+          scopedToSelection && editSelectionFrom
+            ? (() => {
+                const head = _editor.getRange(
+                  { line: 0, ch: 0 },
+                  editSelectionFrom,
+                )
+                const tail = currentContent.slice(
+                  head.length + selectedContext.length,
+                )
+                return head + newContent + tail
+              })()
+            : newContent
+
         const canApplyStructuredLocally =
           structuredEditResult.isPureStructuredScript && appliedCount > 0
 
@@ -835,7 +947,7 @@ export function QuickAskPanel({
           console.error(
             '[QuickAsk Edit] Structured edits did not match file.',
             {
-              filePath: activeFile.path,
+              filePath: targetFile.path,
               blockCount: blocks.length,
               appliedCount,
               errors,
@@ -866,9 +978,9 @@ export function QuickAskPanel({
 
         // Open Apply Review
         await plugin.openApplyReview({
-          file: activeFile,
+          file: targetFile,
           originalContent: currentContent,
-          newContent,
+          newContent: finalContent,
         } satisfies ApplyViewState)
 
         // Close Quick Ask
@@ -878,9 +990,23 @@ export function QuickAskPanel({
         new Notice(t('quickAsk.error', 'Failed to generate edits'))
       } finally {
         setIsStreaming(false)
+        setRunStatus(null)
       }
     },
-    [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
+    [
+      app,
+      buildEditInstruction,
+      editContextText,
+      editSelectionFrom,
+      _editor,
+      isStreaming,
+      mode,
+      model,
+      onClose,
+      providerClient,
+      resolveEditTargetFile,
+      t,
+    ],
   )
 
   // Submit edit-direct mode - generate and apply edits directly without confirmation
@@ -890,13 +1016,14 @@ export function QuickAskPanel({
       if (!instruction.trim()) return
       const resolvedInstruction = buildEditInstruction(instruction.trim())
 
-      const activeFile = app.workspace.getActiveFile()
-      if (!activeFile) {
+      const targetFile = resolveEditTargetFile()
+      if (!targetFile) {
         new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
         return
       }
 
       setIsStreaming(true)
+      setRunStatus('requesting')
 
       // Clear the lexical editor
       lexicalEditorRef.current?.update(() => {
@@ -910,20 +1037,31 @@ export function QuickAskPanel({
       setInputText('')
 
       try {
-        const currentContent = await readTFileContent(activeFile, app.vault)
+        const currentContent = await readTFileContent(targetFile, app.vault)
+        const selectedContext = editContextText ?? ''
+        const scopedToSelection =
+          mode === 'edit-direct' &&
+          selectedContext.trim().length > 0 &&
+          !!editSelectionFrom
+
+        const editSourceText = scopedToSelection
+          ? selectedContext
+          : currentContent
 
         // Generate edit blocks
         const response = await generateEditContent({
           instruction: resolvedInstruction,
-          currentFile: activeFile,
-          currentFileContent: currentContent,
+          currentFile: targetFile,
+          currentFileContent: editSourceText,
           providerClient,
           model,
         })
 
+        setRunStatus('modifying')
+
         const structuredEditResult = tryApplyStructuredEdits({
           rawEdits: response,
-          originalContent: currentContent,
+          originalContent: editSourceText,
         })
         if (!structuredEditResult) {
           new Notice(
@@ -935,6 +1073,20 @@ export function QuickAskPanel({
         const { newContent, errors, appliedCount, blocks } =
           structuredEditResult
 
+        const finalContent =
+          scopedToSelection && editSelectionFrom
+            ? (() => {
+                const head = _editor.getRange(
+                  { line: 0, ch: 0 },
+                  editSelectionFrom,
+                )
+                const tail = currentContent.slice(
+                  head.length + selectedContext.length,
+                )
+                return head + newContent + tail
+              })()
+            : newContent
+
         const canApplyStructuredLocally =
           structuredEditResult.isPureStructuredScript && appliedCount > 0
 
@@ -942,7 +1094,7 @@ export function QuickAskPanel({
           console.error(
             '[QuickAsk Edit-Direct] Structured edits did not match file.',
             {
-              filePath: activeFile.path,
+              filePath: targetFile.path,
               blockCount: blocks.length,
               appliedCount,
               errors,
@@ -979,14 +1131,14 @@ export function QuickAskPanel({
         }
 
         // Apply changes directly to file
-        await app.vault.modify(activeFile, newContent)
+        await app.vault.modify(targetFile, finalContent)
 
         const successMessage = t(
           'quickAsk.editApplied',
           `Successfully applied {appliedCount} edit(s) to {fileName}`,
         )
           .replace('{appliedCount}', String(appliedCount))
-          .replace('{fileName}', activeFile.name)
+          .replace('{fileName}', targetFile.name)
         new Notice(successMessage)
 
         // Close Quick Ask
@@ -996,9 +1148,23 @@ export function QuickAskPanel({
         new Notice(t('quickAsk.error', 'Failed to apply edits'))
       } finally {
         setIsStreaming(false)
+        setRunStatus(null)
       }
     },
-    [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
+    [
+      app,
+      buildEditInstruction,
+      editContextText,
+      editSelectionFrom,
+      _editor,
+      isStreaming,
+      mode,
+      model,
+      onClose,
+      providerClient,
+      resolveEditTargetFile,
+      t,
+    ],
   )
 
   useEffect(() => {
@@ -1160,13 +1326,25 @@ export function QuickAskPanel({
         // 交给下拉自身处理关闭，避免误关闭面板
         return
       }
+      if (isStreaming) {
+        event.preventDefault()
+        abortStream()
+        return
+      }
       event.preventDefault()
       onClose()
     }
 
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen, onClose])
+  }, [
+    abortStream,
+    isAssistantMenuOpen,
+    isModelMenuOpen,
+    isModeMenuOpen,
+    isStreaming,
+    onClose,
+  ])
 
   // Drag handling
   useEffect(() => {
@@ -1364,30 +1542,41 @@ export function QuickAskPanel({
         <div
           className={`smtcmp-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
         >
-          <LexicalContentEditable
-            editorRef={lexicalEditorRef}
-            contentEditableRef={contentEditableRef}
-            onTextContentChange={setInputText}
-            onEnter={handleEnter}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                assistantTriggerRef.current?.focus()
-              }
-            }}
-            onMentionMenuToggle={(open) => {
-              setIsMentionMenuOpen(open)
-              if (open) updateMentionMenuPlacement()
-            }}
-            onMentionNodeMutation={handleMentionNodeMutation}
-            mentionMenuContainerRef={inputRowRef}
-            mentionMenuPlacement={mentionMenuPlacement}
-            autoFocus
-            contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
-          />
-          {inputText.length === 0 && (
+          {!isStreaming && (
+            <LexicalContentEditable
+              editorRef={lexicalEditorRef}
+              contentEditableRef={contentEditableRef}
+              onTextContentChange={setInputText}
+              onEnter={handleEnter}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  assistantTriggerRef.current?.focus()
+                }
+              }}
+              onMentionMenuToggle={(open) => {
+                setIsMentionMenuOpen(open)
+                if (open) updateMentionMenuPlacement()
+              }}
+              onMentionNodeMutation={handleMentionNodeMutation}
+              mentionMenuContainerRef={inputRowRef}
+              mentionMenuPlacement={mentionMenuPlacement}
+              autoFocus
+              contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
+            />
+          )}
+          {inputText.length === 0 && !isStreaming && (
             <div className="smtcmp-quick-ask-input-placeholder">
               {t('quickAsk.inputPlaceholder', 'Ask a question...')}
+            </div>
+          )}
+          {isStreaming && runStatusLabel && (
+            <div className="smtcmp-quick-ask-run-status" aria-live="polite">
+              <span
+                className="smtcmp-quick-ask-run-status-dot"
+                aria-hidden="true"
+              />
+              <span>{runStatusLabel}</span>
             </div>
           )}
         </div>

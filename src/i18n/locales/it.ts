@@ -54,6 +54,9 @@ export const it: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
+      retryTitle: 'Riprova titolo',
+      archived: 'Archiviate',
+      hideArchived: 'Nascondi archiviate',
     },
     composer: {
       title: 'Sparkle',
@@ -220,8 +223,9 @@ export const it: TranslationKeys = {
       actionLabelPlaceholder: 'Ad esempio, spiega',
       actionMode: 'Modalita',
       actionModeDesc:
-        'Ask apre Quick Ask e invia automaticamente; rewrite apre la modalita di modifica di Quick Ask per generare un anteprima.',
+        'Ask apre Quick Ask e invia automaticamente; Aggiungi alla chat apre la chat laterale e precompila la casella di input; rewrite apre la modalita di modifica di Quick Ask per generare un anteprima.',
       actionModeAsk: 'Ask (Quick Ask)',
+      actionModeChatInput: 'Aggiungi alla chat',
       actionModeRewrite: 'Rewrite (anteprima)',
       actionRewriteType: 'Tipo di riscrittura',
       actionRewriteTypeDesc: 'Scegli se la riscrittura richiede un prompt',
@@ -244,6 +248,12 @@ export const it: TranslationKeys = {
       includeCurrentFile: 'Includi file corrente',
       includeCurrentFileDesc:
         'Include automaticamente il file correntemente aperto nel contesto della chat.',
+      historyArchiveEnabled: 'Abilita raggruppamento archivio cronologia',
+      historyArchiveEnabledDesc:
+        'Mantiene le conversazioni non appuntate meno recenti compresse in una sezione archivio.',
+      historyArchiveThreshold: 'Limite conversazioni recenti',
+      historyArchiveThresholdDesc:
+        'Numero di conversazioni non appuntate recenti da mostrare prima di archiviare le altre (20-500).',
     },
     assistants: {
       title: 'Assistenti',
@@ -770,6 +780,13 @@ export const it: TranslationKeys = {
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
     annotations: 'Annotazioni',
+    mentionMenu: {
+      back: 'Torna indietro',
+      entryMode: 'Modalita',
+      entryAssistant: 'Assistente',
+      entryFile: 'File',
+      entryFolder: 'Cartella',
+    },
     emptyState: {
       chatTitle: 'Pensa prima, poi scrivi',
       chatDescription:
@@ -1008,6 +1025,10 @@ export const it: TranslationKeys = {
       'Applicate {appliedCount} di {totalEdits} modifiche. Controlla la console per i dettagli.',
     editApplied:
       'Applicate con successo {appliedCount} modifica/modifiche a {fileName}',
+    statusRequesting: 'Richiesta in corso...',
+    statusThinking: 'Sto pensando...',
+    statusGenerating: 'Sto generando...',
+    statusModifying: 'Sto modificando...',
   },
 
   chatMode: {

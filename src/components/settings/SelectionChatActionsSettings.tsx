@@ -37,7 +37,7 @@ type SelectionChatAction = {
   rewriteBehavior?: SelectionChatActionRewriteBehavior
 }
 
-type SelectionChatActionMode = 'ask' | 'rewrite'
+type SelectionChatActionMode = 'ask' | 'rewrite' | 'chat-input'
 type SelectionChatActionRewriteBehavior = 'custom' | 'preset'
 
 type TranslateFn = (key: string, fallback?: string) => string
@@ -192,6 +192,10 @@ export function SelectionChatActionsSettingsContent() {
   const [isAddingAction, setIsAddingAction] = useState(false)
   const actionModeOptions: Record<SelectionChatActionMode, string> = {
     ask: t('settings.selectionChat.actionModeAsk', '问答（Quick Ask）'),
+    'chat-input': t(
+      'settings.selectionChat.actionModeChatInput',
+      '添加到对话框',
+    ),
     rewrite: t('settings.selectionChat.actionModeRewrite', '改写（生成预览）'),
   }
   const actionRewriteTypeOptions: Record<
@@ -501,7 +505,7 @@ export function SelectionChatActionsSettingsContent() {
             name={t('settings.selectionChat.actionMode', '执行方式')}
             desc={t(
               'settings.selectionChat.actionModeDesc',
-              '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
+              '问答会打开 Quick Ask 并自动发送；添加到对话框会打开 Chat 并预填输入框；改写会打开 Quick Ask 编辑模式生成预览。',
             )}
           >
             <ObsidianDropdown
@@ -510,7 +514,12 @@ export function SelectionChatActionsSettingsContent() {
               onChange={(value) =>
                 setEditingAction({
                   ...editingAction,
-                  mode: value === 'rewrite' ? 'rewrite' : 'ask',
+                  mode:
+                    value === 'rewrite'
+                      ? 'rewrite'
+                      : value === 'chat-input'
+                        ? 'chat-input'
+                        : 'ask',
                   rewriteBehavior:
                     value === 'rewrite'
                       ? (editingAction.rewriteBehavior ?? 'preset')
@@ -746,7 +755,7 @@ function QuickActionItem({
             name={t('settings.selectionChat.actionMode', '执行方式')}
             desc={t(
               'settings.selectionChat.actionModeDesc',
-              '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
+              '问答会打开 Quick Ask 并自动发送；添加到对话框会打开 Chat 并预填输入框；改写会打开 Quick Ask 编辑模式生成预览。',
             )}
           >
             <ObsidianDropdown
@@ -755,7 +764,12 @@ function QuickActionItem({
               onChange={(value) =>
                 setEditingAction({
                   ...currentEditing,
-                  mode: value === 'rewrite' ? 'rewrite' : 'ask',
+                  mode:
+                    value === 'rewrite'
+                      ? 'rewrite'
+                      : value === 'chat-input'
+                        ? 'chat-input'
+                        : 'ask',
                   rewriteBehavior:
                     value === 'rewrite'
                       ? (currentEditing.rewriteBehavior ?? 'preset')

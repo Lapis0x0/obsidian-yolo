@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Pencil, Search, Star, Trash2 } from 'lucide-react'
+import { Pencil, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -12,9 +12,11 @@ import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain
 
 function TitleInput({
   title,
+  disabled,
   onSubmit,
 }: {
   title: string
+  disabled?: boolean
   onSubmit: (title: string) => void
 }) {
   const [value, setValue] = useState(title)
@@ -32,16 +34,17 @@ function TitleInput({
       ref={inputRef}
       type="text"
       value={value}
+      disabled={disabled}
       className="smtcmp-chat-list-dropdown-item-title-input"
+      onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
         e.stopPropagation()
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !disabled) {
           onSubmit(value)
         }
       }}
-      autoFocus
       maxLength={100}
     />
   )
@@ -51,25 +54,32 @@ function ChatListItem({
   title,
   isFocused,
   isEditing,
+  isUpdatingTitle,
   isPinned,
+  isRetrying,
   onMouseEnter,
   onSelect,
   onDelete,
   onTogglePinned,
+  onRetryTitle,
   onStartEdit,
   onFinishEdit,
 }: {
   title: string
   isFocused: boolean
   isEditing: boolean
+  isUpdatingTitle: boolean
   isPinned: boolean
+  isRetrying: boolean
   onMouseEnter: () => void
   onSelect: () => void
   onDelete: () => void
   onTogglePinned: () => void
+  onRetryTitle: () => void
   onStartEdit: () => void
   onFinishEdit: (title: string) => void
 }) {
+  const { t } = useLanguage()
   const itemRef = useRef<HTMLLIElement>(null)
 
   useEffect(() => {
@@ -83,7 +93,10 @@ function ChatListItem({
   return (
     <li
       ref={itemRef}
-      onClick={() => {
+      onMouseDown={(e) => {
+        if (e.target instanceof Element && e.target.closest('button')) {
+          return
+        }
         onSelect()
       }}
       onMouseEnter={onMouseEnter}
@@ -91,12 +104,31 @@ function ChatListItem({
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (
-        <TitleInput title={title} onSubmit={onFinishEdit} />
+        <TitleInput
+          title={title}
+          disabled={isUpdatingTitle}
+          onSubmit={onFinishEdit}
+        />
       ) : (
-        <div className="smtcmp-chat-list-dropdown-item-title">{title}</div>
+        <div
+          className={`smtcmp-chat-list-dropdown-item-title${
+            isRetrying ? ' is-retrying' : ''
+          }`}
+        >
+          <span className="smtcmp-chat-list-dropdown-item-title-text">
+            {title}
+          </span>
+          {isRetrying && (
+            <span
+              className="smtcmp-chat-list-dropdown-item-title-skeleton"
+              aria-hidden="true"
+            />
+          )}
+        </div>
       )}
       <div className="smtcmp-chat-list-dropdown-item-actions">
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation()
             onStartEdit()
@@ -106,6 +138,23 @@ function ChatListItem({
           <Pencil />
         </button>
         <button
+          type="button"
+          disabled={isRetrying}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRetryTitle()
+          }}
+          className={`clickable-icon smtcmp-chat-list-dropdown-item-icon${
+            isRetrying ? ' is-pending' : ''
+          }`}
+          aria-label={t('sidebar.chatList.retryTitle', 'Retry title')}
+          title={t('sidebar.chatList.retryTitle', 'Retry title')}
+          aria-busy={isRetrying ? 'true' : undefined}
+        >
+          <RotateCcw className={isRetrying ? 'smtcmp-spinner' : undefined} />
+        </button>
+        <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
@@ -115,6 +164,7 @@ function ChatListItem({
           <Trash2 />
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation()
             onTogglePinned()
@@ -163,14 +213,19 @@ function extractConversationText(messages: SerializedChatMessage[]): string {
 export function ChatListDropdown({
   chatList,
   currentConversationId,
+  archiveEnabled,
+  archiveThreshold,
   onSelect,
   onDelete,
   onUpdateTitle,
   onTogglePinned,
+  onRetryTitle,
   children,
 }: {
   chatList: ChatConversationMetadata[]
   currentConversationId: string
+  archiveEnabled: boolean
+  archiveThreshold: number
   onSelect: (conversationId: string) => void | Promise<void>
   onDelete: (conversationId: string) => void | Promise<void>
   onUpdateTitle: (
@@ -178,18 +233,28 @@ export function ChatListDropdown({
     newTitle: string,
   ) => void | Promise<void>
   onTogglePinned: (conversationId: string) => void | Promise<void>
+  onRetryTitle: (conversationId: string) => void | Promise<void>
   children: React.ReactNode
 }) {
   const { t } = useLanguage()
   const chatManager = useChatManager()
   const [open, setOpen] = useState(false)
-  const [focusedIndex, setFocusedIndex] = useState<number>(0)
+  const [focusedConversationId, setFocusedConversationId] = useState<
+    string | null
+  >(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [isHoveringArchiveRow, setIsHoveringArchiveRow] = useState(false)
+  const [updatingTitleIds, setUpdatingTitleIds] = useState<Set<string>>(
+    new Set(),
+  )
   const [contentMatches, setContentMatches] = useState<Set<string>>(new Set())
+  const [retryingConversationIds, setRetryingConversationIds] = useState<
+    Set<string>
+  >(new Set())
   const triggerRef = useRef<HTMLButtonElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const prevOpenRef = useRef(false)
   const searchCacheRef = useRef<
     Map<string, { updatedAt: number; text: string }>
   >(new Map())
@@ -237,10 +302,111 @@ export function ChatListDropdown({
     )
   }, [chatList, contentMatches, normalizedQuery, titleMatches])
 
-  const displayChatList = useMemo(() => {
+  const baseDisplayChatList = useMemo(() => {
     if (normalizedQuery) return filteredChatList
     return pinnedSortedChatList
   }, [filteredChatList, normalizedQuery, pinnedSortedChatList])
+
+  const normalizedArchiveThreshold = useMemo(
+    () => Math.max(20, Math.min(500, Math.trunc(archiveThreshold || 50))),
+    [archiveThreshold],
+  )
+
+  const shouldUseArchive =
+    archiveEnabled &&
+    normalizedQuery.length === 0 &&
+    normalizedArchiveThreshold > 0
+
+  const { activeChatList, archivedChatList } = useMemo(() => {
+    if (!shouldUseArchive) {
+      return {
+        activeChatList: baseDisplayChatList,
+        archivedChatList: [] as ChatConversationMetadata[],
+      }
+    }
+
+    const pinnedChats: ChatConversationMetadata[] = []
+    const nonPinnedChats: ChatConversationMetadata[] = []
+    baseDisplayChatList.forEach((chat) => {
+      if (chat.isPinned) {
+        pinnedChats.push(chat)
+      } else {
+        nonPinnedChats.push(chat)
+      }
+    })
+
+    const activeNonPinnedChats = nonPinnedChats.slice(
+      0,
+      normalizedArchiveThreshold,
+    )
+    const archivedNonPinnedChats = nonPinnedChats.slice(
+      normalizedArchiveThreshold,
+    )
+    const currentArchivedIndex = archivedNonPinnedChats.findIndex(
+      (chat) => chat.id === currentConversationId,
+    )
+    if (currentArchivedIndex !== -1) {
+      const [currentConversation] = archivedNonPinnedChats.splice(
+        currentArchivedIndex,
+        1,
+      )
+      if (currentConversation) {
+        activeNonPinnedChats.push(currentConversation)
+      }
+    }
+
+    return {
+      activeChatList: [...pinnedChats, ...activeNonPinnedChats],
+      archivedChatList: archivedNonPinnedChats,
+    }
+  }, [
+    baseDisplayChatList,
+    currentConversationId,
+    normalizedArchiveThreshold,
+    shouldUseArchive,
+  ])
+
+  const renderedChatList = useMemo(() => {
+    if (!shouldUseArchive) return activeChatList
+    if (showArchived) return [...activeChatList, ...archivedChatList]
+    return activeChatList
+  }, [activeChatList, archivedChatList, shouldUseArchive, showArchived])
+
+  const displayChatIndexById = useMemo(() => {
+    const map = new Map<string, number>()
+    renderedChatList.forEach((chat, index) => {
+      map.set(chat.id, index)
+    })
+    return map
+  }, [renderedChatList])
+
+  const clearContentMatches = useCallback(() => {
+    setContentMatches((prev) => (prev.size === 0 ? prev : new Set()))
+  }, [])
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        const nextFocusedConversationId =
+          pinnedSortedChatList.find((chat) => chat.id === currentConversationId)
+            ?.id ??
+          pinnedSortedChatList[0]?.id ??
+          null
+        setFocusedConversationId(nextFocusedConversationId)
+        setEditingId(null)
+        setSearchQuery('')
+        setShowArchived(false)
+        setIsHoveringArchiveRow(false)
+        clearContentMatches()
+      } else {
+        setEditingId(null)
+        setFocusedConversationId(null)
+        setIsHoveringArchiveRow(false)
+      }
+      setOpen(nextOpen)
+    },
+    [clearContentMatches, currentConversationId, pinnedSortedChatList],
+  )
 
   const syncPopoverWidth = useCallback(() => {
     const content = contentRef.current
@@ -257,47 +423,42 @@ export function ChatListDropdown({
   }, [])
 
   useEffect(() => {
-    const wasOpen = prevOpenRef.current
-    prevOpenRef.current = open
-    if (open && !wasOpen) {
-      const currentIndex = displayChatList.findIndex(
-        (chat) => chat.id === currentConversationId,
-      )
-      setFocusedIndex(currentIndex === -1 ? 0 : currentIndex)
-      setEditingId(null)
-      setSearchQuery('')
-      setContentMatches(new Set())
+    if (!open) return
+    if (renderedChatList.length === 0) {
+      setFocusedConversationId(null)
+      return
     }
-  }, [open, currentConversationId, displayChatList])
+
+    const hasFocusedConversation =
+      focusedConversationId !== null &&
+      displayChatIndexById.has(focusedConversationId)
+    if (hasFocusedConversation) {
+      return
+    }
+
+    if (!normalizedQuery) {
+      setFocusedConversationId(
+        displayChatIndexById.has(currentConversationId)
+          ? currentConversationId
+          : (renderedChatList[0]?.id ?? null),
+      )
+      return
+    }
+
+    setFocusedConversationId(renderedChatList[0]?.id ?? null)
+  }, [
+    currentConversationId,
+    displayChatIndexById,
+    focusedConversationId,
+    normalizedQuery,
+    open,
+    renderedChatList,
+  ])
 
   useEffect(() => {
     if (!open) return
     if (!normalizedQuery) {
-      const currentIndex = displayChatList.findIndex(
-        (chat) => chat.id === currentConversationId,
-      )
-      setFocusedIndex(currentIndex === -1 ? 0 : currentIndex)
-      return
-    }
-    setFocusedIndex(0)
-  }, [chatList, currentConversationId, displayChatList, normalizedQuery, open])
-
-  useEffect(() => {
-    if (!open) return
-    const activeList = displayChatList
-    if (activeList.length === 0) {
-      setFocusedIndex(0)
-      return
-    }
-    if (focusedIndex >= activeList.length) {
-      setFocusedIndex(activeList.length - 1)
-    }
-  }, [displayChatList, focusedIndex, open])
-
-  useEffect(() => {
-    if (!open) return
-    if (!normalizedQuery) {
-      setContentMatches(new Set())
+      clearContentMatches()
       return
     }
 
@@ -339,7 +500,14 @@ export function ChatListDropdown({
       window.clearTimeout(timeoutId)
       searchIdRef.current += 1
     }
-  }, [chatList, chatManager, normalizedQuery, open, titleMatches])
+  }, [
+    chatList,
+    chatManager,
+    clearContentMatches,
+    normalizedQuery,
+    open,
+    titleMatches,
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -363,6 +531,14 @@ export function ChatListDropdown({
     }
   }, [open, syncPopoverWidth])
 
+  const focusedIndex = useMemo(
+    () =>
+      focusedConversationId === null
+        ? -1
+        : (displayChatIndexById.get(focusedConversationId) ?? -1),
+    [displayChatIndexById, focusedConversationId],
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const target = e.target
@@ -372,13 +548,22 @@ export function ChatListDropdown({
       ) {
         return
       }
-      const activeList = displayChatList
+      const activeList = renderedChatList
       if (e.key === 'ArrowUp') {
-        setFocusedIndex(Math.max(0, focusedIndex - 1))
+        if (activeList.length === 0) return
+        const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
+        const nextIndex = Math.max(0, currentIndex - 1)
+        setFocusedConversationId(activeList[nextIndex]?.id ?? null)
       } else if (e.key === 'ArrowDown') {
-        setFocusedIndex(Math.min(activeList.length - 1, focusedIndex + 1))
+        if (activeList.length === 0) return
+        const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
+        const nextIndex = Math.min(activeList.length - 1, currentIndex + 1)
+        setFocusedConversationId(activeList[nextIndex]?.id ?? null)
       } else if (e.key === 'Enter') {
-        const conversationId = activeList[focusedIndex]?.id
+        const conversationId =
+          focusedConversationId ??
+          activeList[focusedIndex]?.id ??
+          activeList[0]?.id
         if (!conversationId) return
         void Promise.resolve(onSelect(conversationId))
           .then(() => {
@@ -389,13 +574,14 @@ export function ChatListDropdown({
           })
       }
     },
-    [displayChatList, focusedIndex, onSelect],
+    [renderedChatList, focusedConversationId, focusedIndex, onSelect],
   )
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
         <button
+          type="button"
           ref={triggerRef}
           className="clickable-icon"
           aria-label="Chat History"
@@ -441,54 +627,135 @@ export function ChatListDropdown({
                 {t('common.noResults', 'No matches found')}
               </li>
             ) : (
-              displayChatList.map((chat, index) => (
-                <ChatListItem
-                  key={chat.id}
-                  title={chat.title}
-                  isFocused={focusedIndex === index}
-                  isEditing={editingId === chat.id}
-                  isPinned={Boolean(chat.isPinned)}
-                  onMouseEnter={() => {
-                    setFocusedIndex(index)
-                  }}
-                  onSelect={() => {
-                    void Promise.resolve(onSelect(chat.id))
-                      .then(() => {
-                        setOpen(false)
+              <>
+                {renderedChatList.map((chat) => (
+                  <ChatListItem
+                    key={chat.id}
+                    title={chat.title}
+                    isFocused={
+                      focusedConversationId === chat.id && !isHoveringArchiveRow
+                    }
+                    isEditing={editingId === chat.id}
+                    isUpdatingTitle={updatingTitleIds.has(chat.id)}
+                    isPinned={Boolean(chat.isPinned)}
+                    isRetrying={retryingConversationIds.has(chat.id)}
+                    onMouseEnter={() => {
+                      setFocusedConversationId(chat.id)
+                    }}
+                    onSelect={() => {
+                      void Promise.resolve(onSelect(chat.id))
+                        .then(() => {
+                          setOpen(false)
+                        })
+                        .catch((error) => {
+                          console.error('Failed to select conversation', error)
+                        })
+                    }}
+                    onDelete={() => {
+                      void Promise.resolve(onDelete(chat.id)).catch((error) => {
+                        console.error('Failed to delete conversation', error)
                       })
-                      .catch((error) => {
-                        console.error('Failed to select conversation', error)
+                    }}
+                    onRetryTitle={() => {
+                      if (retryingConversationIds.has(chat.id)) {
+                        return
+                      }
+                      const retryStartedAt = Date.now()
+                      setRetryingConversationIds((prev) => {
+                        const next = new Set(prev)
+                        next.add(chat.id)
+                        return next
                       })
-                  }}
-                  onDelete={() => {
-                    void Promise.resolve(onDelete(chat.id)).catch((error) => {
-                      console.error('Failed to delete conversation', error)
-                    })
-                  }}
-                  onTogglePinned={() => {
-                    void Promise.resolve(onTogglePinned(chat.id)).catch(
-                      (error) => {
-                        console.error('Failed to toggle pin', error)
-                      },
-                    )
-                  }}
-                  onStartEdit={() => {
-                    setEditingId(chat.id)
-                  }}
-                  onFinishEdit={(title) => {
-                    void Promise.resolve(onUpdateTitle(chat.id, title))
-                      .then(() => {
-                        setEditingId(null)
+                      void Promise.resolve(onRetryTitle(chat.id))
+                        .catch((error) => {
+                          console.error(
+                            'Failed to retry conversation title generation',
+                            error,
+                          )
+                        })
+                        .finally(() => {
+                          const elapsed = Date.now() - retryStartedAt
+                          const remaining = Math.max(0, 320 - elapsed)
+                          window.setTimeout(() => {
+                            setRetryingConversationIds((prev) => {
+                              if (!prev.has(chat.id)) {
+                                return prev
+                              }
+                              const next = new Set(prev)
+                              next.delete(chat.id)
+                              return next
+                            })
+                          }, remaining)
+                        })
+                    }}
+                    onTogglePinned={() => {
+                      void Promise.resolve(onTogglePinned(chat.id)).catch(
+                        (error) => {
+                          console.error('Failed to toggle pin', error)
+                        },
+                      )
+                    }}
+                    onStartEdit={() => {
+                      setEditingId(chat.id)
+                    }}
+                    onFinishEdit={(title) => {
+                      if (updatingTitleIds.has(chat.id)) {
+                        return
+                      }
+                      setUpdatingTitleIds((prev) => {
+                        const next = new Set(prev)
+                        next.add(chat.id)
+                        return next
                       })
-                      .catch((error) => {
-                        console.error(
-                          'Failed to update conversation title',
-                          error,
-                        )
-                      })
-                  }}
-                />
-              ))
+                      void Promise.resolve(onUpdateTitle(chat.id, title))
+                        .then(() => {
+                          setEditingId(null)
+                        })
+                        .catch((error) => {
+                          console.error(
+                            'Failed to update conversation title',
+                            error,
+                          )
+                        })
+                        .finally(() => {
+                          setUpdatingTitleIds((prev) => {
+                            if (!prev.has(chat.id)) {
+                              return prev
+                            }
+                            const next = new Set(prev)
+                            next.delete(chat.id)
+                            return next
+                          })
+                        })
+                    }}
+                  />
+                ))}
+                {shouldUseArchive && archivedChatList.length > 0 && (
+                  <li
+                    className="smtcmp-chat-list-dropdown-archive-row"
+                    onMouseEnter={() => {
+                      setIsHoveringArchiveRow(true)
+                    }}
+                    onMouseLeave={() => {
+                      setIsHoveringArchiveRow(false)
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="smtcmp-chat-list-dropdown-archive-toggle"
+                      onClick={() => {
+                        setShowArchived((prev) => !prev)
+                      }}
+                    >
+                      <span className="smtcmp-chat-list-dropdown-archive-toggle-label">
+                        {showArchived
+                          ? t('sidebar.chatList.hideArchived', 'Hide archived')
+                          : `${t('sidebar.chatList.archived', 'Archived')} (${archivedChatList.length})`}
+                      </span>
+                    </button>
+                  </li>
+                )}
+              </>
             )}
           </ul>
         </Popover.Content>

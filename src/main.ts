@@ -218,6 +218,7 @@ export default class SmartComposerPlugin extends Plugin {
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
       autoSend?: boolean
     },
   ) {
@@ -241,6 +242,12 @@ export default class SmartComposerPlugin extends Plugin {
           this.showQuickAskWithOptions(editor, view, options),
         showQuickAskWithAutoSend: (editor, view, options) =>
           this.showQuickAskWithAutoSend(editor, view, options),
+        openChatWithSelectionAndPrefill: async (selectedBlock, text) => {
+          await this.getChatViewNavigator().openChatWithSelectionAndPrefill(
+            selectedBlock,
+            text,
+          )
+        },
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
       })
     }

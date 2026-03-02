@@ -32,6 +32,7 @@ type UseChatStreamManagerParams = {
   modelId: string
   chatMode: ChatMode
   currentFileOverride?: TFile | null
+  assistantIdOverride?: string
 }
 
 const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
@@ -57,6 +58,7 @@ export function useChatStreamManager({
   modelId,
   chatMode,
   currentFileOverride,
+  assistantIdOverride,
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
   const plugin = usePlugin()
@@ -95,9 +97,11 @@ export function useChatStreamManager({
       let unsubscribeRunner: (() => void) | undefined
 
       try {
-        const selectedAssistant = settings.currentAssistantId
+        const effectiveAssistantId =
+          assistantIdOverride ?? settings.currentAssistantId
+        const selectedAssistant = effectiveAssistantId
           ? (settings.assistants || []).find(
-              (assistant) => assistant.id === settings.currentAssistantId,
+              (assistant) => assistant.id === effectiveAssistantId,
             ) || null
           : null
 

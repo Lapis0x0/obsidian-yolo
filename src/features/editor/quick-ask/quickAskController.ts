@@ -16,11 +16,13 @@ type QuickAskWidgetPayload = {
     view: EditorView
     contextText: string
     fileTitle: string
+    sourceFilePath?: string
     initialPrompt?: string
     initialMentionables?: Mentionable[]
     initialMode?: 'ask' | 'edit' | 'edit-direct'
     initialInput?: string
     editContextText?: string
+    editSelectionFrom?: { line: number; ch: number }
     autoSend?: boolean
     onClose: () => void
   }
@@ -47,6 +49,7 @@ type QuickAskShowOptions = {
   initialMode?: 'ask' | 'edit' | 'edit-direct'
   initialInput?: string
   editContextText?: string
+  editSelectionFrom?: { line: number; ch: number }
   autoSend?: boolean
 }
 
@@ -135,6 +138,7 @@ export class QuickAskController {
     options: { prompt: string; mentionables?: Mentionable[] },
   ) {
     this.showWithOptions(editor, view, {
+      initialMode: 'ask',
       autoSend: true,
       initialPrompt: options.prompt,
       initialMentionables: options.mentionables,
@@ -171,11 +175,13 @@ export class QuickAskController {
         ? `${before}${QUICK_ASK_CURSOR_MARKER}${after}`
         : ''
     const fileTitle = this.deps.getActiveFileTitle()
+    const sourceFilePath = this.deps.getActiveMarkdownView()?.file?.path
     const initialPrompt = options?.initialPrompt
     const initialMentionables = options?.initialMentionables
     const initialMode = options?.initialMode
     const initialInput = options?.initialInput
     const editContextText = options?.editContextText
+    const editSelectionFrom = options?.editSelectionFrom
     const autoSend = options?.autoSend
 
     // Close any existing Quick Ask panel
@@ -210,11 +216,13 @@ export class QuickAskController {
             view,
             contextText,
             fileTitle,
+            sourceFilePath,
             initialPrompt,
             initialMentionables,
             initialMode,
             initialInput,
             editContextText,
+            editSelectionFrom,
             autoSend,
             onClose: () => close(true),
           },

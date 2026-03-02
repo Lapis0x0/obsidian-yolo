@@ -134,6 +134,42 @@ function getEmptyQueryResult(
     .map((item) => searchItemToMentionable(item))
 }
 
+export function fuzzySearchFolders(
+  app: App,
+  query: string,
+): MentionableFolder[] {
+  const allFolders = app.vault
+    .getAllFolders()
+    .filter((folder) => folder.path.length > 0)
+
+  if (!query.trim()) {
+    return allFolders
+      .slice()
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map((folder) => ({
+        type: 'folder',
+        folder,
+      }))
+  }
+
+  const folderItems = allFolders.map((folder) => ({
+    path: folder.path,
+    name: folder.name,
+    folder,
+  }))
+
+  return fuzzysort
+    .go(query, folderItems, {
+      keys: ['path', 'name'],
+      threshold: 0.2,
+      all: true,
+    })
+    .map((result) => ({
+      type: 'folder',
+      folder: result.obj.folder,
+    }))
+}
+
 export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
   const currentFile = app.workspace.getActiveFile()
   const openFiles = getOpenFiles(app)

@@ -13,8 +13,14 @@ import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { Assistant } from '../../../types/assistant.types'
+import { MentionableFolder } from '../../../types/mentionable'
 import { Mentionable, MentionableImage } from '../../../types/mentionable'
-import { SearchableMentionable, fuzzySearch } from '../../../utils/fuzzy-search'
+import {
+  SearchableMentionable,
+  fuzzySearch,
+  fuzzySearchFolders,
+} from '../../../utils/fuzzy-search'
 
 import DragDropPaste from './plugins/image/DragDropPastePlugin'
 import ImagePastePlugin from './plugins/image/ImagePastePlugin'
@@ -47,6 +53,13 @@ export type LexicalContentEditableProps = {
   mentionMenuPlacement?: 'top' | 'bottom'
   mentionDisplayMode?: 'inline' | 'badge'
   onSelectMentionable?: (mentionable: Mentionable) => void
+  mentionMenuMode?: 'direct-search' | 'entry'
+  assistants?: Assistant[]
+  currentAssistantId?: string
+  onSelectAssistant?: (assistantId: string) => void
+  currentChatMode?: 'chat' | 'agent'
+  onSelectChatMode?: (mode: 'chat' | 'agent') => void
+  allowAgentModeOption?: boolean
   plugins?: {
     onEnter?: {
       onVaultChat: () => void
@@ -74,6 +87,13 @@ export default function LexicalContentEditable({
   mentionMenuPlacement = 'top',
   mentionDisplayMode = 'inline',
   onSelectMentionable,
+  mentionMenuMode = 'direct-search',
+  assistants = [],
+  currentAssistantId,
+  onSelectAssistant,
+  currentChatMode,
+  onSelectChatMode,
+  allowAgentModeOption = true,
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
@@ -96,6 +116,10 @@ export default function LexicalContentEditable({
 
   const defaultSearch = useCallback(
     (query: string) => fuzzySearch(app, query),
+    [app],
+  )
+  const searchFoldersByQuery = useCallback(
+    (query: string): MentionableFolder[] => fuzzySearchFolders(app, query),
     [app],
   )
 
@@ -163,6 +187,14 @@ export default function LexicalContentEditable({
         placement={mentionMenuPlacement}
         mentionDisplayMode={mentionDisplayMode}
         onSelectMentionable={onSelectMentionable}
+        menuMode={mentionMenuMode}
+        assistants={assistants}
+        currentAssistantId={currentAssistantId}
+        onSelectAssistant={onSelectAssistant}
+        currentChatMode={currentChatMode}
+        onSelectChatMode={onSelectChatMode}
+        allowAgentModeOption={allowAgentModeOption}
+        searchFoldersByQuery={searchFoldersByQuery}
       />
       <OnChangePlugin
         onChange={(editorState, _editor) => {

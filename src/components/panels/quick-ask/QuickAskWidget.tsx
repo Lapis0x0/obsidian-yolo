@@ -50,11 +50,13 @@ export class QuickAskOverlay {
       view: EditorView
       contextText: string
       fileTitle: string
+      sourceFilePath?: string
       initialPrompt?: string
       initialMentionables?: Mentionable[]
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
       autoSend?: boolean
       onClose: () => void
     },
@@ -209,11 +211,13 @@ export class QuickAskOverlay {
                     view={this.options.view}
                     contextText={this.options.contextText}
                     fileTitle={this.options.fileTitle}
+                    sourceFilePath={this.options.sourceFilePath}
                     initialPrompt={this.options.initialPrompt}
                     initialMentionables={this.options.initialMentionables}
                     initialMode={this.options.initialMode}
                     initialInput={this.options.initialInput}
                     editContextText={this.options.editContextText}
+                    editSelectionFrom={this.options.editSelectionFrom}
                     autoSend={this.options.autoSend}
                     onClose={this.closeWithAnimation}
                     containerRef={this.containerRef}

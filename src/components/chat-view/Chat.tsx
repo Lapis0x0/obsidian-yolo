@@ -19,6 +19,7 @@ import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
+import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -86,6 +87,16 @@ const getNewInputMessage = (
   }
 }
 
+const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [
+  'off',
+  'on',
+  'auto',
+  'low',
+  'medium',
+  'high',
+  'extra-high',
+]
+
 export type ChatRef = {
   openNewChat: (selectedBlock?: MentionableBlockData) => void
   addSelectionToChat: (selectedBlock: MentionableBlockData) => void
@@ -126,34 +137,43 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     generateConversationTitle,
     chatList,
   } = useChatHistory()
+  const [conversationAssistantId, setConversationAssistantId] =
+    useState<string>(settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID)
+  const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
+  const effectiveSettings = useMemo(
+    () => ({
+      ...settings,
+      currentAssistantId: conversationAssistantId,
+    }),
+    [conversationAssistantId, settings],
+  )
   const promptGenerator = useMemo(() => {
-    return new PromptGenerator(getRAGEngine, app, settings)
-  }, [getRAGEngine, app, settings])
-
-  const initialReasoningLevel = useMemo(() => {
-    const initialModel =
-      settings.chatModels.find((m) => m.id === settings.chatModelId) ?? null
-    return getDefaultReasoningLevel(initialModel)
-  }, [settings.chatModelId, settings.chatModels])
+    return new PromptGenerator(getRAGEngine, app, effectiveSettings)
+  }, [app, effectiveSettings, getRAGEngine])
 
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
       if (!value) return null
-      const candidates: ReasoningLevel[] = [
-        'off',
-        'on',
-        'auto',
-        'low',
-        'medium',
-        'high',
-        'extra-high',
-      ]
-      return candidates.includes(value as ReasoningLevel)
+      return REASONING_LEVEL_CANDIDATES.includes(value as ReasoningLevel)
         ? (value as ReasoningLevel)
         : null
     },
     [],
   )
+
+  const initialReasoningLevel = useMemo(() => {
+    const initialModel =
+      settings.chatModels.find((m) => m.id === settings.chatModelId) ?? null
+    const rememberedLevel = normalizeReasoningLevel(
+      settings.chatOptions.reasoningLevelByModelId?.[settings.chatModelId],
+    )
+    return rememberedLevel ?? getDefaultReasoningLevel(initialModel)
+  }, [
+    normalizeReasoningLevel,
+    settings.chatModelId,
+    settings.chatModels,
+    settings.chatOptions.reasoningLevelByModelId,
+  ])
 
   const [autoAttachCurrentFile, setAutoAttachCurrentFile] = useState(true)
   const conversationAutoAttachRef = useRef<Map<string, boolean>>(new Map())
@@ -224,20 +244,56 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
 
   const selectedAssistant = useMemo(() => {
-    if (!settings.currentAssistantId) {
-      return null
-    }
     return (
       settings.assistants.find(
-        (assistant) => assistant.id === settings.currentAssistantId,
+        (assistant) => assistant.id === conversationAssistantId,
       ) ?? null
     )
-  }, [settings.assistants, settings.currentAssistantId])
+  }, [conversationAssistantId, settings.assistants])
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
   const [conversationModelId, setConversationModelId] = useState<string>(
     settings.chatModelId,
+  )
+
+  const getReasoningLevelForModelId = useCallback(
+    (modelId?: string | null): ReasoningLevel => {
+      if (!modelId) return 'off'
+      const model = settings.chatModels.find((m) => m.id === modelId) ?? null
+      const rememberedLevel = normalizeReasoningLevel(
+        settings.chatOptions.reasoningLevelByModelId?.[modelId],
+      )
+      return rememberedLevel ?? getDefaultReasoningLevel(model)
+    },
+    [
+      normalizeReasoningLevel,
+      settings.chatModels,
+      settings.chatOptions.reasoningLevelByModelId,
+    ],
+  )
+
+  const persistReasoningLevelForModel = useCallback(
+    async (modelId: string, level: ReasoningLevel) => {
+      if (!modelId) return
+      const currentMap = settings.chatOptions.reasoningLevelByModelId ?? {}
+      if (currentMap[modelId] === level) return
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            reasoningLevelByModelId: {
+              ...currentMap,
+              [modelId]: level,
+            },
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist reasoning level preference', error)
+      }
+    },
+    [setSettings, settings],
   )
 
   const applyAssistantDefaultModel = useCallback(
@@ -256,9 +312,57 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         currentConversationId,
         assistantModelId,
       )
+      const nextReasoningLevel = getReasoningLevelForModelId(assistantModelId)
+      setReasoningLevel(nextReasoningLevel)
+      conversationReasoningLevelRef.current.set(
+        currentConversationId,
+        nextReasoningLevel,
+      )
+      setInputMessage((prev) => ({
+        ...prev,
+        reasoningLevel: nextReasoningLevel,
+      }))
     },
-    [currentConversationId, settings.chatModels],
+    [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
   )
+
+  const handleConversationAssistantSelect = useCallback(
+    (assistantId: string) => {
+      setConversationAssistantId(assistantId)
+      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
+      const assistant = settings.assistants.find(
+        (item) => item.id === assistantId,
+      )
+      if (assistant?.modelId) {
+        applyAssistantDefaultModel(assistant.modelId)
+      }
+    },
+    [applyAssistantDefaultModel, currentConversationId, settings.assistants],
+  )
+
+  useEffect(() => {
+    if (
+      settings.assistants.some(
+        (assistant) => assistant.id === conversationAssistantId,
+      )
+    ) {
+      return
+    }
+    const fallbackAssistantId =
+      settings.currentAssistantId ??
+      settings.assistants[0]?.id ??
+      DEFAULT_ASSISTANT_ID
+    setConversationAssistantId(fallbackAssistantId)
+    conversationAssistantIdRef.current.set(
+      currentConversationId,
+      fallbackAssistantId,
+    )
+  }, [
+    conversationAssistantId,
+    currentConversationId,
+    settings.assistants,
+    settings.currentAssistantId,
+  ])
 
   // Per-message model mapping for historical user messages
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
@@ -328,6 +432,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     modelId: conversationModelId,
     chatMode,
     currentFileOverride,
+    assistantIdOverride: conversationAssistantId,
   })
 
   const persistConversation = useCallback(
@@ -420,6 +525,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           resolvedAutoAttach,
         )
         setConversationOverrides(conversation.overrides ?? null)
+        const loadedAssistantId =
+          conversationAssistantIdRef.current.get(conversationId) ??
+          settings.currentAssistantId ??
+          settings.assistants[0]?.id ??
+          DEFAULT_ASSISTANT_ID
+        const loadedAssistantModelId =
+          settings.assistants.find(
+            (assistant) => assistant.id === loadedAssistantId,
+          )?.modelId ?? null
+        setConversationAssistantId(loadedAssistantId)
+        conversationAssistantIdRef.current.set(
+          conversationId,
+          loadedAssistantId,
+        )
         const loadedChatModeRaw = conversation.overrides?.chatMode
         const loadedChatMode: ChatMode =
           loadedChatModeRaw === 'agent' || loadedChatModeRaw === 'chat'
@@ -438,16 +557,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         const modelFromRef =
           conversationModelIdRef.current.get(conversationId) ??
-          selectedAssistant?.modelId ??
+          loadedAssistantModelId ??
           settings.chatModelId
-        const modelForConversation =
-          settings.chatModels.find((m) => m.id === modelFromRef) ?? null
         setConversationModelId(modelFromRef)
         const storedReasoningLevel = normalizeReasoningLevel(
           conversation.reasoningLevel,
         )
         const resolvedReasoningLevel =
-          storedReasoningLevel ?? getDefaultReasoningLevel(modelForConversation)
+          storedReasoningLevel ?? getReasoningLevelForModelId(modelFromRef)
         setReasoningLevel(resolvedReasoningLevel)
         conversationReasoningLevelRef.current.set(
           conversationId,
@@ -480,9 +597,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       abortActiveStreams,
       getConversationById,
       settings.chatModelId,
-      settings.chatModels,
+      settings.currentAssistantId,
       settings.chatOptions.chatMode,
-      selectedAssistant?.modelId,
+      settings.assistants,
+      getReasoningLevelForModelId,
       normalizeReasoningLevel,
     ],
   )
@@ -496,6 +614,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
     const newId = uuidv4()
     setCurrentConversationId(newId)
+    conversationAssistantIdRef.current.set(newId, conversationAssistantId)
+    setConversationAssistantId(conversationAssistantId)
     conversationAutoAttachRef.current.set(newId, true)
     setAutoAttachCurrentFile(true)
     setConversationOverrides(null)
@@ -509,9 +629,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       selectedAssistant?.modelId ?? settings.chatModelId
     conversationModelIdRef.current.set(newId, defaultConversationModelId)
     setConversationModelId(defaultConversationModelId)
-    const defaultReasoningLevel = getDefaultReasoningLevel(
-      settings.chatModels.find((m) => m.id === defaultConversationModelId) ??
-        null,
+    const defaultReasoningLevel = getReasoningLevelForModelId(
+      defaultConversationModelId,
     )
     setReasoningLevel(defaultReasoningLevel)
     conversationReasoningLevelRef.current.set(newId, defaultReasoningLevel)
@@ -1503,8 +1622,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       {activeView === 'chat' && (
         <div className="smtcmp-chat-header-right">
           <AssistantSelector
+            currentAssistantId={conversationAssistantId}
             onAssistantChange={(assistant) => {
-              applyAssistantDefaultModel(assistant.modelId)
+              handleConversationAssistantSelect(assistant.id)
             }}
           />
           <div className="smtcmp-chat-header-buttons">
@@ -1519,6 +1639,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <ChatListDropdown
               chatList={chatList}
               currentConversationId={currentConversationId}
+              archiveEnabled={
+                settings.chatOptions.historyArchiveEnabled ?? true
+              }
+              archiveThreshold={
+                settings.chatOptions.historyArchiveThreshold ?? 50
+              }
               onSelect={(conversationId) => {
                 if (conversationId === currentConversationId) return
                 void handleLoadConversation(conversationId)
@@ -1538,11 +1664,30 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   }
                 })()
               }}
-              onUpdateTitle={(conversationId, newTitle) => {
-                void updateConversationTitle(conversationId, newTitle)
+              onUpdateTitle={async (conversationId, newTitle) => {
+                await updateConversationTitle(conversationId, newTitle)
               }}
               onTogglePinned={(conversationId) => {
                 void toggleConversationPinned(conversationId)
+              }}
+              onRetryTitle={async (conversationId) => {
+                const conversation = await getConversationById(conversationId)
+                if (!conversation) {
+                  console.error(
+                    'Failed to retry conversation title generation: conversation not found',
+                    {
+                      conversationId,
+                    },
+                  )
+                  return
+                }
+                await generateConversationTitle(
+                  conversationId,
+                  conversation.messages,
+                  {
+                    force: true,
+                  },
+                )
               }}
             >
               <History size={18} />
@@ -1761,6 +1906,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 })
                 setConversationModelId(id)
                 conversationModelIdRef.current.set(currentConversationId, id)
+                const nextReasoningLevel = getReasoningLevelForModelId(id)
+                setReasoningLevel(nextReasoningLevel)
+                conversationReasoningLevelRef.current.set(
+                  currentConversationId,
+                  nextReasoningLevel,
+                )
+                setInputMessage((prev) => ({
+                  ...prev,
+                  reasoningLevel: nextReasoningLevel,
+                }))
               }}
               reasoningLevel={messageReasoningLevel}
               onReasoningChange={(level) => {
@@ -1784,6 +1939,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   currentConversationId,
                   level,
                 )
+                void persistReasoningLevelForModel(conversationModelId, level)
               }}
             />
           )
@@ -1903,6 +2059,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onModelChange={(id) => {
             setConversationModelId(id)
             conversationModelIdRef.current.set(currentConversationId, id)
+            const nextReasoningLevel = getReasoningLevelForModelId(id)
+            setReasoningLevel(nextReasoningLevel)
+            conversationReasoningLevelRef.current.set(
+              currentConversationId,
+              nextReasoningLevel,
+            )
+            setInputMessage((prev) => ({
+              ...prev,
+              reasoningLevel: nextReasoningLevel,
+            }))
           }}
           reasoningLevel={reasoningLevel}
           onReasoningChange={(level) => {
@@ -1911,6 +2077,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               currentConversationId,
               level,
             )
+            void persistReasoningLevelForModel(conversationModelId, level)
             setInputMessage((prev) => ({
               ...prev,
               reasoningLevel: level,
@@ -1937,6 +2104,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           hideBadgeMentionables
           displayMentionables={displayMentionablesForInput}
           onDeleteFromAll={handleMentionableDeleteFromAll}
+          currentAssistantId={conversationAssistantId}
+          onSelectAssistantForConversation={handleConversationAssistantSelect}
+          currentChatMode={chatMode}
+          onSelectChatModeForConversation={handleChatModeChange}
+          allowAgentModeOption={Platform.isDesktop}
         />
       </div>
     </div>

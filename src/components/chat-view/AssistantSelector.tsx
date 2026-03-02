@@ -12,25 +12,36 @@ import { Assistant } from '../../types/assistant.types'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
 
 type AssistantSelectorProps = {
+  currentAssistantId?: string
   onAssistantChange?: (assistant: Assistant) => void
 }
 
 export function AssistantSelector({
+  currentAssistantId,
   onAssistantChange,
 }: AssistantSelectorProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
+  const isControlled = typeof currentAssistantId === 'string'
 
   // Get assistant list and currently selected assistant
   const assistants = settings.assistants || []
-  const currentAssistantId = settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID
+  const resolvedCurrentAssistantId =
+    currentAssistantId ?? settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID
 
   // Get the current assistant object
-  const currentAssistant = assistants.find((a) => a.id === currentAssistantId)
+  const currentAssistant = assistants.find(
+    (a) => a.id === resolvedCurrentAssistantId,
+  )
 
   // Handler function for selecting an assistant
   const handleSelectAssistant = (assistant: Assistant) => {
+    if (isControlled) {
+      onAssistantChange?.(assistant)
+      setOpen(false)
+      return
+    }
     void (async () => {
       try {
         await setSettings({
@@ -47,6 +58,16 @@ export function AssistantSelector({
 
   // Handler function for selecting default assistant
   const handleSelectDefaultAssistant = () => {
+    if (isControlled) {
+      const fallbackDefaultAssistant = assistants.find((assistant) =>
+        isDefaultAssistantId(assistant.id),
+      )
+      if (fallbackDefaultAssistant) {
+        onAssistantChange?.(fallbackDefaultAssistant)
+      }
+      setOpen(false)
+      return
+    }
     void (async () => {
       try {
         await setSettings({
@@ -101,7 +122,9 @@ export function AssistantSelector({
               <button
                 type="button"
                 className={`smtcmp-assistant-selector-item ${
-                  isDefaultAssistantId(currentAssistantId) ? 'selected' : ''
+                  isDefaultAssistantId(resolvedCurrentAssistantId)
+                    ? 'selected'
+                    : ''
                 }`}
                 onClick={handleSelectDefaultAssistant}
               >
@@ -126,7 +149,9 @@ export function AssistantSelector({
                   <button
                     type="button"
                     className={`smtcmp-assistant-selector-item ${
-                      assistant.id === currentAssistantId ? 'selected' : ''
+                      assistant.id === resolvedCurrentAssistantId
+                        ? 'selected'
+                        : ''
                     }`}
                     onClick={() => handleSelectAssistant(assistant)}
                   >

@@ -270,6 +270,7 @@ export function LexicalMenu<TOption extends MenuOption>({
   onSelectOption,
   shouldSplitNodeWithQuery = false,
   commandPriority = COMMAND_PRIORITY_LOW,
+  getDefaultHighlightedIndex,
 }: {
   close: () => void
   editor: LexicalEditor
@@ -285,14 +286,44 @@ export function LexicalMenu<TOption extends MenuOption>({
     matchingString: string,
   ) => void
   commandPriority?: CommandListenerPriority
+  getDefaultHighlightedIndex?: (options: TOption[]) => number
 }): ReactJSX.Element | null {
   const [selectedIndex, setHighlightedIndex] = useState<null | number>(null)
 
   const matchingString = resolution.match?.matchingString
 
+  const resolveDefaultHighlightedIndex = useCallback(() => {
+    if (!options.length) {
+      return null
+    }
+    const rawIndex = getDefaultHighlightedIndex?.(options) ?? 0
+    const normalizedIndex = Number.isFinite(rawIndex) ? Math.trunc(rawIndex) : 0
+    return Math.min(options.length - 1, Math.max(0, normalizedIndex))
+  }, [getDefaultHighlightedIndex, options])
+
+  const updateSelectedIndex = useCallback(
+    (index: number) => {
+      const rootElem = editor.getRootElement()
+      if (rootElem !== null) {
+        rootElem.setAttribute(
+          'aria-activedescendant',
+          `typeahead-item-${index}`,
+        )
+        setHighlightedIndex(index)
+      }
+    },
+    [editor],
+  )
+
   useEffect(() => {
-    setHighlightedIndex(0)
-  }, [matchingString])
+    void matchingString
+    const nextIndex = resolveDefaultHighlightedIndex()
+    if (nextIndex === null) {
+      setHighlightedIndex(null)
+      return
+    }
+    updateSelectedIndex(nextIndex)
+  }, [matchingString, resolveDefaultHighlightedIndex, updateSelectedIndex])
 
   const selectOptionAndCleanUp = useCallback(
     (selectedEntry: TOption) => {
@@ -313,20 +344,6 @@ export function LexicalMenu<TOption extends MenuOption>({
     [editor, shouldSplitNodeWithQuery, resolution.match, onSelectOption, close],
   )
 
-  const updateSelectedIndex = useCallback(
-    (index: number) => {
-      const rootElem = editor.getRootElement()
-      if (rootElem !== null) {
-        rootElem.setAttribute(
-          'aria-activedescendant',
-          `typeahead-item-${index}`,
-        )
-        setHighlightedIndex(index)
-      }
-    },
-    [editor],
-  )
-
   useEffect(() => {
     return () => {
       const rootElem = editor.getRootElement()
@@ -337,12 +354,20 @@ export function LexicalMenu<TOption extends MenuOption>({
   }, [editor])
 
   useLayoutEffect(() => {
-    if (options === null) {
+    if (!options.length) {
       setHighlightedIndex(null)
-    } else if (selectedIndex === null) {
-      updateSelectedIndex(0)
+    } else if (selectedIndex === null || selectedIndex >= options.length) {
+      const nextIndex = resolveDefaultHighlightedIndex()
+      if (nextIndex !== null) {
+        updateSelectedIndex(nextIndex)
+      }
     }
-  }, [options, selectedIndex, updateSelectedIndex])
+  }, [
+    options,
+    selectedIndex,
+    resolveDefaultHighlightedIndex,
+    updateSelectedIndex,
+  ])
 
   useEffect(() => {
     return mergeRegister(
@@ -359,7 +384,7 @@ export function LexicalMenu<TOption extends MenuOption>({
         commandPriority,
       ),
     )
-  }, [editor, updateSelectedIndex, commandPriority])
+  }, [editor, commandPriority])
 
   useEffect(() => {
     return mergeRegister(
@@ -413,6 +438,15 @@ export function LexicalMenu<TOption extends MenuOption>({
           const event = payload
           event.preventDefault()
           event.stopImmediatePropagation()
+
+          if (shouldSplitNodeWithQuery && resolution.match != null) {
+            const match = resolution.match
+            editor.update(() => {
+              const textNodeContainingQuery = $splitNodeContainingQuery(match)
+              textNodeContainingQuery?.remove()
+            })
+          }
+
           close()
           return true
         },
@@ -461,7 +495,9 @@ export function LexicalMenu<TOption extends MenuOption>({
     close,
     editor,
     options,
+    resolution.match,
     selectedIndex,
+    shouldSplitNodeWithQuery,
     updateSelectedIndex,
     commandPriority,
   ])
@@ -562,17 +598,34 @@ export function useMenuAnchorRef(
 
           if (menuEle) {
             const available = Math.max(margin, Math.floor(rect.top - margin))
-            updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              width: '100%',
-              maxWidth: 'none',
-              boxSizing: 'border-box',
-              overflowY: 'auto',
-              maxHeight: available,
-            })
+            const isMentionPopover = menuEle.classList.contains(
+              'smtcmp-smart-space-mention-popover',
+            )
+            if (isMentionPopover) {
+              updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                maxWidth: 'none',
+                boxSizing: 'border-box',
+                overflow: 'visible',
+                '--smtcmp-typeahead-available-height': `${available}px`,
+              })
+            } else {
+              updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                maxWidth: 'none',
+                boxSizing: 'border-box',
+                overflowY: 'auto',
+                maxHeight: available,
+              })
+            }
             // Limit height to available space above the input
             // Top cleared automatically by omission
           }

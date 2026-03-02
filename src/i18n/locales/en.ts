@@ -54,6 +54,9 @@ export const en: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
+      retryTitle: 'Retry title',
+      archived: 'Archived',
+      hideArchived: 'Hide archived',
     },
     composer: {
       title: 'Sparkle',
@@ -218,8 +221,9 @@ export const en: TranslationKeys = {
       actionLabelPlaceholder: 'For example, explain',
       actionMode: 'Mode',
       actionModeDesc:
-        'Ask opens Quick Ask and auto-sends; rewrite opens Quick Ask edit mode to generate a preview.',
+        'Ask opens Quick Ask and auto-sends; Add to chat opens sidebar chat and prefills the input box; rewrite opens Quick Ask edit mode to generate a preview.',
       actionModeAsk: 'Ask (Quick Ask)',
+      actionModeChatInput: 'Add to chat',
       actionModeRewrite: 'Rewrite (preview)',
       actionRewriteType: 'Rewrite type',
       actionRewriteTypeDesc: 'Choose whether rewrite requires a prompt',
@@ -242,6 +246,12 @@ export const en: TranslationKeys = {
       includeCurrentFile: 'Auto-include current page',
       includeCurrentFileDesc:
         'Automatically include the content of your current file in chats.',
+      historyArchiveEnabled: 'Enable history archive grouping',
+      historyArchiveEnabledDesc:
+        'Keep older non-pinned conversations collapsed under an archive section.',
+      historyArchiveThreshold: 'Recent conversation limit',
+      historyArchiveThresholdDesc:
+        'Number of latest non-pinned conversations shown before archiving the rest (20-500).',
     },
     assistants: {
       title: 'Assistants',
@@ -778,6 +788,13 @@ export const en: TranslationKeys = {
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
     annotations: 'Annotations',
+    mentionMenu: {
+      back: 'Back',
+      entryMode: 'Mode',
+      entryAssistant: 'Assistant',
+      entryFile: 'File',
+      entryFolder: 'Folder',
+    },
     emptyState: {
       chatTitle: 'Think first, then write',
       chatDescription:
@@ -1002,6 +1019,10 @@ export const en: TranslationKeys = {
     editPartialSuccess:
       'Applied {appliedCount} of {totalEdits} edits. Check console for details.',
     editApplied: 'Successfully applied {appliedCount} edit(s) to {fileName}',
+    statusRequesting: 'Requesting...',
+    statusThinking: 'Thinking...',
+    statusGenerating: 'Generating...',
+    statusModifying: 'Modifying...',
   },
 
   chatMode: {
