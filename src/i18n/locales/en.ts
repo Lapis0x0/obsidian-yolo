@@ -1017,6 +1017,10 @@ export const en: TranslationKeys = {
     editPartialSuccess:
       'Applied {appliedCount} of {totalEdits} edits. Check console for details.',
     editApplied: 'Successfully applied {appliedCount} edit(s) to {fileName}',
+    statusRequesting: 'Requesting...',
+    statusThinking: 'Thinking...',
+    statusGenerating: 'Generating...',
+    statusModifying: 'Modifying...',
   },
 
   chatMode: {

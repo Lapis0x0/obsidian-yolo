@@ -1023,6 +1023,10 @@ export const it: TranslationKeys = {
       'Applicate {appliedCount} di {totalEdits} modifiche. Controlla la console per i dettagli.',
     editApplied:
       'Applicate con successo {appliedCount} modifica/modifiche a {fileName}',
+    statusRequesting: 'Richiesta in corso...',
+    statusThinking: 'Sto pensando...',
+    statusGenerating: 'Sto generando...',
+    statusModifying: 'Sto modificando...',
   },
 
   chatMode: {

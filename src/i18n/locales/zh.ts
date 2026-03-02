@@ -961,6 +961,10 @@ export const zh: TranslationKeys = {
     editPartialSuccess:
       '已应用 {appliedCount}/{totalEdits} 个编辑，详情请查看控制台',
     editApplied: '成功应用了 {appliedCount} 个编辑到 {fileName}',
+    statusRequesting: '请求中...',
+    statusThinking: '思考中...',
+    statusGenerating: '生成中...',
+    statusModifying: '修改中...',
   },
 
   chatMode: {

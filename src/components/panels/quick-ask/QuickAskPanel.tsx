@@ -31,7 +31,11 @@ import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
-import { ChatMessage, ChatUserMessage } from '../../../types/chat'
+import {
+  ChatAssistantMessage,
+  ChatMessage,
+  ChatUserMessage,
+} from '../../../types/chat'
 import { Mentionable, SerializedMentionable } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { generateEditContent } from '../../../utils/chat/editMode'
@@ -60,6 +64,13 @@ import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
 const QUICK_ASK_MAX_ITERATIONS = 1
+
+type QuickAskRunStatus =
+  | 'requesting'
+  | 'thinking'
+  | 'generating'
+  | 'modifying'
+  | null
 
 type QuickAskPanelProps = {
   plugin: SmartComposerPlugin
@@ -191,6 +202,7 @@ export function QuickAskPanel({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [runStatus, setRunStatus] = useState<QuickAskRunStatus>(null)
   const [isAssistantMenuOpen, setIsAssistantMenuOpen] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false)
@@ -323,6 +335,47 @@ export function QuickAskPanel({
     },
     [plugin],
   )
+
+  const deriveAskRunStatus = useCallback(
+    (
+      messages: ChatMessage[],
+    ): Exclude<QuickAskRunStatus, 'modifying' | null> => {
+      const lastAssistantMessage = [...messages]
+        .reverse()
+        .find((message): message is ChatAssistantMessage => {
+          return message.role === 'assistant'
+        })
+
+      if (!lastAssistantMessage) {
+        return 'requesting'
+      }
+
+      if (lastAssistantMessage.content.trim().length > 0) {
+        return 'generating'
+      }
+
+      if (lastAssistantMessage.reasoning?.trim().length) {
+        return 'thinking'
+      }
+
+      return 'requesting'
+    },
+    [],
+  )
+
+  const runStatusLabel = useMemo(() => {
+    if (!runStatus) return null
+    if (runStatus === 'requesting') {
+      return t('quickAsk.statusRequesting', 'Requesting...')
+    }
+    if (runStatus === 'thinking') {
+      return t('quickAsk.statusThinking', 'Thinking...')
+    }
+    if (runStatus === 'generating') {
+      return t('quickAsk.statusGenerating', 'Generating...')
+    }
+    return t('quickAsk.statusModifying', 'Modifying...')
+  }, [runStatus, t])
 
   const noop = useCallback(() => {}, [])
   const noopSetMentionables = useCallback((_items: Mentionable[]) => {}, [])
@@ -607,6 +660,7 @@ export function QuickAskPanel({
       abortControllerRef.current = null
     }
     setIsStreaming(false)
+    setRunStatus(null)
   }, [])
 
   // Submit message
@@ -622,6 +676,7 @@ export function QuickAskPanel({
       if (!textContent.trim()) return
 
       setIsStreaming(true)
+      setRunStatus('requesting')
       setInputText('')
 
       // Clear the lexical editor
@@ -666,6 +721,7 @@ export function QuickAskPanel({
         unsubscribeRunner = agentService.subscribe(
           conversationId,
           (state) => {
+            setRunStatus(deriveAskRunStatus(state.messages))
             setChatMessages((prev) => {
               const lastMessageIndex = prev.findIndex(
                 (m) => m.id === userMessage.id,
@@ -744,6 +800,7 @@ export function QuickAskPanel({
           unsubscribeRunner()
         }
         setIsStreaming(false)
+        setRunStatus(null)
         abortControllerRef.current = null
       }
     },
@@ -751,6 +808,7 @@ export function QuickAskPanel({
       chatMessages,
       conversationId,
       createOrUpdateConversationImmediately,
+      deriveAskRunStatus,
       generateConversationTitle,
       getMcpManager,
       isStreaming,
@@ -808,6 +866,7 @@ export function QuickAskPanel({
       }
 
       setIsStreaming(true)
+      setRunStatus('requesting')
 
       // Clear the lexical editor
       lexicalEditorRef.current?.update(() => {
@@ -831,6 +890,8 @@ export function QuickAskPanel({
           providerClient,
           model,
         })
+
+        setRunStatus('modifying')
 
         const structuredEditResult = tryApplyStructuredEdits({
           rawEdits: response,
@@ -896,6 +957,7 @@ export function QuickAskPanel({
         new Notice(t('quickAsk.error', 'Failed to generate edits'))
       } finally {
         setIsStreaming(false)
+        setRunStatus(null)
       }
     },
     [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
@@ -915,6 +977,7 @@ export function QuickAskPanel({
       }
 
       setIsStreaming(true)
+      setRunStatus('requesting')
 
       // Clear the lexical editor
       lexicalEditorRef.current?.update(() => {
@@ -938,6 +1001,8 @@ export function QuickAskPanel({
           providerClient,
           model,
         })
+
+        setRunStatus('modifying')
 
         const structuredEditResult = tryApplyStructuredEdits({
           rawEdits: response,
@@ -1014,6 +1079,7 @@ export function QuickAskPanel({
         new Notice(t('quickAsk.error', 'Failed to apply edits'))
       } finally {
         setIsStreaming(false)
+        setRunStatus(null)
       }
     },
     [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
@@ -1178,13 +1244,25 @@ export function QuickAskPanel({
         // 交给下拉自身处理关闭，避免误关闭面板
         return
       }
+      if (isStreaming) {
+        event.preventDefault()
+        abortStream()
+        return
+      }
       event.preventDefault()
       onClose()
     }
 
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen, onClose])
+  }, [
+    abortStream,
+    isAssistantMenuOpen,
+    isModelMenuOpen,
+    isModeMenuOpen,
+    isStreaming,
+    onClose,
+  ])
 
   // Drag handling
   useEffect(() => {
@@ -1382,30 +1460,41 @@ export function QuickAskPanel({
         <div
           className={`smtcmp-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
         >
-          <LexicalContentEditable
-            editorRef={lexicalEditorRef}
-            contentEditableRef={contentEditableRef}
-            onTextContentChange={setInputText}
-            onEnter={handleEnter}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                assistantTriggerRef.current?.focus()
-              }
-            }}
-            onMentionMenuToggle={(open) => {
-              setIsMentionMenuOpen(open)
-              if (open) updateMentionMenuPlacement()
-            }}
-            onMentionNodeMutation={handleMentionNodeMutation}
-            mentionMenuContainerRef={inputRowRef}
-            mentionMenuPlacement={mentionMenuPlacement}
-            autoFocus
-            contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
-          />
-          {inputText.length === 0 && (
+          {!isStreaming && (
+            <LexicalContentEditable
+              editorRef={lexicalEditorRef}
+              contentEditableRef={contentEditableRef}
+              onTextContentChange={setInputText}
+              onEnter={handleEnter}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  assistantTriggerRef.current?.focus()
+                }
+              }}
+              onMentionMenuToggle={(open) => {
+                setIsMentionMenuOpen(open)
+                if (open) updateMentionMenuPlacement()
+              }}
+              onMentionNodeMutation={handleMentionNodeMutation}
+              mentionMenuContainerRef={inputRowRef}
+              mentionMenuPlacement={mentionMenuPlacement}
+              autoFocus
+              contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
+            />
+          )}
+          {inputText.length === 0 && !isStreaming && (
             <div className="smtcmp-quick-ask-input-placeholder">
               {t('quickAsk.inputPlaceholder', 'Ask a question...')}
+            </div>
+          )}
+          {isStreaming && runStatusLabel && (
+            <div className="smtcmp-quick-ask-run-status" aria-live="polite">
+              <span
+                className="smtcmp-quick-ask-run-status-dot"
+                aria-hidden="true"
+              />
+              <span>{runStatusLabel}</span>
             </div>
           )}
         </div>

@@ -496,8 +496,9 @@
 }
 
 .smtcmp-quick-ask-input.is-disabled {
-  opacity: 0.6;
+  opacity: 1;
   pointer-events: none;
+  min-height: 34px;
 }
 
 .smtcmp-quick-ask-content-editable {
@@ -540,6 +541,45 @@
   color: color-mix(in srgb, var(--text-muted) 78%, transparent);
   pointer-events: none;
   font-size: var(--font-ui-small);
+}
+
+.smtcmp-quick-ask-run-status {
+  position: absolute;
+  left: 6px;
+  bottom: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.smtcmp-quick-ask-input.is-disabled .smtcmp-quick-ask-run-status {
+  position: static;
+  padding: 12px 6px 2px;
+}
+
+.smtcmp-quick-ask-run-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  opacity: 0.9;
+  animation: smtcmp-quick-ask-status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes smtcmp-quick-ask-status-pulse {
+  0% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.25;
+  }
 }
 
 /* Close button in input row */

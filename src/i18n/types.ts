@@ -898,6 +898,10 @@ export type TranslationKeys = {
     editNoChanges?: string
     editPartialSuccess?: string
     editApplied?: string
+    statusRequesting?: string
+    statusThinking?: string
+    statusGenerating?: string
+    statusModifying?: string
   }
 
   // Chat Mode Select
