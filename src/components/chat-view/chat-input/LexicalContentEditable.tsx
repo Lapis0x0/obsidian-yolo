@@ -14,8 +14,13 @@ import { RefObject, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { Assistant } from '../../../types/assistant.types'
+import { MentionableFolder } from '../../../types/mentionable'
 import { Mentionable, MentionableImage } from '../../../types/mentionable'
-import { SearchableMentionable, fuzzySearch } from '../../../utils/fuzzy-search'
+import {
+  SearchableMentionable,
+  fuzzySearch,
+  fuzzySearchFolders,
+} from '../../../utils/fuzzy-search'
 
 import DragDropPaste from './plugins/image/DragDropPastePlugin'
 import ImagePastePlugin from './plugins/image/ImagePastePlugin'
@@ -107,6 +112,10 @@ export default function LexicalContentEditable({
     (query: string) => fuzzySearch(app, query),
     [app],
   )
+  const searchFoldersByQuery = useCallback(
+    (query: string): MentionableFolder[] => fuzzySearchFolders(app, query),
+    [app],
+  )
 
   const resolvedSearch = useCallback(
     (query: string) => {
@@ -176,6 +185,7 @@ export default function LexicalContentEditable({
         assistants={assistants}
         currentAssistantId={currentAssistantId}
         onSelectAssistant={onSelectAssistant}
+        searchFoldersByQuery={searchFoldersByQuery}
       />
       <OnChangePlugin
         onChange={(editorState, _editor) => {

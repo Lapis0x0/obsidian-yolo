@@ -270,6 +270,7 @@ export function LexicalMenu<TOption extends MenuOption>({
   onSelectOption,
   shouldSplitNodeWithQuery = false,
   commandPriority = COMMAND_PRIORITY_LOW,
+  getDefaultHighlightedIndex,
 }: {
   close: () => void
   editor: LexicalEditor
@@ -285,14 +286,44 @@ export function LexicalMenu<TOption extends MenuOption>({
     matchingString: string,
   ) => void
   commandPriority?: CommandListenerPriority
+  getDefaultHighlightedIndex?: (options: TOption[]) => number
 }): ReactJSX.Element | null {
   const [selectedIndex, setHighlightedIndex] = useState<null | number>(null)
 
   const matchingString = resolution.match?.matchingString
 
+  const resolveDefaultHighlightedIndex = useCallback(() => {
+    if (!options.length) {
+      return null
+    }
+    const rawIndex = getDefaultHighlightedIndex?.(options) ?? 0
+    const normalizedIndex = Number.isFinite(rawIndex) ? Math.trunc(rawIndex) : 0
+    return Math.min(options.length - 1, Math.max(0, normalizedIndex))
+  }, [getDefaultHighlightedIndex, options])
+
+  const updateSelectedIndex = useCallback(
+    (index: number) => {
+      const rootElem = editor.getRootElement()
+      if (rootElem !== null) {
+        rootElem.setAttribute(
+          'aria-activedescendant',
+          `typeahead-item-${index}`,
+        )
+        setHighlightedIndex(index)
+      }
+    },
+    [editor],
+  )
+
   useEffect(() => {
-    setHighlightedIndex(0)
-  }, [matchingString])
+    void matchingString
+    const nextIndex = resolveDefaultHighlightedIndex()
+    if (nextIndex === null) {
+      setHighlightedIndex(null)
+      return
+    }
+    updateSelectedIndex(nextIndex)
+  }, [matchingString, resolveDefaultHighlightedIndex, updateSelectedIndex])
 
   const selectOptionAndCleanUp = useCallback(
     (selectedEntry: TOption) => {
@@ -313,20 +344,6 @@ export function LexicalMenu<TOption extends MenuOption>({
     [editor, shouldSplitNodeWithQuery, resolution.match, onSelectOption, close],
   )
 
-  const updateSelectedIndex = useCallback(
-    (index: number) => {
-      const rootElem = editor.getRootElement()
-      if (rootElem !== null) {
-        rootElem.setAttribute(
-          'aria-activedescendant',
-          `typeahead-item-${index}`,
-        )
-        setHighlightedIndex(index)
-      }
-    },
-    [editor],
-  )
-
   useEffect(() => {
     return () => {
       const rootElem = editor.getRootElement()
@@ -337,12 +354,20 @@ export function LexicalMenu<TOption extends MenuOption>({
   }, [editor])
 
   useLayoutEffect(() => {
-    if (options === null) {
+    if (!options.length) {
       setHighlightedIndex(null)
-    } else if (selectedIndex === null) {
-      updateSelectedIndex(0)
+    } else if (selectedIndex === null || selectedIndex >= options.length) {
+      const nextIndex = resolveDefaultHighlightedIndex()
+      if (nextIndex !== null) {
+        updateSelectedIndex(nextIndex)
+      }
     }
-  }, [options, selectedIndex, updateSelectedIndex])
+  }, [
+    options,
+    selectedIndex,
+    resolveDefaultHighlightedIndex,
+    updateSelectedIndex,
+  ])
 
   useEffect(() => {
     return mergeRegister(
@@ -359,7 +384,7 @@ export function LexicalMenu<TOption extends MenuOption>({
         commandPriority,
       ),
     )
-  }, [editor, updateSelectedIndex, commandPriority])
+  }, [editor, commandPriority])
 
   useEffect(() => {
     return mergeRegister(

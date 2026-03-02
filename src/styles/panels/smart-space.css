@@ -309,7 +309,7 @@
   flex: 1;
 }
 
-.smtcmp-smart-space-mention-option-text--assistant {
+.smtcmp-smart-space-mention-option-text--inline-meta {
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -330,7 +330,7 @@
   word-break: normal;
 }
 
-.smtcmp-smart-space-mention-option-assistant-description {
+.smtcmp-smart-space-mention-option-inline-meta {
   flex: 1;
   min-width: 0;
 }

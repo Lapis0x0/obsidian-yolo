@@ -23,7 +23,10 @@ import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../../../contexts/language-context'
 import { Assistant } from '../../../../../types/assistant.types'
-import { Mentionable } from '../../../../../types/mentionable'
+import {
+  Mentionable,
+  MentionableFolder,
+} from '../../../../../types/mentionable'
 import { renderAssistantIcon } from '../../../../../utils/assistant-icon'
 import {
   getMentionableName,
@@ -106,6 +109,7 @@ type MentionTypeaheadOptionPayload =
   | {
       kind: 'mentionable'
       mentionable: Mentionable
+      subtitle?: string
     }
 
 function checkForAtSignMentions(
@@ -166,12 +170,12 @@ class MentionTypeaheadOption extends MenuOption {
         case 'file':
           key = mentionable.file.path
           name = mentionable.file.name
-          subtitle = null
+          subtitle = payload.subtitle ?? null
           break
         case 'folder':
           key = mentionable.folder.path
           name = mentionable.folder.name
-          subtitle = null
+          subtitle = payload.subtitle ?? null
           break
         case 'vault':
           key = 'vault'
@@ -207,7 +211,11 @@ function MentionsTypeaheadMenuItem({
   option: MentionTypeaheadOption
 }) {
   let iconNode: ReactNode = null
-  const isAssistantOption = option.payload.kind === 'assistant'
+  const isInlineMetaOption =
+    option.payload.kind === 'assistant' ||
+    (option.payload.kind === 'mentionable' &&
+      option.payload.mentionable.type === 'folder' &&
+      Boolean(option.subtitle))
 
   if (option.payload.kind === 'back') {
     iconNode = (
@@ -266,8 +274,8 @@ function MentionsTypeaheadMenuItem({
       {iconNode}
       <div
         className={`smtcmp-smart-space-mention-option-text${
-          isAssistantOption
-            ? ' smtcmp-smart-space-mention-option-text--assistant'
+          isInlineMetaOption
+            ? ' smtcmp-smart-space-mention-option-text--inline-meta'
             : ''
         }`}
       >
@@ -277,8 +285,8 @@ function MentionsTypeaheadMenuItem({
         {option.subtitle && (
           <div
             className={`smtcmp-smart-space-mention-option-path${
-              isAssistantOption
-                ? ' smtcmp-smart-space-mention-option-assistant-description'
+              isInlineMetaOption
+                ? ' smtcmp-smart-space-mention-option-inline-meta'
                 : ''
             }`}
           >
@@ -304,6 +312,7 @@ export default function NewMentionsPlugin({
   assistants = [],
   currentAssistantId,
   onSelectAssistant,
+  searchFoldersByQuery,
 }: {
   searchResultByQuery: (query: string) => SearchableMentionable[]
   onMenuOpenChange?: (isOpen: boolean) => void
@@ -315,6 +324,7 @@ export default function NewMentionsPlugin({
   assistants?: Assistant[]
   currentAssistantId?: string
   onSelectAssistant?: (assistantId: string) => void
+  searchFoldersByQuery?: (query: string) => MentionableFolder[]
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
 
@@ -347,6 +357,13 @@ export default function NewMentionsPlugin({
     if (queryString == null) return []
     return searchResultByQuery(queryString)
   }, [queryString, searchResultByQuery])
+
+  const folderResults = useMemo(() => {
+    if (queryString == null || !searchFoldersByQuery) {
+      return [] as MentionableFolder[]
+    }
+    return searchFoldersByQuery(queryString)
+  }, [queryString, searchFoldersByQuery])
 
   const checkForSlashTriggerMatch = useBasicTypeaheadTriggerMatch('/', {
     minLength: 0,
@@ -430,11 +447,33 @@ export default function NewMentionsPlugin({
       ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
     }
 
-    const mentionables = results.filter((result) => {
-      if (menuScope === 'file') return result.type === 'file'
-      if (menuScope === 'folder') return result.type === 'folder'
-      return false
-    })
+    if (menuScope === 'folder') {
+      const folderMentionables = searchFoldersByQuery
+        ? folderResults
+        : results.filter(
+            (result): result is MentionableFolder => result.type === 'folder',
+          )
+      const mentionableOptions = folderMentionables.map(
+        (mentionable) =>
+          new MentionTypeaheadOption({
+            kind: 'mentionable',
+            mentionable,
+            subtitle: `/${mentionable.folder.path}`,
+          }),
+      )
+      return [
+        new MentionTypeaheadOption({
+          kind: 'back',
+          label: t('chat.mentionMenu.back', '返回上一级'),
+        }),
+        ...mentionableOptions,
+      ]
+    }
+
+    const mentionables = results.filter(
+      (result): result is SearchableMentionable & { type: 'file' } =>
+        result.type === 'file',
+    )
 
     const mentionableOptions = mentionables.map(
       (mentionable) =>
@@ -453,11 +492,13 @@ export default function NewMentionsPlugin({
   }, [
     assistants,
     currentAssistantId,
+    folderResults,
     menuMode,
     menuScope,
     normalizedQuery,
     queryString,
     results,
+    searchFoldersByQuery,
     t,
   ])
 
@@ -551,6 +592,20 @@ export default function NewMentionsPlugin({
     [checkForSlashTriggerMatch, editor],
   )
 
+  const getDefaultHighlightedIndex = useCallback(
+    (menuOptions: MentionTypeaheadOption[]) => {
+      if (menuScope === 'root' || menuMode !== 'entry') {
+        return 0
+      }
+      const firstOption = menuOptions[0]
+      if (firstOption?.payload.kind === 'back' && menuOptions.length > 1) {
+        return 1
+      }
+      return 0
+    },
+    [menuMode, menuScope],
+  )
+
   return (
     <LexicalTypeaheadMenuPlugin<MentionTypeaheadOption>
       onQueryChange={setQueryString}
@@ -558,6 +613,7 @@ export default function NewMentionsPlugin({
       triggerFn={checkForMentionMatch}
       options={options}
       commandPriority={COMMAND_PRIORITY_NORMAL}
+      getDefaultHighlightedIndex={getDefaultHighlightedIndex}
       onOpen={() => onMenuOpenChange?.(true)}
       onClose={() => onMenuOpenChange?.(false)}
       menuRenderFn={(
