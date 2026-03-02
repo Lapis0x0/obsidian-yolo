@@ -12,9 +12,11 @@ import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain
 
 function TitleInput({
   title,
+  disabled,
   onSubmit,
 }: {
   title: string
+  disabled?: boolean
   onSubmit: (title: string) => void
 }) {
   const [value, setValue] = useState(title)
@@ -32,13 +34,14 @@ function TitleInput({
       ref={inputRef}
       type="text"
       value={value}
+      disabled={disabled}
       className="smtcmp-chat-list-dropdown-item-title-input"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
         e.stopPropagation()
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !disabled) {
           onSubmit(value)
         }
       }}
@@ -51,6 +54,7 @@ function ChatListItem({
   title,
   isFocused,
   isEditing,
+  isUpdatingTitle,
   isPinned,
   isRetrying,
   onMouseEnter,
@@ -64,6 +68,7 @@ function ChatListItem({
   title: string
   isFocused: boolean
   isEditing: boolean
+  isUpdatingTitle: boolean
   isPinned: boolean
   isRetrying: boolean
   onMouseEnter: () => void
@@ -99,7 +104,11 @@ function ChatListItem({
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (
-        <TitleInput title={title} onSubmit={onFinishEdit} />
+        <TitleInput
+          title={title}
+          disabled={isUpdatingTitle}
+          onSubmit={onFinishEdit}
+        />
       ) : (
         <div
           className={`smtcmp-chat-list-dropdown-item-title${
@@ -237,6 +246,9 @@ export function ChatListDropdown({
   const [searchQuery, setSearchQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [isHoveringArchiveRow, setIsHoveringArchiveRow] = useState(false)
+  const [updatingTitleIds, setUpdatingTitleIds] = useState<Set<string>>(
+    new Set(),
+  )
   const [contentMatches, setContentMatches] = useState<Set<string>>(new Set())
   const [retryingConversationIds, setRetryingConversationIds] = useState<
     Set<string>
@@ -624,6 +636,7 @@ export function ChatListDropdown({
                       focusedConversationId === chat.id && !isHoveringArchiveRow
                     }
                     isEditing={editingId === chat.id}
+                    isUpdatingTitle={updatingTitleIds.has(chat.id)}
                     isPinned={Boolean(chat.isPinned)}
                     isRetrying={retryingConversationIds.has(chat.id)}
                     onMouseEnter={() => {
@@ -686,6 +699,14 @@ export function ChatListDropdown({
                       setEditingId(chat.id)
                     }}
                     onFinishEdit={(title) => {
+                      if (updatingTitleIds.has(chat.id)) {
+                        return
+                      }
+                      setUpdatingTitleIds((prev) => {
+                        const next = new Set(prev)
+                        next.add(chat.id)
+                        return next
+                      })
                       void Promise.resolve(onUpdateTitle(chat.id, title))
                         .then(() => {
                           setEditingId(null)
@@ -695,6 +716,16 @@ export function ChatListDropdown({
                             'Failed to update conversation title',
                             error,
                           )
+                        })
+                        .finally(() => {
+                          setUpdatingTitleIds((prev) => {
+                            if (!prev.has(chat.id)) {
+                              return prev
+                            }
+                            const next = new Set(prev)
+                            next.delete(chat.id)
+                            return next
+                          })
                         })
                     }}
                   />

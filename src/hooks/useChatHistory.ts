@@ -249,13 +249,12 @@ export function useChatHistory(): UseChatHistory {
       if (title.length === 0) {
         throw new Error('Chat title cannot be empty')
       }
-      const conversation = await chatManager.findById(id)
-      if (!conversation) {
-        throw new Error('Conversation not found')
-      }
-      await chatManager.updateChat(conversation.id, {
+      const updatedConversation = await chatManager.updateChat(id, {
         title,
       })
+      if (!updatedConversation) {
+        throw new Error('Conversation not found')
+      }
       await fetchChatList()
     },
     [chatManager, fetchChatList],

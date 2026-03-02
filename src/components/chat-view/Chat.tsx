@@ -1544,8 +1544,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   }
                 })()
               }}
-              onUpdateTitle={(conversationId, newTitle) => {
-                void updateConversationTitle(conversationId, newTitle)
+              onUpdateTitle={async (conversationId, newTitle) => {
+                await updateConversationTitle(conversationId, newTitle)
               }}
               onTogglePinned={(conversationId) => {
                 void toggleConversationPinned(conversationId)
