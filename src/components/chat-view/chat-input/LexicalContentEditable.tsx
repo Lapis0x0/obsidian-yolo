@@ -13,6 +13,7 @@ import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { Assistant } from '../../../types/assistant.types'
 import { Mentionable, MentionableImage } from '../../../types/mentionable'
 import { SearchableMentionable, fuzzySearch } from '../../../utils/fuzzy-search'
 
@@ -47,6 +48,10 @@ export type LexicalContentEditableProps = {
   mentionMenuPlacement?: 'top' | 'bottom'
   mentionDisplayMode?: 'inline' | 'badge'
   onSelectMentionable?: (mentionable: Mentionable) => void
+  mentionMenuMode?: 'direct-search' | 'entry'
+  assistants?: Assistant[]
+  currentAssistantId?: string
+  onSelectAssistant?: (assistantId: string) => void
   plugins?: {
     onEnter?: {
       onVaultChat: () => void
@@ -74,6 +79,10 @@ export default function LexicalContentEditable({
   mentionMenuPlacement = 'top',
   mentionDisplayMode = 'inline',
   onSelectMentionable,
+  mentionMenuMode = 'direct-search',
+  assistants = [],
+  currentAssistantId,
+  onSelectAssistant,
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
@@ -163,6 +172,10 @@ export default function LexicalContentEditable({
         placement={mentionMenuPlacement}
         mentionDisplayMode={mentionDisplayMode}
         onSelectMentionable={onSelectMentionable}
+        menuMode={mentionMenuMode}
+        assistants={assistants}
+        currentAssistantId={currentAssistantId}
+        onSelectAssistant={onSelectAssistant}
       />
       <OnChangePlugin
         onChange={(editorState, _editor) => {

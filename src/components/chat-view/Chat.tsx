@@ -19,6 +19,7 @@ import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
+import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -136,9 +137,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     generateConversationTitle,
     chatList,
   } = useChatHistory()
+  const [conversationAssistantId, setConversationAssistantId] =
+    useState<string>(settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID)
+  const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
+  const effectiveSettings = useMemo(
+    () => ({
+      ...settings,
+      currentAssistantId: conversationAssistantId,
+    }),
+    [conversationAssistantId, settings],
+  )
   const promptGenerator = useMemo(() => {
-    return new PromptGenerator(getRAGEngine, app, settings)
-  }, [getRAGEngine, app, settings])
+    return new PromptGenerator(getRAGEngine, app, effectiveSettings)
+  }, [app, effectiveSettings, getRAGEngine])
 
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
@@ -233,15 +244,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
 
   const selectedAssistant = useMemo(() => {
-    if (!settings.currentAssistantId) {
-      return null
-    }
     return (
       settings.assistants.find(
-        (assistant) => assistant.id === settings.currentAssistantId,
+        (assistant) => assistant.id === conversationAssistantId,
       ) ?? null
     )
-  }, [settings.assistants, settings.currentAssistantId])
+  }, [conversationAssistantId, settings.assistants])
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -318,6 +326,44 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
   )
 
+  const handleConversationAssistantSelect = useCallback(
+    (assistantId: string) => {
+      setConversationAssistantId(assistantId)
+      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
+      const assistant = settings.assistants.find(
+        (item) => item.id === assistantId,
+      )
+      if (assistant?.modelId) {
+        applyAssistantDefaultModel(assistant.modelId)
+      }
+    },
+    [applyAssistantDefaultModel, currentConversationId, settings.assistants],
+  )
+
+  useEffect(() => {
+    if (
+      settings.assistants.some(
+        (assistant) => assistant.id === conversationAssistantId,
+      )
+    ) {
+      return
+    }
+    const fallbackAssistantId =
+      settings.currentAssistantId ??
+      settings.assistants[0]?.id ??
+      DEFAULT_ASSISTANT_ID
+    setConversationAssistantId(fallbackAssistantId)
+    conversationAssistantIdRef.current.set(
+      currentConversationId,
+      fallbackAssistantId,
+    )
+  }, [
+    conversationAssistantId,
+    currentConversationId,
+    settings.assistants,
+    settings.currentAssistantId,
+  ])
+
   // Per-message model mapping for historical user messages
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
     new Map(),
@@ -386,6 +432,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     modelId: conversationModelId,
     chatMode,
     currentFileOverride,
+    assistantIdOverride: conversationAssistantId,
   })
 
   const persistConversation = useCallback(
@@ -478,6 +525,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           resolvedAutoAttach,
         )
         setConversationOverrides(conversation.overrides ?? null)
+        const loadedAssistantId =
+          conversationAssistantIdRef.current.get(conversationId) ??
+          settings.currentAssistantId ??
+          settings.assistants[0]?.id ??
+          DEFAULT_ASSISTANT_ID
+        const loadedAssistantModelId =
+          settings.assistants.find(
+            (assistant) => assistant.id === loadedAssistantId,
+          )?.modelId ?? null
+        setConversationAssistantId(loadedAssistantId)
+        conversationAssistantIdRef.current.set(
+          conversationId,
+          loadedAssistantId,
+        )
         const loadedChatModeRaw = conversation.overrides?.chatMode
         const loadedChatMode: ChatMode =
           loadedChatModeRaw === 'agent' || loadedChatModeRaw === 'chat'
@@ -496,7 +557,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         const modelFromRef =
           conversationModelIdRef.current.get(conversationId) ??
-          selectedAssistant?.modelId ??
+          loadedAssistantModelId ??
           settings.chatModelId
         setConversationModelId(modelFromRef)
         const storedReasoningLevel = normalizeReasoningLevel(
@@ -536,8 +597,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       abortActiveStreams,
       getConversationById,
       settings.chatModelId,
+      settings.currentAssistantId,
       settings.chatOptions.chatMode,
-      selectedAssistant?.modelId,
+      settings.assistants,
       getReasoningLevelForModelId,
       normalizeReasoningLevel,
     ],
@@ -552,6 +614,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
     const newId = uuidv4()
     setCurrentConversationId(newId)
+    conversationAssistantIdRef.current.set(newId, conversationAssistantId)
+    setConversationAssistantId(conversationAssistantId)
     conversationAutoAttachRef.current.set(newId, true)
     setAutoAttachCurrentFile(true)
     setConversationOverrides(null)
@@ -1558,8 +1622,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       {activeView === 'chat' && (
         <div className="smtcmp-chat-header-right">
           <AssistantSelector
+            currentAssistantId={conversationAssistantId}
             onAssistantChange={(assistant) => {
-              applyAssistantDefaultModel(assistant.modelId)
+              handleConversationAssistantSelect(assistant.id)
             }}
           />
           <div className="smtcmp-chat-header-buttons">
@@ -2039,6 +2104,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           hideBadgeMentionables
           displayMentionables={displayMentionablesForInput}
           onDeleteFromAll={handleMentionableDeleteFromAll}
+          currentAssistantId={conversationAssistantId}
+          onSelectAssistantForConversation={handleConversationAssistantSelect}
         />
       </div>
     </div>

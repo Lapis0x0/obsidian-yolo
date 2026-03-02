@@ -91,6 +91,8 @@ export type ChatUserInputProps = {
   hideBadgeMentionables?: boolean
   onToggleCompact?: () => void
   onBlur?: () => void
+  currentAssistantId?: string
+  onSelectAssistantForConversation?: (assistantId: string) => void
 }
 
 type ChatSubmitOptions = {
@@ -122,6 +124,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       hideBadgeMentionables = false,
       onToggleCompact,
       onBlur,
+      currentAssistantId,
+      onSelectAssistantForConversation,
     },
     ref,
   ) => {
@@ -623,6 +627,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               onCreateImageMentionables={handleCreateImageMentionables}
               mentionDisplayMode={mentionDisplayMode}
               onSelectMentionable={handleSelectMentionableForBadge}
+              mentionMenuMode={
+                onSelectAssistantForConversation ? 'entry' : 'direct-search'
+              }
+              assistants={settings.assistants || []}
+              currentAssistantId={currentAssistantId}
+              onSelectAssistant={onSelectAssistantForConversation}
               autoFocus={autoFocus}
               plugins={{
                 onEnter: {

@@ -9,6 +9,7 @@
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $createTextNode, COMMAND_PRIORITY_NORMAL, TextNode } from 'lexical'
+import { ArrowLeft, Bot, Check, FileIcon, FolderClosedIcon } from 'lucide-react'
 import {
   type ReactNode,
   type RefObject,
@@ -21,7 +22,9 @@ import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../../../contexts/language-context'
+import { Assistant } from '../../../../../types/assistant.types'
 import { Mentionable } from '../../../../../types/mentionable'
+import { renderAssistantIcon } from '../../../../../utils/assistant-icon'
 import {
   getMentionableName,
   serializeMentionable,
@@ -80,6 +83,31 @@ const AtSignMentionsRegexAliasRegex = new RegExp(
 // At most, 20 suggestions are shown in the popup.
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
 
+type MentionMenuMode = 'direct-search' | 'entry'
+type MentionMenuScope = 'root' | 'assistant' | 'file' | 'folder'
+type MentionEntryOptionType = 'assistant' | 'file' | 'folder'
+
+type MentionTypeaheadOptionPayload =
+  | {
+      kind: 'back'
+      label: string
+    }
+  | {
+      kind: 'entry'
+      entryType: MentionEntryOptionType
+      label: string
+      subtitle?: string
+    }
+  | {
+      kind: 'assistant'
+      assistant: Assistant
+      isCurrent: boolean
+    }
+  | {
+      kind: 'mentionable'
+      mentionable: Mentionable
+    }
+
 function checkForAtSignMentions(
   text: string,
   minMatchLength: number,
@@ -112,32 +140,56 @@ function getPossibleQueryMatch(text: string): MenuTextMatch | null {
 
 class MentionTypeaheadOption extends MenuOption {
   name: string
-  mentionable: Mentionable
-  icon: ReactNode
+  subtitle: string | null
+  payload: MentionTypeaheadOptionPayload
 
-  constructor(result: SearchableMentionable) {
-    switch (result.type) {
-      case 'file':
-        super(result.file.path)
-        this.name = result.file.name
-        this.mentionable = result
-        break
-      case 'folder':
-        super(result.folder.path)
-        this.name = result.folder.name
-        this.mentionable = result
-        break
-      case 'vault':
-        super('vault')
-        this.name = 'Vault'
-        this.mentionable = result
-        break
-      default:
-        super('unknown')
-        this.name = ''
-        this.mentionable = result as Mentionable
-        break
+  constructor(payload: MentionTypeaheadOptionPayload) {
+    let key = 'unknown'
+    let name = ''
+    let subtitle: string | null = null
+
+    if (payload.kind === 'back') {
+      key = 'entry:back'
+      name = payload.label
+      subtitle = null
+    } else if (payload.kind === 'entry') {
+      key = `entry:${payload.entryType}`
+      name = payload.label
+      subtitle = payload.subtitle ?? null
+    } else if (payload.kind === 'assistant') {
+      key = `assistant:${payload.assistant.id}`
+      name = payload.assistant.name
+      subtitle = payload.assistant.description ?? null
+    } else {
+      const mentionable = payload.mentionable
+      switch (mentionable.type) {
+        case 'file':
+          key = mentionable.file.path
+          name = mentionable.file.name
+          subtitle = null
+          break
+        case 'folder':
+          key = mentionable.folder.path
+          name = mentionable.folder.name
+          subtitle = null
+          break
+        case 'vault':
+          key = 'vault'
+          name = 'Vault'
+          subtitle = null
+          break
+        default:
+          key = 'unknown'
+          name = ''
+          subtitle = null
+          break
+      }
     }
+
+    super(key)
+    this.name = name
+    this.subtitle = subtitle
+    this.payload = payload
   }
 }
 
@@ -154,17 +206,47 @@ function MentionsTypeaheadMenuItem({
   onMouseEnter: () => void
   option: MentionTypeaheadOption
 }) {
-  const Icon = getMentionableIcon(option.mentionable)
-  const pathText = (() => {
-    switch (option.mentionable.type) {
-      case 'file':
-        return option.mentionable.file.path
-      case 'folder':
-        return option.mentionable.folder.path
-      default:
-        return null
+  let iconNode: ReactNode = null
+  const isAssistantOption = option.payload.kind === 'assistant'
+
+  if (option.payload.kind === 'back') {
+    iconNode = (
+      <ArrowLeft size={14} className="smtcmp-smart-space-mention-option-icon" />
+    )
+  } else if (option.payload.kind === 'entry') {
+    if (option.payload.entryType === 'assistant') {
+      iconNode = (
+        <Bot size={14} className="smtcmp-smart-space-mention-option-icon" />
+      )
+    } else if (option.payload.entryType === 'file') {
+      iconNode = (
+        <FileIcon
+          size={14}
+          className="smtcmp-smart-space-mention-option-icon"
+        />
+      )
+    } else {
+      iconNode = (
+        <FolderClosedIcon
+          size={14}
+          className="smtcmp-smart-space-mention-option-icon"
+        />
+      )
     }
-  })()
+  } else if (option.payload.kind === 'assistant') {
+    iconNode = renderAssistantIcon(
+      option.payload.assistant.icon,
+      14,
+      'smtcmp-smart-space-mention-option-icon',
+    )
+  } else {
+    const Icon = getMentionableIcon(option.payload.mentionable)
+    if (Icon) {
+      iconNode = (
+        <Icon size={14} className="smtcmp-smart-space-mention-option-icon" />
+      )
+    }
+  }
 
   return (
     <button
@@ -181,19 +263,32 @@ function MentionsTypeaheadMenuItem({
       onClick={onClick}
       data-highlighted={isSelected ? 'true' : undefined}
     >
-      {Icon && (
-        <Icon size={14} className="smtcmp-smart-space-mention-option-icon" />
-      )}
-      <div className="smtcmp-smart-space-mention-option-text">
+      {iconNode}
+      <div
+        className={`smtcmp-smart-space-mention-option-text${
+          isAssistantOption
+            ? ' smtcmp-smart-space-mention-option-text--assistant'
+            : ''
+        }`}
+      >
         <div className="smtcmp-smart-space-mention-option-name">
           {option.name}
         </div>
-        {pathText && (
-          <div className="smtcmp-smart-space-mention-option-path">
-            {pathText}
+        {option.subtitle && (
+          <div
+            className={`smtcmp-smart-space-mention-option-path${
+              isAssistantOption
+                ? ' smtcmp-smart-space-mention-option-assistant-description'
+                : ''
+            }`}
+          >
+            {option.subtitle}
           </div>
         )}
       </div>
+      {option.payload.kind === 'assistant' && option.payload.isCurrent && (
+        <Check size={12} className="smtcmp-smart-space-mention-option-check" />
+      )}
     </button>
   )
 }
@@ -205,6 +300,10 @@ export default function NewMentionsPlugin({
   placement = 'top',
   mentionDisplayMode = 'inline',
   onSelectMentionable,
+  menuMode = 'direct-search',
+  assistants = [],
+  currentAssistantId,
+  onSelectAssistant,
 }: {
   searchResultByQuery: (query: string) => SearchableMentionable[]
   onMenuOpenChange?: (isOpen: boolean) => void
@@ -212,10 +311,15 @@ export default function NewMentionsPlugin({
   placement?: 'top' | 'bottom'
   mentionDisplayMode?: 'inline' | 'badge'
   onSelectMentionable?: (mentionable: Mentionable) => void
+  menuMode?: MentionMenuMode
+  assistants?: Assistant[]
+  currentAssistantId?: string
+  onSelectAssistant?: (assistantId: string) => void
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
 
   const [queryString, setQueryString] = useState<string | null>(null)
+  const [menuScope, setMenuScope] = useState<MentionMenuScope>('root')
   const { t } = useLanguage()
   const mentionableUnitLabel = useMemo(
     () => t('common.characters', 'chars'),
@@ -228,6 +332,17 @@ export default function NewMentionsPlugin({
     }
   }, [onMenuOpenChange])
 
+  useEffect(() => {
+    if (queryString === null) {
+      setMenuScope('root')
+    }
+  }, [queryString])
+
+  const normalizedQuery = useMemo(
+    () => (queryString ?? '').trim().toLowerCase(),
+    [queryString],
+  )
+
   const results = useMemo(() => {
     if (queryString == null) return []
     return searchResultByQuery(queryString)
@@ -237,13 +352,114 @@ export default function NewMentionsPlugin({
     minLength: 0,
   })
 
-  const options = useMemo(
-    () =>
-      results
-        .map((result) => new MentionTypeaheadOption(result))
-        .slice(0, SUGGESTION_LIST_LENGTH_LIMIT),
-    [results],
-  )
+  const options = useMemo(() => {
+    if (queryString == null) {
+      return [] as MentionTypeaheadOption[]
+    }
+
+    if (menuMode === 'direct-search') {
+      return results
+        .map(
+          (result) =>
+            new MentionTypeaheadOption({
+              kind: 'mentionable',
+              mentionable: result,
+            }),
+        )
+        .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+    }
+
+    if (menuScope === 'root') {
+      const entryOptions: Array<{
+        entryType: MentionEntryOptionType
+        label: string
+      }> = [
+        {
+          entryType: 'assistant',
+          label: t('chat.mentionMenu.entryAssistant', '助手'),
+        },
+        {
+          entryType: 'file',
+          label: t('chat.mentionMenu.entryFile', '文件'),
+        },
+        {
+          entryType: 'folder',
+          label: t('chat.mentionMenu.entryFolder', '文件夹'),
+        },
+      ]
+      return entryOptions
+        .filter((entry) => {
+          if (!normalizedQuery) return true
+          return entry.label.toLowerCase().includes(normalizedQuery)
+        })
+        .map(
+          (entry) =>
+            new MentionTypeaheadOption({
+              kind: 'entry',
+              entryType: entry.entryType,
+              label: entry.label,
+            }),
+        )
+        .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+    }
+
+    if (menuScope === 'assistant') {
+      const assistantOptions = assistants
+        .filter((assistant) => {
+          if (!normalizedQuery) return true
+          const description = assistant.description ?? ''
+          return (
+            assistant.name.toLowerCase().includes(normalizedQuery) ||
+            description.toLowerCase().includes(normalizedQuery)
+          )
+        })
+        .map(
+          (assistant) =>
+            new MentionTypeaheadOption({
+              kind: 'assistant',
+              assistant,
+              isCurrent: assistant.id === currentAssistantId,
+            }),
+        )
+      return [
+        new MentionTypeaheadOption({
+          kind: 'back',
+          label: t('chat.mentionMenu.back', '返回上一级'),
+        }),
+        ...assistantOptions,
+      ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+    }
+
+    const mentionables = results.filter((result) => {
+      if (menuScope === 'file') return result.type === 'file'
+      if (menuScope === 'folder') return result.type === 'folder'
+      return false
+    })
+
+    const mentionableOptions = mentionables.map(
+      (mentionable) =>
+        new MentionTypeaheadOption({
+          kind: 'mentionable',
+          mentionable,
+        }),
+    )
+    return [
+      new MentionTypeaheadOption({
+        kind: 'back',
+        label: t('chat.mentionMenu.back', '返回上一级'),
+      }),
+      ...mentionableOptions,
+    ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+  }, [
+    assistants,
+    currentAssistantId,
+    menuMode,
+    menuScope,
+    normalizedQuery,
+    queryString,
+    results,
+    t,
+  ])
 
   const onSelectOption = useCallback(
     (
@@ -251,36 +467,76 @@ export default function NewMentionsPlugin({
       nodeToReplace: TextNode | null,
       closeMenu: () => void,
     ) => {
-      editor.update(() => {
-        if (mentionDisplayMode === 'badge') {
-          if (nodeToReplace) {
-            const emptyNode = $createTextNode('')
-            nodeToReplace.replace(emptyNode)
-            emptyNode.select()
-          }
-          onSelectMentionable?.(selectedOption.mentionable)
-          closeMenu()
-          return
-        }
-
-        const mentionNode = $createMentionNode(
-          getMentionableName(selectedOption.mentionable, {
-            unitLabel: mentionableUnitLabel,
-          }),
-          serializeMentionable(selectedOption.mentionable),
-        )
+      if (selectedOption.payload.kind === 'back') {
         if (nodeToReplace) {
-          nodeToReplace.replace(mentionNode)
+          const triggerNode = $createTextNode('@')
+          nodeToReplace.replace(triggerNode)
+          triggerNode.selectEnd()
         }
+        setMenuScope('root')
+        return
+      }
 
-        const spaceNode = $createTextNode(' ')
-        mentionNode.insertAfter(spaceNode)
+      if (selectedOption.payload.kind === 'entry') {
+        const nextScope: MentionMenuScope =
+          selectedOption.payload.entryType === 'assistant'
+            ? 'assistant'
+            : selectedOption.payload.entryType === 'file'
+              ? 'file'
+              : 'folder'
+        if (nodeToReplace) {
+          const triggerNode = $createTextNode('@')
+          nodeToReplace.replace(triggerNode)
+          triggerNode.selectEnd()
+        }
+        setMenuScope(nextScope)
+        return
+      }
 
-        spaceNode.select()
+      if (selectedOption.payload.kind === 'assistant') {
+        if (nodeToReplace) {
+          const emptyNode = $createTextNode('')
+          nodeToReplace.replace(emptyNode)
+          emptyNode.select()
+        }
+        onSelectAssistant?.(selectedOption.payload.assistant.id)
         closeMenu()
-      })
+        return
+      }
+
+      if (mentionDisplayMode === 'badge') {
+        if (nodeToReplace) {
+          const emptyNode = $createTextNode('')
+          nodeToReplace.replace(emptyNode)
+          emptyNode.select()
+        }
+        onSelectMentionable?.(selectedOption.payload.mentionable)
+        closeMenu()
+        return
+      }
+
+      const mentionNode = $createMentionNode(
+        getMentionableName(selectedOption.payload.mentionable, {
+          unitLabel: mentionableUnitLabel,
+        }),
+        serializeMentionable(selectedOption.payload.mentionable),
+      )
+      if (nodeToReplace) {
+        nodeToReplace.replace(mentionNode)
+      }
+
+      const spaceNode = $createTextNode(' ')
+      mentionNode.insertAfter(spaceNode)
+
+      spaceNode.select()
+      closeMenu()
     },
-    [editor, mentionDisplayMode, mentionableUnitLabel, onSelectMentionable],
+    [
+      mentionDisplayMode,
+      mentionableUnitLabel,
+      onSelectAssistant,
+      onSelectMentionable,
+    ],
   )
 
   const checkForMentionMatch = useCallback(
@@ -308,16 +564,13 @@ export default function NewMentionsPlugin({
         anchorElementRef,
         { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
       ) =>
-        anchorElementRef.current && results.length
+        anchorElementRef.current && options.length
           ? createPortal(
               <div
                 className="smtcmp-popover smtcmp-smart-space-popover smtcmp-smart-space-mention-popover smtcmp-smart-space-mention-dropdown"
                 data-placement={placement}
               >
-                <div
-                  className="smtcmp-model-select-list smtcmp-smart-space-mention-list"
-                  role="listbox"
-                >
+                <div className="smtcmp-smart-space-mention-list" role="listbox">
                   {options.map((option, i: number) => (
                     <MentionsTypeaheadMenuItem
                       index={i}

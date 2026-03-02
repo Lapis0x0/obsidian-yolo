@@ -7852,7 +7852,9 @@ button.smtcmp-chat-input-model-select {
 }
 
 .smtcmp-smart-space-mention-dropdown {
-  width: 100%;
+  display: block;
+  right: auto;
+  width: min(360px, calc(100% - 32px));
   max-width: min(360px, 100%);
   pointer-events: auto;
   background: transparent;
@@ -7862,21 +7864,27 @@ button.smtcmp-chat-input-model-select {
 }
 
 .smtcmp-smart-space-mention-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   overflow-y: auto;
   background: transparent;
   border: none;
-  padding: 0;
+  padding: 8px;
 }
 
 .smtcmp-smart-space-popover .smtcmp-smart-space-mention-list {
   max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .smtcmp-smart-space-mention-option {
   width: 100%;
   display: flex;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
   border: none;
   background: transparent;
   color: var(--text-normal);
@@ -7886,7 +7894,7 @@ button.smtcmp-chat-input-model-select {
 
 .smtcmp-smart-space-mention-option-icon {
   color: var(--h1-color, var(--interactive-accent));
-  margin-top: 2px;
+  margin-top: 0;
   flex-shrink: 0;
 }
 
@@ -7895,6 +7903,13 @@ button.smtcmp-chat-input-model-select {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
+}
+
+.smtcmp-smart-space-mention-option-text--assistant {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
 .smtcmp-smart-space-mention-option-name {
@@ -7905,28 +7920,37 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-smart-space-mention-option-path {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
-  word-break: break-all;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
+}
+
+.smtcmp-smart-space-mention-option-assistant-description {
+  flex: 1;
+  min-width: 0;
 }
 
 .smtcmp-smart-space-popover
-  .smtcmp-model-select-list
+  .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 4px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
   white-space: normal;
-  line-height: 1.4;
+  line-height: 1.35;
   background: transparent;
   border: none;
   margin: 0;
   box-shadow: none;
-  border-radius: 0;
+  border-radius: 8px;
   transform: none;
 }
 
 .smtcmp-smart-space-popover
-  .smtcmp-model-select-list
+  .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option:focus-visible {
   outline: 1px solid
     color-mix(
@@ -7937,24 +7961,23 @@ button.smtcmp-chat-input-model-select {
 }
 
 .smtcmp-smart-space-popover
-  .smtcmp-model-select-list
+  .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option::before {
   display: none;
 }
 
 .smtcmp-smart-space-popover
-  .smtcmp-model-select-list
+  .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option:hover,
 .smtcmp-smart-space-popover
-  .smtcmp-model-select-list
+  .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option[data-highlighted='true'] {
   background: color-mix(
     in srgb,
     var(--h1-color, var(--interactive-accent)) 14%,
     transparent
   );
-  border-radius: var(--radius-m);
-  padding-left: 8px;
+  border-radius: 8px;
   box-shadow: 0 0 0 1px
     color-mix(
       in srgb,
@@ -7968,6 +7991,12 @@ button.smtcmp-chat-input-model-select {
   padding: 10px 12px;
   font-size: var(--font-ui-small);
   color: var(--text-muted);
+}
+
+.smtcmp-smart-space-mention-option-check {
+  margin-left: auto;
+  margin-top: 0;
+  color: var(--text-accent, var(--interactive-accent));
 }
 
 .smtcmp-smart-space-section-card {
