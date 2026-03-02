@@ -54,6 +54,7 @@ export const en: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
+      retryTitle: 'Retry title',
     },
     composer: {
       title: 'Sparkle',

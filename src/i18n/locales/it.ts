@@ -54,6 +54,7 @@ export const it: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
+      retryTitle: 'Riprova titolo',
     },
     composer: {
       title: 'Sparkle',

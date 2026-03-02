@@ -1544,6 +1544,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               onTogglePinned={(conversationId) => {
                 void toggleConversationPinned(conversationId)
               }}
+              onRetryTitle={async (conversationId) => {
+                const conversation = await getConversationById(conversationId)
+                if (!conversation) {
+                  console.error(
+                    'Failed to retry conversation title generation: conversation not found',
+                    {
+                      conversationId,
+                    },
+                  )
+                  return
+                }
+                await generateConversationTitle(
+                  conversationId,
+                  conversation.messages,
+                  {
+                    force: true,
+                  },
+                )
+              }}
             >
               <History size={18} />
             </ChatListDropdown>

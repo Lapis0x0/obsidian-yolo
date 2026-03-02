@@ -57,6 +57,7 @@ export type TranslationKeys = {
     chatList?: {
       searchPlaceholder?: string
       empty?: string
+      retryTitle?: string
     }
     composer: {
       title: string

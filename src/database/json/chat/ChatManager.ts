@@ -109,6 +109,9 @@ export class ChatManager extends AbstractJsonRepository<
     updates: Partial<
       Omit<ChatConversation, 'id' | 'createdAt' | 'updatedAt' | 'schemaVersion'>
     >,
+    options?: {
+      touchUpdatedAt?: boolean
+    },
   ): Promise<ChatConversation | null> {
     const chat = await this.findById(id)
     if (!chat) return null
@@ -117,10 +120,11 @@ export class ChatManager extends AbstractJsonRepository<
       throw new EmptyChatTitleException()
     }
 
+    const touchUpdatedAt = options?.touchUpdatedAt !== false
     const updatedChat: ChatConversation = {
       ...chat,
       ...updates,
-      updatedAt: Date.now(),
+      updatedAt: touchUpdatedAt ? Date.now() : chat.updatedAt,
     }
 
     await this.update(chat, updatedChat)

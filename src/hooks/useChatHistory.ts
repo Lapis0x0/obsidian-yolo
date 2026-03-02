@@ -72,6 +72,9 @@ type UseChatHistory = {
   generateConversationTitle: (
     id: string,
     messages: ChatMessage[],
+    options?: {
+      force?: boolean
+    },
   ) => Promise<void>
   chatList: ChatConversationMetadata[]
 }
@@ -292,7 +295,14 @@ export function useChatHistory(): UseChatHistory {
   )
 
   const generateConversationTitle = useCallback(
-    async (id: string, messages: ChatMessage[]): Promise<void> => {
+    async (
+      id: string,
+      messages: ChatMessage[],
+      options?: {
+        force?: boolean
+      },
+    ): Promise<void> => {
+      const force = options?.force === true
       const logTitleEvent = (
         reason:
           | 'cooldown_active'
@@ -306,11 +316,12 @@ export function useChatHistory(): UseChatHistory {
         console.debug('[Smart Composer] Auto title skipped', {
           conversationId: id,
           reason,
+          force,
         })
       }
 
       const cooldownUntil = titleGenerationCooldownUntilRef.current.get(id) ?? 0
-      if (cooldownUntil > Date.now()) {
+      if (!force && cooldownUntil > Date.now()) {
         logTitleEvent('cooldown_active')
         return
       }
@@ -339,7 +350,7 @@ export function useChatHistory(): UseChatHistory {
         }
 
         // 如果标题已经命名过了，不需要再次命名
-        if (!isUntitledConversationTitle(conversation.title)) {
+        if (!force && !isUntitledConversationTitle(conversation.title)) {
           logTitleEvent('already_titled')
           return
         }
@@ -390,6 +401,8 @@ export function useChatHistory(): UseChatHistory {
           )}`,
         ].join('\n\n')
 
+        let lastGenerationError: unknown = null
+
         const attemptGenerateTitle = async (
           retryCount: number = 0,
         ): Promise<string | null> => {
@@ -434,7 +447,8 @@ export function useChatHistory(): UseChatHistory {
               .trim()
               .replace(/^["']+|["']+$/g, '')
             return nextTitle || null
-          } catch {
+          } catch (error) {
+            lastGenerationError = error
             if (retryCount < AUTO_TITLE_MAX_RETRIES) {
               const backoffMs = 300 * (retryCount + 1)
               await new Promise((resolve) => setTimeout(resolve, backoffMs))
@@ -449,6 +463,22 @@ export function useChatHistory(): UseChatHistory {
         const generatedTitle = await attemptGenerateTitle()
         if (!generatedTitle) {
           logTitleEvent('llm_generation_failed')
+          const errorMessage =
+            lastGenerationError instanceof Error
+              ? lastGenerationError.message
+              : typeof lastGenerationError === 'string'
+                ? lastGenerationError
+                : lastGenerationError
+                  ? JSON.stringify(lastGenerationError)
+                  : 'unknown_error'
+          console.error(
+            '[Smart Composer] Failed to generate conversation title',
+            {
+              conversationId: id,
+              error: errorMessage,
+              force,
+            },
+          )
           titleGenerationCooldownUntilRef.current.set(
             id,
             Date.now() + AUTO_TITLE_FAILURE_COOLDOWN_MS,
@@ -461,9 +491,15 @@ export function useChatHistory(): UseChatHistory {
         const currentConversation = await chatManager.findById(id)
         if (
           currentConversation &&
-          isUntitledConversationTitle(currentConversation.title)
+          (force || isUntitledConversationTitle(currentConversation.title))
         ) {
-          await chatManager.updateChat(id, { title: generatedTitle })
+          await chatManager.updateChat(
+            id,
+            { title: generatedTitle },
+            {
+              touchUpdatedAt: false,
+            },
+          )
           await fetchChatList()
         }
       } finally {

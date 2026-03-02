@@ -54,6 +54,7 @@ export const zh: TranslationKeys = {
     chatList: {
       searchPlaceholder: '搜索聊天记录',
       empty: '暂无聊天记录',
+      retryTitle: '重试命名',
     },
     composer: {
       title: 'Sparkle 模式',
