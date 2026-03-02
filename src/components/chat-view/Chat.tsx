@@ -86,6 +86,16 @@ const getNewInputMessage = (
   }
 }
 
+const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [
+  'off',
+  'on',
+  'auto',
+  'low',
+  'medium',
+  'high',
+  'extra-high',
+]
+
 export type ChatRef = {
   openNewChat: (selectedBlock?: MentionableBlockData) => void
   addSelectionToChat: (selectedBlock: MentionableBlockData) => void
@@ -130,30 +140,29 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return new PromptGenerator(getRAGEngine, app, settings)
   }, [getRAGEngine, app, settings])
 
-  const initialReasoningLevel = useMemo(() => {
-    const initialModel =
-      settings.chatModels.find((m) => m.id === settings.chatModelId) ?? null
-    return getDefaultReasoningLevel(initialModel)
-  }, [settings.chatModelId, settings.chatModels])
-
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
       if (!value) return null
-      const candidates: ReasoningLevel[] = [
-        'off',
-        'on',
-        'auto',
-        'low',
-        'medium',
-        'high',
-        'extra-high',
-      ]
-      return candidates.includes(value as ReasoningLevel)
+      return REASONING_LEVEL_CANDIDATES.includes(value as ReasoningLevel)
         ? (value as ReasoningLevel)
         : null
     },
     [],
   )
+
+  const initialReasoningLevel = useMemo(() => {
+    const initialModel =
+      settings.chatModels.find((m) => m.id === settings.chatModelId) ?? null
+    const rememberedLevel = normalizeReasoningLevel(
+      settings.chatOptions.reasoningLevelByModelId?.[settings.chatModelId],
+    )
+    return rememberedLevel ?? getDefaultReasoningLevel(initialModel)
+  }, [
+    normalizeReasoningLevel,
+    settings.chatModelId,
+    settings.chatModels,
+    settings.chatOptions.reasoningLevelByModelId,
+  ])
 
   const [autoAttachCurrentFile, setAutoAttachCurrentFile] = useState(true)
   const conversationAutoAttachRef = useRef<Map<string, boolean>>(new Map())
@@ -240,6 +249,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     settings.chatModelId,
   )
 
+  const getReasoningLevelForModelId = useCallback(
+    (modelId?: string | null): ReasoningLevel => {
+      if (!modelId) return 'off'
+      const model = settings.chatModels.find((m) => m.id === modelId) ?? null
+      const rememberedLevel = normalizeReasoningLevel(
+        settings.chatOptions.reasoningLevelByModelId?.[modelId],
+      )
+      return rememberedLevel ?? getDefaultReasoningLevel(model)
+    },
+    [
+      normalizeReasoningLevel,
+      settings.chatModels,
+      settings.chatOptions.reasoningLevelByModelId,
+    ],
+  )
+
+  const persistReasoningLevelForModel = useCallback(
+    async (modelId: string, level: ReasoningLevel) => {
+      if (!modelId) return
+      const currentMap = settings.chatOptions.reasoningLevelByModelId ?? {}
+      if (currentMap[modelId] === level) return
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            reasoningLevelByModelId: {
+              ...currentMap,
+              [modelId]: level,
+            },
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist reasoning level preference', error)
+      }
+    },
+    [setSettings, settings],
+  )
+
   const applyAssistantDefaultModel = useCallback(
     (assistantModelId?: string | null) => {
       if (!assistantModelId) {
@@ -256,8 +304,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         currentConversationId,
         assistantModelId,
       )
+      const nextReasoningLevel = getReasoningLevelForModelId(assistantModelId)
+      setReasoningLevel(nextReasoningLevel)
+      conversationReasoningLevelRef.current.set(
+        currentConversationId,
+        nextReasoningLevel,
+      )
+      setInputMessage((prev) => ({
+        ...prev,
+        reasoningLevel: nextReasoningLevel,
+      }))
     },
-    [currentConversationId, settings.chatModels],
+    [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
   )
 
   // Per-message model mapping for historical user messages
@@ -440,14 +498,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationModelIdRef.current.get(conversationId) ??
           selectedAssistant?.modelId ??
           settings.chatModelId
-        const modelForConversation =
-          settings.chatModels.find((m) => m.id === modelFromRef) ?? null
         setConversationModelId(modelFromRef)
         const storedReasoningLevel = normalizeReasoningLevel(
           conversation.reasoningLevel,
         )
         const resolvedReasoningLevel =
-          storedReasoningLevel ?? getDefaultReasoningLevel(modelForConversation)
+          storedReasoningLevel ?? getReasoningLevelForModelId(modelFromRef)
         setReasoningLevel(resolvedReasoningLevel)
         conversationReasoningLevelRef.current.set(
           conversationId,
@@ -480,9 +536,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       abortActiveStreams,
       getConversationById,
       settings.chatModelId,
-      settings.chatModels,
       settings.chatOptions.chatMode,
       selectedAssistant?.modelId,
+      getReasoningLevelForModelId,
       normalizeReasoningLevel,
     ],
   )
@@ -509,9 +565,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       selectedAssistant?.modelId ?? settings.chatModelId
     conversationModelIdRef.current.set(newId, defaultConversationModelId)
     setConversationModelId(defaultConversationModelId)
-    const defaultReasoningLevel = getDefaultReasoningLevel(
-      settings.chatModels.find((m) => m.id === defaultConversationModelId) ??
-        null,
+    const defaultReasoningLevel = getReasoningLevelForModelId(
+      defaultConversationModelId,
     )
     setReasoningLevel(defaultReasoningLevel)
     conversationReasoningLevelRef.current.set(newId, defaultReasoningLevel)
@@ -1786,6 +1841,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 })
                 setConversationModelId(id)
                 conversationModelIdRef.current.set(currentConversationId, id)
+                const nextReasoningLevel = getReasoningLevelForModelId(id)
+                setReasoningLevel(nextReasoningLevel)
+                conversationReasoningLevelRef.current.set(
+                  currentConversationId,
+                  nextReasoningLevel,
+                )
+                setInputMessage((prev) => ({
+                  ...prev,
+                  reasoningLevel: nextReasoningLevel,
+                }))
               }}
               reasoningLevel={messageReasoningLevel}
               onReasoningChange={(level) => {
@@ -1809,6 +1874,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   currentConversationId,
                   level,
                 )
+                void persistReasoningLevelForModel(conversationModelId, level)
               }}
             />
           )
@@ -1928,6 +1994,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onModelChange={(id) => {
             setConversationModelId(id)
             conversationModelIdRef.current.set(currentConversationId, id)
+            const nextReasoningLevel = getReasoningLevelForModelId(id)
+            setReasoningLevel(nextReasoningLevel)
+            conversationReasoningLevelRef.current.set(
+              currentConversationId,
+              nextReasoningLevel,
+            )
+            setInputMessage((prev) => ({
+              ...prev,
+              reasoningLevel: nextReasoningLevel,
+            }))
           }}
           reasoningLevel={reasoningLevel}
           onReasoningChange={(level) => {
@@ -1936,6 +2012,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               currentConversationId,
               level,
             )
+            void persistReasoningLevelForModel(conversationModelId, level)
             setInputMessage((prev) => ({
               ...prev,
               reasoningLevel: level,

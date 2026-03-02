@@ -41,6 +41,7 @@ describe('parseSmartComposerSettings', () => {
       mentionDisplayMode: 'inline',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
+      reasoningLevelByModelId: {},
     })
 
     expect(result.continuationOptions).toMatchObject({

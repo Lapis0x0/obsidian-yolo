@@ -266,6 +266,13 @@ export const smartComposerSettingsSchema = z.object({
       chatMode: z.enum(['chat', 'agent']).optional(),
       // Whether the user has acknowledged the first-time agent mode warning
       agentModeWarningConfirmed: z.boolean().optional(),
+      // Persist preferred reasoning level per model id in Chat input
+      reasoningLevelByModelId: z
+        .record(
+          z.string(),
+          z.enum(['off', 'on', 'auto', 'low', 'medium', 'high', 'extra-high']),
+        )
+        .optional(),
       // Collapse older non-pinned conversations into an archive group
       historyArchiveEnabled: z.boolean().optional(),
       // Maximum number of recent non-pinned conversations shown before archive
@@ -278,6 +285,7 @@ export const smartComposerSettingsSchema = z.object({
       baseModelSpecialPrompt: '',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
+      reasoningLevelByModelId: {},
       historyArchiveEnabled: true,
       historyArchiveThreshold: 50,
     }),
