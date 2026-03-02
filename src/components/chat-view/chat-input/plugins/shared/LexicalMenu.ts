@@ -438,6 +438,15 @@ export function LexicalMenu<TOption extends MenuOption>({
           const event = payload
           event.preventDefault()
           event.stopImmediatePropagation()
+
+          if (shouldSplitNodeWithQuery && resolution.match != null) {
+            const match = resolution.match
+            editor.update(() => {
+              const textNodeContainingQuery = $splitNodeContainingQuery(match)
+              textNodeContainingQuery?.remove()
+            })
+          }
+
           close()
           return true
         },
@@ -486,7 +495,9 @@ export function LexicalMenu<TOption extends MenuOption>({
     close,
     editor,
     options,
+    resolution.match,
     selectedIndex,
+    shouldSplitNodeWithQuery,
     updateSelectedIndex,
     commandPriority,
   ])
