@@ -2106,6 +2106,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onDeleteFromAll={handleMentionableDeleteFromAll}
           currentAssistantId={conversationAssistantId}
           onSelectAssistantForConversation={handleConversationAssistantSelect}
+          currentChatMode={chatMode}
+          onSelectChatModeForConversation={handleChatModeChange}
+          allowAgentModeOption={Platform.isDesktop}
         />
       </div>
     </div>

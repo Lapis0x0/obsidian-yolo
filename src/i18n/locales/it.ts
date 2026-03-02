@@ -781,6 +781,7 @@ export const it: TranslationKeys = {
     annotations: 'Annotazioni',
     mentionMenu: {
       back: 'Torna indietro',
+      entryMode: 'Modalita',
       entryAssistant: 'Assistente',
       entryFile: 'File',
       entryFolder: 'Cartella',

@@ -789,6 +789,7 @@ export const en: TranslationKeys = {
     annotations: 'Annotations',
     mentionMenu: {
       back: 'Back',
+      entryMode: 'Mode',
       entryAssistant: 'Assistant',
       entryFile: 'File',
       entryFolder: 'Folder',

@@ -700,6 +700,7 @@ export type TranslationKeys = {
     annotations: string
     mentionMenu?: {
       back?: string
+      entryMode?: string
       entryAssistant?: string
       entryFile?: string
       entryFolder?: string

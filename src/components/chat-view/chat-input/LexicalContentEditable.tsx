@@ -57,6 +57,9 @@ export type LexicalContentEditableProps = {
   assistants?: Assistant[]
   currentAssistantId?: string
   onSelectAssistant?: (assistantId: string) => void
+  currentChatMode?: 'chat' | 'agent'
+  onSelectChatMode?: (mode: 'chat' | 'agent') => void
+  allowAgentModeOption?: boolean
   plugins?: {
     onEnter?: {
       onVaultChat: () => void
@@ -88,6 +91,9 @@ export default function LexicalContentEditable({
   assistants = [],
   currentAssistantId,
   onSelectAssistant,
+  currentChatMode,
+  onSelectChatMode,
+  allowAgentModeOption = true,
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
@@ -185,6 +191,9 @@ export default function LexicalContentEditable({
         assistants={assistants}
         currentAssistantId={currentAssistantId}
         onSelectAssistant={onSelectAssistant}
+        currentChatMode={currentChatMode}
+        onSelectChatMode={onSelectChatMode}
+        allowAgentModeOption={allowAgentModeOption}
         searchFoldersByQuery={searchFoldersByQuery}
       />
       <OnChangePlugin

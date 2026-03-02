@@ -16,6 +16,8 @@ import {
   ChevronRight,
   FileIcon,
   FolderClosedIcon,
+  Infinity as InfinityIcon,
+  MessageSquare,
 } from 'lucide-react'
 import {
   type ReactNode,
@@ -94,8 +96,9 @@ const AtSignMentionsRegexAliasRegex = new RegExp(
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
 
 type MentionMenuMode = 'direct-search' | 'entry'
-type MentionMenuScope = 'root' | 'assistant' | 'file' | 'folder'
-type MentionEntryOptionType = 'assistant' | 'file' | 'folder'
+type MentionMenuScope = 'root' | 'assistant' | 'file' | 'folder' | 'mode'
+type MentionEntryOptionType = 'assistant' | 'file' | 'folder' | 'mode'
+type MentionChatMode = 'chat' | 'agent'
 
 type MentionTypeaheadOptionPayload =
   | {
@@ -111,6 +114,13 @@ type MentionTypeaheadOptionPayload =
   | {
       kind: 'assistant'
       assistant: Assistant
+      isCurrent: boolean
+    }
+  | {
+      kind: 'mode'
+      mode: MentionChatMode
+      label: string
+      subtitle?: string
       isCurrent: boolean
     }
   | {
@@ -171,6 +181,10 @@ class MentionTypeaheadOption extends MenuOption {
       key = `assistant:${payload.assistant.id}`
       name = payload.assistant.name
       subtitle = payload.assistant.description ?? null
+    } else if (payload.kind === 'mode') {
+      key = `mode:${payload.mode}`
+      name = payload.label
+      subtitle = payload.subtitle ?? null
     } else {
       const mentionable = payload.mentionable
       switch (mentionable.type) {
@@ -220,6 +234,7 @@ function MentionsTypeaheadMenuItem({
   let iconNode: ReactNode = null
   const isInlineMetaOption =
     option.payload.kind === 'assistant' ||
+    option.payload.kind === 'mode' ||
     (option.payload.kind === 'mentionable' &&
       option.payload.mentionable.type === 'folder' &&
       Boolean(option.subtitle))
@@ -232,6 +247,13 @@ function MentionsTypeaheadMenuItem({
     if (option.payload.entryType === 'assistant') {
       iconNode = (
         <Bot size={14} className="smtcmp-smart-space-mention-option-icon" />
+      )
+    } else if (option.payload.entryType === 'mode') {
+      iconNode = (
+        <MessageSquare
+          size={14}
+          className="smtcmp-smart-space-mention-option-icon"
+        />
       )
     } else if (option.payload.entryType === 'file') {
       iconNode = (
@@ -254,6 +276,19 @@ function MentionsTypeaheadMenuItem({
       14,
       'smtcmp-smart-space-mention-option-icon',
     )
+  } else if (option.payload.kind === 'mode') {
+    iconNode =
+      option.payload.mode === 'agent' ? (
+        <InfinityIcon
+          size={14}
+          className="smtcmp-smart-space-mention-option-icon"
+        />
+      ) : (
+        <MessageSquare
+          size={14}
+          className="smtcmp-smart-space-mention-option-icon"
+        />
+      )
   } else {
     const Icon = getMentionableIcon(option.payload.mentionable)
     if (Icon) {
@@ -301,9 +336,14 @@ function MentionsTypeaheadMenuItem({
           </div>
         )}
       </div>
-      {option.payload.kind === 'assistant' && option.payload.isCurrent && (
-        <Check size={12} className="smtcmp-smart-space-mention-option-check" />
-      )}
+      {(option.payload.kind === 'assistant' ||
+        option.payload.kind === 'mode') &&
+        option.payload.isCurrent && (
+          <Check
+            size={12}
+            className="smtcmp-smart-space-mention-option-check"
+          />
+        )}
       {option.payload.kind === 'entry' && (
         <ChevronRight
           size={14}
@@ -325,6 +365,9 @@ export default function NewMentionsPlugin({
   assistants = [],
   currentAssistantId,
   onSelectAssistant,
+  currentChatMode,
+  onSelectChatMode,
+  allowAgentModeOption = true,
   searchFoldersByQuery,
 }: {
   searchResultByQuery: (query: string) => SearchableMentionable[]
@@ -337,6 +380,9 @@ export default function NewMentionsPlugin({
   assistants?: Assistant[]
   currentAssistantId?: string
   onSelectAssistant?: (assistantId: string) => void
+  currentChatMode?: MentionChatMode
+  onSelectChatMode?: (mode: MentionChatMode) => void
+  allowAgentModeOption?: boolean
   searchFoldersByQuery?: (query: string) => MentionableFolder[]
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
@@ -417,6 +463,12 @@ export default function NewMentionsPlugin({
           label: t('chat.mentionMenu.entryFolder', '文件夹'),
         },
       ]
+      if (onSelectChatMode) {
+        entryOptions.unshift({
+          entryType: 'mode',
+          label: t('chat.mentionMenu.entryMode', '模式'),
+        })
+      }
       return entryOptions
         .filter((entry) => {
           if (!normalizedQuery) return true
@@ -431,6 +483,53 @@ export default function NewMentionsPlugin({
             }),
         )
         .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+    }
+
+    if (menuScope === 'mode') {
+      const modeOptions: MentionChatMode[] = allowAgentModeOption
+        ? ['chat', 'agent']
+        : ['chat']
+      const modeTypeaheadOptions = modeOptions
+        .map((mode) => {
+          const label =
+            mode === 'agent'
+              ? t('chatMode.agent', 'Agent')
+              : t('chatMode.chat', 'Chat')
+          const subtitle =
+            mode === 'agent'
+              ? t('chatMode.agentDesc', 'Enable tool calling capabilities')
+              : t('chatMode.chatDesc', 'Normal conversation mode')
+          return {
+            mode,
+            label,
+            subtitle,
+          }
+        })
+        .filter((option) => {
+          if (!normalizedQuery) return true
+          return (
+            option.label.toLowerCase().includes(normalizedQuery) ||
+            option.subtitle.toLowerCase().includes(normalizedQuery)
+          )
+        })
+        .map(
+          (option) =>
+            new MentionTypeaheadOption({
+              kind: 'mode',
+              mode: option.mode,
+              label: option.label,
+              subtitle: option.subtitle,
+              isCurrent: option.mode === (currentChatMode ?? 'chat'),
+            }),
+        )
+
+      return [
+        new MentionTypeaheadOption({
+          kind: 'back',
+          label: t('chat.mentionMenu.back', '返回上一级'),
+        }),
+        ...modeTypeaheadOptions,
+      ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
     }
 
     if (menuScope === 'assistant') {
@@ -505,9 +604,12 @@ export default function NewMentionsPlugin({
   }, [
     assistants,
     currentAssistantId,
+    currentChatMode,
     folderResults,
+    allowAgentModeOption,
     menuMode,
     menuScope,
+    onSelectChatMode,
     normalizedQuery,
     queryString,
     results,
@@ -535,9 +637,11 @@ export default function NewMentionsPlugin({
         const nextScope: MentionMenuScope =
           selectedOption.payload.entryType === 'assistant'
             ? 'assistant'
-            : selectedOption.payload.entryType === 'file'
-              ? 'file'
-              : 'folder'
+            : selectedOption.payload.entryType === 'mode'
+              ? 'mode'
+              : selectedOption.payload.entryType === 'file'
+                ? 'file'
+                : 'folder'
         if (nodeToReplace) {
           const triggerNode = $createTextNode('@')
           nodeToReplace.replace(triggerNode)
@@ -554,6 +658,17 @@ export default function NewMentionsPlugin({
           emptyNode.select()
         }
         onSelectAssistant?.(selectedOption.payload.assistant.id)
+        closeMenu()
+        return
+      }
+
+      if (selectedOption.payload.kind === 'mode') {
+        if (nodeToReplace) {
+          const emptyNode = $createTextNode('')
+          nodeToReplace.replace(emptyNode)
+          emptyNode.select()
+        }
+        onSelectChatMode?.(selectedOption.payload.mode)
         closeMenu()
         return
       }
@@ -589,6 +704,7 @@ export default function NewMentionsPlugin({
       mentionDisplayMode,
       mentionableUnitLabel,
       onSelectAssistant,
+      onSelectChatMode,
       onSelectMentionable,
     ],
   )

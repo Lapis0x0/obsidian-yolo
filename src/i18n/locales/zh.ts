@@ -744,6 +744,7 @@ export const zh: TranslationKeys = {
     annotations: '注释',
     mentionMenu: {
       back: '返回上一级',
+      entryMode: '模式',
       entryAssistant: '助手',
       entryFile: '文件',
       entryFolder: '文件夹',
