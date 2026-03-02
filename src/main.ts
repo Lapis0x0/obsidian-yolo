@@ -218,6 +218,7 @@ export default class SmartComposerPlugin extends Plugin {
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
       autoSend?: boolean
     },
   ) {

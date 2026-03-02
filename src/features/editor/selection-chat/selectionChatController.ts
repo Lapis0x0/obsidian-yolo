@@ -41,6 +41,7 @@ type SelectionChatControllerDeps = {
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
       autoSend?: boolean
     },
   ) => void
@@ -70,6 +71,7 @@ export class SelectionChatController {
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
       autoSend?: boolean
     },
   ) => void
@@ -313,6 +315,7 @@ export class SelectionChatController {
       initialPrompt: behavior === 'preset' ? prompt : undefined,
       initialInput: behavior === 'custom' ? prompt : undefined,
       editContextText: selectedText,
+      editSelectionFrom: editor.getCursor('from'),
       autoSend: behavior === 'preset',
     })
   }
@@ -342,10 +345,10 @@ export class SelectionChatController {
       source: 'selection',
     }
 
-    const resolvedPrompt =
+    const basePrompt =
       prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     this.showQuickAskWithAutoSend(editor, editorView, {
-      prompt: resolvedPrompt,
+      prompt: basePrompt,
       mentionables: [mentionable],
     })
   }

@@ -78,11 +78,13 @@ type QuickAskPanelProps = {
   view: EditorView
   contextText: string
   fileTitle: string
+  sourceFilePath?: string
   initialPrompt?: string
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskMode
   initialInput?: string
   editContextText?: string
+  editSelectionFrom?: { line: number; ch: number }
   autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
@@ -164,11 +166,13 @@ export function QuickAskPanel({
   view: _view,
   contextText,
   fileTitle,
+  sourceFilePath,
   initialPrompt,
   initialMentionables,
   initialMode,
   initialInput,
   editContextText,
+  editSelectionFrom,
   autoSend,
   onClose,
   containerRef,
@@ -281,6 +285,12 @@ export function QuickAskPanel({
     },
     [editContextText],
   )
+  const resolveEditTargetFile = useCallback(() => {
+    if (sourceFilePath) {
+      return app.vault.getFileByPath(sourceFilePath)
+    }
+    return app.workspace.getActiveFile()
+  }, [app, sourceFilePath])
   const renderAssistantBlocks = useCallback(
     (
       rawContent: string | undefined | null,
@@ -859,8 +869,8 @@ export function QuickAskPanel({
       if (!instruction.trim()) return
       const resolvedInstruction = buildEditInstruction(instruction.trim())
 
-      const activeFile = app.workspace.getActiveFile()
-      if (!activeFile) {
+      const targetFile = resolveEditTargetFile()
+      if (!targetFile) {
         new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
         return
       }
@@ -880,13 +890,22 @@ export function QuickAskPanel({
       setInputText('')
 
       try {
-        const currentContent = await readTFileContent(activeFile, app.vault)
+        const currentContent = await readTFileContent(targetFile, app.vault)
+        const selectedContext = editContextText ?? ''
+        const scopedToSelection =
+          mode === 'edit' &&
+          selectedContext.trim().length > 0 &&
+          !!editSelectionFrom
+
+        const editSourceText = scopedToSelection
+          ? selectedContext
+          : currentContent
 
         // Generate SEARCH/REPLACE blocks
         const response = await generateEditContent({
           instruction: resolvedInstruction,
-          currentFile: activeFile,
-          currentFileContent: currentContent,
+          currentFile: targetFile,
+          currentFileContent: editSourceText,
           providerClient,
           model,
         })
@@ -895,7 +914,7 @@ export function QuickAskPanel({
 
         const structuredEditResult = tryApplyStructuredEdits({
           rawEdits: response,
-          originalContent: currentContent,
+          originalContent: editSourceText,
         })
         if (!structuredEditResult) {
           new Notice(
@@ -907,6 +926,20 @@ export function QuickAskPanel({
         const { newContent, errors, appliedCount, blocks } =
           structuredEditResult
 
+        const finalContent =
+          scopedToSelection && editSelectionFrom
+            ? (() => {
+                const head = _editor.getRange(
+                  { line: 0, ch: 0 },
+                  editSelectionFrom,
+                )
+                const tail = currentContent.slice(
+                  head.length + selectedContext.length,
+                )
+                return head + newContent + tail
+              })()
+            : newContent
+
         const canApplyStructuredLocally =
           structuredEditResult.isPureStructuredScript && appliedCount > 0
 
@@ -914,7 +947,7 @@ export function QuickAskPanel({
           console.error(
             '[QuickAsk Edit] Structured edits did not match file.',
             {
-              filePath: activeFile.path,
+              filePath: targetFile.path,
               blockCount: blocks.length,
               appliedCount,
               errors,
@@ -945,9 +978,9 @@ export function QuickAskPanel({
 
         // Open Apply Review
         await plugin.openApplyReview({
-          file: activeFile,
+          file: targetFile,
           originalContent: currentContent,
-          newContent,
+          newContent: finalContent,
         } satisfies ApplyViewState)
 
         // Close Quick Ask
@@ -960,7 +993,20 @@ export function QuickAskPanel({
         setRunStatus(null)
       }
     },
-    [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
+    [
+      app,
+      buildEditInstruction,
+      editContextText,
+      editSelectionFrom,
+      _editor,
+      isStreaming,
+      mode,
+      model,
+      onClose,
+      providerClient,
+      resolveEditTargetFile,
+      t,
+    ],
   )
 
   // Submit edit-direct mode - generate and apply edits directly without confirmation
@@ -970,8 +1016,8 @@ export function QuickAskPanel({
       if (!instruction.trim()) return
       const resolvedInstruction = buildEditInstruction(instruction.trim())
 
-      const activeFile = app.workspace.getActiveFile()
-      if (!activeFile) {
+      const targetFile = resolveEditTargetFile()
+      if (!targetFile) {
         new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
         return
       }
@@ -991,13 +1037,22 @@ export function QuickAskPanel({
       setInputText('')
 
       try {
-        const currentContent = await readTFileContent(activeFile, app.vault)
+        const currentContent = await readTFileContent(targetFile, app.vault)
+        const selectedContext = editContextText ?? ''
+        const scopedToSelection =
+          mode === 'edit-direct' &&
+          selectedContext.trim().length > 0 &&
+          !!editSelectionFrom
+
+        const editSourceText = scopedToSelection
+          ? selectedContext
+          : currentContent
 
         // Generate edit blocks
         const response = await generateEditContent({
           instruction: resolvedInstruction,
-          currentFile: activeFile,
-          currentFileContent: currentContent,
+          currentFile: targetFile,
+          currentFileContent: editSourceText,
           providerClient,
           model,
         })
@@ -1006,7 +1061,7 @@ export function QuickAskPanel({
 
         const structuredEditResult = tryApplyStructuredEdits({
           rawEdits: response,
-          originalContent: currentContent,
+          originalContent: editSourceText,
         })
         if (!structuredEditResult) {
           new Notice(
@@ -1018,6 +1073,20 @@ export function QuickAskPanel({
         const { newContent, errors, appliedCount, blocks } =
           structuredEditResult
 
+        const finalContent =
+          scopedToSelection && editSelectionFrom
+            ? (() => {
+                const head = _editor.getRange(
+                  { line: 0, ch: 0 },
+                  editSelectionFrom,
+                )
+                const tail = currentContent.slice(
+                  head.length + selectedContext.length,
+                )
+                return head + newContent + tail
+              })()
+            : newContent
+
         const canApplyStructuredLocally =
           structuredEditResult.isPureStructuredScript && appliedCount > 0
 
@@ -1025,7 +1094,7 @@ export function QuickAskPanel({
           console.error(
             '[QuickAsk Edit-Direct] Structured edits did not match file.',
             {
-              filePath: activeFile.path,
+              filePath: targetFile.path,
               blockCount: blocks.length,
               appliedCount,
               errors,
@@ -1062,14 +1131,14 @@ export function QuickAskPanel({
         }
 
         // Apply changes directly to file
-        await app.vault.modify(activeFile, newContent)
+        await app.vault.modify(targetFile, finalContent)
 
         const successMessage = t(
           'quickAsk.editApplied',
           `Successfully applied {appliedCount} edit(s) to {fileName}`,
         )
           .replace('{appliedCount}', String(appliedCount))
-          .replace('{fileName}', activeFile.name)
+          .replace('{fileName}', targetFile.name)
         new Notice(successMessage)
 
         // Close Quick Ask
@@ -1082,7 +1151,20 @@ export function QuickAskPanel({
         setRunStatus(null)
       }
     },
-    [app, buildEditInstruction, isStreaming, model, onClose, providerClient, t],
+    [
+      app,
+      buildEditInstruction,
+      editContextText,
+      editSelectionFrom,
+      _editor,
+      isStreaming,
+      mode,
+      model,
+      onClose,
+      providerClient,
+      resolveEditTargetFile,
+      t,
+    ],
   )
 
   useEffect(() => {
