@@ -4,6 +4,7 @@ import { ChatView } from '../../ChatView'
 import { ChatProps } from '../../components/chat-view/Chat'
 import { CHAT_VIEW_TYPE } from '../../constants'
 import type SmartComposerPlugin from '../../main'
+import type { MentionableBlockData } from '../../types/mentionable'
 import { getMentionableBlockData } from '../../utils/obsidian'
 
 type ChatViewNavigatorDeps = {
@@ -77,6 +78,38 @@ export class ChatViewNavigator {
 
     const chatView = leaves[0].view
     chatView.addSelectionToChat(data)
+    chatView.focusMessage()
+  }
+
+  async openChatWithSelectionAndPrefill(
+    selectedBlock: MentionableBlockData,
+    text: string,
+  ) {
+    const leaves = this.plugin.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
+    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
+      await this.activateChatView({
+        selectedBlock,
+      })
+      const newLeaves =
+        this.plugin.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
+      if (newLeaves.length === 0 || !(newLeaves[0].view instanceof ChatView)) {
+        return
+      }
+      const chatView = newLeaves[0].view
+      if (text) {
+        chatView.insertTextToInput(text)
+      }
+      chatView.focusMessage()
+      return
+    }
+
+    await this.plugin.app.workspace.revealLeaf(leaves[0])
+
+    const chatView = leaves[0].view
+    chatView.syncSelectionToChat(selectedBlock)
+    if (text) {
+      chatView.insertTextToInput(text)
+    }
     chatView.focusMessage()
   }
 

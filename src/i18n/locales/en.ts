@@ -221,8 +221,9 @@ export const en: TranslationKeys = {
       actionLabelPlaceholder: 'For example, explain',
       actionMode: 'Mode',
       actionModeDesc:
-        'Ask opens Quick Ask and auto-sends; rewrite opens Quick Ask edit mode to generate a preview.',
+        'Ask opens Quick Ask and auto-sends; Add to chat opens sidebar chat and prefills the input box; rewrite opens Quick Ask edit mode to generate a preview.',
       actionModeAsk: 'Ask (Quick Ask)',
+      actionModeChatInput: 'Add to chat',
       actionModeRewrite: 'Rewrite (preview)',
       actionRewriteType: 'Rewrite type',
       actionRewriteTypeDesc: 'Choose whether rewrite requires a prompt',

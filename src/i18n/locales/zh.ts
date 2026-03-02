@@ -192,8 +192,9 @@ export const zh: TranslationKeys = {
       actionLabelPlaceholder: '例如：深入解释',
       actionMode: '执行方式',
       actionModeDesc:
-        '问答会打开 Quick Ask 并自动发送；改写会打开 Quick Ask 的编辑模式生成预览。',
+        '问答会打开 Quick Ask 并自动发送；添加到对话框会打开 Chat 并预填输入框；改写会打开 Quick Ask 编辑模式生成预览。',
       actionModeAsk: '问答（Quick Ask）',
+      actionModeChatInput: '添加到对话框',
       actionModeRewrite: '改写（生成预览）',
       actionRewriteType: '改写类型',
       actionRewriteTypeDesc: '选择改写是否需要输入指令',

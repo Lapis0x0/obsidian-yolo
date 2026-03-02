@@ -14,7 +14,10 @@ import {
 import { CHAT_VIEW_TYPE } from '../../../constants'
 import type SmartComposerPlugin from '../../../main'
 import { SmartComposerSettings } from '../../../settings/schema/setting.types'
-import type { Mentionable } from '../../../types/mentionable'
+import type {
+  Mentionable,
+  MentionableBlockData,
+} from '../../../types/mentionable'
 import { getMentionableBlockData } from '../../../utils/obsidian'
 
 export type PendingSelectionRewrite = {
@@ -46,6 +49,10 @@ type SelectionChatControllerDeps = {
     view: EditorView,
     options: { prompt: string; mentionables: Mentionable[] },
   ) => void
+  openChatWithSelectionAndPrefill: (
+    selectedBlock: MentionableBlockData,
+    text: string,
+  ) => Promise<void>
   isSmartSpaceOpen: () => boolean
 }
 
@@ -71,6 +78,10 @@ export class SelectionChatController {
     view: EditorView,
     options: { prompt: string; mentionables: Mentionable[] },
   ) => void
+  private readonly openChatWithSelectionAndPrefill: (
+    selectedBlock: MentionableBlockData,
+    text: string,
+  ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
 
   private selectionManager: SelectionManager | null = null
@@ -86,6 +97,7 @@ export class SelectionChatController {
     this.getEditorView = deps.getEditorView
     this.showQuickAskWithOptions = deps.showQuickAskWithOptions
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
+    this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
   }
 
@@ -228,6 +240,11 @@ export class SelectionChatController {
       return
     }
 
+    if (mode === 'chat-input') {
+      await this.addToChatInput(editor, instruction)
+      return
+    }
+
     const prompt = instruction.trim()
     if (!prompt) {
       console.warn('Selection action has empty prompt:', actionId)
@@ -331,5 +348,23 @@ export class SelectionChatController {
       prompt: resolvedPrompt,
       mentionables: [mentionable],
     })
+  }
+
+  private async addToChatInput(editor: Editor, prompt?: string) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!editor || !view) {
+      new Notice('无法获取当前编辑器')
+      return
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      new Notice('无法创建选区数据')
+      return
+    }
+
+    const resolvedPrompt =
+      prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
+    await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
   }
 }

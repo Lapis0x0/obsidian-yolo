@@ -5,7 +5,7 @@ import { useSettings } from '../../contexts/settings-context'
 
 import type { SelectionInfo } from './SelectionManager'
 
-export type SelectionActionMode = 'ask' | 'rewrite'
+export type SelectionActionMode = 'ask' | 'rewrite' | 'chat-input'
 export type SelectionActionRewriteBehavior = 'custom' | 'preset'
 
 export type SelectionAction = {

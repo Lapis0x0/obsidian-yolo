@@ -347,14 +347,14 @@ export const smartComposerSettingsSchema = z.object({
           }),
         )
         .optional(),
-      // Selection Chat custom actions (Quick Ask only)
+      // Selection Chat custom actions
       selectionChatActions: z
         .array(
           z.object({
             id: z.string(),
             label: z.string(),
             instruction: z.string(),
-            mode: z.enum(['ask', 'rewrite']).optional(),
+            mode: z.enum(['ask', 'rewrite', 'chat-input']).optional(),
             rewriteBehavior: z.enum(['custom', 'preset']).optional(),
             enabled: z.boolean().default(true),
           }),

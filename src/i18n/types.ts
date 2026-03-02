@@ -653,6 +653,7 @@ export type TranslationKeys = {
       actionMode: string
       actionModeDesc: string
       actionModeAsk: string
+      actionModeChatInput: string
       actionModeRewrite: string
       actionRewriteType: string
       actionRewriteTypeDesc: string
