@@ -10,6 +10,7 @@ import { useLanguage } from '../contexts/language-context'
 import { useSettings } from '../contexts/settings-context'
 import { getChatModelClient } from '../core/llm/manager'
 import { ChatConversationMetadata } from '../database/json/chat/types'
+import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import {
   ChatAssistantMessage,
   ChatMessage,
@@ -116,6 +117,12 @@ export function useChatHistory(): UseChatHistory {
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
+      const compactedMessages = await compactConversationMessagesForStorage({
+        app,
+        conversationId: id,
+        messages: serializedMessages,
+        previousMessages: existingConversation?.messages,
+      })
 
       if (existingConversation) {
         const nextOverrides =
@@ -123,7 +130,7 @@ export function useChatHistory(): UseChatHistory {
             ? (existingConversation.overrides ?? null)
             : overrides
         if (
-          isEqual(existingConversation.messages, serializedMessages) &&
+          isEqual(existingConversation.messages, compactedMessages) &&
           isEqual(
             existingConversation.overrides ?? null,
             nextOverrides ?? null,
@@ -133,7 +140,7 @@ export function useChatHistory(): UseChatHistory {
           return
         }
         await chatManager.updateChat(existingConversation.id, {
-          messages: serializedMessages,
+          messages: compactedMessages,
           overrides:
             overrides === undefined
               ? (existingConversation.overrides ?? null)
@@ -147,7 +154,7 @@ export function useChatHistory(): UseChatHistory {
         await chatManager.createChat({
           id,
           title: defaultTitle,
-          messages: serializedMessages,
+          messages: compactedMessages,
           overrides: overrides ?? null,
           reasoningLevel,
         })
@@ -155,7 +162,7 @@ export function useChatHistory(): UseChatHistory {
 
       await fetchChatList()
     },
-    [chatManager, fetchChatList],
+    [app, chatManager, fetchChatList],
   )
 
   const debouncedCreateOrUpdateConversation = useMemo(
@@ -528,6 +535,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         role: 'user',
         content: message.content,
         promptContent: message.promptContent,
+        snapshotRef: message.snapshotRef,
         id: message.id,
         mentionables: message.mentionables.map(serializeMentionable),
         reasoningLevel: message.reasoningLevel,
@@ -562,6 +570,7 @@ const deserializeChatMessage = (
         role: 'user',
         content: message.content,
         promptContent: message.promptContent,
+        snapshotRef: message.snapshotRef,
         id: message.id,
         mentionables: message.mentionables
           .map((m) => deserializeMentionable(m, app))

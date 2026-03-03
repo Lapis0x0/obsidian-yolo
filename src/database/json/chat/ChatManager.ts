@@ -1,4 +1,5 @@
 import { App, normalizePath } from 'obsidian'
+import path from 'path-browserify'
 import { v4 as uuidv4 } from 'uuid'
 
 import { AbstractJsonRepository } from '../base'
@@ -10,6 +11,7 @@ import {
   ChatConversation,
   ChatConversationMetadata,
 } from './types'
+import { deletePromptSnapshotStore } from './promptSnapshotStore'
 
 export class ChatManager extends AbstractJsonRepository<
   ChatConversation,
@@ -22,35 +24,32 @@ export class ChatManager extends AbstractJsonRepository<
   }
 
   protected generateFileName(chat: ChatConversation): string {
-    // Format: v{schemaVersion}_{title}_{updatedAt}_{id}.json
-    const encodedTitle = encodeURIComponent(chat.title)
-
-    // 确保编码后的文件名不会过长，避免文件系统限制
-    // 预留空间给版本号、时间戳、UUID和扩展名（约80字符）
-    // 文件系统通常限制255字符，保守限制编码后标题为150字符
-    const maxEncodedTitleLength = 150
-    const shouldTruncate = encodedTitle.length > maxEncodedTitleLength
-    const truncatedEncodedTitle = shouldTruncate
-      ? encodedTitle.substring(0, maxEncodedTitleLength)
-      : encodedTitle
-    const safeEncodedTitle =
-      truncatedEncodedTitle.replace(/%(?:[0-9A-Fa-f]{0,1})$/, '') +
-      (shouldTruncate ? '...' : '')
-
-    return `v${chat.schemaVersion}_${safeEncodedTitle}_${chat.updatedAt}_${chat.id}.json`
+    return `v${chat.schemaVersion}_${chat.id}.json`
   }
 
   protected parseFileName(fileName: string): ChatConversationMetadata | null {
-    // Parse: v{schemaVersion}_{title}_{updatedAt}_{id}.json
-    const regex = new RegExp(
+    const stableRegex = new RegExp(
+      `^v${CHAT_SCHEMA_VERSION}_([0-9a-f-]+)\\.json$`,
+    )
+    const stableMatch = fileName.match(stableRegex)
+    if (stableMatch) {
+      return {
+        id: stableMatch[1],
+        schemaVersion: CHAT_SCHEMA_VERSION,
+        title: '',
+        updatedAt: 0,
+      }
+    }
+
+    const legacyRegex = new RegExp(
       `^v${CHAT_SCHEMA_VERSION}_(.+)_(\\d+)_([0-9a-f-]+)\\.json$`,
     )
-    const match = fileName.match(regex)
-    if (!match) return null
+    const legacyMatch = fileName.match(legacyRegex)
+    if (!legacyMatch) return null
 
-    const title = this.decodeTitle(match[1])
-    const updatedAt = parseInt(match[2], 10)
-    const id = match[3]
+    const title = this.decodeTitle(legacyMatch[1])
+    const updatedAt = parseInt(legacyMatch[2], 10)
+    const id = legacyMatch[3]
 
     return {
       id,
@@ -113,7 +112,10 @@ export class ChatManager extends AbstractJsonRepository<
       touchUpdatedAt?: boolean
     },
   ): Promise<ChatConversation | null> {
-    const chat = await this.findById(id)
+    const allMetadata = await this.listMetadata()
+    const targetMetadata = allMetadata.find((meta) => meta.id === id)
+    if (!targetMetadata) return null
+    const chat = await this.read(targetMetadata.fileName)
     if (!chat) return null
 
     if (updates.title !== undefined && updates.title.length === 0) {
@@ -127,7 +129,12 @@ export class ChatManager extends AbstractJsonRepository<
       updatedAt: touchUpdatedAt ? Date.now() : chat.updatedAt,
     }
 
-    await this.update(chat, updatedChat)
+    const nextFileName = this.generateFileName(updatedChat)
+    const nextPath = normalizePath(path.join(this.dataDir, nextFileName))
+    await this.writeFile(nextPath, JSON.stringify(updatedChat, null, 2))
+    if (targetMetadata.fileName !== nextFileName) {
+      await this.delete(targetMetadata.fileName)
+    }
     await this.upsertIndex(updatedChat)
     return updatedChat
   }
@@ -138,6 +145,7 @@ export class ChatManager extends AbstractJsonRepository<
     if (!targetMetadata) return false
 
     await this.delete(targetMetadata.fileName)
+    await deletePromptSnapshotStore(this.app, id)
     await this.removeFromIndex(id)
     return true
   }

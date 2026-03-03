@@ -826,7 +826,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }),
       )
 
-      setChatMessages(compiledMessages)
+      const persistedMessages = compiledMessages.map((message) => {
+        if (message.role !== 'user') {
+          return message
+        }
+        if (!message.promptContent) {
+          return message
+        }
+        return {
+          ...message,
+          promptContent: null,
+        }
+      })
+
+      setChatMessages(persistedMessages)
       void persistConversation(compiledMessages)
       const requestReasoningLevel =
         resolveReasoningLevelForMessages(compiledMessages)
