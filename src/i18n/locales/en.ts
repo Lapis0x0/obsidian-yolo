@@ -750,6 +750,12 @@ export const en: TranslationKeys = {
       clearChatHistoryConfirm:
         'Are you sure you want to clear all chat history without the ability to undo?',
       clearChatHistorySuccess: 'All chat history has been cleared',
+      clearChatSnapshots: 'Clear chat snapshots',
+      clearChatSnapshotsDesc:
+        'Delete all conversation context snapshot files (without deleting chat messages)',
+      clearChatSnapshotsConfirm:
+        'Are you sure you want to clear all chat snapshot files? This action cannot be undone and context may need to be rebuilt later.',
+      clearChatSnapshotsSuccess: 'All chat snapshot files have been cleared',
       resetProviders: 'Reset providers and models',
       resetProvidersDesc: 'Restore default providers and model configurations',
       resetProvidersConfirm:

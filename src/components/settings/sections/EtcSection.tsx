@@ -10,6 +10,7 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
+import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
@@ -99,6 +100,23 @@ export function EtcSection({ app }: EtcSectionProps) {
     }).open()
   }
 
+  const handleClearChatSnapshots = () => {
+    new ConfirmModal(app, {
+      title: t('settings.etc.clearChatSnapshots'),
+      message: t('settings.etc.clearChatSnapshotsConfirm'),
+      ctaText: t('common.clear'),
+      onConfirm: () => {
+        void (async () => {
+          await clearAllPromptSnapshotStores(app)
+          new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
+        })().catch((error: unknown) => {
+          console.error('Failed to clear chat snapshots', error)
+          new Notice(t('common.error'))
+        })
+      },
+    }).open()
+  }
+
   const handleResetAgents = () => {
     new ConfirmModal(app, {
       title: t('settings.etc.resetAgents'),
@@ -133,6 +151,17 @@ export function EtcSection({ app }: EtcSectionProps) {
           text={t('common.clear')}
           warning
           onClick={handleClearChatHistory}
+        />
+      </ObsidianSetting>
+
+      <ObsidianSetting
+        name={t('settings.etc.clearChatSnapshots')}
+        desc={t('settings.etc.clearChatSnapshotsDesc')}
+      >
+        <ObsidianButton
+          text={t('common.clear')}
+          warning
+          onClick={handleClearChatSnapshots}
         />
       </ObsidianSetting>
 

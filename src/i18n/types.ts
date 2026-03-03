@@ -577,6 +577,10 @@ export type TranslationKeys = {
       clearChatHistoryDesc?: string
       clearChatHistoryConfirm?: string
       clearChatHistorySuccess?: string
+      clearChatSnapshots?: string
+      clearChatSnapshotsDesc?: string
+      clearChatSnapshotsConfirm?: string
+      clearChatSnapshotsSuccess?: string
       resetProviders?: string
       resetProvidersDesc?: string
       resetProvidersConfirm?: string

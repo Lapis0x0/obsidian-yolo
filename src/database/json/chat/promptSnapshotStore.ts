@@ -172,7 +172,7 @@ export const compactConversationMessagesForStorage = async ({
 
     if (shouldStorePromptSnapshot(userMessage)) {
       const previousHash = previousSnapshotRefByMessageId.get(userMessage.id)
-      if (previousHash) {
+      if (previousHash && nextEntries[previousHash]) {
         usedHashes.add(previousHash)
         return {
           ...userMessage,
@@ -243,6 +243,18 @@ export const deletePromptSnapshotStore = async (
 ): Promise<void> => {
   const filePath = getSnapshotFilePath(conversationId)
   if (await app.vault.adapter.exists(filePath)) {
+    await app.vault.adapter.remove(filePath)
+  }
+}
+
+export const clearAllPromptSnapshotStores = async (app: App): Promise<void> => {
+  const snapshotDir = getSnapshotDirPath()
+  if (!(await app.vault.adapter.exists(snapshotDir))) {
+    return
+  }
+
+  const listing = await app.vault.adapter.list(snapshotDir)
+  for (const filePath of listing.files) {
     await app.vault.adapter.remove(filePath)
   }
 }
