@@ -387,8 +387,13 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 button.smtcmp-chat-list-dropdown-archive-toggle {
   width: 100%;
   height: 28px;
-  border: 0;
+  border: 0 !important;
+  border-radius: 0;
   background: transparent;
+  box-shadow: none !important;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   text-align: center;
@@ -408,6 +413,7 @@ button.smtcmp-chat-list-dropdown-archive-toggle:hover {
     color 120ms ease,
     text-decoration-color 120ms ease;
   text-decoration: underline;
+  text-decoration-skip-ink: none;
   text-decoration-color: transparent;
   text-underline-offset: 2px;
 }
