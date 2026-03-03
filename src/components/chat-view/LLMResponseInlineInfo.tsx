@@ -21,20 +21,9 @@ export default function LLMResponseInlineInfo({
 }: {
   messages: AssistantToolMessageGroup
 }) {
-  const {
-    usage,
-    durationMs,
-    estimatedPromptTokens,
-    estimatedPromptTokensStatus,
-  } = useLLMResponseInfo(messages)
+  const { usage, durationMs } = useLLMResponseInfo(messages)
 
-  const displayPromptTokens = usage?.prompt_tokens ?? estimatedPromptTokens
-  const shouldShowPromptTokens =
-    usage !== null ||
-    displayPromptTokens !== null ||
-    estimatedPromptTokensStatus === 'pending'
-
-  if (!usage && durationMs === null && !shouldShowPromptTokens) {
+  if (!usage && durationMs === null) {
     return null
   }
 
@@ -46,22 +35,16 @@ export default function LLMResponseInlineInfo({
   return (
     <div className="smtcmp-llm-inline-info">
       <div className="smtcmp-llm-inline-info-content">
-        {shouldShowPromptTokens && (
+        {usage && (
           <>
             <span className="smtcmp-llm-inline-info-item">
               <ArrowUp className="smtcmp-llm-inline-info-icon smtcmp-llm-inline-info-icon--input" />
-              <span>
-                {displayPromptTokens === null
-                  ? 'calculating...'
-                  : `${formatTokenCount(displayPromptTokens)} tokens${usage ? '' : ' (est.)'}`}
-              </span>
+              <span>{formatTokenCount(usage.prompt_tokens)} tokens</span>
             </span>
-            {usage && (
-              <span className="smtcmp-llm-inline-info-item">
-                <ArrowDown className="smtcmp-llm-inline-info-icon smtcmp-llm-inline-info-icon--output" />
-                <span>{formatTokenCount(usage.completion_tokens)} tokens</span>
-              </span>
-            )}
+            <span className="smtcmp-llm-inline-info-item">
+              <ArrowDown className="smtcmp-llm-inline-info-icon smtcmp-llm-inline-info-icon--output" />
+              <span>{formatTokenCount(usage.completion_tokens)} tokens</span>
+            </span>
           </>
         )}
         {tokensPerSecond !== null && (

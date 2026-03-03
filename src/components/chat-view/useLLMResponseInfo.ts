@@ -13,8 +13,6 @@ type LLMResponseInfo = {
   model: ChatModel | undefined
   cost: number | null
   durationMs: number | null
-  estimatedPromptTokens: number | null
-  estimatedPromptTokensStatus: 'pending' | 'completed' | 'failed' | null
 }
 
 export function useLLMResponseInfo(
@@ -24,14 +22,10 @@ export function useLLMResponseInfo(
     latestAssistantMessage,
     latestAssistantWithUsage,
     latestAssistantWithDuration,
-    latestAssistantWithEstimatedPromptTokens,
   } = useMemo(() => {
     let latestAssistantMessage: ChatAssistantMessage | undefined
     let latestAssistantWithUsage: ChatAssistantMessage | undefined
     let latestAssistantWithDuration: ChatAssistantMessage | undefined
-    let latestAssistantWithEstimatedPromptTokens:
-      | ChatAssistantMessage
-      | undefined
 
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index]
@@ -53,17 +47,9 @@ export function useLLMResponseInfo(
       }
 
       if (
-        !latestAssistantWithEstimatedPromptTokens &&
-        typeof message.metadata?.estimatedPromptTokens === 'number'
-      ) {
-        latestAssistantWithEstimatedPromptTokens = message
-      }
-
-      if (
         latestAssistantMessage &&
         latestAssistantWithUsage &&
-        latestAssistantWithDuration &&
-        latestAssistantWithEstimatedPromptTokens
+        latestAssistantWithDuration
       ) {
         break
       }
@@ -73,7 +59,6 @@ export function useLLMResponseInfo(
       latestAssistantMessage,
       latestAssistantWithUsage,
       latestAssistantWithDuration,
-      latestAssistantWithEstimatedPromptTokens,
     }
   }, [messages])
 
@@ -102,25 +87,10 @@ export function useLLMResponseInfo(
     return latestAssistantWithDuration?.metadata?.durationMs ?? null
   }, [latestAssistantWithDuration])
 
-  const estimatedPromptTokens = useMemo<number | null>(() => {
-    return (
-      latestAssistantWithEstimatedPromptTokens?.metadata
-        ?.estimatedPromptTokens ?? null
-    )
-  }, [latestAssistantWithEstimatedPromptTokens])
-
-  const estimatedPromptTokensStatus = useMemo<
-    'pending' | 'completed' | 'failed' | null
-  >(() => {
-    return latestAssistantMessage?.metadata?.estimatedPromptTokensStatus ?? null
-  }, [latestAssistantMessage])
-
   return {
     usage,
     model,
     cost,
     durationMs,
-    estimatedPromptTokens,
-    estimatedPromptTokensStatus,
   }
 }

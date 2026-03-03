@@ -31,8 +31,6 @@ export type ChatAssistantMessage = {
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted'
-    estimatedPromptTokens?: number
-    estimatedPromptTokensStatus?: 'pending' | 'completed' | 'failed'
   }
 }
 export type ChatToolMessage = {
@@ -77,8 +75,6 @@ export type SerializedChatAssistantMessage = {
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted'
-    estimatedPromptTokens?: number
-    estimatedPromptTokensStatus?: 'pending' | 'completed' | 'failed'
   }
 }
 export type SerializedChatToolMessage = {
