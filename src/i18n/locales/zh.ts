@@ -725,7 +725,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@ 添加标签引用」',
+    placeholder: '输入消息...「@添加标签引用,继续输入可筛选搜索」',
     placeholderCompact: '点击展开编辑...',
     sendMessage: '发送消息',
     newChat: '新建聊天',

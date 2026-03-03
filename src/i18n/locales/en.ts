@@ -770,7 +770,8 @@ export const en: TranslationKeys = {
   },
 
   chat: {
-    placeholder: 'Type a message...「@ to add references」',
+    placeholder:
+      'Type a message...「@ to add references, keep typing to filter」',
     placeholderCompact: 'Click to expand and edit...',
     sendMessage: 'Send message',
     newChat: 'New chat',

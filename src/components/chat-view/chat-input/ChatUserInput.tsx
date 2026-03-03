@@ -612,7 +612,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
-                  {t('chat.placeholder', '输入消息... [@ 添加标签引用]')}
+                  {t(
+                    'chat.placeholder',
+                    '输入消息...「@添加标签引用,继续输入可筛选搜索」',
+                  )}
                 </div>
               )}
             <LexicalContentEditable

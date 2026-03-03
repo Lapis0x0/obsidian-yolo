@@ -762,7 +762,8 @@ export const it: TranslationKeys = {
   },
 
   chat: {
-    placeholder: 'Scrivi un messaggio...「@ per aggiungere riferimenti」',
+    placeholder:
+      'Scrivi un messaggio...「@ per aggiungere riferimenti, continua a digitare per filtrare」',
     placeholderCompact: 'Clicca per espandere e modificare...',
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
