@@ -551,6 +551,39 @@ const normalizeLineEndingsAndTrimLineEnd = (value: string): string => {
     .join('\n')
 }
 
+const CONTROL_CHAR_TO_ESCAPE_SUFFIX: Record<string, string> = {
+  '\b': 'b',
+  '\t': 't',
+  '\f': 'f',
+}
+
+export const recoverLikelyEscapedBackslashSequences = (
+  value: string,
+): string => {
+  if (!/[\b\t\f]/.test(value)) {
+    return value
+  }
+
+  let changed = false
+  let result = ''
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]
+    const escapeSuffix = CONTROL_CHAR_TO_ESCAPE_SUFFIX[char]
+    const nextChar = value[i + 1]
+
+    if (escapeSuffix && nextChar && /[A-Za-z]/.test(nextChar)) {
+      result += `\\${escapeSuffix}`
+      changed = true
+      continue
+    }
+
+    result += char
+  }
+
+  return changed ? result : value
+}
+
 const escapeRegExp = (value: string): string => {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -913,7 +946,11 @@ export async function callLocalFileTool({
 
         let nextContent = content
         let actualOccurrences = exactOccurrences
-        let matchMode: 'exact' | 'lineEndingAndTrimLineEnd' = 'exact'
+        let matchMode:
+          | 'exact'
+          | 'lineEndingAndTrimLineEnd'
+          | 'escapedControlRecovery'
+          | 'escapedControlRecoveryLineEndingAndTrimLineEnd' = 'exact'
 
         if (exactOccurrences === expectedOccurrences) {
           nextContent = content.split(oldText).join(newText)
@@ -928,9 +965,49 @@ export async function callLocalFileTool({
               () => newText,
             )
           } else {
-            throw new Error(
-              `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}`,
-            )
+            const recoveredOldText =
+              recoverLikelyEscapedBackslashSequences(oldText)
+            const recoveredNewText =
+              recoverLikelyEscapedBackslashSequences(newText)
+            const hasRecoveredInputs =
+              recoveredOldText !== oldText || recoveredNewText !== newText
+
+            if (hasRecoveredInputs) {
+              const recoveredExactOccurrences = countOccurrences(
+                content,
+                recoveredOldText,
+              )
+              if (recoveredExactOccurrences === expectedOccurrences) {
+                actualOccurrences = recoveredExactOccurrences
+                matchMode = 'escapedControlRecovery'
+                nextContent = content
+                  .split(recoveredOldText)
+                  .join(recoveredNewText)
+              } else {
+                const recoveredLooseRegex =
+                  createLooseEditRegex(recoveredOldText)
+                const recoveredLooseOccurrences = countRegexMatches(
+                  content,
+                  recoveredLooseRegex,
+                )
+                if (recoveredLooseOccurrences === expectedOccurrences) {
+                  actualOccurrences = recoveredLooseOccurrences
+                  matchMode = 'escapedControlRecoveryLineEndingAndTrimLineEnd'
+                  nextContent = content.replace(
+                    createLooseEditRegex(recoveredOldText),
+                    () => recoveredNewText,
+                  )
+                } else {
+                  throw new Error(
+                    `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}, recoveredExact=${recoveredExactOccurrences}, recoveredLineEndingAndTrimLineEnd=${recoveredLooseOccurrences}`,
+                  )
+                }
+              }
+            } else {
+              throw new Error(
+                `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}`,
+              )
+            }
           }
         }
 
