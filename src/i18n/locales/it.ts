@@ -492,9 +492,6 @@ export const it: TranslationKeys = {
         'Modello usato per generare embeddings per la ricerca semantica.',
       chunkSize: 'Dimensione chunk',
       chunkSizeDesc: 'Numero di caratteri per chunk di testo.',
-      thresholdTokens: 'Token soglia',
-      thresholdTokensDesc:
-        'Attiva RAG quando il contesto della chat supera questo numero di token.',
       minSimilarity: 'Similarità minima',
       minSimilarityDesc:
         'Punteggio di similarità minimo (0-1) per includere un chunk nei risultati.',

@@ -84,9 +84,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const [chunkSizeInput, setChunkSizeInput] = useState(
     String(settings.ragOptions.chunkSize),
   )
-  const [thresholdTokensInput, setThresholdTokensInput] = useState(
-    String(settings.ragOptions.thresholdTokens),
-  )
   const [minSimilarityInput, setMinSimilarityInput] = useState(
     String(settings.ragOptions.minSimilarity),
   )
@@ -101,10 +98,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   useEffect(() => {
     setChunkSizeInput(String(settings.ragOptions.chunkSize))
   }, [settings.ragOptions.chunkSize])
-
-  useEffect(() => {
-    setThresholdTokensInput(String(settings.ragOptions.thresholdTokens))
-  }, [settings.ragOptions.thresholdTokens])
 
   useEffect(() => {
     setMinSimilarityInput(String(settings.ragOptions.minSimilarity))
@@ -721,38 +714,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     const chunkSize = parseIntegerInput(chunkSizeInput)
                     if (chunkSize === null) {
                       setChunkSizeInput(String(settings.ragOptions.chunkSize))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.thresholdTokens')}
-                desc={t('settings.rag.thresholdTokensDesc')}
-              >
-                <ObsidianTextInput
-                  value={thresholdTokensInput}
-                  placeholder="8192"
-                  onChange={(value) => {
-                    setThresholdTokensInput(value)
-                    const thresholdTokens = parseIntegerInput(value)
-                    if (thresholdTokens !== null) {
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          thresholdTokens,
-                        },
-                      })
-                    }
-                  }}
-                  onBlur={() => {
-                    const thresholdTokens =
-                      parseIntegerInput(thresholdTokensInput)
-                    if (thresholdTokens === null) {
-                      setThresholdTokensInput(
-                        String(settings.ragOptions.thresholdTokens),
-                      )
                     }
                   }}
                 />

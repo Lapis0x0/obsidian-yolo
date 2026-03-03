@@ -32,7 +32,6 @@ import type {
 } from '../../types/mentionable'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { tokenCount } from '../llm/token'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
@@ -378,73 +377,16 @@ ${message.annotations
       onQueryProgressChange?.({
         type: 'reading-mentionables',
       })
-      const files = message.mentionables
-        .filter((m): m is MentionableFile => m.type === 'file')
-        .map((m) => this.app.vault.getFileByPath(m.file.path))
-        .filter((file): file is TFile => Boolean(file))
-      const folders = message.mentionables
-        .filter((m): m is MentionableFolder => m.type === 'folder')
-        .map((m) => this.app.vault.getFolderByPath(m.folder.path))
-        .filter((folder): folder is TFolder => Boolean(folder))
-      const nestedFiles = folders.flatMap((folder) =>
-        getNestedFiles(folder, this.app.vault),
-      )
-      const allFiles = [...files, ...nestedFiles]
-      const fileEntries = await Promise.all(
-        allFiles.map(async (file) => {
-          try {
-            const content = await readTFileContent(file, this.app.vault)
-            return { file, content }
-          } catch (error) {
-            console.warn(
-              '[Smart Composer] Failed to read mentioned file',
-              file.path,
-              error,
-            )
-            return null
-          }
-        }),
-      )
-      const readableFileEntries = fileEntries.filter(
-        (entry): entry is { file: TFile; content: string } => entry !== null,
-      )
-      const readableFiles = readableFileEntries.map((entry) => entry.file)
-      const fileContents = readableFileEntries.map((entry) => entry.content)
-
-      // Count tokens incrementally to avoid long processing times on large content sets
-      const exceedsTokenThreshold = async () => {
-        let accTokenCount = 0
-        for (const content of fileContents) {
-          const count = await tokenCount(content)
-          accTokenCount += count
-          if (accTokenCount > this.settings.ragOptions.thresholdTokens) {
-            return true
-          }
-        }
-        return false
-      }
-      const shouldUseRAG =
-        shouldSearchEntireVault || (await exceedsTokenThreshold())
+      const shouldUseRAG = shouldSearchEntireVault
 
       let filePrompt: string
       if (shouldUseRAG) {
-        similaritySearchResults = shouldSearchEntireVault
-          ? await (
-              await this.getRagEngine()
-            ).processQuery({
-              query,
-              onQueryProgressChange: onQueryProgressChange,
-            }) // TODO: Add similarity boosting for mentioned files or folders
-          : await (
-              await this.getRagEngine()
-            ).processQuery({
-              query,
-              scope: {
-                files: files.map((f) => f.path),
-                folders: folders.map((f) => f.path),
-              },
-              onQueryProgressChange: onQueryProgressChange,
-            })
+        similaritySearchResults = await (
+          await this.getRagEngine()
+        ).processQuery({
+          query,
+          onQueryProgressChange: onQueryProgressChange,
+        }) // TODO: Add similarity boosting for mentioned files or folders
         filePrompt = `## Potentially Relevant Snippets from the current vault
 ${similaritySearchResults
   .map(({ path, content, metadata }) => {
@@ -456,6 +398,39 @@ ${similaritySearchResults
   })
   .join('')}\n`
       } else {
+        const files = message.mentionables
+          .filter((m): m is MentionableFile => m.type === 'file')
+          .map((m) => this.app.vault.getFileByPath(m.file.path))
+          .filter((file): file is TFile => Boolean(file))
+        const folders = message.mentionables
+          .filter((m): m is MentionableFolder => m.type === 'folder')
+          .map((m) => this.app.vault.getFolderByPath(m.folder.path))
+          .filter((folder): folder is TFolder => Boolean(folder))
+        const nestedFiles = folders.flatMap((folder) =>
+          getNestedFiles(folder, this.app.vault),
+        )
+        const allFiles = [...files, ...nestedFiles]
+        const fileEntries = await Promise.all(
+          allFiles.map(async (file) => {
+            try {
+              const content = await readTFileContent(file, this.app.vault)
+              return { file, content }
+            } catch (error) {
+              console.warn(
+                '[Smart Composer] Failed to read mentioned file',
+                file.path,
+                error,
+              )
+              return null
+            }
+          }),
+        )
+        const readableFileEntries = fileEntries.filter(
+          (entry): entry is { file: TFile; content: string } => entry !== null,
+        )
+        const readableFiles = readableFileEntries.map((entry) => entry.file)
+        const fileContents = readableFileEntries.map((entry) => entry.content)
+
         filePrompt = readableFiles
           .map((file, index) => {
             return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`

@@ -7,9 +7,10 @@ import {
 } from '../../components/chat-view/chat-input/ReasoningSelect'
 import { ChatAssistantMessage, ChatMessage } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
-import { RequestTool } from '../../types/llm/request'
+import { RequestMessage, RequestTool } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
 import { ToolCallRequest } from '../../types/tool-call.types'
+import { countRequestPromptTokens } from '../../utils/llm/request-token-counter'
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
@@ -124,9 +125,15 @@ export class AgentLlmTurnExecutor {
       metadata: {
         model: effectiveModel,
         generationState: 'streaming',
+        estimatedPromptTokensStatus: 'pending',
       },
     }
     this.input.onAssistantMessage(assistantMessage)
+
+    void this.countPromptTokensInBackground({
+      requestMessages,
+      assistantMessage,
+    })
 
     const turnResult = await executeSingleTurn({
       providerClient: this.input.providerClient,
@@ -192,6 +199,57 @@ export class AgentLlmTurnExecutor {
       modelTerminated: this.isModelTerminationFinishReason(
         turnResult.finishReason,
       ),
+    }
+  }
+
+  private async countPromptTokensInBackground({
+    requestMessages,
+    assistantMessage,
+  }: {
+    requestMessages: RequestMessage[]
+    assistantMessage: ChatAssistantMessage
+  }): Promise<void> {
+    try {
+      const estimatedPromptTokens = await countRequestPromptTokens(
+        requestMessages,
+        {
+          signal: this.input.abortSignal,
+        },
+      )
+      if (this.input.abortSignal?.aborted) {
+        return
+      }
+      assistantMessage.metadata = {
+        ...assistantMessage.metadata,
+        estimatedPromptTokens,
+        estimatedPromptTokensStatus: 'completed',
+      }
+      this.input.onAssistantMessage(assistantMessage)
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        assistantMessage.metadata = {
+          ...assistantMessage.metadata,
+          estimatedPromptTokensStatus: 'failed',
+        }
+        this.input.onAssistantMessage(assistantMessage)
+        return
+      }
+      if (this.input.abortSignal?.aborted) {
+        return
+      }
+      assistantMessage.metadata = {
+        ...assistantMessage.metadata,
+        estimatedPromptTokensStatus: 'failed',
+      }
+      this.input.onAssistantMessage(assistantMessage)
+      if (error instanceof Error) {
+        console.warn('[Smart Composer] Failed to estimate prompt tokens', error)
+        return
+      }
+      console.warn(
+        '[Smart Composer] Failed to estimate prompt tokens',
+        typeof error === 'string' ? error : JSON.stringify(error),
+      )
     }
   }
 

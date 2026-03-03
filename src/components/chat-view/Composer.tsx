@@ -174,7 +174,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
 
   const [ragNumberInputs, setRagNumberInputs] = useState<NumberInputState>({
     chunkSize: String(settings.ragOptions.chunkSize),
-    thresholdTokens: String(settings.ragOptions.thresholdTokens),
     minSimilarity: String(settings.ragOptions.minSimilarity),
     limit: String(settings.ragOptions.limit),
     autoUpdateIntervalHours: String(
@@ -186,7 +185,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     setRagNumberInputs((prev) => ({
       ...prev,
       chunkSize: String(settings.ragOptions.chunkSize),
-      thresholdTokens: String(settings.ragOptions.thresholdTokens),
       minSimilarity: String(settings.ragOptions.minSimilarity),
       limit: String(settings.ragOptions.limit),
       autoUpdateIntervalHours: String(
@@ -195,7 +193,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     }))
   }, [
     settings.ragOptions.chunkSize,
-    settings.ragOptions.thresholdTokens,
     settings.ragOptions.minSimilarity,
     settings.ragOptions.limit,
     settings.ragOptions.autoUpdateIntervalHours,
@@ -1083,58 +1080,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                                   ...prev,
                                   chunkSize: String(
                                     settings.ragOptions.chunkSize,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t('settings.rag.thresholdTokens', '阈值 Token')}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.rag.thresholdTokensDesc',
-                              '超过该值将触发分批索引。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={ragNumberInputs.thresholdTokens}
-                            onChange={(value) => {
-                              setRagNumberInputs((prev) => ({
-                                ...prev,
-                                thresholdTokens: value,
-                              }))
-                              const thresholdTokens = parseIntegerInput(value)
-                              if (thresholdTokens === null) return
-                              applySettingsUpdate(
-                                {
-                                  ...settings,
-                                  ragOptions: {
-                                    ...settings.ragOptions,
-                                    thresholdTokens,
-                                  },
-                                },
-                                t(
-                                  'notices.indexUpdateFailed',
-                                  'Failed to update threshold tokens.',
-                                ),
-                              )
-                            }}
-                            onBlur={(value) => {
-                              const thresholdTokens = parseIntegerInput(value)
-                              if (thresholdTokens === null) {
-                                setRagNumberInputs((prev) => ({
-                                  ...prev,
-                                  thresholdTokens: String(
-                                    settings.ragOptions.thresholdTokens,
                                   ),
                                 }))
                               }

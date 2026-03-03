@@ -495,9 +495,6 @@ export const en: TranslationKeys = {
       chunkSize: 'Chunk size',
       chunkSizeDesc:
         "Set the chunk size for text splitting. After changing this, please re-index the vault using the 'rebuild entire vault index' command.",
-      thresholdTokens: 'Threshold tokens',
-      thresholdTokensDesc:
-        'Maximum number of tokens before switching to retrieval-augmented generation; if the total tokens from mentioned files exceed this, the plugin uses retrieval-augmented generation instead of including all file contents.',
       minSimilarity: 'Minimum similarity',
       minSimilarityDesc:
         'Minimum similarity score for retrieval-augmented generation results; higher values return more relevant but potentially fewer results.',

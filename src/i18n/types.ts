@@ -377,8 +377,6 @@ export type TranslationKeys = {
       embeddingModelDesc: string
       chunkSize: string
       chunkSizeDesc: string
-      thresholdTokens: string
-      thresholdTokensDesc: string
       minSimilarity: string
       minSimilarityDesc: string
       limit: string

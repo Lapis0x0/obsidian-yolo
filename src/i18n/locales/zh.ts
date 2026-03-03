@@ -457,9 +457,6 @@ export const zh: TranslationKeys = {
       chunkSize: '分块大小',
       chunkSizeDesc:
         '设置文本分割的块大小。更改后，请使用"重建整个库索引"命令重新索引库。',
-      thresholdTokens: '阈值令牌数',
-      thresholdTokensDesc:
-        '切换到RAG前的最大令牌数。如果提及文件的总令牌数超过此值，将使用RAG而不是包含所有文件内容。',
       minSimilarity: '最小相似度',
       minSimilarityDesc:
         'RAG结果的最小相似度分数。更高的值返回更相关但可能更少的结果。',
