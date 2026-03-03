@@ -867,7 +867,7 @@ export const zh: TranslationKeys = {
       error: '错误',
       allow: '允许',
       reject: '拒绝',
-      abort: '中止',
+      abort: '停止执行',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '仅本次对话允许',
     },
