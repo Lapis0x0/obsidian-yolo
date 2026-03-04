@@ -3,6 +3,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
 import { ApplyReviewOverlay } from '../../../components/apply-view/ApplyReviewOverlay'
+import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
 import type { ApplyViewActions } from '../../../components/apply-view/ApplyViewRoot'
 import type SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -20,6 +21,32 @@ export class DiffReviewController {
   private readonly diffReviewExtension = [
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
+    EditorView.theme({
+      '.cm-content': {
+        caretColor: 'transparent',
+      },
+      '.cm-cursorLayer': {
+        display: 'none !important',
+      },
+      '.cm-cursor': {
+        display: 'none !important',
+      },
+      '.cm-fat-cursor': {
+        display: 'none !important',
+      },
+      '.cm-fat-cursor-mark': {
+        display: 'none !important',
+      },
+      '.cm-dropCursor': {
+        display: 'none !important',
+      },
+      '.cm-selectionLayer': {
+        display: 'none !important',
+      },
+      '.cm-selectionBackground': {
+        background: 'transparent !important',
+      },
+    }),
     Prec.high(
       keymap.of([
         {
@@ -126,44 +153,38 @@ export class DiffReviewController {
 
     this.activeView = view
 
-    const maxScrollTop = Math.max(
-      0,
-      view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight,
-    )
     const reviewState =
       state.reviewMode === 'selection-focus' &&
       !this.hasValidSelectionRange(view, state)
         ? {
             ...state,
             reviewMode: 'full' as const,
-            initialViewport: {
-              scrollTop: view.scrollDOM.scrollTop,
-              scrollLeft: view.scrollDOM.scrollLeft,
-              scrollRatio:
-                maxScrollTop > 0 ? view.scrollDOM.scrollTop / maxScrollTop : 0,
-              anchorLine: view.state.doc.lineAt(view.viewport.from).number - 1,
-            },
           }
-        : {
-            ...state,
-            initialViewport: {
-              scrollTop: view.scrollDOM.scrollTop,
-              scrollLeft: view.scrollDOM.scrollLeft,
-              scrollRatio:
-                maxScrollTop > 0 ? view.scrollDOM.scrollTop / maxScrollTop : 0,
-              anchorLine: view.state.doc.lineAt(view.viewport.from).number - 1,
-            },
-          }
+        : state
 
-    this.activeOverlay = new ApplyReviewOverlay({
-      plugin: this.deps.plugin,
-      view,
-      state: reviewState,
-      onClose: () => this.closeReview(),
-      onActionsReady: (actions) => {
-        this.activeActions = actions
-      },
-    })
+    this.activeOverlay =
+      reviewState.reviewMode === 'selection-focus'
+        ? new InlineDiffReviewOverlay({
+            plugin: this.deps.plugin,
+            view,
+            state: reviewState,
+            onClose: () => this.closeReview(),
+            onActionsReady: (actions) => {
+              this.activeActions = actions
+            },
+          })
+        : new ApplyReviewOverlay({
+            plugin: this.deps.plugin,
+            view,
+            state: {
+              ...reviewState,
+              reviewMode: 'full',
+            },
+            onClose: () => this.closeReview(),
+            onActionsReady: (actions) => {
+              this.activeActions = actions
+            },
+          })
     this.activeOverlay.mount()
   }
 

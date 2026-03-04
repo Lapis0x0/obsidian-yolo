@@ -63,7 +63,10 @@ export default function ApplyViewRoot({
 
   const isSelectionFocusMode = state.reviewMode === 'selection-focus'
   const diff = useMemo(
-    () => createDiffBlocks(state.originalContent, state.newContent),
+    () =>
+      splitDiffBlocksByParagraph(
+        createDiffBlocks(state.originalContent, state.newContent),
+      ),
     [state.newContent, state.originalContent],
   )
   const selectionTargetBlockIndex = useMemo(
@@ -839,7 +842,7 @@ const DiffBlockView = forwardRef<
                             />
                           )}
                         </div>
-                        {paragraph.hasChanges && (
+                        {showActionsForParagraph && (
                           <span className="smtcmp-apply-paragraph-indicator" />
                         )}
                         {showActionsForParagraph && (
@@ -1075,6 +1078,96 @@ function lineHasChanges(line: InlineDiffLine): boolean {
   return line.tokens.some(
     (token) => token.type === 'add' || token.type === 'del',
   )
+}
+
+function splitDiffBlocksByParagraph(blocks: DiffBlock[]): DiffBlock[] {
+  const paragraphBlocks: DiffBlock[] = []
+
+  blocks.forEach((block) => {
+    if (block.type === 'unchanged') {
+      paragraphBlocks.push(block)
+      return
+    }
+
+    const paragraphs = splitInlineLinesIntoParagraphs(block.inlineLines)
+    if (paragraphs.length === 0) {
+      paragraphBlocks.push(block)
+      return
+    }
+
+    paragraphs.forEach((paragraph) => {
+      if (paragraph.isEmpty) {
+        paragraphBlocks.push({
+          type: 'unchanged',
+          value: '',
+        })
+        return
+      }
+
+      if (!paragraph.hasChanges) {
+        paragraphBlocks.push({
+          type: 'unchanged',
+          value: inlineLinesToText(paragraph.lines, 'original'),
+        })
+        return
+      }
+
+      const hasOriginalLines = paragraph.lines.some(
+        (line) => line.type !== 'added',
+      )
+      const hasModifiedLines = paragraph.lines.some(
+        (line) => line.type !== 'removed',
+      )
+      const originalValue = hasOriginalLines
+        ? inlineLinesToText(paragraph.lines, 'original')
+        : undefined
+      const modifiedValue = hasModifiedLines
+        ? inlineLinesToText(paragraph.lines, 'modified')
+        : undefined
+      paragraphBlocks.push({
+        type: 'modified',
+        originalValue,
+        modifiedValue,
+        inlineLines: paragraph.lines,
+      })
+    })
+  })
+
+  return mergeAdjacentUnchangedBlocks(paragraphBlocks)
+}
+
+function inlineLinesToText(
+  lines: InlineDiffLine[],
+  variant: 'original' | 'modified',
+): string {
+  return lines
+    .map((line) => inlineTokensToText(line.tokens, variant))
+    .join('\n')
+}
+
+function inlineTokensToText(
+  tokens: InlineDiffToken[],
+  variant: 'original' | 'modified',
+): string {
+  return tokens
+    .filter((token) =>
+      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
+    )
+    .map((token) => token.text)
+    .join('')
+}
+
+function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
+  const merged: DiffBlock[] = []
+  blocks.forEach((block) => {
+    const last = merged[merged.length - 1]
+    if (block.type === 'unchanged' && last?.type === 'unchanged') {
+      last.value = `${last.value}\n${block.value}`
+      return
+    }
+    merged.push(block)
+  })
+  return merged
 }
 
 function buildInlineDiffMarkdown(lines: InlineDiffLine[]): string {
