@@ -779,6 +779,14 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     width: 100%;
   }
 
+  .smtcmp-diff-block--resolved {
+    animation: smtcmp-apply-resolve-in 180ms ease;
+  }
+
+  .smtcmp-diff-block--resolved .smtcmp-apply-markdown-preview {
+    animation: smtcmp-apply-resolve-in 180ms ease;
+  }
+
   .smtcmp-diff-block.added {
     background-color: rgba(var(--smtcmp-incoming-color-rgb), 0.12);
   }
@@ -1148,11 +1156,28 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   }
 }
 
+@keyframes smtcmp-apply-resolve-in {
+  from {
+    opacity: 0.74;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .smtcmp-spinner,
   .smtcmp-chat-list-dropdown-content,
   .smtcmp-chat-list-dropdown-item-title-text,
-  .smtcmp-chat-list-dropdown-item-title-skeleton {
+  .smtcmp-chat-list-dropdown-item-title-skeleton,
+  .smtcmp-inline-review-widget,
+  .smtcmp-diff-block--resolved,
+  .smtcmp-diff-block--resolved .smtcmp-apply-markdown-preview,
+  .smtcmp-inline-review-floating-rail,
+  .smtcmp-inline-review-floating-actions,
+  .smtcmp-inline-review-floating-actions .smtcmp-apply-action {
     animation: none !important;
     transition: none !important;
   }
