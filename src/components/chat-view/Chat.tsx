@@ -43,6 +43,8 @@ import type {
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { applyChangesToFile } from '../../utils/chat/apply'
 import {
+  getBlockContentHash,
+  getBlockMentionableCountInfo,
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
@@ -84,6 +86,21 @@ const getNewInputMessage = (
     id: uuidv4(),
     reasoningLevel,
     mentionables: [],
+  }
+}
+
+const createSelectionBlockMentionable = (
+  selectedBlock: MentionableBlockData,
+): MentionableBlock => {
+  const { count, unit } = getBlockMentionableCountInfo(selectedBlock.content)
+  return {
+    type: 'block',
+    source: 'selection',
+    ...selectedBlock,
+    contentHash:
+      selectedBlock.contentHash ?? getBlockContentHash(selectedBlock.content),
+    contentCount: selectedBlock.contentCount ?? count,
+    contentUnit: selectedBlock.contentUnit ?? unit,
   }
 }
 
@@ -186,10 +203,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (props.selectedBlock) {
       newMessage.mentionables = [
         ...newMessage.mentionables,
-        {
-          type: 'block',
-          ...props.selectedBlock,
-        },
+        createSelectionBlockMentionable(props.selectedBlock),
       ]
     }
     return newMessage
@@ -640,10 +654,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(defaultReasoningLevel)
     if (selectedBlock) {
-      const mentionableBlock: MentionableBlock = {
-        type: 'block',
-        ...selectedBlock,
-      }
+      const mentionableBlock = createSelectionBlockMentionable(selectedBlock)
       newInputMessage.mentionables = [
         ...newInputMessage.mentionables,
         mentionableBlock,
@@ -1147,11 +1158,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [handleActiveLeafChange])
 
   const buildSelectionMentionable = useCallback(
-    (selectedBlock: MentionableBlockData): MentionableBlock => ({
-      type: 'block',
-      source: 'selection',
-      ...selectedBlock,
-    }),
+    (selectedBlock: MentionableBlockData): MentionableBlock =>
+      createSelectionBlockMentionable(selectedBlock),
     [],
   )
 
@@ -1319,10 +1327,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     openNewChat: (selectedBlock?: MentionableBlockData) =>
       handleNewChat(selectedBlock),
     addSelectionToChat: (selectedBlock: MentionableBlockData) => {
-      const mentionable: Omit<MentionableBlock, 'id'> = {
-        type: 'block',
-        ...selectedBlock,
-      }
+      const mentionable = createSelectionBlockMentionable(selectedBlock)
 
       setAddedBlockKey(null)
 

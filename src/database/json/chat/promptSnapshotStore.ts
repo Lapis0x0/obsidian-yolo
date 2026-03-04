@@ -40,6 +40,7 @@ const shouldStorePromptSnapshot = (
     (mentionable) =>
       mentionable.type === 'file' ||
       mentionable.type === 'folder' ||
+      mentionable.type === 'block' ||
       mentionable.type === 'url' ||
       mentionable.type === 'current-file' ||
       mentionable.type === 'vault',

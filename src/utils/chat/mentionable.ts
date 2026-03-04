@@ -2,6 +2,15 @@ import { App } from 'obsidian'
 
 import { Mentionable, SerializedMentionable } from '../../types/mentionable'
 
+export function getBlockContentHash(content: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i)
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
 export const serializeMentionable = (
   mentionable: Mentionable,
 ): SerializedMentionable => {
@@ -33,6 +42,10 @@ export const serializeMentionable = (
         startLine: mentionable.startLine,
         endLine: mentionable.endLine,
         source: mentionable.source,
+        contentHash:
+          mentionable.contentHash ?? getBlockContentHash(mentionable.content),
+        contentCount: mentionable.contentCount,
+        contentUnit: mentionable.contentUnit,
       }
     case 'url':
       return {
@@ -108,6 +121,11 @@ export const deserializeMentionable = (
         if (!filePath) {
           return null
         }
+        if (typeof mentionable.content !== 'string') {
+          // Lightweight inline block token can be pasted across contexts.
+          // Without original content, it cannot be used as a runnable mentionable.
+          return null
+        }
         const file = app.vault.getFileByPath(filePath)
         if (!file) {
           return null
@@ -119,6 +137,10 @@ export const deserializeMentionable = (
           startLine: mentionable.startLine,
           endLine: mentionable.endLine,
           source: mentionable.source,
+          contentHash:
+            mentionable.contentHash ?? getBlockContentHash(mentionable.content),
+          contentCount: mentionable.contentCount,
+          contentUnit: mentionable.contentUnit,
         }
       }
       case 'url': {
@@ -153,7 +175,7 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
     case 'current-file':
       return `current-file:${mentionable.file ?? 'current'}`
     case 'block':
-      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}:${mentionable.content}`
+      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
     case 'url':
       return `url:${mentionable.url}`
     case 'image':
@@ -238,7 +260,9 @@ export function getMentionableName(
     case 'current-file':
       return mentionable.file?.name ?? 'Current file'
     case 'block': {
-      const { count } = getBlockMentionableCountInfo(mentionable.content)
+      const count =
+        mentionable.contentCount ??
+        getBlockMentionableCountInfo(mentionable.content).count
       const unitLabel = options?.unitLabel ?? 'chars'
       return `${mentionable.file.name} (${count} ${unitLabel})`
     }
