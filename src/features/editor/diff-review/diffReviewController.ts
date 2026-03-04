@@ -126,14 +126,34 @@ export class DiffReviewController {
 
     this.activeView = view
 
+    const maxScrollTop = Math.max(
+      0,
+      view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight,
+    )
     const reviewState =
       state.reviewMode === 'selection-focus' &&
       !this.hasValidSelectionRange(view, state)
         ? {
             ...state,
             reviewMode: 'full' as const,
+            initialViewport: {
+              scrollTop: view.scrollDOM.scrollTop,
+              scrollLeft: view.scrollDOM.scrollLeft,
+              scrollRatio:
+                maxScrollTop > 0 ? view.scrollDOM.scrollTop / maxScrollTop : 0,
+              anchorLine: view.state.doc.lineAt(view.viewport.from).number - 1,
+            },
           }
-        : state
+        : {
+            ...state,
+            initialViewport: {
+              scrollTop: view.scrollDOM.scrollTop,
+              scrollLeft: view.scrollDOM.scrollLeft,
+              scrollRatio:
+                maxScrollTop > 0 ? view.scrollDOM.scrollTop / maxScrollTop : 0,
+              anchorLine: view.state.doc.lineAt(view.viewport.from).number - 1,
+            },
+          }
 
     this.activeOverlay = new ApplyReviewOverlay({
       plugin: this.deps.plugin,

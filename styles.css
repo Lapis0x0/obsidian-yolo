@@ -7194,13 +7194,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     scroll-margin-top: var(--size-4-8);
   }
 
-  .smtcmp-diff-block-container.is-selection-focus-target {
-    border-radius: var(--radius-s);
-    outline: 1px solid
-      color-mix(in srgb, var(--interactive-accent) 38%, transparent);
-    outline-offset: 2px;
-  }
-
   .smtcmp-diff-block-actions {
     position: absolute;
     right: calc(
@@ -7340,52 +7333,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   .smtcmp-apply-action-both {
     font-size: var(--font-ui-smallest);
     color: var(--interactive-accent);
-  }
-
-  .smtcmp-selection-focus-actions {
-    display: inline-flex;
-    gap: var(--size-4-2);
-    margin-top: var(--size-4-2);
-    margin-left: auto;
-    margin-right: calc((100% - var(--file-line-width)) / 2);
-    padding: 4px;
-    border-radius: 999px;
-    background: color-mix(
-      in srgb,
-      var(--background-primary) 92%,
-      var(--background-secondary) 8%
-    );
-    border: 1px solid
-      color-mix(in srgb, var(--background-modifier-border) 72%, transparent);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
-  }
-
-  .smtcmp-selection-focus-btn {
-    height: 28px;
-    padding: 0 var(--size-4-2);
-    border-radius: 999px;
-    border: 1px solid var(--background-modifier-border);
-    background: color-mix(in srgb, var(--background-primary) 88%, transparent);
-    color: var(--text-normal);
-    font-size: var(--font-ui-small);
-    cursor: pointer;
-  }
-
-  .smtcmp-selection-focus-btn:hover {
-    background: color-mix(
-      in srgb,
-      var(--background-modifier-hover) 78%,
-      transparent
-    );
-  }
-
-  .smtcmp-selection-focus-btn.is-primary {
-    border-color: color-mix(
-      in srgb,
-      var(--interactive-accent) 68%,
-      transparent
-    );
-    background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
   }
 
   .smtcmp-accept {
