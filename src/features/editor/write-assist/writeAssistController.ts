@@ -62,6 +62,23 @@ type WriteAssistDeps = {
 
 const FIRST_TOKEN_TIMEOUT_MS = 12000
 
+function getSelectionEndPosition(
+  from: { line: number; ch: number },
+  text: string,
+): { line: number; ch: number } {
+  const lines = text.split('\n')
+  if (lines.length <= 1) {
+    return {
+      line: from.line,
+      ch: from.ch + text.length,
+    }
+  }
+  return {
+    line: from.line + lines.length - 1,
+    ch: lines[lines.length - 1]?.length ?? 0,
+  }
+}
+
 export class WriteAssistController {
   private readonly deps: WriteAssistDeps
 
@@ -82,6 +99,7 @@ export class WriteAssistController {
     }
 
     const from = preSelectionFrom ?? editor.getCursor('from')
+    const to = getSelectionEndPosition(from, selected)
 
     const notice = new Notice('正在生成改写...', 0)
     const controller = new AbortController()
@@ -184,6 +202,13 @@ export class WriteAssistController {
         file: activeFile,
         originalContent,
         newContent,
+        reviewMode: 'selection-focus',
+        selectionRange: {
+          from,
+          to,
+        },
+        selectionOriginalText: selected,
+        selectionNewText: rewritten,
       } satisfies ApplyViewState)
 
       notice.setMessage('改写结果已生成。')

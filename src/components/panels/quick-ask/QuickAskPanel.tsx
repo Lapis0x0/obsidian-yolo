@@ -65,6 +65,23 @@ import { ModeSelect, QuickAskMode } from './ModeSelect'
 
 const QUICK_ASK_MAX_ITERATIONS = 1
 
+function getSelectionEndPosition(
+  from: { line: number; ch: number },
+  text: string,
+): { line: number; ch: number } {
+  const lines = text.split('\n')
+  if (lines.length <= 1) {
+    return {
+      line: from.line,
+      ch: from.ch + text.length,
+    }
+  }
+  return {
+    line: from.line + lines.length - 1,
+    ch: lines[lines.length - 1]?.length ?? 0,
+  }
+}
+
 type QuickAskRunStatus =
   | 'requesting'
   | 'thinking'
@@ -981,6 +998,26 @@ export function QuickAskPanel({
           file: targetFile,
           originalContent: currentContent,
           newContent: finalContent,
+          reviewMode:
+            scopedToSelection && editSelectionFrom
+              ? 'selection-focus'
+              : undefined,
+          selectionRange:
+            scopedToSelection && editSelectionFrom
+              ? {
+                  from: editSelectionFrom,
+                  to: getSelectionEndPosition(
+                    editSelectionFrom,
+                    selectedContext,
+                  ),
+                }
+              : undefined,
+          selectionOriginalText:
+            scopedToSelection && editSelectionFrom
+              ? selectedContext
+              : undefined,
+          selectionNewText:
+            scopedToSelection && editSelectionFrom ? newContent : undefined,
         } satisfies ApplyViewState)
 
         // Close Quick Ask
@@ -1003,6 +1040,7 @@ export function QuickAskPanel({
       mode,
       model,
       onClose,
+      plugin,
       providerClient,
       resolveEditTargetFile,
       t,
