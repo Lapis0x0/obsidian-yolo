@@ -906,6 +906,7 @@ export function QuickAskPanel({
       })
       setInputText('')
 
+      let closedForReview = false
       try {
         const currentContent = await readTFileContent(targetFile, app.vault)
         const selectedContext = editContextText ?? ''
@@ -993,7 +994,12 @@ export function QuickAskPanel({
           console.warn('Some replacements failed:', errors)
         }
 
-        // Open Apply Review
+        // Close Quick Ask before opening review to avoid layout jump
+        setIsStreaming(false)
+        setRunStatus(null)
+        closedForReview = true
+        onClose()
+
         await plugin.openApplyReview({
           file: targetFile,
           originalContent: currentContent,
@@ -1019,15 +1025,14 @@ export function QuickAskPanel({
           selectionNewText:
             scopedToSelection && editSelectionFrom ? newContent : undefined,
         } satisfies ApplyViewState)
-
-        // Close Quick Ask
-        onClose()
       } catch (error) {
         console.error('Edit mode failed:', error)
         new Notice(t('quickAsk.error', 'Failed to generate edits'))
       } finally {
-        setIsStreaming(false)
-        setRunStatus(null)
+        if (!closedForReview) {
+          setIsStreaming(false)
+          setRunStatus(null)
+        }
       }
     },
     [

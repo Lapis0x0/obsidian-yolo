@@ -561,10 +561,35 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   width: 100%;
 }
 
+.smtcmp-inline-review-widget.is-resolved {
+  animation: smtcmp-inline-review-resolve-in 180ms ease;
+}
+
 .smtcmp-inline-review-content {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.smtcmp-inline-review-resolved {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.smtcmp-inline-review-widget.is-resolved .smtcmp-inline-review-line {
+  color: var(--text-normal);
+}
+
+@keyframes smtcmp-inline-review-resolve-in {
+  from {
+    opacity: 0.74;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .smtcmp-inline-review-line {

@@ -43,6 +43,10 @@ type ModifiedReviewBlock = {
 class InlineReviewWidget extends WidgetType {
   constructor(
     private readonly block: Extract<DiffBlock, { type: 'modified' }>,
+    private readonly reviewIndex: number,
+    private readonly isActive: boolean,
+    private readonly decision: BlockDecision,
+    private readonly onHover: (reviewIndex: number) => void,
   ) {
     super()
   }
@@ -53,7 +57,27 @@ class InlineReviewWidget extends WidgetType {
 
   override toDOM(): HTMLElement {
     const root = document.createElement('div')
-    root.className = 'smtcmp-inline-review-widget'
+    root.className = `smtcmp-inline-review-widget${this.isActive ? ' is-active' : ''}`
+    root.setAttribute('data-review-index', String(this.reviewIndex))
+
+    if (this.decision !== 'pending') {
+      root.classList.add('is-resolved')
+      const resolved =
+        this.decision === 'incoming'
+          ? (this.block.modifiedValue ?? this.block.originalValue ?? '')
+          : (this.block.originalValue ?? '')
+      const resolvedContainer = document.createElement('div')
+      resolvedContainer.className = 'smtcmp-inline-review-resolved'
+      const resolvedLines = resolved.split('\n')
+      resolvedLines.forEach((line) => {
+        const lineEl = document.createElement('div')
+        lineEl.className = 'smtcmp-inline-review-line'
+        lineEl.textContent = line
+        resolvedContainer.appendChild(lineEl)
+      })
+      root.appendChild(resolvedContainer)
+      return root
+    }
 
     const content = document.createElement('div')
     content.className = 'smtcmp-inline-review-content'
@@ -70,6 +94,9 @@ class InlineReviewWidget extends WidgetType {
     root.addEventListener('mousedown', (event) => {
       event.preventDefault()
       event.stopPropagation()
+    })
+    root.addEventListener('mouseenter', () => {
+      this.onHover(this.reviewIndex)
     })
 
     return root
@@ -259,7 +286,7 @@ export class InlineDiffReviewOverlay {
     })
 
     this.mountFloatingControls()
-    this.renderActiveBlock()
+    this.renderBlocks({ ensureVisible: true })
     this.options.onActionsReady?.({
       goToPreviousDiff: () => this.goToPrevious(),
       goToNextDiff: () => this.goToNext(),
@@ -306,6 +333,7 @@ export class InlineDiffReviewOverlay {
     rail.style.background =
       'color-mix(in srgb, var(--interactive-accent) 65%, transparent)'
     rail.style.opacity = '0.95'
+    rail.style.transition = 'top 180ms ease, height 180ms ease, left 180ms ease'
     root.appendChild(rail)
 
     const actions = document.createElement('div')
@@ -315,6 +343,8 @@ export class InlineDiffReviewOverlay {
     actions.style.flexDirection = 'column'
     actions.style.gap = '10px'
     actions.style.pointerEvents = 'auto'
+    actions.style.transition =
+      'top 180ms ease, left 180ms ease, opacity 140ms ease'
     actions.appendChild(
       createActionButton('×', 'Accept current', () =>
         this.acceptCurrentActive(),
@@ -448,7 +478,9 @@ export class InlineDiffReviewOverlay {
     const toProbe = active.to > active.from ? active.to - 1 : active.from
     const toRect = this.options.view.coordsAtPos(toProbe)
     const widgetRect = this.options.view.dom
-      .querySelector('.smtcmp-inline-review-widget')
+      .querySelector(
+        `.smtcmp-inline-review-widget[data-review-index="${this.currentIndex}"]`,
+      )
       ?.getBoundingClientRect()
 
     if (!fromRect && !widgetRect) return
@@ -492,13 +524,13 @@ export class InlineDiffReviewOverlay {
       this.currentIndex <= 0
         ? this.modifiedBlocks.length - 1
         : this.currentIndex - 1
-    this.renderActiveBlock()
+    this.renderBlocks({ ensureVisible: true })
   }
 
   private goToNext(): void {
     if (this.modifiedBlocks.length === 0) return
     this.currentIndex = (this.currentIndex + 1) % this.modifiedBlocks.length
-    this.renderActiveBlock()
+    this.renderBlocks({ ensureVisible: true })
   }
 
   private acceptIncomingActive(): void {
@@ -513,7 +545,7 @@ export class InlineDiffReviewOverlay {
     const item = this.modifiedBlocks[this.currentIndex]
     if (!item) return
     this.decisions.set(item.blockIndex, 'pending')
-    this.renderActiveBlock()
+    this.renderBlocks({ ensureVisible: false })
   }
 
   private resolveActive(decision: 'incoming' | 'current'): void {
@@ -524,7 +556,7 @@ export class InlineDiffReviewOverlay {
     const nextPending = this.findNextPendingIndex(this.currentIndex + 1)
     if (nextPending !== null) {
       this.currentIndex = nextPending
-      this.renderActiveBlock()
+      this.renderBlocks({ ensureVisible: true })
       return
     }
 
@@ -542,25 +574,38 @@ export class InlineDiffReviewOverlay {
     return null
   }
 
-  private renderActiveBlock(): void {
+  private renderBlocks(options: { ensureVisible: boolean }): void {
     const builder = new RangeSetBuilder<Decoration>()
-    const active = this.modifiedBlocks[this.currentIndex]
-    if (active) {
-      this.normalizeEditorSelection(active)
-      const widget = new InlineReviewWidget(active.block)
-      if (active.from === active.to) {
+    this.modifiedBlocks.forEach((item, reviewIndex) => {
+      const decision = this.decisions.get(item.blockIndex) ?? 'pending'
+      const widget = new InlineReviewWidget(
+        item.block,
+        reviewIndex,
+        reviewIndex === this.currentIndex,
+        decision,
+        (nextIndex: number) => this.handleHoverActive(nextIndex),
+      )
+
+      if (item.from === item.to) {
         builder.add(
-          active.from,
-          active.from,
+          item.from,
+          item.from,
           Decoration.widget({ widget, side: 1, block: true }),
         )
       } else {
         builder.add(
-          active.from,
-          active.to,
+          item.from,
+          item.to,
           Decoration.replace({ widget, block: true }),
         )
       }
+    })
+
+    const active = this.modifiedBlocks[this.currentIndex]
+    if (active) {
+      this.collapseSelectionNearActive(active)
+    }
+    if (active && options.ensureVisible) {
       this.options.view.dispatch({
         effects: EditorView.scrollIntoView(active.from, { y: 'nearest' }),
       })
@@ -573,7 +618,7 @@ export class InlineDiffReviewOverlay {
     this.updateFloatingPosition()
   }
 
-  private normalizeEditorSelection(active: ModifiedReviewBlock): void {
+  private collapseSelectionNearActive(active: ModifiedReviewBlock): void {
     const docLength = this.options.view.state.doc.length
     let safePos = active.to
     if (safePos < docLength) {
@@ -583,19 +628,28 @@ export class InlineDiffReviewOverlay {
     }
     safePos = clampNumber(safePos, 0, docLength)
 
-    const currentMain = this.options.view.state.selection.main
+    const selection = this.options.view.state.selection
     if (
-      currentMain.from !== safePos ||
-      currentMain.to !== safePos ||
-      this.options.view.state.selection.ranges.length > 1
+      selection.main.from === safePos &&
+      selection.main.to === safePos &&
+      selection.ranges.length === 1
     ) {
-      this.options.view.dispatch({
-        selection: {
-          anchor: safePos,
-          head: safePos,
-        },
-      })
+      return
     }
+
+    this.options.view.dispatch({
+      selection: {
+        anchor: safePos,
+        head: safePos,
+      },
+    })
+  }
+
+  private handleHoverActive(nextIndex: number): void {
+    if (nextIndex === this.currentIndex) return
+    if (nextIndex < 0 || nextIndex >= this.modifiedBlocks.length) return
+    this.currentIndex = nextIndex
+    this.renderBlocks({ ensureVisible: false })
   }
 
   private generateFinalContent(
