@@ -114,6 +114,41 @@ export function parseTagContents(input: string): ParsedTagContent[] {
     })
   }
 
+  const normalizedBlocks: ParsedTagContent[] = []
+  parsedResult.forEach((block) => {
+    if (block.type !== 'smtcmp_block') {
+      normalizedBlocks.push(block)
+      return
+    }
+
+    const nestedBlocks = parseTagContents(block.content)
+    const hasNonWhitespaceText = nestedBlocks.some((nestedBlock) => {
+      return (
+        nestedBlock.type === 'string' && nestedBlock.content.trim().length > 0
+      )
+    })
+    const hasThinkBlock = nestedBlocks.some(
+      (nestedBlock) => nestedBlock.type === 'think',
+    )
+    const nestedSmtcmpBlocks = nestedBlocks.filter(
+      (
+        nestedBlock,
+      ): nestedBlock is Extract<ParsedTagContent, { type: 'smtcmp_block' }> =>
+        nestedBlock.type === 'smtcmp_block',
+    )
+
+    if (
+      hasNonWhitespaceText ||
+      hasThinkBlock ||
+      nestedSmtcmpBlocks.length === 0
+    ) {
+      normalizedBlocks.push(block)
+      return
+    }
+
+    normalizedBlocks.push(...nestedSmtcmpBlocks)
+  })
+
   /**
    * Remove a single leading/trailing newline from each block's content.
    *
@@ -127,9 +162,9 @@ export function parseTagContents(input: string): ParsedTagContent[] {
    * { type: 'string', content: 'hello world' }
    * { type: 'smtcmp_block', content: 'some content' }
    */
-  parsedResult.forEach((block) => {
+  normalizedBlocks.forEach((block) => {
     block.content = block.content.replace(/^\n|\n$/g, '')
   })
 
-  return parsedResult
+  return normalizedBlocks
 }

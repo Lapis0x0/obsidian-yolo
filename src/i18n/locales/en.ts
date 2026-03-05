@@ -294,14 +294,18 @@ export const en: TranslationKeys = {
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
-        'Skills are discovered from built-in skills and YOLO/skills/**/*.md (excluding Skills.md). Disable a skill here to block it for all agents.',
+        'Skills are discovered from built-in skills and {path}/**/*.md (excluding Skills.md where applicable). Disable a skill here to block it for all agents.',
+      yoloBaseDir: 'YOLO base folder',
+      yoloBaseDirDesc:
+        'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
+      yoloBaseDirPlaceholder: 'YOLO',
       skillsSourcePath:
-        'Source: built-in skills + YOLO/skills/**/*.md (excluding Skills.md)',
+        'Source: built-in skills + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
-        'No skills found. Create skill markdown files under YOLO/skills (excluding Skills.md).',
+        'No skills found. Create skill markdown files under {path}.',
       createSkillTemplates: 'Initialize Skills system',
-      skillsTemplateCreated: 'Skills system initialized in YOLO/skills.',
+      skillsTemplateCreated: 'Skills system initialized in {path}.',
       agents: 'Agents',
       agentsDesc: 'Click Configure to edit each agent profile and prompt.',
       configureAgents: 'Configure',
@@ -495,9 +499,6 @@ export const en: TranslationKeys = {
       chunkSize: 'Chunk size',
       chunkSizeDesc:
         "Set the chunk size for text splitting. After changing this, please re-index the vault using the 'rebuild entire vault index' command.",
-      thresholdTokens: 'Threshold tokens',
-      thresholdTokensDesc:
-        'Maximum number of tokens before switching to retrieval-augmented generation; if the total tokens from mentioned files exceed this, the plugin uses retrieval-augmented generation instead of including all file contents.',
       minSimilarity: 'Minimum similarity',
       minSimilarityDesc:
         'Minimum similarity score for retrieval-augmented generation results; higher values return more relevant but potentially fewer results.',
@@ -753,6 +754,12 @@ export const en: TranslationKeys = {
       clearChatHistoryConfirm:
         'Are you sure you want to clear all chat history without the ability to undo?',
       clearChatHistorySuccess: 'All chat history has been cleared',
+      clearChatSnapshots: 'Clear chat snapshots',
+      clearChatSnapshotsDesc:
+        'Delete all conversation context snapshot files (without deleting chat messages)',
+      clearChatSnapshotsConfirm:
+        'Are you sure you want to clear all chat snapshot files? This action cannot be undone and context may need to be rebuilt later.',
+      clearChatSnapshotsSuccess: 'All chat snapshot files have been cleared',
       resetProviders: 'Reset providers and models',
       resetProvidersDesc: 'Restore default providers and model configurations',
       resetProvidersConfirm:
@@ -764,6 +771,10 @@ export const en: TranslationKeys = {
       resetAgentsConfirm:
         'Are you sure you want to reset agent configuration? This will remove custom agents and reset the current selection.',
       resetAgentsSuccess: 'Agent configuration has been reset to defaults',
+      yoloBaseDir: 'YOLO base folder',
+      yoloBaseDirDesc:
+        'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
+      yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
         'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',
@@ -773,7 +784,8 @@ export const en: TranslationKeys = {
   },
 
   chat: {
-    placeholder: 'Type a message...「@ to add references」',
+    placeholder:
+      'Type a message...「@ to add references, keep typing to filter」',
     placeholderCompact: 'Click to expand and edit...',
     sendMessage: 'Send message',
     newChat: 'New chat',

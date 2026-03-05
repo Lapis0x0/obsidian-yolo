@@ -4,6 +4,10 @@ import {
   getBuiltinLiteSkillByIdOrName,
   listBuiltinLiteSkills,
 } from './builtinSkills'
+import {
+  YOLO_SKILLS_INDEX_FILE_NAME,
+  getYoloSkillsDirPrefix,
+} from '../paths/yoloPaths'
 
 export type LiteSkillMode = 'lazy' | 'always'
 
@@ -20,8 +24,7 @@ export type LiteSkillDocument = {
   content: string
 }
 
-const SKILL_DIR_PREFIX = 'YOLO/skills/'
-const SKILL_INDEX_FILE_NAME = 'Skills.md'
+const CLAUDE_SKILL_FILE_NAME = 'SKILL.md'
 
 const normalizeSkillMode = (value: unknown): LiteSkillMode => {
   if (typeof value !== 'string') {
@@ -36,14 +39,6 @@ const asTrimmedString = (value: unknown): string | null => {
   }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
-}
-
-const getFallbackSkillId = (file: TFile): string => {
-  const basename = file.basename
-  if (basename.endsWith('.skill')) {
-    return basename.slice(0, -'.skill'.length)
-  }
-  return basename
 }
 
 const stripWrappingQuotes = (value: string): string => {
@@ -92,10 +87,13 @@ const toLiteSkillEntry = ({
 }: {
   file: TFile
   frontmatter?: Record<string, unknown> | null
-}): LiteSkillEntry => {
-  const fallbackId = getFallbackSkillId(file)
-  const id = asTrimmedString(frontmatter?.id) ?? fallbackId
-  const name = asTrimmedString(frontmatter?.name) ?? id
+}): LiteSkillEntry | null => {
+  const name = asTrimmedString(frontmatter?.name)
+  if (!name) {
+    return null
+  }
+
+  const id = asTrimmedString(frontmatter?.id) ?? name
   const description =
     asTrimmedString(frontmatter?.description) ?? 'No description provided.'
   const mode = normalizeSkillMode(frontmatter?.mode)
@@ -109,18 +107,48 @@ const toLiteSkillEntry = ({
   }
 }
 
-const isLiteSkillFile = (file: TFile): boolean => {
-  return (
-    file.path.startsWith(SKILL_DIR_PREFIX) &&
-    file.extension === 'md' &&
-    file.name !== SKILL_INDEX_FILE_NAME
-  )
+const isLiteSkillFile = ({
+  file,
+  skillsDirPrefix,
+}: {
+  file: TFile
+  skillsDirPrefix: string
+}): boolean => {
+  if (!file.path.startsWith(skillsDirPrefix) || file.extension !== 'md') {
+    return false
+  }
+
+  if (file.name === YOLO_SKILLS_INDEX_FILE_NAME) {
+    return false
+  }
+
+  const relativePath = file.path.slice(skillsDirPrefix.length)
+  if (!relativePath.includes('/')) {
+    return true
+  }
+
+  return file.name === CLAUDE_SKILL_FILE_NAME
 }
 
-export function listLiteSkillEntries(app: App): LiteSkillEntry[] {
+export function listLiteSkillEntries(
+  app: App,
+  options?: {
+    settings?: {
+      yolo?: {
+        baseDir?: string
+      }
+    }
+  },
+): LiteSkillEntry[] {
+  const skillsDirPrefix = getYoloSkillsDirPrefix(options?.settings)
   const files = app.vault
     .getMarkdownFiles()
-    .filter((file) => isLiteSkillFile(file))
+    .filter((file) =>
+      isLiteSkillFile({
+        file,
+        skillsDirPrefix,
+      }),
+    )
     .sort((a, b) => a.path.localeCompare(b.path))
 
   const mergedById = new Map<string, LiteSkillEntry>()
@@ -141,6 +169,9 @@ export function listLiteSkillEntries(app: App): LiteSkillEntry[] {
       file,
       frontmatter: frontmatter ?? null,
     })
+    if (!entry) {
+      return
+    }
     // Vault skill with the same id overrides builtin skill.
     mergedById.set(entry.id, entry)
   })
@@ -152,10 +183,16 @@ const findLiteSkillFile = ({
   app,
   id,
   name,
+  settings,
 }: {
   app: App
   id?: string
   name?: string
+  settings?: {
+    yolo?: {
+      baseDir?: string
+    }
+  }
 }): TFile | null => {
   const normalizedId = id?.trim().toLowerCase()
   const normalizedName = name?.trim().toLowerCase()
@@ -163,9 +200,15 @@ const findLiteSkillFile = ({
     return null
   }
 
+  const skillsDirPrefix = getYoloSkillsDirPrefix(settings)
   const files = app.vault
     .getMarkdownFiles()
-    .filter((file) => isLiteSkillFile(file))
+    .filter((file) =>
+      isLiteSkillFile({
+        file,
+        skillsDirPrefix,
+      }),
+    )
     .sort((a, b) => a.path.localeCompare(b.path))
 
   for (const file of files) {
@@ -174,6 +217,9 @@ const findLiteSkillFile = ({
       file,
       frontmatter: frontmatter ?? null,
     })
+    if (!entry) {
+      continue
+    }
     if (normalizedId && entry.id.toLowerCase() === normalizedId) {
       return file
     }
@@ -189,19 +235,34 @@ export async function getLiteSkillDocument({
   app,
   id,
   name,
+  settings,
 }: {
   app: App
   id?: string
   name?: string
+  settings?: {
+    yolo?: {
+      baseDir?: string
+    }
+  }
 }): Promise<LiteSkillDocument | null> {
-  const file = findLiteSkillFile({ app, id, name })
+  const file = findLiteSkillFile({ app, id, name, settings })
   if (file) {
     const content = await app.vault.cachedRead(file)
+    const metadataFrontmatter =
+      app.metadataCache.getFileCache(file)?.frontmatter
     const parsedFrontmatter = parseFrontmatterFromContent(content)
+    const mergedFrontmatter = {
+      ...(metadataFrontmatter ?? {}),
+      ...(parsedFrontmatter ?? {}),
+    }
     const entry = toLiteSkillEntry({
       file,
-      frontmatter: parsedFrontmatter,
+      frontmatter: mergedFrontmatter,
     })
+    if (!entry) {
+      return null
+    }
 
     return {
       entry,

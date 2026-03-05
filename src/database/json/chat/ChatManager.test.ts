@@ -37,36 +37,11 @@ describe('ChatManager', () => {
     chatManager = new TestableChatManager(mockApp)
   })
 
-  describe('filename generation and parsing roundtrip', () => {
-    const testTitles = [
-      'Simple Title',
-      'Special & Characters! #$%^',
-      'Unicode 中文 日本語 한국어',
-      'Extremely long title that might cause issues with file systems',
-      'Title with trailing spaces   ',
-      '   Title with leading spaces',
-      'Title with _ underscores_and_special_chars',
-      'Title with.dots.and-dashes',
-      'Title with / slashes \\ and \\ backslashes',
-      'Title with "quotes" and \'apostrophes\'',
-      'Title with <html> tags',
-      'Title with newlines\nand\ttabs',
-      '🔥 Title with emojis 🚀',
-      ' ',
-      'Title-with-123e4567-e89b-12d3-a456-426614174000-uuid-like-substring',
-      '_Title_starting_with_underscore',
-      'Title+with+plus+signs',
-      'Title%20with%20encoded%20characters',
-      'Title ending with .json',
-      'v1_Title_starting_like_a_versioned_file',
-      '..Title with leading dots',
-      'Title with trailing dots..',
-    ]
-
-    test.each(testTitles)('should correctly roundtrip title: %s', (title) => {
+  describe('filename generation and parsing', () => {
+    test('should generate stable filename by conversation id', () => {
       const chat: ChatConversation = {
         id: '123e4567-e89b-12d3-a456-426614174000',
-        title,
+        title: 'Any Title',
         messages: [],
         createdAt: 1620000000000,
         updatedAt: 1620000000000,
@@ -74,14 +49,32 @@ describe('ChatManager', () => {
       }
 
       const fileName = chatManager.generateFileNameForTest(chat)
-      const metadata = chatManager.parseFileNameForTest(fileName)
+      expect(fileName).toBe(`v${CHAT_SCHEMA_VERSION}_${chat.id}.json`)
 
+      const metadata = chatManager.parseFileNameForTest(fileName)
       expect(metadata).not.toBeNull()
       if (metadata) {
         expect(metadata.id).toBe(chat.id)
-        expect(metadata.title).toBe(chat.title)
-        expect(metadata.updatedAt).toBe(chat.updatedAt)
+        expect(metadata.title).toBe('')
+        expect(metadata.updatedAt).toBe(0)
         expect(metadata.schemaVersion).toBe(chat.schemaVersion)
+      }
+    })
+
+    test('should parse legacy filename format', () => {
+      const title = 'Legacy Chat Title'
+      const encodedTitle = encodeURIComponent(title)
+      const updatedAt = 1620000000000
+      const id = '123e4567-e89b-12d3-a456-426614174000'
+      const legacyFileName = `v${CHAT_SCHEMA_VERSION}_${encodedTitle}_${updatedAt}_${id}.json`
+
+      const metadata = chatManager.parseFileNameForTest(legacyFileName)
+      expect(metadata).not.toBeNull()
+      if (metadata) {
+        expect(metadata.id).toBe(id)
+        expect(metadata.title).toBe(title)
+        expect(metadata.updatedAt).toBe(updatedAt)
+        expect(metadata.schemaVersion).toBe(CHAT_SCHEMA_VERSION)
       }
     })
   })

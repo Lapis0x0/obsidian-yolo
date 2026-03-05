@@ -96,6 +96,7 @@ export class AgentLlmTurnExecutor {
         hasTools,
         maxContextOverride: this.input.maxContextOverride,
         model: this.input.model,
+        conversationId: this.input.conversationId,
         currentFileContextMode: this.input.currentFileContextMode,
         currentFileOverride: this.input.currentFileOverride,
       })

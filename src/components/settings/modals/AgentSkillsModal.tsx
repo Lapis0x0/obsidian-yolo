@@ -1,4 +1,4 @@
-import { App, Notice, normalizePath } from 'obsidian'
+import { App, Notice } from 'obsidian'
 import { useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -8,9 +8,10 @@ import {
 } from '../../../contexts/settings-context'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import {
-  YOLO_SKILLS_DIR,
-  YOLO_SKILLS_INDEX_TEMPLATE,
-} from '../../../core/skills/templates'
+  getYoloSkillsDir,
+  getYoloSkillsIndexPath,
+} from '../../../core/paths/yoloPaths'
+import { YOLO_SKILLS_INDEX_TEMPLATE } from '../../../core/skills/templates'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -64,6 +65,7 @@ function AgentSkillsModalContent({
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
   const [refreshTick, setRefreshTick] = useState(0)
+  const skillsDir = getYoloSkillsDir(settings)
 
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
   const disabledSkillIdSet = useMemo(
@@ -73,8 +75,8 @@ function AgentSkillsModalContent({
 
   const skills = useMemo(() => {
     void refreshTick
-    return listLiteSkillEntries(app)
-  }, [app, refreshTick])
+    return listLiteSkillEntries(app, { settings })
+  }, [app, refreshTick, settings])
 
   const handleToggleSkill = (skillId: string, enabled: boolean) => {
     const current = new Set(settings.skills?.disabledSkillIds ?? [])
@@ -94,8 +96,7 @@ function AgentSkillsModalContent({
   }
 
   const handleInitializeSkillsSystem = async () => {
-    const skillsDir = normalizePath(YOLO_SKILLS_DIR)
-    const indexPath = normalizePath(`${skillsDir}/Skills.md`)
+    const indexPath = getYoloSkillsIndexPath(settings)
 
     try {
       const maybeFolder = app.vault.getAbstractFileByPath(skillsDir)
@@ -104,15 +105,18 @@ function AgentSkillsModalContent({
       }
 
       if (!app.vault.getAbstractFileByPath(indexPath)) {
-        await app.vault.create(indexPath, YOLO_SKILLS_INDEX_TEMPLATE)
+        await app.vault.create(
+          indexPath,
+          YOLO_SKILLS_INDEX_TEMPLATE.split('YOLO/skills').join(skillsDir),
+        )
       }
 
       setRefreshTick((value) => value + 1)
       new Notice(
         t(
           'settings.agent.skillsTemplateCreated',
-          'Skills system initialized in YOLO/skills.',
-        ),
+          'Skills system initialized in {path}.',
+        ).replace('{path}', skillsDir),
       )
     } catch (error) {
       const message =
@@ -126,16 +130,18 @@ function AgentSkillsModalContent({
       <div className="smtcmp-settings-desc smtcmp-settings-callout">
         {t(
           'settings.agent.skillsGlobalDesc',
-          'Skills are discovered from built-in skills and YOLO/skills/**/*.md (excluding Skills.md). Disable a skill here to block it for all agents.',
-        )}
+          'Skills are discovered from built-in skills and {path}/**/*.md (excluding Skills.md where applicable). Disable a skill here to block it for all agents.',
+        ).replace('{path}', skillsDir)}
       </div>
 
       <div className="smtcmp-agent-skills-toolbar">
         <div className="smtcmp-settings-desc">
           {t(
             'settings.agent.skillsSourcePath',
-            'Source: built-in skills + YOLO/skills/**/*.md (excluding Skills.md)',
-          )}
+            'Source: built-in skills + {path}/*.md + {path}/**/SKILL.md',
+          )
+            .split('{path}')
+            .join(skillsDir)}
         </div>
         <div className="smtcmp-agent-skills-toolbar-actions">
           <ObsidianButton
@@ -203,8 +209,8 @@ function AgentSkillsModalContent({
           <div className="smtcmp-agent-tools-empty">
             {t(
               'settings.agent.skillsEmptyHint',
-              'No skills found. Create markdown skills under YOLO/skills.',
-            )}
+              'No skills found. Create skill markdown files under {path}.',
+            ).replace('{path}', skillsDir)}
           </div>
         )}
       </div>

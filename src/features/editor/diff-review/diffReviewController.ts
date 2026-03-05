@@ -3,6 +3,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
 import { ApplyReviewOverlay } from '../../../components/apply-view/ApplyReviewOverlay'
+import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
 import type { ApplyViewActions } from '../../../components/apply-view/ApplyViewRoot'
 import type SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -20,6 +21,32 @@ export class DiffReviewController {
   private readonly diffReviewExtension = [
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
+    EditorView.theme({
+      '.cm-content': {
+        caretColor: 'transparent',
+      },
+      '.cm-cursorLayer': {
+        display: 'none !important',
+      },
+      '.cm-cursor': {
+        display: 'none !important',
+      },
+      '.cm-fat-cursor': {
+        display: 'none !important',
+      },
+      '.cm-fat-cursor-mark': {
+        display: 'none !important',
+      },
+      '.cm-dropCursor': {
+        display: 'none !important',
+      },
+      '.cm-selectionLayer': {
+        display: 'none !important',
+      },
+      '.cm-selectionBackground': {
+        background: 'transparent !important',
+      },
+    }),
     Prec.high(
       keymap.of([
         {
@@ -65,7 +92,8 @@ export class DiffReviewController {
   ]
 
   private activeView: EditorView | null = null
-  private activeOverlay: ApplyReviewOverlay | null = null
+  private activeOverlay: { mount: () => void; destroy: () => void } | null =
+    null
   private activeActions: ApplyViewActions | null = null
 
   constructor(deps: DiffReviewControllerDeps) {
@@ -125,16 +153,62 @@ export class DiffReviewController {
 
     this.activeView = view
 
-    this.activeOverlay = new ApplyReviewOverlay({
-      plugin: this.deps.plugin,
-      view,
-      state,
-      onClose: () => this.closeReview(),
-      onActionsReady: (actions) => {
-        this.activeActions = actions
-      },
-    })
+    const reviewState =
+      state.reviewMode === 'selection-focus' &&
+      !this.hasValidSelectionRange(view, state)
+        ? {
+            ...state,
+            reviewMode: 'full' as const,
+          }
+        : state
+
+    this.activeOverlay =
+      reviewState.reviewMode === 'selection-focus'
+        ? new InlineDiffReviewOverlay({
+            plugin: this.deps.plugin,
+            view,
+            state: reviewState,
+            onClose: () => this.closeReview(),
+            onActionsReady: (actions) => {
+              this.activeActions = actions
+            },
+          })
+        : new ApplyReviewOverlay({
+            plugin: this.deps.plugin,
+            view,
+            state: {
+              ...reviewState,
+              reviewMode: 'full',
+            },
+            onClose: () => this.closeReview(),
+            onActionsReady: (actions) => {
+              this.activeActions = actions
+            },
+          })
     this.activeOverlay.mount()
+  }
+
+  private hasValidSelectionRange(
+    view: EditorView,
+    state: ApplyViewState,
+  ): boolean {
+    const range = state.selectionRange
+    if (!range) return false
+    if (view.state.doc.lines <= 0) return false
+
+    const fromLine = range.from.line + 1
+    const toLine = range.to.line + 1
+    if (fromLine < 1 || toLine < 1) return false
+    if (fromLine > view.state.doc.lines || toLine > view.state.doc.lines) {
+      return false
+    }
+
+    const fromDocLine = view.state.doc.line(fromLine)
+    const toDocLine = view.state.doc.line(toLine)
+    if (range.from.ch < 0 || range.from.ch > fromDocLine.length) return false
+    if (range.to.ch < 0 || range.to.ch > toDocLine.length) return false
+
+    return true
   }
 
   private ensureExtension(view: EditorView): void {

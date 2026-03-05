@@ -255,6 +255,15 @@ export const smartComposerSettingsSchema = z.object({
       disabledSkillIds: [],
     }),
 
+  // YOLO workspace configuration
+  yolo: z
+    .object({
+      baseDir: z.string().catch('YOLO'),
+    })
+    .catch({
+      baseDir: 'YOLO',
+    }),
+
   // Chat options
   chatOptions: z
     .object({

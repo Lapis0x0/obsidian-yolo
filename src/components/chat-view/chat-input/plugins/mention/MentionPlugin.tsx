@@ -95,6 +95,18 @@ const AtSignMentionsRegexAliasRegex = new RegExp(
 // At most, 20 suggestions are shown in the popup.
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
 
+function getDisplayFileName(name: string): string {
+  return name.toLowerCase().endsWith('.md') ? name.slice(0, -3) : name
+}
+
+function getFileParentFolderPath(filePath: string): string {
+  const lastSlashIndex = filePath.lastIndexOf('/')
+  if (lastSlashIndex <= 0) {
+    return '/'
+  }
+  return `/${filePath.slice(0, lastSlashIndex)}`
+}
+
 type MentionMenuMode = 'direct-search' | 'entry'
 type MentionMenuScope = 'root' | 'assistant' | 'file' | 'folder' | 'mode'
 type MentionEntryOptionType = 'assistant' | 'file' | 'folder' | 'mode'
@@ -190,7 +202,7 @@ class MentionTypeaheadOption extends MenuOption {
       switch (mentionable.type) {
         case 'file':
           key = mentionable.file.path
-          name = mentionable.file.name
+          name = getDisplayFileName(mentionable.file.name)
           subtitle = payload.subtitle ?? null
           break
         case 'folder':
@@ -236,7 +248,8 @@ function MentionsTypeaheadMenuItem({
     option.payload.kind === 'assistant' ||
     option.payload.kind === 'mode' ||
     (option.payload.kind === 'mentionable' &&
-      option.payload.mentionable.type === 'folder' &&
+      (option.payload.mentionable.type === 'folder' ||
+        option.payload.mentionable.type === 'file') &&
       Boolean(option.subtitle))
 
   if (option.payload.kind === 'back') {
@@ -446,6 +459,49 @@ export default function NewMentionsPlugin({
     }
 
     if (menuScope === 'root') {
+      if (normalizedQuery) {
+        const searchableMentionables = results
+          .filter(
+            (
+              result,
+            ): result is SearchableMentionable & { type: 'file' | 'folder' } =>
+              result.type === 'file' || result.type === 'folder',
+          )
+          .map(
+            (mentionable) =>
+              new MentionTypeaheadOption({
+                kind: 'mentionable',
+                mentionable,
+                subtitle:
+                  mentionable.type === 'file'
+                    ? getFileParentFolderPath(mentionable.file.path)
+                    : `/${mentionable.folder.path}`,
+              }),
+          )
+
+        const assistantOptions = assistants
+          .filter((assistant) => {
+            const description = assistant.description ?? ''
+            return (
+              assistant.name.toLowerCase().includes(normalizedQuery) ||
+              description.toLowerCase().includes(normalizedQuery)
+            )
+          })
+          .map(
+            (assistant) =>
+              new MentionTypeaheadOption({
+                kind: 'assistant',
+                assistant,
+                isCurrent: assistant.id === currentAssistantId,
+              }),
+          )
+
+        return [...searchableMentionables, ...assistantOptions].slice(
+          0,
+          SUGGESTION_LIST_LENGTH_LIMIT,
+        )
+      }
+
       const entryOptions: Array<{
         entryType: MentionEntryOptionType
         label: string
@@ -470,10 +526,6 @@ export default function NewMentionsPlugin({
         })
       }
       return entryOptions
-        .filter((entry) => {
-          if (!normalizedQuery) return true
-          return entry.label.toLowerCase().includes(normalizedQuery)
-        })
         .map(
           (entry) =>
             new MentionTypeaheadOption({
@@ -592,6 +644,7 @@ export default function NewMentionsPlugin({
         new MentionTypeaheadOption({
           kind: 'mentionable',
           mentionable,
+          subtitle: getFileParentFolderPath(mentionable.file.path),
         }),
     )
     return [

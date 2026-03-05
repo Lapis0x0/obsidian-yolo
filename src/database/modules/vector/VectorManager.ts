@@ -207,11 +207,7 @@ export class VectorManager {
       'markdown',
       {
         chunkSize: options.chunkSize,
-        // TODO: Use token-based chunking after migrating to WebAssembly-based tiktoken
-        // Current token counting method is too slow for practical use
-        // lengthFunction: async (text) => {
-        //   return await tokenCount(text)
-        // },
+        // TODO: Evaluate token-based chunking when performance is acceptable.
       },
     )
 

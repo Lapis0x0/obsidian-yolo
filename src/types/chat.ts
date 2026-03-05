@@ -8,10 +8,15 @@ import { Annotation, ResponseUsage } from './llm/response'
 import { Mentionable, SerializedMentionable } from './mentionable'
 import { ToolCallRequest, ToolCallResponse } from './tool-call.types'
 
+export type PromptSnapshotRef = {
+  hash: string
+}
+
 export type ChatUserMessage = {
   role: 'user'
   content: SerializedEditorState | null
   promptContent: string | ContentPart[] | null
+  snapshotRef?: PromptSnapshotRef
   id: string
   mentionables: Mentionable[]
   reasoningLevel?: string
@@ -56,6 +61,7 @@ export type SerializedChatUserMessage = {
   role: 'user'
   content: SerializedEditorState | null
   promptContent: string | ContentPart[] | null
+  snapshotRef?: PromptSnapshotRef
   id: string
   mentionables: SerializedMentionable[]
   reasoningLevel?: string

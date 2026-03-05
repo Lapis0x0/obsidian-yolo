@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
+import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import {
@@ -273,7 +274,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'open_skill',
       description:
-        'Load a lite skill from YOLO/skills by id or name and return full markdown content.',
+        'Load a lite skill from the configured skills directory by id or name and return full markdown content.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -551,6 +552,39 @@ const normalizeLineEndingsAndTrimLineEnd = (value: string): string => {
     .join('\n')
 }
 
+const CONTROL_CHAR_TO_ESCAPE_SUFFIX: Record<string, string> = {
+  '\b': 'b',
+  '\t': 't',
+  '\f': 'f',
+}
+
+export const recoverLikelyEscapedBackslashSequences = (
+  value: string,
+): string => {
+  if (!/[\b\t\f]/.test(value)) {
+    return value
+  }
+
+  let changed = false
+  let result = ''
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]
+    const escapeSuffix = CONTROL_CHAR_TO_ESCAPE_SUFFIX[char]
+    const nextChar = value[i + 1]
+
+    if (escapeSuffix && nextChar && /[A-Za-z]/.test(nextChar)) {
+      result += `\\${escapeSuffix}`
+      changed = true
+      continue
+    }
+
+    result += char
+  }
+
+  return changed ? result : value
+}
+
 const escapeRegExp = (value: string): string => {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -620,11 +654,13 @@ export function parseLocalFsWriteActionFromArgs(
 
 export async function callLocalFileTool({
   app,
+  settings,
   toolName,
   args,
   signal,
 }: {
   app: App
+  settings?: SmartComposerSettings
   toolName: string
   args: Record<string, unknown>
   signal?: AbortSignal
@@ -913,7 +949,11 @@ export async function callLocalFileTool({
 
         let nextContent = content
         let actualOccurrences = exactOccurrences
-        let matchMode: 'exact' | 'lineEndingAndTrimLineEnd' = 'exact'
+        let matchMode:
+          | 'exact'
+          | 'lineEndingAndTrimLineEnd'
+          | 'escapedControlRecovery'
+          | 'escapedControlRecoveryLineEndingAndTrimLineEnd' = 'exact'
 
         if (exactOccurrences === expectedOccurrences) {
           nextContent = content.split(oldText).join(newText)
@@ -928,9 +968,49 @@ export async function callLocalFileTool({
               () => newText,
             )
           } else {
-            throw new Error(
-              `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}`,
-            )
+            const recoveredOldText =
+              recoverLikelyEscapedBackslashSequences(oldText)
+            const recoveredNewText =
+              recoverLikelyEscapedBackslashSequences(newText)
+            const hasRecoveredInputs =
+              recoveredOldText !== oldText || recoveredNewText !== newText
+
+            if (hasRecoveredInputs) {
+              const recoveredExactOccurrences = countOccurrences(
+                content,
+                recoveredOldText,
+              )
+              if (recoveredExactOccurrences === expectedOccurrences) {
+                actualOccurrences = recoveredExactOccurrences
+                matchMode = 'escapedControlRecovery'
+                nextContent = content
+                  .split(recoveredOldText)
+                  .join(recoveredNewText)
+              } else {
+                const recoveredLooseRegex =
+                  createLooseEditRegex(recoveredOldText)
+                const recoveredLooseOccurrences = countRegexMatches(
+                  content,
+                  recoveredLooseRegex,
+                )
+                if (recoveredLooseOccurrences === expectedOccurrences) {
+                  actualOccurrences = recoveredLooseOccurrences
+                  matchMode = 'escapedControlRecoveryLineEndingAndTrimLineEnd'
+                  nextContent = content.replace(
+                    createLooseEditRegex(recoveredOldText),
+                    () => recoveredNewText,
+                  )
+                } else {
+                  throw new Error(
+                    `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}, recoveredExact=${recoveredExactOccurrences}, recoveredLineEndingAndTrimLineEnd=${recoveredLooseOccurrences}`,
+                  )
+                }
+              }
+            } else {
+              throw new Error(
+                `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}`,
+              )
+            }
           }
         }
 
@@ -1347,7 +1427,7 @@ export async function callLocalFileTool({
           throw new Error('Either id or name is required.')
         }
 
-        const skill = await getLiteSkillDocument({ app, id, name })
+        const skill = await getLiteSkillDocument({ app, id, name, settings })
         if (!skill) {
           throw new Error(`Skill not found. id=${id ?? ''} name=${name ?? ''}`)
         }

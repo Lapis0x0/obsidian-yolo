@@ -21,6 +21,7 @@ import {
 } from 'lexical'
 
 import { SerializedMentionable } from '../../../../../types/mentionable'
+import { getBlockContentHash } from '../../../../../utils/chat/mentionable'
 
 export const MENTION_NODE_TYPE = 'mention'
 export const MENTION_NODE_ATTRIBUTE = 'data-lexical-mention'
@@ -156,7 +157,7 @@ export class MentionNode extends TextNode {
   ) {
     super(`@${getDisplayMentionName(mentionName)}`, key)
     this.__mentionName = mentionName
-    this.__mentionable = mentionable
+    this.__mentionable = compactInlineMentionable(mentionable)
   }
 
   exportJSON(): SerializedMentionNode {
@@ -226,6 +227,29 @@ export class MentionNode extends TextNode {
 
   getMentionable(): SerializedMentionable {
     return this.__mentionable
+  }
+}
+
+function compactInlineMentionable(
+  mentionable: SerializedMentionable,
+): SerializedMentionable {
+  if (mentionable.type !== 'block') {
+    return mentionable
+  }
+
+  return {
+    type: 'block',
+    file: mentionable.file,
+    startLine: mentionable.startLine,
+    endLine: mentionable.endLine,
+    source: mentionable.source,
+    contentHash:
+      mentionable.contentHash ??
+      (typeof mentionable.content === 'string'
+        ? getBlockContentHash(mentionable.content)
+        : undefined),
+    contentCount: mentionable.contentCount,
+    contentUnit: mentionable.contentUnit,
   }
 }
 

@@ -214,7 +214,10 @@ export function AgentSection({ app }: AgentSectionProps) {
     [settings.mcp.builtinToolOptions, t],
   )
 
-  const allSkillEntries = useMemo(() => listLiteSkillEntries(app), [app])
+  const allSkillEntries = useMemo(
+    () => listLiteSkillEntries(app, { settings }),
+    [app, settings],
+  )
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
   const disabledSkillSet = useMemo(
     () => new Set(disabledSkillIds),

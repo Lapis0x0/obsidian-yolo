@@ -13,6 +13,7 @@ import {
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
 import type { SelectEmbedding } from '../../database/schema'
+import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
@@ -32,7 +33,6 @@ import type {
 } from '../../types/mentionable'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { tokenCount } from '../llm/token'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
@@ -60,6 +60,7 @@ export class PromptGenerator {
     hasTools = false,
     maxContextOverride,
     model,
+    conversationId,
     currentFileContextMode = 'full',
     currentFileOverride,
   }: {
@@ -67,6 +68,7 @@ export class PromptGenerator {
     hasTools?: boolean
     maxContextOverride?: number
     model: ChatModel
+    conversationId: string
     currentFileContextMode?: CurrentFileContextMode
     currentFileOverride?: TFile | null
   }): Promise<RequestMessage[]> {
@@ -74,37 +76,85 @@ export class PromptGenerator {
       throw new Error('No messages provided')
     }
 
-    // Ensure all user messages have prompt content
-    // Compile only when promptContent is missing (snapshot mode)
-    const compiledMessages = await Promise.all(
-      messages.map(async (message) => {
-        if (message.role === 'user' && !message.promptContent) {
-          const { promptContent, similaritySearchResults } =
-            await this.compileUserMessagePrompt({
-              message,
-            })
-          return {
-            ...message,
-            promptContent,
-            similaritySearchResults,
-          }
-        }
-        return message
-      }),
-    )
+    const compiledMessages = [...messages]
 
-    // find last user message
-    let lastUserMessage: ChatUserMessage | null = null
+    // Only compile the latest user message when needed.
+    // Historical messages without promptContent should be replayed from
+    // lightweight snapshots/fallbacks to avoid expensive full-history rebuilds.
+    let lastUserMessageIndex = -1
     for (let i = compiledMessages.length - 1; i >= 0; --i) {
       if (compiledMessages[i].role === 'user') {
-        lastUserMessage = compiledMessages[i] as ChatUserMessage
+        lastUserMessageIndex = i
         break
       }
     }
-    if (!lastUserMessage) {
+    if (lastUserMessageIndex === -1) {
       throw new Error('No user messages found')
     }
-    const shouldUseRAG = lastUserMessage.similaritySearchResults !== undefined
+
+    const lastUserMessage = compiledMessages[
+      lastUserMessageIndex
+    ] as ChatUserMessage
+    if (!lastUserMessage.promptContent) {
+      const { promptContent, similaritySearchResults } =
+        await this.compileUserMessagePrompt({
+          message: lastUserMessage,
+        })
+      compiledMessages[lastUserMessageIndex] = {
+        ...lastUserMessage,
+        promptContent,
+        similaritySearchResults,
+      }
+    }
+
+    const effectiveLastUserMessage = compiledMessages[
+      lastUserMessageIndex
+    ] as ChatUserMessage
+
+    const snapshotEntries = await readPromptSnapshotEntries({
+      app: this.app,
+      conversationId,
+    })
+
+    const maxContext = Math.max(
+      0,
+      maxContextOverride ?? this.MAX_CONTEXT_MESSAGES,
+    )
+    const contextStartIndex = Math.max(0, compiledMessages.length - maxContext)
+
+    for (let i = contextStartIndex; i < compiledMessages.length; i += 1) {
+      if (i === lastUserMessageIndex) {
+        continue
+      }
+
+      const message = compiledMessages[i]
+      if (message?.role !== 'user' || message.promptContent) {
+        continue
+      }
+
+      const snapshotHash = message.snapshotRef?.hash
+      if (snapshotHash && snapshotEntries[snapshotHash]) {
+        continue
+      }
+
+      if (!this.requiresSnapshotRebuild(message)) {
+        continue
+      }
+
+      const { promptContent, similaritySearchResults } =
+        await this.compileUserMessagePrompt({
+          message,
+        })
+      compiledMessages[i] = {
+        ...message,
+        promptContent,
+        snapshotRef: undefined,
+        similaritySearchResults,
+      }
+    }
+
+    const shouldUseRAG =
+      effectiveLastUserMessage.similaritySearchResults !== undefined
 
     const isBaseModel = Boolean(model.isBaseModel)
     const baseModelSpecialPrompt = (
@@ -128,23 +178,26 @@ export class PromptGenerator {
     const requestMessages: RequestMessage[] = [
       ...baseModelSpecialPromptMessage,
       ...(systemMessage ? [systemMessage] : []),
-      ...this.getChatHistoryMessages({
+      ...(await this.getChatHistoryMessages({
         messages: compiledMessages,
-        maxContextOverride,
-      }),
+        maxContextOverride: maxContext,
+        snapshotEntries,
+      })),
       ...(currentFileMessage ? [currentFileMessage] : []),
     ]
 
     return requestMessages
   }
 
-  private getChatHistoryMessages({
+  private async getChatHistoryMessages({
     messages,
     maxContextOverride,
+    snapshotEntries,
   }: {
     messages: ChatMessage[]
     maxContextOverride?: number
-  }): RequestMessage[] {
+    snapshotEntries: Record<string, string | ContentPart[]>
+  }): Promise<RequestMessage[]> {
     // Determine max context messages with priority:
     // 1) explicit override from conversation settings
     // 2) class default (32)
@@ -154,24 +207,27 @@ export class PromptGenerator {
     )
 
     // Get the last N messages and parse them into request messages
-    const requestMessages: RequestMessage[] = messages
-      .slice(-maxContext)
-      .flatMap((message): RequestMessage[] => {
-        if (message.role === 'user') {
-          // We assume that all user messages have been compiled
-          return [
-            {
-              role: 'user',
-              content: message.promptContent ?? '',
-            },
-          ]
-        } else if (message.role === 'assistant') {
-          return this.parseAssistantMessage({ message })
-        } else {
-          // message.role === 'tool'
-          return this.parseToolMessage({ message })
-        }
-      })
+    const requestMessages: RequestMessage[] = []
+    const contextMessages = messages.slice(-maxContext)
+    for (const message of contextMessages) {
+      if (message.role === 'user') {
+        requestMessages.push({
+          role: 'user',
+          content: await this.getUserMessageContent({
+            message,
+            snapshotEntries,
+          }),
+        })
+        continue
+      }
+
+      if (message.role === 'assistant') {
+        requestMessages.push(...this.parseAssistantMessage({ message }))
+        continue
+      }
+
+      requestMessages.push(...this.parseToolMessage({ message }))
+    }
 
     const filteredRequestMessages: RequestMessage[] = []
     let pendingToolCallIds = new Set<string>()
@@ -213,6 +269,83 @@ export class PromptGenerator {
     }
 
     return filteredRequestMessages
+  }
+
+  private async getUserMessageContent({
+    message,
+    snapshotEntries,
+  }: {
+    message: ChatUserMessage
+    snapshotEntries: Record<string, string | ContentPart[]>
+  }): Promise<string | ContentPart[]> {
+    if (message.promptContent) {
+      return message.promptContent
+    }
+
+    if (message.snapshotRef?.hash) {
+      const snapshotContent = snapshotEntries[message.snapshotRef.hash]
+      if (snapshotContent) {
+        return snapshotContent
+      }
+    }
+
+    const query = message.content ? editorStateToPlainText(message.content) : ''
+    const imageParts = message.mentionables
+      .filter((m): m is MentionableImage => m.type === 'image')
+      .map(
+        (mentionable): ContentPart => ({
+          type: 'image_url',
+          image_url: {
+            url: mentionable.data,
+          },
+        }),
+      )
+
+    const blocks = message.mentionables.filter(
+      (m): m is MentionableBlock => m.type === 'block',
+    )
+    const blockPrompt = blocks
+      .map(({ file, content }) => {
+        return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
+      })
+      .join('')
+
+    const ragPrompt = message.similaritySearchResults
+      ? `## Potentially Relevant Snippets from the current vault
+${message.similaritySearchResults
+  .map(({ path, content, metadata }) => {
+    const numberedContent = this.addLineNumbersToContent({
+      content,
+      startLine: metadata.startLine,
+    })
+    return `\`\`\`${path}\n${numberedContent}\n\`\`\`\n`
+  })
+  .join('')}\n`
+      : ''
+
+    const textContent = `${ragPrompt}${blockPrompt}\n\n${query}\n\n`
+    if (imageParts.length === 0) {
+      return textContent
+    }
+
+    return [
+      ...imageParts,
+      {
+        type: 'text',
+        text: textContent,
+      },
+    ]
+  }
+
+  private requiresSnapshotRebuild(message: ChatUserMessage): boolean {
+    return message.mentionables.some(
+      (mentionable) =>
+        mentionable.type === 'file' ||
+        mentionable.type === 'folder' ||
+        mentionable.type === 'url' ||
+        mentionable.type === 'current-file' ||
+        mentionable.type === 'vault',
+    )
   }
 
   private parseAssistantMessage({
@@ -378,73 +511,16 @@ ${message.annotations
       onQueryProgressChange?.({
         type: 'reading-mentionables',
       })
-      const files = message.mentionables
-        .filter((m): m is MentionableFile => m.type === 'file')
-        .map((m) => this.app.vault.getFileByPath(m.file.path))
-        .filter((file): file is TFile => Boolean(file))
-      const folders = message.mentionables
-        .filter((m): m is MentionableFolder => m.type === 'folder')
-        .map((m) => this.app.vault.getFolderByPath(m.folder.path))
-        .filter((folder): folder is TFolder => Boolean(folder))
-      const nestedFiles = folders.flatMap((folder) =>
-        getNestedFiles(folder, this.app.vault),
-      )
-      const allFiles = [...files, ...nestedFiles]
-      const fileEntries = await Promise.all(
-        allFiles.map(async (file) => {
-          try {
-            const content = await readTFileContent(file, this.app.vault)
-            return { file, content }
-          } catch (error) {
-            console.warn(
-              '[Smart Composer] Failed to read mentioned file',
-              file.path,
-              error,
-            )
-            return null
-          }
-        }),
-      )
-      const readableFileEntries = fileEntries.filter(
-        (entry): entry is { file: TFile; content: string } => entry !== null,
-      )
-      const readableFiles = readableFileEntries.map((entry) => entry.file)
-      const fileContents = readableFileEntries.map((entry) => entry.content)
-
-      // Count tokens incrementally to avoid long processing times on large content sets
-      const exceedsTokenThreshold = async () => {
-        let accTokenCount = 0
-        for (const content of fileContents) {
-          const count = await tokenCount(content)
-          accTokenCount += count
-          if (accTokenCount > this.settings.ragOptions.thresholdTokens) {
-            return true
-          }
-        }
-        return false
-      }
-      const shouldUseRAG =
-        shouldSearchEntireVault || (await exceedsTokenThreshold())
+      const shouldUseRAG = shouldSearchEntireVault
 
       let filePrompt: string
       if (shouldUseRAG) {
-        similaritySearchResults = shouldSearchEntireVault
-          ? await (
-              await this.getRagEngine()
-            ).processQuery({
-              query,
-              onQueryProgressChange: onQueryProgressChange,
-            }) // TODO: Add similarity boosting for mentioned files or folders
-          : await (
-              await this.getRagEngine()
-            ).processQuery({
-              query,
-              scope: {
-                files: files.map((f) => f.path),
-                folders: folders.map((f) => f.path),
-              },
-              onQueryProgressChange: onQueryProgressChange,
-            })
+        similaritySearchResults = await (
+          await this.getRagEngine()
+        ).processQuery({
+          query,
+          onQueryProgressChange: onQueryProgressChange,
+        }) // TODO: Add similarity boosting for mentioned files or folders
         filePrompt = `## Potentially Relevant Snippets from the current vault
 ${similaritySearchResults
   .map(({ path, content, metadata }) => {
@@ -456,6 +532,39 @@ ${similaritySearchResults
   })
   .join('')}\n`
       } else {
+        const files = message.mentionables
+          .filter((m): m is MentionableFile => m.type === 'file')
+          .map((m) => this.app.vault.getFileByPath(m.file.path))
+          .filter((file): file is TFile => Boolean(file))
+        const folders = message.mentionables
+          .filter((m): m is MentionableFolder => m.type === 'folder')
+          .map((m) => this.app.vault.getFolderByPath(m.folder.path))
+          .filter((folder): folder is TFolder => Boolean(folder))
+        const nestedFiles = folders.flatMap((folder) =>
+          getNestedFiles(folder, this.app.vault),
+        )
+        const allFiles = [...files, ...nestedFiles]
+        const fileEntries = await Promise.all(
+          allFiles.map(async (file) => {
+            try {
+              const content = await readTFileContent(file, this.app.vault)
+              return { file, content }
+            } catch (error) {
+              console.warn(
+                '[Smart Composer] Failed to read mentioned file',
+                file.path,
+                error,
+              )
+              return null
+            }
+          }),
+        )
+        const readableFileEntries = fileEntries.filter(
+          (entry): entry is { file: TFile; content: string } => entry !== null,
+        )
+        const readableFiles = readableFileEntries.map((entry) => entry.file)
+        const fileContents = readableFileEntries.map((entry) => entry.content)
+
         filePrompt = readableFiles
           .map((file, index) => {
             return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`
@@ -580,13 +689,14 @@ ${currentAssistant.systemPrompt}
 
     const disabledSkillIds = this.settings.skills?.disabledSkillIds ?? []
     const enabledSkillEntries = currentAssistant
-      ? listLiteSkillEntries(this.app).filter((skill) =>
-          isSkillEnabledForAssistant({
-            assistant: currentAssistant,
-            skillId: skill.id,
-            disabledSkillIds,
-            defaultLoadMode: skill.mode,
-          }),
+      ? listLiteSkillEntries(this.app, { settings: this.settings }).filter(
+          (skill) =>
+            isSkillEnabledForAssistant({
+              assistant: currentAssistant,
+              skillId: skill.id,
+              disabledSkillIds,
+              defaultLoadMode: skill.mode,
+            }),
         )
       : []
 
@@ -623,6 +733,7 @@ ${enabledSkillEntries
           getLiteSkillDocument({
             app: this.app,
             id: skill.id,
+            settings: this.settings,
           }),
         ),
       )

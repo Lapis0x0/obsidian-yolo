@@ -164,6 +164,46 @@ Some text after without closing tag`,
     const result = parseTagContents(input)
     expect(result).toEqual(expected)
   })
+
+  it('should unwrap nested smtcmp_block references', () => {
+    const input = `<smtcmp_block language="markdown">
+<smtcmp_block filename="临床医学知识库/基础医学/病理生理学/休克.md" language="markdown" startline="1782" endline="1784"></smtcmp_block>
+</smtcmp_block>`
+
+    const expected: ParsedTagContent[] = [
+      {
+        type: 'smtcmp_block',
+        content: '',
+        filename: '临床医学知识库/基础医学/病理生理学/休克.md',
+        language: 'markdown',
+        startLine: 1782,
+        endLine: 1784,
+      },
+    ]
+
+    const result = parseTagContents(input)
+    expect(result).toEqual(expected)
+  })
+
+  it('should keep outer block when nested tags are mixed with text', () => {
+    const input = `<smtcmp_block language="markdown">
+请参考下面的引用：
+<smtcmp_block filename="example.md" language="markdown" startline="1" endline="2"></smtcmp_block>
+</smtcmp_block>`
+
+    const expected: ParsedTagContent[] = [
+      {
+        type: 'smtcmp_block',
+        content: `请参考下面的引用：
+<smtcmp_block filename="example.md" language="markdown" startline="1" endline="2"></smtcmp_block>`,
+        language: 'markdown',
+        filename: undefined,
+      },
+    ]
+
+    const result = parseTagContents(input)
+    expect(result).toEqual(expected)
+  })
 })
 
 describe('parseThink', () => {

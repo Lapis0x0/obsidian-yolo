@@ -264,14 +264,16 @@ export const zh: TranslationKeys = {
       skillsCount: '{count} 个技能',
       skillsCountWithEnabled: '{count} 个技能（已启用 {enabled} 个）',
       skillsGlobalDesc:
-        '技能会从内置技能与 YOLO/skills/**/*.md 自动发现（排除 Skills.md）。在这里禁用后，所有 Agent 都无法使用。',
-      skillsSourcePath:
-        '来源：内置技能 + YOLO/skills/**/*.md（排除 Skills.md）',
+        '技能会从内置技能与 {path}/**/*.md 自动发现（适用时排除 Skills.md）。在这里禁用后，所有 Agent 都无法使用。',
+      yoloBaseDir: 'YOLO 根目录',
+      yoloBaseDirDesc:
+        '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。',
+      yoloBaseDirPlaceholder: 'YOLO',
+      skillsSourcePath: '来源：内置技能 + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: '刷新',
-      skillsEmptyHint:
-        '未发现技能。请在 YOLO/skills 下创建 .md 技能文件（排除 Skills.md）。',
+      skillsEmptyHint: '未发现技能。请在 {path} 下创建 .md 技能文件。',
       createSkillTemplates: '初始化 Skills 系统',
-      skillsTemplateCreated: '已在 YOLO/skills 完成 Skills 系统初始化。',
+      skillsTemplateCreated: '已在 {path} 完成 Skills 系统初始化。',
       agents: 'Agents',
       agentsDesc: '点击配置以编辑每个 Agent 的资料与提示词。',
       configureAgents: '配置',
@@ -457,9 +459,6 @@ export const zh: TranslationKeys = {
       chunkSize: '分块大小',
       chunkSizeDesc:
         '设置文本分割的块大小。更改后，请使用"重建整个库索引"命令重新索引库。',
-      thresholdTokens: '阈值令牌数',
-      thresholdTokensDesc:
-        '切换到RAG前的最大令牌数。如果提及文件的总令牌数超过此值，将使用RAG而不是包含所有文件内容。',
       minSimilarity: '最小相似度',
       minSimilarityDesc:
         'RAG结果的最小相似度分数。更高的值返回更相关但可能更少的结果。',
@@ -692,6 +691,11 @@ export const zh: TranslationKeys = {
       clearChatHistoryDesc: '删除所有聊天会话及消息',
       clearChatHistoryConfirm: '确定要清空所有聊天记录吗？此操作不可撤销。',
       clearChatHistorySuccess: '已清空所有聊天记录',
+      clearChatSnapshots: '清空聊天快照',
+      clearChatSnapshotsDesc: '删除所有会话的上下文快照文件（不删除聊天消息）',
+      clearChatSnapshotsConfirm:
+        '确定要清空所有聊天快照文件吗？此操作不可撤销，后续可能需要重新构建上下文。',
+      clearChatSnapshotsSuccess: '已清空所有聊天快照文件',
       resetProviders: '重置供应商与模型',
       resetProvidersDesc: '恢复默认的供应商与模型配置',
       resetProvidersConfirm:
@@ -702,6 +706,10 @@ export const zh: TranslationKeys = {
       resetAgentsConfirm:
         '确定要重置 Agent 配置吗？此操作将删除自定义 Agent 并重置当前选择。',
       resetAgentsSuccess: 'Agent 配置已重置为默认',
+      yoloBaseDir: 'YOLO 根目录',
+      yoloBaseDirDesc:
+        '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
+      yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: '引用文件显示位置',
       mentionDisplayModeDesc:
         '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
@@ -728,7 +736,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@ 添加标签引用」',
+    placeholder: '输入消息...「@添加标签引用,继续输入可筛选搜索」',
     placeholderCompact: '点击展开编辑...',
     sendMessage: '发送消息',
     newChat: '新建聊天',
@@ -870,7 +878,7 @@ export const zh: TranslationKeys = {
       error: '错误',
       allow: '允许',
       reject: '拒绝',
-      abort: '中止',
+      abort: '停止执行',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '仅本次对话允许',
     },

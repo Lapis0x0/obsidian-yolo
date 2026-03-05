@@ -195,6 +195,9 @@ export type TranslationKeys = {
       skillsCount?: string
       skillsCountWithEnabled?: string
       skillsGlobalDesc?: string
+      yoloBaseDir?: string
+      yoloBaseDirDesc?: string
+      yoloBaseDirPlaceholder?: string
       skillsSourcePath?: string
       refreshSkills?: string
       skillsEmptyHint?: string
@@ -377,8 +380,6 @@ export type TranslationKeys = {
       embeddingModelDesc: string
       chunkSize: string
       chunkSizeDesc: string
-      thresholdTokens: string
-      thresholdTokensDesc: string
       minSimilarity: string
       minSimilarityDesc: string
       limit: string
@@ -579,6 +580,10 @@ export type TranslationKeys = {
       clearChatHistoryDesc?: string
       clearChatHistoryConfirm?: string
       clearChatHistorySuccess?: string
+      clearChatSnapshots?: string
+      clearChatSnapshotsDesc?: string
+      clearChatSnapshotsConfirm?: string
+      clearChatSnapshotsSuccess?: string
       resetProviders?: string
       resetProvidersDesc?: string
       resetProvidersConfirm?: string
@@ -587,6 +592,9 @@ export type TranslationKeys = {
       resetAgentsDesc?: string
       resetAgentsConfirm?: string
       resetAgentsSuccess?: string
+      yoloBaseDir?: string
+      yoloBaseDirDesc?: string
+      yoloBaseDirPlaceholder?: string
       mentionDisplayMode?: string
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string

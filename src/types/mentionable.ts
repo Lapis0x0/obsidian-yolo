@@ -21,6 +21,9 @@ export type MentionableBlockData = {
   startLine: number
   endLine: number
   source?: 'selection'
+  contentHash?: string
+  contentCount?: number
+  contentUnit?: 'characters' | 'words' | 'wordsCharacters'
 }
 export type MentionableBlock = MentionableBlockData & {
   type: 'block'
@@ -58,11 +61,14 @@ export type SerializedMentionableCurrentFile = {
 }
 export type SerializedMentionableBlock = {
   type: 'block'
-  content: string
+  content?: string
   file: string
   startLine: number
   endLine: number
   source?: 'selection'
+  contentHash?: string
+  contentCount?: number
+  contentUnit?: 'characters' | 'words' | 'wordsCharacters'
 }
 export type SerializedMentionableUrl = MentionableUrl
 export type SerializedMentionableImage = MentionableImage

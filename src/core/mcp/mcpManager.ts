@@ -584,6 +584,7 @@ export class McpManager {
         }
         const localResult = await callLocalFileTool({
           app: this.app,
+          settings: this.settings,
           toolName,
           args: parsedArgs ?? {},
           signal: compositeSignal,

@@ -1,11 +1,15 @@
-export const YOLO_SKILLS_DIR = 'YOLO/skills'
+import { DEFAULT_YOLO_BASE_DIR, YOLO_SKILLS_SUBDIR } from '../paths/yoloPaths'
+
+export const YOLO_SKILLS_DIR = `${DEFAULT_YOLO_BASE_DIR}/${YOLO_SKILLS_SUBDIR}`
 
 export const YOLO_SKILLS_INDEX_TEMPLATE = `# YOLO Skills
 
 Store your skill files here.
 
-- Skill file pattern: \`*.md\` (exclude \`Skills.md\`)
-- Required frontmatter: \`id\`, \`name\`, \`description\`
+- Supported formats:
+  - Legacy: \`YOLO/skills/*.md\` (exclude \`Skills.md\`)
+  - Claude-style: \`YOLO/skills/**/SKILL.md\`
+- Required frontmatter: \`name\` (required), \`id\` (optional, defaults to \`name\`), \`description\` (optional)
 `
 
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---

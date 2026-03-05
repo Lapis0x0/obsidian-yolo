@@ -254,9 +254,9 @@
 .smtcmp-smart-space-mention-dropdown {
   display: block;
   right: auto;
-  width: fit-content;
-  min-width: min(240px, calc(100% - 32px));
-  max-width: min(320px, calc(100% - 32px));
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   pointer-events: auto;
   background: transparent;
   border: none;
@@ -276,7 +276,7 @@
 }
 
 .smtcmp-smart-space-popover .smtcmp-smart-space-mention-list {
-  max-height: min(220px, var(--smtcmp-typeahead-available-height, 220px));
+  max-height: min(320px, var(--smtcmp-typeahead-available-height, 320px));
   overflow-y: auto;
   scrollbar-width: thin;
   scroll-padding-top: 8px;
@@ -318,6 +318,26 @@
 .smtcmp-smart-space-mention-option-name {
   font-weight: 600;
   font-size: var(--font-ui-small);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-smart-space-mention-option-text--inline-meta
+  .smtcmp-smart-space-mention-option-name {
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-smart-space-mention-option-text--inline-meta
+  .smtcmp-smart-space-mention-option-path {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
 }
 
 .smtcmp-smart-space-mention-option-path {

@@ -52,6 +52,7 @@ export default function ApplyViewRoot({
   const suppressRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const manualNavLockRef = useRef(false)
+  const initialViewportAppliedRef = useRef(false)
   const persistInFlightRef = useRef(false)
   const persistOnUnmountRef = useRef(true)
   const preferredFinalContentRef = useRef<string | null>(null)
@@ -60,12 +61,20 @@ export default function ApplyViewRoot({
   const plugin = usePlugin()
   const { t } = useLanguage()
 
+  const isSelectionFocusMode = state.reviewMode === 'selection-focus'
   const diff = useMemo(
     () =>
-      splitDiffBlocksByLine(
+      splitDiffBlocksByParagraph(
         createDiffBlocks(state.originalContent, state.newContent),
       ),
     [state.newContent, state.originalContent],
+  )
+  const selectionTargetBlockIndex = useMemo(
+    () =>
+      isSelectionFocusMode
+        ? findSelectionTargetBlockIndex(diff, state.selectionRange)
+        : null,
+    [diff, isSelectionFocusMode, state.selectionRange],
   )
 
   // Track decisions for each modified block
@@ -350,14 +359,32 @@ export default function ApplyViewRoot({
   }, [currentDiffIndex, modifiedBlockIndices.length, scrollToDiffIndex])
 
   const acceptIncomingActive = useCallback(() => {
+    if (isSelectionFocusMode) {
+      acceptAllIncoming()
+      return
+    }
     if (activeBlockIndex === Number.POSITIVE_INFINITY) return
     acceptIncomingBlock(activeBlockIndex)
-  }, [acceptIncomingBlock, activeBlockIndex])
+  }, [
+    acceptAllIncoming,
+    acceptIncomingBlock,
+    activeBlockIndex,
+    isSelectionFocusMode,
+  ])
 
   const acceptCurrentActive = useCallback(() => {
+    if (isSelectionFocusMode) {
+      acceptAllCurrent()
+      return
+    }
     if (activeBlockIndex === Number.POSITIVE_INFINITY) return
     acceptCurrentBlock(activeBlockIndex)
-  }, [acceptCurrentBlock, activeBlockIndex])
+  }, [
+    acceptAllCurrent,
+    acceptCurrentBlock,
+    activeBlockIndex,
+    isSelectionFocusMode,
+  ])
 
   const undoActive = useCallback(() => {
     if (activeBlockIndex === Number.POSITIVE_INFINITY) return
@@ -472,6 +499,68 @@ export default function ApplyViewRoot({
     }
   }, [updateCurrentDiffFromScroll])
 
+  useEffect(() => {
+    if (initialViewportAppliedRef.current) return
+    const scroller = scrollerRef.current
+    const initialViewport = state.initialViewport
+    if (!scroller || !initialViewport) return
+
+    const applyInitialViewport = () => {
+      const currentScroller = scrollerRef.current
+      if (!currentScroller) return
+
+      const maxScrollTop = Math.max(
+        0,
+        currentScroller.scrollHeight - currentScroller.clientHeight,
+      )
+      const topFromRatio = initialViewport.scrollRatio * maxScrollTop
+      const topFromOriginal = initialViewport.scrollTop
+      const mergedTop =
+        maxScrollTop > 0
+          ? clampNumber((topFromOriginal + topFromRatio) / 2, 0, maxScrollTop)
+          : 0
+
+      currentScroller.scrollTop = mergedTop
+      currentScroller.scrollLeft = Math.max(0, initialViewport.scrollLeft)
+
+      const anchorBlockIndex = findBlockIndexAtOriginalLine(
+        diff,
+        initialViewport.anchorLine,
+      )
+      if (anchorBlockIndex !== null) {
+        const anchorElement = diffBlockRefs.current[anchorBlockIndex]
+        if (anchorElement) {
+          const anchorTop = getOffsetTopFromScroller(
+            anchorElement,
+            currentScroller,
+          )
+          if (
+            Math.abs(anchorTop - mergedTop) >
+            currentScroller.clientHeight * 1.4
+          ) {
+            currentScroller.scrollTop = clampNumber(anchorTop, 0, maxScrollTop)
+          }
+        }
+      }
+
+      initialViewportAppliedRef.current = true
+      updateDiffOffsets()
+      updateCurrentDiffFromScroll()
+    }
+
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(applyInitialViewport)
+    })
+
+    return () => cancelAnimationFrame(raf1)
+  }, [
+    diff,
+    getOffsetTopFromScroller,
+    state.initialViewport,
+    updateCurrentDiffFromScroll,
+    updateDiffOffsets,
+  ])
+
   return (
     <div
       id={useRootId ? 'smtcmp-apply-view' : undefined}
@@ -509,6 +598,14 @@ export default function ApplyViewRoot({
                       onAcceptIncoming={() => acceptIncomingBlock(index)}
                       onAcceptCurrent={() => acceptCurrentBlock(index)}
                       onUndo={() => undoDecision(index)}
+                      isSelectionFocusMode={isSelectionFocusMode}
+                      isSelectionTarget={
+                        isSelectionFocusMode &&
+                        selectionTargetBlockIndex !== null &&
+                        index === selectionTargetBlockIndex
+                      }
+                      onAcceptSelectionIncoming={acceptAllIncoming}
+                      onAcceptSelectionCurrent={acceptAllCurrent}
                       t={t}
                       pluginComponent={plugin}
                       ref={(el) => {
@@ -523,60 +620,61 @@ export default function ApplyViewRoot({
         </div>
       </div>
 
-      {/* Global actions toolbar (bottom) */}
-      <div className="smtcmp-apply-toolbar smtcmp-apply-toolbar-bottom">
-        <div className="smtcmp-apply-toolbar-pill" role="group">
-          <div className="smtcmp-apply-toolbar-nav">
-            <button
-              onClick={goToPreviousDiff}
-              className="smtcmp-toolbar-icon-btn"
-              title={t('applyView.prevChange', 'Previous change')}
-              aria-label={t('applyView.prevChange', 'Previous change')}
-              disabled={modifiedBlockIndices.length === 0}
-            >
-              <span className="smtcmp-toolbar-icon">↑</span>
-            </button>
-            <span className="smtcmp-apply-progress">
-              {modifiedBlockIndices.length === 0
-                ? '0/0'
-                : `${currentDiffIndex + 1}/${modifiedBlockIndices.length}`}
-            </span>
-            <button
-              onClick={goToNextDiff}
-              className="smtcmp-toolbar-icon-btn"
-              title={t('applyView.nextChange', 'Next change')}
-              aria-label={t('applyView.nextChange', 'Next change')}
-              disabled={modifiedBlockIndices.length === 0}
-            >
-              <span className="smtcmp-toolbar-icon">↓</span>
-            </button>
-          </div>
-          <div className="smtcmp-apply-toolbar-actions">
-            <button
-              onClick={acceptAllIncoming}
-              className="smtcmp-toolbar-btn smtcmp-accept"
-              title={t(
-                'applyView.acceptAllIncoming',
-                'Accept all incoming changes',
-              )}
-              disabled={modifiedBlockIndices.length === 0}
-            >
-              {t('applyView.acceptAllIncoming', 'Accept All Incoming')}
-            </button>
-            <button
-              onClick={acceptAllCurrent}
-              className="smtcmp-toolbar-btn smtcmp-exclude"
-              title={t(
-                'applyView.rejectAll',
-                'Reject all changes (keep original)',
-              )}
-              disabled={modifiedBlockIndices.length === 0}
-            >
-              {t('applyView.rejectAll', 'Reject All')}
-            </button>
+      {!isSelectionFocusMode && (
+        <div className="smtcmp-apply-toolbar smtcmp-apply-toolbar-bottom">
+          <div className="smtcmp-apply-toolbar-pill">
+            <div className="smtcmp-apply-toolbar-nav">
+              <button
+                onClick={goToPreviousDiff}
+                className="smtcmp-toolbar-icon-btn"
+                title={t('applyView.prevChange', 'Previous change')}
+                aria-label={t('applyView.prevChange', 'Previous change')}
+                disabled={modifiedBlockIndices.length === 0}
+              >
+                <span className="smtcmp-toolbar-icon">↑</span>
+              </button>
+              <span className="smtcmp-apply-progress">
+                {modifiedBlockIndices.length === 0
+                  ? '0/0'
+                  : `${currentDiffIndex + 1}/${modifiedBlockIndices.length}`}
+              </span>
+              <button
+                onClick={goToNextDiff}
+                className="smtcmp-toolbar-icon-btn"
+                title={t('applyView.nextChange', 'Next change')}
+                aria-label={t('applyView.nextChange', 'Next change')}
+                disabled={modifiedBlockIndices.length === 0}
+              >
+                <span className="smtcmp-toolbar-icon">↓</span>
+              </button>
+            </div>
+            <div className="smtcmp-apply-toolbar-actions">
+              <button
+                onClick={acceptAllIncoming}
+                className="smtcmp-toolbar-btn smtcmp-accept"
+                title={t(
+                  'applyView.acceptAllIncoming',
+                  'Accept all incoming changes',
+                )}
+                disabled={modifiedBlockIndices.length === 0}
+              >
+                {t('applyView.acceptAllIncoming', 'Accept All Incoming')}
+              </button>
+              <button
+                onClick={acceptAllCurrent}
+                className="smtcmp-toolbar-btn smtcmp-exclude"
+                title={t(
+                  'applyView.rejectAll',
+                  'Reject all changes (keep original)',
+                )}
+                disabled={modifiedBlockIndices.length === 0}
+              >
+                {t('applyView.rejectAll', 'Reject All')}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -591,6 +689,10 @@ const DiffBlockView = forwardRef<
     onAcceptIncoming: () => void
     onAcceptCurrent: () => void
     onUndo: () => void
+    isSelectionFocusMode: boolean
+    isSelectionTarget: boolean
+    onAcceptSelectionIncoming: () => void
+    onAcceptSelectionCurrent: () => void
     t: (keyPath: string, fallback?: string) => string
     pluginComponent: Component
   }
@@ -605,6 +707,10 @@ const DiffBlockView = forwardRef<
       onAcceptCurrent,
 
       onUndo: _onUndo,
+      isSelectionFocusMode,
+      isSelectionTarget,
+      onAcceptSelectionIncoming,
+      onAcceptSelectionCurrent,
       t,
       pluginComponent,
     },
@@ -625,6 +731,24 @@ const DiffBlockView = forwardRef<
       if (part.type !== 'modified') return []
       return splitInlineLinesIntoParagraphs(inlineLines ?? [])
     }, [inlineLines, part.type])
+    const firstChangedParagraphIndex = useMemo(
+      () => inlineParagraphs.findIndex((paragraph) => paragraph.hasChanges),
+      [inlineParagraphs],
+    )
+    const actionParagraphIndex = useMemo(() => {
+      if (firstChangedParagraphIndex >= 0) return firstChangedParagraphIndex
+      if (!isSelectionFocusMode || !isSelectionTarget) return -1
+      const firstNonEmptyParagraphIndex = inlineParagraphs.findIndex(
+        (paragraph) => !paragraph.isEmpty,
+      )
+      if (firstNonEmptyParagraphIndex >= 0) return firstNonEmptyParagraphIndex
+      return inlineParagraphs.length > 0 ? 0 : -1
+    }, [
+      firstChangedParagraphIndex,
+      inlineParagraphs,
+      isSelectionFocusMode,
+      isSelectionTarget,
+    ])
 
     if (part.type === 'unchanged') {
       return (
@@ -663,7 +787,9 @@ const DiffBlockView = forwardRef<
 
       return (
         <div
-          className={`smtcmp-diff-block-container${isActive ? ' is-active' : ''}`}
+          className={`smtcmp-diff-block-container${isActive ? ' is-active' : ''}${
+            isSelectionTarget ? ' is-selection-focus-target' : ''
+          }`}
           ref={ref}
         >
           {isDecided ? (
@@ -689,6 +815,12 @@ const DiffBlockView = forwardRef<
                     const paragraphContent = paragraph.isEmpty
                       ? ''
                       : buildInlineDiffMarkdown(paragraph.lines)
+                    const showActionsForParagraph =
+                      paragraphIndex === actionParagraphIndex &&
+                      (!isSelectionFocusMode || isSelectionTarget) &&
+                      (paragraph.hasChanges ||
+                        (isSelectionFocusMode &&
+                          firstChangedParagraphIndex < 0))
                     return (
                       <div
                         key={`${paragraphIndex}-${paragraph.isEmpty ? 'empty' : 'content'}`}
@@ -710,13 +842,18 @@ const DiffBlockView = forwardRef<
                             />
                           )}
                         </div>
-                        {paragraph.hasChanges && (
+                        {showActionsForParagraph && (
                           <span className="smtcmp-apply-paragraph-indicator" />
                         )}
-                        {paragraph.hasChanges && (
+                        {showActionsForParagraph && (
                           <div className="smtcmp-diff-block-actions">
                             <button
-                              onClick={onAcceptIncoming}
+                              type="button"
+                              onClick={
+                                isSelectionFocusMode
+                                  ? onAcceptSelectionIncoming
+                                  : onAcceptIncoming
+                              }
                               className="smtcmp-apply-action smtcmp-apply-action-accept"
                               title={t(
                                 'applyView.acceptIncoming',
@@ -735,7 +872,12 @@ const DiffBlockView = forwardRef<
                               </span>
                             </button>
                             <button
-                              onClick={onAcceptCurrent}
+                              type="button"
+                              onClick={
+                                isSelectionFocusMode
+                                  ? onAcceptSelectionCurrent
+                                  : onAcceptCurrent
+                              }
                               className="smtcmp-apply-action smtcmp-apply-action-reject"
                               title={t(
                                 'applyView.acceptCurrent',
@@ -773,40 +915,55 @@ const DiffBlockView = forwardRef<
                       />
                     </div>
                     <span className="smtcmp-apply-paragraph-indicator" />
-                    <div className="smtcmp-diff-block-actions">
-                      <button
-                        onClick={onAcceptIncoming}
-                        className="smtcmp-apply-action smtcmp-apply-action-accept"
-                        title={t('applyView.acceptIncoming', 'Accept incoming')}
-                        aria-label={t(
-                          'applyView.acceptIncoming',
-                          'Accept incoming',
-                        )}
-                      >
-                        <span
-                          className="smtcmp-apply-action-icon"
-                          aria-hidden="true"
+                    {(!isSelectionFocusMode || isSelectionTarget) && (
+                      <div className="smtcmp-diff-block-actions">
+                        <button
+                          type="button"
+                          onClick={
+                            isSelectionFocusMode
+                              ? onAcceptSelectionIncoming
+                              : onAcceptIncoming
+                          }
+                          className="smtcmp-apply-action smtcmp-apply-action-accept"
+                          title={t(
+                            'applyView.acceptIncoming',
+                            'Accept incoming',
+                          )}
+                          aria-label={t(
+                            'applyView.acceptIncoming',
+                            'Accept incoming',
+                          )}
                         >
-                          ✓
-                        </span>
-                      </button>
-                      <button
-                        onClick={onAcceptCurrent}
-                        className="smtcmp-apply-action smtcmp-apply-action-reject"
-                        title={t('applyView.acceptCurrent', 'Accept current')}
-                        aria-label={t(
-                          'applyView.acceptCurrent',
-                          'Accept current',
-                        )}
-                      >
-                        <span
-                          className="smtcmp-apply-action-icon"
-                          aria-hidden="true"
+                          <span
+                            className="smtcmp-apply-action-icon"
+                            aria-hidden="true"
+                          >
+                            ✓
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={
+                            isSelectionFocusMode
+                              ? onAcceptSelectionCurrent
+                              : onAcceptCurrent
+                          }
+                          className="smtcmp-apply-action smtcmp-apply-action-reject"
+                          title={t('applyView.acceptCurrent', 'Accept current')}
+                          aria-label={t(
+                            'applyView.acceptCurrent',
+                            'Accept current',
+                          )}
                         >
-                          ×
-                        </span>
-                      </button>
-                    </div>
+                          <span
+                            className="smtcmp-apply-action-icon"
+                            aria-hidden="true"
+                          >
+                            ×
+                          </span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -865,14 +1022,38 @@ function splitInlineLinesIntoParagraphs(
 ): ApplyParagraph[] {
   if (lines.length === 0) return []
 
-  const paragraphs: ApplyParagraph[] = lines.map((line) => {
-    const isEmpty = isInlineLineEmpty(line)
-    return {
-      lines: isEmpty ? [] : [line],
-      hasChanges: lineHasChanges(line),
-      isEmpty,
+  const paragraphs: ApplyParagraph[] = []
+  let currentLines: InlineDiffLine[] = []
+  let currentHasChanges = false
+
+  const pushCurrentParagraph = () => {
+    if (currentLines.length === 0) return
+    paragraphs.push({
+      lines: currentLines,
+      hasChanges: currentHasChanges,
+      isEmpty: false,
+    })
+    currentLines = []
+    currentHasChanges = false
+  }
+
+  lines.forEach((line) => {
+    if (isInlineLineEmpty(line)) {
+      pushCurrentParagraph()
+      paragraphs.push({
+        lines: [],
+        hasChanges: false,
+        isEmpty: true,
+      })
+      return
     }
+
+    currentLines.push(line)
+    currentHasChanges = currentHasChanges || lineHasChanges(line)
   })
+
+  pushCurrentParagraph()
+
   const hasAnyChanges = paragraphs.some(
     (paragraph) => !paragraph.isEmpty && paragraph.hasChanges,
   )
@@ -899,51 +1080,81 @@ function lineHasChanges(line: InlineDiffLine): boolean {
   )
 }
 
-function splitDiffBlocksByLine(blocks: DiffBlock[]): DiffBlock[] {
-  const lineBlocks: DiffBlock[] = []
+function splitDiffBlocksByParagraph(blocks: DiffBlock[]): DiffBlock[] {
+  const paragraphBlocks: DiffBlock[] = []
 
   blocks.forEach((block) => {
     if (block.type === 'unchanged') {
-      lineBlocks.push(block)
+      paragraphBlocks.push(block)
       return
     }
 
-    if (block.inlineLines.length === 0) {
-      lineBlocks.push(block)
+    const paragraphs = splitInlineLinesIntoParagraphs(block.inlineLines)
+    if (paragraphs.length === 0) {
+      paragraphBlocks.push(block)
       return
     }
 
-    block.inlineLines.forEach((line) => {
-      if (line.type === 'unchanged') {
-        lineBlocks.push({
+    paragraphs.forEach((paragraph) => {
+      if (paragraph.isEmpty) {
+        paragraphBlocks.push({
           type: 'unchanged',
-          value: inlineLineToText(line, 'original'),
+          value: '',
         })
         return
       }
 
-      const originalLine =
-        line.type === 'added' ? undefined : inlineLineToText(line, 'original')
-      const modifiedLine =
-        line.type === 'removed' ? undefined : inlineLineToText(line, 'modified')
-
-      const isBlankLineChange =
-        (originalLine === undefined || originalLine.trim().length === 0) &&
-        (modifiedLine === undefined || modifiedLine.trim().length === 0)
-      if (isBlankLineChange) {
+      if (!paragraph.hasChanges) {
+        paragraphBlocks.push({
+          type: 'unchanged',
+          value: inlineLinesToText(paragraph.lines, 'original'),
+        })
         return
       }
 
-      lineBlocks.push({
+      const hasOriginalLines = paragraph.lines.some(
+        (line) => line.type !== 'added',
+      )
+      const hasModifiedLines = paragraph.lines.some(
+        (line) => line.type !== 'removed',
+      )
+      const originalValue = hasOriginalLines
+        ? inlineLinesToText(paragraph.lines, 'original')
+        : undefined
+      const modifiedValue = hasModifiedLines
+        ? inlineLinesToText(paragraph.lines, 'modified')
+        : undefined
+      paragraphBlocks.push({
         type: 'modified',
-        originalValue: originalLine,
-        modifiedValue: modifiedLine,
-        inlineLines: [line],
+        originalValue,
+        modifiedValue,
+        inlineLines: paragraph.lines,
       })
     })
   })
 
-  return mergeAdjacentUnchangedBlocks(lineBlocks)
+  return mergeAdjacentUnchangedBlocks(paragraphBlocks)
+}
+
+function inlineLinesToText(
+  lines: InlineDiffLine[],
+  variant: 'original' | 'modified',
+): string {
+  return lines
+    .map((line) => inlineTokensToText(line.tokens, variant))
+    .join('\n')
+}
+
+function inlineTokensToText(
+  tokens: InlineDiffToken[],
+  variant: 'original' | 'modified',
+): string {
+  return tokens
+    .filter((token) =>
+      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
+    )
+    .map((token) => token.text)
+    .join('')
 }
 
 function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
@@ -957,25 +1168,6 @@ function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
     merged.push(block)
   })
   return merged
-}
-
-function inlineLineToText(
-  line: InlineDiffLine,
-  variant: 'original' | 'modified',
-): string {
-  return inlineTokensToText(line.tokens, variant)
-}
-
-function inlineTokensToText(
-  tokens: InlineDiffToken[],
-  variant: 'original' | 'modified',
-): string {
-  return tokens
-    .filter((token) =>
-      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
-    )
-    .map((token) => token.text)
-    .join('')
 }
 
 function buildInlineDiffMarkdown(lines: InlineDiffLine[]): string {
@@ -1004,4 +1196,83 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function findBlockIndexAtOriginalLine(
+  blocks: DiffBlock[],
+  targetLine: number,
+): number | null {
+  if (targetLine < 0) return null
+
+  let cursorLine = 0
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]
+    const lineCount = countOriginalLines(block)
+    if (lineCount <= 0) continue
+
+    const blockStart = cursorLine
+    const blockEnd = cursorLine + lineCount - 1
+    if (targetLine >= blockStart && targetLine <= blockEnd) {
+      return index
+    }
+    cursorLine += lineCount
+  }
+  return null
+}
+
+function countOriginalLines(block: DiffBlock): number {
+  if (block.type === 'unchanged') {
+    return block.value.split('\n').length
+  }
+  if (block.originalValue === undefined) return 0
+  return block.originalValue.split('\n').length
+}
+
+function findSelectionTargetBlockIndex(
+  blocks: DiffBlock[],
+  selectionRange: ApplyViewState['selectionRange'],
+): number | null {
+  if (!selectionRange) return null
+
+  const selectionStartLine = Math.min(
+    selectionRange.from.line,
+    selectionRange.to.line,
+  )
+  const selectionEndLine = Math.max(
+    selectionRange.from.line,
+    selectionRange.to.line,
+  )
+
+  let cursorLine = 0
+  let fallbackModifiedIndex: number | null = null
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]
+    if (block.type !== 'modified') {
+      cursorLine += countOriginalLines(block)
+      continue
+    }
+
+    if (fallbackModifiedIndex === null) {
+      fallbackModifiedIndex = index
+    }
+
+    const lineCount = countOriginalLines(block)
+    const blockStart = cursorLine
+    const blockEnd = lineCount > 0 ? cursorLine + lineCount - 1 : cursorLine
+    const intersects =
+      blockStart <= selectionEndLine && blockEnd >= selectionStartLine
+
+    if (intersects) {
+      return index
+    }
+
+    cursorLine += lineCount
+  }
+
+  return fallbackModifiedIndex
 }

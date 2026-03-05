@@ -154,7 +154,7 @@ export function useChatStreamManager({
         const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries =
           chatMode === 'agent' && selectedAssistant
-            ? listLiteSkillEntries(app).filter((skill) =>
+            ? listLiteSkillEntries(app, { settings }).filter((skill) =>
                 isSkillEnabledForAssistant({
                   assistant: selectedAssistant,
                   skillId: skill.id,

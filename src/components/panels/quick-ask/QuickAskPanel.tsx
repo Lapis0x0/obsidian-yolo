@@ -65,6 +65,23 @@ import { ModeSelect, QuickAskMode } from './ModeSelect'
 
 const QUICK_ASK_MAX_ITERATIONS = 1
 
+function getSelectionEndPosition(
+  from: { line: number; ch: number },
+  text: string,
+): { line: number; ch: number } {
+  const lines = text.split('\n')
+  if (lines.length <= 1) {
+    return {
+      line: from.line,
+      ch: from.ch + text.length,
+    }
+  }
+  return {
+    line: from.line + lines.length - 1,
+    ch: lines[lines.length - 1]?.length ?? 0,
+  }
+}
+
 type QuickAskRunStatus =
   | 'requesting'
   | 'thinking'
@@ -889,6 +906,7 @@ export function QuickAskPanel({
       })
       setInputText('')
 
+      let closedForReview = false
       try {
         const currentContent = await readTFileContent(targetFile, app.vault)
         const selectedContext = editContextText ?? ''
@@ -976,21 +994,45 @@ export function QuickAskPanel({
           console.warn('Some replacements failed:', errors)
         }
 
-        // Open Apply Review
+        // Close Quick Ask before opening review to avoid layout jump
+        setIsStreaming(false)
+        setRunStatus(null)
+        closedForReview = true
+        onClose()
+
         await plugin.openApplyReview({
           file: targetFile,
           originalContent: currentContent,
           newContent: finalContent,
+          reviewMode:
+            scopedToSelection && editSelectionFrom
+              ? 'selection-focus'
+              : undefined,
+          selectionRange:
+            scopedToSelection && editSelectionFrom
+              ? {
+                  from: editSelectionFrom,
+                  to: getSelectionEndPosition(
+                    editSelectionFrom,
+                    selectedContext,
+                  ),
+                }
+              : undefined,
+          selectionOriginalText:
+            scopedToSelection && editSelectionFrom
+              ? selectedContext
+              : undefined,
+          selectionNewText:
+            scopedToSelection && editSelectionFrom ? newContent : undefined,
         } satisfies ApplyViewState)
-
-        // Close Quick Ask
-        onClose()
       } catch (error) {
         console.error('Edit mode failed:', error)
         new Notice(t('quickAsk.error', 'Failed to generate edits'))
       } finally {
-        setIsStreaming(false)
-        setRunStatus(null)
+        if (!closedForReview) {
+          setIsStreaming(false)
+          setRunStatus(null)
+        }
       }
     },
     [
@@ -1003,6 +1045,7 @@ export function QuickAskPanel({
       mode,
       model,
       onClose,
+      plugin,
       providerClient,
       resolveEditTargetFile,
       t,

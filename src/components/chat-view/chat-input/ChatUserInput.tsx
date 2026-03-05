@@ -12,6 +12,7 @@ import {
   type ParagraphNode,
   SerializedEditorState,
 } from 'lexical'
+import { Notice } from 'obsidian'
 import {
   type FocusEvent,
   type MouseEvent as ReactMouseEvent,
@@ -239,6 +240,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     ) => {
       const destroyedMentionableKeys: string[] = []
       const addedMentionables: SerializedMentionable[] = []
+      let hasDanglingLightweightBlockToken = false
       mutations.forEach((mutation) => {
         const mentionable = mutation.node.getMentionable()
         const mentionableKey = getMentionableKey(mentionable)
@@ -264,6 +266,20 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           }
         } else if (mutation.mutation === 'created') {
           if (
+            mentionable.type === 'block' &&
+            typeof mentionable.content !== 'string'
+          ) {
+            const existsInMentionables = effectiveMentionables.some(
+              (m) =>
+                getMentionableKey(serializeMentionable(m)) === mentionableKey,
+            )
+            if (!existsInMentionables) {
+              hasDanglingLightweightBlockToken = true
+            }
+            return
+          }
+
+          if (
             effectiveMentionables.some(
               (m) =>
                 getMentionableKey(serializeMentionable(m)) === mentionableKey,
@@ -279,6 +295,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           addedMentionables.push(mentionable)
         }
       })
+
+      if (hasDanglingLightweightBlockToken) {
+        new Notice('Block reference pasted as text. Please reselect the block.')
+      }
 
       if (destroyedMentionableKeys.length > 0 && onDeleteFromAll) {
         destroyedMentionableKeys.forEach((mentionableKey) => {
@@ -358,16 +378,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             }
             node.remove()
             return
-          }
-
-          if (mentionable.type === 'block') {
-            const updatedMentionNode = $createMentionNode(
-              getMentionableName(desiredMentionable, {
-                unitLabel: mentionableUnitLabel,
-              }),
-              serializeMentionable(desiredMentionable),
-            )
-            node.replace(updatedMentionNode)
           }
         })
 
@@ -612,7 +622,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
-                  {t('chat.placeholder', '输入消息... [@ 添加标签引用]')}
+                  {t(
+                    'chat.placeholder',
+                    '输入消息...「@添加标签引用,继续输入可筛选搜索」',
+                  )}
                 </div>
               )}
             <LexicalContentEditable
