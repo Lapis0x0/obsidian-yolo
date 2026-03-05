@@ -195,6 +195,9 @@ export type TranslationKeys = {
       skillsCount?: string
       skillsCountWithEnabled?: string
       skillsGlobalDesc?: string
+      yoloBaseDir?: string
+      yoloBaseDirDesc?: string
+      yoloBaseDirPlaceholder?: string
       skillsSourcePath?: string
       refreshSkills?: string
       skillsEmptyHint?: string
@@ -589,6 +592,9 @@ export type TranslationKeys = {
       resetAgentsDesc?: string
       resetAgentsConfirm?: string
       resetAgentsSuccess?: string
+      yoloBaseDir?: string
+      yoloBaseDirDesc?: string
+      yoloBaseDirPlaceholder?: string
       mentionDisplayMode?: string
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string

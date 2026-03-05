@@ -14,6 +14,7 @@ import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { parseToolName } from '../../../core/mcp/tool-name-utils'
+import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
   LiteSkillEntry,
   listLiteSkillEntries,
@@ -573,11 +574,12 @@ export function AgentsSectionContent({
   }, [draftAgent?.enabledToolNames, visibleToolGroups])
 
   const skillEntries = useMemo<LiteSkillEntry[]>(
-    () => listLiteSkillEntries(app),
-    [app],
+    () => listLiteSkillEntries(app, { settings }),
+    [app, settings],
   )
 
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+  const skillsDir = getYoloSkillsDir(settings)
   const disabledSkillIdSet = useMemo(
     () => getDisabledSkillIdSet(disabledSkillIds),
     [disabledSkillIds],
@@ -1067,8 +1069,8 @@ export function AgentsSectionContent({
                   <div className="smtcmp-agent-tools-empty">
                     {t(
                       'settings.agent.skillsEmptyHint',
-                      'No skills found. Create markdown skills under YOLO/skills.',
-                    )}
+                      'No skills found. Create skill markdown files under {path}.',
+                    ).replace('{path}', skillsDir)}
                   </div>
                 )}
               </div>

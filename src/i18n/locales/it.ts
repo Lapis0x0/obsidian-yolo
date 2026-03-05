@@ -302,14 +302,18 @@ export const it: TranslationKeys = {
       skillsCount: '{count} competenze',
       skillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillsGlobalDesc:
-        'Le skill vengono rilevate dalle skill integrate e da YOLO/skills/**/*.md (escludendo Skills.md). Disabilitale qui per bloccarle su tutti gli agent.',
+        'Le skill vengono rilevate dalle skill integrate e da {path}/**/*.md (escludendo Skills.md quando applicabile). Disabilitale qui per bloccarle su tutti gli agent.',
+      yoloBaseDir: 'Cartella base YOLO',
+      yoloBaseDirDesc:
+        'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
+      yoloBaseDirPlaceholder: 'YOLO',
       skillsSourcePath:
-        'Origine: skill integrate + YOLO/skills/**/*.md (escludendo Skills.md)',
+        'Origine: skill integrate + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: 'Aggiorna',
       skillsEmptyHint:
-        'Nessuna skill trovata. Crea file markdown skill sotto YOLO/skills (escludendo Skills.md).',
+        'Nessuna skill trovata. Crea file markdown skill sotto {path}.',
       createSkillTemplates: 'Inizializza sistema Skills',
-      skillsTemplateCreated: 'Sistema Skills inizializzato in YOLO/skills.',
+      skillsTemplateCreated: 'Sistema Skills inizializzato in {path}.',
       agents: 'Agent',
       agentsDesc:
         'Clicca Configura per modificare il profilo e il prompt di ciascun agent.',
@@ -760,6 +764,10 @@ export const it: TranslationKeys = {
         'Sei sicuro di voler ripristinare la configurazione degli agent? Questa azione rimuoverà gli agent personalizzati e reimposterà la selezione corrente.',
       resetAgentsSuccess:
         'La configurazione degli agent è stata ripristinata ai valori predefiniti.',
+      yoloBaseDir: 'Cartella base YOLO',
+      yoloBaseDirDesc:
+        'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
+      yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
         "Scegli se mostrare i file selezionati con @ nel testo dell'input o come badge sopra la casella.",

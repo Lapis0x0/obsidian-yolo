@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
+import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import {
@@ -273,7 +274,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'open_skill',
       description:
-        'Load a lite skill from YOLO/skills by id or name and return full markdown content.',
+        'Load a lite skill from the configured skills directory by id or name and return full markdown content.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -653,11 +654,13 @@ export function parseLocalFsWriteActionFromArgs(
 
 export async function callLocalFileTool({
   app,
+  settings,
   toolName,
   args,
   signal,
 }: {
   app: App
+  settings?: SmartComposerSettings
   toolName: string
   args: Record<string, unknown>
   signal?: AbortSignal
@@ -1424,7 +1427,7 @@ export async function callLocalFileTool({
           throw new Error('Either id or name is required.')
         }
 
-        const skill = await getLiteSkillDocument({ app, id, name })
+        const skill = await getLiteSkillDocument({ app, id, name, settings })
         if (!skill) {
           throw new Error(`Skill not found. id=${id ?? ''} name=${name ?? ''}`)
         }

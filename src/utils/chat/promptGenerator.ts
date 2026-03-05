@@ -689,13 +689,14 @@ ${currentAssistant.systemPrompt}
 
     const disabledSkillIds = this.settings.skills?.disabledSkillIds ?? []
     const enabledSkillEntries = currentAssistant
-      ? listLiteSkillEntries(this.app).filter((skill) =>
-          isSkillEnabledForAssistant({
-            assistant: currentAssistant,
-            skillId: skill.id,
-            disabledSkillIds,
-            defaultLoadMode: skill.mode,
-          }),
+      ? listLiteSkillEntries(this.app, { settings: this.settings }).filter(
+          (skill) =>
+            isSkillEnabledForAssistant({
+              assistant: currentAssistant,
+              skillId: skill.id,
+              disabledSkillIds,
+              defaultLoadMode: skill.mode,
+            }),
         )
       : []
 
@@ -732,6 +733,7 @@ ${enabledSkillEntries
           getLiteSkillDocument({
             app: this.app,
             id: skill.id,
+            settings: this.settings,
           }),
         ),
       )

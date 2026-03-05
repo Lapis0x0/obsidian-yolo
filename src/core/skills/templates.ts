@@ -1,4 +1,6 @@
-export const YOLO_SKILLS_DIR = 'YOLO/skills'
+import { DEFAULT_YOLO_BASE_DIR, YOLO_SKILLS_SUBDIR } from '../paths/yoloPaths'
+
+export const YOLO_SKILLS_DIR = `${DEFAULT_YOLO_BASE_DIR}/${YOLO_SKILLS_SUBDIR}`
 
 export const YOLO_SKILLS_INDEX_TEMPLATE = `# YOLO Skills
 

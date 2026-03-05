@@ -294,14 +294,18 @@ export const en: TranslationKeys = {
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
-        'Skills are discovered from built-in skills and YOLO/skills/**/*.md (excluding Skills.md). Disable a skill here to block it for all agents.',
+        'Skills are discovered from built-in skills and {path}/**/*.md (excluding Skills.md where applicable). Disable a skill here to block it for all agents.',
+      yoloBaseDir: 'YOLO base folder',
+      yoloBaseDirDesc:
+        'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
+      yoloBaseDirPlaceholder: 'YOLO',
       skillsSourcePath:
-        'Source: built-in skills + YOLO/skills/**/*.md (excluding Skills.md)',
+        'Source: built-in skills + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
-        'No skills found. Create skill markdown files under YOLO/skills (excluding Skills.md).',
+        'No skills found. Create skill markdown files under {path}.',
       createSkillTemplates: 'Initialize Skills system',
-      skillsTemplateCreated: 'Skills system initialized in YOLO/skills.',
+      skillsTemplateCreated: 'Skills system initialized in {path}.',
       agents: 'Agents',
       agentsDesc: 'Click Configure to edit each agent profile and prompt.',
       configureAgents: 'Configure',
@@ -767,6 +771,10 @@ export const en: TranslationKeys = {
       resetAgentsConfirm:
         'Are you sure you want to reset agent configuration? This will remove custom agents and reset the current selection.',
       resetAgentsSuccess: 'Agent configuration has been reset to defaults',
+      yoloBaseDir: 'YOLO base folder',
+      yoloBaseDirDesc:
+        'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
+      yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
         'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',

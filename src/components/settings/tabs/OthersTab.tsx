@@ -1,12 +1,18 @@
 import { App } from 'obsidian'
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import {
+  getYoloBaseDir,
+  getYoloSkillsDir,
+  normalizeVaultRelativeDir,
+} from '../../../core/paths/yoloPaths'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { EtcSection } from '../sections/EtcSection'
 
 type OthersTabProps = {
@@ -17,6 +23,13 @@ type OthersTabProps = {
 export function OthersTab({ app, plugin }: OthersTabProps) {
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
+  const yoloBaseDir = getYoloBaseDir(settings)
+  const skillsDir = getYoloSkillsDir(settings)
+  const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
+
+  useEffect(() => {
+    setYoloBaseDirInput(yoloBaseDir)
+  }, [yoloBaseDir])
 
   const handleMentionDisplayModeChange = (value: string) => {
     if (value !== 'inline' && value !== 'badge') return
@@ -31,6 +44,27 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
         })
       } catch (error: unknown) {
         console.error('Failed to update mention display mode', error)
+      }
+    })()
+  }
+
+  const handleYoloBaseDirBlur = (value: string) => {
+    const normalized = normalizeVaultRelativeDir(value)
+    setYoloBaseDirInput(normalized)
+    if (normalized === yoloBaseDir) {
+      return
+    }
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          yolo: {
+            ...(settings.yolo ?? { baseDir: 'YOLO' }),
+            baseDir: normalized,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update YOLO base dir', error)
       }
     })()
   }
@@ -50,6 +84,20 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
               window.open('https://afdian.com/a/lapis0x0', '_blank')
             }
             cta
+          />
+        </ObsidianSetting>
+        <ObsidianSetting
+          name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
+          desc={t(
+            'settings.etc.yoloBaseDirDesc',
+            '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
+          ).replace('{path}', skillsDir)}
+        >
+          <ObsidianTextInput
+            value={yoloBaseDirInput}
+            placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
+            onChange={setYoloBaseDirInput}
+            onBlur={handleYoloBaseDirBlur}
           />
         </ObsidianSetting>
         <ObsidianSetting

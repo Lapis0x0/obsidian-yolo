@@ -35,6 +35,7 @@ describe('parseSmartComposerSettings', () => {
     })
 
     expect(result.mcp.servers).toEqual([])
+    expect(result.yolo).toEqual({ baseDir: 'YOLO' })
 
     expect(result.chatOptions).toMatchObject({
       includeCurrentFileContent: true,

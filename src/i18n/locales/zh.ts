@@ -264,14 +264,16 @@ export const zh: TranslationKeys = {
       skillsCount: '{count} 个技能',
       skillsCountWithEnabled: '{count} 个技能（已启用 {enabled} 个）',
       skillsGlobalDesc:
-        '技能会从内置技能与 YOLO/skills/**/*.md 自动发现（排除 Skills.md）。在这里禁用后，所有 Agent 都无法使用。',
-      skillsSourcePath:
-        '来源：内置技能 + YOLO/skills/**/*.md（排除 Skills.md）',
+        '技能会从内置技能与 {path}/**/*.md 自动发现（适用时排除 Skills.md）。在这里禁用后，所有 Agent 都无法使用。',
+      yoloBaseDir: 'YOLO 根目录',
+      yoloBaseDirDesc:
+        '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。',
+      yoloBaseDirPlaceholder: 'YOLO',
+      skillsSourcePath: '来源：内置技能 + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: '刷新',
-      skillsEmptyHint:
-        '未发现技能。请在 YOLO/skills 下创建 .md 技能文件（排除 Skills.md）。',
+      skillsEmptyHint: '未发现技能。请在 {path} 下创建 .md 技能文件。',
       createSkillTemplates: '初始化 Skills 系统',
-      skillsTemplateCreated: '已在 YOLO/skills 完成 Skills 系统初始化。',
+      skillsTemplateCreated: '已在 {path} 完成 Skills 系统初始化。',
       agents: 'Agents',
       agentsDesc: '点击配置以编辑每个 Agent 的资料与提示词。',
       configureAgents: '配置',
@@ -704,6 +706,10 @@ export const zh: TranslationKeys = {
       resetAgentsConfirm:
         '确定要重置 Agent 配置吗？此操作将删除自定义 Agent 并重置当前选择。',
       resetAgentsSuccess: 'Agent 配置已重置为默认',
+      yoloBaseDir: 'YOLO 根目录',
+      yoloBaseDirDesc:
+        '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
+      yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: '引用文件显示位置',
       mentionDisplayModeDesc:
         '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
