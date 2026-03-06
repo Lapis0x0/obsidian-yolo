@@ -93,7 +93,7 @@ export default function AssistantToolMessageGroupItem({
                   !message.annotations)) && (
                 <AssistantMessageReasoning
                   reasoning={message.reasoning ?? ''}
-                  content={message.content}
+                  hasAnswerContent={message.content.trim().length > 0}
                   generationState={message.metadata?.generationState}
                 />
               )}

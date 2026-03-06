@@ -764,6 +764,24 @@
   }
 }
 
+.smtcmp-stream-fresh-text {
+  display: inline;
+  animation: smtcmp-stream-fresh-text-fade 120ms ease-out;
+  will-change: opacity, filter;
+}
+
+@keyframes smtcmp-stream-fresh-text-fade {
+  0% {
+    opacity: 0.18;
+    filter: blur(0.18em);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
 .smtcmp-mention-popover {
   width: 360px;
   max-width: 360px;

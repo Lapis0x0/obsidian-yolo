@@ -433,9 +433,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
+  const hasStreamingMessages = useMemo(
+    () =>
+      chatMessages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.generationState === 'streaming',
+      ),
+    [chatMessages],
+  )
 
   const { autoScrollToBottom, forceScrollToBottom } = useAutoScroll({
     scrollContainerRef: chatMessagesRef,
+    isStreaming: hasStreamingMessages,
   })
 
   const { abortActiveStreams, submitChatMutation } = useChatStreamManager({

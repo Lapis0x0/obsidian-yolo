@@ -314,6 +314,13 @@ export function QuickAskPanel({
       generationState?: 'streaming' | 'completed' | 'aborted',
     ) => {
       const parsed = parseTagContents(rawContent ?? '')
+      const hasAnswerContent = parsed.some((block) => {
+        if (block.type === 'think') {
+          return false
+        }
+
+        return block.content.trim().length > 0
+      })
       const rendered: React.JSX.Element[] = []
 
       parsed.forEach((block, index) => {
@@ -323,7 +330,7 @@ export function QuickAskPanel({
             <AssistantMessageReasoning
               key={index}
               reasoning={block.content}
-              content={rawContent ?? ''}
+              hasAnswerContent={hasAnswerContent}
               generationState={generationState}
               MarkdownComponent={({ content }) => (
                 <SimpleMarkdownContent content={content} component={plugin} />
@@ -1717,7 +1724,7 @@ export function QuickAskPanel({
                   {message.reasoning?.trim() && (
                     <AssistantMessageReasoning
                       reasoning={message.reasoning}
-                      content={message.content}
+                      hasAnswerContent={message.content.trim().length > 0}
                       generationState={message.metadata?.generationState}
                       MarkdownComponent={({ content }) => (
                         <SimpleMarkdownContent

@@ -7,6 +7,69 @@ import { useChatView } from '../../contexts/chat-view-context'
 type ObsidianMarkdownProps = {
   content: string
   scale?: 'xs' | 'sm' | 'base'
+  animateIncrementalText?: boolean
+}
+
+function getAppendedTextLength(
+  previousContent: string,
+  nextContent: string,
+): number {
+  if (!previousContent || nextContent.length <= previousContent.length) {
+    return 0
+  }
+
+  return nextContent.startsWith(previousContent)
+    ? nextContent.length - previousContent.length
+    : 0
+}
+
+function highlightTrailingFreshText(
+  containerEl: HTMLElement,
+  appendedTextLength: number,
+) {
+  if (appendedTextLength <= 0) {
+    return
+  }
+
+  const textNodes: Text[] = []
+  const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT)
+  let currentNode = walker.nextNode()
+
+  while (currentNode) {
+    if (currentNode instanceof Text && currentNode.textContent) {
+      textNodes.push(currentNode)
+    }
+    currentNode = walker.nextNode()
+  }
+
+  let remainingLength = appendedTextLength
+  for (
+    let index = textNodes.length - 1;
+    index >= 0 && remainingLength > 0;
+    index--
+  ) {
+    const textNode = textNodes[index]
+    const textContent = textNode.textContent ?? ''
+    if (!textContent) {
+      continue
+    }
+
+    const wrapLength = Math.min(remainingLength, textContent.length)
+    const wrapStartIndex = textContent.length - wrapLength
+    const trailingNode =
+      wrapStartIndex > 0 ? textNode.splitText(wrapStartIndex) : textNode
+    const trailingParent = trailingNode.parentNode
+    if (!trailingParent) {
+      remainingLength -= wrapLength
+      continue
+    }
+
+    const freshTextSpan = document.createElement('span')
+    freshTextSpan.className = 'smtcmp-stream-fresh-text'
+    trailingParent.replaceChild(freshTextSpan, trailingNode)
+    freshTextSpan.appendChild(trailingNode)
+    remainingLength -= wrapLength
+  }
 }
 
 /**
@@ -19,13 +82,19 @@ type ObsidianMarkdownProps = {
 const ObsidianMarkdown = memo(function ObsidianMarkdown({
   content,
   scale = 'base',
+  animateIncrementalText = false,
 }: ObsidianMarkdownProps) {
   const app = useApp()
   const chatView = useChatView()
   const containerRef = useRef<HTMLDivElement>(null)
+  const previousContentRef = useRef('')
 
   const renderMarkdown = useCallback(async () => {
     if (containerRef.current) {
+      const appendedTextLength = animateIncrementalText
+        ? getAppendedTextLength(previousContentRef.current, content)
+        : 0
+
       // Use safe DOM API to clear existing children instead of assigning innerHTML
       containerRef.current.replaceChildren()
       await MarkdownRenderer.render(
@@ -41,8 +110,12 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
         containerRef.current,
         app.workspace.getActiveFile()?.path ?? '',
       )
+
+      highlightTrailingFreshText(containerRef.current, appendedTextLength)
     }
-  }, [app, content, chatView])
+
+    previousContentRef.current = content
+  }, [animateIncrementalText, app, content, chatView])
 
   useEffect(() => {
     void renderMarkdown()
@@ -104,16 +177,19 @@ function ObsidianCodeBlock({
   content,
   language,
   scale = 'sm',
+  animateIncrementalText = false,
 }: {
   content: string
   language?: string
   scale?: 'xs' | 'sm' | 'base'
+  animateIncrementalText?: boolean
 }) {
   return (
     <div className="smtcmp-obsidian-code-block">
       <ObsidianMarkdown
         content={`\`\`\`${language ?? ''}\n${content}\n\`\`\``}
         scale={scale}
+        animateIncrementalText={animateIncrementalText}
       />
     </div>
   )

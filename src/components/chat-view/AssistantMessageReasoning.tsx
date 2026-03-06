@@ -2,41 +2,34 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { parseTagContents } from '../../utils/chat/parse-tag-content'
 import DotLoader from '../common/DotLoader'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
+import StreamingMarkdown from './StreamingMarkdown'
 
 type ReasoningStage = 'requesting' | 'thinking' | 'generating' | 'settled'
 
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoning,
-  content,
+  hasAnswerContent,
   generationState,
-  MarkdownComponent = ObsidianMarkdown,
+  MarkdownComponent,
 }: {
   reasoning: string
-  content: string
+  hasAnswerContent: boolean
   generationState?: 'streaming' | 'completed' | 'aborted'
   MarkdownComponent?: React.ComponentType<{
     content: string
     scale?: 'xs' | 'sm' | 'base'
+    animateIncrementalText?: boolean
   }>
 }) {
   const { t } = useLanguage()
+  const EffectiveMarkdownComponent =
+    MarkdownComponent ??
+    (generationState === 'streaming' ? StreamingMarkdown : ObsidianMarkdown)
   const [isExpanded, setIsExpanded] = useState(false)
   const hasUserInteracted = useRef(false)
-
-  const hasAnswerContent = useMemo(() => {
-    const blocks = parseTagContents(content)
-    return blocks.some((block) => {
-      if (block.type === 'think') return false
-      if (block.type === 'smtcmp_block') {
-        return block.content.trim().length > 0
-      }
-      return block.content.trim().length > 0
-    })
-  }, [content])
 
   const hasReasoningText = useMemo(
     () => reasoning.trim().length > 0,
@@ -187,7 +180,11 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       </div>
       <div className="smtcmp-assistant-message-metadata-body">
         <div className="smtcmp-assistant-message-metadata-content">
-          <MarkdownComponent content={reasoning} scale="xs" />
+          <EffectiveMarkdownComponent
+            content={reasoning}
+            scale="xs"
+            animateIncrementalText={generationState === 'streaming'}
+          />
         </div>
       </div>
     </div>

@@ -12,6 +12,17 @@ import AssistantMessageReasoning from './AssistantMessageReasoning'
 import MarkdownCodeComponent from './MarkdownCodeComponent'
 import MarkdownReferenceBlock from './MarkdownReferenceBlock'
 import { ObsidianMarkdown } from './ObsidianMarkdown'
+import StreamingMarkdown from './StreamingMarkdown'
+
+function hasRenderableAssistantContent(blocks: ParsedTagContent[]): boolean {
+  return blocks.some((block) => {
+    if (block.type === 'think') {
+      return false
+    }
+
+    return block.content.trim().length > 0
+  })
+}
 
 export default function AssistantMessageContent({
   content,
@@ -84,6 +95,10 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
     () => parseTagContents(children),
     [children],
   )
+  const hasAnswerContent = useMemo(
+    () => hasRenderableAssistantContent(blocks),
+    [blocks],
+  )
 
   const runningToolText = useMemo(() => {
     if (generationState !== 'streaming' || !toolCallRequests?.length) {
@@ -107,6 +122,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   return (
     <>
       {blocks.map((block) => {
+        const MarkdownRenderer =
+          generationState === 'streaming' ? StreamingMarkdown : ObsidianMarkdown
         const blockKey =
           block.type === 'string' || block.type === 'think'
             ? `${block.type}-${block.content.slice(0, 64)}`
@@ -114,13 +131,17 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
 
         return block.type === 'string' ? (
           <div key={blockKey}>
-            <ObsidianMarkdown content={block.content} scale="sm" />
+            <MarkdownRenderer
+              content={block.content}
+              scale="sm"
+              animateIncrementalText={generationState === 'streaming'}
+            />
           </div>
         ) : block.type === 'think' ? (
           <AssistantMessageReasoning
             key={blockKey}
             reasoning={block.content}
-            content={children}
+            hasAnswerContent={hasAnswerContent}
             generationState={generationState}
           />
         ) : block.startLine && block.endLine && block.filename ? (
