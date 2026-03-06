@@ -1046,9 +1046,9 @@ export const it: TranslationKeys = {
 
   chatMode: {
     chat: 'Chat',
-    chatDesc: 'Ideale per domande, revisione e riscrittura',
+    chatDesc: 'Chiedi, rifinisci, crea',
     agent: 'Agent',
-    agentDesc: 'Abilita strumenti per esecuzione multi-step',
+    agentDesc: 'Strumenti per task complessi',
     warning: {
       title: 'Conferma prima di abilitare la modalita Agent',
       description:

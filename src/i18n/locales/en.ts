@@ -1039,9 +1039,9 @@ export const en: TranslationKeys = {
 
   chatMode: {
     chat: 'Chat',
-    chatDesc: 'Best for asking, polishing, and rewriting',
+    chatDesc: 'Ask, refine, create',
     agent: 'Agent',
-    agentDesc: 'Enable tools for multi-step execution',
+    agentDesc: 'Tools for complex tasks',
     warning: {
       title: 'Please confirm before enabling Agent mode',
       description:
