@@ -450,20 +450,55 @@
 .smtcmp-assistant-message-metadata {
   display: flex;
   flex-direction: column;
-  margin-top: var(--size-4-1);
-  margin-bottom: var(--size-4-2);
-  border-left: 2px solid var(--background-modifier-border);
-  padding-left: var(--size-4-1);
+  margin-top: 2px;
+  margin-bottom: var(--size-4-1);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-assistant-message-metadata.is-active {
+  box-shadow: none;
+}
+
+.smtcmp-assistant-message-metadata--requesting {
+  transform: translateY(0);
+}
+
+.smtcmp-assistant-message-metadata--thinking,
+.smtcmp-assistant-message-metadata--generating {
+  transform: translateY(-1px);
 }
 
 .smtcmp-assistant-message-metadata-content {
   color: var(--text-muted);
-  padding-left: var(--size-4-1);
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 11px;
+  padding: 0 0 0 var(--size-4-2);
   font-size: var(--font-ui-small);
+  opacity: 0;
+  transform: translateY(-4px);
+  border-left: 1px solid transparent;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease;
 }
 
 .smtcmp-assistant-message-metadata-content .markdown-rendered {
   color: inherit;
+}
+
+.smtcmp-assistant-message-metadata.is-expanded
+  .smtcmp-assistant-message-metadata-content {
+  padding-bottom: var(--size-4-2);
+  opacity: 1;
+  transform: translateY(0);
+  border-left-color: color-mix(
+    in srgb,
+    var(--background-modifier-border) 80%,
+    transparent
+  );
 }
 
 .smtcmp-assistant-message-metadata-annotations {
@@ -472,27 +507,128 @@
   gap: var(--size-2-1);
 }
 
+.smtcmp-assistant-message-metadata-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-assistant-message-metadata.is-expanded
+  .smtcmp-assistant-message-metadata-body {
+  grid-template-rows: 1fr;
+}
+
 .smtcmp-assistant-message-metadata-toggle {
+  appearance: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--size-4-1);
+  width: 100%;
+  min-height: 0;
   font-size: var(--font-ui-small);
   color: var(--text-muted);
-  background-color: transparent;
+  background: transparent !important;
+  background-color: transparent !important;
   cursor: pointer;
-  border-radius: var(--radius-s);
-  padding: var(--size-2-3) var(--size-4-1);
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 0;
   user-select: none;
+  text-align: left;
+  transition:
+    background-color 140ms ease,
+    color 180ms ease;
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: transparent;
   }
+}
+
+.smtcmp-assistant-message-metadata-toggle.is-static {
+  cursor: default;
+}
+
+.smtcmp-assistant-message-metadata-toggle.is-static:hover {
+  background-color: transparent;
+}
+
+.smtcmp-assistant-message-metadata-toggle:disabled {
+  opacity: 1;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.smtcmp-assistant-message-metadata-toggle:focus,
+.smtcmp-assistant-message-metadata-toggle:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.smtcmp-assistant-message-metadata-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.smtcmp-assistant-message-metadata-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--text-muted) 92%, var(--text-normal));
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-assistant-message-metadata-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  opacity: 0.92;
+}
+
+.smtcmp-assistant-message-metadata.is-active
+  .smtcmp-assistant-message-metadata-status-dot {
+  animation: smtcmp-assistant-message-status-pulse 1.4s ease-in-out infinite;
+}
+
+.smtcmp-assistant-message-metadata-loader {
+  margin-left: 2px;
+}
+
+.smtcmp-assistant-message-metadata-loader.smtcmp-dot-loader-minimal {
+  gap: 3px;
+}
+
+.smtcmp-assistant-message-metadata-loader.smtcmp-dot-loader-minimal span {
+  width: 3px;
+  height: 3px;
 }
 
 .smtcmp-assistant-message-metadata-toggle-icon {
   width: var(--size-4-4);
   height: var(--size-4-4);
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--text-faint) 84%, var(--text-muted));
+}
+
+@keyframes smtcmp-assistant-message-status-pulse {
+  0% {
+    opacity: 0.28;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.28;
+  }
 }
 
 /* Overrides default .markdown-rendered class styles from Obsidian */

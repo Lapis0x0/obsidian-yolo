@@ -65,6 +65,14 @@ export default function AssistantToolMessageGroupItem({
       message.role === 'assistant' &&
       message.metadata?.generationState === 'streaming',
   )
+  const hasPendingAssistantShell = assistantMessages.some(
+    (message) =>
+      message.metadata?.generationState === 'streaming' &&
+      !message.content &&
+      !message.reasoning &&
+      !message.annotations &&
+      !message.toolCallRequests?.length,
+  )
 
   return (
     <div className="smtcmp-assistant-tool-message-group">
@@ -74,11 +82,17 @@ export default function AssistantToolMessageGroupItem({
           message.annotations ||
           message.content ||
           (message.metadata?.generationState === 'streaming' &&
+            !message.content &&
+            !message.reasoning) ||
+          (message.metadata?.generationState === 'streaming' &&
             Boolean(message.toolCallRequests?.length)) ? (
             <div key={message.id} className="smtcmp-chat-messages-assistant">
-              {message.reasoning && (
+              {(message.reasoning ||
+                (message.metadata?.generationState === 'streaming' &&
+                  !message.content &&
+                  !message.annotations)) && (
                 <AssistantMessageReasoning
-                  reasoning={message.reasoning}
+                  reasoning={message.reasoning ?? ''}
                   content={message.content}
                   generationState={message.metadata?.generationState}
                 />
@@ -119,7 +133,7 @@ export default function AssistantToolMessageGroupItem({
           </div>
         ),
       )}
-      {messages.length > 0 && (
+      {messages.length > 0 && !hasPendingAssistantShell && (
         <div className="smtcmp-assistant-message-footer">
           <LLMResponseInlineInfo messages={messages} />
           <AssistantToolMessageGroupActions

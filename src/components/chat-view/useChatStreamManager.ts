@@ -37,6 +37,39 @@ type UseChatStreamManagerParams = {
 
 const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
 
+const reconcileAssistantGenerationState = (
+  previousMessages: ChatMessage[],
+  nextMessages: ChatMessage[],
+): ChatMessage[] => {
+  const previousAssistantStateMap = new Map(
+    previousMessages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => [message.id, message.metadata?.generationState]),
+  )
+
+  return nextMessages.map((message) => {
+    if (message.role !== 'assistant') {
+      return message
+    }
+
+    const previousGenerationState = previousAssistantStateMap.get(message.id)
+    if (
+      previousGenerationState === 'aborted' &&
+      message.metadata?.generationState === 'streaming'
+    ) {
+      return {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          generationState: 'aborted',
+        },
+      }
+    }
+
+    return message
+  })
+}
+
 export type UseChatStreamManager = {
   abortActiveStreams: () => void
   submitChatMutation: UseMutationResult<
@@ -71,8 +104,30 @@ export function useChatStreamManager({
     for (const abortController of activeStreamAbortControllersRef.current) {
       abortController.abort()
     }
+    setChatMessages((prevChatMessages) => {
+      let hasUpdates = false
+      const nextChatMessages = prevChatMessages.map((message) => {
+        if (
+          message.role !== 'assistant' ||
+          message.metadata?.generationState !== 'streaming'
+        ) {
+          return message
+        }
+
+        hasUpdates = true
+        return {
+          ...message,
+          metadata: {
+            ...message.metadata,
+            generationState: 'aborted' as const,
+          },
+        }
+      })
+
+      return hasUpdates ? nextChatMessages : prevChatMessages
+    })
     activeStreamAbortControllersRef.current = []
-  }, [])
+  }, [setChatMessages])
 
   const submitChatMutation = useMutation({
     mutationFn: async ({
@@ -186,10 +241,10 @@ export function useChatStreamManager({
               abortController.abort()
               return prevChatMessages
             }
-            return [
+            return reconcileAssistantGenerationState(prevChatMessages, [
               ...prevChatMessages.slice(0, lastMessageIndex + 1),
               ...responseMessages,
-            ]
+            ])
           })
           autoScrollToBottom()
         }
