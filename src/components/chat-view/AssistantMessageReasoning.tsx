@@ -42,7 +42,6 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     () => reasoning.trim().length > 0,
     [reasoning],
   )
-  const previousHasReasoningText = useRef(hasReasoningText)
   const previousReasoning = useRef(reasoning)
   const isStreaming = generationState === 'streaming'
   const [showActivity, setShowActivity] = useState(
@@ -78,23 +77,35 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   const isToggleable = hasReasoningText
   const showBody = hasReasoningText && isExpanded
   const showDots = showActivity
+  const visibleStageLabel = useMemo(() => {
+    if (!showDots) {
+      return stageLabel
+    }
+
+    return stageLabel.replace(/\.\.\.$/, '')
+  }, [showDots, stageLabel])
+  const reasoningPreview = useMemo(() => {
+    const previewLine = reasoning
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0)
+
+    if (!previewLine) {
+      return ''
+    }
+
+    return previewLine.replace(/^[-*#>\s`]+/, '').slice(0, 120)
+  }, [reasoning])
+  const showPreview =
+    reasoningPreview.length > 0 &&
+    !showBody &&
+    (stage === 'thinking' || (stage === 'generating' && showActivity))
 
   useEffect(() => {
     if (!isStreaming) {
       setShowActivity(false)
     }
   }, [isStreaming])
-
-  useEffect(() => {
-    if (
-      !hasUserInteracted.current &&
-      !previousHasReasoningText.current &&
-      hasReasoningText
-    ) {
-      setIsExpanded(true)
-    }
-    previousHasReasoningText.current = hasReasoningText
-  }, [hasReasoningText])
 
   useEffect(() => {
     if (previousReasoning.current === reasoning) {
@@ -144,7 +155,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
 
   return (
     <div
-      className={`smtcmp-assistant-message-metadata smtcmp-assistant-message-metadata--${stage}${showBody ? ' is-expanded' : ''}${showActivity ? ' is-active' : ''}`}
+      className={`smtcmp-assistant-message-metadata smtcmp-assistant-message-metadata--${stage}${showBody ? ' is-expanded' : ''}${showActivity ? ' is-active' : ''}${showPreview ? ' has-preview' : ''}`}
       data-stage={stage}
     >
       <button
@@ -156,7 +167,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
         <span className="smtcmp-assistant-message-metadata-label">
           <span className="smtcmp-assistant-message-metadata-status-dot" />
           <span className="smtcmp-assistant-message-metadata-label-text">
-            {stageLabel}
+            {visibleStageLabel}
           </span>
           {showDots && (
             <DotLoader
@@ -171,6 +182,9 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
           <ChevronDown className="smtcmp-assistant-message-metadata-toggle-icon" />
         ) : null}
       </button>
+      <div className="smtcmp-assistant-message-metadata-preview" aria-hidden>
+        <span>{reasoningPreview}</span>
+      </div>
       <div className="smtcmp-assistant-message-metadata-body">
         <div className="smtcmp-assistant-message-metadata-content">
           <MarkdownComponent content={reasoning} scale="xs" />

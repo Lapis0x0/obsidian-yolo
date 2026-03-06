@@ -133,7 +133,7 @@ export default function AssistantToolMessageGroupItem({
           </div>
         ),
       )}
-      {messages.length > 0 && !hasPendingAssistantShell && (
+      {messages.length > 0 && !hasPendingAssistantShell && !isStreaming && (
         <div className="smtcmp-assistant-message-footer">
           <LLMResponseInlineInfo messages={messages} />
           <AssistantToolMessageGroupActions
