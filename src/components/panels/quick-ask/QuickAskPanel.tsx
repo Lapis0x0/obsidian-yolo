@@ -38,7 +38,8 @@ import {
 } from '../../../types/chat'
 import { Mentionable, SerializedMentionable } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
-import { generateEditContent } from '../../../utils/chat/editMode'
+import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
+import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
   getMentionableKey,
@@ -47,7 +48,6 @@ import {
 } from '../../../utils/chat/mentionable'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
-import { tryApplyStructuredEdits } from '../../../utils/chat/structured-edits'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
@@ -673,6 +673,138 @@ export function QuickAskPanel({
     return getChatModelClient({ settings, modelId: preferredModelId })
   }, [settings])
 
+  const readEditBaseContent = useCallback(
+    async (targetFilePath?: string): Promise<string> => {
+      const activeFilePath = app.workspace.getActiveFile()?.path
+      if (
+        targetFilePath &&
+        (targetFilePath === sourceFilePath || targetFilePath === activeFilePath)
+      ) {
+        return _editor.getValue()
+      }
+      const fallbackFile = targetFilePath
+        ? app.vault.getFileByPath(targetFilePath)
+        : null
+      if (!fallbackFile) {
+        return _editor.getValue()
+      }
+      return readTFileContent(fallbackFile, app.vault)
+    },
+    [_editor, app, sourceFilePath],
+  )
+
+  const buildSelectionScopedContent = useCallback(
+    ({
+      currentContent,
+      selectedContext,
+      selectionFrom,
+    }: {
+      currentContent: string
+      selectedContext: string
+      selectionFrom?: { line: number; ch: number }
+    }): {
+      editSourceText: string
+      finalContent: string
+    } => {
+      if (!selectionFrom || selectedContext.trim().length === 0) {
+        return {
+          editSourceText: currentContent,
+          finalContent: currentContent,
+        }
+      }
+
+      const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
+      const tail = currentContent.slice(head.length + selectedContext.length)
+
+      return {
+        editSourceText: selectedContext,
+        finalContent: head + selectedContext + tail,
+      }
+    },
+    [_editor],
+  )
+
+  const generatePlannedEdit = useCallback(
+    async ({
+      instruction,
+      targetFile,
+      scopedToSelection,
+    }: {
+      instruction: string
+      targetFile: ReturnType<typeof resolveEditTargetFile>
+      scopedToSelection: boolean
+    }) => {
+      if (!targetFile) {
+        return null
+      }
+
+      const currentContent = await readEditBaseContent(targetFile.path)
+      const selectedContext = editContextText ?? ''
+      const selectionFrom = scopedToSelection ? editSelectionFrom : undefined
+      const scopedContent = buildSelectionScopedContent({
+        currentContent,
+        selectedContext,
+        selectionFrom,
+      })
+
+      const plan = await generateEditPlan({
+        instruction,
+        currentFile: targetFile,
+        currentFileContent: scopedContent.editSourceText,
+        scopedToSelection,
+        providerClient,
+        model,
+      })
+
+      if (!plan) {
+        return {
+          currentContent,
+          scopedSourceText: scopedContent.editSourceText,
+          scopedToSelection,
+          selectionFrom,
+          selectedContext,
+          materialized: null,
+        }
+      }
+
+      const materialized = materializeTextEditPlan({
+        content: scopedContent.editSourceText,
+        plan,
+      })
+
+      const finalContent = selectionFrom
+        ? (() => {
+            const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
+            const tail = currentContent.slice(
+              head.length + scopedContent.editSourceText.length,
+            )
+            return head + materialized.newContent + tail
+          })()
+        : materialized.newContent
+
+      return {
+        currentContent,
+        scopedSourceText: scopedContent.editSourceText,
+        scopedToSelection,
+        selectionFrom,
+        selectedContext,
+        materialized: {
+          ...materialized,
+          finalContent,
+        },
+      }
+    },
+    [
+      _editor,
+      buildSelectionScopedContent,
+      editContextText,
+      editSelectionFrom,
+      model,
+      providerClient,
+      readEditBaseContent,
+    ],
+  )
+
   useEffect(() => {
     if (hasDockedRef.current) return
     if (!enableAutoDock) return
@@ -909,79 +1041,44 @@ export function QuickAskPanel({
 
       let closedForReview = false
       try {
-        const currentContent = await readTFileContent(targetFile, app.vault)
-        const selectedContext = editContextText ?? ''
         const scopedToSelection =
           mode === 'edit' &&
-          selectedContext.trim().length > 0 &&
+          (editContextText ?? '').trim().length > 0 &&
           !!editSelectionFrom
 
-        const editSourceText = scopedToSelection
-          ? selectedContext
-          : currentContent
-
-        // Generate SEARCH/REPLACE blocks
-        const response = await generateEditContent({
+        const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
-          currentFile: targetFile,
-          currentFileContent: editSourceText,
-          providerClient,
-          model,
+          targetFile,
+          scopedToSelection,
         })
 
         setRunStatus('modifying')
 
-        const structuredEditResult = tryApplyStructuredEdits({
-          rawEdits: response,
-          originalContent: editSourceText,
-        })
-        if (!structuredEditResult) {
+        if (!editResult?.materialized) {
           new Notice(
             t('quickAsk.editNoChanges', 'No valid changes returned by model'),
           )
           return
         }
 
-        const { newContent, errors, appliedCount, blocks } =
-          structuredEditResult
-
-        const finalContent =
-          scopedToSelection && editSelectionFrom
-            ? (() => {
-                const head = _editor.getRange(
-                  { line: 0, ch: 0 },
-                  editSelectionFrom,
-                )
-                const tail = currentContent.slice(
-                  head.length + selectedContext.length,
-                )
-                return head + newContent + tail
-              })()
-            : newContent
-
-        const canApplyStructuredLocally =
-          structuredEditResult.isPureStructuredScript && appliedCount > 0
-
-        if (!canApplyStructuredLocally) {
-          console.error(
-            '[QuickAsk Edit] Structured edits did not match file.',
-            {
-              filePath: targetFile.path,
-              blockCount: blocks.length,
-              appliedCount,
-              errors,
-            },
-          )
-          new Notice(
-            t(
-              'quickAsk.editNoChanges',
-              'No valid structured changes returned by model.',
-            ),
-          )
-          return
-        }
+        const { materialized, currentContent, selectionFrom, selectedContext } =
+          editResult
+        const {
+          newContent,
+          errors,
+          appliedCount,
+          operationResults,
+          totalOperations,
+          finalContent,
+        } = materialized
 
         if (appliedCount === 0) {
+          console.error('[QuickAsk Edit] Edit plan did not produce changes.', {
+            filePath: targetFile.path,
+            operationCount: totalOperations,
+            appliedCount,
+            errors,
+          })
           new Notice(
             t(
               'quickAsk.editNoChanges',
@@ -992,7 +1089,7 @@ export function QuickAskPanel({
         }
 
         if (errors.length > 0) {
-          console.warn('Some replacements failed:', errors)
+          console.warn('Some planned edits failed:', errors)
         }
 
         // Close Quick Ask before opening review to avoid layout jump
@@ -1006,25 +1103,18 @@ export function QuickAskPanel({
           originalContent: currentContent,
           newContent: finalContent,
           reviewMode:
-            scopedToSelection && editSelectionFrom
-              ? 'selection-focus'
-              : undefined,
+            scopedToSelection && selectionFrom ? 'selection-focus' : undefined,
           selectionRange:
-            scopedToSelection && editSelectionFrom
+            scopedToSelection && selectionFrom
               ? {
-                  from: editSelectionFrom,
-                  to: getSelectionEndPosition(
-                    editSelectionFrom,
-                    selectedContext,
-                  ),
+                  from: selectionFrom,
+                  to: getSelectionEndPosition(selectionFrom, selectedContext),
                 }
               : undefined,
           selectionOriginalText:
-            scopedToSelection && editSelectionFrom
-              ? selectedContext
-              : undefined,
+            scopedToSelection && selectionFrom ? selectedContext : undefined,
           selectionNewText:
-            scopedToSelection && editSelectionFrom ? newContent : undefined,
+            scopedToSelection && selectionFrom ? newContent : undefined,
         } satisfies ApplyViewState)
       } catch (error) {
         console.error('Edit mode failed:', error)
@@ -1039,15 +1129,12 @@ export function QuickAskPanel({
     [
       app,
       buildEditInstruction,
-      editContextText,
       editSelectionFrom,
-      _editor,
+      generatePlannedEdit,
       isStreaming,
       mode,
-      model,
       onClose,
       plugin,
-      providerClient,
       resolveEditTargetFile,
       t,
     ],
@@ -1081,79 +1168,45 @@ export function QuickAskPanel({
       setInputText('')
 
       try {
-        const currentContent = await readTFileContent(targetFile, app.vault)
-        const selectedContext = editContextText ?? ''
         const scopedToSelection =
           mode === 'edit-direct' &&
-          selectedContext.trim().length > 0 &&
+          (editContextText ?? '').trim().length > 0 &&
           !!editSelectionFrom
 
-        const editSourceText = scopedToSelection
-          ? selectedContext
-          : currentContent
-
-        // Generate edit blocks
-        const response = await generateEditContent({
+        const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
-          currentFile: targetFile,
-          currentFileContent: editSourceText,
-          providerClient,
-          model,
+          targetFile,
+          scopedToSelection,
         })
 
         setRunStatus('modifying')
 
-        const structuredEditResult = tryApplyStructuredEdits({
-          rawEdits: response,
-          originalContent: editSourceText,
-        })
-        if (!structuredEditResult) {
+        if (!editResult?.materialized) {
           new Notice(
             t('quickAsk.editNoChanges', 'No valid changes returned by model'),
           )
           return
         }
 
-        const { newContent, errors, appliedCount, blocks } =
-          structuredEditResult
+        const { materialized } = editResult
+        const {
+          errors,
+          appliedCount,
+          operationResults,
+          totalOperations,
+          finalContent,
+        } = materialized
 
-        const finalContent =
-          scopedToSelection && editSelectionFrom
-            ? (() => {
-                const head = _editor.getRange(
-                  { line: 0, ch: 0 },
-                  editSelectionFrom,
-                )
-                const tail = currentContent.slice(
-                  head.length + selectedContext.length,
-                )
-                return head + newContent + tail
-              })()
-            : newContent
-
-        const canApplyStructuredLocally =
-          structuredEditResult.isPureStructuredScript && appliedCount > 0
-
-        if (!canApplyStructuredLocally) {
+        if (appliedCount === 0) {
           console.error(
-            '[QuickAsk Edit-Direct] Structured edits did not match file.',
+            '[QuickAsk Edit-Direct] Edit plan did not produce changes.',
             {
               filePath: targetFile.path,
-              blockCount: blocks.length,
+              operationCount: totalOperations,
               appliedCount,
               errors,
             },
           )
-          new Notice(
-            t(
-              'quickAsk.editNoChanges',
-              'No valid structured changes returned by model.',
-            ),
-          )
-          return
-        }
-
-        if (appliedCount === 0) {
           new Notice(
             t(
               'quickAsk.editNoChanges',
@@ -1170,7 +1223,7 @@ export function QuickAskPanel({
             `Applied {appliedCount} of {totalEdits} edits. Check console for details.`,
           )
             .replace('{appliedCount}', String(appliedCount))
-            .replace('{totalEdits}', String(blocks.length))
+            .replace('{totalEdits}', String(totalOperations))
           new Notice(partialMessage)
         }
 
@@ -1198,14 +1251,11 @@ export function QuickAskPanel({
     [
       app,
       buildEditInstruction,
-      editContextText,
       editSelectionFrom,
-      _editor,
+      generatePlannedEdit,
       isStreaming,
       mode,
-      model,
       onClose,
-      providerClient,
       resolveEditTargetFile,
       t,
     ],

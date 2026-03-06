@@ -1,5 +1,9 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
+import {
+  materializeTextEditPlan,
+  recoverLikelyEscapedBackslashSequences,
+} from '../edits/textEditEngine'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
@@ -7,6 +11,8 @@ import {
   getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../skills/liteSkills'
+
+export { recoverLikelyEscapedBackslashSequences }
 
 const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
@@ -526,113 +532,6 @@ const formatJsonResult = (payload: unknown): string => {
   return JSON.stringify(payload, null, 2)
 }
 
-const countOccurrences = (content: string, target: string): number => {
-  if (!target) {
-    return 0
-  }
-  let count = 0
-  let cursor = 0
-  while (cursor <= content.length) {
-    const index = content.indexOf(target, cursor)
-    if (index === -1) break
-    count += 1
-    cursor = index + target.length
-  }
-  return count
-}
-
-const normalizeLineEndings = (value: string): string => {
-  return value.replace(/\r\n/g, '\n')
-}
-
-const normalizeLineEndingsAndTrimLineEnd = (value: string): string => {
-  return normalizeLineEndings(value)
-    .split('\n')
-    .map((line) => line.replace(/[ \t]+$/g, ''))
-    .join('\n')
-}
-
-const CONTROL_CHAR_TO_ESCAPE_SUFFIX: Record<string, string> = {
-  '\b': 'b',
-  '\t': 't',
-  '\f': 'f',
-}
-
-export const recoverLikelyEscapedBackslashSequences = (
-  value: string,
-): string => {
-  if (!/[\b\t\f]/.test(value)) {
-    return value
-  }
-
-  let changed = false
-  let result = ''
-
-  for (let i = 0; i < value.length; i += 1) {
-    const char = value[i]
-    const escapeSuffix = CONTROL_CHAR_TO_ESCAPE_SUFFIX[char]
-    const nextChar = value[i + 1]
-
-    if (escapeSuffix && nextChar && /[A-Za-z]/.test(nextChar)) {
-      result += `\\${escapeSuffix}`
-      changed = true
-      continue
-    }
-
-    result += char
-  }
-
-  return changed ? result : value
-}
-
-const escapeRegExp = (value: string): string => {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-const toLooseCharPattern = (char: string): string => {
-  if (char === '"' || char === '\u201c' || char === '\u201d') {
-    return '["\u201c\u201d]'
-  }
-  if (char === "'" || char === '\u2018' || char === '\u2019') {
-    return "['\u2018\u2019]"
-  }
-  if (char === '-' || char === '\u2013' || char === '\u2014') {
-    return '[-\u2013\u2014]'
-  }
-  return escapeRegExp(char)
-}
-
-const createLooseEditRegex = (oldText: string): RegExp => {
-  const lines = oldText.split(/\r?\n/)
-  const pattern = lines
-    .map((line, index) => {
-      const normalizedLine = line.replace(/[ \t]+$/g, '')
-      const looseLinePattern = Array.from(normalizedLine)
-        .map((char) => toLooseCharPattern(char))
-        .join('')
-      const endWhitespace = '[ \\t]*'
-      if (index === lines.length - 1) {
-        return `${looseLinePattern}${endWhitespace}`
-      }
-      return `${looseLinePattern}${endWhitespace}\\r?\\n`
-    })
-    .join('')
-  return new RegExp(pattern, 'g')
-}
-
-const countRegexMatches = (content: string, regex: RegExp): number => {
-  let count = 0
-  let match = regex.exec(content)
-  while (match !== null) {
-    count += 1
-    if (match[0].length === 0) {
-      regex.lastIndex += 1
-    }
-    match = regex.exec(content)
-  }
-  return count
-}
-
 export function parseLocalFsWriteActionFromArgs(
   args?: Record<string, unknown> | string,
 ): FsWriteAction | null {
@@ -937,82 +836,28 @@ export async function callLocalFileTool({
         }
 
         const content = await app.vault.read(file)
-        const exactOccurrences = countOccurrences(content, oldText)
-        const lineEndingOccurrences = countOccurrences(
-          normalizeLineEndings(content),
-          normalizeLineEndings(oldText),
-        )
-        const trimLineEndOccurrences = countOccurrences(
-          normalizeLineEndingsAndTrimLineEnd(content),
-          normalizeLineEndingsAndTrimLineEnd(oldText),
-        )
+        const materialized = materializeTextEditPlan({
+          content,
+          plan: {
+            operations: [
+              {
+                type: 'replace',
+                oldText,
+                newText,
+                expectedOccurrences,
+              },
+            ],
+          },
+        })
 
-        let nextContent = content
-        let actualOccurrences = exactOccurrences
-        let matchMode:
-          | 'exact'
-          | 'lineEndingAndTrimLineEnd'
-          | 'escapedControlRecovery'
-          | 'escapedControlRecoveryLineEndingAndTrimLineEnd' = 'exact'
-
-        if (exactOccurrences === expectedOccurrences) {
-          nextContent = content.split(oldText).join(newText)
-        } else {
-          const looseRegex = createLooseEditRegex(oldText)
-          const looseOccurrences = countRegexMatches(content, looseRegex)
-          if (looseOccurrences === expectedOccurrences) {
-            actualOccurrences = looseOccurrences
-            matchMode = 'lineEndingAndTrimLineEnd'
-            nextContent = content.replace(
-              createLooseEditRegex(oldText),
-              () => newText,
-            )
-          } else {
-            const recoveredOldText =
-              recoverLikelyEscapedBackslashSequences(oldText)
-            const recoveredNewText =
-              recoverLikelyEscapedBackslashSequences(newText)
-            const hasRecoveredInputs =
-              recoveredOldText !== oldText || recoveredNewText !== newText
-
-            if (hasRecoveredInputs) {
-              const recoveredExactOccurrences = countOccurrences(
-                content,
-                recoveredOldText,
-              )
-              if (recoveredExactOccurrences === expectedOccurrences) {
-                actualOccurrences = recoveredExactOccurrences
-                matchMode = 'escapedControlRecovery'
-                nextContent = content
-                  .split(recoveredOldText)
-                  .join(recoveredNewText)
-              } else {
-                const recoveredLooseRegex =
-                  createLooseEditRegex(recoveredOldText)
-                const recoveredLooseOccurrences = countRegexMatches(
-                  content,
-                  recoveredLooseRegex,
-                )
-                if (recoveredLooseOccurrences === expectedOccurrences) {
-                  actualOccurrences = recoveredLooseOccurrences
-                  matchMode = 'escapedControlRecoveryLineEndingAndTrimLineEnd'
-                  nextContent = content.replace(
-                    createLooseEditRegex(recoveredOldText),
-                    () => recoveredNewText,
-                  )
-                } else {
-                  throw new Error(
-                    `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}, recoveredExact=${recoveredExactOccurrences}, recoveredLineEndingAndTrimLineEnd=${recoveredLooseOccurrences}`,
-                  )
-                }
-              }
-            } else {
-              throw new Error(
-                `expectedOccurrences mismatch for ${path}: expected ${expectedOccurrences}, found ${exactOccurrences}. hints: lineEndingNormalized=${lineEndingOccurrences}, trimLineEndNormalized=${trimLineEndOccurrences}`,
-              )
-            }
-          }
+        if (materialized.errors.length > 0) {
+          throw new Error(`${path}: ${materialized.errors[0]}`)
         }
+
+        const operationResult = materialized.operationResults[0]
+        const nextContent = materialized.newContent
+        const actualOccurrences = operationResult?.actualOccurrences ?? 0
+        const matchMode = operationResult?.matchMode ?? 'exact'
 
         assertContentSize(nextContent)
         if (!dryRun) {
