@@ -16,7 +16,6 @@ import type { ApplyViewState } from '../../types/apply-view.types'
 import {
   createDiffBlocks,
   type DiffBlock,
-  type InlineDiffLine,
   type InlineDiffToken,
 } from '../../utils/chat/diff'
 
@@ -41,11 +40,11 @@ type ModifiedReviewBlock = {
   endLine: number
 }
 
-type ApplyParagraph = {
-  lines: InlineDiffLine[]
-  hasChanges: boolean
-  isEmpty: boolean
-}
+const FLOATING_RAIL_POSITION_TRANSITION =
+  'top 180ms ease, height 180ms ease, left 180ms ease, opacity 140ms ease'
+const FLOATING_ACTIONS_POSITION_TRANSITION =
+  'top 180ms ease, left 180ms ease, opacity 140ms ease'
+const FLOATING_OPACITY_TRANSITION = 'opacity 140ms ease'
 
 class InlineReviewWidget extends WidgetType {
   constructor(
@@ -88,14 +87,27 @@ class InlineReviewWidget extends WidgetType {
 
     const content = document.createElement('div')
     content.className = 'smtcmp-inline-review-content'
-    this.block.inlineLines.forEach((line) => {
-      const lineEl = document.createElement('div')
-      lineEl.className = `smtcmp-inline-review-line is-${line.type}`
-      line.tokens.forEach((token) => {
-        lineEl.appendChild(createTokenElement(token))
+    if (this.block.presentation === 'block') {
+      if (this.block.originalValue !== undefined) {
+        content.appendChild(
+          createBlockSection(this.block.originalValue, 'del', 'removed'),
+        )
+      }
+      if (this.block.modifiedValue !== undefined) {
+        content.appendChild(
+          createBlockSection(this.block.modifiedValue, 'add', 'added'),
+        )
+      }
+    } else {
+      this.block.inlineLines.forEach((line) => {
+        const lineEl = document.createElement('div')
+        lineEl.className = `smtcmp-inline-review-line is-${line.type}`
+        line.tokens.forEach((token) => {
+          lineEl.appendChild(createTokenElement(token))
+        })
+        content.appendChild(lineEl)
       })
-      content.appendChild(lineEl)
-    })
+    }
     root.appendChild(content)
 
     root.addEventListener('mousedown', (event) => {
@@ -125,6 +137,24 @@ function createTokenElement(token: InlineDiffToken): HTMLElement {
     span.className = 'smtcmp-inline-diff'
   }
   return span
+}
+
+function createBlockSection(
+  text: string,
+  tokenType: 'add' | 'del',
+  stateClass: 'added' | 'removed',
+): HTMLElement {
+  const section = document.createElement('div')
+  section.className = `smtcmp-inline-review-section is-${stateClass}`
+
+  text.split('\n').forEach((line) => {
+    const lineEl = document.createElement('div')
+    lineEl.className = 'smtcmp-inline-review-line'
+    lineEl.appendChild(createTokenElement({ type: tokenType, text: line }))
+    section.appendChild(lineEl)
+  })
+
+  return section
 }
 
 function createActionButton(
@@ -167,145 +197,6 @@ function countOriginalLines(block: DiffBlock): number {
   if (block.type === 'unchanged') return block.value.split('\n').length
   if (block.originalValue === undefined) return 0
   return block.originalValue.split('\n').length
-}
-
-function isInlineLineEmpty(line: InlineDiffLine): boolean {
-  if (line.tokens.length === 0) return true
-  return line.tokens.every((token) => token.text.length === 0)
-}
-
-function lineHasChanges(line: InlineDiffLine): boolean {
-  if (line.type === 'added' || line.type === 'removed') return true
-  return line.tokens.some(
-    (token) => token.type === 'add' || token.type === 'del',
-  )
-}
-
-function splitInlineLinesIntoParagraphs(
-  lines: InlineDiffLine[],
-): ApplyParagraph[] {
-  if (lines.length === 0) return []
-
-  const paragraphs: ApplyParagraph[] = []
-  let currentLines: InlineDiffLine[] = []
-  let currentHasChanges = false
-
-  const pushCurrentParagraph = () => {
-    if (currentLines.length === 0) return
-    paragraphs.push({
-      lines: currentLines,
-      hasChanges: currentHasChanges,
-      isEmpty: false,
-    })
-    currentLines = []
-    currentHasChanges = false
-  }
-
-  lines.forEach((line) => {
-    if (isInlineLineEmpty(line)) {
-      pushCurrentParagraph()
-      paragraphs.push({
-        lines: [],
-        hasChanges: false,
-        isEmpty: true,
-      })
-      return
-    }
-
-    currentLines.push(line)
-    currentHasChanges = currentHasChanges || lineHasChanges(line)
-  })
-
-  pushCurrentParagraph()
-  return paragraphs
-}
-
-function inlineTokensToText(
-  tokens: InlineDiffToken[],
-  variant: 'original' | 'modified',
-): string {
-  return tokens
-    .filter((token) =>
-      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
-    )
-    .map((token) => token.text)
-    .join('')
-}
-
-function inlineLinesToText(
-  lines: InlineDiffLine[],
-  variant: 'original' | 'modified',
-): string {
-  return lines
-    .map((line) => inlineTokensToText(line.tokens, variant))
-    .join('\n')
-}
-
-function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
-  const merged: DiffBlock[] = []
-  blocks.forEach((block) => {
-    const last = merged[merged.length - 1]
-    if (block.type === 'unchanged' && last?.type === 'unchanged') {
-      last.value = `${last.value}\n${block.value}`
-      return
-    }
-    merged.push(block)
-  })
-  return merged
-}
-
-function splitDiffBlocksByParagraph(blocks: DiffBlock[]): DiffBlock[] {
-  const paragraphBlocks: DiffBlock[] = []
-
-  blocks.forEach((block) => {
-    if (block.type === 'unchanged') {
-      paragraphBlocks.push(block)
-      return
-    }
-
-    const paragraphs = splitInlineLinesIntoParagraphs(block.inlineLines)
-    if (paragraphs.length === 0) {
-      paragraphBlocks.push(block)
-      return
-    }
-
-    paragraphs.forEach((paragraph) => {
-      if (paragraph.isEmpty) {
-        paragraphBlocks.push({
-          type: 'unchanged',
-          value: '',
-        })
-        return
-      }
-
-      if (!paragraph.hasChanges) {
-        paragraphBlocks.push({
-          type: 'unchanged',
-          value: inlineLinesToText(paragraph.lines, 'original'),
-        })
-        return
-      }
-
-      const hasOriginalLines = paragraph.lines.some(
-        (line) => line.type !== 'added',
-      )
-      const hasModifiedLines = paragraph.lines.some(
-        (line) => line.type !== 'removed',
-      )
-      paragraphBlocks.push({
-        type: 'modified',
-        originalValue: hasOriginalLines
-          ? inlineLinesToText(paragraph.lines, 'original')
-          : undefined,
-        modifiedValue: hasModifiedLines
-          ? inlineLinesToText(paragraph.lines, 'modified')
-          : undefined,
-        inlineLines: paragraph.lines,
-      })
-    })
-  })
-
-  return mergeAdjacentUnchangedBlocks(paragraphBlocks)
 }
 
 function lineStartOffset(view: EditorView, line: number): number {
@@ -392,8 +283,9 @@ export class InlineDiffReviewOverlay {
   private previousCaretColor = ''
 
   constructor(private readonly options: InlineDiffReviewOverlayOptions) {
-    this.blocks = splitDiffBlocksByParagraph(
-      createDiffBlocks(options.state.originalContent, options.state.newContent),
+    this.blocks = createDiffBlocks(
+      options.state.originalContent,
+      options.state.newContent,
     )
     this.modifiedBlocks = resolveModifiedBlocks(options.view, this.blocks)
     this.currentIndex = findSelectionTargetIndex(
@@ -475,7 +367,7 @@ export class InlineDiffReviewOverlay {
     rail.style.background =
       'color-mix(in srgb, var(--interactive-accent) 65%, transparent)'
     rail.style.opacity = '0.95'
-    rail.style.transition = 'top 180ms ease, height 180ms ease, left 180ms ease'
+    rail.style.transition = FLOATING_RAIL_POSITION_TRANSITION
     root.appendChild(rail)
 
     const actions = document.createElement('div')
@@ -485,8 +377,7 @@ export class InlineDiffReviewOverlay {
     actions.style.flexDirection = 'column'
     actions.style.gap = '10px'
     actions.style.pointerEvents = 'auto'
-    actions.style.transition =
-      'top 180ms ease, left 180ms ease, opacity 140ms ease'
+    actions.style.transition = FLOATING_ACTIONS_POSITION_TRANSITION
     actions.appendChild(
       createActionButton('×', 'Accept current', () =>
         this.acceptCurrentActive(),
@@ -531,7 +422,8 @@ export class InlineDiffReviewOverlay {
       true,
     )
 
-    const onViewportChange = () => this.updateFloatingPosition()
+    const onViewportChange = () =>
+      this.updateFloatingPosition({ animate: false })
     this.onViewportChange = onViewportChange
     this.options.view.scrollDOM.addEventListener('scroll', onViewportChange, {
       passive: true,
@@ -608,12 +500,29 @@ export class InlineDiffReviewOverlay {
     this.previousActiveElement = null
   }
 
-  private updateFloatingPosition(): void {
+  private setFloatingPositionTransitionEnabled(enabled: boolean): void {
+    if (this.floatingRail) {
+      this.floatingRail.style.transition = enabled
+        ? FLOATING_RAIL_POSITION_TRANSITION
+        : FLOATING_OPACITY_TRANSITION
+    }
+    if (this.floatingActions) {
+      this.floatingActions.style.transition = enabled
+        ? FLOATING_ACTIONS_POSITION_TRANSITION
+        : FLOATING_OPACITY_TRANSITION
+    }
+  }
+
+  private updateFloatingPosition(
+    options: { animate: boolean } = { animate: false },
+  ): void {
     const active = this.modifiedBlocks[this.currentIndex]
     const root = this.floatingRoot
     const rail = this.floatingRail
     const actions = this.floatingActions
     if (!active || !root || !rail || !actions) return
+
+    this.setFloatingPositionTransitionEnabled(options.animate)
 
     const hostRect = this.options.view.dom.getBoundingClientRect()
     const fromRect = this.options.view.coordsAtPos(active.from)
@@ -757,7 +666,7 @@ export class InlineDiffReviewOverlay {
       effects: this.setDecorationsEffect.of(builder.finish()),
     })
 
-    this.updateFloatingPosition()
+    this.updateFloatingPosition({ animate: true })
   }
 
   private collapseSelectionNearActive(active: ModifiedReviewBlock): void {
@@ -791,7 +700,7 @@ export class InlineDiffReviewOverlay {
     if (nextIndex === this.currentIndex) return
     if (nextIndex < 0 || nextIndex >= this.modifiedBlocks.length) return
     this.currentIndex = nextIndex
-    this.renderBlocks({ ensureVisible: false })
+    this.updateFloatingPosition({ animate: true })
   }
 
   private generateFinalContent(
