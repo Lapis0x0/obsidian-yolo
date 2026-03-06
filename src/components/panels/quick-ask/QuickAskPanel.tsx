@@ -504,6 +504,7 @@ export function QuickAskPanel({
 
     return new PromptGenerator(getRAGEngine, app, {
       ...settings,
+      currentAssistantId: selectedAssistant?.id,
       systemPrompt: combinedSystemPrompt,
     })
   }, [app, contextText, getRAGEngine, selectedAssistant, settings])
