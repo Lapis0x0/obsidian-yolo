@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const PROGRAMMATIC_SCROLL_DEBOUNCE_MS = 120
 const SCROLL_AWAY_FROM_BOTTOM_THRESHOLD = 20
@@ -13,32 +13,45 @@ export function useAutoScroll({
   isStreaming = false,
 }: UseAutoScrollProps) {
   const preventAutoScrollRef = useRef(false)
+  const [preventAutoScrollState, setPreventAutoScrollState] = useState(false)
   const lastProgrammaticScrollRef = useRef<number>(0)
   const stickyScrollFrameRef = useRef<number | null>(null)
+
+  const updatePreventAutoScroll = useCallback((nextValue: boolean) => {
+    preventAutoScrollRef.current = nextValue
+    setPreventAutoScrollState((previousValue) =>
+      previousValue === nextValue ? previousValue : nextValue,
+    )
+  }, [])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
 
     const handleScroll = () => {
-      // If the scroll event happened very close to our programmatic scroll, ignore it
-      if (
-        Date.now() - lastProgrammaticScrollRef.current <
-        PROGRAMMATIC_SCROLL_DEBOUNCE_MS
-      ) {
-        return
-      }
-
-      preventAutoScrollRef.current =
+      const shouldPreventAutoScroll =
         scrollContainer.scrollHeight -
           scrollContainer.scrollTop -
           scrollContainer.clientHeight >
         SCROLL_AWAY_FROM_BOTTOM_THRESHOLD
+
+      // Ignore near-bottom programmatic scroll events, but still allow
+      // user-triggered scroll-away actions to stop auto-follow immediately.
+      if (
+        Date.now() - lastProgrammaticScrollRef.current <
+          PROGRAMMATIC_SCROLL_DEBOUNCE_MS &&
+        !shouldPreventAutoScroll &&
+        !preventAutoScrollRef.current
+      ) {
+        return
+      }
+
+      updatePreventAutoScroll(shouldPreventAutoScroll)
     }
 
     scrollContainer.addEventListener('scroll', handleScroll)
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
-  }, [scrollContainerRef])
+  }, [scrollContainerRef, updatePreventAutoScroll])
 
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -55,7 +68,7 @@ export function useAutoScroll({
   }, [scrollContainerRef])
 
   useEffect(() => {
-    if (!isStreaming || preventAutoScrollRef.current) {
+    if (!isStreaming || preventAutoScrollState) {
       if (stickyScrollFrameRef.current !== null) {
         cancelAnimationFrame(stickyScrollFrameRef.current)
         stickyScrollFrameRef.current = null
@@ -81,7 +94,7 @@ export function useAutoScroll({
         stickyScrollFrameRef.current = null
       }
     }
-  }, [isStreaming, scrollToBottom])
+  }, [isStreaming, preventAutoScrollState, scrollToBottom])
 
   // Auto-scrolls to bottom only if the scroll position is near the bottom
   const autoScrollToBottom = useCallback(() => {
@@ -92,9 +105,9 @@ export function useAutoScroll({
 
   // Forces scroll to bottom regardless of current position
   const forceScrollToBottom = useCallback(() => {
-    preventAutoScrollRef.current = false
+    updatePreventAutoScroll(false)
     scrollToBottom()
-  }, [scrollToBottom])
+  }, [scrollToBottom, updatePreventAutoScroll])
 
   return {
     autoScrollToBottom,
