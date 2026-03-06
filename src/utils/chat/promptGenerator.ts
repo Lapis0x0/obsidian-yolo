@@ -372,6 +372,7 @@ ${message.annotations
           message.content,
           ...(citationContent ? [citationContent] : []),
         ].join('\n'),
+        reasoning: message.reasoning,
         tool_calls:
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))
