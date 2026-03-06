@@ -773,6 +773,9 @@ export const it: TranslationKeys = {
         "Scegli se mostrare i file selezionati con @ nel testo dell'input o come badge sopra la casella.",
       mentionDisplayModeInline: 'Dentro la casella',
       mentionDisplayModeBadge: 'Badge in alto',
+      persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
+      persistSelectionHighlightDesc:
+        "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",
     },
   },
 

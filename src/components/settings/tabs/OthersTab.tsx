@@ -8,11 +8,13 @@ import {
   getYoloSkillsDir,
   normalizeVaultRelativeDir,
 } from '../../../core/paths/yoloPaths'
+import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { EtcSection } from '../sections/EtcSection'
 
 type OthersTabProps = {
@@ -69,6 +71,25 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
     })()
   }
 
+  const handlePersistSelectionHighlightChange = (value: boolean) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          continuationOptions: {
+            ...settings.continuationOptions,
+            persistSelectionHighlight: value,
+          },
+        })
+        if (!value) {
+          selectionHighlightController.clearHighlight()
+        }
+      } catch (error: unknown) {
+        console.error('Failed to update selection highlight setting', error)
+      }
+    })()
+  }
+
   return (
     <>
       <div className="smtcmp-settings-section">
@@ -114,6 +135,20 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
               badge: t('settings.etc.mentionDisplayModeBadge', '顶部徽章'),
             }}
             onChange={handleMentionDisplayModeChange}
+          />
+        </ObsidianSetting>
+        <ObsidianSetting
+          name={t('settings.etc.persistSelectionHighlight', '保留选区块高亮')}
+          desc={t(
+            'settings.etc.persistSelectionHighlightDesc',
+            '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
+          )}
+        >
+          <ObsidianToggle
+            value={
+              settings.continuationOptions.persistSelectionHighlight ?? true
+            }
+            onChange={handlePersistSelectionHighlightChange}
           />
         </ObsidianSetting>
       </div>

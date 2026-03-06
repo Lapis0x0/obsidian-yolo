@@ -10772,6 +10772,34 @@ body.smtcmp-quick-ask-global-interaction * {
   z-index: 2;
 }
 
+.cm-editor .cm-line.smtcmp-selection-persisted-block {
+  background: var(
+    --text-selection,
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+  );
+  color: inherit;
+  margin-left: -6px;
+  margin-right: -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-single {
+  border-radius: 6px;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-start {
+  border-radius: 6px 6px 0 0;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-middle {
+  border-radius: 0;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-end {
+  border-radius: 0 0 6px 6px;
+}
+
 /* Selection Indicator - small floating capsule */
 
 .smtcmp-selection-indicator {

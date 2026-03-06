@@ -780,6 +780,9 @@ export const en: TranslationKeys = {
         'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
+      persistSelectionHighlight: 'Keep selection block highlight',
+      persistSelectionHighlightDesc:
+        'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',
     },
   },
 

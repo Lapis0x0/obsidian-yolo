@@ -55,6 +55,7 @@ type SelectionChatControllerDeps = {
     text: string,
   ) => Promise<void>
   isSmartSpaceOpen: () => boolean
+  pinSelectionHighlight: (view: EditorView) => void
 }
 
 export class SelectionChatController {
@@ -85,6 +86,7 @@ export class SelectionChatController {
     text: string,
   ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
+  private readonly pinSelectionHighlight: (view: EditorView) => void
 
   private selectionManager: SelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
@@ -101,6 +103,7 @@ export class SelectionChatController {
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
+    this.pinSelectionHighlight = deps.pinSelectionHighlight
   }
 
   isActive(): boolean {
@@ -282,6 +285,11 @@ export class SelectionChatController {
       return
     }
 
+    const editorView = this.getEditorView(editor)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      this.pinSelectionHighlight(editorView)
+    }
+
     chatView.syncSelectionToChat(data)
   }
 
@@ -366,8 +374,19 @@ export class SelectionChatController {
       return
     }
 
+    const editorView = this.getEditorView(editor)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      this.pinSelectionHighlight(editorView)
+    }
+
     const resolvedPrompt =
       prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
+  }
+
+  private shouldPersistSelectionHighlight(): boolean {
+    return (
+      this.getSettings().continuationOptions.persistSelectionHighlight ?? true
+    )
   }
 }

@@ -599,6 +599,8 @@ export type TranslationKeys = {
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
       mentionDisplayModeBadge?: string
+      persistSelectionHighlight?: string
+      persistSelectionHighlightDesc?: string
     }
     smartSpace?: {
       quickActionsTitle: string

@@ -715,6 +715,9 @@ export const zh: TranslationKeys = {
         '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
+      persistSelectionHighlight: '保留选区块高亮',
+      persistSelectionHighlightDesc:
+        '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
     },
   },
 

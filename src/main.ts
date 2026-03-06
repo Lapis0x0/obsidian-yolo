@@ -31,6 +31,7 @@ import type { InlineSuggestionGhostPayload } from './features/editor/inline-sugg
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
+import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,
@@ -176,6 +177,10 @@ export default class SmartComposerPlugin extends Plugin {
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
         closeSmartSpace: () => this.closeSmartSpace(),
+        pinSelectionHighlight: (view) =>
+          selectionHighlightController.pinCurrentSelection(view),
+        clearSelectionHighlight: (view) =>
+          selectionHighlightController.clearHighlight(view),
       })
     }
     return this.quickAskController
@@ -249,6 +254,8 @@ export default class SmartComposerPlugin extends Plugin {
           )
         },
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
+        pinSelectionHighlight: (view) =>
+          selectionHighlightController.pinCurrentSelection(view),
       })
     }
     return this.selectionChatController
@@ -622,6 +629,7 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
 
+    this.registerEditorExtension(selectionHighlightController.createExtension())
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
     this.registerEditorExtension(
@@ -970,6 +978,13 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
+    const editorView = this.getEditorView(editor)
+    if (
+      editorView &&
+      (this.settings.continuationOptions.persistSelectionHighlight ?? true)
+    ) {
+      selectionHighlightController.pinCurrentSelection(editorView)
+    }
     await this.getChatViewNavigator().addSelectionToChat(editor, view)
   }
 
