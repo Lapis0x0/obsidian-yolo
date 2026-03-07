@@ -1,5 +1,12 @@
 import { Check, CopyIcon, Loader2, Play } from 'lucide-react'
-import { PropsWithChildren, useId, useMemo, useState } from 'react'
+import {
+  PropsWithChildren,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import DotLoader from '../common/DotLoader'
 import { useApp } from '../../contexts/app-context'
@@ -12,6 +19,8 @@ import {
 import { openMarkdownFile } from '../../utils/obsidian'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
+
+const PLAN_CONTENT_TRANSITION_MS = 260
 
 export default function MarkdownCodeComponent({
   onApply,
@@ -38,9 +47,13 @@ export default function MarkdownCodeComponent({
   const applyRequestKeyBase = useId()
 
   const [copied, setCopied] = useState(false)
+  const [isTransitioningToContent, setIsTransitioningToContent] =
+    useState(false)
   const applyRequestKey = `${applyRequestKeyBase}:apply`
   const isBlockApplying =
     isApplying && activeApplyRequestKey === applyRequestKey
+  const transitionTimeoutRef = useRef<number | null>(null)
+  const previousStreamingStatusVisibleRef = useRef(false)
 
   const codeContent = useMemo(() => {
     if (typeof children === 'string') {
@@ -81,19 +94,23 @@ export default function MarkdownCodeComponent({
     })
   }, [codeContent])
 
-  const isStreamingJsonBlock =
-    generationState === 'streaming' && language === 'json'
+  const isPartialJsonPreviewBlock =
+    (generationState === 'streaming' || generationState === 'aborted') &&
+    language === 'json'
 
   const streamingPreviewContent = useMemo(() => {
-    if (!isStreamingJsonBlock || parsedPlan) {
+    if (!isPartialJsonPreviewBlock || parsedPlan) {
       return ''
     }
 
     return getStreamingTextEditPlanPreviewContent(codeContent)
-  }, [codeContent, isStreamingJsonBlock, parsedPlan])
+  }, [codeContent, isPartialJsonPreviewBlock, parsedPlan])
 
   const isStreamingPlanStatusVisible =
-    isStreamingJsonBlock && !parsedPlan && streamingPreviewContent.length === 0
+    generationState === 'streaming' &&
+    isPartialJsonPreviewBlock &&
+    !parsedPlan &&
+    streamingPreviewContent.length === 0
 
   const previewContent = useMemo(() => {
     if (streamingPreviewContent.length > 0) {
@@ -111,6 +128,41 @@ export default function MarkdownCodeComponent({
   const streamingStatusLabel = useMemo(() => {
     return t('chat.codeBlock.locatingTarget', '正在定位待替换内容...')
   }, [t])
+
+  useEffect(() => {
+    const wasStreamingStatusVisible = previousStreamingStatusVisibleRef.current
+
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current)
+      transitionTimeoutRef.current = null
+    }
+
+    if (isStreamingPlanStatusVisible) {
+      setIsTransitioningToContent(false)
+    } else if (wasStreamingStatusVisible) {
+      setIsTransitioningToContent(true)
+      transitionTimeoutRef.current = window.setTimeout(() => {
+        setIsTransitioningToContent(false)
+        transitionTimeoutRef.current = null
+      }, PLAN_CONTENT_TRANSITION_MS)
+    }
+
+    previousStreamingStatusVisibleRef.current = isStreamingPlanStatusVisible
+
+    return () => {
+      if (transitionTimeoutRef.current !== null) {
+        window.clearTimeout(transitionTimeoutRef.current)
+        transitionTimeoutRef.current = null
+      }
+    }
+  }, [isStreamingPlanStatusVisible])
+
+  const shouldOverlayPlanPanels =
+    isStreamingPlanStatusVisible || isTransitioningToContent
+  const renderedPreviewContent =
+    parsedPlan && previewContent.length === 0
+      ? t('chat.codeBlock.emptyPlanPreview', 'This plan removes content')
+      : previewContent
 
   const handleCopy = async () => {
     try {
@@ -190,36 +242,44 @@ export default function MarkdownCodeComponent({
           </button>
         </div>
       </div>
-      <div className="smtcmp-code-block-obsidian-markdown">
-        {isStreamingPlanStatusVisible ? (
-          <div className="smtcmp-plan-streaming-preview" aria-live="polite">
-            <div className="smtcmp-plan-streaming-preview-header">
-              <span className="smtcmp-plan-streaming-preview-status-dot" />
-              <span className="smtcmp-plan-streaming-preview-title">
-                {streamingStatusLabel}
-              </span>
-              <DotLoader
-                variant="dots"
-                className="smtcmp-plan-streaming-preview-loader"
-              />
-            </div>
-            <div className="smtcmp-plan-streaming-preview-body" aria-hidden>
-              <span className="smtcmp-plan-streaming-preview-line is-wide" />
-              <span className="smtcmp-plan-streaming-preview-line is-short" />
+      <div
+        className={`smtcmp-code-block-obsidian-markdown${
+          shouldOverlayPlanPanels ? ' is-plan-transitioning' : ''
+        }`}
+      >
+        {(isStreamingPlanStatusVisible || isTransitioningToContent) && (
+          <div
+            className={`smtcmp-plan-preview-panel smtcmp-plan-preview-panel--streaming${
+              isTransitioningToContent ? ' is-exiting' : ''
+            }`}
+            aria-live="polite"
+          >
+            <div className="smtcmp-plan-streaming-preview">
+              <div className="smtcmp-plan-streaming-preview-header">
+                <span className="smtcmp-plan-streaming-preview-status-dot" />
+                <span className="smtcmp-plan-streaming-preview-title">
+                  {streamingStatusLabel}
+                </span>
+                <DotLoader
+                  variant="dots"
+                  className="smtcmp-plan-streaming-preview-loader"
+                />
+              </div>
+              <div className="smtcmp-plan-streaming-preview-body" aria-hidden>
+                <span className="smtcmp-plan-streaming-preview-line is-wide" />
+                <span className="smtcmp-plan-streaming-preview-line is-short" />
+              </div>
             </div>
           </div>
-        ) : (
-          <ObsidianMarkdown
-            content={
-              parsedPlan && previewContent.length === 0
-                ? t(
-                    'chat.codeBlock.emptyPlanPreview',
-                    'This plan removes content',
-                  )
-                : previewContent
-            }
-            scale="sm"
-          />
+        )}
+        {(!isStreamingPlanStatusVisible || isTransitioningToContent) && (
+          <div
+            className={`smtcmp-plan-preview-panel smtcmp-plan-preview-panel--resolved${
+              isTransitioningToContent ? ' is-entering' : ''
+            }`}
+          >
+            <ObsidianMarkdown content={renderedPreviewContent} scale="sm" />
+          </div>
         )}
       </div>
     </div>
