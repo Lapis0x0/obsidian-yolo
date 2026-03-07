@@ -459,6 +459,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     assistantIdOverride: conversationAssistantId,
   })
 
+  const serializeMessageModelMap = useCallback(
+    (
+      messages: ChatMessage[],
+      sourceMap: Map<string, string> = messageModelMap,
+    ): Record<string, string> | undefined => {
+      const persistedEntries = messages.flatMap((message) => {
+        if (message.role !== 'user') {
+          return []
+        }
+        const modelId = sourceMap.get(message.id)
+        return modelId ? [[message.id, modelId] as const] : []
+      })
+      return persistedEntries.length > 0
+        ? Object.fromEntries(persistedEntries)
+        : undefined
+    },
+    [messageModelMap],
+  )
+
   const persistConversation = useCallback(
     async (messages: ChatMessage[]) => {
       if (messages.length === 0) return
@@ -471,6 +490,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           currentConversationId,
           messages,
           effectiveOverrides,
+          conversationModelId,
+          serializeMessageModelMap(messages),
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
         )
@@ -481,10 +502,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       chatMode,
+      conversationModelId,
       conversationOverrides,
       createOrUpdateConversation,
       currentConversationId,
       reasoningLevel,
+      serializeMessageModelMap,
     ],
   )
 
@@ -500,6 +523,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           currentConversationId,
           messages,
           effectiveOverrides,
+          conversationModelId,
+          serializeMessageModelMap(messages),
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
         )
@@ -512,10 +537,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       chatMode,
+      conversationModelId,
       conversationOverrides,
       createOrUpdateConversationImmediately,
       currentConversationId,
       reasoningLevel,
+      serializeMessageModelMap,
     ],
   )
 
@@ -580,10 +607,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         }
         const modelFromRef =
+          conversation.conversationModelId ??
           conversationModelIdRef.current.get(conversationId) ??
           loadedAssistantModelId ??
           settings.chatModelId
         setConversationModelId(modelFromRef)
+        conversationModelIdRef.current.set(conversationId, modelFromRef)
         const storedReasoningLevel = normalizeReasoningLevel(
           conversation.reasoningLevel,
         )
@@ -594,8 +623,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationId,
           resolvedReasoningLevel,
         )
-        // Reset per-message model mapping when switching conversation
-        setMessageModelMap(new Map())
+        setMessageModelMap(
+          new Map(Object.entries(conversation.messageModelMap ?? {})),
+        )
         const nextMessageReasoningMap = new Map<string, ReasoningLevel>()
         conversation.messages.forEach((message) => {
           if (message.role !== 'user') return
@@ -796,9 +826,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     async ({
       inputChatMessages,
       useVaultSearch,
+      persistedMessageModelMap,
     }: {
       inputChatMessages: ChatMessage[]
       useVaultSearch?: boolean
+      persistedMessageModelMap?: Map<string, string>
     }) => {
       abortActiveStreams()
       setQueryProgress({
@@ -861,7 +893,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       })
 
       setChatMessages(persistedMessages)
-      void persistConversation(compiledMessages)
+      void createOrUpdateConversation(
+        currentConversationId,
+        compiledMessages,
+        {
+          ...(conversationOverrides ?? {}),
+          chatMode,
+        },
+        conversationModelId,
+        serializeMessageModelMap(
+          compiledMessages,
+          persistedMessageModelMap ?? messageModelMap,
+        ),
+        conversationReasoningLevelRef.current.get(currentConversationId) ??
+          reasoningLevel,
+      )
       const requestReasoningLevel =
         resolveReasoningLevelForMessages(compiledMessages)
       submitChatMutation.mutate({
@@ -873,11 +919,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [
       submitChatMutation,
       currentConversationId,
+      conversationModelId,
+      conversationOverrides,
       promptGenerator,
       abortActiveStreams,
       forceScrollToBottom,
-      persistConversation,
+      createOrUpdateConversation,
+      chatMode,
+      messageModelMap,
+      reasoningLevel,
       resolveReasoningLevelForMessages,
+      serializeMessageModelMap,
     ],
   )
 
@@ -1858,6 +1910,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 const reasoningForThisMessage =
                   messageReasoningMap.get(messageOrGroup.id) ??
                   messageReasoningLevel
+                const nextMessageModelMap = new Map(messageModelMap)
+                nextMessageModelMap.set(messageOrGroup.id, modelForThisMessage)
                 void handleUserMessageSubmit({
                   inputChatMessages: [
                     ...groupedChatMessages
@@ -1877,14 +1931,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     },
                   ],
                   useVaultSearch,
+                  persistedMessageModelMap: nextMessageModelMap,
                 })
                 chatUserInputRefs.current.get(inputMessage.id)?.focus()
                 // Record the model used for this message id
-                setMessageModelMap((prev) => {
-                  const next = new Map(prev)
-                  next.set(messageOrGroup.id, modelForThisMessage)
-                  return next
-                })
+                setMessageModelMap(nextMessageModelMap)
                 setMessageReasoningMap((prev) => {
                   const next = new Map(prev)
                   next.set(messageOrGroup.id, reasoningForThisMessage)
@@ -2054,16 +2105,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               return
             }
             const messageForSubmit = buildInputMessageForSubmit(content)
+            const nextMessageModelMap = new Map(messageModelMap)
+            nextMessageModelMap.set(inputMessage.id, conversationModelId)
             void handleUserMessageSubmit({
               inputChatMessages: [...chatMessages, messageForSubmit],
               useVaultSearch,
+              persistedMessageModelMap: nextMessageModelMap,
             })
             // Record the model used for this just-submitted input message
-            setMessageModelMap((prev) => {
-              const next = new Map(prev)
-              next.set(inputMessage.id, conversationModelId)
-              return next
-            })
+            setMessageModelMap(nextMessageModelMap)
             setMessageReasoningMap((prev) => {
               const next = new Map(prev)
               next.set(inputMessage.id, reasoningLevel)
