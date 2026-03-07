@@ -1,9 +1,11 @@
 import { Check, CopyIcon, Loader2, Play } from 'lucide-react'
 import { PropsWithChildren, useId, useMemo, useState } from 'react'
 
+import DotLoader from '../common/DotLoader'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
+  getStreamingTextEditPlanPreviewContent,
   getTextEditPlanPreviewContent,
   parseTextEditPlan,
 } from '../../core/edits/textEditPlan'
@@ -16,6 +18,8 @@ export default function MarkdownCodeComponent({
   isApplying,
   activeApplyRequestKey,
   filename,
+  language,
+  generationState,
   children,
 }: PropsWithChildren<{
   onApply: (
@@ -26,6 +30,8 @@ export default function MarkdownCodeComponent({
   isApplying: boolean
   activeApplyRequestKey: string | null
   filename?: string
+  language?: string
+  generationState?: 'streaming' | 'completed' | 'aborted'
 }>) {
   const app = useApp()
   const { t } = useLanguage()
@@ -75,14 +81,36 @@ export default function MarkdownCodeComponent({
     })
   }, [codeContent])
 
+  const isStreamingJsonBlock =
+    generationState === 'streaming' && language === 'json'
+
+  const streamingPreviewContent = useMemo(() => {
+    if (!isStreamingJsonBlock || parsedPlan) {
+      return ''
+    }
+
+    return getStreamingTextEditPlanPreviewContent(codeContent)
+  }, [codeContent, isStreamingJsonBlock, parsedPlan])
+
+  const isStreamingPlanStatusVisible =
+    isStreamingJsonBlock && !parsedPlan && streamingPreviewContent.length === 0
+
   const previewContent = useMemo(() => {
+    if (streamingPreviewContent.length > 0) {
+      return streamingPreviewContent
+    }
+
     if (!parsedPlan) {
       return codeContent
     }
 
     const rendered = getTextEditPlanPreviewContent(parsedPlan)
     return rendered || ''
-  }, [codeContent, parsedPlan])
+  }, [codeContent, parsedPlan, streamingPreviewContent])
+
+  const streamingStatusLabel = useMemo(() => {
+    return t('chat.codeBlock.locatingTarget', '正在定位待替换内容...')
+  }, [t])
 
   const handleCopy = async () => {
     try {
@@ -104,12 +132,13 @@ export default function MarkdownCodeComponent({
     <div className="smtcmp-code-block">
       <div className="smtcmp-code-block-header">
         {filename && (
-          <div
+          <button
+            type="button"
             className="smtcmp-code-block-header-filename"
             onClick={handleOpenFile}
           >
             {filename}
-          </div>
+          </button>
         )}
         <div className="smtcmp-code-block-header-button-container">
           <button
@@ -162,17 +191,36 @@ export default function MarkdownCodeComponent({
         </div>
       </div>
       <div className="smtcmp-code-block-obsidian-markdown">
-        <ObsidianMarkdown
-          content={
-            parsedPlan && previewContent.length === 0
-              ? t(
-                  'chat.codeBlock.emptyPlanPreview',
-                  'This plan removes content',
-                )
-              : previewContent
-          }
-          scale="sm"
-        />
+        {isStreamingPlanStatusVisible ? (
+          <div className="smtcmp-plan-streaming-preview" aria-live="polite">
+            <div className="smtcmp-plan-streaming-preview-header">
+              <span className="smtcmp-plan-streaming-preview-status-dot" />
+              <span className="smtcmp-plan-streaming-preview-title">
+                {streamingStatusLabel}
+              </span>
+              <DotLoader
+                variant="dots"
+                className="smtcmp-plan-streaming-preview-loader"
+              />
+            </div>
+            <div className="smtcmp-plan-streaming-preview-body" aria-hidden>
+              <span className="smtcmp-plan-streaming-preview-line is-wide" />
+              <span className="smtcmp-plan-streaming-preview-line is-short" />
+            </div>
+          </div>
+        ) : (
+          <ObsidianMarkdown
+            content={
+              parsedPlan && previewContent.length === 0
+                ? t(
+                    'chat.codeBlock.emptyPlanPreview',
+                    'This plan removes content',
+                  )
+                : previewContent
+            }
+            scale="sm"
+          />
+        )}
       </div>
     </div>
   )

@@ -489,6 +489,10 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-code-block-header-filename {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
   padding-left: var(--size-4-2);
   font-size: var(--font-medium);
   overflow: hidden;
@@ -529,6 +533,86 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 
 .smtcmp-code-block-obsidian-markdown {
   padding: var(--size-4-3);
+}
+
+.smtcmp-plan-streaming-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.smtcmp-plan-streaming-preview-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  line-height: 1.35;
+}
+
+.smtcmp-plan-streaming-preview-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--interactive-accent) 72%, white 28%);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+}
+
+.smtcmp-plan-streaming-preview-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-plan-streaming-preview-loader {
+  margin-left: 1px;
+}
+
+.smtcmp-plan-streaming-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+  opacity: 0.7;
+}
+
+.smtcmp-plan-streaming-preview-line {
+  display: block;
+  position: relative;
+  height: 5px;
+  width: 72%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  animation: smtcmp-plan-streaming-preview-pulse 1.8s ease-in-out infinite;
+}
+
+.smtcmp-plan-streaming-preview-line.is-wide {
+  width: 66%;
+}
+
+.smtcmp-plan-streaming-preview-line.is-short {
+  width: 52%;
+}
+
+@keyframes smtcmp-plan-streaming-preview-pulse {
+  0% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.68;
+  }
+
+  100% {
+    opacity: 0.35;
+  }
 }
 
 .smtcmp-apply-overlay-host {

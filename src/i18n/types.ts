@@ -729,6 +729,7 @@ export type TranslationKeys = {
       textCopied?: string
       apply?: string
       applying?: string
+      locatingTarget?: string
       emptyPlanPreview?: string
       stopApplying?: string
     }

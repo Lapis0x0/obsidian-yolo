@@ -825,6 +825,7 @@ export const en: TranslationKeys = {
       textCopied: 'Text copied',
       apply: 'Apply',
       applying: 'Applying...',
+      locatingTarget: 'Locating and loading replacement content...',
       emptyPlanPreview: 'This plan removes content',
       stopApplying: 'Stop apply',
     },

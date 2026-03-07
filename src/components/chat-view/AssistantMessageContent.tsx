@@ -155,6 +155,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             isApplying={isApplying}
             activeApplyRequestKey={activeApplyRequestKey}
             filename={block.filename}
+            language={block.language}
+            generationState={generationState}
           >
             {block.content}
           </MarkdownCodeComponent>

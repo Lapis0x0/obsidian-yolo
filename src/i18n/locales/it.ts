@@ -818,6 +818,10 @@ export const it: TranslationKeys = {
       textCopied: 'Testo copiato',
       apply: 'Applica',
       applying: 'Applicazione in corso...',
+      locatingTarget:
+        'Individuazione e caricamento del contenuto sostitutivo...',
+      emptyPlanPreview: 'Questo piano rimuove contenuto',
+      stopApplying: 'Interrompi applicazione',
     },
     customContinuePromptLabel: 'Come vuoi continuare?',
     customContinuePromptPlaceholder: "Chiedi all'AI (@ per aggiungere i file)",

@@ -774,6 +774,7 @@ export const zh: TranslationKeys = {
       textCopied: '文本已复制',
       apply: '应用',
       applying: '应用中...',
+      locatingTarget: '正在定位并加载替换内容...',
       emptyPlanPreview: '此计划会删除内容',
       stopApplying: '终止应用',
     },
