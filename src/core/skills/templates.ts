@@ -15,24 +15,24 @@ Store your skill files here.
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---
 id: obsidian-output-format
 name: Obsidian Output Format
-description: Enforce Obsidian markdown output contract with <smtcmp_block> tags. Use whenever returning markdown content, proposing markdown edits, or referencing markdown snippets.
+description: Use <smtcmp_block> only for markdown file edit plans. Output raw JSON only.
 mode: always
 ---
 
 # Obsidian Output Format
 
-Follow this format whenever you output markdown content for the user.
+Use \`<smtcmp_block>\` only when proposing edits to an existing markdown file.
 
-## Core Rules
+## Rules
 
-1. Wrap user-facing markdown blocks with \`<smtcmp_block>...</smtcmp_block>\`.
-2. Never include line numbers in the markdown text you output.
-3. Keep commentary outside \`<smtcmp_block>\`.
+1. Output exactly one \`<smtcmp_block>\` when proposing file edits.
+2. Inside \`<smtcmp_block>\`, output raw JSON only.
+3. Do not use triple backticks or triple tildes inside \`<smtcmp_block>\`.
+4. Do not put markdown, explanations, or commentary inside \`<smtcmp_block>\`.
+5. Keep commentary outside \`<smtcmp_block>\`.
 
 
-## Editing Existing Files
-
-When proposing edits to an existing markdown file, wrap a JSON text edit plan in \`<smtcmp_block>\`.
+## Format
 
 ~~~xml
 <smtcmp_block language="json" filename="path/to/file.md">
@@ -57,27 +57,14 @@ Allowed operation types:
 2. \`insert_after\` for insertion after an anchor
 3. \`append\` for appending to the end
 
-Rules:
+## Operation Rules
 
-- Output valid JSON only inside the block.
-- Keep oldText/anchor minimal but uniquely matchable.
-- Preserve exact markdown source in oldText, including whitespace and punctuation.
-- For repeated text, set expectedOccurrences explicitly.
-- For deletion, use a replace operation with an empty newText.
-- Multiple operations are allowed when needed.
-
-
-The user already has full file access, so do not dump the full file unless explicitly requested.
-
-## Referencing Provided Markdown Snippets
-
-If the user context includes numbered markdown snippets and you need to reference one of them, output an empty placeholder block with location attributes:
-
-~~~xml
-<smtcmp_block filename="path/to/file.md" language="markdown" startLine="2" endLine="30"></smtcmp_block>
-~~~
-
-Do not place snippet content inside this placeholder block.
+- Keep \`oldText\` or \`anchor\` minimal but uniquely matchable.
+- Preserve exact markdown source in \`oldText\`, including whitespace and punctuation.
+- For repeated text, set \`expectedOccurrences\` explicitly.
+- For deletion, use \`replace\` with an empty \`newText\`.
+- Multiple operations are allowed.
+- Do not dump the full file unless explicitly requested.
 `
 
 export const YOLO_SKILL_CREATOR_TEMPLATE = `---
