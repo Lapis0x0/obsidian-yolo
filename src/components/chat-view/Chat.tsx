@@ -20,11 +20,8 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
-import {
-  LLMAPIKeyInvalidException,
-  LLMAPIKeyNotSetException,
-  LLMBaseUrlNotSetException,
-} from '../../core/llm/exception'
+import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
+import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../core/llm/manager'
 import { useChatHistory } from '../../hooks/useChatHistory'
 import type { ApplyViewState } from '../../types/apply-view.types'
@@ -41,7 +38,6 @@ import type {
   MentionableCurrentFile,
 } from '../../types/mentionable'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { applyChangesToFile } from '../../utils/chat/apply'
 import {
   getBlockContentHash,
   getBlockMentionableCountInfo,
@@ -50,10 +46,8 @@ import {
 } from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
-import { tryApplyStructuredEdits } from '../../utils/chat/structured-edits'
 import { readTFileContent } from '../../utils/obsidian'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
-import { ErrorModal } from '../modals/ErrorModal'
 
 // removed Prompt Templates feature
 
@@ -75,6 +69,40 @@ import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
+
+const offsetToSelectionPosition = (content: string, offset: number) => {
+  const clampedOffset = Math.max(0, Math.min(offset, content.length))
+  const before = content.slice(0, clampedOffset)
+  const lines = before.split('\n')
+
+  return {
+    line: Math.max(0, lines.length - 1),
+    ch: lines.at(-1)?.length ?? 0,
+  }
+}
+
+const getInlineSelectionRange = (
+  originalContent: string,
+  operationResults: ReturnType<
+    typeof materializeTextEditPlan
+  >['operationResults'],
+): ApplyViewState['selectionRange'] | undefined => {
+  const changedRanges = operationResults
+    .map((result) => (result.changed ? result.matchedRange : undefined))
+    .filter((range): range is NonNullable<typeof range> => Boolean(range))
+
+  if (changedRanges.length === 0) {
+    return undefined
+  }
+
+  const start = Math.min(...changedRanges.map((range) => range.start))
+  const end = Math.max(...changedRanges.map((range) => range.end))
+
+  return {
+    from: offsetToSelectionPosition(originalContent, start),
+    to: offsetToSelectionPosition(originalContent, end),
+  }
+}
 
 const getNewInputMessage = (
   reasoningLevel: ReasoningLevel,
@@ -936,94 +964,66 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const applyMutation = useMutation({
     mutationFn: async ({
       blockToApply,
-      chatMessages,
-      mode,
+      targetFilePath,
       abortSignal,
     }: {
       blockToApply: string
-      chatMessages: ChatMessage[]
-      mode: 'quick' | 'precise'
+      targetFilePath?: string
       abortSignal?: AbortSignal
     }) => {
-      const activeFile = app.workspace.getActiveFile()
-      if (!activeFile) {
+      if (abortSignal?.aborted) {
+        throw new DOMException('Apply aborted', 'AbortError')
+      }
+
+      const targetFile = targetFilePath
+        ? app.vault.getFileByPath(targetFilePath)
+        : app.workspace.getActiveFile()
+      if (!targetFile) {
         throw new Error(
           'No file is currently open to apply changes. Please open a file and try again.',
         )
       }
-      const activeFileContent = await readTFileContent(activeFile, app.vault)
-
-      if (mode === 'quick') {
-        const structuredEditResult = tryApplyStructuredEdits({
-          rawEdits: blockToApply,
-          originalContent: activeFileContent,
-        })
-
-        const canApplyStructuredLocally =
-          Boolean(structuredEditResult?.isPureStructuredScript) &&
-          Boolean(structuredEditResult && structuredEditResult.appliedCount > 0)
-
-        const isStructuredMatchFailure = Boolean(
-          structuredEditResult?.isPureStructuredScript &&
-            structuredEditResult.blocks.length > 0 &&
-            structuredEditResult.appliedCount === 0,
-        )
-
-        if (isStructuredMatchFailure && structuredEditResult) {
-          console.error('[Chat Apply] Structured edits did not match file.', {
-            filePath: activeFile.path,
-            blockCount: structuredEditResult.blocks.length,
-            errors: structuredEditResult.errors,
-          })
-        }
-
-        if (canApplyStructuredLocally && structuredEditResult) {
-          if (structuredEditResult.errors.length > 0) {
-            console.warn(
-              'Some structured edits failed during apply:',
-              structuredEditResult.errors,
-            )
-          }
-          await plugin.openApplyReview({
-            file: activeFile,
-            originalContent: activeFileContent,
-            newContent: structuredEditResult.newContent,
-          } satisfies ApplyViewState)
-          return
-        }
-
-        console.error('[Chat Apply] Quick apply failed to match file.', {
-          filePath: activeFile.path,
-          blockCount: structuredEditResult?.blocks.length ?? 0,
-          errors: structuredEditResult?.errors ?? [],
-        })
-        throw new Error(
-          '快速应用未匹配到可替换内容，请改用“应用（精准）”或调整 SEARCH 片段。',
-        )
-      }
-
-      const { providerClient, model } = getChatModelClient({
-        settings,
-        modelId: settings.applyModelId,
+      const targetFileContent = await readTFileContent(targetFile, app.vault)
+      const plan = parseTextEditPlan(blockToApply, {
+        requireDocumentType: true,
       })
 
-      const updatedFileContent = await applyChangesToFile({
-        blockToApply,
-        currentFile: activeFile,
-        currentFileContent: activeFileContent,
-        chatMessages,
-        providerClient,
-        model,
-        signal: abortSignal,
-      })
-      if (!updatedFileContent) {
-        throw new Error('Failed to apply changes')
+      if (!plan) {
+        throw new Error('当前内容不包含可应用的 JSON 编辑计划。')
       }
+
+      const materialized = materializeTextEditPlan({
+        content: targetFileContent,
+        plan,
+      })
+
+      if (materialized.errors.length > 0) {
+        console.warn('[Chat Apply] Some planned edits failed during apply.', {
+          filePath: targetFile.path,
+          errors: materialized.errors,
+        })
+      }
+
+      if (materialized.appliedCount === 0) {
+        console.error('[Chat Apply] Edit plan did not produce changes.', {
+          filePath: targetFile.path,
+          operationCount: materialized.totalOperations,
+          errors: materialized.errors,
+        })
+        throw new Error('当前编辑计划未匹配到可修改内容，请重新生成。')
+      }
+
+      const selectionRange = getInlineSelectionRange(
+        targetFileContent,
+        materialized.operationResults,
+      )
 
       await plugin.openApplyReview({
-        file: activeFile,
-        originalContent: activeFileContent,
-        newContent: updatedFileContent,
+        file: targetFile,
+        originalContent: targetFileContent,
+        newContent: materialized.newContent,
+        reviewMode: selectionRange ? 'selection-focus' : 'full',
+        selectionRange,
       } satisfies ApplyViewState)
     },
     onError: (error) => {
@@ -1033,18 +1033,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ) {
         return
       }
-      if (
-        error instanceof LLMAPIKeyNotSetException ||
-        error instanceof LLMAPIKeyInvalidException ||
-        error instanceof LLMBaseUrlNotSetException
-      ) {
-        new ErrorModal(app, 'Error', error.message, error.rawError?.message, {
-          showSettingsButton: true,
-        }).open()
-      } else {
+      if (error instanceof Error) {
         new Notice(error.message)
         console.error('Failed to apply changes', error)
+        return
       }
+      new Notice('Failed to apply changes')
+      console.error('Failed to apply changes', error)
     },
     onSettled: () => {
       applyAbortControllerRef.current = null
@@ -1055,9 +1050,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleApply = useCallback(
     (
       blockToApply: string,
-      chatMessages: ChatMessage[],
-      mode: 'quick' | 'precise',
       applyRequestKey: string,
+      targetFilePath?: string,
     ) => {
       if (applyMutation.isPending) {
         if (activeApplyRequestKey === applyRequestKey) {
@@ -1073,8 +1067,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setActiveApplyRequestKey(applyRequestKey)
       applyMutation.mutate({
         blockToApply,
-        chatMessages,
-        mode,
+        targetFilePath,
         abortSignal: abortController.signal,
       })
     },
@@ -1835,13 +1828,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               <AssistantToolMessageGroupItem
                 key={messageOrGroup.at(0)?.id}
                 messages={messageOrGroup}
-                contextMessages={groupedChatMessages
-                  .slice(0, index + 1)
-                  .flatMap((messageOrGroup): ChatMessage[] =>
-                    !Array.isArray(messageOrGroup)
-                      ? [messageOrGroup]
-                      : messageOrGroup,
-                  )}
                 conversationId={currentConversationId}
                 isApplying={applyMutation.isPending}
                 activeApplyRequestKey={activeApplyRequestKey}

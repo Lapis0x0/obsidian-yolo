@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { ChatAssistantMessage, ChatMessage } from '../../types/chat'
+import { ChatAssistantMessage } from '../../types/chat'
 import {
   ParsedTagContent,
   parseTagContents,
@@ -26,7 +26,6 @@ function hasRenderableAssistantContent(blocks: ParsedTagContent[]): boolean {
 
 export default function AssistantMessageContent({
   content,
-  contextMessages,
   handleApply,
   isApplying,
   activeApplyRequestKey,
@@ -34,12 +33,10 @@ export default function AssistantMessageContent({
   toolCallRequests,
 }: {
   content: ChatAssistantMessage['content']
-  contextMessages: ChatMessage[]
   handleApply: (
     blockToApply: string,
-    chatMessages: ChatMessage[],
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   isApplying: boolean
   activeApplyRequestKey: string | null
@@ -49,12 +46,12 @@ export default function AssistantMessageContent({
   const onApply = useCallback(
     (
       blockToApply: string,
-      mode: 'quick' | 'precise',
       applyRequestKey: string,
+      targetFilePath?: string,
     ) => {
-      handleApply(blockToApply, contextMessages, mode, applyRequestKey)
+      handleApply(blockToApply, applyRequestKey, targetFilePath)
     },
-    [handleApply, contextMessages],
+    [handleApply],
   )
 
   return (
@@ -80,8 +77,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
 }: {
   onApply: (
     blockToApply: string,
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   children: string
   isApplying: boolean
@@ -157,7 +154,6 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             onApply={onApply}
             isApplying={isApplying}
             activeApplyRequestKey={activeApplyRequestKey}
-            language={block.language}
             filename={block.filename}
           >
             {block.content}

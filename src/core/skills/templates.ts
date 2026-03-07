@@ -29,48 +29,42 @@ Follow this format whenever you output markdown content for the user.
 2. Never include line numbers in the markdown text you output.
 3. Keep commentary outside \`<smtcmp_block>\`.
 
-## New Markdown Content
-
-When generating new markdown content, use:
-
-~~~xml
-<smtcmp_block language="markdown">
-{{ content }}
-</smtcmp_block>
-~~~
 
 ## Editing Existing Files
 
-When proposing edits to an existing markdown file, choose one of these two formats.
-
-### Preferred (for one-click Apply)
-
-Use structured edit blocks so the app can apply changes locally without extra model round-trips.
-
-Wrap them in \`<smtcmp_block>\` and output ONLY edit blocks inside:
+When proposing edits to an existing markdown file, wrap a JSON text edit plan in \`<smtcmp_block>\`.
 
 ~~~xml
-<smtcmp_block language="text" filename="path/to/file.md">
-<<<<<<< SEARCH
-exact old text
-=======
-new text
->>>>>>> REPLACE
+<smtcmp_block language="json" filename="path/to/file.md">
+{
+  "type": "text_edit_plan",
+  "version": 1,
+  "operations": [
+    {
+      "type": "replace",
+      "oldText": "exact old text",
+      "newText": "new text",
+      "expectedOccurrences": 1
+    }
+  ]
+}
 </smtcmp_block>
 ~~~
 
-Allowed edit block types:
+Allowed operation types:
 
-1. \`SEARCH/REPLACE\` for replacement
-2. \`INSERT AFTER/INSERT\` for insertion
-3. \`CONTINUE/CONTINUE\` for appending
+1. \`replace\` for replacement
+2. \`insert_after\` for insertion after an anchor
+3. \`append\` for appending to the end
 
 Rules:
 
-- Keep SEARCH text minimal but uniquely matchable.
-- Preserve exact whitespace and punctuation in SEARCH.
-- For deletion, keep REPLACE section empty.
-- Multiple edit blocks are allowed when needed.
+- Output valid JSON only inside the block.
+- Keep oldText/anchor minimal but uniquely matchable.
+- Preserve exact markdown source in oldText, including whitespace and punctuation.
+- For repeated text, set expectedOccurrences explicitly.
+- For deletion, use a replace operation with an empty newText.
+- Multiple operations are allowed when needed.
 
 
 The user already has full file access, so do not dump the full file unless explicitly requested.

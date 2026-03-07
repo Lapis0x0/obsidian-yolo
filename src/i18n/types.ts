@@ -728,9 +728,8 @@ export type TranslationKeys = {
       copyText?: string
       textCopied?: string
       apply?: string
-      applyQuick?: string
-      applyPrecise?: string
       applying?: string
+      emptyPlanPreview?: string
       stopApplying?: string
     }
     customContinuePromptLabel?: string

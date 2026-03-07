@@ -21,6 +21,10 @@ describe('materializeTextEditPlan', () => {
     expect(result.newContent).toBe('Hello universe')
     expect(result.appliedCount).toBe(1)
     expect(result.errors).toEqual([])
+    expect(result.operationResults[0]?.matchedRange).toEqual({
+      start: 0,
+      end: 11,
+    })
   })
 
   it('applies insert_after operations', () => {

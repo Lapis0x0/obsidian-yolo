@@ -1,7 +1,6 @@
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
-  ChatMessage,
   ChatToolMessage,
 } from '../../types/chat'
 
@@ -15,15 +14,13 @@ import ToolMessage from './ToolMessage'
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
-  contextMessages: ChatMessage[]
   conversationId: string
   isApplying: boolean // TODO: isApplying should be a boolean for each assistant message
   activeApplyRequestKey: string | null
   onApply: (
     blockToApply: string,
-    chatMessages: ChatMessage[],
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   onToolMessageUpdate: (message: ChatToolMessage) => void
   editingAssistantMessageId?: string | null
@@ -35,7 +32,6 @@ export type AssistantToolMessageGroupItemProps = {
 
 export default function AssistantToolMessageGroupItem({
   messages,
-  contextMessages,
   conversationId,
   isApplying,
   activeApplyRequestKey,
@@ -113,7 +109,6 @@ export default function AssistantToolMessageGroupItem({
               ) : (
                 <AssistantMessageContent
                   content={message.content}
-                  contextMessages={contextMessages}
                   handleApply={onApply}
                   isApplying={isApplying}
                   activeApplyRequestKey={activeApplyRequestKey}

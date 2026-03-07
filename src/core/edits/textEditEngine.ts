@@ -39,6 +39,10 @@ export type AppliedTextEditOperation = {
   expectedOccurrences: number | null
   matchMode: TextEditMatchMode
   changed: boolean
+  matchedRange?: {
+    start: number
+    end: number
+  }
 }
 
 export type MaterializedTextEditPlan = {
@@ -56,6 +60,10 @@ type ReplacementAttempt = {
   expectedOccurrences: number
   matchMode: Exclude<TextEditMatchMode, 'append'>
   changed: boolean
+  matchedRange: {
+    start: number
+    end: number
+  }
 }
 
 type ReplacementFailure = {
@@ -179,6 +187,21 @@ const countRegexMatches = (content: string, regex: RegExp): number => {
   return count
 }
 
+const getFirstRegexMatchRange = (
+  content: string,
+  regex: RegExp,
+): { start: number; end: number } | null => {
+  regex.lastIndex = 0
+  const match = regex.exec(content)
+  if (!match || match.index < 0) {
+    return null
+  }
+  return {
+    start: match.index,
+    end: match.index + match[0].length,
+  }
+}
+
 const applyReplaceLikeOperation = ({
   content,
   oldText,
@@ -209,6 +232,7 @@ const applyReplaceLikeOperation = ({
   )
 
   if (exactOccurrences === normalizedExpected) {
+    const firstIndex = content.indexOf(oldText)
     const nextContent = content.split(oldText).join(newText)
     return {
       ok: true,
@@ -217,12 +241,26 @@ const applyReplaceLikeOperation = ({
       expectedOccurrences: normalizedExpected,
       matchMode: 'exact',
       changed: nextContent !== content,
+      matchedRange: {
+        start: firstIndex,
+        end: firstIndex + oldText.length,
+      },
     }
   }
 
   const looseRegex = createLooseEditRegex(oldText)
   const looseOccurrences = countRegexMatches(content, looseRegex)
   if (looseOccurrences === normalizedExpected) {
+    const matchedRange = getFirstRegexMatchRange(
+      content,
+      createLooseEditRegex(oldText),
+    )
+    if (!matchedRange) {
+      return {
+        ok: false,
+        error: 'matched range could not be resolved.',
+      }
+    }
     const nextContent = content.replace(createLooseEditRegex(oldText), () => {
       return newText
     })
@@ -233,6 +271,7 @@ const applyReplaceLikeOperation = ({
       expectedOccurrences: normalizedExpected,
       matchMode: 'lineEndingAndTrimLineEnd',
       changed: nextContent !== content,
+      matchedRange,
     }
   }
 
@@ -247,6 +286,7 @@ const applyReplaceLikeOperation = ({
       recoveredOldText,
     )
     if (recoveredExactOccurrences === normalizedExpected) {
+      const firstIndex = content.indexOf(recoveredOldText)
       const nextContent = content.split(recoveredOldText).join(recoveredNewText)
       return {
         ok: true,
@@ -255,6 +295,10 @@ const applyReplaceLikeOperation = ({
         expectedOccurrences: normalizedExpected,
         matchMode: 'escapedControlRecovery',
         changed: nextContent !== content,
+        matchedRange: {
+          start: firstIndex,
+          end: firstIndex + recoveredOldText.length,
+        },
       }
     }
 
@@ -264,6 +308,13 @@ const applyReplaceLikeOperation = ({
       recoveredLooseRegex,
     )
     if (recoveredLooseOccurrences === normalizedExpected) {
+      const matchedRange = getFirstRegexMatchRange(content, recoveredLooseRegex)
+      if (!matchedRange) {
+        return {
+          ok: false,
+          error: 'matched range could not be resolved after escape recovery.',
+        }
+      }
       const nextContent = content.replace(recoveredLooseRegex, () => {
         return recoveredNewText
       })
@@ -274,6 +325,7 @@ const applyReplaceLikeOperation = ({
         expectedOccurrences: normalizedExpected,
         matchMode: 'escapedControlRecoveryLineEndingAndTrimLineEnd',
         changed: nextContent !== content,
+        matchedRange,
       }
     }
 
@@ -321,6 +373,7 @@ export const materializeTextEditPlan = ({
           expectedOccurrences: null,
           matchMode: 'append',
           changed: false,
+          matchedRange: undefined,
         })
         continue
       }
@@ -338,6 +391,7 @@ export const materializeTextEditPlan = ({
         expectedOccurrences: null,
         matchMode: 'append',
         changed: true,
+        matchedRange: undefined,
       })
       continue
     }
@@ -372,6 +426,7 @@ export const materializeTextEditPlan = ({
       expectedOccurrences: result.expectedOccurrences,
       matchMode: result.matchMode,
       changed: result.changed,
+      matchedRange: result.matchedRange,
     })
   }
 

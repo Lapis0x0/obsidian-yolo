@@ -1,19 +1,22 @@
 import { TFile } from 'obsidian'
 
+import {
+  parseTextEditPlan,
+  TEXT_EDIT_PLAN_TYPE,
+  TEXT_EDIT_PLAN_VERSION,
+} from '../../core/edits/textEditPlan'
 import { TextEditPlan } from '../../core/edits/textEditEngine'
 import { BaseLLMProvider } from '../../core/llm/base'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
-import {
-  extractTopLevelJsonObjects,
-  parseJsonObjectText,
-} from './tool-arguments'
 
 const EDIT_MODE_SYSTEM_PROMPT = `You are an intelligent markdown editor.
 
 Return ONLY a single JSON object with this shape:
 {
+  "type": "${TEXT_EDIT_PLAN_TYPE}",
+  "version": ${TEXT_EDIT_PLAN_VERSION},
   "operations": [
     {
       "type": "replace",
@@ -45,98 +48,8 @@ Rules:
 - For repeated text, set expectedOccurrences explicitly.
 - Preserve markdown structure unless the instruction requires changing it.`
 
-type JsonObject = Record<string, unknown>
-
-const asObject = (value: unknown): JsonObject | null => {
-  if (!value || Array.isArray(value) || typeof value !== 'object') {
-    return null
-  }
-  return value as JsonObject
-}
-
-const asPositiveInteger = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return undefined
-  }
-  const normalized = Math.floor(value)
-  return normalized > 0 ? normalized : undefined
-}
-
-const getString = (record: JsonObject, key: string): string => {
-  const value = record[key]
-  return typeof value === 'string' ? value : ''
-}
-
-const normalizeOperation = (value: unknown) => {
-  const record = asObject(value)
-  if (!record) {
-    return null
-  }
-
-  const rawType = getString(record, 'type').trim().toLowerCase()
-  if (rawType === 'replace') {
-    return {
-      type: 'replace' as const,
-      oldText: getString(record, 'oldText') || getString(record, 'search'),
-      newText: getString(record, 'newText') || getString(record, 'replace'),
-      expectedOccurrences:
-        asPositiveInteger(record.expectedOccurrences) ??
-        asPositiveInteger(record.occurrences),
-    }
-  }
-
-  if (rawType === 'insert_after' || rawType === 'insertafter') {
-    return {
-      type: 'insert_after' as const,
-      anchor: getString(record, 'anchor') || getString(record, 'oldText'),
-      content: getString(record, 'content') || getString(record, 'newText'),
-      expectedOccurrences:
-        asPositiveInteger(record.expectedOccurrences) ??
-        asPositiveInteger(record.occurrences),
-    }
-  }
-
-  if (rawType === 'append' || rawType === 'continue') {
-    return {
-      type: 'append' as const,
-      content: getString(record, 'content') || getString(record, 'newText'),
-    }
-  }
-
-  return null
-}
-
 export const parseEditPlan = (content: string): TextEditPlan | null => {
-  const trimmed = content.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  const directParsed = parseJsonObjectText(trimmed)
-  const parsed = directParsed ?? extractTopLevelJsonObjects(trimmed)[0] ?? null
-  const root = asObject(parsed)
-  if (!root) {
-    return null
-  }
-
-  const operationsValue = Array.isArray(root.operations)
-    ? root.operations
-    : Array.isArray(root.edits)
-      ? root.edits
-      : null
-  if (!operationsValue) {
-    return null
-  }
-
-  const operations = operationsValue
-    .map((item) => normalizeOperation(item))
-    .filter((item): item is NonNullable<typeof item> => Boolean(item))
-
-  if (operations.length === 0) {
-    return null
-  }
-
-  return { operations }
+  return parseTextEditPlan(content)
 }
 
 export async function generateEditPlan({

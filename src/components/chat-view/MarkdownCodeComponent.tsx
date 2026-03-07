@@ -4,9 +4,9 @@ import { PropsWithChildren, useId, useMemo, useState } from 'react'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
-  isPureSearchReplaceScript,
-  parseSearchReplaceBlocks,
-} from '../../utils/chat/searchReplace'
+  getTextEditPlanPreviewContent,
+  parseTextEditPlan,
+} from '../../core/edits/textEditPlan'
 import { openMarkdownFile } from '../../utils/obsidian'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
@@ -15,18 +15,16 @@ export default function MarkdownCodeComponent({
   onApply,
   isApplying,
   activeApplyRequestKey,
-  language,
   filename,
   children,
 }: PropsWithChildren<{
   onApply: (
     blockToApply: string,
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   isApplying: boolean
   activeApplyRequestKey: string | null
-  language?: string
   filename?: string
 }>) {
   const app = useApp()
@@ -34,12 +32,9 @@ export default function MarkdownCodeComponent({
   const applyRequestKeyBase = useId()
 
   const [copied, setCopied] = useState(false)
-  const quickApplyRequestKey = `${applyRequestKeyBase}:quick`
-  const preciseApplyRequestKey = `${applyRequestKeyBase}:precise`
-  const isQuickApplying =
-    isApplying && activeApplyRequestKey === quickApplyRequestKey
-  const isPreciseApplying =
-    isApplying && activeApplyRequestKey === preciseApplyRequestKey
+  const applyRequestKey = `${applyRequestKeyBase}:apply`
+  const isBlockApplying =
+    isApplying && activeApplyRequestKey === applyRequestKey
 
   const codeContent = useMemo(() => {
     if (typeof children === 'string') {
@@ -74,23 +69,20 @@ export default function MarkdownCodeComponent({
     return ''
   }, [children])
 
+  const parsedPlan = useMemo(() => {
+    return parseTextEditPlan(codeContent, {
+      requireDocumentType: true,
+    })
+  }, [codeContent])
+
   const previewContent = useMemo(() => {
-    if (!filename || !isPureSearchReplaceScript(codeContent)) {
+    if (!parsedPlan) {
       return codeContent
     }
 
-    const blocks = parseSearchReplaceBlocks(codeContent)
-    if (blocks.length === 0) {
-      return codeContent
-    }
-
-    const rendered = blocks
-      .map((block) => block.replace)
-      .filter((text) => text.trim().length > 0)
-      .join('\n\n')
-
-    return rendered || codeContent
-  }, [codeContent, filename])
+    const rendered = getTextEditPlanPreviewContent(parsedPlan)
+    return rendered || ''
+  }, [codeContent, parsedPlan])
 
   const handleCopy = async () => {
     try {
@@ -143,15 +135,19 @@ export default function MarkdownCodeComponent({
             type="button"
             className="clickable-icon smtcmp-code-block-header-button"
             onClick={
-              isApplying && !isQuickApplying
+              parsedPlan && isApplying && !isBlockApplying
                 ? undefined
                 : () => {
-                    onApply(codeContent, 'quick', quickApplyRequestKey)
+                    if (!parsedPlan) {
+                      return
+                    }
+                    onApply(codeContent, applyRequestKey, filename)
                   }
             }
-            aria-disabled={isApplying && !isQuickApplying}
+            aria-disabled={parsedPlan ? isApplying && !isBlockApplying : true}
+            hidden={!parsedPlan}
           >
-            {isQuickApplying ? (
+            {isBlockApplying ? (
               <>
                 <Loader2 className="smtcmp-spinner" size={14} />
                 <span>{t('chat.codeBlock.stopApplying', 'Stop apply')}</span>
@@ -159,40 +155,24 @@ export default function MarkdownCodeComponent({
             ) : (
               <>
                 <Play size={10} />
-                <span>{t('chat.codeBlock.applyQuick', 'Apply (fast)')}</span>
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            className="clickable-icon smtcmp-code-block-header-button"
-            onClick={
-              isApplying && !isPreciseApplying
-                ? undefined
-                : () => {
-                    onApply(codeContent, 'precise', preciseApplyRequestKey)
-                  }
-            }
-            aria-disabled={isApplying && !isPreciseApplying}
-          >
-            {isPreciseApplying ? (
-              <>
-                <Loader2 className="smtcmp-spinner" size={14} />
-                <span>{t('chat.codeBlock.stopApplying', 'Stop apply')}</span>
-              </>
-            ) : (
-              <>
-                <Play size={10} />
-                <span>
-                  {t('chat.codeBlock.applyPrecise', 'Apply (precise)')}
-                </span>
+                <span>{t('chat.codeBlock.apply', 'Apply')}</span>
               </>
             )}
           </button>
         </div>
       </div>
       <div className="smtcmp-code-block-obsidian-markdown">
-        <ObsidianMarkdown content={previewContent} scale="sm" />
+        <ObsidianMarkdown
+          content={
+            parsedPlan && previewContent.length === 0
+              ? t(
+                  'chat.codeBlock.emptyPlanPreview',
+                  'This plan removes content',
+                )
+              : previewContent
+          }
+          scale="sm"
+        />
       </div>
     </div>
   )

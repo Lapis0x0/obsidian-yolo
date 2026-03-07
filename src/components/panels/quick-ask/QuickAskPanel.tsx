@@ -1019,7 +1019,7 @@ export function QuickAskPanel({
     }
   }, [initialInput])
 
-  // Submit edit mode - generate SEARCH/REPLACE and open ApplyView
+  // Submit edit mode - generate a text edit plan and open ApplyView
   const submitEditMode = useCallback(
     async (instruction: string) => {
       if (isStreaming) return
