@@ -709,7 +709,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function createInlineDiffLines(
+export function createInlineDiffLines(
   originalLines: string[],
   modifiedLines: string[],
 ): InlineDiffLine[] {

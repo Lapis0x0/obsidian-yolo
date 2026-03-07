@@ -16,6 +16,7 @@ import {
   DiffBlock,
   InlineDiffLine,
   InlineDiffToken,
+  createInlineDiffLines,
   createDiffBlocks,
 } from '../../utils/chat/diff'
 
@@ -760,12 +761,22 @@ const DiffBlockView = forwardRef<
       part.type === 'modified' ? part.modifiedValue : undefined
     const originalValue =
       part.type === 'modified' ? part.originalValue : undefined
+    const modifiedBlockType = part.type === 'modified' ? part.blockType : null
     const inlineMarkdown = useMemo(() => {
       if (part.type !== 'modified') return ''
       const markdown = buildInlineDiffMarkdown(inlineLines ?? [])
       if (markdown.trim().length > 0) return markdown
       return modifiedValue ?? originalValue ?? ''
     }, [inlineLines, modifiedValue, originalValue, part.type])
+    const textBlockInlineLines = useMemo(() => {
+      if (part.type !== 'modified' || modifiedBlockType !== 'section') {
+        return []
+      }
+      return createInlineDiffLines(
+        originalValue?.split('\n') ?? [],
+        modifiedValue?.split('\n') ?? [],
+      )
+    }, [modifiedBlockType, modifiedValue, originalValue, part.type])
     const canShowBlockActions = !isSelectionFocusMode || isSelectionTarget
     const renderDecisionActions = () => (
       <div className="smtcmp-diff-block-actions">
@@ -801,21 +812,30 @@ const DiffBlockView = forwardRef<
       if (part.type !== 'modified') return []
       return splitInlineLinesIntoParagraphs(inlineLines ?? [])
     }, [inlineLines, part.type])
+    const textBlockInlineParagraphs = useMemo<ApplyParagraph[]>(() => {
+      if (part.type !== 'modified' || modifiedBlockType !== 'section') return []
+      return splitInlineLinesIntoParagraphs(textBlockInlineLines)
+    }, [modifiedBlockType, part.type, textBlockInlineLines])
+    const activeInlineParagraphs =
+      modifiedBlockType === 'section'
+        ? textBlockInlineParagraphs
+        : inlineParagraphs
     const firstChangedParagraphIndex = useMemo(
-      () => inlineParagraphs.findIndex((paragraph) => paragraph.hasChanges),
-      [inlineParagraphs],
+      () =>
+        activeInlineParagraphs.findIndex((paragraph) => paragraph.hasChanges),
+      [activeInlineParagraphs],
     )
     const actionParagraphIndex = useMemo(() => {
       if (firstChangedParagraphIndex >= 0) return firstChangedParagraphIndex
       if (!isSelectionFocusMode || !isSelectionTarget) return -1
-      const firstNonEmptyParagraphIndex = inlineParagraphs.findIndex(
+      const firstNonEmptyParagraphIndex = activeInlineParagraphs.findIndex(
         (paragraph) => !paragraph.isEmpty,
       )
       if (firstNonEmptyParagraphIndex >= 0) return firstNonEmptyParagraphIndex
-      return inlineParagraphs.length > 0 ? 0 : -1
+      return activeInlineParagraphs.length > 0 ? 0 : -1
     }, [
+      activeInlineParagraphs,
       firstChangedParagraphIndex,
-      inlineParagraphs,
       isSelectionFocusMode,
       isSelectionTarget,
     ])
@@ -879,7 +899,8 @@ const DiffBlockView = forwardRef<
           ) : (
             // Show original diff view with actions
             <>
-              {part.presentation === 'block' ? (
+              {part.presentation === 'block' &&
+              modifiedBlockType !== 'section' ? (
                 <div
                   className={`smtcmp-apply-paragraph has-changes${
                     isActive ? ' is-active' : ''
@@ -914,8 +935,8 @@ const DiffBlockView = forwardRef<
                 </div>
               ) : (
                 <div className="smtcmp-diff-block smtcmp-diff-block--inline">
-                  {inlineParagraphs.length > 0 ? (
-                    inlineParagraphs.map((paragraph, paragraphIndex) => {
+                  {activeInlineParagraphs.length > 0 ? (
+                    activeInlineParagraphs.map((paragraph, paragraphIndex) => {
                       const paragraphContent = paragraph.isEmpty
                         ? ''
                         : buildInlineDiffMarkdown(paragraph.lines)
