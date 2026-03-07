@@ -7232,10 +7232,17 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 
 .smtcmp-code-block-header-filename {
   appearance: none;
-  border: 0;
-  background: transparent;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0;
+  outline: none;
+  background: transparent !important;
   color: inherit;
-  padding-left: var(--size-4-2);
+  margin: 0;
+  padding: 0 var(--size-4-2);
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-medium);
   overflow: hidden;
   text-overflow: ellipsis;
