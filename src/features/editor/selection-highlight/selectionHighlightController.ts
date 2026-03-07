@@ -13,6 +13,8 @@ type SelectionHighlightPayload = {
   to: number
 }
 
+type HighlightMode = 'inline' | 'block'
+
 type HighlightLineRole =
   | 'is-single'
   | 'is-block-start'
@@ -45,29 +47,41 @@ const selectionHighlightField = StateField.define<DecorationSet>({
       }
 
       const builder = new RangeSetBuilder<Decoration>()
-      const startLine = tr.state.doc.lineAt(payload.from).number
-      const endPos = Math.max(payload.from, payload.to - 1)
-      const endLine = tr.state.doc.lineAt(endPos).number
-      const groups = [
-        Array.from(
-          { length: endLine - startLine + 1 },
-          (_, index) => startLine + index,
-        ),
-      ]
+      const mode = resolveHighlightMode(tr.state.doc, payload.from, payload.to)
 
-      for (const group of groups) {
-        group.forEach((lineNumber, index) => {
-          const line = tr.state.doc.line(lineNumber)
-          const role = resolveLineRole(index, group.length)
+      if (mode === 'inline') {
+        builder.add(
+          payload.from,
+          payload.to,
+          Decoration.mark({
+            class: 'smtcmp-selection-persisted-inline',
+          }),
+        )
+      } else {
+        const startLine = tr.state.doc.lineAt(payload.from).number
+        const endPos = Math.max(payload.from, payload.to - 1)
+        const endLine = tr.state.doc.lineAt(endPos).number
+        const groups = [
+          Array.from(
+            { length: endLine - startLine + 1 },
+            (_, index) => startLine + index,
+          ),
+        ]
 
-          builder.add(
-            line.from,
-            line.from,
-            Decoration.line({
-              class: `smtcmp-selection-persisted-block ${role}`,
-            }),
-          )
-        })
+        for (const group of groups) {
+          group.forEach((lineNumber, index) => {
+            const line = tr.state.doc.line(lineNumber)
+            const role = resolveLineRole(index, group.length)
+
+            builder.add(
+              line.from,
+              line.from,
+              Decoration.line({
+                class: `smtcmp-selection-persisted-block ${role}`,
+              }),
+            )
+          })
+        }
       }
 
       nextDecorations = builder.finish()
@@ -90,6 +104,41 @@ function resolveLineRole(index: number, size: number): HighlightLineRole {
   if (index === 0) return 'is-block-start'
   if (index === size - 1) return 'is-block-end'
   return 'is-block-middle'
+}
+
+function resolveHighlightMode(
+  doc: EditorView['state']['doc'],
+  from: number,
+  to: number,
+): HighlightMode {
+  const startLine = doc.lineAt(from)
+  const endPos = Math.max(from, to - 1)
+  const endLine = doc.lineAt(endPos)
+
+  if (startLine.number !== endLine.number) {
+    return 'block'
+  }
+
+  return isEffectivelyFullLineSelected(startLine, from, to) ? 'block' : 'inline'
+}
+
+function isEffectivelyFullLineSelected(
+  line: ReturnType<EditorView['state']['doc']['lineAt']>,
+  from: number,
+  to: number,
+): boolean {
+  const lineText = line.text
+  const firstNonWhitespace = lineText.search(/\S/)
+
+  if (firstNonWhitespace === -1) {
+    return false
+  }
+
+  const lastNonWhitespace = lineText.length - lineText.trimEnd().length
+  const contentFrom = line.from + firstNonWhitespace
+  const contentTo = line.to - lastNonWhitespace
+
+  return from <= contentFrom && to >= contentTo
 }
 
 export class SelectionHighlightController {

@@ -10785,6 +10785,16 @@ body.smtcmp-quick-ask-global-interaction * {
   position: relative;
 }
 
+.cm-editor .smtcmp-selection-persisted-inline {
+  background: var(
+    --text-selection,
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+  );
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .cm-editor .cm-line.smtcmp-selection-persisted-block.is-single {
   border-radius: 6px;
 }
