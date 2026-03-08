@@ -4,6 +4,12 @@ import { memo, useCallback, useEffect, useRef } from 'react'
 import { useApp } from '../../contexts/app-context'
 import { useChatView } from '../../contexts/chat-view-context'
 
+import {
+  annotateRenderedLatex,
+  copySelectedLatex,
+  syncRenderedLatexSelection,
+} from './latex-copy'
+
 type ObsidianMarkdownProps = {
   content: string
   scale?: 'xs' | 'sm' | 'base'
@@ -110,6 +116,8 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
         containerRef.current,
         app.workspace.getActiveFile()?.path ?? '',
       )
+      annotateRenderedLatex(containerRef.current, content)
+      syncRenderedLatexSelection(containerRef.current)
 
       highlightTrailingFreshText(containerRef.current, appendedTextLength)
     }
@@ -120,6 +128,44 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
   useEffect(() => {
     void renderMarkdown()
   }, [renderMarkdown])
+
+  useEffect(() => {
+    const containerEl = containerRef.current
+    if (!containerEl) {
+      return
+    }
+
+    const handleCopy = (event: ClipboardEvent) => {
+      copySelectedLatex(event, containerEl)
+    }
+
+    containerEl.addEventListener('copy', handleCopy)
+
+    return () => {
+      containerEl.removeEventListener('copy', handleCopy)
+    }
+  }, [])
+
+  useEffect(() => {
+    const containerEl = containerRef.current
+    if (!containerEl) {
+      return
+    }
+
+    const handleSelectionChange = () => {
+      syncRenderedLatexSelection(containerEl)
+    }
+
+    document.addEventListener('selectionchange', handleSelectionChange)
+    document.addEventListener('mouseup', handleSelectionChange)
+    document.addEventListener('keyup', handleSelectionChange)
+
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange)
+      document.removeEventListener('mouseup', handleSelectionChange)
+      document.removeEventListener('keyup', handleSelectionChange)
+    }
+  }, [])
 
   return (
     <div

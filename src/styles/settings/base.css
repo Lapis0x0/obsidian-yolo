@@ -753,6 +753,22 @@
       height: calc(var(--render-scale) * 1rem);
       width: calc(var(--render-scale) * 1rem);
     }
+
+    .math {
+      user-select: text;
+      cursor: text;
+
+      &::selection,
+      *::selection {
+        background: var(--text-selection);
+      }
+
+      mjx-math.smtcmp-latex-selected,
+      &.smtcmp-latex-selected {
+        background: var(--text-selection);
+        border-radius: 0;
+      }
+    }
   }
 
   /* Show frontmatter which is hidden by default */
