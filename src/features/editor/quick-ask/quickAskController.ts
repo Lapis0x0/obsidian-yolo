@@ -41,6 +41,8 @@ type QuickAskControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getActiveFileTitle: () => string
   closeSmartSpace: (restoreFocus?: boolean) => void
+  pinSelectionHighlight: (view: EditorView) => void
+  clearSelectionHighlight: (view?: EditorView) => void
 }
 
 type QuickAskShowOptions = {
@@ -109,6 +111,8 @@ export class QuickAskController {
       return
     }
 
+    this.deps.clearSelectionHighlight(state.view)
+
     if (!restoreFocus) {
       this.quickAskWidgetState = null
       state.view.dispatch({ effects: quickAskWidgetEffect.of(null) })
@@ -151,6 +155,13 @@ export class QuickAskController {
     options?: QuickAskShowOptions,
   ) {
     const selection = view.state.selection.main
+    if (
+      !selection.empty &&
+      (this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
+        true)
+    ) {
+      this.deps.pinSelectionHighlight(view)
+    }
     const pos = selection.head
 
     // Get context text around cursor with marker

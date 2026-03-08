@@ -111,6 +111,7 @@ export const it: TranslationKeys = {
     actions: {
       addToChat: 'Aggiungi alla chat',
       customRewrite: 'Riscrittura personalizzata',
+      customAsk: 'Domanda personalizzata',
       rewrite: 'AI riscrivi',
       explain: 'Spiega in dettaglio',
       suggest: 'Fornisci suggerimenti',
@@ -773,6 +774,9 @@ export const it: TranslationKeys = {
         "Scegli se mostrare i file selezionati con @ nel testo dell'input o come badge sopra la casella.",
       mentionDisplayModeInline: 'Dentro la casella',
       mentionDisplayModeBadge: 'Badge in alto',
+      persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
+      persistSelectionHighlightDesc:
+        "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",
     },
   },
 
@@ -815,6 +819,10 @@ export const it: TranslationKeys = {
       textCopied: 'Testo copiato',
       apply: 'Applica',
       applying: 'Applicazione in corso...',
+      locatingTarget:
+        'Individuazione e caricamento del contenuto sostitutivo...',
+      emptyPlanPreview: 'Questo piano rimuove contenuto',
+      stopApplying: 'Interrompi applicazione',
     },
     customContinuePromptLabel: 'Come vuoi continuare?',
     customContinuePromptPlaceholder: "Chiedi all'AI (@ per aggiungere i file)",
@@ -1046,9 +1054,9 @@ export const it: TranslationKeys = {
 
   chatMode: {
     chat: 'Chat',
-    chatDesc: 'Ideale per domande, revisione e riscrittura',
+    chatDesc: 'Chiedi, rifinisci, crea',
     agent: 'Agent',
-    agentDesc: 'Abilita strumenti per esecuzione multi-step',
+    agentDesc: 'Strumenti per task complessi',
     warning: {
       title: 'Conferma prima di abilitare la modalita Agent',
       description:

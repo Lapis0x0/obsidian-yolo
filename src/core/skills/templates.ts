@@ -15,75 +15,56 @@ Store your skill files here.
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---
 id: obsidian-output-format
 name: Obsidian Output Format
-description: Enforce Obsidian markdown output contract with <smtcmp_block> tags. Use whenever returning markdown content, proposing markdown edits, or referencing markdown snippets.
+description: Use <smtcmp_block> only for markdown file edit plans. Output raw JSON only.
 mode: always
 ---
 
 # Obsidian Output Format
 
-Follow this format whenever you output markdown content for the user.
+Use \`<smtcmp_block>\` only when proposing edits to an existing markdown file.
 
-## Core Rules
+## Rules
 
-1. Wrap user-facing markdown blocks with \`<smtcmp_block>...</smtcmp_block>\`.
-2. Never include line numbers in the markdown text you output.
-3. Keep commentary outside \`<smtcmp_block>\`.
+1. Output exactly one \`<smtcmp_block>\` when proposing file edits.
+2. Inside \`<smtcmp_block>\`, output raw JSON only.
+3. Do not use triple backticks or triple tildes inside \`<smtcmp_block>\`.
+4. Do not put markdown, explanations, or commentary inside \`<smtcmp_block>\`.
+5. Keep commentary outside \`<smtcmp_block>\`.
 
-## New Markdown Content
 
-When generating new markdown content, use:
+## Format
 
 ~~~xml
-<smtcmp_block language="markdown">
-{{ content }}
+<smtcmp_block language="json" filename="path/to/file.md">
+{
+  "type": "text_edit_plan",
+  "version": 1,
+  "operations": [
+    {
+      "type": "replace",
+      "oldText": "exact old text",
+      "newText": "new text",
+      "expectedOccurrences": 1
+    }
+  ]
+}
 </smtcmp_block>
 ~~~
 
-## Editing Existing Files
+Allowed operation types:
 
-When proposing edits to an existing markdown file, choose one of these two formats.
+1. \`replace\` for replacement
+2. \`insert_after\` for insertion after an anchor
+3. \`append\` for appending to the end
 
-### Preferred (for one-click Apply)
+## Operation Rules
 
-Use structured edit blocks so the app can apply changes locally without extra model round-trips.
-
-Wrap them in \`<smtcmp_block>\` and output ONLY edit blocks inside:
-
-~~~xml
-<smtcmp_block language="text" filename="path/to/file.md">
-<<<<<<< SEARCH
-exact old text
-=======
-new text
->>>>>>> REPLACE
-</smtcmp_block>
-~~~
-
-Allowed edit block types:
-
-1. \`SEARCH/REPLACE\` for replacement
-2. \`INSERT AFTER/INSERT\` for insertion
-3. \`CONTINUE/CONTINUE\` for appending
-
-Rules:
-
-- Keep SEARCH text minimal but uniquely matchable.
-- Preserve exact whitespace and punctuation in SEARCH.
-- For deletion, keep REPLACE section empty.
-- Multiple edit blocks are allowed when needed.
-
-
-The user already has full file access, so do not dump the full file unless explicitly requested.
-
-## Referencing Provided Markdown Snippets
-
-If the user context includes numbered markdown snippets and you need to reference one of them, output an empty placeholder block with location attributes:
-
-~~~xml
-<smtcmp_block filename="path/to/file.md" language="markdown" startLine="2" endLine="30"></smtcmp_block>
-~~~
-
-Do not place snippet content inside this placeholder block.
+- Keep \`oldText\` or \`anchor\` minimal but uniquely matchable.
+- Preserve exact markdown source in \`oldText\`, including whitespace and punctuation.
+- For repeated text, set \`expectedOccurrences\` explicitly.
+- For deletion, use \`replace\` with an empty \`newText\`.
+- Multiple operations are allowed.
+- Do not dump the full file unless explicitly requested.
 `
 
 export const YOLO_SKILL_CREATOR_TEMPLATE = `---

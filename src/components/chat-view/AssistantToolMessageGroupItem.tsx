@@ -1,7 +1,6 @@
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
-  ChatMessage,
   ChatToolMessage,
 } from '../../types/chat'
 
@@ -15,15 +14,13 @@ import ToolMessage from './ToolMessage'
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
-  contextMessages: ChatMessage[]
   conversationId: string
   isApplying: boolean // TODO: isApplying should be a boolean for each assistant message
   activeApplyRequestKey: string | null
   onApply: (
     blockToApply: string,
-    chatMessages: ChatMessage[],
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   onToolMessageUpdate: (message: ChatToolMessage) => void
   editingAssistantMessageId?: string | null
@@ -35,7 +32,6 @@ export type AssistantToolMessageGroupItemProps = {
 
 export default function AssistantToolMessageGroupItem({
   messages,
-  contextMessages,
   conversationId,
   isApplying,
   activeApplyRequestKey,
@@ -65,6 +61,14 @@ export default function AssistantToolMessageGroupItem({
       message.role === 'assistant' &&
       message.metadata?.generationState === 'streaming',
   )
+  const hasPendingAssistantShell = assistantMessages.some(
+    (message) =>
+      message.metadata?.generationState === 'streaming' &&
+      !message.content &&
+      !message.reasoning &&
+      !message.annotations &&
+      !message.toolCallRequests?.length,
+  )
 
   return (
     <div className="smtcmp-assistant-tool-message-group">
@@ -74,12 +78,18 @@ export default function AssistantToolMessageGroupItem({
           message.annotations ||
           message.content ||
           (message.metadata?.generationState === 'streaming' &&
+            !message.content &&
+            !message.reasoning) ||
+          (message.metadata?.generationState === 'streaming' &&
             Boolean(message.toolCallRequests?.length)) ? (
             <div key={message.id} className="smtcmp-chat-messages-assistant">
-              {message.reasoning && (
+              {(message.reasoning ||
+                (message.metadata?.generationState === 'streaming' &&
+                  !message.content &&
+                  !message.annotations)) && (
                 <AssistantMessageReasoning
-                  reasoning={message.reasoning}
-                  content={message.content}
+                  reasoning={message.reasoning ?? ''}
+                  hasAnswerContent={message.content.trim().length > 0}
                   generationState={message.metadata?.generationState}
                 />
               )}
@@ -99,7 +109,6 @@ export default function AssistantToolMessageGroupItem({
               ) : (
                 <AssistantMessageContent
                   content={message.content}
-                  contextMessages={contextMessages}
                   handleApply={onApply}
                   isApplying={isApplying}
                   activeApplyRequestKey={activeApplyRequestKey}
@@ -119,7 +128,7 @@ export default function AssistantToolMessageGroupItem({
           </div>
         ),
       )}
-      {messages.length > 0 && (
+      {messages.length > 0 && !hasPendingAssistantShell && !isStreaming && (
         <div className="smtcmp-assistant-message-footer">
           <LLMResponseInlineInfo messages={messages} />
           <AssistantToolMessageGroupActions

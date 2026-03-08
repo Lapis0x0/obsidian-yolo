@@ -1,122 +1,89 @@
-/**
- * Edit mode for Quick Ask - generates SEARCH/REPLACE blocks for document editing.
- */
-
 import { TFile } from 'obsidian'
 
+import {
+  parseTextEditPlan,
+  TEXT_EDIT_PLAN_TYPE,
+  TEXT_EDIT_PLAN_VERSION,
+} from '../../core/edits/textEditPlan'
+import { TextEditPlan } from '../../core/edits/textEditEngine'
 import { BaseLLMProvider } from '../../core/llm/base'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
 
-const EDIT_MODE_SYSTEM_PROMPT = `You are an intelligent document editor. Your task is to modify a markdown document based on user instructions.
+const EDIT_MODE_SYSTEM_PROMPT = `You are an intelligent markdown editor.
 
-**Output Formats:**
-You have THREE types of edit blocks available:
+Return ONLY a single JSON object with this shape:
+{
+  "type": "${TEXT_EDIT_PLAN_TYPE}",
+  "version": ${TEXT_EDIT_PLAN_VERSION},
+  "operations": [
+    {
+      "type": "replace",
+      "oldText": "exact text to replace",
+      "newText": "replacement text",
+      "expectedOccurrences": 1
+    }
+  ]
+}
 
-1. **CONTINUE** - Append new content at the end of the document:
-<<<<<<< CONTINUE
-=======
-[new content to append]
->>>>>>> CONTINUE
+Supported operation types:
+1. replace
+   - Replace exact text.
+   - Fields: type, oldText, newText, optional expectedOccurrences.
 
-2. **REPLACE** - Replace existing text:
-<<<<<<< SEARCH
-[exact text to find in the document]
-=======
-[new text to replace it with]
->>>>>>> REPLACE
+2. insert_after
+   - Insert content after exact anchor text.
+   - Fields: type, anchor, content, optional expectedOccurrences.
 
-3. **INSERT AFTER** - Insert content after specific text:
-<<<<<<< INSERT AFTER
-[exact text to find]
-=======
-[content to insert after it]
->>>>>>> INSERT
+3. append
+   - Append content to the end of the document.
+   - Fields: type, content.
 
-**When to Use Each Format:**
-- Use **CONTINUE** for: "续写", "继续写", "补充内容", "continue writing", "add more", "extend"
-- Use **REPLACE** for: "修改", "替换", "翻译", "改写", "change", "translate", "rewrite", "fix"
-- Use **INSERT AFTER** for: "在...后面添加", "在...之后插入", "insert after", "add after"
+Rules:
+- Output valid JSON only. No markdown fences. No explanation.
+- Keep edits minimal and localized.
+- Prefer replace for modifications, insert_after for inserting near existing text, append only for true continuation.
+- oldText/anchor must include enough surrounding context to match uniquely.
+- For repeated text, set expectedOccurrences explicitly.
+- Preserve markdown structure unless the instruction requires changing it.`
 
-**Critical Rules:**
-1. For SEARCH sections, text must be EXACT, including all whitespace, line breaks, and punctuation
-2. You can use multiple blocks of different types for complex edits
-3. Output ONLY edit blocks, no explanations or other text
-4. For deletion with REPLACE, leave the replacement section empty (but keep the markers)
-5. Keep changes minimal - only modify what's necessary to fulfill the instruction
-6. For SEARCH/INSERT AFTER, include enough surrounding context to ensure unique matching
-7. Process changes in document order (top to bottom)
+export const parseEditPlan = (content: string): TextEditPlan | null => {
+  return parseTextEditPlan(content)
+}
 
-**Examples:**
-
-Append content:
-<<<<<<< CONTINUE
-=======
-## New Section
-This is additional content at the end.
->>>>>>> CONTINUE
-
-Change existing text:
-<<<<<<< SEARCH
-Hello world
-=======
-Hello universe
->>>>>>> REPLACE
-
-Insert after a paragraph:
-<<<<<<< INSERT AFTER
-This is the end of the first paragraph.
-=======
-
-Here is a new paragraph inserted after it.
->>>>>>> INSERT`
-
-/**
- * Generate edit content using edit blocks (CONTINUE/REPLACE/INSERT AFTER).
- *
- * @param params - Parameters for generating edit content
- * @returns The raw model response containing edit blocks
- */
-export async function generateEditContent({
+export async function generateEditPlan({
   instruction,
   currentFile,
   currentFileContent,
+  scopedToSelection = false,
   providerClient,
   model,
 }: {
   instruction: string
   currentFile: TFile
   currentFileContent: string
+  scopedToSelection?: boolean
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
-}): Promise<string> {
-  const hasEditBlockMarkers = (text: string): boolean => {
-    if (!text) return false
-    const startPattern = /<<<<<<<\s+(CONTINUE|SEARCH|INSERT AFTER)/i
-    const endPattern = />>>>>>>\s+(CONTINUE|REPLACE|INSERT)/i
-    return startPattern.test(text) && endPattern.test(text)
-  }
-
-  const isBaseModel = Boolean(model.isBaseModel)
+}): Promise<TextEditPlan | null> {
   const requestMessages: RequestMessage[] = []
 
-  if (!isBaseModel) {
+  if (!model.isBaseModel) {
     requestMessages.push({
       role: 'system',
       content: EDIT_MODE_SYSTEM_PROMPT,
     })
   }
 
-  const userPrompt = generateEditPrompt(
-    instruction,
-    currentFile,
-    currentFileContent,
-  )
-
   requestMessages.push({
     role: 'user',
-    content: userPrompt,
+    content: generateEditPrompt({
+      instruction,
+      currentFile,
+      currentFileContent,
+      scopedToSelection,
+    }),
   })
 
   const response = await providerClient.generateResponse(model, {
@@ -125,30 +92,36 @@ export async function generateEditContent({
     stream: false,
   })
 
-  const content = response.choices[0]?.message?.content ?? ''
-  if (content.trim().length > 0) {
-    return content
-  }
-  const reasoning = response.choices[0]?.message?.reasoning ?? ''
-  if (hasEditBlockMarkers(reasoning)) {
-    return reasoning
-  }
-  return content
+  const message = response.choices[0]?.message
+  const rawContent = `${message?.content ?? ''}`.trim()
+  const rawReasoning = `${message?.reasoning ?? ''}`.trim()
+
+  return parseEditPlan(rawContent) ?? parseEditPlan(rawReasoning)
 }
 
-/**
- * Generate the user prompt for edit mode.
- */
-function generateEditPrompt(
-  instruction: string,
-  currentFile: TFile,
-  currentFileContent: string,
-): string {
+function generateEditPrompt({
+  instruction,
+  currentFile,
+  currentFileContent,
+  scopedToSelection,
+}: {
+  instruction: string
+  currentFile: TFile
+  currentFileContent: string
+  scopedToSelection: boolean
+}): string {
+  const selectionGuidance = scopedToSelection
+    ? `
+- The provided content is the selected slice the user wants to edit.
+- For broad transformations like translate, rewrite, summarize, or table-wide edits, prefer a single replace operation where oldText is the exact full provided content and newText is the fully transformed result.
+- Do not update only the heading or table header if the request clearly applies to the full selected block.`
+    : ''
+
   return `# Document to Edit
 
-**File:** ${currentFile.path}
+File: ${currentFile.path}
 
-**Content:**
+Content:
 \`\`\`markdown
 ${currentFileContent}
 \`\`\`
@@ -159,9 +132,13 @@ ${instruction}
 
 # Your Task
 
-Output appropriate edit blocks (CONTINUE/REPLACE/INSERT) to apply the requested changes. Remember:
-- Match text EXACTLY as it appears in the document
-- Include enough context for unique matching
-- Choose the most appropriate block type based on the instruction
-- Output only edit blocks, no explanations`
+Return a JSON object with an operations array.
+- Use replace for rewriting existing text.
+- Use insert_after for inserting new content after existing text.
+- Use append only when the user explicitly wants continuation at the end.
+- Keep changes minimal.
+- Preserve full markdown structures such as tables, lists, and headings when editing them.
+- If a markdown table is being transformed, update all affected rows and cells, not just the header.
+- oldText in replace should include the exact markdown source, including pipes and separator rows for tables.${selectionGuidance}
+- Output JSON only.`
 }

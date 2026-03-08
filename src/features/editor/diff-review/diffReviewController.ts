@@ -4,9 +4,12 @@ import type { Editor, MarkdownView } from 'obsidian'
 
 import { ApplyReviewOverlay } from '../../../components/apply-view/ApplyReviewOverlay'
 import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
-import type { ApplyViewActions } from '../../../components/apply-view/ApplyViewRoot'
+import type { ApplyViewActions } from '../../../components/apply-view/types'
 import type SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
+import { buildInlineReviewBlocks, countModifiedBlocks } from './review-model'
+
+const INLINE_DIFF_REVIEW_THRESHOLD = 3
 
 type DiffReviewControllerDeps = {
   plugin: SmartComposerPlugin
@@ -162,29 +165,39 @@ export class DiffReviewController {
           }
         : state
 
-    this.activeOverlay =
-      reviewState.reviewMode === 'selection-focus'
-        ? new InlineDiffReviewOverlay({
-            plugin: this.deps.plugin,
-            view,
-            state: reviewState,
-            onClose: () => this.closeReview(),
-            onActionsReady: (actions) => {
-              this.activeActions = actions
-            },
-          })
-        : new ApplyReviewOverlay({
-            plugin: this.deps.plugin,
-            view,
-            state: {
-              ...reviewState,
-              reviewMode: 'full',
-            },
-            onClose: () => this.closeReview(),
-            onActionsReady: (actions) => {
-              this.activeActions = actions
-            },
-          })
+    const modifiedBlockCount = countModifiedBlocks(
+      buildInlineReviewBlocks(
+        reviewState.originalContent,
+        reviewState.newContent,
+      ),
+    )
+
+    const shouldUseInlineSelectionReview =
+      reviewState.reviewMode === 'selection-focus' &&
+      modifiedBlockCount <= INLINE_DIFF_REVIEW_THRESHOLD
+
+    this.activeOverlay = shouldUseInlineSelectionReview
+      ? new InlineDiffReviewOverlay({
+          plugin: this.deps.plugin,
+          view,
+          state: reviewState,
+          onClose: () => this.closeReview(),
+          onActionsReady: (actions) => {
+            this.activeActions = actions
+          },
+        })
+      : new ApplyReviewOverlay({
+          plugin: this.deps.plugin,
+          view,
+          state: {
+            ...reviewState,
+            reviewMode: 'full',
+          },
+          onClose: () => this.closeReview(),
+          onActionsReady: (actions) => {
+            this.activeActions = actions
+          },
+        })
     this.activeOverlay.mount()
   }
 

@@ -71,6 +71,7 @@ type RequestUserMessage = {
 type RequestAssistantMessage = {
   role: 'assistant'
   content: string
+  reasoning?: string
   tool_calls?: ToolCallRequest[]
 }
 type RequestToolMessage = {

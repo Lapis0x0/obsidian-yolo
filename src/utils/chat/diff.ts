@@ -14,6 +14,18 @@ export type InlineDiffLine = {
   tokens: InlineDiffToken[]
 }
 
+export type MarkdownBlockType =
+  | 'blank'
+  | 'paragraph'
+  | 'heading'
+  | 'section'
+  | 'thematicBreak'
+  | 'table'
+  | 'codeFence'
+  | 'mathBlock'
+  | 'blockquote'
+  | 'list'
+
 export type DiffBlock =
   | {
       type: 'unchanged'
@@ -24,9 +36,72 @@ export type DiffBlock =
       originalValue?: string
       modifiedValue?: string
       inlineLines: InlineDiffLine[]
+      presentation: 'inline' | 'block'
+      blockType: MarkdownBlockType
     }
 
+type MarkdownBlockUnit = {
+  type: MarkdownBlockType
+  text: string
+  normalizedText: string
+  presentation: 'inline' | 'block'
+}
+
 export function createDiffBlocks(
+  currentMarkdown: string,
+  incomingMarkdown: string,
+): DiffBlock[] {
+  const safeCurrentMarkdown = currentMarkdown ?? ''
+  const safeIncomingMarkdown = incomingMarkdown ?? ''
+  const currentBlocks = segmentMarkdownBlocks(safeCurrentMarkdown)
+  const incomingBlocks = segmentMarkdownBlocks(safeIncomingMarkdown)
+  const blocks: DiffBlock[] = []
+
+  const advOptions: ILinesDiffComputerOptions = {
+    ignoreTrimWhitespace: false,
+    computeMoves: true,
+    maxComputationTimeMs: 0,
+  }
+  const advDiffComputer = new AdvancedLinesDiffComputer()
+  const advLineChanges = advDiffComputer.computeDiff(
+    currentBlocks.map(createComparisonKey),
+    incomingBlocks.map(createComparisonKey),
+    advOptions,
+  ).changes
+
+  let lastOriginalEndLineNumberExclusive = 1
+  advLineChanges.forEach((change: LineRangeMapping) => {
+    const oStart = change.originalRange.startLineNumber
+    const oEnd = change.originalRange.endLineNumberExclusive
+    const mStart = change.modifiedRange.startLineNumber
+    const mEnd = change.modifiedRange.endLineNumberExclusive
+
+    if (oStart > lastOriginalEndLineNumberExclusive) {
+      const unchangedBlocks = currentBlocks.slice(
+        lastOriginalEndLineNumberExclusive - 1,
+        oStart - 1,
+      )
+      pushUnchangedBlock(blocks, unchangedBlocks)
+    }
+
+    const originalChunk = currentBlocks.slice(oStart - 1, oEnd - 1)
+    const modifiedChunk = incomingBlocks.slice(mStart - 1, mEnd - 1)
+    blocks.push(...alignModifiedChunks(originalChunk, modifiedChunk))
+
+    lastOriginalEndLineNumberExclusive = oEnd
+  })
+
+  if (currentBlocks.length > lastOriginalEndLineNumberExclusive - 1) {
+    pushUnchangedBlock(
+      blocks,
+      currentBlocks.slice(lastOriginalEndLineNumberExclusive - 1),
+    )
+  }
+
+  return mergeAdjacentUnchangedBlocks(blocks)
+}
+
+export function createLineDiffBlocks(
   currentMarkdown: string,
   incomingMarkdown: string,
 ): DiffBlock[] {
@@ -49,14 +124,13 @@ export function createDiffBlocks(
     advOptions,
   ).changes
 
-  let lastOriginalEndLineNumberExclusive = 1 // 1-indexed
+  let lastOriginalEndLineNumberExclusive = 1
   advLineChanges.forEach((change: LineRangeMapping) => {
     const oStart = change.originalRange.startLineNumber
     const oEnd = change.originalRange.endLineNumberExclusive
     const mStart = change.modifiedRange.startLineNumber
     const mEnd = change.modifiedRange.endLineNumberExclusive
 
-    // Emit unchanged blocks
     if (oStart > lastOriginalEndLineNumberExclusive) {
       const unchangedLines = currentLines.slice(
         lastOriginalEndLineNumberExclusive - 1,
@@ -70,7 +144,6 @@ export function createDiffBlocks(
       }
     }
 
-    // Emit modified blocks
     const originalLines = currentLines.slice(oStart - 1, oEnd - 1)
     const modifiedLines = incomingLines.slice(mStart - 1, mEnd - 1)
     const originalValue = originalLines.join('\n')
@@ -81,13 +154,14 @@ export function createDiffBlocks(
         originalValue: originalLines.length > 0 ? originalValue : undefined,
         modifiedValue: modifiedLines.length > 0 ? modifiedValue : undefined,
         inlineLines: createInlineDiffLines(originalLines, modifiedLines),
+        presentation: 'inline',
+        blockType: 'paragraph',
       })
     }
 
     lastOriginalEndLineNumberExclusive = oEnd
   })
 
-  // Emit final unchanged blocks (if any)
   if (currentLines.length > lastOriginalEndLineNumberExclusive - 1) {
     const unchangedLines = currentLines.slice(
       lastOriginalEndLineNumberExclusive - 1,
@@ -103,7 +177,615 @@ export function createDiffBlocks(
   return blocks
 }
 
-function createInlineDiffLines(
+function pushUnchangedBlock(
+  blocks: DiffBlock[],
+  units: MarkdownBlockUnit[],
+): void {
+  if (units.length === 0) return
+  blocks.push({
+    type: 'unchanged',
+    value: joinBlockTexts(units),
+  })
+}
+
+function createModifiedDiffBlock(
+  originalBlock?: MarkdownBlockUnit,
+  modifiedBlock?: MarkdownBlockUnit,
+): Extract<DiffBlock, { type: 'modified' }> | null {
+  if (!originalBlock && !modifiedBlock) return null
+
+  const blockType =
+    modifiedBlock && shouldRenderAsBlock(modifiedBlock.type)
+      ? modifiedBlock.type
+      : (originalBlock?.type ?? modifiedBlock?.type ?? 'paragraph')
+  const presentation =
+    (originalBlock && shouldRenderAsBlock(originalBlock.type)) ||
+    (modifiedBlock && shouldRenderAsBlock(modifiedBlock.type))
+      ? 'block'
+      : 'inline'
+  const originalValue = originalBlock?.text
+  const modifiedValue = modifiedBlock?.text
+
+  return {
+    type: 'modified',
+    originalValue,
+    modifiedValue,
+    inlineLines:
+      presentation === 'inline'
+        ? createInlineDiffLines(
+            originalValue?.split('\n') ?? [],
+            modifiedValue?.split('\n') ?? [],
+          )
+        : [],
+    presentation,
+    blockType,
+  }
+}
+
+function alignModifiedChunks(
+  originalChunk: MarkdownBlockUnit[],
+  modifiedChunk: MarkdownBlockUnit[],
+): DiffBlock[] {
+  const originalLength = originalChunk.length
+  const modifiedLength = modifiedChunk.length
+
+  if (originalLength === 0 && modifiedLength === 0) {
+    return []
+  }
+
+  const dp: number[][] = Array.from({ length: originalLength + 1 }, () =>
+    new Array(modifiedLength + 1).fill(0),
+  )
+
+  for (let i = 1; i <= originalLength; i += 1) {
+    dp[i][0] = i
+  }
+
+  for (let j = 1; j <= modifiedLength; j += 1) {
+    dp[0][j] = j
+  }
+
+  for (let i = 1; i <= originalLength; i += 1) {
+    for (let j = 1; j <= modifiedLength; j += 1) {
+      const substitutionCost = getBlockSubstitutionCost(
+        originalChunk[i - 1],
+        modifiedChunk[j - 1],
+      )
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + substitutionCost,
+      )
+    }
+  }
+
+  const alignedPairs: Array<
+    [MarkdownBlockUnit | undefined, MarkdownBlockUnit | undefined]
+  > = []
+  let i = originalLength
+  let j = modifiedLength
+
+  while (i > 0 || j > 0) {
+    if (
+      i > 0 &&
+      j > 0 &&
+      almostEqual(
+        dp[i][j],
+        dp[i - 1][j - 1] +
+          getBlockSubstitutionCost(originalChunk[i - 1], modifiedChunk[j - 1]),
+      )
+    ) {
+      alignedPairs.push([originalChunk[i - 1], modifiedChunk[j - 1]])
+      i -= 1
+      j -= 1
+      continue
+    }
+
+    if (i > 0 && almostEqual(dp[i][j], dp[i - 1][j] + 1)) {
+      alignedPairs.push([originalChunk[i - 1], undefined])
+      i -= 1
+      continue
+    }
+
+    if (j > 0) {
+      alignedPairs.push([undefined, modifiedChunk[j - 1]])
+      j -= 1
+    }
+  }
+
+  const result: DiffBlock[] = []
+  for (let index = alignedPairs.length - 1; index >= 0; index -= 1) {
+    const [originalBlock, modifiedBlock] = alignedPairs[index]
+    if (
+      originalBlock &&
+      modifiedBlock &&
+      createComparisonKey(originalBlock) === createComparisonKey(modifiedBlock)
+    ) {
+      result.push({
+        type: 'unchanged',
+        value: originalBlock.text,
+      })
+      continue
+    }
+
+    const diffBlock = createModifiedDiffBlock(originalBlock, modifiedBlock)
+    if (diffBlock) {
+      result.push(diffBlock)
+    }
+  }
+
+  return result
+}
+
+function getBlockSubstitutionCost(
+  originalBlock: MarkdownBlockUnit,
+  modifiedBlock: MarkdownBlockUnit,
+): number {
+  if (
+    createComparisonKey(originalBlock) === createComparisonKey(modifiedBlock)
+  ) {
+    return 0
+  }
+
+  const sameType = originalBlock.type === modifiedBlock.type
+  const similarity = getBlockTextSimilarity(
+    originalBlock.normalizedText,
+    modifiedBlock.normalizedText,
+  )
+
+  if (sameType) {
+    return Math.max(0.2, 0.9 - similarity * 0.75)
+  }
+
+  if (
+    shouldRenderAsBlock(originalBlock.type) !==
+    shouldRenderAsBlock(modifiedBlock.type)
+  ) {
+    return 1.6
+  }
+
+  return Math.max(1.05, 1.35 - similarity * 0.2)
+}
+
+function getBlockTextSimilarity(
+  originalText: string,
+  modifiedText: string,
+): number {
+  if (originalText === modifiedText) return 1
+  if (originalText.length === 0 || modifiedText.length === 0) return 0
+
+  const originalTokens = new Set(tokenizeNormalizedText(originalText))
+  const modifiedTokens = new Set(tokenizeNormalizedText(modifiedText))
+  if (originalTokens.size === 0 || modifiedTokens.size === 0) {
+    return 0
+  }
+
+  let overlap = 0
+  originalTokens.forEach((token) => {
+    if (modifiedTokens.has(token)) {
+      overlap += 1
+    }
+  })
+
+  return (2 * overlap) / (originalTokens.size + modifiedTokens.size)
+}
+
+function tokenizeNormalizedText(text: string): string[] {
+  return text.split(/\s+/).filter((token) => token.length > 0)
+}
+
+function almostEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.0001
+}
+
+function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
+  const merged: DiffBlock[] = []
+  blocks.forEach((block) => {
+    const last = merged[merged.length - 1]
+    if (block.type === 'unchanged' && last?.type === 'unchanged') {
+      last.value = `${last.value}\n${block.value}`
+      return
+    }
+    merged.push(block)
+  })
+  return merged
+}
+
+function createComparisonKey(block: MarkdownBlockUnit): string {
+  return `${block.type}\u0000${block.normalizedText}`
+}
+
+function joinBlockTexts(blocks: MarkdownBlockUnit[]): string {
+  return blocks.map((block) => block.text).join('\n')
+}
+
+function shouldRenderAsBlock(blockType: MarkdownBlockType): boolean {
+  return (
+    blockType === 'section' ||
+    blockType === 'table' ||
+    blockType === 'codeFence' ||
+    blockType === 'mathBlock' ||
+    blockType === 'blockquote' ||
+    blockType === 'list'
+  )
+}
+
+function segmentMarkdownBlocks(markdown: string): MarkdownBlockUnit[] {
+  const lines = markdown.split('\n')
+  const blocks: MarkdownBlockUnit[] = []
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+
+    if (line === undefined) break
+
+    if (line.trim().length === 0) {
+      blocks.push(createBlockUnit('blank', line))
+      index += 1
+      continue
+    }
+
+    const fencedCode = readFencedCodeBlock(lines, index)
+    if (fencedCode) {
+      blocks.push(createBlockUnit('codeFence', fencedCode.lines.join('\n')))
+      index = fencedCode.nextIndex
+      continue
+    }
+
+    const mathBlock = readMathBlock(lines, index)
+    if (mathBlock) {
+      blocks.push(createBlockUnit('mathBlock', mathBlock.lines.join('\n')))
+      index = mathBlock.nextIndex
+      continue
+    }
+
+    const table = readTable(lines, index)
+    if (table) {
+      blocks.push(createBlockUnit('table', table.lines.join('\n')))
+      index = table.nextIndex
+      continue
+    }
+
+    if (isHeadingLine(line)) {
+      blocks.push(createBlockUnit('heading', line))
+      index += 1
+      continue
+    }
+
+    if (isThematicBreakLine(line)) {
+      blocks.push(createBlockUnit('thematicBreak', line))
+      index += 1
+      continue
+    }
+
+    const blockquote = readBlockquote(lines, index)
+    if (blockquote) {
+      blocks.push(createBlockUnit('blockquote', blockquote.lines.join('\n')))
+      index = blockquote.nextIndex
+      continue
+    }
+
+    const list = readList(lines, index)
+    if (list) {
+      blocks.push(createBlockUnit('list', list.lines.join('\n')))
+      index = list.nextIndex
+      continue
+    }
+
+    const paragraph = readParagraph(lines, index)
+    blocks.push(createBlockUnit('paragraph', paragraph.lines.join('\n')))
+    index = paragraph.nextIndex
+  }
+
+  return combineHeadingSections(blocks)
+}
+
+function combineHeadingSections(
+  blocks: MarkdownBlockUnit[],
+): MarkdownBlockUnit[] {
+  const combined: MarkdownBlockUnit[] = []
+  let index = 0
+
+  while (index < blocks.length) {
+    const block = blocks[index]
+    if (!block) break
+
+    if (block.type !== 'heading') {
+      combined.push(block)
+      index += 1
+      continue
+    }
+
+    const sectionBlocks: MarkdownBlockUnit[] = [block]
+    let cursor = index + 1
+
+    while (cursor < blocks.length) {
+      const candidate = blocks[cursor]
+      if (!candidate) break
+      if (candidate.type === 'heading' || candidate.type === 'thematicBreak') {
+        break
+      }
+      sectionBlocks.push(candidate)
+      cursor += 1
+    }
+
+    const hasContentAfterHeading = sectionBlocks.some(
+      (candidate, candidateIndex) =>
+        candidateIndex > 0 && candidate.type !== 'blank',
+    )
+
+    if (!hasContentAfterHeading) {
+      combined.push(block)
+    } else {
+      const text = joinBlockTexts(sectionBlocks)
+      combined.push(createBlockUnit('section', text))
+    }
+
+    index = cursor
+  }
+
+  return combined
+}
+
+function createBlockUnit(
+  type: MarkdownBlockType,
+  text: string,
+): MarkdownBlockUnit {
+  return {
+    type,
+    text,
+    normalizedText: normalizeBlockText(type, text),
+    presentation: shouldRenderAsBlock(type) ? 'block' : 'inline',
+  }
+}
+
+function normalizeBlockText(type: MarkdownBlockType, text: string): string {
+  if (type === 'blank') {
+    return text
+  }
+
+  if (type === 'paragraph' || type === 'heading' || type === 'section') {
+    return text.replace(/\s+/g, ' ').trim()
+  }
+
+  return text.trim()
+}
+
+function readFencedCodeBlock(
+  lines: string[],
+  startIndex: number,
+): { lines: string[]; nextIndex: number } | null {
+  const firstLine = lines[startIndex]
+  if (!firstLine) return null
+  const match = firstLine.match(/^\s{0,3}(`{3,}|~{3,})/)
+  if (!match) return null
+
+  const fence = match[1]
+  const fenceChar = fence[0]
+  const result = [firstLine]
+  let index = startIndex + 1
+
+  while (index < lines.length) {
+    const line = lines[index]
+    if (line === undefined) break
+    result.push(line)
+    if (
+      new RegExp(
+        `^\\s{0,3}${escapeRegExp(fenceChar)}{${fence.length},}\\s*$`,
+      ).test(line)
+    ) {
+      return {
+        lines: result,
+        nextIndex: index + 1,
+      }
+    }
+    index += 1
+  }
+
+  return {
+    lines: result,
+    nextIndex: lines.length,
+  }
+}
+
+function readMathBlock(
+  lines: string[],
+  startIndex: number,
+): { lines: string[]; nextIndex: number } | null {
+  const firstLine = lines[startIndex]
+  if (!firstLine || !/^\s*\$\$\s*$/.test(firstLine)) return null
+
+  const result = [firstLine]
+  let index = startIndex + 1
+  while (index < lines.length) {
+    const line = lines[index]
+    if (line === undefined) break
+    result.push(line)
+    if (/^\s*\$\$\s*$/.test(line)) {
+      return {
+        lines: result,
+        nextIndex: index + 1,
+      }
+    }
+    index += 1
+  }
+
+  return {
+    lines: result,
+    nextIndex: lines.length,
+  }
+}
+
+function readTable(
+  lines: string[],
+  startIndex: number,
+): { lines: string[]; nextIndex: number } | null {
+  const header = lines[startIndex]
+  const separator = lines[startIndex + 1]
+  if (!header || !separator) return null
+  if (!looksLikeTableRow(header) || !looksLikeTableSeparator(separator)) {
+    return null
+  }
+
+  const result = [header, separator]
+  let index = startIndex + 2
+  while (index < lines.length) {
+    const line = lines[index]
+    if (!line || line.trim().length === 0 || !looksLikeTableRow(line)) {
+      break
+    }
+    result.push(line)
+    index += 1
+  }
+
+  return {
+    lines: result,
+    nextIndex: index,
+  }
+}
+
+function readBlockquote(
+  lines: string[],
+  startIndex: number,
+): { lines: string[]; nextIndex: number } | null {
+  if (!isBlockquoteLine(lines[startIndex])) return null
+
+  const result: string[] = []
+  let index = startIndex
+  while (index < lines.length) {
+    const line = lines[index]
+    if (!line || line.trim().length === 0 || !isBlockquoteLine(line)) {
+      break
+    }
+    result.push(line)
+    index += 1
+  }
+
+  return {
+    lines: result,
+    nextIndex: index,
+  }
+}
+
+function readList(
+  lines: string[],
+  startIndex: number,
+): { lines: string[]; nextIndex: number } | null {
+  if (!isListItemLine(lines[startIndex])) return null
+
+  const result: string[] = []
+  let index = startIndex
+  while (index < lines.length) {
+    const line = lines[index]
+    if (!line || line.trim().length === 0) {
+      break
+    }
+    if (
+      result.length > 0 &&
+      !isListItemLine(line) &&
+      !isIndentedContinuationLine(line)
+    ) {
+      break
+    }
+    result.push(line)
+    index += 1
+  }
+
+  return {
+    lines: result,
+    nextIndex: index,
+  }
+}
+
+function readParagraph(
+  lines: string[],
+  startIndex: number,
+): { lines: string[]; nextIndex: number } {
+  const result: string[] = []
+  let index = startIndex
+  while (index < lines.length) {
+    const line = lines[index]
+    if (
+      !line ||
+      line.trim().length === 0 ||
+      isStandaloneBlockStart(lines, index)
+    ) {
+      break
+    }
+    result.push(line)
+    index += 1
+  }
+
+  return {
+    lines: result,
+    nextIndex: index,
+  }
+}
+
+function isStandaloneBlockStart(lines: string[], index: number): boolean {
+  const line = lines[index]
+  if (!line) return false
+
+  return (
+    !!readFencedCodeBlock(lines, index) ||
+    !!readMathBlock(lines, index) ||
+    !!readTable(lines, index) ||
+    isHeadingLine(line) ||
+    isThematicBreakLine(line) ||
+    isBlockquoteLine(line) ||
+    isListItemLine(line)
+  )
+}
+
+function isHeadingLine(line?: string): boolean {
+  if (!line) return false
+  return /^\s{0,3}#{1,6}\s+/.test(line)
+}
+
+function isThematicBreakLine(line?: string): boolean {
+  if (!line) return false
+  return /^\s{0,3}(?:\*\s*){3,}$|^\s{0,3}(?:-\s*){3,}$|^\s{0,3}(?:_\s*){3,}$/.test(
+    line,
+  )
+}
+
+function isBlockquoteLine(line?: string): boolean {
+  if (!line) return false
+  return /^\s{0,3}>/.test(line)
+}
+
+function isListItemLine(line?: string): boolean {
+  if (!line) return false
+  return /^\s{0,3}(?:[-+*]|\d+[.)])\s+/.test(line)
+}
+
+function isIndentedContinuationLine(line?: string): boolean {
+  if (!line) return false
+  return /^\s{2,}\S/.test(line)
+}
+
+function looksLikeTableRow(line?: string): boolean {
+  if (!line) return false
+  const trimmed = line.trim()
+  if (!trimmed.includes('|')) return false
+  return trimmed.split('|').length >= 3
+}
+
+function looksLikeTableSeparator(line?: string): boolean {
+  if (!line) return false
+  const normalized = line.trim()
+  if (!normalized.includes('-')) return false
+  const cells = normalized.replace(/^\|/, '').replace(/\|$/, '').split('|')
+  if (cells.length < 2) return false
+  return cells.every((cell) => /^\s*:?-{3,}:?\s*$/.test(cell))
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function createInlineDiffLines(
   originalLines: string[],
   modifiedLines: string[],
 ): InlineDiffLine[] {
@@ -223,6 +905,94 @@ function createInlineDiffTokens(
     return [{ type: 'same', text: originalLine }]
   }
 
+  const sentencePriorityTokens = createSentencePriorityDiffTokens(
+    originalLine,
+    modifiedLine,
+  )
+  if (sentencePriorityTokens) {
+    return sentencePriorityTokens
+  }
+
+  return createWordLevelInlineDiffTokens(originalLine, modifiedLine)
+}
+
+function createSentencePriorityDiffTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] | null {
+  const originalSegments = splitLineIntoSentenceSegments(originalLine)
+  const modifiedSegments = splitLineIntoSentenceSegments(modifiedLine)
+
+  if (originalSegments.length <= 1 && modifiedSegments.length <= 1) {
+    return null
+  }
+
+  const operations = diffSequence(
+    originalSegments,
+    modifiedSegments,
+    (left, right) => left === right,
+  )
+  const tokens: InlineDiffToken[] = []
+  let originalBuffer: string[] = []
+  let modifiedBuffer: string[] = []
+
+  const flushChangedBuffer = () => {
+    if (originalBuffer.length === 0 && modifiedBuffer.length === 0) {
+      return
+    }
+
+    if (originalBuffer.length === 1 && modifiedBuffer.length === 1) {
+      tokens.push(
+        ...createWordLevelInlineDiffTokens(
+          originalBuffer[0],
+          modifiedBuffer[0],
+        ),
+      )
+    } else {
+      const originalText = originalBuffer.join('')
+      const modifiedText = modifiedBuffer.join('')
+
+      if (originalText.length > 0) {
+        tokens.push({ type: 'del', text: originalText })
+      }
+
+      if (modifiedText.length > 0) {
+        tokens.push({ type: 'add', text: modifiedText })
+      }
+    }
+
+    originalBuffer = []
+    modifiedBuffer = []
+  }
+
+  operations.forEach((operation) => {
+    if (operation.type === 'same') {
+      flushChangedBuffer()
+      tokens.push({ type: 'same', text: operation.value })
+      return
+    }
+
+    if (operation.type === 'del') {
+      originalBuffer.push(operation.value)
+      return
+    }
+
+    modifiedBuffer.push(operation.value)
+  })
+
+  flushChangedBuffer()
+
+  return mergeAdjacentInlineTokens(tokens)
+}
+
+function createWordLevelInlineDiffTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] {
+  if (originalLine === modifiedLine) {
+    return [{ type: 'same', text: originalLine }]
+  }
+
   const originalTokens = splitLineTokens(originalLine)
   const modifiedTokens = splitLineTokens(modifiedLine)
 
@@ -269,9 +1039,253 @@ function createInlineDiffTokens(
     }
   }
 
+  if (shouldPreferWholeLineReplacement(originalLine, modifiedLine, merged)) {
+    return buildWholeLineReplacementTokens(originalLine, modifiedLine)
+  }
+
   return merged
 }
 
 function splitLineTokens(line: string): string[] {
   return line.split(/(\s+)/).filter((token) => token.length > 0)
+}
+
+function diffSequence<T>(
+  originalItems: T[],
+  modifiedItems: T[],
+  isEqual: (left: T, right: T) => boolean,
+): Array<{ type: 'same' | 'add' | 'del'; value: T }> {
+  const dp: number[][] = Array.from({ length: originalItems.length + 1 }, () =>
+    new Array(modifiedItems.length + 1).fill(0),
+  )
+
+  for (let i = 1; i <= originalItems.length; i += 1) {
+    for (let j = 1; j <= modifiedItems.length; j += 1) {
+      if (isEqual(originalItems[i - 1], modifiedItems[j - 1])) {
+        dp[i][j] = dp[i - 1][j - 1] + 1
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+      }
+    }
+  }
+
+  const reversed: Array<{ type: 'same' | 'add' | 'del'; value: T }> = []
+  let i = originalItems.length
+  let j = modifiedItems.length
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && isEqual(originalItems[i - 1], modifiedItems[j - 1])) {
+      reversed.push({ type: 'same', value: originalItems[i - 1] })
+      i -= 1
+      j -= 1
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      reversed.push({ type: 'add', value: modifiedItems[j - 1] })
+      j -= 1
+    } else if (i > 0) {
+      reversed.push({ type: 'del', value: originalItems[i - 1] })
+      i -= 1
+    }
+  }
+
+  return reversed.reverse()
+}
+
+function splitLineIntoSentenceSegments(line: string): string[] {
+  if (line.length === 0) {
+    return []
+  }
+
+  const segments: string[] = []
+  let current = ''
+
+  const pushCurrent = () => {
+    if (current.length === 0) return
+    segments.push(current)
+    current = ''
+  }
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    current += char
+
+    if (!isSentenceBoundaryChar(char)) {
+      continue
+    }
+
+    let cursor = index + 1
+    while (cursor < line.length && /\s/u.test(line[cursor])) {
+      current += line[cursor]
+      cursor += 1
+    }
+
+    pushCurrent()
+    index = cursor - 1
+  }
+
+  pushCurrent()
+
+  return segments.filter((segment) => segment.length > 0)
+}
+
+function isSentenceBoundaryChar(char: string): boolean {
+  return /[.!?;:。！？；：]/u.test(char)
+}
+
+function mergeAdjacentInlineTokens(
+  tokens: InlineDiffToken[],
+): InlineDiffToken[] {
+  const merged: InlineDiffToken[] = []
+
+  tokens.forEach((token) => {
+    if (token.text.length === 0) {
+      return
+    }
+
+    const last = merged[merged.length - 1]
+    if (last && last.type === token.type) {
+      last.text += token.text
+      return
+    }
+
+    merged.push({ ...token })
+  })
+
+  return merged
+}
+
+function shouldPreferWholeLineReplacement(
+  originalLine: string,
+  modifiedLine: string,
+  tokens: InlineDiffToken[],
+): boolean {
+  const normalizedOriginal = normalizeInlineComparisonText(originalLine)
+  const normalizedModified = normalizeInlineComparisonText(modifiedLine)
+
+  if (normalizedOriginal.length === 0 || normalizedModified.length === 0) {
+    return false
+  }
+
+  const changedSegments = tokens.filter(
+    (token) => token.type !== 'same' && token.text.trim().length > 0,
+  )
+  if (changedSegments.length === 0) {
+    return false
+  }
+
+  const similarity = getInlineTokenSimilarity(originalLine, modifiedLine)
+  if (similarity < 0.34) {
+    return true
+  }
+
+  const changedChars = changedSegments.reduce(
+    (total, token) => total + token.text.replace(/\s+/g, '').length,
+    0,
+  )
+  const totalChars = Math.max(
+    normalizedOriginal.replace(/\s+/g, '').length,
+    normalizedModified.replace(/\s+/g, '').length,
+  )
+  const changeRatio = totalChars === 0 ? 0 : changedChars / totalChars
+  const tinySameSegments = tokens.filter(
+    (token) => token.type === 'same' && token.text.trim().length > 0,
+  )
+  const hasTinyAnchors = tinySameSegments.some(
+    (token) => token.text.replace(/\s+/g, '').length <= 3,
+  )
+
+  if (isCrossScriptRewrite(originalLine, modifiedLine)) {
+    const strongSameAnchors = tinySameSegments.filter((token) =>
+      isStrongInlineAnchor(token.text),
+    )
+    const sameContentLength = tinySameSegments.reduce(
+      (total, token) => total + token.text.replace(/\s+/g, '').length,
+      0,
+    )
+
+    if (strongSameAnchors.length <= 1 && sameContentLength <= 12) {
+      return true
+    }
+  }
+
+  return changedSegments.length >= 4 && changeRatio > 0.45 && hasTinyAnchors
+}
+
+function buildWholeLineReplacementTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] {
+  const tokens: InlineDiffToken[] = []
+
+  if (originalLine.length > 0) {
+    tokens.push({ type: 'del', text: originalLine })
+  }
+
+  if (modifiedLine.length > 0) {
+    tokens.push({ type: 'add', text: modifiedLine })
+  }
+
+  return tokens
+}
+
+function getInlineTokenSimilarity(
+  originalLine: string,
+  modifiedLine: string,
+): number {
+  const originalTokens = new Set(tokenizeInlineComparableText(originalLine))
+  const modifiedTokens = new Set(tokenizeInlineComparableText(modifiedLine))
+
+  if (originalTokens.size === 0 || modifiedTokens.size === 0) {
+    return 0
+  }
+
+  let overlap = 0
+  originalTokens.forEach((token) => {
+    if (modifiedTokens.has(token)) {
+      overlap += 1
+    }
+  })
+
+  return (2 * overlap) / (originalTokens.size + modifiedTokens.size)
+}
+
+function tokenizeInlineComparableText(text: string): string[] {
+  return normalizeInlineComparisonText(text)
+    .split(/\s+|(?<=[^\p{L}\p{N}\s])|(?=[^\p{L}\p{N}\s])/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+}
+
+function normalizeInlineComparisonText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function isCrossScriptRewrite(
+  originalLine: string,
+  modifiedLine: string,
+): boolean {
+  const originalLatinCount = countMatches(originalLine, /\p{Script=Latin}/gu)
+  const modifiedLatinCount = countMatches(modifiedLine, /\p{Script=Latin}/gu)
+  const originalCjkCount = countMatches(originalLine, /\p{Script=Han}/gu)
+  const modifiedCjkCount = countMatches(modifiedLine, /\p{Script=Han}/gu)
+
+  return (
+    (originalLatinCount >= 6 && modifiedCjkCount >= 2) ||
+    (modifiedLatinCount >= 6 && originalCjkCount >= 2)
+  )
+}
+
+function isStrongInlineAnchor(text: string): boolean {
+  const compact = text.replace(/\s+/g, '')
+  const latinCount = countMatches(compact, /\p{Script=Latin}/gu)
+  const cjkCount = countMatches(compact, /\p{Script=Han}/gu)
+
+  if (cjkCount >= 2) {
+    return true
+  }
+
+  return latinCount >= 6
+}
+
+function countMatches(text: string, pattern: RegExp): number {
+  return Array.from(text.matchAll(pattern)).length
 }

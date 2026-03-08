@@ -715,6 +715,9 @@ export const zh: TranslationKeys = {
         '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
+      persistSelectionHighlight: '保留选区块高亮',
+      persistSelectionHighlightDesc:
+        '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
     },
   },
 
@@ -728,6 +731,7 @@ export const zh: TranslationKeys = {
     actions: {
       addToChat: '添加到对话',
       customRewrite: '自定义改写',
+      customAsk: '自定义提问',
       rewrite: 'AI 改写',
       explain: '深入解释',
       suggest: '提供建议',
@@ -770,9 +774,9 @@ export const zh: TranslationKeys = {
       copyText: '复制文本',
       textCopied: '文本已复制',
       apply: '应用',
-      applyQuick: '应用（快速）',
-      applyPrecise: '应用（精准）',
       applying: '应用中...',
+      locatingTarget: '正在定位并加载替换内容...',
+      emptyPlanPreview: '此计划会删除内容',
       stopApplying: '终止应用',
     },
     customContinuePromptLabel: '续写指令',

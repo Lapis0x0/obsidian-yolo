@@ -35,11 +35,8 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
   const chatLabel = t('sidebar.tabs.chat', 'Chat')
   const agentLabel = t('chatMode.agent', 'Agent')
   const composerLabel = t('sidebar.tabs.composer', 'Composer')
-  const chatModeDesc = t('chatMode.chatDesc', 'Normal conversation mode')
-  const agentModeDesc = t(
-    'chatMode.agentDesc',
-    'Enable tool calling capabilities',
-  )
+  const chatModeDesc = t('chatMode.chatDesc', 'Ask, refine, create')
+  const agentModeDesc = t('chatMode.agentDesc', 'Tools for complex tasks')
 
   const modeOptions = [
     {

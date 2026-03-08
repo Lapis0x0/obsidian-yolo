@@ -36,9 +36,14 @@ import {
   ChatMessage,
   ChatUserMessage,
 } from '../../../types/chat'
-import { Mentionable, SerializedMentionable } from '../../../types/mentionable'
+import {
+  Mentionable,
+  MentionableBlock,
+  SerializedMentionable,
+} from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
-import { generateEditContent } from '../../../utils/chat/editMode'
+import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
+import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
   getMentionableKey,
@@ -47,7 +52,6 @@ import {
 } from '../../../utils/chat/mentionable'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { PromptGenerator } from '../../../utils/chat/promptGenerator'
-import { tryApplyStructuredEdits } from '../../../utils/chat/structured-edits'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
@@ -64,6 +68,61 @@ import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
 const QUICK_ASK_MAX_ITERATIONS = 1
+const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
+
+function getSelectionMentionable(
+  mentionables: Mentionable[],
+): MentionableBlock | null {
+  return (
+    mentionables.find(
+      (mentionable): mentionable is MentionableBlock =>
+        mentionable.type === 'block' && mentionable.source === 'selection',
+    ) ?? null
+  )
+}
+
+function buildSelectionContextSection({
+  fileTitle,
+  contextText,
+  selectionMentionable,
+}: {
+  fileTitle: string
+  contextText: string
+  selectionMentionable: MentionableBlock
+}): string {
+  const trimmedTitle = fileTitle.trim()
+  const selectedText = selectionMentionable.content.trim()
+  const context = contextText.trim()
+
+  if (!selectedText || !context) {
+    return ''
+  }
+
+  const [before, ...afterParts] = contextText.split(QUICK_ASK_CURSOR_MARKER)
+  const after = afterParts.join(QUICK_ASK_CURSOR_MARKER)
+  const wrappedSelection = `<selected_text_start>\n${selectionMentionable.content}\n</selected_text_end>`
+
+  const selectionContext =
+    afterParts.length > 0 && after.startsWith(selectionMentionable.content)
+      ? `${before}${wrappedSelection}${after.slice(selectionMentionable.content.length)}`
+      : `${contextText}\n\n${wrappedSelection}`
+
+  const titleSection = trimmedTitle ? `Document title: ${trimmedTitle}\n` : ''
+
+  return `\n\nYou are answering a request about a user-selected passage.
+
+Scope rules:
+1. The text between <selected_text_start> and </selected_text_end> is the only target of the user's request.
+2. Do not translate, rewrite, summarize, or explain text outside the selected text unless the user explicitly asks for broader context.
+3. Use the surrounding text only to understand the selected text.
+4. Your output should correspond only to the selected text.
+5. If the user's request is ambiguous, assume it applies only to the selected text.
+
+${titleSection}<selection_context path="${selectionMentionable.file.path}">
+${selectionContext}
+</selection_context>
+`
+}
 
 function getSelectionEndPosition(
   from: { line: number; ch: number },
@@ -314,6 +373,13 @@ export function QuickAskPanel({
       generationState?: 'streaming' | 'completed' | 'aborted',
     ) => {
       const parsed = parseTagContents(rawContent ?? '')
+      const hasAnswerContent = parsed.some((block) => {
+        if (block.type === 'think') {
+          return false
+        }
+
+        return block.content.trim().length > 0
+      })
       const rendered: React.JSX.Element[] = []
 
       parsed.forEach((block, index) => {
@@ -323,7 +389,7 @@ export function QuickAskPanel({
             <AssistantMessageReasoning
               key={index}
               reasoning={block.content}
-              content={rawContent ?? ''}
+              hasAnswerContent={hasAnswerContent}
               generationState={generationState}
               MarkdownComponent={({ content }) => (
                 <SimpleMarkdownContent content={content} component={plugin} />
@@ -491,22 +557,50 @@ export function QuickAskPanel({
     const hasTitle = trimmedTitle.length > 0
     const hasContext = contextText.trim().length > 0
     const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
-    const contextBlock = hasContext
-      ? `Here is the text around the cursor (context). The marker <<CURSOR>> indicates the cursor position:\n"""\n${contextText}\n"""\n`
-      : ''
+    const effectiveMentionables = mentionables.length
+      ? mentionables
+      : (initialMentionables ?? [])
+    const selectionMentionable = getSelectionMentionable(effectiveMentionables)
     const contextSection =
-      hasTitle || hasContext
-        ? `\n\nThe user is asking a question in the context of their current document.\n${titleSection}${contextBlock}\nAnswer the user's question based on this context when relevant.`
-        : ''
+      selectionMentionable && hasContext
+        ? buildSelectionContextSection({
+            fileTitle,
+            contextText,
+            selectionMentionable,
+          })
+        : hasTitle || hasContext
+          ? `\n\nThe user is asking a question in the context of their current document.\n${titleSection}${
+              hasContext
+                ? `Here is the text around the cursor (context). The marker ${QUICK_ASK_CURSOR_MARKER} indicates the cursor position:\n"""\n${contextText}\n"""\n`
+                : ''
+            }\nAnswer the user's question based on this context when relevant.`
+          : ''
 
     const combinedSystemPrompt =
       `${globalSystemPrompt}\n\n${assistantPrompt}${contextSection}`.trim()
 
-    return new PromptGenerator(getRAGEngine, app, {
-      ...settings,
-      systemPrompt: combinedSystemPrompt,
-    })
-  }, [app, contextText, getRAGEngine, selectedAssistant, settings])
+    return new PromptGenerator(
+      getRAGEngine,
+      app,
+      {
+        ...settings,
+        currentAssistantId: selectedAssistant?.id,
+        systemPrompt: combinedSystemPrompt,
+      },
+      {
+        includeSkills: false,
+      },
+    )
+  }, [
+    app,
+    contextText,
+    fileTitle,
+    getRAGEngine,
+    initialMentionables,
+    mentionables,
+    selectedAssistant,
+    settings,
+  ])
 
   // Track user scroll position to determine if we should auto-scroll
   useEffect(() => {
@@ -671,6 +765,138 @@ export function QuickAskPanel({
 
     return getChatModelClient({ settings, modelId: preferredModelId })
   }, [settings])
+
+  const readEditBaseContent = useCallback(
+    async (targetFilePath?: string): Promise<string> => {
+      const activeFilePath = app.workspace.getActiveFile()?.path
+      if (
+        targetFilePath &&
+        (targetFilePath === sourceFilePath || targetFilePath === activeFilePath)
+      ) {
+        return _editor.getValue()
+      }
+      const fallbackFile = targetFilePath
+        ? app.vault.getFileByPath(targetFilePath)
+        : null
+      if (!fallbackFile) {
+        return _editor.getValue()
+      }
+      return readTFileContent(fallbackFile, app.vault)
+    },
+    [_editor, app, sourceFilePath],
+  )
+
+  const buildSelectionScopedContent = useCallback(
+    ({
+      currentContent,
+      selectedContext,
+      selectionFrom,
+    }: {
+      currentContent: string
+      selectedContext: string
+      selectionFrom?: { line: number; ch: number }
+    }): {
+      editSourceText: string
+      finalContent: string
+    } => {
+      if (!selectionFrom || selectedContext.trim().length === 0) {
+        return {
+          editSourceText: currentContent,
+          finalContent: currentContent,
+        }
+      }
+
+      const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
+      const tail = currentContent.slice(head.length + selectedContext.length)
+
+      return {
+        editSourceText: selectedContext,
+        finalContent: head + selectedContext + tail,
+      }
+    },
+    [_editor],
+  )
+
+  const generatePlannedEdit = useCallback(
+    async ({
+      instruction,
+      targetFile,
+      scopedToSelection,
+    }: {
+      instruction: string
+      targetFile: ReturnType<typeof resolveEditTargetFile>
+      scopedToSelection: boolean
+    }) => {
+      if (!targetFile) {
+        return null
+      }
+
+      const currentContent = await readEditBaseContent(targetFile.path)
+      const selectedContext = editContextText ?? ''
+      const selectionFrom = scopedToSelection ? editSelectionFrom : undefined
+      const scopedContent = buildSelectionScopedContent({
+        currentContent,
+        selectedContext,
+        selectionFrom,
+      })
+
+      const plan = await generateEditPlan({
+        instruction,
+        currentFile: targetFile,
+        currentFileContent: scopedContent.editSourceText,
+        scopedToSelection,
+        providerClient,
+        model,
+      })
+
+      if (!plan) {
+        return {
+          currentContent,
+          scopedSourceText: scopedContent.editSourceText,
+          scopedToSelection,
+          selectionFrom,
+          selectedContext,
+          materialized: null,
+        }
+      }
+
+      const materialized = materializeTextEditPlan({
+        content: scopedContent.editSourceText,
+        plan,
+      })
+
+      const finalContent = selectionFrom
+        ? (() => {
+            const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
+            const tail = currentContent.slice(
+              head.length + scopedContent.editSourceText.length,
+            )
+            return head + materialized.newContent + tail
+          })()
+        : materialized.newContent
+
+      return {
+        currentContent,
+        scopedSourceText: scopedContent.editSourceText,
+        scopedToSelection,
+        selectionFrom,
+        selectedContext,
+        materialized: {
+          ...materialized,
+          finalContent,
+        },
+      }
+    },
+    [
+      _editor,
+      buildSelectionScopedContent,
+      editContextText,
+      editSelectionFrom,
+      model,
+      providerClient,
+      readEditBaseContent,
+    ],
+  )
 
   useEffect(() => {
     if (hasDockedRef.current) return
@@ -879,7 +1105,7 @@ export function QuickAskPanel({
     }
   }, [initialInput])
 
-  // Submit edit mode - generate SEARCH/REPLACE and open ApplyView
+  // Submit edit mode - generate a text edit plan and open ApplyView
   const submitEditMode = useCallback(
     async (instruction: string) => {
       if (isStreaming) return
@@ -908,79 +1134,44 @@ export function QuickAskPanel({
 
       let closedForReview = false
       try {
-        const currentContent = await readTFileContent(targetFile, app.vault)
-        const selectedContext = editContextText ?? ''
         const scopedToSelection =
           mode === 'edit' &&
-          selectedContext.trim().length > 0 &&
+          (editContextText ?? '').trim().length > 0 &&
           !!editSelectionFrom
 
-        const editSourceText = scopedToSelection
-          ? selectedContext
-          : currentContent
-
-        // Generate SEARCH/REPLACE blocks
-        const response = await generateEditContent({
+        const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
-          currentFile: targetFile,
-          currentFileContent: editSourceText,
-          providerClient,
-          model,
+          targetFile,
+          scopedToSelection,
         })
 
         setRunStatus('modifying')
 
-        const structuredEditResult = tryApplyStructuredEdits({
-          rawEdits: response,
-          originalContent: editSourceText,
-        })
-        if (!structuredEditResult) {
+        if (!editResult?.materialized) {
           new Notice(
             t('quickAsk.editNoChanges', 'No valid changes returned by model'),
           )
           return
         }
 
-        const { newContent, errors, appliedCount, blocks } =
-          structuredEditResult
-
-        const finalContent =
-          scopedToSelection && editSelectionFrom
-            ? (() => {
-                const head = _editor.getRange(
-                  { line: 0, ch: 0 },
-                  editSelectionFrom,
-                )
-                const tail = currentContent.slice(
-                  head.length + selectedContext.length,
-                )
-                return head + newContent + tail
-              })()
-            : newContent
-
-        const canApplyStructuredLocally =
-          structuredEditResult.isPureStructuredScript && appliedCount > 0
-
-        if (!canApplyStructuredLocally) {
-          console.error(
-            '[QuickAsk Edit] Structured edits did not match file.',
-            {
-              filePath: targetFile.path,
-              blockCount: blocks.length,
-              appliedCount,
-              errors,
-            },
-          )
-          new Notice(
-            t(
-              'quickAsk.editNoChanges',
-              'No valid structured changes returned by model.',
-            ),
-          )
-          return
-        }
+        const { materialized, currentContent, selectionFrom, selectedContext } =
+          editResult
+        const {
+          newContent,
+          errors,
+          appliedCount,
+          operationResults,
+          totalOperations,
+          finalContent,
+        } = materialized
 
         if (appliedCount === 0) {
+          console.error('[QuickAsk Edit] Edit plan did not produce changes.', {
+            filePath: targetFile.path,
+            operationCount: totalOperations,
+            appliedCount,
+            errors,
+          })
           new Notice(
             t(
               'quickAsk.editNoChanges',
@@ -991,7 +1182,7 @@ export function QuickAskPanel({
         }
 
         if (errors.length > 0) {
-          console.warn('Some replacements failed:', errors)
+          console.warn('Some planned edits failed:', errors)
         }
 
         // Close Quick Ask before opening review to avoid layout jump
@@ -1005,25 +1196,14 @@ export function QuickAskPanel({
           originalContent: currentContent,
           newContent: finalContent,
           reviewMode:
-            scopedToSelection && editSelectionFrom
-              ? 'selection-focus'
-              : undefined,
+            scopedToSelection && selectionFrom ? 'selection-focus' : undefined,
           selectionRange:
-            scopedToSelection && editSelectionFrom
+            scopedToSelection && selectionFrom
               ? {
-                  from: editSelectionFrom,
-                  to: getSelectionEndPosition(
-                    editSelectionFrom,
-                    selectedContext,
-                  ),
+                  from: selectionFrom,
+                  to: getSelectionEndPosition(selectionFrom, selectedContext),
                 }
               : undefined,
-          selectionOriginalText:
-            scopedToSelection && editSelectionFrom
-              ? selectedContext
-              : undefined,
-          selectionNewText:
-            scopedToSelection && editSelectionFrom ? newContent : undefined,
         } satisfies ApplyViewState)
       } catch (error) {
         console.error('Edit mode failed:', error)
@@ -1038,15 +1218,12 @@ export function QuickAskPanel({
     [
       app,
       buildEditInstruction,
-      editContextText,
       editSelectionFrom,
-      _editor,
+      generatePlannedEdit,
       isStreaming,
       mode,
-      model,
       onClose,
       plugin,
-      providerClient,
       resolveEditTargetFile,
       t,
     ],
@@ -1080,79 +1257,45 @@ export function QuickAskPanel({
       setInputText('')
 
       try {
-        const currentContent = await readTFileContent(targetFile, app.vault)
-        const selectedContext = editContextText ?? ''
         const scopedToSelection =
           mode === 'edit-direct' &&
-          selectedContext.trim().length > 0 &&
+          (editContextText ?? '').trim().length > 0 &&
           !!editSelectionFrom
 
-        const editSourceText = scopedToSelection
-          ? selectedContext
-          : currentContent
-
-        // Generate edit blocks
-        const response = await generateEditContent({
+        const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
-          currentFile: targetFile,
-          currentFileContent: editSourceText,
-          providerClient,
-          model,
+          targetFile,
+          scopedToSelection,
         })
 
         setRunStatus('modifying')
 
-        const structuredEditResult = tryApplyStructuredEdits({
-          rawEdits: response,
-          originalContent: editSourceText,
-        })
-        if (!structuredEditResult) {
+        if (!editResult?.materialized) {
           new Notice(
             t('quickAsk.editNoChanges', 'No valid changes returned by model'),
           )
           return
         }
 
-        const { newContent, errors, appliedCount, blocks } =
-          structuredEditResult
+        const { materialized } = editResult
+        const {
+          errors,
+          appliedCount,
+          operationResults,
+          totalOperations,
+          finalContent,
+        } = materialized
 
-        const finalContent =
-          scopedToSelection && editSelectionFrom
-            ? (() => {
-                const head = _editor.getRange(
-                  { line: 0, ch: 0 },
-                  editSelectionFrom,
-                )
-                const tail = currentContent.slice(
-                  head.length + selectedContext.length,
-                )
-                return head + newContent + tail
-              })()
-            : newContent
-
-        const canApplyStructuredLocally =
-          structuredEditResult.isPureStructuredScript && appliedCount > 0
-
-        if (!canApplyStructuredLocally) {
+        if (appliedCount === 0) {
           console.error(
-            '[QuickAsk Edit-Direct] Structured edits did not match file.',
+            '[QuickAsk Edit-Direct] Edit plan did not produce changes.',
             {
               filePath: targetFile.path,
-              blockCount: blocks.length,
+              operationCount: totalOperations,
               appliedCount,
               errors,
             },
           )
-          new Notice(
-            t(
-              'quickAsk.editNoChanges',
-              'No valid structured changes returned by model.',
-            ),
-          )
-          return
-        }
-
-        if (appliedCount === 0) {
           new Notice(
             t(
               'quickAsk.editNoChanges',
@@ -1169,7 +1312,7 @@ export function QuickAskPanel({
             `Applied {appliedCount} of {totalEdits} edits. Check console for details.`,
           )
             .replace('{appliedCount}', String(appliedCount))
-            .replace('{totalEdits}', String(blocks.length))
+            .replace('{totalEdits}', String(totalOperations))
           new Notice(partialMessage)
         }
 
@@ -1197,14 +1340,11 @@ export function QuickAskPanel({
     [
       app,
       buildEditInstruction,
-      editContextText,
       editSelectionFrom,
-      _editor,
+      generatePlannedEdit,
       isStreaming,
       mode,
-      model,
       onClose,
-      providerClient,
       resolveEditTargetFile,
       t,
     ],
@@ -1666,7 +1806,7 @@ export function QuickAskPanel({
                   {message.reasoning?.trim() && (
                     <AssistantMessageReasoning
                       reasoning={message.reasoning}
-                      content={message.content}
+                      hasAnswerContent={message.content.trim().length > 0}
                       generationState={message.metadata?.generationState}
                       MarkdownComponent={({ content }) => (
                         <SimpleMarkdownContent

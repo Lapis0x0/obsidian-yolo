@@ -489,7 +489,18 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-code-block-header-filename {
-  padding-left: var(--size-4-2);
+  appearance: none;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0;
+  outline: none;
+  background: transparent !important;
+  color: inherit;
+  margin: 0;
+  padding: 0 var(--size-4-2);
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-medium);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -528,7 +539,185 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-code-block-obsidian-markdown {
+  position: relative;
   padding: var(--size-4-3);
+  overflow: hidden;
+}
+
+.smtcmp-code-block-obsidian-markdown.is-plan-transitioning {
+  display: grid;
+  align-items: start;
+}
+
+.smtcmp-plan-preview-panel {
+  min-width: 0;
+}
+
+.smtcmp-code-block-obsidian-markdown.is-plan-transitioning
+  .smtcmp-plan-preview-panel {
+  grid-area: 1 / 1;
+}
+
+.smtcmp-plan-preview-panel--streaming {
+  position: relative;
+  z-index: 2;
+}
+
+.smtcmp-plan-preview-panel--streaming.is-exiting {
+  pointer-events: none;
+  animation: smtcmp-plan-streaming-preview-exit 220ms
+    cubic-bezier(0.32, 0, 0.2, 1) forwards;
+}
+
+.smtcmp-plan-preview-panel--streaming.is-exiting
+  .smtcmp-plan-streaming-preview-body {
+  transform-origin: top left;
+  animation: smtcmp-plan-streaming-preview-body-collapse 220ms
+    cubic-bezier(0.32, 0, 0.2, 1) forwards;
+}
+
+.smtcmp-plan-preview-panel--resolved {
+  position: relative;
+  z-index: 1;
+}
+
+.smtcmp-plan-preview-panel--resolved.is-entering {
+  border-radius: calc(var(--radius-s) - 2px);
+  animation: smtcmp-plan-preview-content-enter 260ms
+    cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.smtcmp-plan-streaming-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.smtcmp-plan-streaming-preview-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  line-height: 1.35;
+}
+
+.smtcmp-plan-streaming-preview-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--interactive-accent) 72%, white 28%);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+}
+
+.smtcmp-plan-streaming-preview-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-plan-streaming-preview-loader {
+  margin-left: 1px;
+}
+
+.smtcmp-plan-streaming-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+  opacity: 0.7;
+}
+
+.smtcmp-plan-streaming-preview-line {
+  display: block;
+  position: relative;
+  height: 5px;
+  width: 72%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  animation: smtcmp-plan-streaming-preview-pulse 1.8s ease-in-out infinite;
+}
+
+.smtcmp-plan-streaming-preview-line.is-wide {
+  width: 66%;
+}
+
+.smtcmp-plan-streaming-preview-line.is-short {
+  width: 52%;
+}
+
+@keyframes smtcmp-plan-streaming-preview-pulse {
+  0% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.68;
+  }
+
+  100% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes smtcmp-plan-streaming-preview-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+    filter: blur(1px);
+  }
+}
+
+@keyframes smtcmp-plan-streaming-preview-body-collapse {
+  from {
+    opacity: 0.7;
+    transform: scaleY(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scaleY(0.72);
+  }
+}
+
+@keyframes smtcmp-plan-preview-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.992);
+    background: color-mix(
+      in srgb,
+      var(--background-secondary) 88%,
+      transparent
+    );
+    box-shadow: 0 18px 30px -24px color-mix(in srgb, var(
+            --background-modifier-box-shadow
+          )
+          90%, transparent);
+  }
+
+  55% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 .smtcmp-apply-overlay-host {
@@ -654,11 +843,11 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-accept {
-  color: rgb(var(--smtcmp-incoming-color-rgb, 4, 120, 87));
+  color: var(--interactive-accent);
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-reject {
-  color: rgb(var(--smtcmp-current-color-rgb, 185, 28, 28));
+  color: var(--text-muted);
 }
 
 .smtcmp-inline-review-host .cm-cursorLayer,
@@ -936,11 +1125,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     color: rgb(var(--smtcmp-current-color-rgb));
   }
 
-  .smtcmp-apply-action-both {
-    font-size: var(--font-ui-smallest);
-    color: var(--interactive-accent);
-  }
-
   .smtcmp-accept {
     color: white;
     background: rgba(var(--smtcmp-incoming-color-rgb), 0.8);
@@ -955,11 +1139,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     &:hover {
       background: rgba(var(--smtcmp-current-color-rgb), 1);
     }
-  }
-
-  .smtcmp-diff-navigation {
-    display: flex;
-    align-items: center;
   }
 
   /* Toolbar styles */
@@ -1061,17 +1240,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     font-size: 14px;
     line-height: 1;
     font-weight: 600;
-  }
-
-  .smtcmp-apply-btn {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border: none;
-    font-weight: var(--font-medium);
-
-    &:hover {
-      background: var(--interactive-accent-hover);
-    }
   }
 }
 
@@ -1177,7 +1345,12 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   .smtcmp-diff-block--resolved .smtcmp-apply-markdown-preview,
   .smtcmp-inline-review-floating-rail,
   .smtcmp-inline-review-floating-actions,
-  .smtcmp-inline-review-floating-actions .smtcmp-apply-action {
+  .smtcmp-inline-review-floating-actions .smtcmp-apply-action,
+  .smtcmp-plan-preview-panel--streaming.is-exiting,
+  .smtcmp-plan-preview-panel--streaming.is-exiting
+    .smtcmp-plan-streaming-preview-body,
+  .smtcmp-plan-preview-panel--resolved.is-entering,
+  .smtcmp-plan-streaming-preview-line {
     animation: none !important;
     transition: none !important;
   }

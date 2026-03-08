@@ -111,6 +111,7 @@ export const en: TranslationKeys = {
     actions: {
       addToChat: 'Add to chat',
       customRewrite: 'Custom rewrite',
+      customAsk: 'Custom ask',
       rewrite: 'AI rewrite',
       explain: 'Explain in depth',
       suggest: 'Provide suggestions',
@@ -780,6 +781,9 @@ export const en: TranslationKeys = {
         'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
+      persistSelectionHighlight: 'Keep selection block highlight',
+      persistSelectionHighlightDesc:
+        'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',
     },
   },
 
@@ -821,9 +825,9 @@ export const en: TranslationKeys = {
       copyText: 'Copy text',
       textCopied: 'Text copied',
       apply: 'Apply',
-      applyQuick: 'Apply (fast)',
-      applyPrecise: 'Apply (precise)',
       applying: 'Applying...',
+      locatingTarget: 'Locating and loading replacement content...',
+      emptyPlanPreview: 'This plan removes content',
       stopApplying: 'Stop apply',
     },
     customContinuePromptLabel: 'Continuation instruction',
@@ -1039,9 +1043,9 @@ export const en: TranslationKeys = {
 
   chatMode: {
     chat: 'Chat',
-    chatDesc: 'Best for asking, polishing, and rewriting',
+    chatDesc: 'Ask, refine, create',
     agent: 'Agent',
-    agentDesc: 'Enable tools for multi-step execution',
+    agentDesc: 'Tools for complex tasks',
     warning: {
       title: 'Please confirm before enabling Agent mode',
       description:

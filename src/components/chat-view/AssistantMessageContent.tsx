@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { ChatAssistantMessage, ChatMessage } from '../../types/chat'
+import { ChatAssistantMessage } from '../../types/chat'
 import {
   ParsedTagContent,
   parseTagContents,
@@ -12,10 +12,20 @@ import AssistantMessageReasoning from './AssistantMessageReasoning'
 import MarkdownCodeComponent from './MarkdownCodeComponent'
 import MarkdownReferenceBlock from './MarkdownReferenceBlock'
 import { ObsidianMarkdown } from './ObsidianMarkdown'
+import StreamingMarkdown from './StreamingMarkdown'
+
+function hasRenderableAssistantContent(blocks: ParsedTagContent[]): boolean {
+  return blocks.some((block) => {
+    if (block.type === 'think') {
+      return false
+    }
+
+    return block.content.trim().length > 0
+  })
+}
 
 export default function AssistantMessageContent({
   content,
-  contextMessages,
   handleApply,
   isApplying,
   activeApplyRequestKey,
@@ -23,12 +33,10 @@ export default function AssistantMessageContent({
   toolCallRequests,
 }: {
   content: ChatAssistantMessage['content']
-  contextMessages: ChatMessage[]
   handleApply: (
     blockToApply: string,
-    chatMessages: ChatMessage[],
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   isApplying: boolean
   activeApplyRequestKey: string | null
@@ -38,12 +46,12 @@ export default function AssistantMessageContent({
   const onApply = useCallback(
     (
       blockToApply: string,
-      mode: 'quick' | 'precise',
       applyRequestKey: string,
+      targetFilePath?: string,
     ) => {
-      handleApply(blockToApply, contextMessages, mode, applyRequestKey)
+      handleApply(blockToApply, applyRequestKey, targetFilePath)
     },
-    [handleApply, contextMessages],
+    [handleApply],
   )
 
   return (
@@ -69,8 +77,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
 }: {
   onApply: (
     blockToApply: string,
-    mode: 'quick' | 'precise',
     applyRequestKey: string,
+    targetFilePath?: string,
   ) => void
   children: string
   isApplying: boolean
@@ -83,6 +91,10 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   const blocks: ParsedTagContent[] = useMemo(
     () => parseTagContents(children),
     [children],
+  )
+  const hasAnswerContent = useMemo(
+    () => hasRenderableAssistantContent(blocks),
+    [blocks],
   )
 
   const runningToolText = useMemo(() => {
@@ -107,6 +119,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   return (
     <>
       {blocks.map((block) => {
+        const MarkdownRenderer =
+          generationState === 'streaming' ? StreamingMarkdown : ObsidianMarkdown
         const blockKey =
           block.type === 'string' || block.type === 'think'
             ? `${block.type}-${block.content.slice(0, 64)}`
@@ -114,13 +128,17 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
 
         return block.type === 'string' ? (
           <div key={blockKey}>
-            <ObsidianMarkdown content={block.content} scale="sm" />
+            <MarkdownRenderer
+              content={block.content}
+              scale="sm"
+              animateIncrementalText={generationState === 'streaming'}
+            />
           </div>
         ) : block.type === 'think' ? (
           <AssistantMessageReasoning
             key={blockKey}
             reasoning={block.content}
-            content={children}
+            hasAnswerContent={hasAnswerContent}
             generationState={generationState}
           />
         ) : block.startLine && block.endLine && block.filename ? (
@@ -136,8 +154,9 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             onApply={onApply}
             isApplying={isApplying}
             activeApplyRequestKey={activeApplyRequestKey}
-            language={block.language}
             filename={block.filename}
+            language={block.language}
+            generationState={generationState}
           >
             {block.content}
           </MarkdownCodeComponent>

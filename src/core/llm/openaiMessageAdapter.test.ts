@@ -1,6 +1,7 @@
 import { LLMRequestNonStreaming, RequestMessage } from '../../types/llm/request'
 
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
 
 class TestableOpenAIMessageAdapter extends OpenAIMessageAdapter {
   public parseRequestMessageForTest(message: RequestMessage) {
@@ -11,6 +12,12 @@ class TestableOpenAIMessageAdapter extends OpenAIMessageAdapter {
     request: LLMRequestNonStreaming,
   ) {
     return this.buildChatCompletionCreateParams({ request, stream: false })
+  }
+}
+
+class TestableDeepSeekMessageAdapter extends DeepSeekMessageAdapter {
+  public parseRequestMessageForTest(message: RequestMessage) {
+    return this.parseRequestMessage(message)
   }
 }
 
@@ -77,6 +84,50 @@ describe('OpenAIMessageAdapter', () => {
     const record = params as unknown as Record<string, unknown>
 
     expect(record.enable_thinking).toBe(true)
+  })
+
+  it('does not send reasoning_content for generic OpenAI requests', () => {
+    const adapter = new TestableOpenAIMessageAdapter()
+    const message: RequestMessage = {
+      role: 'assistant',
+      content: '',
+      reasoning: 'step by step',
+      tool_calls: [
+        {
+          id: 'toolu_789',
+          name: 'yolo_local__fs_edit',
+          arguments: '{}',
+        },
+      ],
+    }
+
+    const parsed = adapter.parseRequestMessageForTest(
+      message,
+    ) as unknown as Record<string, unknown>
+
+    expect(parsed).not.toHaveProperty('reasoning_content')
+  })
+
+  it('sends reasoning_content for DeepSeek assistant tool calls', () => {
+    const adapter = new TestableDeepSeekMessageAdapter()
+    const message: RequestMessage = {
+      role: 'assistant',
+      content: '',
+      reasoning: 'step by step',
+      tool_calls: [
+        {
+          id: 'toolu_999',
+          name: 'yolo_local__fs_edit',
+          arguments: '{}',
+        },
+      ],
+    }
+
+    const parsed = adapter.parseRequestMessageForTest(
+      message,
+    ) as unknown as Record<string, unknown>
+
+    expect(parsed.reasoning_content).toBe('step by step')
   })
 
   it('does not include unknown fields when value is undefined', () => {

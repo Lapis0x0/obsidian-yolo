@@ -53,12 +53,16 @@ type UseChatHistory = {
     id: string,
     messages: ChatMessage[],
     overrides?: ConversationOverrideSettings | null,
+    conversationModelId?: string,
+    messageModelMap?: Record<string, string>,
     reasoningLevel?: string,
   ) => Promise<void> | undefined
   createOrUpdateConversationImmediately: (
     id: string,
     messages: ChatMessage[],
     overrides?: ConversationOverrideSettings | null,
+    conversationModelId?: string,
+    messageModelMap?: Record<string, string>,
     reasoningLevel?: string,
   ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
@@ -66,6 +70,8 @@ type UseChatHistory = {
   getConversationById: (id: string) => Promise<{
     messages: ChatMessage[]
     overrides: ConversationOverrideSettings | null | undefined
+    conversationModelId?: string
+    messageModelMap?: Record<string, string>
     reasoningLevel?: string
   } | null>
   updateConversationTitle: (id: string, title: string) => Promise<void>
@@ -113,6 +119,8 @@ export function useChatHistory(): UseChatHistory {
       id: string,
       messages: ChatMessage[],
       overrides?: ConversationOverrideSettings | null,
+      conversationModelId?: string,
+      messageModelMap?: Record<string, string>,
       reasoningLevel?: string,
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
@@ -135,6 +143,11 @@ export function useChatHistory(): UseChatHistory {
             existingConversation.overrides ?? null,
             nextOverrides ?? null,
           ) &&
+          existingConversation.conversationModelId === conversationModelId &&
+          isEqual(
+            existingConversation.messageModelMap ?? null,
+            messageModelMap ?? null,
+          ) &&
           existingConversation.reasoningLevel === reasoningLevel
         ) {
           return
@@ -145,6 +158,14 @@ export function useChatHistory(): UseChatHistory {
             overrides === undefined
               ? (existingConversation.overrides ?? null)
               : overrides,
+          conversationModelId:
+            conversationModelId === undefined
+              ? existingConversation.conversationModelId
+              : conversationModelId,
+          messageModelMap:
+            messageModelMap === undefined
+              ? existingConversation.messageModelMap
+              : messageModelMap,
           reasoningLevel,
         })
       } else {
@@ -156,6 +177,8 @@ export function useChatHistory(): UseChatHistory {
           title: defaultTitle,
           messages: compactedMessages,
           overrides: overrides ?? null,
+          conversationModelId,
+          messageModelMap,
           reasoningLevel,
         })
       }
@@ -185,12 +208,16 @@ export function useChatHistory(): UseChatHistory {
       id: string,
       messages: ChatMessage[],
       overrides?: ConversationOverrideSettings | null,
+      conversationModelId?: string,
+      messageModelMap?: Record<string, string>,
       reasoningLevel?: string,
     ): Promise<void> | undefined =>
       debouncedCreateOrUpdateConversation(
         id,
         messages,
         overrides,
+        conversationModelId,
+        messageModelMap,
         reasoningLevel,
       ),
     [debouncedCreateOrUpdateConversation],
@@ -201,10 +228,19 @@ export function useChatHistory(): UseChatHistory {
       id: string,
       messages: ChatMessage[],
       overrides?: ConversationOverrideSettings | null,
+      conversationModelId?: string,
+      messageModelMap?: Record<string, string>,
       reasoningLevel?: string,
     ): Promise<void> => {
       debouncedCreateOrUpdateConversation.cancel()
-      await persistConversationInternal(id, messages, overrides, reasoningLevel)
+      await persistConversationInternal(
+        id,
+        messages,
+        overrides,
+        conversationModelId,
+        messageModelMap,
+        reasoningLevel,
+      )
     },
     [debouncedCreateOrUpdateConversation, persistConversationInternal],
   )
@@ -236,6 +272,8 @@ export function useChatHistory(): UseChatHistory {
     ): Promise<{
       messages: ChatMessage[]
       overrides: ConversationOverrideSettings | null | undefined
+      conversationModelId?: string
+      messageModelMap?: Record<string, string>
       reasoningLevel?: string
     } | null> => {
       const conversation = await chatManager.findById(id)
@@ -245,6 +283,8 @@ export function useChatHistory(): UseChatHistory {
           deserializeChatMessage(m, app),
         ),
         overrides: conversation.overrides,
+        conversationModelId: conversation.conversationModelId,
+        messageModelMap: conversation.messageModelMap,
         reasoningLevel: conversation.reasoningLevel,
       }
     },

@@ -1,12 +1,14 @@
 import {
   ChatCompletion,
   ChatCompletionChunk,
+  ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
 
 import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
+import { RequestMessage } from '../../types/llm/request'
 
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
@@ -15,6 +17,22 @@ import { OpenAIMessageAdapter } from './openaiMessageAdapter'
  * 'reasoning_content' field in DeepSeek's response format while maintaining OpenAI compatibility.
  */
 export class DeepSeekMessageAdapter extends OpenAIMessageAdapter {
+  protected parseRequestMessage(
+    message: RequestMessage,
+  ): ChatCompletionMessageParam {
+    const parsed = super.parseRequestMessage(
+      message,
+    ) as ChatCompletionMessageParam & {
+      reasoning_content?: string
+    }
+
+    if (message.role === 'assistant' && message.reasoning) {
+      parsed.reasoning_content = message.reasoning
+    }
+
+    return parsed
+  }
+
   protected parseNonStreamingResponse(
     response: ChatCompletion,
   ): LLMResponseNonStreaming {

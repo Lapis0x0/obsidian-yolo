@@ -11,25 +11,21 @@ import {
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
+import {
+  buildFullReviewBlocks,
+  findSelectionTargetBlockIndex,
+  type ApplyParagraph,
+  type ReviewDecision,
+  splitInlineLinesIntoParagraphs,
+} from '../../features/editor/diff-review/review-model'
+import { ReviewSession } from '../../features/editor/diff-review/review-session'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import {
   DiffBlock,
   InlineDiffLine,
   InlineDiffToken,
-  createDiffBlocks,
 } from '../../utils/chat/diff'
-
-// Decision type for each diff block
-type BlockDecision = 'pending' | 'incoming' | 'current'
-
-export type ApplyViewActions = {
-  goToPreviousDiff: () => void
-  goToNextDiff: () => void
-  acceptIncomingActive: () => void
-  acceptCurrentActive: () => void
-  undoActive: () => void
-  close: () => void
-}
+import type { ApplyViewActions } from './types'
 
 export default function ApplyViewRoot({
   state,
@@ -52,10 +48,9 @@ export default function ApplyViewRoot({
   const suppressRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const manualNavLockRef = useRef(false)
-  const initialViewportAppliedRef = useRef(false)
-  const persistInFlightRef = useRef(false)
-  const persistOnUnmountRef = useRef(true)
-  const preferredFinalContentRef = useRef<string | null>(null)
+  const [decisions, setDecisions] = useState<
+    ReadonlyMap<number, ReviewDecision>
+  >(() => new Map())
 
   const app = useApp()
   const plugin = usePlugin()
@@ -63,10 +58,7 @@ export default function ApplyViewRoot({
 
   const isSelectionFocusMode = state.reviewMode === 'selection-focus'
   const diff = useMemo(
-    () =>
-      splitDiffBlocksByParagraph(
-        createDiffBlocks(state.originalContent, state.newContent),
-      ),
+    () => buildFullReviewBlocks(state.originalContent, state.newContent),
     [state.newContent, state.originalContent],
   )
   const selectionTargetBlockIndex = useMemo(
@@ -75,11 +67,6 @@ export default function ApplyViewRoot({
         ? findSelectionTargetBlockIndex(diff, state.selectionRange)
         : null,
     [diff, isSelectionFocusMode, state.selectionRange],
-  )
-
-  // Track decisions for each modified block
-  const [decisions, setDecisions] = useState<Map<number, BlockDecision>>(
-    () => new Map(),
   )
 
   const modifiedBlockIndices = useMemo(
@@ -92,55 +79,32 @@ export default function ApplyViewRoot({
       }, []),
     [diff],
   )
+  const session = useMemo(
+    () =>
+      new ReviewSession({ file: state.file, vault: app.vault, blocks: diff }),
+    [app.vault, diff, state.file],
+  )
 
   const activeBlockIndex =
     modifiedBlockIndices[currentDiffIndex] ?? Number.POSITIVE_INFINITY
   const autoCloseRef = useRef(false)
+  const decisionCount = decisions.size
+
+  const touchSession = useCallback(() => {
+    setDecisions(new Map(session.getDecisions()))
+  }, [session])
+
+  useEffect(() => {
+    setDecisions(new Map(session.getDecisions()))
+  }, [session])
 
   // Count of decided and pending blocks
 
   // Generate final content based on decisions
-  const generateFinalContent = useCallback(
-    (defaultDecision: 'incoming' | 'current' = 'current') => {
-      return diff
-        .map((block, index) => {
-          if (block.type === 'unchanged') return block.value
-          const original = block.originalValue
-          const incoming = block.modifiedValue
-          const decision = decisions.get(index) ?? defaultDecision
-          const resolveIncoming = () =>
-            incoming !== undefined ? incoming : (original ?? '')
-          const resolveCurrent = () => original ?? ''
-
-          switch (decision) {
-            case 'incoming':
-              return resolveIncoming()
-            case 'current':
-            case 'pending':
-              return decision === 'pending' && defaultDecision === 'incoming'
-                ? resolveIncoming()
-                : resolveCurrent()
-            default:
-              return resolveCurrent()
-          }
-        })
-        .join('\n')
-    },
-    [diff, decisions],
-  )
-
   const persistAndClose = useCallback(
     async (finalContent?: string) => {
-      if (persistInFlightRef.current) return
-      persistInFlightRef.current = true
-      if (finalContent !== undefined) {
-        preferredFinalContentRef.current = finalContent
-      }
-      const contentToWrite = finalContent ?? generateFinalContent('current')
       try {
-        await app.vault.modify(state.file, contentToWrite)
-
-        persistOnUnmountRef.current = false
+        await session.persist(finalContent)
       } catch (error) {
         console.error(
           '[ApplyView] Failed to persist changes before close',
@@ -150,17 +114,17 @@ export default function ApplyViewRoot({
         close()
       }
     },
-    [app.vault, close, generateFinalContent, state.file],
+    [close, session],
   )
 
   // Individual block decisions (don't close, just mark decision)
-  const makeDecision = useCallback((index: number, decision: BlockDecision) => {
-    setDecisions((prev) => {
-      const next = new Map(prev)
-      next.set(index, decision)
-      return next
-    })
-  }, [])
+  const makeDecision = useCallback(
+    (index: number, decision: ReviewDecision) => {
+      session.setDecision(index, decision)
+      touchSession()
+    },
+    [session, touchSession],
+  )
 
   const acceptIncomingBlock = useCallback(
     (index: number) => {
@@ -177,13 +141,13 @@ export default function ApplyViewRoot({
   )
 
   // Undo a decision
-  const undoDecision = useCallback((index: number) => {
-    setDecisions((prev) => {
-      const next = new Map(prev)
-      next.delete(index)
-      return next
-    })
-  }, [])
+  const undoDecision = useCallback(
+    (index: number) => {
+      session.clearDecision(index)
+      touchSession()
+    },
+    [session, touchSession],
+  )
 
   // Global actions
   const acceptAllIncoming = useCallback(() => {
@@ -199,25 +163,12 @@ export default function ApplyViewRoot({
   useEffect(() => {
     if (autoCloseRef.current) return
     if (modifiedBlockIndices.length === 0) return
-    const allDecided = modifiedBlockIndices.every((idx) => {
-      const decision = decisions.get(idx)
-      return decision && decision !== 'pending'
-    })
+    if (decisionCount < modifiedBlockIndices.length) return
+    const allDecided = session.areAllModifiedBlocksDecided()
     if (!allDecided) return
     autoCloseRef.current = true
     void persistAndClose()
-  }, [decisions, modifiedBlockIndices, persistAndClose])
-
-  useEffect(() => {
-    return () => {
-      if (!persistOnUnmountRef.current) return
-      const fallbackContent =
-        preferredFinalContentRef.current ?? generateFinalContent('current')
-      void app.vault.modify(state.file, fallbackContent).catch((error) => {
-        console.error('[ApplyView] Failed to persist changes on unmount', error)
-      })
-    }
-  }, [app.vault, generateFinalContent, state.file])
+  }, [decisionCount, modifiedBlockIndices.length, persistAndClose, session])
 
   const getOffsetTopFromScroller = useCallback(
     (element: HTMLElement, scroller: HTMLElement) => {
@@ -460,7 +411,7 @@ export default function ApplyViewRoot({
     }
 
     scheduleUpdate()
-  }, [decisions, diff, updateCurrentDiffFromScroll, updateDiffOffsets])
+  }, [updateCurrentDiffFromScroll, updateDiffOffsets])
 
   useEffect(() => {
     const scroller = scrollerRef.current
@@ -497,69 +448,7 @@ export default function ApplyViewRoot({
       scroller.removeEventListener('touchmove', handleUserScrollIntent)
       scroller.removeEventListener('pointerdown', handleUserScrollIntent)
     }
-  }, [updateCurrentDiffFromScroll])
-
-  useEffect(() => {
-    if (initialViewportAppliedRef.current) return
-    const scroller = scrollerRef.current
-    const initialViewport = state.initialViewport
-    if (!scroller || !initialViewport) return
-
-    const applyInitialViewport = () => {
-      const currentScroller = scrollerRef.current
-      if (!currentScroller) return
-
-      const maxScrollTop = Math.max(
-        0,
-        currentScroller.scrollHeight - currentScroller.clientHeight,
-      )
-      const topFromRatio = initialViewport.scrollRatio * maxScrollTop
-      const topFromOriginal = initialViewport.scrollTop
-      const mergedTop =
-        maxScrollTop > 0
-          ? clampNumber((topFromOriginal + topFromRatio) / 2, 0, maxScrollTop)
-          : 0
-
-      currentScroller.scrollTop = mergedTop
-      currentScroller.scrollLeft = Math.max(0, initialViewport.scrollLeft)
-
-      const anchorBlockIndex = findBlockIndexAtOriginalLine(
-        diff,
-        initialViewport.anchorLine,
-      )
-      if (anchorBlockIndex !== null) {
-        const anchorElement = diffBlockRefs.current[anchorBlockIndex]
-        if (anchorElement) {
-          const anchorTop = getOffsetTopFromScroller(
-            anchorElement,
-            currentScroller,
-          )
-          if (
-            Math.abs(anchorTop - mergedTop) >
-            currentScroller.clientHeight * 1.4
-          ) {
-            currentScroller.scrollTop = clampNumber(anchorTop, 0, maxScrollTop)
-          }
-        }
-      }
-
-      initialViewportAppliedRef.current = true
-      updateDiffOffsets()
-      updateCurrentDiffFromScroll()
-    }
-
-    const raf1 = requestAnimationFrame(() => {
-      requestAnimationFrame(applyInitialViewport)
-    })
-
-    return () => cancelAnimationFrame(raf1)
-  }, [
-    diff,
-    getOffsetTopFromScroller,
-    state.initialViewport,
-    updateCurrentDiffFromScroll,
-    updateDiffOffsets,
-  ])
+  }, [updateCurrentDiffFromScroll, updateDiffOffsets])
 
   return (
     <div
@@ -590,7 +479,11 @@ export default function ApplyViewRoot({
 
                   {diff.map((block, index) => (
                     <DiffBlockView
-                      key={index}
+                      key={
+                        block.type === 'unchanged'
+                          ? `unchanged:${index}:${block.value}`
+                          : `modified:${index}:${block.blockType}:${block.originalValue ?? ''}:${block.modifiedValue ?? ''}`
+                      }
                       block={block}
                       decision={decisions.get(index)}
                       isActive={index === activeBlockIndex}
@@ -625,6 +518,7 @@ export default function ApplyViewRoot({
           <div className="smtcmp-apply-toolbar-pill">
             <div className="smtcmp-apply-toolbar-nav">
               <button
+                type="button"
                 onClick={goToPreviousDiff}
                 className="smtcmp-toolbar-icon-btn"
                 title={t('applyView.prevChange', 'Previous change')}
@@ -639,6 +533,7 @@ export default function ApplyViewRoot({
                   : `${currentDiffIndex + 1}/${modifiedBlockIndices.length}`}
               </span>
               <button
+                type="button"
                 onClick={goToNextDiff}
                 className="smtcmp-toolbar-icon-btn"
                 title={t('applyView.nextChange', 'Next change')}
@@ -650,6 +545,7 @@ export default function ApplyViewRoot({
             </div>
             <div className="smtcmp-apply-toolbar-actions">
               <button
+                type="button"
                 onClick={acceptAllIncoming}
                 className="smtcmp-toolbar-btn smtcmp-accept"
                 title={t(
@@ -661,6 +557,7 @@ export default function ApplyViewRoot({
                 {t('applyView.acceptAllIncoming', 'Accept All Incoming')}
               </button>
               <button
+                type="button"
                 onClick={acceptAllCurrent}
                 className="smtcmp-toolbar-btn smtcmp-exclude"
                 title={t(
@@ -683,7 +580,7 @@ const DiffBlockView = forwardRef<
   HTMLDivElement,
   {
     block: DiffBlock
-    decision?: BlockDecision
+    decision?: ReviewDecision
     isActive: boolean
     sourcePath: string
     onAcceptIncoming: () => void
@@ -1011,165 +908,6 @@ function ApplyMarkdownContent({
   )
 }
 
-type ApplyParagraph = {
-  lines: InlineDiffLine[]
-  hasChanges: boolean
-  isEmpty: boolean
-}
-
-function splitInlineLinesIntoParagraphs(
-  lines: InlineDiffLine[],
-): ApplyParagraph[] {
-  if (lines.length === 0) return []
-
-  const paragraphs: ApplyParagraph[] = []
-  let currentLines: InlineDiffLine[] = []
-  let currentHasChanges = false
-
-  const pushCurrentParagraph = () => {
-    if (currentLines.length === 0) return
-    paragraphs.push({
-      lines: currentLines,
-      hasChanges: currentHasChanges,
-      isEmpty: false,
-    })
-    currentLines = []
-    currentHasChanges = false
-  }
-
-  lines.forEach((line) => {
-    if (isInlineLineEmpty(line)) {
-      pushCurrentParagraph()
-      paragraphs.push({
-        lines: [],
-        hasChanges: false,
-        isEmpty: true,
-      })
-      return
-    }
-
-    currentLines.push(line)
-    currentHasChanges = currentHasChanges || lineHasChanges(line)
-  })
-
-  pushCurrentParagraph()
-
-  const hasAnyChanges = paragraphs.some(
-    (paragraph) => !paragraph.isEmpty && paragraph.hasChanges,
-  )
-  if (!hasAnyChanges) {
-    const firstContentParagraph = paragraphs.find(
-      (paragraph) => !paragraph.isEmpty,
-    )
-    if (firstContentParagraph) {
-      firstContentParagraph.hasChanges = true
-    }
-  }
-  return paragraphs
-}
-
-function isInlineLineEmpty(line: InlineDiffLine): boolean {
-  const content = line.tokens.map((token) => token.text).join('')
-  return content.trim().length === 0
-}
-
-function lineHasChanges(line: InlineDiffLine): boolean {
-  if (line.type === 'added' || line.type === 'removed') return true
-  return line.tokens.some(
-    (token) => token.type === 'add' || token.type === 'del',
-  )
-}
-
-function splitDiffBlocksByParagraph(blocks: DiffBlock[]): DiffBlock[] {
-  const paragraphBlocks: DiffBlock[] = []
-
-  blocks.forEach((block) => {
-    if (block.type === 'unchanged') {
-      paragraphBlocks.push(block)
-      return
-    }
-
-    const paragraphs = splitInlineLinesIntoParagraphs(block.inlineLines)
-    if (paragraphs.length === 0) {
-      paragraphBlocks.push(block)
-      return
-    }
-
-    paragraphs.forEach((paragraph) => {
-      if (paragraph.isEmpty) {
-        paragraphBlocks.push({
-          type: 'unchanged',
-          value: '',
-        })
-        return
-      }
-
-      if (!paragraph.hasChanges) {
-        paragraphBlocks.push({
-          type: 'unchanged',
-          value: inlineLinesToText(paragraph.lines, 'original'),
-        })
-        return
-      }
-
-      const hasOriginalLines = paragraph.lines.some(
-        (line) => line.type !== 'added',
-      )
-      const hasModifiedLines = paragraph.lines.some(
-        (line) => line.type !== 'removed',
-      )
-      const originalValue = hasOriginalLines
-        ? inlineLinesToText(paragraph.lines, 'original')
-        : undefined
-      const modifiedValue = hasModifiedLines
-        ? inlineLinesToText(paragraph.lines, 'modified')
-        : undefined
-      paragraphBlocks.push({
-        type: 'modified',
-        originalValue,
-        modifiedValue,
-        inlineLines: paragraph.lines,
-      })
-    })
-  })
-
-  return mergeAdjacentUnchangedBlocks(paragraphBlocks)
-}
-
-function inlineLinesToText(
-  lines: InlineDiffLine[],
-  variant: 'original' | 'modified',
-): string {
-  return lines
-    .map((line) => inlineTokensToText(line.tokens, variant))
-    .join('\n')
-}
-
-function inlineTokensToText(
-  tokens: InlineDiffToken[],
-  variant: 'original' | 'modified',
-): string {
-  return tokens
-    .filter((token) =>
-      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
-    )
-    .map((token) => token.text)
-    .join('')
-}
-
-function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
-  const merged: DiffBlock[] = []
-  blocks.forEach((block) => {
-    const last = merged[merged.length - 1]
-    if (block.type === 'unchanged' && last?.type === 'unchanged') {
-      last.value = `${last.value}\n${block.value}`
-      return
-    }
-    merged.push(block)
-  })
-  return merged
-}
-
 function buildInlineDiffMarkdown(lines: InlineDiffLine[]): string {
   return lines.map((line) => inlineTokensToMarkdown(line.tokens)).join('\n')
 }
@@ -1200,79 +938,4 @@ function escapeHtml(value: string): string {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
-}
-
-function findBlockIndexAtOriginalLine(
-  blocks: DiffBlock[],
-  targetLine: number,
-): number | null {
-  if (targetLine < 0) return null
-
-  let cursorLine = 0
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index]
-    const lineCount = countOriginalLines(block)
-    if (lineCount <= 0) continue
-
-    const blockStart = cursorLine
-    const blockEnd = cursorLine + lineCount - 1
-    if (targetLine >= blockStart && targetLine <= blockEnd) {
-      return index
-    }
-    cursorLine += lineCount
-  }
-  return null
-}
-
-function countOriginalLines(block: DiffBlock): number {
-  if (block.type === 'unchanged') {
-    return block.value.split('\n').length
-  }
-  if (block.originalValue === undefined) return 0
-  return block.originalValue.split('\n').length
-}
-
-function findSelectionTargetBlockIndex(
-  blocks: DiffBlock[],
-  selectionRange: ApplyViewState['selectionRange'],
-): number | null {
-  if (!selectionRange) return null
-
-  const selectionStartLine = Math.min(
-    selectionRange.from.line,
-    selectionRange.to.line,
-  )
-  const selectionEndLine = Math.max(
-    selectionRange.from.line,
-    selectionRange.to.line,
-  )
-
-  let cursorLine = 0
-  let fallbackModifiedIndex: number | null = null
-
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index]
-    if (block.type !== 'modified') {
-      cursorLine += countOriginalLines(block)
-      continue
-    }
-
-    if (fallbackModifiedIndex === null) {
-      fallbackModifiedIndex = index
-    }
-
-    const lineCount = countOriginalLines(block)
-    const blockStart = cursorLine
-    const blockEnd = lineCount > 0 ? cursorLine + lineCount - 1 : cursorLine
-    const intersects =
-      blockStart <= selectionEndLine && blockEnd >= selectionStartLine
-
-    if (intersects) {
-      return index
-    }
-
-    cursorLine += lineCount
-  }
-
-  return fallbackModifiedIndex
 }

@@ -599,6 +599,8 @@ export type TranslationKeys = {
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
       mentionDisplayModeBadge?: string
+      persistSelectionHighlight?: string
+      persistSelectionHighlightDesc?: string
     }
     smartSpace?: {
       quickActionsTitle: string
@@ -683,6 +685,7 @@ export type TranslationKeys = {
     actions?: {
       addToChat?: string
       customRewrite?: string
+      customAsk?: string
       rewrite?: string
       explain?: string
       suggest?: string
@@ -726,9 +729,9 @@ export type TranslationKeys = {
       copyText?: string
       textCopied?: string
       apply?: string
-      applyQuick?: string
-      applyPrecise?: string
       applying?: string
+      locatingTarget?: string
+      emptyPlanPreview?: string
       stopApplying?: string
     }
     customContinuePromptLabel?: string

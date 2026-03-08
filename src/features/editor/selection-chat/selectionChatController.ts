@@ -38,6 +38,7 @@ type SelectionChatControllerDeps = {
     view: EditorView,
     options: {
       initialPrompt?: string
+      initialMentionables?: Mentionable[]
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
@@ -55,6 +56,7 @@ type SelectionChatControllerDeps = {
     text: string,
   ) => Promise<void>
   isSmartSpaceOpen: () => boolean
+  pinSelectionHighlight: (view: EditorView) => void
 }
 
 export class SelectionChatController {
@@ -68,6 +70,7 @@ export class SelectionChatController {
     view: EditorView,
     options: {
       initialPrompt?: string
+      initialMentionables?: Mentionable[]
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
@@ -85,6 +88,7 @@ export class SelectionChatController {
     text: string,
   ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
+  private readonly pinSelectionHighlight: (view: EditorView) => void
 
   private selectionManager: SelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
@@ -101,6 +105,7 @@ export class SelectionChatController {
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
+    this.pinSelectionHighlight = deps.pinSelectionHighlight
   }
 
   isActive(): boolean {
@@ -249,9 +254,41 @@ export class SelectionChatController {
 
     const prompt = instruction.trim()
     if (!prompt) {
-      console.warn('Selection action has empty prompt:', actionId)
+      await this.openCustomAsk(editor)
+      return
     }
     await this.explainSelection(editor, prompt)
+  }
+
+  private async openCustomAsk(editor: Editor) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!editor || !view) {
+      new Notice('无法获取当前编辑器')
+      return
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      new Notice('无法创建选区数据')
+      return
+    }
+
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      new Notice('无法获取编辑器视图')
+      return
+    }
+
+    const mentionable: Mentionable = {
+      type: 'block',
+      ...data,
+      source: 'selection',
+    }
+
+    this.showQuickAskWithOptions(editor, editorView, {
+      initialMode: 'ask',
+      initialMentionables: [mentionable],
+    })
   }
 
   private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {
@@ -280,6 +317,11 @@ export class SelectionChatController {
     const data = getMentionableBlockData(editor, view)
     if (!data) {
       return
+    }
+
+    const editorView = this.getEditorView(editor)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      this.pinSelectionHighlight(editorView)
     }
 
     chatView.syncSelectionToChat(data)
@@ -366,8 +408,19 @@ export class SelectionChatController {
       return
     }
 
+    const editorView = this.getEditorView(editor)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      this.pinSelectionHighlight(editorView)
+    }
+
     const resolvedPrompt =
       prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
+  }
+
+  private shouldPersistSelectionHighlight(): boolean {
+    return (
+      this.getSettings().continuationOptions.persistSelectionHighlight ?? true
+    )
   }
 }

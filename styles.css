@@ -457,20 +457,68 @@
 .smtcmp-assistant-message-metadata {
   display: flex;
   flex-direction: column;
-  margin-top: var(--size-4-1);
-  margin-bottom: var(--size-4-2);
-  border-left: 2px solid var(--background-modifier-border);
-  padding-left: var(--size-4-1);
+  margin-top: 2px;
+  margin-bottom: var(--size-4-1);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
+}
+
+.smtcmp-assistant-message-metadata.is-active {
+  box-shadow: none;
+}
+
+.smtcmp-assistant-message-metadata--requesting {
+  transform: translateY(0);
+}
+
+.smtcmp-assistant-message-metadata--thinking,
+.smtcmp-assistant-message-metadata--generating {
+  transform: translateY(-1px);
+}
+
+.smtcmp-assistant-message-metadata--settled {
+  opacity: 0.96;
+}
+
+.smtcmp-assistant-message-metadata--generating
+  .smtcmp-assistant-message-metadata-label-text,
+.smtcmp-assistant-message-metadata--settled
+  .smtcmp-assistant-message-metadata-label-text {
+  color: color-mix(in srgb, var(--text-faint) 78%, var(--text-muted));
 }
 
 .smtcmp-assistant-message-metadata-content {
   color: var(--text-muted);
-  padding-left: var(--size-4-1);
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 11px;
+  padding: 0 0 0 var(--size-4-2);
   font-size: var(--font-ui-small);
+  opacity: 0;
+  transform: translateY(-4px);
+  border-left: 1px solid transparent;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease;
 }
 
 .smtcmp-assistant-message-metadata-content .markdown-rendered {
   color: inherit;
+}
+
+.smtcmp-assistant-message-metadata.is-expanded
+  .smtcmp-assistant-message-metadata-content {
+  padding-bottom: var(--size-4-2);
+  opacity: 1;
+  transform: translateY(0);
+  border-left-color: color-mix(
+    in srgb,
+    var(--background-modifier-border) 80%,
+    transparent
+  );
 }
 
 .smtcmp-assistant-message-metadata-annotations {
@@ -479,27 +527,178 @@
   gap: var(--size-2-1);
 }
 
+.smtcmp-assistant-message-metadata-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-assistant-message-metadata-preview {
+  max-height: 0;
+  overflow: hidden;
+  margin-left: 11px;
+  padding-left: var(--size-4-2);
+  color: color-mix(in srgb, var(--text-faint) 72%, var(--text-muted));
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    max-height 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-assistant-message-metadata-preview span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-assistant-message-metadata.has-preview
+  .smtcmp-assistant-message-metadata-preview {
+  max-height: 24px;
+  margin-bottom: 2px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.smtcmp-assistant-message-metadata.is-expanded
+  .smtcmp-assistant-message-metadata-preview {
+  max-height: 0;
+  margin-bottom: 0;
+  opacity: 0;
+}
+
+.smtcmp-assistant-message-metadata.is-expanded
+  .smtcmp-assistant-message-metadata-body {
+  grid-template-rows: 1fr;
+}
+
 .smtcmp-assistant-message-metadata-toggle {
+  appearance: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--size-4-1);
+  width: 100%;
+  min-height: 0;
   font-size: var(--font-ui-small);
   color: var(--text-muted);
-  background-color: transparent;
+  background: transparent !important;
+  background-color: transparent !important;
   cursor: pointer;
-  border-radius: var(--radius-s);
-  padding: var(--size-2-3) var(--size-4-1);
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 0;
   user-select: none;
+  text-align: left;
+  transition:
+    background-color 140ms ease,
+    color 180ms ease;
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: transparent;
   }
+}
+
+.smtcmp-assistant-message-metadata-toggle.is-static {
+  cursor: default;
+}
+
+.smtcmp-assistant-message-metadata-toggle.is-static:hover {
+  background-color: transparent;
+}
+
+.smtcmp-assistant-message-metadata-toggle:disabled {
+  opacity: 1;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.smtcmp-assistant-message-metadata-toggle:focus,
+.smtcmp-assistant-message-metadata-toggle:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.smtcmp-assistant-message-metadata-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.smtcmp-assistant-message-metadata-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--text-muted) 92%, var(--text-normal));
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-assistant-message-metadata-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  opacity: 0.92;
+}
+
+.smtcmp-assistant-message-metadata.is-active
+  .smtcmp-assistant-message-metadata-status-dot {
+  animation: smtcmp-assistant-message-status-pulse 1.4s ease-in-out infinite;
+}
+
+.smtcmp-assistant-message-metadata-loader {
+  margin-left: 2px;
+}
+
+.smtcmp-assistant-message-metadata-loader.smtcmp-dot-loader-minimal {
+  gap: 3px;
+}
+
+.smtcmp-assistant-message-metadata-loader.smtcmp-dot-loader-minimal span {
+  width: 3px;
+  height: 3px;
 }
 
 .smtcmp-assistant-message-metadata-toggle-icon {
   width: var(--size-4-4);
   height: var(--size-4-4);
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--text-faint) 84%, var(--text-muted));
+  transition:
+    color 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.smtcmp-assistant-message-metadata--generating
+  .smtcmp-assistant-message-metadata-toggle-icon,
+.smtcmp-assistant-message-metadata--settled
+  .smtcmp-assistant-message-metadata-toggle-icon {
+  opacity: 0.68;
+}
+
+@keyframes smtcmp-assistant-message-status-pulse {
+  0% {
+    opacity: 0.28;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.28;
+  }
 }
 
 /* Overrides default .markdown-rendered class styles from Obsidian */
@@ -562,6 +761,22 @@
       height: calc(var(--render-scale) * 1rem);
       width: calc(var(--render-scale) * 1rem);
     }
+
+    .math {
+      user-select: text;
+      cursor: text;
+
+      &::selection,
+      *::selection {
+        background: var(--text-selection);
+      }
+
+      mjx-math.smtcmp-latex-selected,
+      &.smtcmp-latex-selected {
+        background: var(--text-selection);
+        border-radius: 0;
+      }
+    }
   }
 
   /* Show frontmatter which is hidden by default */
@@ -570,6 +785,24 @@
     background-color: transparent;
     border-top: 1px solid var(--background-modifier-border);
     border-bottom: 1px solid var(--background-modifier-border);
+  }
+}
+
+.smtcmp-stream-fresh-text {
+  display: inline;
+  animation: smtcmp-stream-fresh-text-fade 120ms ease-out;
+  will-change: opacity, filter;
+}
+
+@keyframes smtcmp-stream-fresh-text-fade {
+  0% {
+    opacity: 0.18;
+    filter: blur(0.18em);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
   }
 }
 
@@ -7014,7 +7247,18 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-code-block-header-filename {
-  padding-left: var(--size-4-2);
+  appearance: none;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0;
+  outline: none;
+  background: transparent !important;
+  color: inherit;
+  margin: 0;
+  padding: 0 var(--size-4-2);
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-medium);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7053,7 +7297,185 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-code-block-obsidian-markdown {
+  position: relative;
   padding: var(--size-4-3);
+  overflow: hidden;
+}
+
+.smtcmp-code-block-obsidian-markdown.is-plan-transitioning {
+  display: grid;
+  align-items: start;
+}
+
+.smtcmp-plan-preview-panel {
+  min-width: 0;
+}
+
+.smtcmp-code-block-obsidian-markdown.is-plan-transitioning
+  .smtcmp-plan-preview-panel {
+  grid-area: 1 / 1;
+}
+
+.smtcmp-plan-preview-panel--streaming {
+  position: relative;
+  z-index: 2;
+}
+
+.smtcmp-plan-preview-panel--streaming.is-exiting {
+  pointer-events: none;
+  animation: smtcmp-plan-streaming-preview-exit 220ms
+    cubic-bezier(0.32, 0, 0.2, 1) forwards;
+}
+
+.smtcmp-plan-preview-panel--streaming.is-exiting
+  .smtcmp-plan-streaming-preview-body {
+  transform-origin: top left;
+  animation: smtcmp-plan-streaming-preview-body-collapse 220ms
+    cubic-bezier(0.32, 0, 0.2, 1) forwards;
+}
+
+.smtcmp-plan-preview-panel--resolved {
+  position: relative;
+  z-index: 1;
+}
+
+.smtcmp-plan-preview-panel--resolved.is-entering {
+  border-radius: calc(var(--radius-s) - 2px);
+  animation: smtcmp-plan-preview-content-enter 260ms
+    cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.smtcmp-plan-streaming-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.smtcmp-plan-streaming-preview-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  line-height: 1.35;
+}
+
+.smtcmp-plan-streaming-preview-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--interactive-accent) 72%, white 28%);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+}
+
+.smtcmp-plan-streaming-preview-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-plan-streaming-preview-loader {
+  margin-left: 1px;
+}
+
+.smtcmp-plan-streaming-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+  opacity: 0.7;
+}
+
+.smtcmp-plan-streaming-preview-line {
+  display: block;
+  position: relative;
+  height: 5px;
+  width: 72%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  animation: smtcmp-plan-streaming-preview-pulse 1.8s ease-in-out infinite;
+}
+
+.smtcmp-plan-streaming-preview-line.is-wide {
+  width: 66%;
+}
+
+.smtcmp-plan-streaming-preview-line.is-short {
+  width: 52%;
+}
+
+@keyframes smtcmp-plan-streaming-preview-pulse {
+  0% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.68;
+  }
+
+  100% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes smtcmp-plan-streaming-preview-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+    filter: blur(1px);
+  }
+}
+
+@keyframes smtcmp-plan-streaming-preview-body-collapse {
+  from {
+    opacity: 0.7;
+    transform: scaleY(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scaleY(0.72);
+  }
+}
+
+@keyframes smtcmp-plan-preview-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.992);
+    background: color-mix(
+      in srgb,
+      var(--background-secondary) 88%,
+      transparent
+    );
+    box-shadow: 0 18px 30px -24px color-mix(in srgb, var(
+            --background-modifier-box-shadow
+          )
+          90%, transparent);
+  }
+
+  55% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 .smtcmp-apply-overlay-host {
@@ -7179,11 +7601,11 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-accept {
-  color: rgb(var(--smtcmp-incoming-color-rgb, 4, 120, 87));
+  color: var(--interactive-accent);
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-reject {
-  color: rgb(var(--smtcmp-current-color-rgb, 185, 28, 28));
+  color: var(--text-muted);
 }
 
 .smtcmp-inline-review-host .cm-cursorLayer,
@@ -7461,11 +7883,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     color: rgb(var(--smtcmp-current-color-rgb));
   }
 
-  .smtcmp-apply-action-both {
-    font-size: var(--font-ui-smallest);
-    color: var(--interactive-accent);
-  }
-
   .smtcmp-accept {
     color: white;
     background: rgba(var(--smtcmp-incoming-color-rgb), 0.8);
@@ -7480,11 +7897,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     &:hover {
       background: rgba(var(--smtcmp-current-color-rgb), 1);
     }
-  }
-
-  .smtcmp-diff-navigation {
-    display: flex;
-    align-items: center;
   }
 
   /* Toolbar styles */
@@ -7586,17 +7998,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     font-size: 14px;
     line-height: 1;
     font-weight: 600;
-  }
-
-  .smtcmp-apply-btn {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border: none;
-    font-weight: var(--font-medium);
-
-    &:hover {
-      background: var(--interactive-accent-hover);
-    }
   }
 }
 
@@ -7702,7 +8103,12 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   .smtcmp-diff-block--resolved .smtcmp-apply-markdown-preview,
   .smtcmp-inline-review-floating-rail,
   .smtcmp-inline-review-floating-actions,
-  .smtcmp-inline-review-floating-actions .smtcmp-apply-action {
+  .smtcmp-inline-review-floating-actions .smtcmp-apply-action,
+  .smtcmp-plan-preview-panel--streaming.is-exiting,
+  .smtcmp-plan-preview-panel--streaming.is-exiting
+    .smtcmp-plan-streaming-preview-body,
+  .smtcmp-plan-preview-panel--resolved.is-entering,
+  .smtcmp-plan-streaming-preview-line {
     animation: none !important;
     transition: none !important;
   }
@@ -10553,6 +10959,74 @@ body.smtcmp-quick-ask-global-interaction * {
   inset: 0;
   pointer-events: none;
   z-index: 2;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block {
+  background: var(
+    --text-selection,
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+  );
+  color: inherit;
+  margin-left: -6px;
+  margin-right: -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+  position: relative;
+}
+
+.cm-editor .smtcmp-selection-persisted-inline {
+  background: var(
+    --text-selection,
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+  );
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-single {
+  border-radius: 6px;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-start {
+  border-radius: 6px 6px 0 0;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-middle {
+  border-radius: 0;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-end {
+  border-radius: 0 0 6px 6px;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-single::after,
+.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-start::after {
+  content: 'Selected';
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 0 6px 0 6px;
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 18%,
+    var(--background-primary)
+  );
+  border-left: 1px solid
+    color-mix(in srgb, var(--interactive-accent) 38%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--interactive-accent) 38%, transparent);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 16px;
+  text-transform: uppercase;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Selection Indicator - small floating capsule */
