@@ -25,6 +25,10 @@ describe('materializeTextEditPlan', () => {
       start: 0,
       end: 11,
     })
+    expect(result.operationResults[0]?.newRange).toEqual({
+      start: 0,
+      end: 14,
+    })
   })
 
   it('applies insert_after operations', () => {
@@ -43,6 +47,10 @@ describe('materializeTextEditPlan', () => {
 
     expect(result.newContent).toBe('Intro\n\nInserted paragraph\n\nBody')
     expect(result.appliedCount).toBe(1)
+    expect(result.operationResults[0]?.newRange).toEqual({
+      start: 7,
+      end: 25,
+    })
   })
 
   it('applies append operations', () => {
@@ -60,6 +68,10 @@ describe('materializeTextEditPlan', () => {
 
     expect(result.newContent).toBe('# Title\n\nMore text')
     expect(result.appliedCount).toBe(1)
+    expect(result.operationResults[0]?.newRange).toEqual({
+      start: 9,
+      end: 18,
+    })
   })
 
   it('uses loose matching for smart quotes and line endings', () => {

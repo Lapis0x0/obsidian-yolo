@@ -40,6 +40,7 @@ describe('parseSmartComposerSettings', () => {
     expect(result.chatOptions).toMatchObject({
       includeCurrentFileContent: true,
       mentionDisplayMode: 'inline',
+      chatApplyMode: 'review-required',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},

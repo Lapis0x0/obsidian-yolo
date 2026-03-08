@@ -43,6 +43,10 @@ export type AppliedTextEditOperation = {
     start: number
     end: number
   }
+  newRange?: {
+    start: number
+    end: number
+  }
 }
 
 export type MaterializedTextEditPlan = {
@@ -61,6 +65,10 @@ type ReplacementAttempt = {
   matchMode: Exclude<TextEditMatchMode, 'append'>
   changed: boolean
   matchedRange: {
+    start: number
+    end: number
+  }
+  newRange: {
     start: number
     end: number
   }
@@ -245,6 +253,10 @@ const applyReplaceLikeOperation = ({
         start: firstIndex,
         end: firstIndex + oldText.length,
       },
+      newRange: {
+        start: firstIndex,
+        end: firstIndex + newText.length,
+      },
     }
   }
 
@@ -272,6 +284,10 @@ const applyReplaceLikeOperation = ({
       matchMode: 'lineEndingAndTrimLineEnd',
       changed: nextContent !== content,
       matchedRange,
+      newRange: {
+        start: matchedRange.start,
+        end: matchedRange.start + newText.length,
+      },
     }
   }
 
@@ -298,6 +314,10 @@ const applyReplaceLikeOperation = ({
         matchedRange: {
           start: firstIndex,
           end: firstIndex + recoveredOldText.length,
+        },
+        newRange: {
+          start: firstIndex,
+          end: firstIndex + recoveredNewText.length,
         },
       }
     }
@@ -326,6 +346,10 @@ const applyReplaceLikeOperation = ({
         matchMode: 'escapedControlRecoveryLineEndingAndTrimLineEnd',
         changed: nextContent !== content,
         matchedRange,
+        newRange: {
+          start: matchedRange.start,
+          end: matchedRange.start + recoveredNewText.length,
+        },
       }
     }
 
@@ -374,6 +398,7 @@ export const materializeTextEditPlan = ({
           matchMode: 'append',
           changed: false,
           matchedRange: undefined,
+          newRange: undefined,
         })
         continue
       }
@@ -392,6 +417,10 @@ export const materializeTextEditPlan = ({
         matchMode: 'append',
         changed: true,
         matchedRange: undefined,
+        newRange: {
+          start: nextContent.length - appendContent.length,
+          end: nextContent.length,
+        },
       })
       continue
     }
@@ -427,6 +456,13 @@ export const materializeTextEditPlan = ({
       matchMode: result.matchMode,
       changed: result.changed,
       matchedRange: result.matchedRange,
+      newRange:
+        operation.type === 'insert_after'
+          ? {
+              start: result.newRange.end - operation.content.length,
+              end: result.newRange.end,
+            }
+          : result.newRange,
     })
   }
 

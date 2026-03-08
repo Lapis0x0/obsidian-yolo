@@ -715,6 +715,11 @@ export const zh: TranslationKeys = {
         '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
+      chatApplyMode: 'Chat 应用修改方式',
+      chatApplyModeDesc:
+        '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
+      chatApplyModeReviewRequired: '先审阅后应用',
+      chatApplyModeDirectApply: '直接写入文件',
       persistSelectionHighlight: '保留选区块高亮',
       persistSelectionHighlightDesc:
         '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',

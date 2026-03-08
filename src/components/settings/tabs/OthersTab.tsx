@@ -50,6 +50,23 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
     })()
   }
 
+  const handleChatApplyModeChange = (value: string) => {
+    if (value !== 'review-required' && value !== 'direct-apply') return
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            chatApplyMode: value,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update chat apply mode', error)
+      }
+    })()
+  }
+
   const handleYoloBaseDirBlur = (value: string) => {
     const normalized = normalizeVaultRelativeDir(value)
     setYoloBaseDirInput(normalized)
@@ -135,6 +152,28 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
               badge: t('settings.etc.mentionDisplayModeBadge', '顶部徽章'),
             }}
             onChange={handleMentionDisplayModeChange}
+          />
+        </ObsidianSetting>
+        <ObsidianSetting
+          name={t('settings.etc.chatApplyMode', 'Chat 应用修改方式')}
+          desc={t(
+            'settings.etc.chatApplyModeDesc',
+            '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
+          )}
+        >
+          <ObsidianDropdown
+            value={settings.chatOptions.chatApplyMode ?? 'review-required'}
+            options={{
+              'review-required': t(
+                'settings.etc.chatApplyModeReviewRequired',
+                '先审阅后应用',
+              ),
+              'direct-apply': t(
+                'settings.etc.chatApplyModeDirectApply',
+                '直接写入文件',
+              ),
+            }}
+            onChange={handleChatApplyModeChange}
           />
         </ObsidianSetting>
         <ObsidianSetting

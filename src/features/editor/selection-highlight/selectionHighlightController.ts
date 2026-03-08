@@ -8,9 +8,11 @@ import {
   ViewUpdate,
 } from '@codemirror/view'
 
-type SelectionHighlightPayload = {
+type SelectionHighlightRange = {
   from: number
   to: number
+  label?: string
+  variant?: 'selection' | 'updated'
 }
 
 type HighlightMode = 'inline' | 'block'
@@ -23,10 +25,12 @@ type HighlightLineRole =
 
 type ActiveHighlight = {
   view: EditorView
+  timeoutId: number | null
 }
 
-const setSelectionHighlightEffect =
-  StateEffect.define<SelectionHighlightPayload | null>()
+const setSelectionHighlightEffect = StateEffect.define<
+  SelectionHighlightRange[] | null
+>()
 
 const selectionHighlightField = StateField.define<DecorationSet>({
   create() {
@@ -40,26 +44,36 @@ const selectionHighlightField = StateField.define<DecorationSet>({
         continue
       }
 
-      const payload = effect.value
-      if (!payload || payload.from === payload.to) {
+      const payload = effect.value?.filter((range) => range.from < range.to)
+      if (!payload || payload.length === 0) {
         nextDecorations = Decoration.none
         continue
       }
 
       const builder = new RangeSetBuilder<Decoration>()
-      const mode = resolveHighlightMode(tr.state.doc, payload.from, payload.to)
+      for (const range of payload) {
+        const mode = resolveHighlightMode(tr.state.doc, range.from, range.to)
 
-      if (mode === 'inline') {
-        builder.add(
-          payload.from,
-          payload.to,
-          Decoration.mark({
-            class: 'smtcmp-selection-persisted-inline',
-          }),
-        )
-      } else {
-        const startLine = tr.state.doc.lineAt(payload.from).number
-        const endPos = Math.max(payload.from, payload.to - 1)
+        if (mode === 'inline') {
+          builder.add(
+            range.from,
+            range.to,
+            Decoration.mark({
+              class: [
+                'smtcmp-selection-persisted-inline',
+                range.variant === 'updated'
+                  ? 'smtcmp-selection-persisted-inline-updated'
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' '),
+            }),
+          )
+          continue
+        }
+
+        const startLine = tr.state.doc.lineAt(range.from).number
+        const endPos = Math.max(range.from, range.to - 1)
         const endLine = tr.state.doc.lineAt(endPos).number
         const groups = [
           Array.from(
@@ -77,7 +91,21 @@ const selectionHighlightField = StateField.define<DecorationSet>({
               line.from,
               line.from,
               Decoration.line({
-                class: `smtcmp-selection-persisted-block ${role}`,
+                class: [
+                  'smtcmp-selection-persisted-block',
+                  role,
+                  range.variant === 'updated'
+                    ? 'smtcmp-selection-persisted-block-updated'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                attributes:
+                  (index === 0 || group.length === 1) && range.label
+                    ? {
+                        'data-smtcmp-highlight-label': range.label,
+                      }
+                    : undefined,
               }),
             )
           })
@@ -210,14 +238,30 @@ export class SelectionHighlightController {
       return
     }
 
-    if (this.activeHighlight && this.activeHighlight.view !== view) {
-      this.clearHighlight(this.activeHighlight.view)
-    }
+    this.setHighlight(view, [
+      {
+        from,
+        to,
+        label: 'Selected',
+        variant: 'selection',
+      },
+    ])
+  }
 
-    view.dispatch({
-      effects: setSelectionHighlightEffect.of({ from, to }),
-    })
-    this.activeHighlight = { view }
+  highlightRange(
+    view: EditorView,
+    payload: SelectionHighlightRange,
+    autoClearMs?: number,
+  ) {
+    this.setHighlight(view, [payload], autoClearMs)
+  }
+
+  highlightRanges(
+    view: EditorView,
+    payload: SelectionHighlightRange[],
+    autoClearMs?: number,
+  ) {
+    this.setHighlight(view, payload, autoClearMs)
   }
 
   clearHighlight(view?: EditorView) {
@@ -229,8 +273,12 @@ export class SelectionHighlightController {
       return
     }
 
-    const activeView = this.activeHighlight.view
+    const { view: activeView, timeoutId } = this.activeHighlight
     this.activeHighlight = null
+
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId)
+    }
 
     if (!activeView.dom.isConnected) {
       return
@@ -243,6 +291,39 @@ export class SelectionHighlightController {
 
   private isActiveView(view: EditorView): boolean {
     return this.activeHighlight?.view === view
+  }
+
+  private setHighlight(
+    view: EditorView,
+    payload: SelectionHighlightRange[],
+    autoClearMs?: number,
+  ) {
+    const ranges = payload.filter((range) => range.from < range.to)
+    if (ranges.length === 0) {
+      this.clearHighlight(view)
+      return
+    }
+
+    if (this.activeHighlight && this.activeHighlight.view !== view) {
+      this.clearHighlight(this.activeHighlight.view)
+    } else if (this.activeHighlight?.timeoutId != null) {
+      window.clearTimeout(this.activeHighlight.timeoutId)
+    }
+
+    view.dispatch({
+      effects: setSelectionHighlightEffect.of(ranges),
+    })
+
+    const timeoutId =
+      typeof autoClearMs === 'number' && autoClearMs > 0
+        ? window.setTimeout(() => {
+            if (this.activeHighlight?.view === view) {
+              this.clearHighlight(view)
+            }
+          }, autoClearMs)
+        : null
+
+    this.activeHighlight = { view, timeoutId }
   }
 
   private shouldIgnoreTarget(target: EventTarget | null): boolean {

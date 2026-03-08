@@ -781,6 +781,11 @@ export const en: TranslationKeys = {
         'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
+      chatApplyMode: 'Chat apply behavior',
+      chatApplyModeDesc:
+        'Only affects Apply in the sidebar Chat. Choose whether edits open inline review first or write directly to the file. Turning review off skips the second confirmation step.',
+      chatApplyModeReviewRequired: 'Review before apply',
+      chatApplyModeDirectApply: 'Write directly to file',
       persistSelectionHighlight: 'Keep selection block highlight',
       persistSelectionHighlightDesc:
         'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',

@@ -599,6 +599,10 @@ export type TranslationKeys = {
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
       mentionDisplayModeBadge?: string
+      chatApplyMode?: string
+      chatApplyModeDesc?: string
+      chatApplyModeReviewRequired?: string
+      chatApplyModeDirectApply?: string
       persistSelectionHighlight?: string
       persistSelectionHighlightDesc?: string
     }
