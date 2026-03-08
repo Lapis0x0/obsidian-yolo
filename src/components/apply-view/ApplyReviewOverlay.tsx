@@ -6,8 +6,9 @@ import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
 import type SmartComposerPlugin from '../../main'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { ApplyViewActions } from './types'
 
-import ApplyViewRoot, { ApplyViewActions } from './ApplyViewRoot'
+import ApplyViewRoot from './ApplyViewRoot'
 
 type ApplyReviewOverlayOptions = {
   plugin: SmartComposerPlugin

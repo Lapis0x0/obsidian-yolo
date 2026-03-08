@@ -4,7 +4,7 @@ import type { Editor, MarkdownView } from 'obsidian'
 
 import { ApplyReviewOverlay } from '../../../components/apply-view/ApplyReviewOverlay'
 import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
-import type { ApplyViewActions } from '../../../components/apply-view/ApplyViewRoot'
+import type { ApplyViewActions } from '../../../components/apply-view/types'
 import type SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { createDiffBlocks } from '../../../utils/chat/diff'

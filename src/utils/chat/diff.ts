@@ -101,6 +101,82 @@ export function createDiffBlocks(
   return mergeAdjacentUnchangedBlocks(blocks)
 }
 
+export function createLineDiffBlocks(
+  currentMarkdown: string,
+  incomingMarkdown: string,
+): DiffBlock[] {
+  const blocks: DiffBlock[] = []
+  const safeCurrentMarkdown = currentMarkdown ?? ''
+  const safeIncomingMarkdown = incomingMarkdown ?? ''
+
+  const advOptions: ILinesDiffComputerOptions = {
+    ignoreTrimWhitespace: false,
+    computeMoves: true,
+    maxComputationTimeMs: 0,
+  }
+  const advDiffComputer = new AdvancedLinesDiffComputer()
+
+  const currentLines = safeCurrentMarkdown.split('\n')
+  const incomingLines = safeIncomingMarkdown.split('\n')
+  const advLineChanges = advDiffComputer.computeDiff(
+    currentLines,
+    incomingLines,
+    advOptions,
+  ).changes
+
+  let lastOriginalEndLineNumberExclusive = 1
+  advLineChanges.forEach((change: LineRangeMapping) => {
+    const oStart = change.originalRange.startLineNumber
+    const oEnd = change.originalRange.endLineNumberExclusive
+    const mStart = change.modifiedRange.startLineNumber
+    const mEnd = change.modifiedRange.endLineNumberExclusive
+
+    if (oStart > lastOriginalEndLineNumberExclusive) {
+      const unchangedLines = currentLines.slice(
+        lastOriginalEndLineNumberExclusive - 1,
+        oStart - 1,
+      )
+      if (unchangedLines.length > 0) {
+        blocks.push({
+          type: 'unchanged',
+          value: unchangedLines.join('\n'),
+        })
+      }
+    }
+
+    const originalLines = currentLines.slice(oStart - 1, oEnd - 1)
+    const modifiedLines = incomingLines.slice(mStart - 1, mEnd - 1)
+    const originalValue = originalLines.join('\n')
+    const modifiedValue = modifiedLines.join('\n')
+    if (originalLines.length > 0 || modifiedLines.length > 0) {
+      blocks.push({
+        type: 'modified',
+        originalValue: originalLines.length > 0 ? originalValue : undefined,
+        modifiedValue: modifiedLines.length > 0 ? modifiedValue : undefined,
+        inlineLines: createInlineDiffLines(originalLines, modifiedLines),
+        presentation: 'inline',
+        blockType: 'paragraph',
+      })
+    }
+
+    lastOriginalEndLineNumberExclusive = oEnd
+  })
+
+  if (currentLines.length > lastOriginalEndLineNumberExclusive - 1) {
+    const unchangedLines = currentLines.slice(
+      lastOriginalEndLineNumberExclusive - 1,
+    )
+    if (unchangedLines.length > 0) {
+      blocks.push({
+        type: 'unchanged',
+        value: unchangedLines.join('\n'),
+      })
+    }
+  }
+
+  return blocks
+}
+
 function pushUnchangedBlock(
   blocks: DiffBlock[],
   units: MarkdownBlockUnit[],

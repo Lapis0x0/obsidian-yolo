@@ -16,21 +16,12 @@ import {
   DiffBlock,
   InlineDiffLine,
   InlineDiffToken,
-  createInlineDiffLines,
-  createDiffBlocks,
+  createLineDiffBlocks,
 } from '../../utils/chat/diff'
+import type { ApplyViewActions } from './types'
 
 // Decision type for each diff block
 type BlockDecision = 'pending' | 'incoming' | 'current'
-
-export type ApplyViewActions = {
-  goToPreviousDiff: () => void
-  goToNextDiff: () => void
-  acceptIncomingActive: () => void
-  acceptCurrentActive: () => void
-  undoActive: () => void
-  close: () => void
-}
 
 export default function ApplyViewRoot({
   state,
@@ -64,7 +55,10 @@ export default function ApplyViewRoot({
 
   const isSelectionFocusMode = state.reviewMode === 'selection-focus'
   const diff = useMemo(
-    () => createDiffBlocks(state.originalContent, state.newContent),
+    () =>
+      splitDiffBlocksByParagraph(
+        createLineDiffBlocks(state.originalContent, state.newContent),
+      ),
     [state.newContent, state.originalContent],
   )
   const selectionTargetBlockIndex = useMemo(
@@ -277,7 +271,6 @@ export default function ApplyViewRoot({
   const updateCurrentDiffFromScroll = useCallback(() => {
     const scroller = scrollerRef.current
     if (!scroller) return
-    if (isSelectionFocusMode) return
     if (suppressScrollRef.current) return
     if (manualNavLockRef.current) return
     updateDiffOffsets()
@@ -297,23 +290,10 @@ export default function ApplyViewRoot({
     }
     const nextIndex = findClosestDiffIndex(scroller.scrollTop, anchorOffset)
     setCurrentDiffIndex(nextIndex)
-  }, [findClosestDiffIndex, isSelectionFocusMode, updateDiffOffsets])
-
-  const cancelProgrammaticScroll = useCallback(() => {
-    const scroller = scrollerRef.current
-    if (suppressRafRef.current) {
-      cancelAnimationFrame(suppressRafRef.current)
-      suppressRafRef.current = null
-    }
-    suppressScrollRef.current = false
-    manualNavLockRef.current = false
-    if (!scroller) return
-    scroller.scrollTo({ top: scroller.scrollTop, behavior: 'auto' })
-  }, [])
+  }, [findClosestDiffIndex, updateDiffOffsets])
 
   const scrollToDiffIndex = useCallback(
     (index: number) => {
-      if (isSelectionFocusMode) return
       const blockIndex = modifiedBlockIndices[index]
       if (blockIndex === undefined) return
       const element = diffBlockRefs.current[blockIndex]
@@ -352,7 +332,7 @@ export default function ApplyViewRoot({
       scroller.scrollTo({ top: clampedTop, behavior: 'smooth' })
       setCurrentDiffIndex(index)
     },
-    [getOffsetTopFromScroller, isSelectionFocusMode, modifiedBlockIndices],
+    [getOffsetTopFromScroller, modifiedBlockIndices],
   )
 
   const goToPreviousDiff = useCallback(() => {
@@ -446,19 +426,6 @@ export default function ApplyViewRoot({
   }, [])
 
   useEffect(() => {
-    if (!isSelectionFocusMode) return
-    if (selectionTargetBlockIndex === null) {
-      setCurrentDiffIndex(0)
-      return
-    }
-    const targetModifiedIndex = modifiedBlockIndices.findIndex(
-      (blockIndex) => blockIndex === selectionTargetBlockIndex,
-    )
-    setCurrentDiffIndex(targetModifiedIndex >= 0 ? targetModifiedIndex : 0)
-  }, [isSelectionFocusMode, modifiedBlockIndices, selectionTargetBlockIndex])
-
-  useEffect(() => {
-    if (isSelectionFocusMode) return
     const scroller = scrollerRef.current
     if (!scroller) return
 
@@ -474,10 +441,9 @@ export default function ApplyViewRoot({
     scheduleUpdate()
     window.addEventListener('resize', scheduleUpdate)
     return () => window.removeEventListener('resize', scheduleUpdate)
-  }, [isSelectionFocusMode, updateCurrentDiffFromScroll, updateDiffOffsets])
+  }, [updateCurrentDiffFromScroll, updateDiffOffsets])
 
   useEffect(() => {
-    if (isSelectionFocusMode) return
     const scheduleUpdate = () => {
       requestAnimationFrame(() => {
         updateDiffOffsets()
@@ -486,10 +452,9 @@ export default function ApplyViewRoot({
     }
 
     scheduleUpdate()
-  }, [isSelectionFocusMode, updateCurrentDiffFromScroll, updateDiffOffsets])
+  }, [updateCurrentDiffFromScroll, updateDiffOffsets])
 
   useEffect(() => {
-    if (isSelectionFocusMode) return
     const scroller = scrollerRef.current
     if (!scroller) return
 
@@ -505,8 +470,8 @@ export default function ApplyViewRoot({
     }
 
     const handleUserScrollIntent = () => {
-      if (!manualNavLockRef.current && !suppressScrollRef.current) return
-      cancelProgrammaticScroll()
+      if (!manualNavLockRef.current) return
+      manualNavLockRef.current = false
       updateCurrentDiffFromScroll()
     }
 
@@ -524,12 +489,7 @@ export default function ApplyViewRoot({
       scroller.removeEventListener('touchmove', handleUserScrollIntent)
       scroller.removeEventListener('pointerdown', handleUserScrollIntent)
     }
-  }, [
-    cancelProgrammaticScroll,
-    isSelectionFocusMode,
-    updateCurrentDiffFromScroll,
-    updateDiffOffsets,
-  ])
+  }, [updateCurrentDiffFromScroll, updateDiffOffsets])
 
   useEffect(() => {
     if (initialViewportAppliedRef.current) return
@@ -761,81 +721,31 @@ const DiffBlockView = forwardRef<
       part.type === 'modified' ? part.modifiedValue : undefined
     const originalValue =
       part.type === 'modified' ? part.originalValue : undefined
-    const modifiedBlockType = part.type === 'modified' ? part.blockType : null
     const inlineMarkdown = useMemo(() => {
       if (part.type !== 'modified') return ''
       const markdown = buildInlineDiffMarkdown(inlineLines ?? [])
       if (markdown.trim().length > 0) return markdown
       return modifiedValue ?? originalValue ?? ''
     }, [inlineLines, modifiedValue, originalValue, part.type])
-    const textBlockInlineLines = useMemo(() => {
-      if (part.type !== 'modified' || modifiedBlockType !== 'section') {
-        return []
-      }
-      return createInlineDiffLines(
-        originalValue?.split('\n') ?? [],
-        modifiedValue?.split('\n') ?? [],
-      )
-    }, [modifiedBlockType, modifiedValue, originalValue, part.type])
-    const canShowBlockActions = !isSelectionFocusMode || isSelectionTarget
-    const renderDecisionActions = () => (
-      <div className="smtcmp-diff-block-actions">
-        <button
-          type="button"
-          onClick={
-            isSelectionFocusMode ? onAcceptSelectionIncoming : onAcceptIncoming
-          }
-          className="smtcmp-apply-action smtcmp-apply-action-accept"
-          title={t('applyView.acceptIncoming', 'Accept incoming')}
-          aria-label={t('applyView.acceptIncoming', 'Accept incoming')}
-        >
-          <span className="smtcmp-apply-action-icon" aria-hidden="true">
-            ✓
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={
-            isSelectionFocusMode ? onAcceptSelectionCurrent : onAcceptCurrent
-          }
-          className="smtcmp-apply-action smtcmp-apply-action-reject"
-          title={t('applyView.acceptCurrent', 'Accept current')}
-          aria-label={t('applyView.acceptCurrent', 'Accept current')}
-        >
-          <span className="smtcmp-apply-action-icon" aria-hidden="true">
-            ×
-          </span>
-        </button>
-      </div>
-    )
     const inlineParagraphs = useMemo<ApplyParagraph[]>(() => {
       if (part.type !== 'modified') return []
       return splitInlineLinesIntoParagraphs(inlineLines ?? [])
     }, [inlineLines, part.type])
-    const textBlockInlineParagraphs = useMemo<ApplyParagraph[]>(() => {
-      if (part.type !== 'modified' || modifiedBlockType !== 'section') return []
-      return splitInlineLinesIntoParagraphs(textBlockInlineLines)
-    }, [modifiedBlockType, part.type, textBlockInlineLines])
-    const activeInlineParagraphs =
-      modifiedBlockType === 'section'
-        ? textBlockInlineParagraphs
-        : inlineParagraphs
     const firstChangedParagraphIndex = useMemo(
-      () =>
-        activeInlineParagraphs.findIndex((paragraph) => paragraph.hasChanges),
-      [activeInlineParagraphs],
+      () => inlineParagraphs.findIndex((paragraph) => paragraph.hasChanges),
+      [inlineParagraphs],
     )
     const actionParagraphIndex = useMemo(() => {
       if (firstChangedParagraphIndex >= 0) return firstChangedParagraphIndex
       if (!isSelectionFocusMode || !isSelectionTarget) return -1
-      const firstNonEmptyParagraphIndex = activeInlineParagraphs.findIndex(
+      const firstNonEmptyParagraphIndex = inlineParagraphs.findIndex(
         (paragraph) => !paragraph.isEmpty,
       )
       if (firstNonEmptyParagraphIndex >= 0) return firstNonEmptyParagraphIndex
-      return activeInlineParagraphs.length > 0 ? 0 : -1
+      return inlineParagraphs.length > 0 ? 0 : -1
     }, [
-      activeInlineParagraphs,
       firstChangedParagraphIndex,
+      inlineParagraphs,
       isSelectionFocusMode,
       isSelectionTarget,
     ])
@@ -899,101 +809,164 @@ const DiffBlockView = forwardRef<
           ) : (
             // Show original diff view with actions
             <>
-              {part.presentation === 'block' &&
-              modifiedBlockType !== 'section' ? (
-                <div
-                  className={`smtcmp-apply-paragraph has-changes${
-                    isActive ? ' is-active' : ''
-                  }`}
-                >
-                  {originalValue !== undefined && (
-                    <div className="smtcmp-diff-block removed">
-                      <div className="smtcmp-diff-block-content">
-                        <ApplyMarkdownContent
-                          content={originalValue}
-                          component={pluginComponent}
-                          sourcePath={sourcePath}
-                          className="smtcmp-apply-markdown"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {modifiedValue !== undefined && (
-                    <div className="smtcmp-diff-block added">
-                      <div className="smtcmp-diff-block-content">
-                        <ApplyMarkdownContent
-                          content={modifiedValue}
-                          component={pluginComponent}
-                          sourcePath={sourcePath}
-                          className="smtcmp-apply-markdown"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  <span className="smtcmp-apply-paragraph-indicator" />
-                  {canShowBlockActions && renderDecisionActions()}
-                </div>
-              ) : (
-                <div className="smtcmp-diff-block smtcmp-diff-block--inline">
-                  {activeInlineParagraphs.length > 0 ? (
-                    activeInlineParagraphs.map((paragraph, paragraphIndex) => {
-                      const paragraphContent = paragraph.isEmpty
-                        ? ''
-                        : buildInlineDiffMarkdown(paragraph.lines)
-                      const showActionsForParagraph =
-                        paragraphIndex === actionParagraphIndex &&
-                        (!isSelectionFocusMode || isSelectionTarget) &&
-                        (paragraph.hasChanges ||
-                          (isSelectionFocusMode &&
-                            firstChangedParagraphIndex < 0))
-                      return (
-                        <div
-                          key={`${paragraphIndex}-${paragraph.isEmpty ? 'empty' : 'content'}`}
-                          className={`smtcmp-apply-paragraph${
-                            paragraph.isEmpty ? ' is-empty' : ''
-                          }${paragraph.hasChanges ? ' has-changes' : ''}${
-                            isActive ? ' is-active' : ''
-                          }`}
-                        >
-                          <div className="smtcmp-diff-block-content">
-                            {paragraph.isEmpty ? (
-                              <div className="smtcmp-apply-empty-line" />
-                            ) : (
-                              <ApplyMarkdownContent
-                                content={paragraphContent}
-                                component={pluginComponent}
-                                sourcePath={sourcePath}
-                                className="smtcmp-apply-markdown smtcmp-apply-inline-markdown"
-                              />
-                            )}
-                          </div>
-                          {showActionsForParagraph && (
-                            <span className="smtcmp-apply-paragraph-indicator" />
+              <div className="smtcmp-diff-block smtcmp-diff-block--inline">
+                {inlineParagraphs.length > 0 ? (
+                  inlineParagraphs.map((paragraph, paragraphIndex) => {
+                    const paragraphContent = paragraph.isEmpty
+                      ? ''
+                      : buildInlineDiffMarkdown(paragraph.lines)
+                    const showActionsForParagraph =
+                      paragraphIndex === actionParagraphIndex &&
+                      (!isSelectionFocusMode || isSelectionTarget) &&
+                      (paragraph.hasChanges ||
+                        (isSelectionFocusMode &&
+                          firstChangedParagraphIndex < 0))
+                    return (
+                      <div
+                        key={`${paragraphIndex}-${paragraph.isEmpty ? 'empty' : 'content'}`}
+                        className={`smtcmp-apply-paragraph${
+                          paragraph.isEmpty ? ' is-empty' : ''
+                        }${paragraph.hasChanges ? ' has-changes' : ''}${
+                          isActive ? ' is-active' : ''
+                        }`}
+                      >
+                        <div className="smtcmp-diff-block-content">
+                          {paragraph.isEmpty ? (
+                            <div className="smtcmp-apply-empty-line" />
+                          ) : (
+                            <ApplyMarkdownContent
+                              content={paragraphContent}
+                              component={pluginComponent}
+                              sourcePath={sourcePath}
+                              className="smtcmp-apply-markdown smtcmp-apply-inline-markdown"
+                            />
                           )}
-                          {showActionsForParagraph && renderDecisionActions()}
                         </div>
-                      )
-                    })
-                  ) : (
-                    <div
-                      className={`smtcmp-apply-paragraph has-changes${
-                        isActive ? ' is-active' : ''
-                      }`}
-                    >
-                      <div className="smtcmp-diff-block-content">
-                        <ApplyMarkdownContent
-                          content={inlineMarkdown}
-                          component={pluginComponent}
-                          sourcePath={sourcePath}
-                          className="smtcmp-apply-markdown smtcmp-apply-inline-markdown"
-                        />
+                        {showActionsForParagraph && (
+                          <span className="smtcmp-apply-paragraph-indicator" />
+                        )}
+                        {showActionsForParagraph && (
+                          <div className="smtcmp-diff-block-actions">
+                            <button
+                              type="button"
+                              onClick={
+                                isSelectionFocusMode
+                                  ? onAcceptSelectionIncoming
+                                  : onAcceptIncoming
+                              }
+                              className="smtcmp-apply-action smtcmp-apply-action-accept"
+                              title={t(
+                                'applyView.acceptIncoming',
+                                'Accept incoming',
+                              )}
+                              aria-label={t(
+                                'applyView.acceptIncoming',
+                                'Accept incoming',
+                              )}
+                            >
+                              <span
+                                className="smtcmp-apply-action-icon"
+                                aria-hidden="true"
+                              >
+                                ✓
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={
+                                isSelectionFocusMode
+                                  ? onAcceptSelectionCurrent
+                                  : onAcceptCurrent
+                              }
+                              className="smtcmp-apply-action smtcmp-apply-action-reject"
+                              title={t(
+                                'applyView.acceptCurrent',
+                                'Accept current',
+                              )}
+                              aria-label={t(
+                                'applyView.acceptCurrent',
+                                'Accept current',
+                              )}
+                            >
+                              <span
+                                className="smtcmp-apply-action-icon"
+                                aria-hidden="true"
+                              >
+                                ×
+                              </span>
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <span className="smtcmp-apply-paragraph-indicator" />
-                      {canShowBlockActions && renderDecisionActions()}
+                    )
+                  })
+                ) : (
+                  <div
+                    className={`smtcmp-apply-paragraph has-changes${
+                      isActive ? ' is-active' : ''
+                    }`}
+                  >
+                    <div className="smtcmp-diff-block-content">
+                      <ApplyMarkdownContent
+                        content={inlineMarkdown}
+                        component={pluginComponent}
+                        sourcePath={sourcePath}
+                        className="smtcmp-apply-markdown smtcmp-apply-inline-markdown"
+                      />
                     </div>
-                  )}
-                </div>
-              )}
+                    <span className="smtcmp-apply-paragraph-indicator" />
+                    {(!isSelectionFocusMode || isSelectionTarget) && (
+                      <div className="smtcmp-diff-block-actions">
+                        <button
+                          type="button"
+                          onClick={
+                            isSelectionFocusMode
+                              ? onAcceptSelectionIncoming
+                              : onAcceptIncoming
+                          }
+                          className="smtcmp-apply-action smtcmp-apply-action-accept"
+                          title={t(
+                            'applyView.acceptIncoming',
+                            'Accept incoming',
+                          )}
+                          aria-label={t(
+                            'applyView.acceptIncoming',
+                            'Accept incoming',
+                          )}
+                        >
+                          <span
+                            className="smtcmp-apply-action-icon"
+                            aria-hidden="true"
+                          >
+                            ✓
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={
+                            isSelectionFocusMode
+                              ? onAcceptSelectionCurrent
+                              : onAcceptCurrent
+                          }
+                          className="smtcmp-apply-action smtcmp-apply-action-reject"
+                          title={t('applyView.acceptCurrent', 'Accept current')}
+                          aria-label={t(
+                            'applyView.acceptCurrent',
+                            'Accept current',
+                          )}
+                        >
+                          <span
+                            className="smtcmp-apply-action-icon"
+                            aria-hidden="true"
+                          >
+                            ×
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -1105,6 +1078,98 @@ function lineHasChanges(line: InlineDiffLine): boolean {
   return line.tokens.some(
     (token) => token.type === 'add' || token.type === 'del',
   )
+}
+
+function splitDiffBlocksByParagraph(blocks: DiffBlock[]): DiffBlock[] {
+  const paragraphBlocks: DiffBlock[] = []
+
+  blocks.forEach((block) => {
+    if (block.type === 'unchanged') {
+      paragraphBlocks.push(block)
+      return
+    }
+
+    const paragraphs = splitInlineLinesIntoParagraphs(block.inlineLines)
+    if (paragraphs.length === 0) {
+      paragraphBlocks.push(block)
+      return
+    }
+
+    paragraphs.forEach((paragraph) => {
+      if (paragraph.isEmpty) {
+        paragraphBlocks.push({
+          type: 'unchanged',
+          value: '',
+        })
+        return
+      }
+
+      if (!paragraph.hasChanges) {
+        paragraphBlocks.push({
+          type: 'unchanged',
+          value: inlineLinesToText(paragraph.lines, 'original'),
+        })
+        return
+      }
+
+      const hasOriginalLines = paragraph.lines.some(
+        (line) => line.type !== 'added',
+      )
+      const hasModifiedLines = paragraph.lines.some(
+        (line) => line.type !== 'removed',
+      )
+      const originalValue = hasOriginalLines
+        ? inlineLinesToText(paragraph.lines, 'original')
+        : undefined
+      const modifiedValue = hasModifiedLines
+        ? inlineLinesToText(paragraph.lines, 'modified')
+        : undefined
+      paragraphBlocks.push({
+        type: 'modified',
+        originalValue,
+        modifiedValue,
+        inlineLines: paragraph.lines,
+        presentation: 'inline',
+        blockType: 'paragraph',
+      })
+    })
+  })
+
+  return mergeAdjacentUnchangedBlocks(paragraphBlocks)
+}
+
+function inlineLinesToText(
+  lines: InlineDiffLine[],
+  variant: 'original' | 'modified',
+): string {
+  return lines
+    .map((line) => inlineTokensToText(line.tokens, variant))
+    .join('\n')
+}
+
+function inlineTokensToText(
+  tokens: InlineDiffToken[],
+  variant: 'original' | 'modified',
+): string {
+  return tokens
+    .filter((token) =>
+      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
+    )
+    .map((token) => token.text)
+    .join('')
+}
+
+function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
+  const merged: DiffBlock[] = []
+  blocks.forEach((block) => {
+    const last = merged[merged.length - 1]
+    if (block.type === 'unchanged' && last?.type === 'unchanged') {
+      last.value = `${last.value}\n${block.value}`
+      return
+    }
+    merged.push(block)
+  })
+  return merged
 }
 
 function buildInlineDiffMarkdown(lines: InlineDiffLine[]): string {

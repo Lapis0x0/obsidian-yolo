@@ -19,7 +19,7 @@ import {
   type InlineDiffToken,
 } from '../../utils/chat/diff'
 
-import type { ApplyViewActions } from './ApplyViewRoot'
+import type { ApplyViewActions } from './types'
 
 type InlineDiffReviewOverlayOptions = {
   plugin: SmartComposerPlugin
