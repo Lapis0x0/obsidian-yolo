@@ -905,6 +905,94 @@ function createInlineDiffTokens(
     return [{ type: 'same', text: originalLine }]
   }
 
+  const sentencePriorityTokens = createSentencePriorityDiffTokens(
+    originalLine,
+    modifiedLine,
+  )
+  if (sentencePriorityTokens) {
+    return sentencePriorityTokens
+  }
+
+  return createWordLevelInlineDiffTokens(originalLine, modifiedLine)
+}
+
+function createSentencePriorityDiffTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] | null {
+  const originalSegments = splitLineIntoSentenceSegments(originalLine)
+  const modifiedSegments = splitLineIntoSentenceSegments(modifiedLine)
+
+  if (originalSegments.length <= 1 && modifiedSegments.length <= 1) {
+    return null
+  }
+
+  const operations = diffSequence(
+    originalSegments,
+    modifiedSegments,
+    (left, right) => left === right,
+  )
+  const tokens: InlineDiffToken[] = []
+  let originalBuffer: string[] = []
+  let modifiedBuffer: string[] = []
+
+  const flushChangedBuffer = () => {
+    if (originalBuffer.length === 0 && modifiedBuffer.length === 0) {
+      return
+    }
+
+    if (originalBuffer.length === 1 && modifiedBuffer.length === 1) {
+      tokens.push(
+        ...createWordLevelInlineDiffTokens(
+          originalBuffer[0],
+          modifiedBuffer[0],
+        ),
+      )
+    } else {
+      const originalText = originalBuffer.join('')
+      const modifiedText = modifiedBuffer.join('')
+
+      if (originalText.length > 0) {
+        tokens.push({ type: 'del', text: originalText })
+      }
+
+      if (modifiedText.length > 0) {
+        tokens.push({ type: 'add', text: modifiedText })
+      }
+    }
+
+    originalBuffer = []
+    modifiedBuffer = []
+  }
+
+  operations.forEach((operation) => {
+    if (operation.type === 'same') {
+      flushChangedBuffer()
+      tokens.push({ type: 'same', text: operation.value })
+      return
+    }
+
+    if (operation.type === 'del') {
+      originalBuffer.push(operation.value)
+      return
+    }
+
+    modifiedBuffer.push(operation.value)
+  })
+
+  flushChangedBuffer()
+
+  return mergeAdjacentInlineTokens(tokens)
+}
+
+function createWordLevelInlineDiffTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] {
+  if (originalLine === modifiedLine) {
+    return [{ type: 'same', text: originalLine }]
+  }
+
   const originalTokens = splitLineTokens(originalLine)
   const modifiedTokens = splitLineTokens(modifiedLine)
 
@@ -951,9 +1039,253 @@ function createInlineDiffTokens(
     }
   }
 
+  if (shouldPreferWholeLineReplacement(originalLine, modifiedLine, merged)) {
+    return buildWholeLineReplacementTokens(originalLine, modifiedLine)
+  }
+
   return merged
 }
 
 function splitLineTokens(line: string): string[] {
   return line.split(/(\s+)/).filter((token) => token.length > 0)
+}
+
+function diffSequence<T>(
+  originalItems: T[],
+  modifiedItems: T[],
+  isEqual: (left: T, right: T) => boolean,
+): Array<{ type: 'same' | 'add' | 'del'; value: T }> {
+  const dp: number[][] = Array.from({ length: originalItems.length + 1 }, () =>
+    new Array(modifiedItems.length + 1).fill(0),
+  )
+
+  for (let i = 1; i <= originalItems.length; i += 1) {
+    for (let j = 1; j <= modifiedItems.length; j += 1) {
+      if (isEqual(originalItems[i - 1], modifiedItems[j - 1])) {
+        dp[i][j] = dp[i - 1][j - 1] + 1
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+      }
+    }
+  }
+
+  const reversed: Array<{ type: 'same' | 'add' | 'del'; value: T }> = []
+  let i = originalItems.length
+  let j = modifiedItems.length
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && isEqual(originalItems[i - 1], modifiedItems[j - 1])) {
+      reversed.push({ type: 'same', value: originalItems[i - 1] })
+      i -= 1
+      j -= 1
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      reversed.push({ type: 'add', value: modifiedItems[j - 1] })
+      j -= 1
+    } else if (i > 0) {
+      reversed.push({ type: 'del', value: originalItems[i - 1] })
+      i -= 1
+    }
+  }
+
+  return reversed.reverse()
+}
+
+function splitLineIntoSentenceSegments(line: string): string[] {
+  if (line.length === 0) {
+    return []
+  }
+
+  const segments: string[] = []
+  let current = ''
+
+  const pushCurrent = () => {
+    if (current.length === 0) return
+    segments.push(current)
+    current = ''
+  }
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    current += char
+
+    if (!isSentenceBoundaryChar(char)) {
+      continue
+    }
+
+    let cursor = index + 1
+    while (cursor < line.length && /\s/u.test(line[cursor])) {
+      current += line[cursor]
+      cursor += 1
+    }
+
+    pushCurrent()
+    index = cursor - 1
+  }
+
+  pushCurrent()
+
+  return segments.filter((segment) => segment.length > 0)
+}
+
+function isSentenceBoundaryChar(char: string): boolean {
+  return /[.!?;:。！？；：]/u.test(char)
+}
+
+function mergeAdjacentInlineTokens(
+  tokens: InlineDiffToken[],
+): InlineDiffToken[] {
+  const merged: InlineDiffToken[] = []
+
+  tokens.forEach((token) => {
+    if (token.text.length === 0) {
+      return
+    }
+
+    const last = merged[merged.length - 1]
+    if (last && last.type === token.type) {
+      last.text += token.text
+      return
+    }
+
+    merged.push({ ...token })
+  })
+
+  return merged
+}
+
+function shouldPreferWholeLineReplacement(
+  originalLine: string,
+  modifiedLine: string,
+  tokens: InlineDiffToken[],
+): boolean {
+  const normalizedOriginal = normalizeInlineComparisonText(originalLine)
+  const normalizedModified = normalizeInlineComparisonText(modifiedLine)
+
+  if (normalizedOriginal.length === 0 || normalizedModified.length === 0) {
+    return false
+  }
+
+  const changedSegments = tokens.filter(
+    (token) => token.type !== 'same' && token.text.trim().length > 0,
+  )
+  if (changedSegments.length === 0) {
+    return false
+  }
+
+  const similarity = getInlineTokenSimilarity(originalLine, modifiedLine)
+  if (similarity < 0.34) {
+    return true
+  }
+
+  const changedChars = changedSegments.reduce(
+    (total, token) => total + token.text.replace(/\s+/g, '').length,
+    0,
+  )
+  const totalChars = Math.max(
+    normalizedOriginal.replace(/\s+/g, '').length,
+    normalizedModified.replace(/\s+/g, '').length,
+  )
+  const changeRatio = totalChars === 0 ? 0 : changedChars / totalChars
+  const tinySameSegments = tokens.filter(
+    (token) => token.type === 'same' && token.text.trim().length > 0,
+  )
+  const hasTinyAnchors = tinySameSegments.some(
+    (token) => token.text.replace(/\s+/g, '').length <= 3,
+  )
+
+  if (isCrossScriptRewrite(originalLine, modifiedLine)) {
+    const strongSameAnchors = tinySameSegments.filter((token) =>
+      isStrongInlineAnchor(token.text),
+    )
+    const sameContentLength = tinySameSegments.reduce(
+      (total, token) => total + token.text.replace(/\s+/g, '').length,
+      0,
+    )
+
+    if (strongSameAnchors.length <= 1 && sameContentLength <= 12) {
+      return true
+    }
+  }
+
+  return changedSegments.length >= 4 && changeRatio > 0.45 && hasTinyAnchors
+}
+
+function buildWholeLineReplacementTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] {
+  const tokens: InlineDiffToken[] = []
+
+  if (originalLine.length > 0) {
+    tokens.push({ type: 'del', text: originalLine })
+  }
+
+  if (modifiedLine.length > 0) {
+    tokens.push({ type: 'add', text: modifiedLine })
+  }
+
+  return tokens
+}
+
+function getInlineTokenSimilarity(
+  originalLine: string,
+  modifiedLine: string,
+): number {
+  const originalTokens = new Set(tokenizeInlineComparableText(originalLine))
+  const modifiedTokens = new Set(tokenizeInlineComparableText(modifiedLine))
+
+  if (originalTokens.size === 0 || modifiedTokens.size === 0) {
+    return 0
+  }
+
+  let overlap = 0
+  originalTokens.forEach((token) => {
+    if (modifiedTokens.has(token)) {
+      overlap += 1
+    }
+  })
+
+  return (2 * overlap) / (originalTokens.size + modifiedTokens.size)
+}
+
+function tokenizeInlineComparableText(text: string): string[] {
+  return normalizeInlineComparisonText(text)
+    .split(/\s+|(?<=[^\p{L}\p{N}\s])|(?=[^\p{L}\p{N}\s])/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+}
+
+function normalizeInlineComparisonText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function isCrossScriptRewrite(
+  originalLine: string,
+  modifiedLine: string,
+): boolean {
+  const originalLatinCount = countMatches(originalLine, /\p{Script=Latin}/gu)
+  const modifiedLatinCount = countMatches(modifiedLine, /\p{Script=Latin}/gu)
+  const originalCjkCount = countMatches(originalLine, /\p{Script=Han}/gu)
+  const modifiedCjkCount = countMatches(modifiedLine, /\p{Script=Han}/gu)
+
+  return (
+    (originalLatinCount >= 6 && modifiedCjkCount >= 2) ||
+    (modifiedLatinCount >= 6 && originalCjkCount >= 2)
+  )
+}
+
+function isStrongInlineAnchor(text: string): boolean {
+  const compact = text.replace(/\s+/g, '')
+  const latinCount = countMatches(compact, /\p{Script=Latin}/gu)
+  const cjkCount = countMatches(compact, /\p{Script=Han}/gu)
+
+  if (cjkCount >= 2) {
+    return true
+  }
+
+  return latinCount >= 6
+}
+
+function countMatches(text: string, pattern: RegExp): number {
+  return Array.from(text.matchAll(pattern)).length
 }

@@ -1,4 +1,4 @@
-import { createDiffBlocks } from './diff'
+import { createDiffBlocks, createInlineDiffLines } from './diff'
 
 describe('createDiffBlocks', () => {
   it('keeps normal paragraph edits as inline diffs', () => {
@@ -132,5 +132,47 @@ describe('createDiffBlocks', () => {
       blockType: 'table',
     })
     expect(blocks[2]).toEqual({ type: 'unchanged', value: '\nOutro' })
+  })
+})
+
+describe('createInlineDiffLines', () => {
+  it('prefers whole-line replacement for cross-language rewrites', () => {
+    const [line] = createInlineDiffLines(
+      [
+        'Mode Variety: Covering single-player campaign, multiplayer PvP, and large-scale battle royale (Warzone).',
+      ],
+      ['模式多样性：包括单人剧情、多人对战以及大型大逃杀（Warzone）。'],
+    )
+
+    expect(line).toEqual({
+      type: 'modified',
+      tokens: [
+        {
+          type: 'del',
+          text: 'Mode Variety: Covering single-player campaign, multiplayer PvP, and large-scale battle royale (Warzone).',
+        },
+        {
+          type: 'add',
+          text: '模式多样性：包括单人剧情、多人对战以及大型大逃杀（Warzone）。',
+        },
+      ],
+    })
+  })
+
+  it('keeps sentence anchors while diffing changed sentence bodies', () => {
+    const [line] = createInlineDiffLines(
+      ['Intro sentence. Keep this part. Closing note.'],
+      ['Intro sentence. Replace this part. Closing note.'],
+    )
+
+    expect(line).toEqual({
+      type: 'modified',
+      tokens: [
+        { type: 'same', text: 'Intro sentence. ' },
+        { type: 'del', text: 'Keep' },
+        { type: 'add', text: 'Replace' },
+        { type: 'same', text: ' this part. Closing note.' },
+      ],
+    })
   })
 })
