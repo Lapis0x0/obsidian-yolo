@@ -731,6 +731,7 @@ export const zh: TranslationKeys = {
     actions: {
       addToChat: '添加到对话',
       customRewrite: '自定义改写',
+      customAsk: '自定义提问',
       rewrite: 'AI 改写',
       explain: '深入解释',
       suggest: '提供建议',

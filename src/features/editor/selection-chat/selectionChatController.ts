@@ -38,6 +38,7 @@ type SelectionChatControllerDeps = {
     view: EditorView,
     options: {
       initialPrompt?: string
+      initialMentionables?: Mentionable[]
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
@@ -69,6 +70,7 @@ export class SelectionChatController {
     view: EditorView,
     options: {
       initialPrompt?: string
+      initialMentionables?: Mentionable[]
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string
@@ -252,9 +254,41 @@ export class SelectionChatController {
 
     const prompt = instruction.trim()
     if (!prompt) {
-      console.warn('Selection action has empty prompt:', actionId)
+      await this.openCustomAsk(editor)
+      return
     }
     await this.explainSelection(editor, prompt)
+  }
+
+  private async openCustomAsk(editor: Editor) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!editor || !view) {
+      new Notice('无法获取当前编辑器')
+      return
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      new Notice('无法创建选区数据')
+      return
+    }
+
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      new Notice('无法获取编辑器视图')
+      return
+    }
+
+    const mentionable: Mentionable = {
+      type: 'block',
+      ...data,
+      source: 'selection',
+    }
+
+    this.showQuickAskWithOptions(editor, editorView, {
+      initialMode: 'ask',
+      initialMentionables: [mentionable],
+    })
   }
 
   private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {

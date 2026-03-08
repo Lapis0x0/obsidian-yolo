@@ -17,6 +17,8 @@ export type SelectionAction = {
   handler: () => void | Promise<void>
 }
 
+type SelectionActionPreset = Omit<SelectionAction, 'handler'>
+
 type SelectionActionsMenuProps = {
   selection: SelectionInfo
   containerEl: HTMLElement
@@ -46,7 +48,7 @@ export function SelectionActionsMenu({
   const [isVisible, setIsVisible] = useState(false)
   const showTimerRef = useRef<number | null>(null)
 
-  const defaultActions = useMemo(
+  const defaultActions = useMemo<SelectionActionPreset[]>(
     () => [
       {
         id: 'custom-rewrite',
@@ -54,6 +56,12 @@ export function SelectionActionsMenu({
         instruction: '',
         mode: 'rewrite' as const,
         rewriteBehavior: 'custom' as const,
+      },
+      {
+        id: 'custom-ask',
+        label: t('selection.actions.customAsk', '自定义提问'),
+        instruction: '',
+        mode: 'ask' as const,
       },
       {
         id: 'explain',
@@ -79,17 +87,29 @@ export function SelectionActionsMenu({
 
   const actions: SelectionAction[] = useMemo(() => {
     const customActions = settings?.continuationOptions?.selectionChatActions
-    const resolvedActions =
+    const resolvedActions: SelectionActionPreset[] =
       customActions && customActions.length > 0
-        ? customActions.filter((action) => action.enabled)
+        ? customActions
+            .filter((action) => action.enabled)
+            .map((action) => ({
+              id: action.id,
+              label: action.label,
+              instruction: action.instruction,
+              mode:
+                action.mode ??
+                (action.id === 'rewrite' || action.id === 'custom-rewrite'
+                  ? 'rewrite'
+                  : 'ask'),
+              rewriteBehavior: action.rewriteBehavior,
+            }))
         : defaultActions
 
-    const hasCustomRewrite = resolvedActions.some(
-      (action) => action.id === 'custom-rewrite',
-    )
-    const displayActions = hasCustomRewrite
-      ? resolvedActions
-      : [defaultActions[0], ...resolvedActions]
+    const fixedActionIds = new Set(['custom-rewrite', 'custom-ask'])
+    const displayActions = defaultActions
+      .filter((action) => fixedActionIds.has(action.id))
+      .concat(
+        resolvedActions.filter((action) => !fixedActionIds.has(action.id)),
+      )
 
     return displayActions.map((action) => {
       const label = action.label?.trim() || ''
@@ -105,7 +125,7 @@ export function SelectionActionsMenu({
           : undefined
       const rawInstruction = action.instruction?.trim() || ''
       const resolvedInstruction =
-        mode === 'rewrite'
+        mode === 'rewrite' || action.id === 'custom-ask'
           ? rawInstruction
           : rawInstruction || label || action.id
       return {

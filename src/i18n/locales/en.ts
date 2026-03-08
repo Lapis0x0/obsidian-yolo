@@ -111,6 +111,7 @@ export const en: TranslationKeys = {
     actions: {
       addToChat: 'Add to chat',
       customRewrite: 'Custom rewrite',
+      customAsk: 'Custom ask',
       rewrite: 'AI rewrite',
       explain: 'Explain in depth',
       suggest: 'Provide suggestions',

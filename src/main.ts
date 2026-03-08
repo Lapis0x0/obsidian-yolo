@@ -220,6 +220,7 @@ export default class SmartComposerPlugin extends Plugin {
     view: EditorView,
     options: {
       initialPrompt?: string
+      initialMentionables?: Mentionable[]
       initialMode?: 'ask' | 'edit' | 'edit-direct'
       initialInput?: string
       editContextText?: string

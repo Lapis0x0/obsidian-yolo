@@ -685,6 +685,7 @@ export type TranslationKeys = {
     actions?: {
       addToChat?: string
       customRewrite?: string
+      customAsk?: string
       rewrite?: string
       explain?: string
       suggest?: string
