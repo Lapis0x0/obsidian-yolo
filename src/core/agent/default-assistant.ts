@@ -27,25 +27,64 @@ export const createDefaultAssistant = (fallbackModelId: string): Assistant => ({
   updatedAt: Date.now(),
 })
 
+const hasDefaultAssistantChanged = (
+  current: Assistant,
+  normalized: Assistant,
+): boolean => {
+  return (
+    current.id !== normalized.id ||
+    current.name !== normalized.name ||
+    current.description !== normalized.description ||
+    current.systemPrompt !== normalized.systemPrompt ||
+    current.modelId !== normalized.modelId ||
+    current.persona !== normalized.persona ||
+    current.enableTools !== normalized.enableTools ||
+    current.includeBuiltinTools !== normalized.includeBuiltinTools ||
+    JSON.stringify(current.enabledToolNames ?? []) !==
+      JSON.stringify(normalized.enabledToolNames ?? []) ||
+    JSON.stringify(current.enabledSkills ?? []) !==
+      JSON.stringify(normalized.enabledSkills ?? []) ||
+    JSON.stringify(current.skillPreferences ?? {}) !==
+      JSON.stringify(normalized.skillPreferences ?? {}) ||
+    JSON.stringify(current.customParameters ?? []) !==
+      JSON.stringify(normalized.customParameters ?? [])
+  )
+}
+
 const normalizeDefaultAssistant = (
   assistant: Assistant,
   fallbackModelId: string,
-): Assistant => ({
-  ...assistant,
-  id: DEFAULT_ASSISTANT_ID,
-  name: assistant.name?.trim() || DEFAULT_ASSISTANT_NAME,
-  description: assistant.description?.trim() || DEFAULT_ASSISTANT_DESCRIPTION,
-  systemPrompt:
-    typeof assistant.systemPrompt === 'string'
-      ? assistant.systemPrompt
-      : DEFAULT_ASSISTANT_SYSTEM_PROMPT,
-  modelId: assistant.modelId || fallbackModelId,
-  enableTools: assistant.enableTools ?? true,
-  includeBuiltinTools: assistant.includeBuiltinTools ?? true,
-  enabledToolNames: assistant.enabledToolNames ?? [],
-  createdAt: assistant.createdAt ?? Date.now(),
-  updatedAt: Date.now(),
-})
+): Assistant => {
+  const createdAt = assistant.createdAt ?? Date.now()
+  const normalizedBase: Assistant = {
+    ...assistant,
+    id: DEFAULT_ASSISTANT_ID,
+    name: assistant.name?.trim() || DEFAULT_ASSISTANT_NAME,
+    description: assistant.description?.trim() || DEFAULT_ASSISTANT_DESCRIPTION,
+    systemPrompt:
+      typeof assistant.systemPrompt === 'string'
+        ? assistant.systemPrompt
+        : DEFAULT_ASSISTANT_SYSTEM_PROMPT,
+    modelId: assistant.modelId || fallbackModelId,
+    enableTools: assistant.enableTools ?? true,
+    includeBuiltinTools: assistant.includeBuiltinTools ?? true,
+    enabledToolNames: assistant.enabledToolNames ?? [],
+    enabledSkills: assistant.enabledSkills ?? [],
+    skillPreferences: assistant.skillPreferences ?? {},
+    customParameters: assistant.customParameters ?? [],
+    createdAt,
+    updatedAt: assistant.updatedAt ?? createdAt,
+  }
+
+  if (!hasDefaultAssistantChanged(assistant, normalizedBase)) {
+    return normalizedBase
+  }
+
+  return {
+    ...normalizedBase,
+    updatedAt: Date.now(),
+  }
+}
 
 export const ensureDefaultAssistantInSettings = (
   settings: SmartComposerSettings,

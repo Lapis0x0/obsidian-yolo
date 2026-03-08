@@ -934,10 +934,14 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = ensureDefaultAssistantInSettings(
-      parseSmartComposerSettings(await this.loadData()),
-    )
-    await this.saveData(this.settings) // Save updated settings
+    const parsedSettings = parseSmartComposerSettings(await this.loadData())
+    const normalizedSettings = ensureDefaultAssistantInSettings(parsedSettings)
+
+    this.settings = normalizedSettings
+
+    if (JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)) {
+      await this.saveData(normalizedSettings)
+    }
   }
 
   async setSettings(newSettings: SmartComposerSettings) {
