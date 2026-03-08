@@ -207,8 +207,6 @@ export class WriteAssistController {
           from,
           to,
         },
-        selectionOriginalText: selected,
-        selectionNewText: rewritten,
       } satisfies ApplyViewState)
 
       notice.setMessage('改写结果已生成。')

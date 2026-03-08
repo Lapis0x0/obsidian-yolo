@@ -1204,10 +1204,6 @@ export function QuickAskPanel({
                   to: getSelectionEndPosition(selectionFrom, selectedContext),
                 }
               : undefined,
-          selectionOriginalText:
-            scopedToSelection && selectionFrom ? selectedContext : undefined,
-          selectionNewText:
-            scopedToSelection && selectionFrom ? newContent : undefined,
         } satisfies ApplyViewState)
       } catch (error) {
         console.error('Edit mode failed:', error)

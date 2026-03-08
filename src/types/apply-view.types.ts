@@ -10,20 +10,10 @@ export type ApplyViewSelectionRange = {
   to: ApplyViewSelectionPosition
 }
 
-export type ApplyViewInitialViewport = {
-  scrollTop: number
-  scrollLeft: number
-  scrollRatio: number
-  anchorLine: number
-}
-
 export type ApplyViewState = {
   file: TFile
   originalContent: string
   newContent: string
-  reviewMode?: 'full' | 'inline-selection' | 'selection-focus'
-  initialViewport?: ApplyViewInitialViewport
+  reviewMode?: 'full' | 'selection-focus'
   selectionRange?: ApplyViewSelectionRange
-  selectionOriginalText?: string
-  selectionNewText?: string
 }

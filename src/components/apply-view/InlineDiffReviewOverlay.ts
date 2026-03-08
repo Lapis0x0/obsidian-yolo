@@ -12,12 +12,14 @@ import {
 } from '@codemirror/view'
 
 import type SmartComposerPlugin from '../../main'
-import type { ApplyViewState } from '../../types/apply-view.types'
 import {
-  createDiffBlocks,
-  type DiffBlock,
-  type InlineDiffToken,
-} from '../../utils/chat/diff'
+  buildInlineReviewBlocks,
+  countOriginalLines,
+  type ReviewDecision,
+} from '../../features/editor/diff-review/review-model'
+import { ReviewSession } from '../../features/editor/diff-review/review-session'
+import type { ApplyViewState } from '../../types/apply-view.types'
+import { type DiffBlock, type InlineDiffToken } from '../../utils/chat/diff'
 
 import type { ApplyViewActions } from './types'
 
@@ -28,8 +30,6 @@ type InlineDiffReviewOverlayOptions = {
   onClose: () => void
   onActionsReady?: (actions: ApplyViewActions | null) => void
 }
-
-type BlockDecision = 'pending' | 'incoming' | 'current'
 
 type ModifiedReviewBlock = {
   blockIndex: number
@@ -51,7 +51,7 @@ class InlineReviewWidget extends WidgetType {
     private readonly block: Extract<DiffBlock, { type: 'modified' }>,
     private readonly reviewIndex: number,
     private readonly isActive: boolean,
-    private readonly decision: BlockDecision,
+    private readonly decision: ReviewDecision,
     private readonly onHover: (reviewIndex: number) => void,
   ) {
     super()
@@ -193,12 +193,6 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
-function countOriginalLines(block: DiffBlock): number {
-  if (block.type === 'unchanged') return block.value.split('\n').length
-  if (block.originalValue === undefined) return 0
-  return block.originalValue.split('\n').length
-}
-
 function lineStartOffset(view: EditorView, line: number): number {
   if (line >= view.state.doc.lines) return view.state.doc.length
   return view.state.doc.line(line + 1).from
@@ -265,8 +259,8 @@ function findSelectionTargetIndex(
 
 export class InlineDiffReviewOverlay {
   private readonly blocks: DiffBlock[]
+  private readonly session: ReviewSession
   private readonly modifiedBlocks: ModifiedReviewBlock[]
-  private readonly decisions = new Map<number, BlockDecision>()
   private currentIndex = 0
   private closed = false
 
@@ -283,10 +277,15 @@ export class InlineDiffReviewOverlay {
   private previousCaretColor = ''
 
   constructor(private readonly options: InlineDiffReviewOverlayOptions) {
-    this.blocks = createDiffBlocks(
+    this.blocks = buildInlineReviewBlocks(
       options.state.originalContent,
       options.state.newContent,
     )
+    this.session = new ReviewSession({
+      file: options.state.file,
+      vault: options.plugin.app.vault,
+      blocks: this.blocks,
+    })
     this.modifiedBlocks = resolveModifiedBlocks(options.view, this.blocks)
     this.currentIndex = findSelectionTargetIndex(
       this.modifiedBlocks,
@@ -328,7 +327,7 @@ export class InlineDiffReviewOverlay {
       acceptCurrentActive: () => this.acceptCurrentActive(),
       undoActive: () => this.undoActive(),
       close: () => {
-        void this.persistAndClose(this.generateFinalContent('current'))
+        void this.persistAndClose()
       },
     })
   }
@@ -436,7 +435,7 @@ export class InlineDiffReviewOverlay {
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
-        void this.persistAndClose(this.generateFinalContent('current'))
+        void this.persistAndClose()
         return
       }
       if (isMod && event.key === 'Enter') {
@@ -595,14 +594,14 @@ export class InlineDiffReviewOverlay {
   private undoActive(): void {
     const item = this.modifiedBlocks[this.currentIndex]
     if (!item) return
-    this.decisions.set(item.blockIndex, 'pending')
+    this.session.clearDecision(item.blockIndex)
     this.renderBlocks({ ensureVisible: false })
   }
 
   private resolveActive(decision: 'incoming' | 'current'): void {
     const item = this.modifiedBlocks[this.currentIndex]
     if (!item) return
-    this.decisions.set(item.blockIndex, decision)
+    this.session.setDecision(item.blockIndex, decision)
 
     const nextPending = this.findNextPendingIndex(this.currentIndex + 1)
     if (nextPending !== null) {
@@ -611,7 +610,7 @@ export class InlineDiffReviewOverlay {
       return
     }
 
-    void this.persistAndClose(this.generateFinalContent('current'))
+    void this.persistAndClose()
   }
 
   private findNextPendingIndex(start: number): number | null {
@@ -619,7 +618,7 @@ export class InlineDiffReviewOverlay {
       const candidate = (start + index) % this.modifiedBlocks.length
       const blockIndex = this.modifiedBlocks[candidate]?.blockIndex
       if (blockIndex === undefined) continue
-      const decision = this.decisions.get(blockIndex)
+      const decision = this.session.getDecision(blockIndex)
       if (!decision || decision === 'pending') return candidate
     }
     return null
@@ -628,7 +627,7 @@ export class InlineDiffReviewOverlay {
   private renderBlocks(options: { ensureVisible: boolean }): void {
     const builder = new RangeSetBuilder<Decoration>()
     this.modifiedBlocks.forEach((item, reviewIndex) => {
-      const decision = this.decisions.get(item.blockIndex) ?? 'pending'
+      const decision = this.session.getDecision(item.blockIndex) ?? 'pending'
       const widget = new InlineReviewWidget(
         item.block,
         reviewIndex,
@@ -703,28 +702,10 @@ export class InlineDiffReviewOverlay {
     this.updateFloatingPosition({ animate: true })
   }
 
-  private generateFinalContent(
-    defaultDecision: 'incoming' | 'current',
-  ): string {
-    return this.blocks
-      .map((block, index) => {
-        if (block.type === 'unchanged') return block.value
-        const decision = this.decisions.get(index) ?? defaultDecision
-        const incoming = block.modifiedValue ?? block.originalValue ?? ''
-        const current = block.originalValue ?? ''
-        if (decision === 'incoming') return incoming
-        return current
-      })
-      .join('\n')
-  }
-
-  private async persistAndClose(content: string): Promise<void> {
+  private async persistAndClose(finalContent?: string): Promise<void> {
     if (this.closed) return
     try {
-      await this.options.plugin.app.vault.modify(
-        this.options.state.file,
-        content,
-      )
+      await this.session.persist(finalContent)
     } catch (error) {
       console.error('[InlineDiffReview] Failed to persist inline review', error)
     } finally {

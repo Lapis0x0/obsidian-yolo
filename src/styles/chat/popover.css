@@ -1125,11 +1125,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     color: rgb(var(--smtcmp-current-color-rgb));
   }
 
-  .smtcmp-apply-action-both {
-    font-size: var(--font-ui-smallest);
-    color: var(--interactive-accent);
-  }
-
   .smtcmp-accept {
     color: white;
     background: rgba(var(--smtcmp-incoming-color-rgb), 0.8);
@@ -1144,11 +1139,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     &:hover {
       background: rgba(var(--smtcmp-current-color-rgb), 1);
     }
-  }
-
-  .smtcmp-diff-navigation {
-    display: flex;
-    align-items: center;
   }
 
   /* Toolbar styles */
@@ -1250,17 +1240,6 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     font-size: 14px;
     line-height: 1;
     font-weight: 600;
-  }
-
-  .smtcmp-apply-btn {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border: none;
-    font-weight: var(--font-medium);
-
-    &:hover {
-      background: var(--interactive-accent-hover);
-    }
   }
 }
 

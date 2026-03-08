@@ -7,7 +7,7 @@ import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDi
 import type { ApplyViewActions } from '../../../components/apply-view/types'
 import type SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
-import { createDiffBlocks } from '../../../utils/chat/diff'
+import { buildInlineReviewBlocks, countModifiedBlocks } from './review-model'
 
 const INLINE_DIFF_REVIEW_THRESHOLD = 3
 
@@ -165,12 +165,11 @@ export class DiffReviewController {
           }
         : state
 
-    const modifiedBlockCount = createDiffBlocks(
-      reviewState.originalContent,
-      reviewState.newContent,
-    ).reduce(
-      (count, block) => (block.type === 'modified' ? count + 1 : count),
-      0,
+    const modifiedBlockCount = countModifiedBlocks(
+      buildInlineReviewBlocks(
+        reviewState.originalContent,
+        reviewState.newContent,
+      ),
     )
 
     const shouldUseInlineSelectionReview =
