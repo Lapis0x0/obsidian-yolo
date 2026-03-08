@@ -10967,10 +10967,6 @@ body.smtcmp-quick-ask-global-interaction * {
     color-mix(in srgb, var(--interactive-accent) 18%, transparent)
   );
   color: inherit;
-  margin-left: -6px;
-  margin-right: -6px;
-  padding-left: 6px;
-  padding-right: 6px;
   position: relative;
 }
 
