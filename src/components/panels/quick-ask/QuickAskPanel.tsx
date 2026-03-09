@@ -293,7 +293,11 @@ export function QuickAskPanel({
   const [mentionMenuPlacement, setMentionMenuPlacement] = useState<
     'top' | 'bottom'
   >('top')
-  const [mentionables, setMentionables] = useState<Mentionable[]>([])
+  const [mentionables, setMentionables] = useState<Mentionable[]>(
+    () => initialMentionables ?? [],
+  )
+  const [activeSelectionScope, setActiveSelectionScope] =
+    useState<QuickAskSelectionScope | null>(() => selectionScope ?? null)
   const [copied, setCopied] = useState(false)
   const hasDockedRef = useRef(false)
   const enableAutoDock =
@@ -327,6 +331,14 @@ export function QuickAskPanel({
     }
   }, [initialMode])
 
+  useEffect(() => {
+    setMentionables(initialMentionables ?? [])
+  }, [initialMentionables])
+
+  useEffect(() => {
+    setActiveSelectionScope(selectionScope ?? null)
+  }, [selectionScope])
+
   // Drag & Resize state
   const dragHandleRef = useRef<HTMLDivElement>(null)
   const resizeHandlesRef = useRef<{
@@ -356,10 +368,11 @@ export function QuickAskPanel({
     width: number
     height: number
   } | null>(null)
-  const selectionMentionable = selectionScope?.mentionable ?? null
+  const selectionMentionable = activeSelectionScope?.mentionable ?? null
   const selectionEditContextText =
-    selectionScope?.mentionable.content ?? editContextText ?? ''
-  const selectionEditFrom = selectionScope?.selectionFrom ?? editSelectionFrom
+    activeSelectionScope?.mentionable.content ?? editContextText ?? ''
+  const selectionEditFrom =
+    activeSelectionScope?.selectionFrom ?? editSelectionFrom
   const hasScopedSelectionForEdit =
     selectionEditContextText.trim().length > 0 && !!selectionEditFrom
   const buildEditInstruction = useCallback(
@@ -505,6 +518,9 @@ export function QuickAskPanel({
     (mutations: NodeMutations<MentionNode>) => {
       const destroyedMentionableKeys: string[] = []
       const addedMentionables: SerializedMentionable[] = []
+      const selectionMentionableKey = selectionMentionable
+        ? getMentionableKey(serializeMentionable(selectionMentionable))
+        : null
 
       mutations.forEach((mutation) => {
         const mentionable = mutation.node.getMentionable()
@@ -554,8 +570,15 @@ export function QuickAskPanel({
               .filter((v): v is Mentionable => !!v),
           ),
       )
+
+      if (
+        selectionMentionableKey &&
+        destroyedMentionableKeys.includes(selectionMentionableKey)
+      ) {
+        setActiveSelectionScope(null)
+      }
     },
-    [app, mentionables],
+    [app, mentionables, selectionMentionable],
   )
 
   // Build promptGenerator with context
@@ -566,11 +589,8 @@ export function QuickAskPanel({
     const hasTitle = trimmedTitle.length > 0
     const hasContext = contextText.trim().length > 0
     const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
-    const effectiveMentionables = mentionables.length
-      ? mentionables
-      : (initialMentionables ?? [])
     const promptSelectionMentionable =
-      selectionMentionable ?? getSelectionMentionable(effectiveMentionables)
+      selectionMentionable ?? getSelectionMentionable(mentionables)
     const contextSection =
       promptSelectionMentionable && hasContext
         ? buildSelectionContextSection({
@@ -606,7 +626,6 @@ export function QuickAskPanel({
     contextText,
     fileTitle,
     getRAGEngine,
-    initialMentionables,
     mentionables,
     selectionMentionable,
     selectedAssistant,
@@ -1087,14 +1106,20 @@ export function QuickAskPanel({
   )
 
   useEffect(() => {
-    if (!initialInput || hasAppliedInitialInputRef.current) return
+    if (
+      autoSend ||
+      hasAppliedInitialInputRef.current ||
+      (!initialInput && (initialMentionables?.length ?? 0) === 0)
+    ) {
+      return
+    }
 
     let cancelled = false
-    const applyInitialInput = () => {
+    const applyInitialState = () => {
       if (cancelled || hasAppliedInitialInputRef.current) return
       const editor = lexicalEditorRef.current
       if (!editor) {
-        requestAnimationFrame(applyInitialInput)
+        requestAnimationFrame(applyInitialState)
         return
       }
 
@@ -1104,17 +1129,29 @@ export function QuickAskPanel({
         root.clear()
         const paragraph = $createParagraphNode()
         root.append(paragraph)
-        paragraph.append($createTextNode(initialInput))
+        ;(initialMentionables ?? []).forEach((mentionable) => {
+          const mentionNode = $createMentionNode(
+            getMentionableName(mentionable, {
+              unitLabel: mentionableUnitLabel,
+            }),
+            serializeMentionable(mentionable),
+          )
+          paragraph.append(mentionNode)
+          paragraph.append($createTextNode(' '))
+        })
+        if (initialInput) {
+          paragraph.append($createTextNode(initialInput))
+        }
         paragraph.selectEnd()
       })
-      setInputText(initialInput)
+      setInputText(initialInput ?? '')
     }
 
-    requestAnimationFrame(applyInitialInput)
+    requestAnimationFrame(applyInitialState)
     return () => {
       cancelled = true
     }
-  }, [initialInput])
+  }, [autoSend, initialInput, initialMentionables, mentionableUnitLabel])
 
   // Submit edit mode - generate a text edit plan and open ApplyView
   const submitEditMode = useCallback(
