@@ -3,6 +3,8 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian'
 import {
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
+  type TextEditOperation,
+  type TextEditPlan,
 } from '../edits/textEditEngine'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
@@ -30,13 +32,12 @@ type LocalFileToolName =
   | 'fs_search'
   | 'fs_read'
   | 'fs_edit'
-  | 'fs_write'
+  | 'fs_file_ops'
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsListScope = 'files' | 'dirs' | 'all'
-type FsWriteAction =
+type FsFileOpAction =
   | 'create_file'
-  | 'write_file'
   | 'delete_file'
   | 'create_dir'
   | 'delete_dir'
@@ -60,7 +61,7 @@ type LocalToolCallResult =
 
 type FsResultItem = {
   ok: boolean
-  action: FsWriteAction
+  action: FsFileOpAction
   target: string
   message: string
 }
@@ -106,7 +107,12 @@ const getFsEditSelectionRange = (
   >['operationResults'],
 ): ApplyViewState['selectionRange'] | undefined => {
   const changedRanges = operationResults
-    .map((result) => (result.changed ? result.matchedRange : undefined))
+    .map((result) => {
+      if (!result.changed) {
+        return undefined
+      }
+      return result.matchedRange ?? result.newRange
+    })
     .filter((range): range is NonNullable<typeof range> => Boolean(range))
 
   if (changedRanges.length === 0) {
@@ -324,7 +330,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_edit',
       description:
-        'Apply exact text replacement within a single file. Safer than full-file overwrite for localized edits.',
+        'Apply text edit operations within a single existing file. Supports replace, insert_after, and append.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -332,32 +338,50 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Vault-relative file path.',
           },
-          oldText: {
-            type: 'string',
-            description: 'Exact text to replace. Must not be empty.',
-          },
-          newText: {
-            type: 'string',
-            description: 'Replacement text.',
-          },
-          expectedOccurrences: {
-            type: 'integer',
+          operations: {
+            type: 'array',
             description:
-              'Expected number of matches for oldText. Defaults to 1. Tool fails if actual count differs.',
-          },
-          dryRun: {
-            type: 'boolean',
-            description:
-              'If true, validate and report replacement stats without modifying file.',
+              'Ordered text edit operations to apply. Supports replace, insert_after, and append.',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['replace', 'insert_after', 'append'],
+                },
+                oldText: {
+                  type: 'string',
+                  description: 'Required for replace.',
+                },
+                newText: {
+                  type: 'string',
+                  description: 'Required for replace.',
+                },
+                anchor: {
+                  type: 'string',
+                  description: 'Required for insert_after.',
+                },
+                content: {
+                  type: 'string',
+                  description: 'Required for insert_after and append.',
+                },
+                expectedOccurrences: {
+                  type: 'integer',
+                  description:
+                    'Optional positive integer match count for replace and insert_after. Defaults to 1.',
+                },
+              },
+              required: ['type'],
+            },
           },
         },
-        required: ['path', 'oldText', 'newText'],
+        required: ['path', 'operations'],
       },
     },
     {
-      name: 'fs_write',
+      name: 'fs_file_ops',
       description:
-        'Execute vault write operations for files/folders. delete_* actions should require approval.',
+        'Execute file and folder operations in the vault. Use for create, move, and delete operations.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -365,13 +389,12 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             enum: [
               'create_file',
-              'write_file',
               'delete_file',
               'create_dir',
               'delete_dir',
               'move',
             ],
-            description: 'Write action to run for each item.',
+            description: 'File operation to run for each item.',
           },
           items: {
             type: 'array',
@@ -382,10 +405,6 @@ export function getLocalFileTools(): McpTool[] {
                 oldPath: { type: 'string' },
                 newPath: { type: 'string' },
                 content: { type: 'string' },
-                mode: {
-                  type: 'string',
-                  enum: ['overwrite', 'append'],
-                },
                 recursive: {
                   type: 'boolean',
                   description:
@@ -627,18 +646,84 @@ const getFsListScope = (args: Record<string, unknown>): FsListScope => {
   return value
 }
 
-const getFsWriteAction = (args: Record<string, unknown>): FsWriteAction => {
+const asPositiveInteger = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    return undefined
+  }
+  return value
+}
+
+const parseTextEditOperation = (
+  operation: Record<string, unknown>,
+  index: number,
+): TextEditOperation => {
+  const type = asOptionalString(operation.type).trim().toLowerCase()
+
+  if (type === 'replace') {
+    const oldText = getTextArg(operation, 'oldText')
+    if (oldText.length === 0) {
+      throw new Error(`operations[${index}].oldText must not be empty.`)
+    }
+
+    return {
+      type: 'replace',
+      oldText,
+      newText: getTextArg(operation, 'newText'),
+      expectedOccurrences: asPositiveInteger(operation.expectedOccurrences),
+    }
+  }
+
+  if (type === 'insert_after') {
+    const anchor = getTextArg(operation, 'anchor')
+    if (anchor.length === 0) {
+      throw new Error(`operations[${index}].anchor must not be empty.`)
+    }
+
+    return {
+      type: 'insert_after',
+      anchor,
+      content: getTextArg(operation, 'content'),
+      expectedOccurrences: asPositiveInteger(operation.expectedOccurrences),
+    }
+  }
+
+  if (type === 'append') {
+    return {
+      type: 'append',
+      content: getTextArg(operation, 'content'),
+    }
+  }
+
+  throw new Error(
+    `operations[${index}].type must be one of: replace, insert_after, append.`,
+  )
+}
+
+const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
+  const operations = getRecordArrayArg(args, 'operations').map(
+    (operation, index) => {
+      return parseTextEditOperation(operation, index)
+    },
+  )
+
+  if (operations.length === 0) {
+    throw new Error('operations cannot be empty.')
+  }
+
+  return { operations }
+}
+
+const getFsFileOpAction = (args: Record<string, unknown>): FsFileOpAction => {
   const value = args.action
   if (
     value !== 'create_file' &&
-    value !== 'write_file' &&
     value !== 'delete_file' &&
     value !== 'create_dir' &&
     value !== 'delete_dir' &&
     value !== 'move'
   ) {
     throw new Error(
-      'action must be one of: create_file, write_file, delete_file, create_dir, delete_dir, move.',
+      'action must be one of: create_file, delete_file, create_dir, delete_dir, move.',
     )
   }
   return value
@@ -659,9 +744,9 @@ const formatJsonResult = (payload: unknown): string => {
   return JSON.stringify(payload, null, 2)
 }
 
-export function parseLocalFsWriteActionFromArgs(
+export function parseLocalFsFileOpActionFromArgs(
   args?: Record<string, unknown> | string,
-): FsWriteAction | null {
+): FsFileOpAction | null {
   try {
     const parsedArgs: Record<string, unknown> | undefined =
       typeof args === 'string'
@@ -672,7 +757,7 @@ export function parseLocalFsWriteActionFromArgs(
     if (!parsedArgs) {
       return null
     }
-    return getFsWriteAction(parsedArgs)
+    return getFsFileOpAction(parsedArgs)
   } catch {
     return null
   }
@@ -941,20 +1026,7 @@ export async function callLocalFileTool({
 
       case 'fs_edit': {
         const path = validateVaultPath(getTextArg(args, 'path'))
-        const oldText = getTextArg(args, 'oldText')
-        const newText = getTextArg(args, 'newText')
-        const expectedOccurrences = getOptionalIntegerArg({
-          args,
-          key: 'expectedOccurrences',
-          defaultValue: 1,
-          min: 1,
-          max: 100000,
-        })
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
-
-        if (oldText.length === 0) {
-          throw new Error('oldText must not be empty.')
-        }
+        const plan = getFsEditPlan(args)
 
         const file = app.vault.getAbstractFileByPath(path)
         if (!file || !(file instanceof TFile)) {
@@ -967,32 +1039,20 @@ export async function callLocalFileTool({
         const content = await app.vault.read(file)
         const materialized = materializeTextEditPlan({
           content,
-          plan: {
-            operations: [
-              {
-                type: 'replace',
-                oldText,
-                newText,
-                expectedOccurrences,
-              },
-            ],
-          },
+          plan,
         })
 
         if (materialized.errors.length > 0) {
           throw new Error(`${path}: ${materialized.errors[0]}`)
         }
 
-        const operationResult = materialized.operationResults[0]
         const nextContent = materialized.newContent
-        const actualOccurrences = operationResult?.actualOccurrences ?? 0
-        const matchMode = operationResult?.matchMode ?? 'exact'
 
         assertContentSize(nextContent)
         const shouldRequireReview = settings?.mcp.fsEditRequireReview ?? false
         let appliedContent = nextContent
 
-        if (!dryRun && shouldRequireReview) {
+        if (shouldRequireReview) {
           if (!openApplyReview) {
             throw new Error('Apply review is unavailable for fs_edit.')
           }
@@ -1017,7 +1077,7 @@ export async function callLocalFileTool({
           }
 
           appliedContent = reviewResult.finalContent
-        } else if (!dryRun) {
+        } else {
           await app.vault.modify(file, nextContent)
         }
 
@@ -1026,16 +1086,19 @@ export async function callLocalFileTool({
           text: formatJsonResult({
             tool: 'fs_edit',
             path,
-            dryRun,
-            expectedOccurrences,
-            actualOccurrences,
-            matchMode,
+            totalOperations: materialized.totalOperations,
+            appliedCount: materialized.appliedCount,
+            operationResults: materialized.operationResults.map((result) => ({
+              type: result.operation.type,
+              changed: result.changed,
+              actualOccurrences: result.actualOccurrences,
+              expectedOccurrences: result.expectedOccurrences,
+              matchMode: result.matchMode,
+            })),
             changed: content !== appliedContent,
-            message: dryRun
-              ? 'Would apply edit.'
-              : shouldRequireReview
-                ? 'Applied reviewed edit.'
-                : 'Applied edit.',
+            message: shouldRequireReview
+              ? 'Applied reviewed edit.'
+              : 'Applied edit.',
           }),
         }
       }
@@ -1177,8 +1240,8 @@ export async function callLocalFileTool({
         }
       }
 
-      case 'fs_write': {
-        const action = getFsWriteAction(args)
+      case 'fs_file_ops': {
+        const action = getFsFileOpAction(args)
         const items = getRecordArrayArg(args, 'items')
         const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
 
@@ -1210,65 +1273,6 @@ export async function callLocalFileTool({
               }
               ensureParentFolderExists(app, path)
 
-              if (!dryRun) {
-                await app.vault.create(path, content)
-              }
-
-              results.push({
-                ok: true,
-                action,
-                target: path,
-                message: dryRun ? 'Would create file.' : 'Created file.',
-              })
-              continue
-            }
-
-            if (action === 'write_file') {
-              const path = validateVaultPath(getTextArg(item, 'path'))
-              const content = getTextArg(item, 'content')
-              assertContentSize(content)
-              const mode = item.mode
-              if (
-                mode !== undefined &&
-                mode !== 'overwrite' &&
-                mode !== 'append'
-              ) {
-                throw new Error('mode must be overwrite or append.')
-              }
-
-              const existing = app.vault.getAbstractFileByPath(path)
-              if (existing && !(existing instanceof TFile)) {
-                throw new Error(`Path is not a file: ${path}`)
-              }
-
-              if (existing instanceof TFile) {
-                const nextContent =
-                  mode === 'append'
-                    ? `${await app.vault.read(existing)}${content}`
-                    : content
-                assertContentSize(nextContent)
-
-                if (!dryRun) {
-                  await app.vault.modify(existing, nextContent)
-                }
-
-                results.push({
-                  ok: true,
-                  action,
-                  target: path,
-                  message:
-                    mode === 'append'
-                      ? dryRun
-                        ? 'Would append to file.'
-                        : 'Appended to file.'
-                      : dryRun
-                        ? 'Would overwrite file.'
-                        : 'Overwrote file.',
-                })
-                continue
-              }
-
-              ensureParentFolderExists(app, path)
               if (!dryRun) {
                 await app.vault.create(path, content)
               }
@@ -1392,7 +1396,7 @@ export async function callLocalFileTool({
               continue
             }
 
-            throw new Error(`Unsupported fs_write action: ${action}`)
+            throw new Error(`Unsupported fs_file_ops action: ${action}`)
           } catch (error) {
             results.push({
               ok: false,
@@ -1412,7 +1416,7 @@ export async function callLocalFileTool({
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
-            tool: 'fs_write',
+            tool: 'fs_file_ops',
             action,
             dryRun,
             summary: {

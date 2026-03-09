@@ -343,18 +343,18 @@ export const it: TranslationKeys = {
       builtinFsReadLabel: 'Leggi file',
       builtinFsReadDesc:
         'Legge intervalli di righe da uno o più file del vault.',
-      builtinFsEditLabel: 'Modifica file',
+      builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
-        'Applica sostituzioni di testo precise in un singolo file.',
+        'Applica operazioni di modifica del testo in un singolo file esistente, incluse replace, insert_after e append.',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
       fsEditReviewToggle: 'Richiedi approvazione prima di modificare i file',
       fsEditReviewToggleDesc:
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
-      builtinFsWriteLabel: 'Scrivi nel vault',
-      builtinFsWriteDesc:
-        'Esegue operazioni di scrittura su file e cartelle nel vault.',
+      builtinFsFileOpsLabel: 'Operazioni file',
+      builtinFsFileOpsDesc:
+        'Crea, sposta ed elimina file o cartelle nel vault.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
       editorDefaultName: 'Nuovo agent',
@@ -934,13 +934,12 @@ export const it: TranslationKeys = {
         fs_list: 'Elenca file',
         fs_search: 'Cerca file',
         fs_read: 'Leggi file',
-        fs_edit: 'Modifica file',
-        fs_write: 'Operazione file',
+        fs_edit: 'Modifica testo',
+        fs_file_ops: 'Operazioni file',
         open_skill: 'Apri skill',
       },
       writeAction: {
         create_file: 'Crea file',
-        write_file: 'Scrivi file',
         delete_file: 'Elimina file',
         create_dir: 'Crea cartella',
         delete_dir: 'Elimina cartella',

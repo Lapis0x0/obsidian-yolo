@@ -24,7 +24,7 @@ import {
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
-  parseLocalFsWriteActionFromArgs,
+  parseLocalFsFileOpActionFromArgs,
 } from './localFileTools'
 import {
   getToolName,
@@ -35,8 +35,8 @@ import {
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
   'Tool arguments must be valid JSON. Please escape quotes/newlines inside string values and retry.'
 
-const FS_WRITE_MULTI_ACTION_HINT =
-  'Detected concatenated fs_write payloads with mixed actions. Send one valid JSON object per tool call, and keep exactly one action value per call.'
+const FS_FILE_OPS_MULTI_ACTION_HINT =
+  'Detected concatenated fs_file_ops payloads with mixed actions. Send one valid JSON object per tool call, and keep exactly one action value per call.'
 
 export class McpManager {
   static readonly TOOL_NAME_DELIMITER = '__' // Delimiter for tool name construction (serverName__toolName)
@@ -67,9 +67,9 @@ export class McpManager {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (
         serverName === getLocalFileToolServerName() &&
-        toolName === 'fs_write'
+        toolName === 'fs_file_ops'
       ) {
-        const action = parseLocalFsWriteActionFromArgs(requestArgs)
+        const action = parseLocalFsFileOpActionFromArgs(requestArgs)
         if (action) {
           return `${requestToolName}::${action}`
         }
@@ -87,10 +87,10 @@ export class McpManager {
     toolName: string
     requestArgs?: Record<string, unknown> | string
   }): boolean {
-    if (toolName !== 'fs_write') {
+    if (toolName !== 'fs_file_ops') {
       return true
     }
-    const action = parseLocalFsWriteActionFromArgs(requestArgs)
+    const action = parseLocalFsFileOpActionFromArgs(requestArgs)
     if (!action) {
       // Fail closed when action is missing or invalid
       return false
@@ -557,15 +557,15 @@ export class McpManager {
                 return recoveredObjects[0]
               }
 
-              if (toolName === 'fs_write' && recoveredObjects.length > 1) {
-                const mergedFsWriteArgs =
-                  this.tryMergeRecoveredFsWriteArgs(recoveredObjects)
-                if (mergedFsWriteArgs) {
-                  return mergedFsWriteArgs
+              if (toolName === 'fs_file_ops' && recoveredObjects.length > 1) {
+                const mergedFsFileOpArgs =
+                  this.tryMergeRecoveredFsFileOpArgs(recoveredObjects)
+                if (mergedFsFileOpArgs) {
+                  return mergedFsFileOpArgs
                 }
 
                 throw new Error(
-                  `${INVALID_TOOL_ARGUMENTS_JSON_ERROR} ${FS_WRITE_MULTI_ACTION_HINT}`,
+                  `${INVALID_TOOL_ARGUMENTS_JSON_ERROR} ${FS_FILE_OPS_MULTI_ACTION_HINT}`,
                 )
               }
 
@@ -671,7 +671,7 @@ export class McpManager {
     }
   }
 
-  private tryMergeRecoveredFsWriteArgs(
+  private tryMergeRecoveredFsFileOpArgs(
     recoveredObjects: Record<string, unknown>[],
   ): Record<string, unknown> | null {
     let action: string | null = null

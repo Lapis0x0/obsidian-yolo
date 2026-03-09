@@ -59,7 +59,7 @@ export class AgentLlmTurnExecutor {
     'fs_search',
     'fs_read',
     'fs_edit',
-    'fs_write',
+    'fs_file_ops',
     'open_skill',
   ])
 

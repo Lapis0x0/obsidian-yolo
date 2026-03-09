@@ -233,8 +233,8 @@ export type TranslationKeys = {
       fsEditReviewToggleDesc?: string
       safetyControls?: string
       safetyControlsDesc?: string
-      builtinFsWriteLabel?: string
-      builtinFsWriteDesc?: string
+      builtinFsFileOpsLabel?: string
+      builtinFsFileOpsDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
       editorDefaultName?: string
@@ -800,12 +800,11 @@ export type TranslationKeys = {
         fs_search?: string
         fs_read?: string
         fs_edit?: string
-        fs_write?: string
+        fs_file_ops?: string
         open_skill?: string
       }
       writeAction?: {
         create_file?: string
-        write_file?: string
         delete_file?: string
         create_dir?: string
         delete_dir?: string

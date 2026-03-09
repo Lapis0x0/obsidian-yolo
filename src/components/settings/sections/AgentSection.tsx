@@ -44,11 +44,11 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
   },
   fs_edit: {
     key: 'settings.agent.builtinFsEditLabel',
-    fallback: 'Edit File',
+    fallback: 'Text Editing',
   },
-  fs_write: {
-    key: 'settings.agent.builtinFsWriteLabel',
-    fallback: 'Write Vault',
+  fs_file_ops: {
+    key: 'settings.agent.builtinFsFileOpsLabel',
+    fallback: 'File Operations',
   },
   open_skill: {
     key: 'settings.agent.builtinOpenSkillLabel',

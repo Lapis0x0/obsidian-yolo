@@ -333,17 +333,18 @@ export const en: TranslationKeys = {
         'Search files, folders, or markdown content in vault.',
       builtinFsReadLabel: 'Read File',
       builtinFsReadDesc: 'Read line ranges from multiple vault files by path.',
-      builtinFsEditLabel: 'Edit File',
-      builtinFsEditDesc: 'Apply exact text replacement within a single file.',
+      builtinFsEditLabel: 'Text Editing',
+      builtinFsEditDesc:
+        'Apply text edit operations within a single existing file, including replace, insert_after, and append.',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',
       fsEditReviewToggle: 'Require approval before editing files',
       fsEditReviewToggleDesc:
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
-      builtinFsWriteLabel: 'Write Vault',
-      builtinFsWriteDesc:
-        'Execute vault write operations for files and folders.',
+      builtinFsFileOpsLabel: 'File Operations',
+      builtinFsFileOpsDesc:
+        'Create, move, and delete files or folders in the vault.',
       builtinOpenSkillLabel: 'Open Skill',
       builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
       editorDefaultName: 'New agent',
@@ -927,13 +928,12 @@ export const en: TranslationKeys = {
         fs_list: 'List files',
         fs_search: 'Search files',
         fs_read: 'Read files',
-        fs_edit: 'Edit file',
-        fs_write: 'File operation',
+        fs_edit: 'Text editing',
+        fs_file_ops: 'File operations',
         open_skill: 'Open skill',
       },
       writeAction: {
         create_file: 'Create file',
-        write_file: 'Write file',
         delete_file: 'Delete file',
         create_dir: 'Create folder',
         delete_dir: 'Delete folder',
