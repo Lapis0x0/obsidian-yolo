@@ -351,6 +351,7 @@ export default class SmartComposerPlugin extends Plugin {
       this.mcpCoordinator = new McpCoordinator({
         app: this.app,
         getSettings: () => this.settings,
+        openApplyReview: (state) => this.openApplyReview(state),
         registerSettingsListener: (
           listener: (settings: SmartComposerSettings) => void,
         ) => this.addSettingsChangeListener(listener),
@@ -574,9 +575,9 @@ export default class SmartComposerPlugin extends Plugin {
     return this.diffReviewController
   }
 
-  async openApplyReview(state: ApplyViewState): Promise<void> {
+  async openApplyReview(state: ApplyViewState): Promise<boolean> {
     const opened = this.getDiffReviewController().openReview(state)
-    if (opened) return
+    if (opened) return true
 
     const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
     const targetLeaf = markdownLeaves.find((leaf) => {
@@ -591,15 +592,16 @@ export default class SmartComposerPlugin extends Plugin {
         targetLeaf.view,
         state,
       )
-      if (openedInTarget) return
+      if (openedInTarget) return true
     }
 
     const leaf = this.app.workspace.getLeaf(false)
     await leaf?.openFile(state.file, { active: true })
     const openedAfterFocus = this.getDiffReviewController().openReview(state)
-    if (openedAfterFocus) return
+    if (openedAfterFocus) return true
 
     new Notice('请先打开目标文件后再应用修改。')
+    return false
   }
 
   private getWriteAssistController(): WriteAssistController {

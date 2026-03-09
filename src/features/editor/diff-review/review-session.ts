@@ -57,10 +57,12 @@ export class ReviewSession {
     })
   }
 
-  async persist(finalContent?: string): Promise<void> {
+  async persist(finalContent?: string, signal?: AbortSignal): Promise<void> {
     if (this.persistInFlight) return
+    if (signal?.aborted) return
     this.persistInFlight = true
     try {
+      if (signal?.aborted) return
       await this.vault.modify(
         this.file,
         finalContent ?? this.getFinalContent('current'),

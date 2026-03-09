@@ -240,10 +240,12 @@ export const smartComposerSettingsSchema = z.object({
     .object({
       servers: z.array(mcpServerConfigSchema).catch([]),
       builtinToolOptions: mcpServerToolOptionsSchema.catch({}),
+      fsEditRequireReview: z.boolean().optional(),
     })
     .catch({
       servers: [],
       builtinToolOptions: {},
+      fsEditRequireReview: false,
     }),
 
   // Skills configuration

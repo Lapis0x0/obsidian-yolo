@@ -275,6 +275,7 @@ export class InlineDiffReviewOverlay {
   private onEditorMouseDownCapture: ((event: MouseEvent) => void) | null = null
   private previousActiveElement: HTMLElement | null = null
   private previousCaretColor = ''
+  private onAbort: (() => void) | null = null
 
   constructor(private readonly options: InlineDiffReviewOverlayOptions) {
     this.blocks = buildInlineReviewBlocks(
@@ -312,6 +313,19 @@ export class InlineDiffReviewOverlay {
       return
     }
 
+    const abortSignal = this.options.state.abortSignal
+    if (abortSignal?.aborted) {
+      this.options.onClose()
+      return
+    }
+    if (abortSignal) {
+      const onAbort = () => {
+        this.options.onClose()
+      }
+      this.onAbort = onAbort
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+    }
+
     this.options.view.dispatch({
       effects: StateEffect.appendConfig.of([
         this.decorationCompartment.of([this.decorationsField]),
@@ -336,6 +350,10 @@ export class InlineDiffReviewOverlay {
     this.options.onActionsReady?.(null)
     if (this.closed) return
     this.closed = true
+    if (this.onAbort) {
+      this.options.state.abortSignal?.removeEventListener('abort', this.onAbort)
+      this.onAbort = null
+    }
     this.unmountFloatingControls()
     this.options.view.dispatch({
       effects: this.decorationCompartment.reconfigure([]),
@@ -704,8 +722,19 @@ export class InlineDiffReviewOverlay {
 
   private async persistAndClose(finalContent?: string): Promise<void> {
     if (this.closed) return
+    const resolvedContent =
+      finalContent ?? this.session.getFinalContent('current')
     try {
-      await this.session.persist(finalContent)
+      await this.session.persist(
+        resolvedContent,
+        this.options.state.abortSignal,
+      )
+      if (this.options.state.abortSignal?.aborted) {
+        return
+      }
+      this.options.state.callbacks?.onComplete?.({
+        finalContent: resolvedContent,
+      })
     } catch (error) {
       console.error('[InlineDiffReview] Failed to persist inline review', error)
     } finally {

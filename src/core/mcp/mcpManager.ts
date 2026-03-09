@@ -2,6 +2,7 @@ import isEqual from 'lodash.isequal'
 import { App, Platform } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
+import type { ApplyViewState } from '../../types/apply-view.types'
 import {
   McpServerConfig,
   McpServerState,
@@ -43,6 +44,7 @@ export class McpManager {
   public readonly disabled = !Platform.isDesktop // MCP should be disabled on mobile since it doesn't support node.js
 
   private readonly app: App
+  private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
   private settings: SmartComposerSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
@@ -103,15 +105,18 @@ export class McpManager {
   constructor({
     app,
     settings,
+    openApplyReview,
     registerSettingsListener,
   }: {
     app: App
     settings: SmartComposerSettings
+    openApplyReview: (state: ApplyViewState) => Promise<boolean>
     registerSettingsListener: (
       listener: (settings: SmartComposerSettings) => void,
     ) => () => void
   }) {
     this.app = app
+    this.openApplyReview = openApplyReview
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -515,17 +520,7 @@ export class McpManager {
     args?: Record<string, unknown> | string | undefined
     id?: string
     signal?: AbortSignal
-  }): Promise<
-    Extract<
-      ToolCallResponse,
-      {
-        status:
-          | ToolCallResponseStatus.Success
-          | ToolCallResponseStatus.Error
-          | ToolCallResponseStatus.Aborted
-      }
-    >
-  > {
+  }): Promise<ToolCallResponse> {
     if (this.disabled) {
       throw new McpNotAvailableException()
     }
@@ -585,6 +580,7 @@ export class McpManager {
         const localResult = await callLocalFileTool({
           app: this.app,
           settings: this.settings,
+          openApplyReview: this.openApplyReview,
           toolName,
           args: parsedArgs ?? {},
           signal: compositeSignal,
@@ -601,6 +597,11 @@ export class McpManager {
         if (localResult.status === ToolCallResponseStatus.Aborted) {
           return {
             status: ToolCallResponseStatus.Aborted,
+          }
+        }
+        if (localResult.status === ToolCallResponseStatus.Rejected) {
+          return {
+            status: ToolCallResponseStatus.Rejected,
           }
         }
         return {

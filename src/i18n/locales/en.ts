@@ -335,6 +335,12 @@ export const en: TranslationKeys = {
       builtinFsReadDesc: 'Read line ranges from multiple vault files by path.',
       builtinFsEditLabel: 'Edit File',
       builtinFsEditDesc: 'Apply exact text replacement within a single file.',
+      safetyControls: 'Safety Controls',
+      safetyControlsDesc:
+        'Configure extra review behavior before agents perform risky file operations.',
+      fsEditReviewToggle: 'Require approval before editing files',
+      fsEditReviewToggleDesc:
+        'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
       builtinFsWriteLabel: 'Write Vault',
       builtinFsWriteDesc:
         'Execute vault write operations for files and folders.',

@@ -10,10 +10,21 @@ export type ApplyViewSelectionRange = {
   to: ApplyViewSelectionPosition
 }
 
+export type ApplyViewResult = {
+  finalContent: string
+}
+
+export type ApplyViewCallbacks = {
+  onComplete?: (result: ApplyViewResult) => void
+  onCancel?: () => void
+}
+
 export type ApplyViewState = {
   file: TFile
   originalContent: string
   newContent: string
   reviewMode?: 'full' | 'selection-focus'
   selectionRange?: ApplyViewSelectionRange
+  callbacks?: ApplyViewCallbacks
+  abortSignal?: AbortSignal
 }

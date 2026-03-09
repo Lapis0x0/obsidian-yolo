@@ -229,6 +229,10 @@ export type TranslationKeys = {
       builtinFsReadDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
+      fsEditReviewToggle?: string
+      fsEditReviewToggleDesc?: string
+      safetyControls?: string
+      safetyControlsDesc?: string
       builtinFsWriteLabel?: string
       builtinFsWriteDesc?: string
       builtinOpenSkillLabel?: string

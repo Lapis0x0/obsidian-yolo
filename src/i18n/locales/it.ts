@@ -346,6 +346,12 @@ export const it: TranslationKeys = {
       builtinFsEditLabel: 'Modifica file',
       builtinFsEditDesc:
         'Applica sostituzioni di testo precise in un singolo file.',
+      safetyControls: 'Controlli di sicurezza',
+      safetyControlsDesc:
+        'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
+      fsEditReviewToggle: 'Richiedi approvazione prima di modificare i file',
+      fsEditReviewToggleDesc:
+        "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
       builtinFsWriteLabel: 'Scrivi nel vault',
       builtinFsWriteDesc:
         'Esegue operazioni di scrittura su file e cartelle nel vault.',

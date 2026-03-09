@@ -57,7 +57,7 @@ type WriteAssistDeps = {
     fromOffset: number
     startPos: ReturnType<Editor['getCursor']>
   }) => void
-  openApplyReview: (state: ApplyViewState) => Promise<void>
+  openApplyReview: (state: ApplyViewState) => Promise<boolean>
 }
 
 const FIRST_TOKEN_TIMEOUT_MS = 12000

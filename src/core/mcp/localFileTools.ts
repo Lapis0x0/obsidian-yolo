@@ -5,6 +5,7 @@ import {
   recoverLikelyEscapedBackslashSequences,
 } from '../edits/textEditEngine'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
+import type { ApplyViewState } from '../../types/apply-view.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import {
@@ -47,6 +48,9 @@ type LocalToolCallResult =
       text: string
     }
   | {
+      status: ToolCallResponseStatus.Rejected
+    }
+  | {
       status: ToolCallResponseStatus.Error
       error: string
     }
@@ -61,6 +65,18 @@ type FsResultItem = {
   message: string
 }
 
+type FsEditReviewResult =
+  | {
+      status: ToolCallResponseStatus.Success
+      finalContent: string
+    }
+  | {
+      status: ToolCallResponseStatus.Rejected
+    }
+  | {
+      status: ToolCallResponseStatus.Aborted
+    }
+
 const asErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message
@@ -70,6 +86,117 @@ const asErrorMessage = (error: unknown): string => {
 
 const asOptionalString = (value: unknown): string => {
   return typeof value === 'string' ? value : ''
+}
+
+const offsetToSelectionPosition = (content: string, offset: number) => {
+  const clampedOffset = Math.max(0, Math.min(offset, content.length))
+  const before = content.slice(0, clampedOffset)
+  const lines = before.split('\n')
+
+  return {
+    line: Math.max(0, lines.length - 1),
+    ch: lines.at(-1)?.length ?? 0,
+  }
+}
+
+const getFsEditSelectionRange = (
+  content: string,
+  operationResults: ReturnType<
+    typeof materializeTextEditPlan
+  >['operationResults'],
+): ApplyViewState['selectionRange'] | undefined => {
+  const changedRanges = operationResults
+    .map((result) => (result.changed ? result.matchedRange : undefined))
+    .filter((range): range is NonNullable<typeof range> => Boolean(range))
+
+  if (changedRanges.length === 0) {
+    return undefined
+  }
+
+  const start = Math.min(...changedRanges.map((range) => range.start))
+  const end = Math.max(...changedRanges.map((range) => range.end))
+
+  return {
+    from: offsetToSelectionPosition(content, start),
+    to: offsetToSelectionPosition(content, end),
+  }
+}
+
+const waitForFsEditReview = async ({
+  openApplyReview,
+  file,
+  originalContent,
+  newContent,
+  selectionRange,
+  signal,
+}: {
+  openApplyReview: (state: ApplyViewState) => Promise<boolean>
+  file: TFile
+  originalContent: string
+  newContent: string
+  selectionRange: ApplyViewState['selectionRange']
+  signal?: AbortSignal
+}): Promise<FsEditReviewResult> => {
+  if (signal?.aborted) {
+    return { status: ToolCallResponseStatus.Aborted }
+  }
+
+  let settled = false
+
+  const reviewResultPromise = new Promise<FsEditReviewResult>((resolve) => {
+    const settle = (result: FsEditReviewResult) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+
+    void openApplyReview({
+      file,
+      originalContent,
+      newContent,
+      reviewMode: selectionRange ? 'selection-focus' : 'full',
+      selectionRange,
+      abortSignal: signal,
+      callbacks: {
+        onComplete: ({ finalContent }) => {
+          settle(
+            finalContent === originalContent
+              ? { status: ToolCallResponseStatus.Rejected }
+              : {
+                  status: ToolCallResponseStatus.Success,
+                  finalContent,
+                },
+          )
+        },
+        onCancel: () => {
+          settle({ status: ToolCallResponseStatus.Aborted })
+        },
+      },
+    })
+      .then((opened) => {
+        if (!opened) {
+          settle({ status: ToolCallResponseStatus.Aborted })
+        }
+      })
+      .catch(() => {
+        settle({ status: ToolCallResponseStatus.Aborted })
+      })
+  })
+
+  if (!signal) {
+    return reviewResultPromise
+  }
+
+  return await Promise.race([
+    reviewResultPromise,
+    new Promise<FsEditReviewResult>((resolve) => {
+      signal.addEventListener(
+        'abort',
+        () => resolve({ status: ToolCallResponseStatus.Aborted }),
+        { once: true },
+      )
+    }),
+  ])
 }
 
 const validateVaultPath = (path: string): string => {
@@ -554,12 +681,14 @@ export function parseLocalFsWriteActionFromArgs(
 export async function callLocalFileTool({
   app,
   settings,
+  openApplyReview,
   toolName,
   args,
   signal,
 }: {
   app: App
   settings?: SmartComposerSettings
+  openApplyReview?: (state: ApplyViewState) => Promise<boolean>
   toolName: string
   args: Record<string, unknown>
   signal?: AbortSignal
@@ -860,7 +989,35 @@ export async function callLocalFileTool({
         const matchMode = operationResult?.matchMode ?? 'exact'
 
         assertContentSize(nextContent)
-        if (!dryRun) {
+        const shouldRequireReview = settings?.mcp.fsEditRequireReview ?? false
+        let appliedContent = nextContent
+
+        if (!dryRun && shouldRequireReview) {
+          if (!openApplyReview) {
+            throw new Error('Apply review is unavailable for fs_edit.')
+          }
+
+          const reviewResult = await waitForFsEditReview({
+            openApplyReview,
+            file,
+            originalContent: content,
+            newContent: nextContent,
+            selectionRange: getFsEditSelectionRange(
+              content,
+              materialized.operationResults,
+            ),
+            signal,
+          })
+
+          if (reviewResult.status === ToolCallResponseStatus.Aborted) {
+            return reviewResult
+          }
+          if (reviewResult.status === ToolCallResponseStatus.Rejected) {
+            return reviewResult
+          }
+
+          appliedContent = reviewResult.finalContent
+        } else if (!dryRun) {
           await app.vault.modify(file, nextContent)
         }
 
@@ -873,8 +1030,12 @@ export async function callLocalFileTool({
             expectedOccurrences,
             actualOccurrences,
             matchMode,
-            changed: content !== nextContent,
-            message: dryRun ? 'Would apply edit.' : 'Applied edit.',
+            changed: content !== appliedContent,
+            message: dryRun
+              ? 'Would apply edit.'
+              : shouldRequireReview
+                ? 'Applied reviewed edit.'
+                : 'Applied edit.',
           }),
         }
       }
