@@ -229,8 +229,12 @@ export type TranslationKeys = {
       builtinFsReadDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
-      builtinFsWriteLabel?: string
-      builtinFsWriteDesc?: string
+      fsEditReviewToggle?: string
+      fsEditReviewToggleDesc?: string
+      safetyControls?: string
+      safetyControlsDesc?: string
+      builtinFsFileOpsLabel?: string
+      builtinFsFileOpsDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
       editorDefaultName?: string
@@ -599,6 +603,10 @@ export type TranslationKeys = {
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
       mentionDisplayModeBadge?: string
+      chatApplyMode?: string
+      chatApplyModeDesc?: string
+      chatApplyModeReviewRequired?: string
+      chatApplyModeDirectApply?: string
       persistSelectionHighlight?: string
       persistSelectionHighlightDesc?: string
     }
@@ -713,6 +721,7 @@ export type TranslationKeys = {
     mentionMenu?: {
       back?: string
       entryMode?: string
+      entrySkill?: string
       entryAssistant?: string
       entryFile?: string
       entryFolder?: string
@@ -791,12 +800,11 @@ export type TranslationKeys = {
         fs_search?: string
         fs_read?: string
         fs_edit?: string
-        fs_write?: string
+        fs_file_ops?: string
         open_skill?: string
       }
       writeAction?: {
         create_file?: string
-        write_file?: string
         delete_file?: string
         create_dir?: string
         delete_dir?: string

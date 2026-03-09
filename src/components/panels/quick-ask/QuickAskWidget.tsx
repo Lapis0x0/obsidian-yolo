@@ -10,6 +10,7 @@ import { PluginProvider } from '../../../contexts/plugin-context'
 import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
 import SmartComposerPlugin from '../../../main'
+import type { QuickAskSelectionScope } from '../../../features/editor/quick-ask/quickAsk.types'
 import type { Mentionable } from '../../../types/mentionable'
 import {
   clearDynamicStyleClass,
@@ -57,6 +58,7 @@ export class QuickAskOverlay {
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
       autoSend?: boolean
       onClose: () => void
     },
@@ -218,6 +220,7 @@ export class QuickAskOverlay {
                     initialInput={this.options.initialInput}
                     editContextText={this.options.editContextText}
                     editSelectionFrom={this.options.editSelectionFrom}
+                    selectionScope={this.options.selectionScope}
                     autoSend={this.options.autoSend}
                     onClose={this.closeWithAnimation}
                     containerRef={this.containerRef}

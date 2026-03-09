@@ -54,7 +54,7 @@ describe('createDiffBlocks', () => {
     })
   })
 
-  it('combines heading and following list into one section diff block', () => {
+  it('keeps unchanged heading outside the modified body block', () => {
     const blocks = createDiffBlocks(
       ['## Goals', '1. Finalise sprint backlog'].join('\n'),
       [
@@ -63,17 +63,66 @@ describe('createDiffBlocks', () => {
       ].join('\n'),
     )
 
-    expect(blocks).toHaveLength(1)
-    expect(blocks[0]).toMatchObject({
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]).toEqual({ type: 'unchanged', value: '## Goals' })
+    expect(blocks[1]).toMatchObject({
       type: 'modified',
       presentation: 'block',
-      blockType: 'section',
-      originalValue: ['## Goals', '1. Finalise sprint backlog'].join('\n'),
-      modifiedValue: [
-        '## Goals',
+      blockType: 'list',
+      originalValue: '1. Finalise sprint backlog',
+      modifiedValue:
         '1. 次のスプリントのためにスプリントバックログを確定する。',
-      ].join('\n'),
     })
+  })
+
+  it('keeps unchanged intro lines outside translated paragraph diffs', () => {
+    const blocks = createDiffBlocks(
+      [
+        '### 03 解决方案/功能范围',
+        '**本PRD范围：第一阶段MVP**',
+        '采用 **Agent模拟操作** 方案，通过自动化脚本模拟人工浏览器操作。',
+      ].join('\n'),
+      [
+        '### 03 解决方案/功能范围',
+        '**本PRD范围：第一阶段MVP**',
+        'Adopt the **Agent simulation** approach, using automated scripts to simulate human browser operations.',
+      ].join('\n'),
+    )
+
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]).toEqual({
+      type: 'unchanged',
+      value: ['### 03 解决方案/功能范围', '**本PRD范围：第一阶段MVP**'].join(
+        '\n',
+      ),
+    })
+    expect(blocks[1]).toMatchObject({
+      type: 'modified',
+      presentation: 'inline',
+      blockType: 'paragraph',
+      originalValue:
+        '采用 **Agent模拟操作** 方案，通过自动化脚本模拟人工浏览器操作。',
+      modifiedValue:
+        'Adopt the **Agent simulation** approach, using automated scripts to simulate human browser operations.',
+    })
+  })
+
+  it('splits list diffs by item instead of marking the whole list', () => {
+    const blocks = createDiffBlocks(
+      ['- Keep alpha', '- Translate beta', '- Keep gamma'].join('\n'),
+      ['- Keep alpha', '- Traduire beta', '- Keep gamma'].join('\n'),
+    )
+
+    expect(blocks).toHaveLength(3)
+    expect(blocks[0]).toEqual({ type: 'unchanged', value: '- Keep alpha' })
+    expect(blocks[1]).toMatchObject({
+      type: 'modified',
+      presentation: 'block',
+      blockType: 'list',
+      originalValue: '- Translate beta',
+      modifiedValue: '- Traduire beta',
+    })
+    expect(blocks[2]).toEqual({ type: 'unchanged', value: '- Keep gamma' })
   })
 
   it('keeps insertion separate from a nearby modification inside one hunk', () => {

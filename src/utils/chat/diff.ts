@@ -468,64 +468,21 @@ function segmentMarkdownBlocks(markdown: string): MarkdownBlockUnit[] {
 
     const list = readList(lines, index)
     if (list) {
-      blocks.push(createBlockUnit('list', list.lines.join('\n')))
+      splitListItems(list.lines).forEach((itemLines) => {
+        blocks.push(createBlockUnit('list', itemLines.join('\n')))
+      })
       index = list.nextIndex
       continue
     }
 
     const paragraph = readParagraph(lines, index)
-    blocks.push(createBlockUnit('paragraph', paragraph.lines.join('\n')))
+    paragraph.lines.forEach((paragraphLine) => {
+      blocks.push(createBlockUnit('paragraph', paragraphLine))
+    })
     index = paragraph.nextIndex
   }
 
-  return combineHeadingSections(blocks)
-}
-
-function combineHeadingSections(
-  blocks: MarkdownBlockUnit[],
-): MarkdownBlockUnit[] {
-  const combined: MarkdownBlockUnit[] = []
-  let index = 0
-
-  while (index < blocks.length) {
-    const block = blocks[index]
-    if (!block) break
-
-    if (block.type !== 'heading') {
-      combined.push(block)
-      index += 1
-      continue
-    }
-
-    const sectionBlocks: MarkdownBlockUnit[] = [block]
-    let cursor = index + 1
-
-    while (cursor < blocks.length) {
-      const candidate = blocks[cursor]
-      if (!candidate) break
-      if (candidate.type === 'heading' || candidate.type === 'thematicBreak') {
-        break
-      }
-      sectionBlocks.push(candidate)
-      cursor += 1
-    }
-
-    const hasContentAfterHeading = sectionBlocks.some(
-      (candidate, candidateIndex) =>
-        candidateIndex > 0 && candidate.type !== 'blank',
-    )
-
-    if (!hasContentAfterHeading) {
-      combined.push(block)
-    } else {
-      const text = joinBlockTexts(sectionBlocks)
-      combined.push(createBlockUnit('section', text))
-    }
-
-    index = cursor
-  }
-
-  return combined
+  return blocks
 }
 
 function createBlockUnit(
@@ -698,6 +655,41 @@ function readList(
   }
 }
 
+function splitListItems(lines: string[]): string[][] {
+  if (lines.length === 0) {
+    return []
+  }
+
+  const items: string[][] = []
+  let currentItem: string[] = []
+  let rootIndent: number | null = null
+
+  const pushCurrentItem = () => {
+    if (currentItem.length === 0) return
+    items.push(currentItem)
+    currentItem = []
+  }
+
+  lines.forEach((line) => {
+    const indent = getLineIndent(line)
+    if (isListItemLine(line)) {
+      if (rootIndent === null) {
+        rootIndent = indent
+      }
+
+      if (indent <= rootIndent && currentItem.length > 0) {
+        pushCurrentItem()
+      }
+    }
+
+    currentItem.push(line)
+  })
+
+  pushCurrentItem()
+
+  return items
+}
+
 function readParagraph(
   lines: string[],
   startIndex: number,
@@ -763,6 +755,11 @@ function isListItemLine(line?: string): boolean {
 function isIndentedContinuationLine(line?: string): boolean {
   if (!line) return false
   return /^\s{2,}\S/.test(line)
+}
+
+function getLineIndent(line: string): number {
+  const match = line.match(/^\s*/)
+  return match?.[0].length ?? 0
 }
 
 function looksLikeTableRow(line?: string): boolean {

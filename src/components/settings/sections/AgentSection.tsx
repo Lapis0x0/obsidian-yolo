@@ -15,6 +15,8 @@ import { Assistant } from '../../../types/assistant.types'
 import { McpServerState, McpServerStatus } from '../../../types/mcp.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { AgentSkillsModal } from '../modals/AgentSkillsModal'
 import { AgentToolsModal } from '../modals/AgentToolsModal'
@@ -42,11 +44,11 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
   },
   fs_edit: {
     key: 'settings.agent.builtinFsEditLabel',
-    fallback: 'Edit File',
+    fallback: 'Text Editing',
   },
-  fs_write: {
-    key: 'settings.agent.builtinFsWriteLabel',
-    fallback: 'Write Vault',
+  fs_file_ops: {
+    key: 'settings.agent.builtinFsFileOpsLabel',
+    fallback: 'File Operations',
   },
   open_skill: {
     key: 'settings.agent.builtinOpenSkillLabel',
@@ -178,6 +180,16 @@ export function AgentSection({ app }: AgentSectionProps) {
   const handleOpenSkillsModal = () => {
     const modal = new AgentSkillsModal(app, plugin)
     modal.open()
+  }
+
+  const handleToggleFsEditReview = (value: boolean) => {
+    void setSettings({
+      ...settings,
+      mcp: {
+        ...settings.mcp,
+        fsEditRequireReview: value,
+      },
+    })
   }
 
   const mcpTools = useMemo(
@@ -480,6 +492,38 @@ export function AgentSection({ app }: AgentSectionProps) {
             </div>
           </article>
         </div>
+      </section>
+
+      <section className="smtcmp-agent-block">
+        <div className="smtcmp-agent-block-head">
+          <div className="smtcmp-settings-sub-header">
+            {t('settings.agent.safetyControls', 'Safety Controls')}
+          </div>
+          <div className="smtcmp-settings-desc">
+            {t(
+              'settings.agent.safetyControlsDesc',
+              'Configure extra review behavior before agents perform risky file operations.',
+            )}
+          </div>
+        </div>
+
+        <ObsidianSetting
+          name={t(
+            'settings.agent.fsEditReviewToggle',
+            'Review fs_edit changes',
+          )}
+          desc={t(
+            'settings.agent.fsEditReviewToggleDesc',
+            'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
+          )}
+        >
+          <ObsidianToggle
+            value={settings.mcp.fsEditRequireReview ?? false}
+            onChange={(value) => {
+              handleToggleFsEditReview(value)
+            }}
+          />
+        </ObsidianSetting>
       </section>
     </div>
   )

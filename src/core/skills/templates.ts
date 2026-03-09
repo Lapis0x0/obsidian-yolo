@@ -110,7 +110,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_write\` with \`dryRun: true\` before committing changes. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for existing-file content changes, and \`fs_file_ops\` only for create, move, or delete operations. Do not perform destructive operations unless explicitly requested.
 
 ## Anatomy of a Skill
 
@@ -201,8 +201,8 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 | \`fs_list\` | Inspect folder contents and vault structure |
 | \`fs_search\` | Find files by keyword or pattern |
 | \`fs_read\` | Read file contents |
-| \`fs_write\` | Create or overwrite files (supports \`dryRun\`) |
-| \`fs_edit\` | Apply targeted edits to existing files (minimal diff) |
+| \`fs_edit\` | Apply targeted text edits to an existing file (\`replace\`, \`insert_after\`, \`append\`) |
+| \`fs_file_ops\` | Create, move, and delete files or folders (supports \`dryRun\`) |
 
 Skills should be designed around these capabilities. There is no script execution environment, no shell access, and no external API calls. All skill workflows must be achievable through file operations and the agent's reasoning.
 
@@ -276,8 +276,8 @@ Body guidelines:
 Always preview before committing:
 
 ~~~
-fs_write YOLO/skills/<skill-id>.md  (dryRun: true)   -> preview
-fs_write YOLO/skills/<skill-id>.md                     -> commit
+fs_file_ops { action: "create_file", items: [{ path: "YOLO/skills/<skill-id>.md", content: "..." }], dryRun: true } -> preview
+fs_file_ops { action: "create_file", items: [{ path: "YOLO/skills/<skill-id>.md", content: "..." }] } -> commit
 ~~~
 
 For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted changes rather than rewriting the entire file.
@@ -305,7 +305,7 @@ Before finalizing any skill, verify:
 - [ ] Frontmatter includes \`id\`, \`name\`, and \`description\`
 - [ ] Description states clear trigger conditions (not buried in body)
 - [ ] \`id\` is kebab-case and matches the filename
-- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_write\`, \`fs_edit\`)
+- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_file_ops\`)
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters
 - [ ] Body is under 300 lines

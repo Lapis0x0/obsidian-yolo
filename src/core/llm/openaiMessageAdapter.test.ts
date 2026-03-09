@@ -54,7 +54,8 @@ describe('OpenAIMessageAdapter', () => {
         {
           id: 'toolu_456',
           name: 'yolo_local__fs_edit',
-          arguments: '{"path":"note.md","oldText":"foo","newText":"bar"}',
+          arguments:
+            '{"path":"note.md","operations":[{"type":"replace","oldText":"foo","newText":"bar"}]}',
         },
       ],
     }
@@ -67,8 +68,13 @@ describe('OpenAIMessageAdapter', () => {
 
     expect(JSON.parse(parsed.tool_calls[0].function.arguments)).toEqual({
       path: 'note.md',
-      oldText: 'foo',
-      newText: 'bar',
+      operations: [
+        {
+          type: 'replace',
+          oldText: 'foo',
+          newText: 'bar',
+        },
+      ],
     })
   })
 

@@ -1399,11 +1399,39 @@
   background-color: var(--background-modifier-hover);
 }
 
+button.smtcmp-chat-user-input-file-badge-delete,
 .smtcmp-chat-user-input-file-badge-delete {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  width: auto !important;
   height: 100%;
   display: flex;
   align-items: center;
   color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.smtcmp-chat-user-input-file-badge-delete:hover,
+button.smtcmp-chat-user-input-file-badge-delete:focus,
+button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
+.smtcmp-chat-user-input-file-badge-delete:hover,
+.smtcmp-chat-user-input-file-badge-delete:focus,
+.smtcmp-chat-user-input-file-badge-delete:focus-visible {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .smtcmp-chat-user-input-file-badge-expand {

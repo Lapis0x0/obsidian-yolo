@@ -29,10 +29,6 @@
     color-mix(in srgb, var(--interactive-accent) 18%, transparent)
   );
   color: inherit;
-  margin-left: -6px;
-  margin-right: -6px;
-  padding-left: 6px;
-  padding-right: 6px;
   position: relative;
 }
 
@@ -62,9 +58,11 @@
   border-radius: 0 0 6px 6px;
 }
 
-.cm-editor .cm-line.smtcmp-selection-persisted-block.is-single::after,
-.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-start::after {
-  content: 'Selected';
+.cm-editor
+  .cm-line.smtcmp-selection-persisted-block.is-single[data-smtcmp-highlight-label]::after,
+.cm-editor
+  .cm-line.smtcmp-selection-persisted-block.is-block-start[data-smtcmp-highlight-label]::after {
+  content: attr(data-smtcmp-highlight-label);
   position: absolute;
   top: 0;
   right: 0;
@@ -89,6 +87,24 @@
   box-sizing: border-box;
   pointer-events: none;
   z-index: 1;
+}
+
+.cm-editor .cm-line.smtcmp-selection-persisted-block-updated,
+.cm-editor .smtcmp-selection-persisted-inline-updated {
+  animation: smtcmp-selection-highlight-updated-fade 3s ease-out forwards;
+}
+
+@keyframes smtcmp-selection-highlight-updated-fade {
+  0% {
+    background: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+  }
+
+  100% {
+    background: var(
+      --text-selection,
+      color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+    );
+  }
 }
 
 /* Selection Indicator - small floating capsule */

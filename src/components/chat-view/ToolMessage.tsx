@@ -8,7 +8,7 @@ import { useSettings } from '../../contexts/settings-context'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
-  parseLocalFsWriteActionFromArgs,
+  parseLocalFsFileOpActionFromArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { ChatToolMessage } from '../../types/chat'
@@ -62,13 +62,12 @@ const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_list: 'Read Vault',
   fs_search: 'Search Vault',
   fs_read: 'Read File',
-  fs_edit: 'Edit file',
-  fs_write: 'Write Vault',
+  fs_edit: 'Text editing',
+  fs_file_ops: 'File operations',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
   create_file: 'Create file',
-  write_file: 'Write file',
   delete_file: 'Delete file',
   create_dir: 'Create folder',
   delete_dir: 'Delete folder',
@@ -119,19 +118,15 @@ const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'settings.agent.builtinFsEditLabel',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_edit,
       ),
-      fs_write: translate(
-        'settings.agent.builtinFsWriteLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_write,
+      fs_file_ops: translate(
+        'settings.agent.builtinFsFileOpsLabel',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_file_ops,
       ),
     },
     writeActionLabels: {
       create_file: translate(
         'chat.toolCall.writeAction.create_file',
         DEFAULT_WRITE_ACTION_LABELS.create_file,
-      ),
-      write_file: translate(
-        'chat.toolCall.writeAction.write_file',
-        DEFAULT_WRITE_ACTION_LABELS.write_file,
       ),
       delete_file: translate(
         'chat.toolCall.writeAction.delete_file',
@@ -259,8 +254,8 @@ const getLocalToolSummaryText = ({
     return path || undefined
   }
 
-  if (toolName === 'fs_write') {
-    const action = parseLocalFsWriteActionFromArgs(rawArguments)
+  if (toolName === 'fs_file_ops') {
+    const action = parseLocalFsFileOpActionFromArgs(rawArguments)
     if (!action) {
       return undefined
     }
@@ -287,12 +282,12 @@ const getToolDisplayInfo = (
     const { serverName, toolName } = parseToolName(request.name)
 
     if (serverName === localServerName) {
-      const isFsWrite = toolName === 'fs_write'
-      const action = isFsWrite
-        ? parseLocalFsWriteActionFromArgs(request.arguments)
+      const isFsFileOps = toolName === 'fs_file_ops'
+      const action = isFsFileOps
+        ? parseLocalFsFileOpActionFromArgs(request.arguments)
         : null
       const displayName =
-        isFsWrite && action
+        isFsFileOps && action
           ? (labels.writeActionLabels[action] ?? labels.displayNames[toolName])
           : (labels.displayNames[toolName] ?? toolName)
 

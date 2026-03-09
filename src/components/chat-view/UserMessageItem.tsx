@@ -1,7 +1,7 @@
 import { SerializedEditorState } from 'lexical'
 import { useRef } from 'react'
 
-import { ChatUserMessage } from '../../types/chat'
+import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
 
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
@@ -16,12 +16,16 @@ export type UserMessageItemProps = {
   onFocus: () => void
   onBlur: () => void
   onMentionablesChange: (mentionables: Mentionable[]) => void
+  onSelectedSkillsChange?: (skills: ChatSelectedSkill[]) => void
   displayMentionables?: Mentionable[]
   isFocused: boolean
   modelId?: string
   onModelChange?: (modelId: string) => void
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
+  currentAssistantId?: string
+  currentChatMode?: 'chat' | 'agent'
+  onSelectChatModeForConversation?: (mode: 'chat' | 'agent') => void
 }
 
 export default function UserMessageItem({
@@ -32,12 +36,16 @@ export default function UserMessageItem({
   onFocus,
   onBlur,
   onMentionablesChange,
+  onSelectedSkillsChange,
   displayMentionables,
   isFocused,
   modelId,
   onModelChange,
   reasoningLevel,
   onReasoningChange,
+  currentAssistantId,
+  currentChatMode,
+  onSelectChatModeForConversation,
 }: UserMessageItemProps) {
   const localInputRef = useRef<ChatUserInputRef | null>(null)
 
@@ -65,11 +73,16 @@ export default function UserMessageItem({
         onBlur={onBlur}
         mentionables={message.mentionables}
         setMentionables={onMentionablesChange}
+        selectedSkills={message.selectedSkills ?? []}
+        setSelectedSkills={onSelectedSkillsChange}
         displayMentionables={displayMentionables}
         modelId={modelId}
         onModelChange={onModelChange}
         reasoningLevel={reasoningLevel}
         onReasoningChange={onReasoningChange}
+        currentAssistantId={currentAssistantId}
+        currentChatMode={currentChatMode}
+        onSelectChatModeForConversation={onSelectChatModeForConversation}
         compact={!isFocused}
         onToggleCompact={handleExpand}
       />

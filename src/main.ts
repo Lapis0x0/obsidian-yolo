@@ -32,6 +32,7 @@ import { InlineSuggestionController } from './features/editor/inline-suggestion/
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
+import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,
@@ -49,6 +50,7 @@ import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type { Mentionable } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
+import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 
 export default class SmartComposerPlugin extends Plugin {
@@ -204,13 +206,60 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private showQuickAsk(editor: Editor, view: EditorView) {
+    const selectionOptions = this.getQuickAskSelectionOptions(editor)
+    if (selectionOptions) {
+      this.getQuickAskController().showWithOptions(
+        editor,
+        view,
+        selectionOptions,
+      )
+      return
+    }
+
     this.getQuickAskController().show(editor, view)
+  }
+
+  private getQuickAskSelectionOptions(editor: Editor) {
+    const selectedText = editor.getSelection()
+    if (!selectedText || selectedText.trim().length === 0) {
+      return undefined
+    }
+
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!markdownView) {
+      return undefined
+    }
+
+    const data = getMentionableBlockData(editor, markdownView)
+    if (!data) {
+      return undefined
+    }
+
+    const mentionable = {
+      type: 'block',
+      ...data,
+      source: 'selection',
+    } as const
+
+    return {
+      initialMentionables: [mentionable],
+      editContextText: selectedText,
+      editSelectionFrom: editor.getCursor('from'),
+      selectionScope: {
+        mentionable,
+        selectionFrom: editor.getCursor('from'),
+      } satisfies QuickAskSelectionScope,
+    }
   }
 
   private showQuickAskWithAutoSend(
     editor: Editor,
     view: EditorView,
-    options: { prompt: string; mentionables: Mentionable[] },
+    options: {
+      prompt: string
+      mentionables: Mentionable[]
+      selectionScope?: QuickAskSelectionScope
+    },
   ) {
     this.getQuickAskController().showWithAutoSend(editor, view, options)
   }
@@ -225,6 +274,7 @@ export default class SmartComposerPlugin extends Plugin {
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
       autoSend?: boolean
     },
   ) {
@@ -301,6 +351,7 @@ export default class SmartComposerPlugin extends Plugin {
       this.mcpCoordinator = new McpCoordinator({
         app: this.app,
         getSettings: () => this.settings,
+        openApplyReview: (state) => this.openApplyReview(state),
         registerSettingsListener: (
           listener: (settings: SmartComposerSettings) => void,
         ) => this.addSettingsChangeListener(listener),
@@ -524,9 +575,9 @@ export default class SmartComposerPlugin extends Plugin {
     return this.diffReviewController
   }
 
-  async openApplyReview(state: ApplyViewState): Promise<void> {
+  async openApplyReview(state: ApplyViewState): Promise<boolean> {
     const opened = this.getDiffReviewController().openReview(state)
-    if (opened) return
+    if (opened) return true
 
     const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
     const targetLeaf = markdownLeaves.find((leaf) => {
@@ -541,15 +592,16 @@ export default class SmartComposerPlugin extends Plugin {
         targetLeaf.view,
         state,
       )
-      if (openedInTarget) return
+      if (openedInTarget) return true
     }
 
     const leaf = this.app.workspace.getLeaf(false)
     await leaf?.openFile(state.file, { active: true })
     const openedAfterFocus = this.getDiffReviewController().openReview(state)
-    if (openedAfterFocus) return
+    if (openedAfterFocus) return true
 
     new Notice('请先打开目标文件后再应用修改。')
+    return false
   }
 
   private getWriteAssistController(): WriteAssistController {

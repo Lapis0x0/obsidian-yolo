@@ -343,12 +343,18 @@ export const it: TranslationKeys = {
       builtinFsReadLabel: 'Leggi file',
       builtinFsReadDesc:
         'Legge intervalli di righe da uno o più file del vault.',
-      builtinFsEditLabel: 'Modifica file',
+      builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
-        'Applica sostituzioni di testo precise in un singolo file.',
-      builtinFsWriteLabel: 'Scrivi nel vault',
-      builtinFsWriteDesc:
-        'Esegue operazioni di scrittura su file e cartelle nel vault.',
+        'Applica operazioni di modifica del testo in un singolo file esistente, incluse replace, insert_after e append.',
+      safetyControls: 'Controlli di sicurezza',
+      safetyControlsDesc:
+        'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
+      fsEditReviewToggle: 'Richiedi approvazione prima di modificare i file',
+      fsEditReviewToggleDesc:
+        "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
+      builtinFsFileOpsLabel: 'Operazioni file',
+      builtinFsFileOpsDesc:
+        'Crea, sposta ed elimina file o cartelle nel vault.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
       editorDefaultName: 'Nuovo agent',
@@ -771,7 +777,7 @@ export const it: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
-        "Scegli se mostrare i file selezionati con @ nel testo dell'input o come badge sopra la casella.",
+        "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",
       mentionDisplayModeInline: 'Dentro la casella',
       mentionDisplayModeBadge: 'Badge in alto',
       persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
@@ -782,7 +788,7 @@ export const it: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Scrivi un messaggio...「@ per aggiungere riferimenti, continua a digitare per filtrare」',
+      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill」',
     placeholderCompact: 'Clicca per espandere e modificare...',
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
@@ -800,6 +806,7 @@ export const it: TranslationKeys = {
     mentionMenu: {
       back: 'Torna indietro',
       entryMode: 'Modalita',
+      entrySkill: 'Skill',
       entryAssistant: 'Assistente',
       entryFile: 'File',
       entryFolder: 'Cartella',
@@ -927,13 +934,12 @@ export const it: TranslationKeys = {
         fs_list: 'Elenca file',
         fs_search: 'Cerca file',
         fs_read: 'Leggi file',
-        fs_edit: 'Modifica file',
-        fs_write: 'Operazione file',
+        fs_edit: 'Modifica testo',
+        fs_file_ops: 'Operazioni file',
         open_skill: 'Apri skill',
       },
       writeAction: {
         create_file: 'Crea file',
-        write_file: 'Scrivi file',
         delete_file: 'Elimina file',
         create_dir: 'Crea cartella',
         delete_dir: 'Elimina cartella',

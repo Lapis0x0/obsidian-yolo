@@ -103,8 +103,15 @@ export default function ApplyViewRoot({
   // Generate final content based on decisions
   const persistAndClose = useCallback(
     async (finalContent?: string) => {
+      const resolvedContent = finalContent ?? session.getFinalContent('current')
       try {
-        await session.persist(finalContent)
+        await session.persist(resolvedContent, state.abortSignal)
+        if (state.abortSignal?.aborted) {
+          return
+        }
+        state.callbacks?.onComplete?.({
+          finalContent: resolvedContent,
+        })
       } catch (error) {
         console.error(
           '[ApplyView] Failed to persist changes before close',
@@ -114,8 +121,26 @@ export default function ApplyViewRoot({
         close()
       }
     },
-    [close, session],
+    [close, session, state.abortSignal, state.callbacks],
   )
+
+  useEffect(() => {
+    const signal = state.abortSignal
+    if (!signal) return
+    if (signal.aborted) {
+      close()
+      return
+    }
+
+    const handleAbort = () => {
+      close()
+    }
+
+    signal.addEventListener('abort', handleAbort, { once: true })
+    return () => {
+      signal.removeEventListener('abort', handleAbort)
+    }
+  }, [close, state.abortSignal])
 
   // Individual block decisions (don't close, just mark decision)
   const makeDecision = useCallback(

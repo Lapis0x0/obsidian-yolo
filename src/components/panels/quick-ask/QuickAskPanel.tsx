@@ -31,6 +31,7 @@ import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
+import type { QuickAskSelectionScope } from '../../../features/editor/quick-ask/quickAsk.types'
 import {
   ChatAssistantMessage,
   ChatMessage,
@@ -161,6 +162,7 @@ type QuickAskPanelProps = {
   initialInput?: string
   editContextText?: string
   editSelectionFrom?: { line: number; ch: number }
+  selectionScope?: QuickAskSelectionScope
   autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
@@ -249,6 +251,7 @@ export function QuickAskPanel({
   initialInput,
   editContextText,
   editSelectionFrom,
+  selectionScope,
   autoSend,
   onClose,
   containerRef,
@@ -290,7 +293,11 @@ export function QuickAskPanel({
   const [mentionMenuPlacement, setMentionMenuPlacement] = useState<
     'top' | 'bottom'
   >('top')
-  const [mentionables, setMentionables] = useState<Mentionable[]>([])
+  const [mentionables, setMentionables] = useState<Mentionable[]>(
+    () => initialMentionables ?? [],
+  )
+  const [activeSelectionScope, setActiveSelectionScope] =
+    useState<QuickAskSelectionScope | null>(() => selectionScope ?? null)
   const [copied, setCopied] = useState(false)
   const hasDockedRef = useRef(false)
   const enableAutoDock =
@@ -324,6 +331,14 @@ export function QuickAskPanel({
     }
   }, [initialMode])
 
+  useEffect(() => {
+    setMentionables(initialMentionables ?? [])
+  }, [initialMentionables])
+
+  useEffect(() => {
+    setActiveSelectionScope(selectionScope ?? null)
+  }, [selectionScope])
+
   // Drag & Resize state
   const dragHandleRef = useRef<HTMLDivElement>(null)
   const resizeHandlesRef = useRef<{
@@ -353,13 +368,20 @@ export function QuickAskPanel({
     width: number
     height: number
   } | null>(null)
+  const selectionMentionable = activeSelectionScope?.mentionable ?? null
+  const selectionEditContextText =
+    activeSelectionScope?.mentionable.content ?? editContextText ?? ''
+  const selectionEditFrom =
+    activeSelectionScope?.selectionFrom ?? editSelectionFrom
+  const hasScopedSelectionForEdit =
+    selectionEditContextText.trim().length > 0 && !!selectionEditFrom
   const buildEditInstruction = useCallback(
     (instruction: string) => {
-      const context = editContextText?.trim()
+      const context = selectionEditContextText.trim()
       if (!context) return instruction
       return `${instruction}\n\nOnly modify the selected context below. Do not change other parts.\nSelected context:\n${context}`
     },
-    [editContextText],
+    [selectionEditContextText],
   )
   const resolveEditTargetFile = useCallback(() => {
     if (sourceFilePath) {
@@ -496,6 +518,9 @@ export function QuickAskPanel({
     (mutations: NodeMutations<MentionNode>) => {
       const destroyedMentionableKeys: string[] = []
       const addedMentionables: SerializedMentionable[] = []
+      const selectionMentionableKey = selectionMentionable
+        ? getMentionableKey(serializeMentionable(selectionMentionable))
+        : null
 
       mutations.forEach((mutation) => {
         const mentionable = mutation.node.getMentionable()
@@ -545,8 +570,15 @@ export function QuickAskPanel({
               .filter((v): v is Mentionable => !!v),
           ),
       )
+
+      if (
+        selectionMentionableKey &&
+        destroyedMentionableKeys.includes(selectionMentionableKey)
+      ) {
+        setActiveSelectionScope(null)
+      }
     },
-    [app, mentionables],
+    [app, mentionables, selectionMentionable],
   )
 
   // Build promptGenerator with context
@@ -557,16 +589,14 @@ export function QuickAskPanel({
     const hasTitle = trimmedTitle.length > 0
     const hasContext = contextText.trim().length > 0
     const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
-    const effectiveMentionables = mentionables.length
-      ? mentionables
-      : (initialMentionables ?? [])
-    const selectionMentionable = getSelectionMentionable(effectiveMentionables)
+    const promptSelectionMentionable =
+      selectionMentionable ?? getSelectionMentionable(mentionables)
     const contextSection =
-      selectionMentionable && hasContext
+      promptSelectionMentionable && hasContext
         ? buildSelectionContextSection({
             fileTitle,
             contextText,
-            selectionMentionable,
+            selectionMentionable: promptSelectionMentionable,
           })
         : hasTitle || hasContext
           ? `\n\nThe user is asking a question in the context of their current document.\n${titleSection}${
@@ -596,8 +626,8 @@ export function QuickAskPanel({
     contextText,
     fileTitle,
     getRAGEngine,
-    initialMentionables,
     mentionables,
+    selectionMentionable,
     selectedAssistant,
     settings,
   ])
@@ -832,8 +862,8 @@ export function QuickAskPanel({
       }
 
       const currentContent = await readEditBaseContent(targetFile.path)
-      const selectedContext = editContextText ?? ''
-      const selectionFrom = scopedToSelection ? editSelectionFrom : undefined
+      const selectedContext = selectionEditContextText
+      const selectionFrom = scopedToSelection ? selectionEditFrom : undefined
       const scopedContent = buildSelectionScopedContent({
         currentContent,
         selectedContext,
@@ -890,8 +920,8 @@ export function QuickAskPanel({
     [
       _editor,
       buildSelectionScopedContent,
-      editContextText,
-      editSelectionFrom,
+      selectionEditContextText,
+      selectionEditFrom,
       model,
       providerClient,
       readEditBaseContent,
@@ -1076,14 +1106,20 @@ export function QuickAskPanel({
   )
 
   useEffect(() => {
-    if (!initialInput || hasAppliedInitialInputRef.current) return
+    if (
+      autoSend ||
+      hasAppliedInitialInputRef.current ||
+      (!initialInput && (initialMentionables?.length ?? 0) === 0)
+    ) {
+      return
+    }
 
     let cancelled = false
-    const applyInitialInput = () => {
+    const applyInitialState = () => {
       if (cancelled || hasAppliedInitialInputRef.current) return
       const editor = lexicalEditorRef.current
       if (!editor) {
-        requestAnimationFrame(applyInitialInput)
+        requestAnimationFrame(applyInitialState)
         return
       }
 
@@ -1093,17 +1129,29 @@ export function QuickAskPanel({
         root.clear()
         const paragraph = $createParagraphNode()
         root.append(paragraph)
-        paragraph.append($createTextNode(initialInput))
+        ;(initialMentionables ?? []).forEach((mentionable) => {
+          const mentionNode = $createMentionNode(
+            getMentionableName(mentionable, {
+              unitLabel: mentionableUnitLabel,
+            }),
+            serializeMentionable(mentionable),
+          )
+          paragraph.append(mentionNode)
+          paragraph.append($createTextNode(' '))
+        })
+        if (initialInput) {
+          paragraph.append($createTextNode(initialInput))
+        }
         paragraph.selectEnd()
       })
-      setInputText(initialInput)
+      setInputText(initialInput ?? '')
     }
 
-    requestAnimationFrame(applyInitialInput)
+    requestAnimationFrame(applyInitialState)
     return () => {
       cancelled = true
     }
-  }, [initialInput])
+  }, [autoSend, initialInput, initialMentionables, mentionableUnitLabel])
 
   // Submit edit mode - generate a text edit plan and open ApplyView
   const submitEditMode = useCallback(
@@ -1134,10 +1182,7 @@ export function QuickAskPanel({
 
       let closedForReview = false
       try {
-        const scopedToSelection =
-          mode === 'edit' &&
-          (editContextText ?? '').trim().length > 0 &&
-          !!editSelectionFrom
+        const scopedToSelection = mode === 'edit' && hasScopedSelectionForEdit
 
         const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
@@ -1216,10 +1261,9 @@ export function QuickAskPanel({
       }
     },
     [
-      app,
       buildEditInstruction,
-      editSelectionFrom,
       generatePlannedEdit,
+      hasScopedSelectionForEdit,
       isStreaming,
       mode,
       onClose,
@@ -1258,9 +1302,7 @@ export function QuickAskPanel({
 
       try {
         const scopedToSelection =
-          mode === 'edit-direct' &&
-          (editContextText ?? '').trim().length > 0 &&
-          !!editSelectionFrom
+          mode === 'edit-direct' && hasScopedSelectionForEdit
 
         const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
@@ -1340,8 +1382,8 @@ export function QuickAskPanel({
     [
       app,
       buildEditInstruction,
-      editSelectionFrom,
       generatePlannedEdit,
+      hasScopedSelectionForEdit,
       isStreaming,
       mode,
       onClose,

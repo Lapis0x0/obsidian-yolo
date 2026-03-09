@@ -298,10 +298,16 @@ export const zh: TranslationKeys = {
       builtinFsSearchDesc: '搜索库中的文件、文件夹或 Markdown 内容。',
       builtinFsReadLabel: '读取文件',
       builtinFsReadDesc: '按行读取一个或多个库内文件内容。',
-      builtinFsEditLabel: '精确替换',
-      builtinFsEditDesc: '在单个文件中执行精确文本替换。',
-      builtinFsWriteLabel: '文件编辑',
-      builtinFsWriteDesc: '执行文件与文件夹写操作（创建、写入、删除、移动）。',
+      builtinFsEditLabel: '文本编辑',
+      builtinFsEditDesc:
+        '在单个现有文件中执行文本编辑操作，支持替换、锚点后插入和追加。',
+      safetyControls: '安全控制',
+      safetyControlsDesc: '配置 Agent 执行高风险文件操作前的额外审阅行为。',
+      fsEditReviewToggle: '编辑文件是否需要审批',
+      fsEditReviewToggleDesc:
+        '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
+      builtinFsFileOpsLabel: '文件操作',
+      builtinFsFileOpsDesc: '执行文件与文件夹操作（创建、删除、移动）。',
       builtinOpenSkillLabel: '加载技能',
       builtinOpenSkillDesc: '按 id 或名称读取技能 Markdown 内容。',
       editorDefaultName: '新建 Agent',
@@ -710,11 +716,16 @@ export const zh: TranslationKeys = {
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
       yoloBaseDirPlaceholder: 'YOLO',
-      mentionDisplayMode: '引用文件显示位置',
+      mentionDisplayMode: '引用内容显示位置',
       mentionDisplayModeDesc:
-        '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
+        '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
+      chatApplyMode: 'Chat 应用修改方式',
+      chatApplyModeDesc:
+        '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
+      chatApplyModeReviewRequired: '先审阅后应用',
+      chatApplyModeDirectApply: '直接写入文件',
       persistSelectionHighlight: '保留选区块高亮',
       persistSelectionHighlightDesc:
         '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
@@ -740,7 +751,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@添加标签引用,继续输入可筛选搜索」',
+    placeholder: '输入消息...「@添加标签引用，/选择技能」',
     placeholderCompact: '点击展开编辑...',
     sendMessage: '发送消息',
     newChat: '新建聊天',
@@ -758,6 +769,7 @@ export const zh: TranslationKeys = {
     mentionMenu: {
       back: '返回上一级',
       entryMode: '模式',
+      entrySkill: '技能',
       entryAssistant: '助手',
       entryFile: '文件',
       entryFolder: '文件夹',
@@ -857,13 +869,12 @@ export const zh: TranslationKeys = {
         fs_list: '列出文件',
         fs_search: '搜索文件',
         fs_read: '读取文件',
-        fs_edit: '编辑文件',
-        fs_write: '文件操作',
+        fs_edit: '文本编辑',
+        fs_file_ops: '文件操作',
         open_skill: '加载技能',
       },
       writeAction: {
         create_file: '创建文件',
-        write_file: '写入文件',
         delete_file: '删除文件',
         create_dir: '创建文件夹',
         delete_dir: '删除文件夹',

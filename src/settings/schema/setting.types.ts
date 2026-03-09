@@ -240,10 +240,12 @@ export const smartComposerSettingsSchema = z.object({
     .object({
       servers: z.array(mcpServerConfigSchema).catch([]),
       builtinToolOptions: mcpServerToolOptionsSchema.catch({}),
+      fsEditRequireReview: z.boolean().optional(),
     })
     .catch({
       servers: [],
       builtinToolOptions: {},
+      fsEditRequireReview: false,
     }),
 
   // Skills configuration
@@ -269,6 +271,7 @@ export const smartComposerSettingsSchema = z.object({
     .object({
       includeCurrentFileContent: z.boolean(),
       mentionDisplayMode: z.enum(['inline', 'badge']).optional(),
+      chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
       baseModelSpecialPrompt: z.string().optional(),
       // Chat mode (chat/agent)
@@ -290,6 +293,7 @@ export const smartComposerSettingsSchema = z.object({
     .catch({
       includeCurrentFileContent: true,
       mentionDisplayMode: 'inline',
+      chatApplyMode: 'review-required',
       chatTitlePrompt: '',
       baseModelSpecialPrompt: '',
       chatMode: 'chat',

@@ -88,14 +88,15 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
   fs_edit: {
     key: 'settings.agent.builtinFsEditLabel',
     descKey: 'settings.agent.builtinFsEditDesc',
-    fallback: 'Edit File',
-    descFallback: 'Apply exact text replacement within a single file.',
+    fallback: 'Text Editing',
+    descFallback:
+      'Apply text edit operations within a single existing file, including replace, insert_after, and append.',
   },
-  fs_write: {
-    key: 'settings.agent.builtinFsWriteLabel',
-    descKey: 'settings.agent.builtinFsWriteDesc',
-    fallback: 'Write Vault',
-    descFallback: 'Execute vault write operations for files and folders.',
+  fs_file_ops: {
+    key: 'settings.agent.builtinFsFileOpsLabel',
+    descKey: 'settings.agent.builtinFsFileOpsDesc',
+    fallback: 'File Operations',
+    descFallback: 'Create, move, and delete files or folders in the vault.',
   },
   open_skill: {
     key: 'settings.agent.builtinOpenSkillLabel',

@@ -2,6 +2,7 @@ import isEqual from 'lodash.isequal'
 import { App, Platform } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
+import type { ApplyViewState } from '../../types/apply-view.types'
 import {
   McpServerConfig,
   McpServerState,
@@ -23,7 +24,7 @@ import {
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
-  parseLocalFsWriteActionFromArgs,
+  parseLocalFsFileOpActionFromArgs,
 } from './localFileTools'
 import {
   getToolName,
@@ -34,8 +35,8 @@ import {
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
   'Tool arguments must be valid JSON. Please escape quotes/newlines inside string values and retry.'
 
-const FS_WRITE_MULTI_ACTION_HINT =
-  'Detected concatenated fs_write payloads with mixed actions. Send one valid JSON object per tool call, and keep exactly one action value per call.'
+const FS_FILE_OPS_MULTI_ACTION_HINT =
+  'Detected concatenated fs_file_ops payloads with mixed actions. Send one valid JSON object per tool call, and keep exactly one action value per call.'
 
 export class McpManager {
   static readonly TOOL_NAME_DELIMITER = '__' // Delimiter for tool name construction (serverName__toolName)
@@ -43,6 +44,7 @@ export class McpManager {
   public readonly disabled = !Platform.isDesktop // MCP should be disabled on mobile since it doesn't support node.js
 
   private readonly app: App
+  private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
   private settings: SmartComposerSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
@@ -65,9 +67,9 @@ export class McpManager {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (
         serverName === getLocalFileToolServerName() &&
-        toolName === 'fs_write'
+        toolName === 'fs_file_ops'
       ) {
-        const action = parseLocalFsWriteActionFromArgs(requestArgs)
+        const action = parseLocalFsFileOpActionFromArgs(requestArgs)
         if (action) {
           return `${requestToolName}::${action}`
         }
@@ -85,10 +87,10 @@ export class McpManager {
     toolName: string
     requestArgs?: Record<string, unknown> | string
   }): boolean {
-    if (toolName !== 'fs_write') {
+    if (toolName !== 'fs_file_ops') {
       return true
     }
-    const action = parseLocalFsWriteActionFromArgs(requestArgs)
+    const action = parseLocalFsFileOpActionFromArgs(requestArgs)
     if (!action) {
       // Fail closed when action is missing or invalid
       return false
@@ -103,15 +105,18 @@ export class McpManager {
   constructor({
     app,
     settings,
+    openApplyReview,
     registerSettingsListener,
   }: {
     app: App
     settings: SmartComposerSettings
+    openApplyReview: (state: ApplyViewState) => Promise<boolean>
     registerSettingsListener: (
       listener: (settings: SmartComposerSettings) => void,
     ) => () => void
   }) {
     this.app = app
+    this.openApplyReview = openApplyReview
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -515,17 +520,7 @@ export class McpManager {
     args?: Record<string, unknown> | string | undefined
     id?: string
     signal?: AbortSignal
-  }): Promise<
-    Extract<
-      ToolCallResponse,
-      {
-        status:
-          | ToolCallResponseStatus.Success
-          | ToolCallResponseStatus.Error
-          | ToolCallResponseStatus.Aborted
-      }
-    >
-  > {
+  }): Promise<ToolCallResponse> {
     if (this.disabled) {
       throw new McpNotAvailableException()
     }
@@ -562,15 +557,15 @@ export class McpManager {
                 return recoveredObjects[0]
               }
 
-              if (toolName === 'fs_write' && recoveredObjects.length > 1) {
-                const mergedFsWriteArgs =
-                  this.tryMergeRecoveredFsWriteArgs(recoveredObjects)
-                if (mergedFsWriteArgs) {
-                  return mergedFsWriteArgs
+              if (toolName === 'fs_file_ops' && recoveredObjects.length > 1) {
+                const mergedFsFileOpArgs =
+                  this.tryMergeRecoveredFsFileOpArgs(recoveredObjects)
+                if (mergedFsFileOpArgs) {
+                  return mergedFsFileOpArgs
                 }
 
                 throw new Error(
-                  `${INVALID_TOOL_ARGUMENTS_JSON_ERROR} ${FS_WRITE_MULTI_ACTION_HINT}`,
+                  `${INVALID_TOOL_ARGUMENTS_JSON_ERROR} ${FS_FILE_OPS_MULTI_ACTION_HINT}`,
                 )
               }
 
@@ -585,6 +580,7 @@ export class McpManager {
         const localResult = await callLocalFileTool({
           app: this.app,
           settings: this.settings,
+          openApplyReview: this.openApplyReview,
           toolName,
           args: parsedArgs ?? {},
           signal: compositeSignal,
@@ -601,6 +597,11 @@ export class McpManager {
         if (localResult.status === ToolCallResponseStatus.Aborted) {
           return {
             status: ToolCallResponseStatus.Aborted,
+          }
+        }
+        if (localResult.status === ToolCallResponseStatus.Rejected) {
+          return {
+            status: ToolCallResponseStatus.Rejected,
           }
         }
         return {
@@ -670,7 +671,7 @@ export class McpManager {
     }
   }
 
-  private tryMergeRecoveredFsWriteArgs(
+  private tryMergeRecoveredFsFileOpArgs(
     recoveredObjects: Record<string, unknown>[],
   ): Record<string, unknown> | null {
     let action: string | null = null

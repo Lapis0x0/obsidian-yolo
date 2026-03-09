@@ -333,11 +333,18 @@ export const en: TranslationKeys = {
         'Search files, folders, or markdown content in vault.',
       builtinFsReadLabel: 'Read File',
       builtinFsReadDesc: 'Read line ranges from multiple vault files by path.',
-      builtinFsEditLabel: 'Edit File',
-      builtinFsEditDesc: 'Apply exact text replacement within a single file.',
-      builtinFsWriteLabel: 'Write Vault',
-      builtinFsWriteDesc:
-        'Execute vault write operations for files and folders.',
+      builtinFsEditLabel: 'Text Editing',
+      builtinFsEditDesc:
+        'Apply text edit operations within a single existing file, including replace, insert_after, and append.',
+      safetyControls: 'Safety Controls',
+      safetyControlsDesc:
+        'Configure extra review behavior before agents perform risky file operations.',
+      fsEditReviewToggle: 'Require approval before editing files',
+      fsEditReviewToggleDesc:
+        'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
+      builtinFsFileOpsLabel: 'File Operations',
+      builtinFsFileOpsDesc:
+        'Create, move, and delete files or folders in the vault.',
       builtinOpenSkillLabel: 'Open Skill',
       builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
       editorDefaultName: 'New agent',
@@ -778,9 +785,14 @@ export const en: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
-        'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',
+        'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
+      chatApplyMode: 'Chat apply behavior',
+      chatApplyModeDesc:
+        'Only affects Apply in the sidebar Chat. Choose whether edits open inline review first or write directly to the file. Turning review off skips the second confirmation step.',
+      chatApplyModeReviewRequired: 'Review before apply',
+      chatApplyModeDirectApply: 'Write directly to file',
       persistSelectionHighlight: 'Keep selection block highlight',
       persistSelectionHighlightDesc:
         'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',
@@ -789,7 +801,7 @@ export const en: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Type a message...「@ to add references, keep typing to filter」',
+      'Type a message...「@ to add references, / to choose a skill」',
     placeholderCompact: 'Click to expand and edit...',
     sendMessage: 'Send message',
     newChat: 'New chat',
@@ -807,6 +819,7 @@ export const en: TranslationKeys = {
     mentionMenu: {
       back: 'Back',
       entryMode: 'Mode',
+      entrySkill: 'Skill',
       entryAssistant: 'Assistant',
       entryFile: 'File',
       entryFolder: 'Folder',
@@ -915,13 +928,12 @@ export const en: TranslationKeys = {
         fs_list: 'List files',
         fs_search: 'Search files',
         fs_read: 'Read files',
-        fs_edit: 'Edit file',
-        fs_write: 'File operation',
+        fs_edit: 'Text editing',
+        fs_file_ops: 'File operations',
         open_skill: 'Open skill',
       },
       writeAction: {
         create_file: 'Create file',
-        write_file: 'Write file',
         delete_file: 'Delete file',
         create_dir: 'Create folder',
         delete_dir: 'Delete folder',

@@ -13,17 +13,17 @@ describe('tool-arguments utilities', () => {
 
   it('extracts multiple top-level objects from concatenated payloads', () => {
     const extracted = extractTopLevelJsonObjects(
-      '{"action":"write_file","items":[{"path":"a.md","content":"x"}]}' +
-        '{"action":"write_file","items":[{"path":"b.md","content":"y"}]}',
+      '{"action":"create_file","items":[{"path":"a.md","content":"x"}]}' +
+        '{"action":"create_file","items":[{"path":"b.md","content":"y"}]}',
     )
 
     expect(extracted).toHaveLength(2)
     expect(extracted[0]).toEqual({
-      action: 'write_file',
+      action: 'create_file',
       items: [{ path: 'a.md', content: 'x' }],
     })
     expect(extracted[1]).toEqual({
-      action: 'write_file',
+      action: 'create_file',
       items: [{ path: 'b.md', content: 'y' }],
     })
   })
@@ -31,7 +31,7 @@ describe('tool-arguments utilities', () => {
   it('recovers latest complete object when stream chunks are mixed', () => {
     const merged = mergeStreamingToolArguments({
       existingArgs:
-        '{"action":"write_file","items":[{"path":"a.md","content":"x"}]}',
+        '{"action":"create_file","items":[{"path":"a.md","content":"x"}]}',
       newArgs:
         '{"action":"move","items":[{"oldPath":"a.md","newPath":"b.md"}]}',
     })

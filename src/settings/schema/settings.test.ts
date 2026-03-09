@@ -35,11 +35,13 @@ describe('parseSmartComposerSettings', () => {
     })
 
     expect(result.mcp.servers).toEqual([])
+    expect(result.mcp.fsEditRequireReview).toBe(false)
     expect(result.yolo).toEqual({ baseDir: 'YOLO' })
 
     expect(result.chatOptions).toMatchObject({
       includeCurrentFileContent: true,
       mentionDisplayMode: 'inline',
+      chatApplyMode: 'review-required',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},

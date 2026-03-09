@@ -6,7 +6,10 @@ import { ApplyReviewOverlay } from '../../../components/apply-view/ApplyReviewOv
 import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
 import type { ApplyViewActions } from '../../../components/apply-view/types'
 import type SmartComposerPlugin from '../../../main'
-import type { ApplyViewState } from '../../../types/apply-view.types'
+import type {
+  ApplyViewCallbacks,
+  ApplyViewState,
+} from '../../../types/apply-view.types'
 import { buildInlineReviewBlocks, countModifiedBlocks } from './review-model'
 
 const INLINE_DIFF_REVIEW_THRESHOLD = 3
@@ -98,6 +101,8 @@ export class DiffReviewController {
   private activeOverlay: { mount: () => void; destroy: () => void } | null =
     null
   private activeActions: ApplyViewActions | null = null
+  private activeReviewCallbacks: ApplyViewCallbacks | null = null
+  private activeReviewSettled = false
 
   constructor(deps: DiffReviewControllerDeps) {
     this.deps = deps
@@ -121,6 +126,12 @@ export class DiffReviewController {
 
   closeReview(): void {
     if (!this.activeView) return
+
+    if (!this.activeReviewSettled) {
+      this.activeReviewCallbacks?.onCancel?.()
+    }
+    this.activeReviewCallbacks = null
+    this.activeReviewSettled = false
 
     this.activeOverlay?.destroy()
     this.activeOverlay = null
@@ -165,22 +176,30 @@ export class DiffReviewController {
           }
         : state
 
+    const wrappedCallbacks = this.wrapReviewCallbacks(reviewState.callbacks)
+    const reviewStateWithCallbacks: ApplyViewState = {
+      ...reviewState,
+      callbacks: wrappedCallbacks,
+    }
+    this.activeReviewCallbacks = wrappedCallbacks
+    this.activeReviewSettled = false
+
     const modifiedBlockCount = countModifiedBlocks(
       buildInlineReviewBlocks(
-        reviewState.originalContent,
-        reviewState.newContent,
+        reviewStateWithCallbacks.originalContent,
+        reviewStateWithCallbacks.newContent,
       ),
     )
 
     const shouldUseInlineSelectionReview =
-      reviewState.reviewMode === 'selection-focus' &&
+      reviewStateWithCallbacks.reviewMode === 'selection-focus' &&
       modifiedBlockCount <= INLINE_DIFF_REVIEW_THRESHOLD
 
     this.activeOverlay = shouldUseInlineSelectionReview
       ? new InlineDiffReviewOverlay({
           plugin: this.deps.plugin,
           view,
-          state: reviewState,
+          state: reviewStateWithCallbacks,
           onClose: () => this.closeReview(),
           onActionsReady: (actions) => {
             this.activeActions = actions
@@ -190,7 +209,7 @@ export class DiffReviewController {
           plugin: this.deps.plugin,
           view,
           state: {
-            ...reviewState,
+            ...reviewStateWithCallbacks,
             reviewMode: 'full',
           },
           onClose: () => this.closeReview(),
@@ -199,6 +218,21 @@ export class DiffReviewController {
           },
         })
     this.activeOverlay.mount()
+  }
+
+  private wrapReviewCallbacks(
+    callbacks: ApplyViewCallbacks | undefined,
+  ): ApplyViewCallbacks {
+    return {
+      onComplete: (result) => {
+        this.activeReviewSettled = true
+        callbacks?.onComplete?.(result)
+      },
+      onCancel: () => {
+        this.activeReviewSettled = true
+        callbacks?.onCancel?.()
+      },
+    }
   }
 
   private hasValidSelectionRange(

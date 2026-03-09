@@ -1,6 +1,7 @@
+import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import { Bot, CircleStop, History, MessageCircle, Plus } from 'lucide-react'
-import { Notice, Platform } from 'obsidian'
+import { MarkdownView, Notice, Platform } from 'obsidian'
 import type { TFile, TFolder } from 'obsidian'
 import {
   forwardRef,
@@ -23,6 +24,7 @@ import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../core/llm/manager'
+import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
@@ -104,6 +106,41 @@ const getInlineSelectionRange = (
   }
 }
 
+const waitForEditorContentSync = async (
+  view: EditorView,
+  expectedContent: string,
+  timeoutMs = 400,
+): Promise<boolean> => {
+  if (view.state.doc.toString() === expectedContent) {
+    return true
+  }
+
+  const startedAt = Date.now()
+
+  return await new Promise((resolve) => {
+    const check = () => {
+      if (!view.dom.isConnected) {
+        resolve(false)
+        return
+      }
+
+      if (view.state.doc.toString() === expectedContent) {
+        resolve(true)
+        return
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false)
+        return
+      }
+
+      window.setTimeout(check, 16)
+    }
+
+    window.setTimeout(check, 16)
+  })
+}
+
 const getNewInputMessage = (
   reasoningLevel: ReasoningLevel,
 ): ChatUserMessage => {
@@ -114,6 +151,7 @@ const getNewInputMessage = (
     id: uuidv4(),
     reasoningLevel,
     mentionables: [],
+    selectedSkills: [],
   }
 }
 
@@ -259,6 +297,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     string | null
   >(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
+  const getEditorViewForFile = useCallback(
+    (file: TFile): EditorView | null => {
+      const markdownLeaves = app.workspace.getLeavesOfType('markdown')
+      const targetLeaf = markdownLeaves.find((leaf) => {
+        const view = leaf.view
+        return view instanceof MarkdownView && view.file?.path === file.path
+      })
+
+      if (!(targetLeaf?.view instanceof MarkdownView)) {
+        return null
+      }
+
+      const editor = targetLeaf.view.editor as { cm?: unknown } | undefined
+      return editor?.cm instanceof EditorView ? editor.cm : null
+    },
+    [app.workspace],
+  )
   const [queryProgress, setQueryProgress] = useState<QueryProgressState>({
     type: 'idle',
   })
@@ -838,6 +893,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         content,
         reasoningLevel,
         mentionables,
+        selectedSkills: inputMessage.selectedSkills ?? [],
       }
     },
     [
@@ -1017,6 +1073,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         targetFileContent,
         materialized.operationResults,
       )
+
+      if (settings.chatOptions.chatApplyMode === 'direct-apply') {
+        await app.vault.modify(targetFile, materialized.newContent)
+
+        if (materialized.errors.length > 0) {
+          const partialMessage = t(
+            'quickAsk.editPartialSuccess',
+            '已应用 {appliedCount}/{totalEdits} 个编辑，详情请查看控制台',
+          )
+            .replace('{appliedCount}', String(materialized.appliedCount))
+            .replace('{totalEdits}', String(materialized.totalOperations))
+          new Notice(partialMessage)
+        }
+
+        const updatedRanges = materialized.operationResults
+          .map((result) => result.newRange)
+          .filter((range): range is NonNullable<typeof range> => Boolean(range))
+        const editorView = getEditorViewForFile(targetFile)
+        if (editorView && updatedRanges.length > 0) {
+          const isEditorSynced = await waitForEditorContentSync(
+            editorView,
+            materialized.newContent,
+          )
+
+          if (isEditorSynced) {
+            selectionHighlightController.highlightRanges(
+              editorView,
+              updatedRanges.map((range, index) => ({
+                from: range.start,
+                to: range.end,
+                label: index === 0 ? 'Updated' : undefined,
+                variant: 'updated' as const,
+              })),
+              1050,
+            )
+          }
+        }
+        return
+      }
 
       await plugin.openApplyReview({
         file: targetFile,
@@ -1886,7 +1981,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               onSubmit={(content, useVaultSearch) => {
                 if (
                   editorStateToPlainText(content).trim() === '' &&
-                  messageOrGroup.mentionables.length === 0
+                  messageOrGroup.mentionables.length === 0 &&
+                  (messageOrGroup.selectedSkills?.length ?? 0) === 0
                 ) {
                   return
                 }
@@ -1914,6 +2010,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       id: messageOrGroup.id,
                       reasoningLevel: reasoningForThisMessage,
                       mentionables: messageOrGroup.mentionables,
+                      selectedSkills: messageOrGroup.selectedSkills ?? [],
                     },
                   ],
                   useVaultSearch,
@@ -1957,6 +2054,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                         : undefined,
                     }
                   }),
+                )
+              }}
+              onSelectedSkillsChange={(selectedSkills) => {
+                setChatMessages((prevChatHistory) =>
+                  prevChatHistory.map((msg) =>
+                    msg.role === 'user' && msg.id === messageOrGroup.id
+                      ? {
+                          ...msg,
+                          selectedSkills,
+                          promptContent: null,
+                          snapshotRef: undefined,
+                          similaritySearchResults: undefined,
+                        }
+                      : msg,
+                  ),
                 )
               }}
               modelId={
@@ -2006,6 +2118,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 )
                 void persistReasoningLevelForModel(conversationModelId, level)
               }}
+              currentAssistantId={conversationAssistantId}
+              currentChatMode={chatMode}
+              onSelectChatModeForConversation={handleChatModeChange}
             />
           )
         })}
@@ -2086,7 +2201,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onSubmit={(content, useVaultSearch) => {
             if (
               editorStateToPlainText(content).trim() === '' &&
-              inputMessage.mentionables.length === 0
+              inputMessage.mentionables.length === 0 &&
+              (inputMessage.selectedSkills?.length ?? 0) === 0
             ) {
               return
             }
@@ -2118,6 +2234,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 mentionables,
               }
             })
+          }}
+          selectedSkills={inputMessage.selectedSkills ?? []}
+          setSelectedSkills={(selectedSkills) => {
+            setInputMessage((prevInputMessage) => ({
+              ...prevInputMessage,
+              selectedSkills,
+              promptContent: null,
+              snapshotRef: undefined,
+              similaritySearchResults: undefined,
+            }))
           }}
           modelId={conversationModelId}
           onModelChange={(id) => {

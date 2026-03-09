@@ -18,6 +18,7 @@ import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
   ChatMessage,
+  ChatSelectedSkill,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
@@ -330,7 +331,10 @@ ${message.similaritySearchResults
   .join('')}\n`
       : ''
 
-    const textContent = `${ragPrompt}${blockPrompt}\n\n${query}\n\n`
+    const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
+      message.selectedSkills,
+    )
+    const textContent = `${ragPrompt}${blockPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`
     if (imageParts.length === 0) {
       return textContent
     }
@@ -345,14 +349,59 @@ ${message.similaritySearchResults
   }
 
   private requiresSnapshotRebuild(message: ChatUserMessage): boolean {
-    return message.mentionables.some(
-      (mentionable) =>
-        mentionable.type === 'file' ||
-        mentionable.type === 'folder' ||
-        mentionable.type === 'url' ||
-        mentionable.type === 'current-file' ||
-        mentionable.type === 'vault',
+    return (
+      (message.selectedSkills?.length ?? 0) > 0 ||
+      message.mentionables.some(
+        (mentionable) =>
+          mentionable.type === 'file' ||
+          mentionable.type === 'folder' ||
+          mentionable.type === 'url' ||
+          mentionable.type === 'current-file' ||
+          mentionable.type === 'vault',
+      )
     )
+  }
+
+  private async buildSelectedSkillsPrompt(
+    selectedSkills?: ChatSelectedSkill[],
+  ): Promise<string> {
+    if (!selectedSkills || selectedSkills.length === 0) {
+      return ''
+    }
+
+    const loadedSkills = await Promise.all(
+      selectedSkills.map(async (skill) => {
+        const document = await getLiteSkillDocument({
+          app: this.app,
+          id: skill.id,
+          name: skill.name,
+          settings: this.settings,
+        })
+
+        if (document) {
+          return document
+        }
+
+        return {
+          entry: skill,
+          content: '',
+        }
+      }),
+    )
+
+    const validSkills = loadedSkills.filter(
+      (skill) => skill.content.trim().length > 0,
+    )
+    if (validSkills.length === 0) {
+      return ''
+    }
+
+    return `<user_selected_skills>\n${validSkills
+      .map(
+        (skill) =>
+          `<skill id="${skill.entry.id}" name="${skill.entry.name}" path="${skill.entry.path}">\n${skill.content}\n</skill>`,
+      )
+      .join('\n\n')}\n</user_selected_skills>\n`
   }
 
   private parseAssistantMessage({
@@ -497,13 +546,19 @@ ${message.annotations
     })[]
   }> {
     try {
-      if (!message.content) {
+      if (
+        !message.content &&
+        message.mentionables.length === 0 &&
+        (message.selectedSkills?.length ?? 0) === 0
+      ) {
         return {
           promptContent: '',
           shouldUseRAG: false,
         }
       }
-      const query = editorStateToPlainText(message.content)
+      const query = message.content
+        ? editorStateToPlainText(message.content)
+        : ''
       let similaritySearchResults:
         | (Omit<SelectEmbedding, 'embedding'> & {
             similarity: number
@@ -613,6 +668,9 @@ ${await this.getWebsiteContent(url)}
       const imageDataUrls = message.mentionables
         .filter((m): m is MentionableImage => m.type === 'image')
         .map(({ data }) => data)
+      const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
+        message.selectedSkills,
+      )
 
       // Reset query progress
       onQueryProgressChange?.({
@@ -631,7 +689,7 @@ ${await this.getWebsiteContent(url)}
           ),
           {
             type: 'text',
-            text: `${filePrompt}${blockPrompt}${urlPrompt}\n\n${query}\n\n`,
+            text: `${filePrompt}${blockPrompt}${urlPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`,
           },
         ],
         shouldUseRAG,
@@ -790,7 +848,8 @@ ${customInstruction}
       section += `
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
-- If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.`
+- If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
+- If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
 
     return section
@@ -808,7 +867,8 @@ ${customInstruction}
       section += `
 - You can use tools, but consult the provided markdown first. Only call tools when the vault content cannot answer the question.
 - When using tools, briefly state why they are needed and focus on summarizing the results for the user.
-- If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.`
+- If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
+- If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
 
     return section

@@ -28,6 +28,9 @@ import {
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
+import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
+import { ChatSelectedSkill } from '../../../types/chat'
 import { ChatModel } from '../../../types/chat-model.types'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import {
@@ -43,6 +46,7 @@ import {
 } from '../../../utils/chat/mentionable'
 
 import LexicalContentEditable from './LexicalContentEditable'
+import ChatSkillBadge from './ChatSkillBadge'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
 import {
@@ -50,6 +54,11 @@ import {
   $isMentionNode,
   MentionNode,
 } from './plugins/mention/MentionNode'
+import {
+  $createSkillNode,
+  $isSkillNode,
+  SkillNode,
+} from './plugins/mention/SkillNode'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import {
   ReasoningLevel,
@@ -71,6 +80,8 @@ export type ChatUserInputProps = {
   onFocus: () => void
   mentionables: Mentionable[]
   setMentionables: (mentionables: Mentionable[]) => void
+  selectedSkills?: ChatSelectedSkill[]
+  setSelectedSkills?: (skills: ChatSelectedSkill[]) => void
   autoFocus?: boolean
   addedBlockKey?: string | null
   conversationOverrides?: ConversationOverrideSettings | null
@@ -114,6 +125,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onFocus,
       mentionables,
       setMentionables,
+      selectedSkills = [],
+      setSelectedSkills,
       autoFocus = false,
       conversationOverrides = null,
       onConversationOverridesChange: _onConversationOverridesChange,
@@ -157,12 +170,40 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const containerRef = useRef<HTMLDivElement>(null)
     const [isEditorReady, setIsEditorReady] = useState(false)
     const suppressedDestroyedMentionableKeysRef = useRef<Set<string>>(new Set())
+    const suppressedDestroyedSkillIdsRef = useRef<Set<string>>(new Set())
     const [inputText, setInputText] = useState('')
 
     const effectiveMentionables = useMemo(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
+    const effectiveSelectedSkills = useMemo(
+      () => selectedSkills,
+      [selectedSkills],
+    )
+
+    const availableSkills = useMemo(() => {
+      const assistants = settings.assistants || []
+      const currentAssistant = currentAssistantId
+        ? (assistants.find(
+            (assistant) => assistant.id === currentAssistantId,
+          ) ?? null)
+        : null
+
+      if (!currentAssistant) {
+        return []
+      }
+
+      const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+      return listLiteSkillEntries(app, { settings }).filter((skill) =>
+        isSkillEnabledForAssistant({
+          assistant: currentAssistant,
+          skillId: skill.id,
+          disabledSkillIds,
+          defaultLoadMode: skill.mode,
+        }),
+      )
+    }, [app, currentAssistantId, settings])
 
     const resolvedReasoningLevel = useMemo(() => {
       if (reasoningLevel) return reasoningLevel
@@ -331,6 +372,57 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       // 默认保持收起状态，不自动展开新添加的徽章
     }
 
+    const handleSkillNodeMutation = (mutations: NodeMutations<SkillNode>) => {
+      if (!setSelectedSkills) {
+        return
+      }
+
+      const destroyedSkillIds: string[] = []
+      const addedSkills: ChatSelectedSkill[] = []
+
+      mutations.forEach((mutation) => {
+        const skill = mutation.node.getSkill()
+        if (mutation.mutation === 'destroyed') {
+          if (suppressedDestroyedSkillIdsRef.current.has(skill.id)) {
+            suppressedDestroyedSkillIdsRef.current.delete(skill.id)
+            return
+          }
+
+          const nodeWithSameSkill = editorRef.current?.read(() =>
+            $nodesOfType(SkillNode).find(
+              (node) => node.getSkill().id === skill.id,
+            ),
+          )
+
+          if (!nodeWithSameSkill) {
+            destroyedSkillIds.push(skill.id)
+          }
+          return
+        }
+
+        if (
+          effectiveSelectedSkills.some(
+            (selectedSkill) => selectedSkill.id === skill.id,
+          ) ||
+          addedSkills.some((selectedSkill) => selectedSkill.id === skill.id)
+        ) {
+          return
+        }
+
+        addedSkills.push(skill)
+      })
+
+      if (destroyedSkillIds.length === 0 && addedSkills.length === 0) {
+        return
+      }
+
+      setSelectedSkills(
+        effectiveSelectedSkills
+          .filter((skill) => !destroyedSkillIds.includes(skill.id))
+          .concat(addedSkills),
+      )
+    }
+
     useEffect(() => {
       const editor = editorRef.current
       if (!editor || !isEditorReady) return
@@ -456,6 +548,113 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       mentionableUnitLabel,
     ])
 
+    useEffect(() => {
+      const editor = editorRef.current
+      if (!editor || !isEditorReady || !setSelectedSkills) return
+
+      const skillsToMirror =
+        mentionDisplayMode === 'inline' ? effectiveSelectedSkills : []
+      const skillsById = new Map(
+        skillsToMirror.map((skill) => [skill.id, skill] as const),
+      )
+
+      const shouldMoveCursor =
+        contentEditableRef.current === document.activeElement
+
+      editor.update(() => {
+        $nodesOfType(SkillNode).forEach((node) => {
+          const skill = node.getSkill()
+          if (skillsById.has(skill.id)) return
+
+          suppressedDestroyedSkillIdsRef.current.add(skill.id)
+          const prevSibling = node.getPreviousSibling()
+          if (
+            prevSibling &&
+            $isTextNode(prevSibling) &&
+            prevSibling.getTextContent() === ' '
+          ) {
+            prevSibling.remove()
+          } else {
+            const nextSibling = node.getNextSibling()
+            if (
+              nextSibling &&
+              $isTextNode(nextSibling) &&
+              nextSibling.getTextContent() === ' '
+            ) {
+              nextSibling.remove()
+            }
+          }
+          node.remove()
+        })
+
+        if (skillsToMirror.length === 0) return
+
+        const existingIds = new Set(
+          $nodesOfType(SkillNode).map((node) => node.getSkill().id),
+        )
+        const root = $getRoot()
+        let paragraphNode = root.getFirstChild()
+        if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
+          const created = $createParagraphNode()
+          root.append(created)
+          paragraphNode = created
+        }
+        const paragraph = paragraphNode as ParagraphNode
+        const insertBefore = paragraph.getFirstChild()
+
+        let didInsert = false
+        skillsToMirror.forEach((skill) => {
+          if (existingIds.has(skill.id)) return
+
+          const skillNode = $createSkillNode(skill.name, skill)
+          const spacer = $createTextNode(' ')
+          if (insertBefore) {
+            insertBefore.insertBefore(spacer)
+            insertBefore.insertBefore(skillNode)
+          } else {
+            paragraph.append(skillNode)
+            paragraph.append(spacer)
+          }
+          didInsert = true
+        })
+
+        if (!shouldMoveCursor) return
+        const selection = $getSelection()
+        if (
+          !selection ||
+          !$isRangeSelection(selection) ||
+          !selection.isCollapsed()
+        ) {
+          return
+        }
+        const anchorNode = selection.anchor.getNode()
+        const anchorTopLevel = anchorNode.getTopLevelElement()
+        if (anchorTopLevel && anchorTopLevel !== paragraph) return
+        if (selection.anchor.offset !== 0 || anchorNode.getPreviousSibling()) {
+          return
+        }
+        const hasUserText = paragraph
+          .getChildren()
+          .some((node: LexicalNode) => {
+            if ($isMentionNode(node) || $isSkillNode(node)) return false
+            return node.getTextContent().trim().length > 0
+          })
+        if (hasUserText) return
+        const hasTokens = paragraph
+          .getChildren()
+          .some(
+            (node: LexicalNode) => $isMentionNode(node) || $isSkillNode(node),
+          )
+        if (!didInsert && !hasTokens) return
+        paragraph.selectEnd()
+      })
+    }, [
+      effectiveSelectedSkills,
+      isEditorReady,
+      mentionDisplayMode,
+      setSelectedSkills,
+    ])
+
     const handleCreateImageMentionables = useCallback(
       (mentionableImages: MentionableImage[]) => {
         const newMentionableImages = mentionableImages.filter(
@@ -546,6 +745,49 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [mentionables, onDeleteFromAll, setMentionables],
     )
 
+    const handleSelectSkill = useCallback(
+      (skill: {
+        id: string
+        name: string
+        description: string
+        path: string
+      }) => {
+        if (!setSelectedSkills) {
+          return
+        }
+
+        const nextSkill: ChatSelectedSkill = {
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          path: skill.path,
+        }
+
+        if (
+          effectiveSelectedSkills.some(
+            (selectedSkill) => selectedSkill.id === nextSkill.id,
+          )
+        ) {
+          return
+        }
+
+        setSelectedSkills([...effectiveSelectedSkills, nextSkill])
+      },
+      [effectiveSelectedSkills, setSelectedSkills],
+    )
+
+    const handleDeleteSelectedSkill = useCallback(
+      (skillId: string) => {
+        if (!setSelectedSkills) {
+          return
+        }
+        setSelectedSkills(
+          effectiveSelectedSkills.filter((skill) => skill.id !== skillId),
+        )
+      },
+      [effectiveSelectedSkills, setSelectedSkills],
+    )
+
     const handleSubmit = (options: ChatSubmitOptions = {}) => {
       const content = editorRef.current?.getEditorState()?.toJSON()
       // Use vault search from conversation overrides if available, otherwise use the passed option
@@ -581,6 +823,18 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         className={`smtcmp-chat-user-input-wrapper${compact ? ' smtcmp-chat-user-input-wrapper--compact' : ''}`}
         onBlur={handleBlur}
       >
+        {mentionDisplayMode === 'badge' &&
+          effectiveSelectedSkills.length > 0 && (
+            <div className="smtcmp-chat-user-input-files">
+              {effectiveSelectedSkills.map((skill) => (
+                <ChatSkillBadge
+                  key={skill.id}
+                  skill={skill}
+                  onDelete={() => handleDeleteSelectedSkill(skill.id)}
+                />
+              ))}
+            </div>
+          )}
         {!hideBadgeMentionables &&
           mentionDisplayMode === 'badge' &&
           effectiveMentionables.length > 0 && (
@@ -613,6 +867,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           >
             {inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
+              effectiveSelectedSkills.length === 0 &&
               compact && (
                 <div className="smtcmp-chat-user-input-placeholder">
                   {t('chat.placeholderCompact', '点击展开编辑...')}
@@ -620,11 +875,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               )}
             {!compact &&
               inputText.trim().length === 0 &&
-              effectiveMentionables.length === 0 && (
+              effectiveMentionables.length === 0 &&
+              effectiveSelectedSkills.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
                   {t(
                     'chat.placeholder',
-                    '输入消息...「@添加标签引用,继续输入可筛选搜索」',
+                    '输入消息...「@添加标签引用，/选择技能」',
                   )}
                 </div>
               )}
@@ -643,6 +899,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               onEnter={() => handleSubmit()}
               onFocus={onFocus}
               onMentionNodeMutation={handleMentionNodeMutation}
+              onSkillNodeMutation={handleSkillNodeMutation}
               onCreateImageMentionables={handleCreateImageMentionables}
               mentionDisplayMode={mentionDisplayMode}
               onSelectMentionable={handleSelectMentionableForBadge}
@@ -658,6 +915,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               currentChatMode={currentChatMode}
               onSelectChatMode={onSelectChatModeForConversation}
               allowAgentModeOption={allowAgentModeOption}
+              skills={availableSkills}
+              selectedSkillIds={effectiveSelectedSkills.map(
+                (skill) => skill.id,
+              )}
+              onSelectSkill={handleSelectSkill}
               autoFocus={autoFocus}
               plugins={{
                 onEnter: {
