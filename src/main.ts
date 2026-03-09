@@ -50,6 +50,7 @@ import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type { Mentionable } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
+import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 
 export default class SmartComposerPlugin extends Plugin {
@@ -205,7 +206,50 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   private showQuickAsk(editor: Editor, view: EditorView) {
+    const selectionOptions = this.getQuickAskSelectionOptions(editor)
+    if (selectionOptions) {
+      this.getQuickAskController().showWithOptions(
+        editor,
+        view,
+        selectionOptions,
+      )
+      return
+    }
+
     this.getQuickAskController().show(editor, view)
+  }
+
+  private getQuickAskSelectionOptions(editor: Editor) {
+    const selectedText = editor.getSelection()
+    if (!selectedText || selectedText.trim().length === 0) {
+      return undefined
+    }
+
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!markdownView) {
+      return undefined
+    }
+
+    const data = getMentionableBlockData(editor, markdownView)
+    if (!data) {
+      return undefined
+    }
+
+    const mentionable = {
+      type: 'block',
+      ...data,
+      source: 'selection',
+    } as const
+
+    return {
+      initialMentionables: [mentionable],
+      editContextText: selectedText,
+      editSelectionFrom: editor.getCursor('from'),
+      selectionScope: {
+        mentionable,
+        selectionFrom: editor.getCursor('from'),
+      } satisfies QuickAskSelectionScope,
+    }
   }
 
   private showQuickAskWithAutoSend(
