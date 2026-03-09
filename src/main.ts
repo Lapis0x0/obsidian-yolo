@@ -32,6 +32,7 @@ import { InlineSuggestionController } from './features/editor/inline-suggestion/
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
+import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,
@@ -210,7 +211,11 @@ export default class SmartComposerPlugin extends Plugin {
   private showQuickAskWithAutoSend(
     editor: Editor,
     view: EditorView,
-    options: { prompt: string; mentionables: Mentionable[] },
+    options: {
+      prompt: string
+      mentionables: Mentionable[]
+      selectionScope?: QuickAskSelectionScope
+    },
   ) {
     this.getQuickAskController().showWithAutoSend(editor, view, options)
   }
@@ -225,6 +230,7 @@ export default class SmartComposerPlugin extends Plugin {
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
       autoSend?: boolean
     },
   ) {

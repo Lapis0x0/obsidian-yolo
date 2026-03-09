@@ -16,9 +16,11 @@ import type SmartComposerPlugin from '../../../main'
 import { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type {
   Mentionable,
+  MentionableBlock,
   MentionableBlockData,
 } from '../../../types/mentionable'
 import { getMentionableBlockData } from '../../../utils/obsidian'
+import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -43,13 +45,18 @@ type SelectionChatControllerDeps = {
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
       autoSend?: boolean
     },
   ) => void
   showQuickAskWithAutoSend: (
     editor: Editor,
     view: EditorView,
-    options: { prompt: string; mentionables: Mentionable[] },
+    options: {
+      prompt: string
+      mentionables: Mentionable[]
+      selectionScope?: QuickAskSelectionScope
+    },
   ) => void
   openChatWithSelectionAndPrefill: (
     selectedBlock: MentionableBlockData,
@@ -75,13 +82,18 @@ export class SelectionChatController {
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
       autoSend?: boolean
     },
   ) => void
   private readonly showQuickAskWithAutoSend: (
     editor: Editor,
     view: EditorView,
-    options: { prompt: string; mentionables: Mentionable[] },
+    options: {
+      prompt: string
+      mentionables: Mentionable[]
+      selectionScope?: QuickAskSelectionScope
+    },
   ) => void
   private readonly openChatWithSelectionAndPrefill: (
     selectedBlock: MentionableBlockData,
@@ -267,8 +279,8 @@ export class SelectionChatController {
       return
     }
 
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
+    const mentionable = this.createSelectionMentionable(editor, view)
+    if (!mentionable) {
       new Notice('无法创建选区数据')
       return
     }
@@ -279,16 +291,37 @@ export class SelectionChatController {
       return
     }
 
-    const mentionable: Mentionable = {
+    this.showQuickAskWithOptions(editor, editorView, {
+      initialMode: 'ask',
+      initialMentionables: [mentionable],
+      selectionScope: this.createSelectionScope(mentionable, editor),
+    })
+  }
+
+  private createSelectionMentionable(
+    editor: Editor,
+    view: MarkdownView,
+  ): MentionableBlock | null {
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      return null
+    }
+
+    return {
       type: 'block',
       ...data,
       source: 'selection',
     }
+  }
 
-    this.showQuickAskWithOptions(editor, editorView, {
-      initialMode: 'ask',
-      initialMentionables: [mentionable],
-    })
+  private createSelectionScope(
+    mentionable: MentionableBlock,
+    editor: Editor,
+  ): QuickAskSelectionScope {
+    return {
+      mentionable,
+      selectionFrom: editor.getCursor('from'),
+    }
   }
 
   private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {
@@ -333,9 +366,21 @@ export class SelectionChatController {
     instruction: string,
     rewriteBehavior?: SelectionActionRewriteBehavior,
   ) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!view) {
+      new Notice('无法获取当前编辑器')
+      return
+    }
+
     const selectedText = editor.getSelection()
     if (!selectedText || selectedText.trim().length === 0) {
       new Notice('请先选择要改写的文本。')
+      return
+    }
+
+    const mentionable = this.createSelectionMentionable(editor, view)
+    if (!mentionable) {
+      new Notice('无法创建选区数据')
       return
     }
 
@@ -356,8 +401,10 @@ export class SelectionChatController {
       initialMode: 'edit',
       initialPrompt: behavior === 'preset' ? prompt : undefined,
       initialInput: behavior === 'custom' ? prompt : undefined,
+      initialMentionables: [mentionable],
       editContextText: selectedText,
       editSelectionFrom: editor.getCursor('from'),
+      selectionScope: this.createSelectionScope(mentionable, editor),
       autoSend: behavior === 'preset',
     })
   }
@@ -369,8 +416,8 @@ export class SelectionChatController {
       return
     }
 
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
+    const mentionable = this.createSelectionMentionable(editor, view)
+    if (!mentionable) {
       new Notice('无法创建选区数据')
       return
     }
@@ -381,17 +428,12 @@ export class SelectionChatController {
       return
     }
 
-    const mentionable: Mentionable = {
-      type: 'block',
-      ...data,
-      source: 'selection',
-    }
-
     const basePrompt =
       prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     this.showQuickAskWithAutoSend(editor, editorView, {
       prompt: basePrompt,
       mentionables: [mentionable],
+      selectionScope: this.createSelectionScope(mentionable, editor),
     })
   }
 

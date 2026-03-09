@@ -8,6 +8,11 @@ import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { Mentionable } from '../../../types/mentionable'
 
+import type {
+  QuickAskSelectionScope,
+  QuickAskShowOptions,
+} from './quickAsk.types'
+
 type QuickAskWidgetPayload = {
   pos: number
   options: {
@@ -23,6 +28,7 @@ type QuickAskWidgetPayload = {
     initialInput?: string
     editContextText?: string
     editSelectionFrom?: { line: number; ch: number }
+    selectionScope?: QuickAskSelectionScope
     autoSend?: boolean
     onClose: () => void
   }
@@ -43,16 +49,6 @@ type QuickAskControllerDeps = {
   closeSmartSpace: (restoreFocus?: boolean) => void
   pinSelectionHighlight: (view: EditorView) => void
   clearSelectionHighlight: (view?: EditorView) => void
-}
-
-type QuickAskShowOptions = {
-  initialPrompt?: string
-  initialMentionables?: Mentionable[]
-  initialMode?: 'ask' | 'edit' | 'edit-direct'
-  initialInput?: string
-  editContextText?: string
-  editSelectionFrom?: { line: number; ch: number }
-  autoSend?: boolean
 }
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
@@ -139,13 +135,18 @@ export class QuickAskController {
   showWithAutoSend(
     editor: Editor,
     view: EditorView,
-    options: { prompt: string; mentionables?: Mentionable[] },
+    options: {
+      prompt: string
+      mentionables?: Mentionable[]
+      selectionScope?: QuickAskSelectionScope
+    },
   ) {
     this.showWithOptions(editor, view, {
       initialMode: 'ask',
       autoSend: true,
       initialPrompt: options.prompt,
       initialMentionables: options.mentionables,
+      selectionScope: options.selectionScope,
     })
   }
 
@@ -193,6 +194,7 @@ export class QuickAskController {
     const initialInput = options?.initialInput
     const editContextText = options?.editContextText
     const editSelectionFrom = options?.editSelectionFrom
+    const selectionScope = options?.selectionScope
     const autoSend = options?.autoSend
 
     // Close any existing Quick Ask panel
@@ -234,6 +236,7 @@ export class QuickAskController {
             initialInput,
             editContextText,
             editSelectionFrom,
+            selectionScope,
             autoSend,
             onClose: () => close(true),
           },
