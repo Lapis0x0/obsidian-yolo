@@ -5578,16 +5578,39 @@
   background-color: var(--background-modifier-hover);
 }
 
+button.smtcmp-chat-user-input-file-badge-delete,
 .smtcmp-chat-user-input-file-badge-delete {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  padding: 0;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  width: auto !important;
   height: 100%;
   display: flex;
   align-items: center;
   color: var(--text-muted);
   cursor: pointer;
+}
+
+button.smtcmp-chat-user-input-file-badge-delete:hover,
+button.smtcmp-chat-user-input-file-badge-delete:focus,
+button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
+.smtcmp-chat-user-input-file-badge-delete:hover,
+.smtcmp-chat-user-input-file-badge-delete:focus,
+.smtcmp-chat-user-input-file-badge-delete:focus-visible {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .smtcmp-chat-user-input-file-badge-expand {
@@ -6770,6 +6793,24 @@
   padding: 0 calc(var(--size-2-1));
   border-radius: var(--radius-s);
   word-break: break-all;
+}
+
+.smtcmp-lexical-content-editable-root .smtcmp-skill-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+}
+
+.smtcmp-lexical-content-editable-root .smtcmp-skill-mention::before {
+  content: '';
+  width: 0.9em;
+  height: 0.9em;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z'/%3E%3Cpath d='M5 3v4'/%3E%3Cpath d='M3 5h4'/%3E%3Cpath d='M19 17v2'/%3E%3Cpath d='M18 18h2'/%3E%3C/svg%3E");
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
 }
 
 .smtcmp-lexical-content-editable-paragraph {

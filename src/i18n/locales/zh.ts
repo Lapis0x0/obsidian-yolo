@@ -710,9 +710,9 @@ export const zh: TranslationKeys = {
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
       yoloBaseDirPlaceholder: 'YOLO',
-      mentionDisplayMode: '引用文件显示位置',
+      mentionDisplayMode: '引用内容显示位置',
       mentionDisplayModeDesc:
-        '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
+        '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
       chatApplyMode: 'Chat 应用修改方式',

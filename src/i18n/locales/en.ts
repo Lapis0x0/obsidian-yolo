@@ -778,7 +778,7 @@ export const en: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
-        'Choose whether @-selected files are shown inline in the editor or as badges above the input box.',
+        'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
       chatApplyMode: 'Chat apply behavior',

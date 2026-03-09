@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom'
 import { useLanguage } from '../../../../../contexts/language-context'
 import { LiteSkillEntry } from '../../../../../core/skills/liteSkills'
 import { MenuOption } from '../shared/LexicalMenu'
+import { $createSkillNode } from './SkillNode'
 import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
@@ -79,6 +80,7 @@ function SkillTypeaheadMenuItem({
 export default function SkillSlashPlugin({
   skills,
   selectedSkillIds = [],
+  mentionDisplayMode = 'inline',
   onMenuOpenChange,
   menuContainerRef,
   placement = 'top',
@@ -86,6 +88,7 @@ export default function SkillSlashPlugin({
 }: {
   skills: LiteSkillEntry[]
   selectedSkillIds?: string[]
+  mentionDisplayMode?: 'inline' | 'badge'
   onMenuOpenChange?: (isOpen: boolean) => void
   menuContainerRef?: RefObject<HTMLElement>
   placement?: 'top' | 'bottom'
@@ -143,15 +146,43 @@ export default function SkillSlashPlugin({
       nodeToReplace: TextNode | null,
       closeMenu: () => void,
     ) => {
+      if (selectedOption.isSelectedSkill) {
+        if (nodeToReplace) {
+          const emptyNode = $createTextNode('')
+          nodeToReplace.replace(emptyNode)
+          emptyNode.select()
+        }
+        closeMenu()
+        return
+      }
+
+      if (mentionDisplayMode === 'badge') {
+        if (nodeToReplace) {
+          const emptyNode = $createTextNode('')
+          nodeToReplace.replace(emptyNode)
+          emptyNode.select()
+        }
+        onSelectSkill?.(selectedOption.skill)
+        closeMenu()
+        return
+      }
+
       if (nodeToReplace) {
-        const emptyNode = $createTextNode('')
-        nodeToReplace.replace(emptyNode)
-        emptyNode.select()
+        const skillNode = $createSkillNode(selectedOption.skill.name, {
+          id: selectedOption.skill.id,
+          name: selectedOption.skill.name,
+          description: selectedOption.skill.description,
+          path: selectedOption.skill.path,
+        })
+        nodeToReplace.replace(skillNode)
+        const spaceNode = $createTextNode(' ')
+        skillNode.insertAfter(spaceNode)
+        spaceNode.select()
       }
       onSelectSkill?.(selectedOption.skill)
       closeMenu()
     },
-    [onSelectSkill],
+    [mentionDisplayMode, onSelectSkill],
   )
 
   const checkForTriggerMatch = useCallback(

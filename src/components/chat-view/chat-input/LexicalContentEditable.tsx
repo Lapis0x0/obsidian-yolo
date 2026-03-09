@@ -28,6 +28,7 @@ import ImagePastePlugin from './plugins/image/ImagePastePlugin'
 import AutoLinkMentionPlugin from './plugins/mention/AutoLinkMentionPlugin'
 import { MentionNode } from './plugins/mention/MentionNode'
 import MentionPlugin from './plugins/mention/MentionPlugin'
+import { SkillNode } from './plugins/mention/SkillNode'
 import SkillSlashPlugin from './plugins/mention/SkillSlashPlugin'
 import NoFormatPlugin from './plugins/no-format/NoFormatPlugin'
 import OnEnterPlugin from './plugins/on-enter/OnEnterPlugin'
@@ -45,6 +46,7 @@ export type LexicalContentEditableProps = {
   onKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void
   onFocus?: () => void
   onMentionNodeMutation?: (mutations: NodeMutations<MentionNode>) => void
+  onSkillNodeMutation?: (mutations: NodeMutations<SkillNode>) => void
   onCreateImageMentionables?: (mentionables: MentionableImage[]) => void
   initialEditorState?: InitialEditorStateType
   autoFocus?: boolean
@@ -82,6 +84,7 @@ export default function LexicalContentEditable({
   onKeyDown,
   onFocus,
   onMentionNodeMutation,
+  onSkillNodeMutation,
   onCreateImageMentionables,
   initialEditorState,
   autoFocus = false,
@@ -115,7 +118,7 @@ export default function LexicalContentEditable({
       root: 'smtcmp-lexical-content-editable-root',
       paragraph: 'smtcmp-lexical-content-editable-paragraph',
     },
-    nodes: [MentionNode],
+    nodes: [MentionNode, SkillNode],
     editorState: initialEditorState,
     onError: (error) => {
       console.error(error)
@@ -208,6 +211,7 @@ export default function LexicalContentEditable({
         <SkillSlashPlugin
           skills={skills}
           selectedSkillIds={selectedSkillIds}
+          mentionDisplayMode={mentionDisplayMode}
           onMenuOpenChange={onMentionMenuToggle}
           menuContainerRef={mentionMenuContainerRef}
           placement={mentionMenuPlacement}
@@ -235,6 +239,12 @@ export default function LexicalContentEditable({
         nodeClass={MentionNode}
         onMutation={(mutations) => {
           onMentionNodeMutation?.(mutations)
+        }}
+      />
+      <OnMutationPlugin
+        nodeClass={SkillNode}
+        onMutation={(mutations) => {
+          onSkillNodeMutation?.(mutations)
         }}
       />
       <EditorRefPlugin editorRef={editorRef} />

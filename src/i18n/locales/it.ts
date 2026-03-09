@@ -771,7 +771,7 @@ export const it: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
-        "Scegli se mostrare i file selezionati con @ nel testo dell'input o come badge sopra la casella.",
+        "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",
       mentionDisplayModeInline: 'Dentro la casella',
       mentionDisplayModeBadge: 'Badge in alto',
       persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',

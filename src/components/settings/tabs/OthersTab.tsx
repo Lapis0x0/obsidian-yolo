@@ -139,10 +139,10 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           />
         </ObsidianSetting>
         <ObsidianSetting
-          name={t('settings.etc.mentionDisplayMode', '引用文件显示位置')}
+          name={t('settings.etc.mentionDisplayMode', '引用内容显示位置')}
           desc={t(
             'settings.etc.mentionDisplayModeDesc',
-            '选择 @ 添加文件后是在输入框内显示，还是在输入框顶部以徽章显示。',
+            '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
           )}
         >
           <ObsidianDropdown
