@@ -13,6 +13,7 @@ import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { Assistant } from '../../../types/assistant.types'
 import { MentionableFolder } from '../../../types/mentionable'
 import { Mentionable, MentionableImage } from '../../../types/mentionable'
@@ -27,6 +28,7 @@ import ImagePastePlugin from './plugins/image/ImagePastePlugin'
 import AutoLinkMentionPlugin from './plugins/mention/AutoLinkMentionPlugin'
 import { MentionNode } from './plugins/mention/MentionNode'
 import MentionPlugin from './plugins/mention/MentionPlugin'
+import SkillSlashPlugin from './plugins/mention/SkillSlashPlugin'
 import NoFormatPlugin from './plugins/no-format/NoFormatPlugin'
 import OnEnterPlugin from './plugins/on-enter/OnEnterPlugin'
 import OnMutationPlugin, {
@@ -60,6 +62,9 @@ export type LexicalContentEditableProps = {
   currentChatMode?: 'chat' | 'agent'
   onSelectChatMode?: (mode: 'chat' | 'agent') => void
   allowAgentModeOption?: boolean
+  skills?: LiteSkillEntry[]
+  selectedSkillIds?: string[]
+  onSelectSkill?: (skill: LiteSkillEntry) => void
   plugins?: {
     onEnter?: {
       onVaultChat: () => void
@@ -94,6 +99,9 @@ export default function LexicalContentEditable({
   currentChatMode,
   onSelectChatMode,
   allowAgentModeOption = true,
+  skills = [],
+  selectedSkillIds = [],
+  onSelectSkill,
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
@@ -196,6 +204,16 @@ export default function LexicalContentEditable({
         allowAgentModeOption={allowAgentModeOption}
         searchFoldersByQuery={searchFoldersByQuery}
       />
+      {skills.length > 0 && onSelectSkill && (
+        <SkillSlashPlugin
+          skills={skills}
+          selectedSkillIds={selectedSkillIds}
+          onMenuOpenChange={onMentionMenuToggle}
+          menuContainerRef={mentionMenuContainerRef}
+          placement={mentionMenuPlacement}
+          onSelectSkill={onSelectSkill}
+        />
+      )}
       <OnChangePlugin
         onChange={(editorState, _editor) => {
           onChange?.(editorState.toJSON())

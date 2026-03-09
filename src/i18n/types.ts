@@ -717,6 +717,7 @@ export type TranslationKeys = {
     mentionMenu?: {
       back?: string
       entryMode?: string
+      entrySkill?: string
       entryAssistant?: string
       entryFile?: string
       entryFolder?: string

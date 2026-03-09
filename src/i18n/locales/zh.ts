@@ -745,7 +745,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@添加标签引用,继续输入可筛选搜索」',
+    placeholder: '输入消息...「@添加标签引用，/选择技能」',
     placeholderCompact: '点击展开编辑...',
     sendMessage: '发送消息',
     newChat: '新建聊天',
@@ -763,6 +763,7 @@ export const zh: TranslationKeys = {
     mentionMenu: {
       back: '返回上一级',
       entryMode: '模式',
+      entrySkill: '技能',
       entryAssistant: '助手',
       entryFile: '文件',
       entryFolder: '文件夹',

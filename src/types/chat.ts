@@ -12,6 +12,13 @@ export type PromptSnapshotRef = {
   hash: string
 }
 
+export type ChatSelectedSkill = {
+  id: string
+  name: string
+  description: string
+  path: string
+}
+
 export type ChatUserMessage = {
   role: 'user'
   content: SerializedEditorState | null
@@ -19,6 +26,7 @@ export type ChatUserMessage = {
   snapshotRef?: PromptSnapshotRef
   id: string
   mentionables: Mentionable[]
+  selectedSkills?: ChatSelectedSkill[]
   reasoningLevel?: string
   similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
     similarity: number
@@ -64,6 +72,7 @@ export type SerializedChatUserMessage = {
   snapshotRef?: PromptSnapshotRef
   id: string
   mentionables: SerializedMentionable[]
+  selectedSkills?: ChatSelectedSkill[]
   reasoningLevel?: string
   similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
     similarity: number

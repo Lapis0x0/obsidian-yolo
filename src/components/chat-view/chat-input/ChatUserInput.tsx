@@ -28,6 +28,9 @@ import {
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
+import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
+import { ChatSelectedSkill } from '../../../types/chat'
 import { ChatModel } from '../../../types/chat-model.types'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import {
@@ -43,6 +46,7 @@ import {
 } from '../../../utils/chat/mentionable'
 
 import LexicalContentEditable from './LexicalContentEditable'
+import ChatSkillBadge from './ChatSkillBadge'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
 import {
@@ -71,6 +75,8 @@ export type ChatUserInputProps = {
   onFocus: () => void
   mentionables: Mentionable[]
   setMentionables: (mentionables: Mentionable[]) => void
+  selectedSkills?: ChatSelectedSkill[]
+  setSelectedSkills?: (skills: ChatSelectedSkill[]) => void
   autoFocus?: boolean
   addedBlockKey?: string | null
   conversationOverrides?: ConversationOverrideSettings | null
@@ -114,6 +120,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onFocus,
       mentionables,
       setMentionables,
+      selectedSkills = [],
+      setSelectedSkills,
       autoFocus = false,
       conversationOverrides = null,
       onConversationOverridesChange: _onConversationOverridesChange,
@@ -163,6 +171,33 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
+    const effectiveSelectedSkills = useMemo(
+      () => selectedSkills,
+      [selectedSkills],
+    )
+
+    const availableSkills = useMemo(() => {
+      const assistants = settings.assistants || []
+      const currentAssistant = currentAssistantId
+        ? (assistants.find(
+            (assistant) => assistant.id === currentAssistantId,
+          ) ?? null)
+        : null
+
+      if (!currentAssistant) {
+        return []
+      }
+
+      const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+      return listLiteSkillEntries(app, { settings }).filter((skill) =>
+        isSkillEnabledForAssistant({
+          assistant: currentAssistant,
+          skillId: skill.id,
+          disabledSkillIds,
+          defaultLoadMode: skill.mode,
+        }),
+      )
+    }, [app, currentAssistantId, settings])
 
     const resolvedReasoningLevel = useMemo(() => {
       if (reasoningLevel) return reasoningLevel
@@ -546,6 +581,49 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [mentionables, onDeleteFromAll, setMentionables],
     )
 
+    const handleSelectSkill = useCallback(
+      (skill: {
+        id: string
+        name: string
+        description: string
+        path: string
+      }) => {
+        if (!setSelectedSkills) {
+          return
+        }
+
+        const nextSkill: ChatSelectedSkill = {
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          path: skill.path,
+        }
+
+        if (
+          effectiveSelectedSkills.some(
+            (selectedSkill) => selectedSkill.id === nextSkill.id,
+          )
+        ) {
+          return
+        }
+
+        setSelectedSkills([...effectiveSelectedSkills, nextSkill])
+      },
+      [effectiveSelectedSkills, setSelectedSkills],
+    )
+
+    const handleDeleteSelectedSkill = useCallback(
+      (skillId: string) => {
+        if (!setSelectedSkills) {
+          return
+        }
+        setSelectedSkills(
+          effectiveSelectedSkills.filter((skill) => skill.id !== skillId),
+        )
+      },
+      [effectiveSelectedSkills, setSelectedSkills],
+    )
+
     const handleSubmit = (options: ChatSubmitOptions = {}) => {
       const content = editorRef.current?.getEditorState()?.toJSON()
       // Use vault search from conversation overrides if available, otherwise use the passed option
@@ -581,6 +659,17 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         className={`smtcmp-chat-user-input-wrapper${compact ? ' smtcmp-chat-user-input-wrapper--compact' : ''}`}
         onBlur={handleBlur}
       >
+        {effectiveSelectedSkills.length > 0 && (
+          <div className="smtcmp-chat-user-input-files">
+            {effectiveSelectedSkills.map((skill) => (
+              <ChatSkillBadge
+                key={skill.id}
+                skill={skill}
+                onDelete={() => handleDeleteSelectedSkill(skill.id)}
+              />
+            ))}
+          </div>
+        )}
         {!hideBadgeMentionables &&
           mentionDisplayMode === 'badge' &&
           effectiveMentionables.length > 0 && (
@@ -613,6 +702,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           >
             {inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
+              effectiveSelectedSkills.length === 0 &&
               compact && (
                 <div className="smtcmp-chat-user-input-placeholder">
                   {t('chat.placeholderCompact', '点击展开编辑...')}
@@ -620,11 +710,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               )}
             {!compact &&
               inputText.trim().length === 0 &&
-              effectiveMentionables.length === 0 && (
+              effectiveMentionables.length === 0 &&
+              effectiveSelectedSkills.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
                   {t(
                     'chat.placeholder',
-                    '输入消息...「@添加标签引用,继续输入可筛选搜索」',
+                    '输入消息...「@添加标签引用，/选择技能」',
                   )}
                 </div>
               )}
@@ -658,6 +749,11 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               currentChatMode={currentChatMode}
               onSelectChatMode={onSelectChatModeForConversation}
               allowAgentModeOption={allowAgentModeOption}
+              skills={availableSkills}
+              selectedSkillIds={effectiveSelectedSkills.map(
+                (skill) => skill.id,
+              )}
+              onSelectSkill={handleSelectSkill}
               autoFocus={autoFocus}
               plugins={{
                 onEnter: {

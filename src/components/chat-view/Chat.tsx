@@ -151,6 +151,7 @@ const getNewInputMessage = (
     id: uuidv4(),
     reasoningLevel,
     mentionables: [],
+    selectedSkills: [],
   }
 }
 
@@ -892,6 +893,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         content,
         reasoningLevel,
         mentionables,
+        selectedSkills: inputMessage.selectedSkills ?? [],
       }
     },
     [
@@ -1979,7 +1981,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               onSubmit={(content, useVaultSearch) => {
                 if (
                   editorStateToPlainText(content).trim() === '' &&
-                  messageOrGroup.mentionables.length === 0
+                  messageOrGroup.mentionables.length === 0 &&
+                  (messageOrGroup.selectedSkills?.length ?? 0) === 0
                 ) {
                   return
                 }
@@ -2007,6 +2010,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       id: messageOrGroup.id,
                       reasoningLevel: reasoningForThisMessage,
                       mentionables: messageOrGroup.mentionables,
+                      selectedSkills: messageOrGroup.selectedSkills ?? [],
                     },
                   ],
                   useVaultSearch,
@@ -2050,6 +2054,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                         : undefined,
                     }
                   }),
+                )
+              }}
+              onSelectedSkillsChange={(selectedSkills) => {
+                setChatMessages((prevChatHistory) =>
+                  prevChatHistory.map((msg) =>
+                    msg.role === 'user' && msg.id === messageOrGroup.id
+                      ? {
+                          ...msg,
+                          selectedSkills,
+                          promptContent: null,
+                          snapshotRef: undefined,
+                          similaritySearchResults: undefined,
+                        }
+                      : msg,
+                  ),
                 )
               }}
               modelId={
@@ -2099,6 +2118,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 )
                 void persistReasoningLevelForModel(conversationModelId, level)
               }}
+              currentAssistantId={conversationAssistantId}
+              currentChatMode={chatMode}
+              onSelectChatModeForConversation={handleChatModeChange}
             />
           )
         })}
@@ -2179,7 +2201,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onSubmit={(content, useVaultSearch) => {
             if (
               editorStateToPlainText(content).trim() === '' &&
-              inputMessage.mentionables.length === 0
+              inputMessage.mentionables.length === 0 &&
+              (inputMessage.selectedSkills?.length ?? 0) === 0
             ) {
               return
             }
@@ -2211,6 +2234,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 mentionables,
               }
             })
+          }}
+          selectedSkills={inputMessage.selectedSkills ?? []}
+          setSelectedSkills={(selectedSkills) => {
+            setInputMessage((prevInputMessage) => ({
+              ...prevInputMessage,
+              selectedSkills,
+              promptContent: null,
+              snapshotRef: undefined,
+              similaritySearchResults: undefined,
+            }))
           }}
           modelId={conversationModelId}
           onModelChange={(id) => {

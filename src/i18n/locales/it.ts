@@ -782,7 +782,7 @@ export const it: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Scrivi un messaggio...「@ per aggiungere riferimenti, continua a digitare per filtrare」',
+      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill」',
     placeholderCompact: 'Clicca per espandere e modificare...',
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
@@ -800,6 +800,7 @@ export const it: TranslationKeys = {
     mentionMenu: {
       back: 'Torna indietro',
       entryMode: 'Modalita',
+      entrySkill: 'Skill',
       entryAssistant: 'Assistente',
       entryFile: 'File',
       entryFolder: 'Cartella',

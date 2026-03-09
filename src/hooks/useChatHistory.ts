@@ -13,6 +13,7 @@ import { ChatConversationMetadata } from '../database/json/chat/types'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import {
   ChatAssistantMessage,
+  ChatSelectedSkill,
   ChatMessage,
   SerializedChatMessage,
 } from '../types/chat'
@@ -46,6 +47,22 @@ const truncateForTitleInput = (text: string): string => {
     return normalized
   }
   return `${normalized.slice(0, AUTO_TITLE_INPUT_MAX_LENGTH)}...`
+}
+
+const formatSelectedSkillsForTitleInput = (
+  selectedSkills: ChatSelectedSkill[],
+): string => {
+  const skillNames = selectedSkills
+    .map((skill) => skill.name.trim())
+    .filter((name) => name.length > 0)
+
+  if (skillNames.length === 0) {
+    return '[User selected only skills without text.]'
+  }
+
+  return truncateForTitleInput(
+    `[User selected skills: ${skillNames.join(', ')}]`,
+  )
 }
 
 type UseChatHistory = {
@@ -413,8 +430,11 @@ export function useChatHistory(): UseChatHistory {
           : ''
         const normalizedUserText = userText.trim()
         const userMentionables = firstUserMessage.mentionables ?? []
+        const userSelectedSkills = firstUserMessage.selectedSkills ?? []
         const hasUserSignal =
-          normalizedUserText.length > 0 || userMentionables.length > 0
+          normalizedUserText.length > 0 ||
+          userMentionables.length > 0 ||
+          userSelectedSkills.length > 0
 
         if (!hasUserSignal) {
           logTitleEvent('no_user_signal')
@@ -438,7 +458,9 @@ export function useChatHistory(): UseChatHistory {
         const userContext =
           normalizedUserText.length > 0
             ? truncateForTitleInput(normalizedUserText)
-            : '[User shared only attachments/mentions without text.]'
+            : userSelectedSkills.length > 0
+              ? formatSelectedSkillsForTitleInput(userSelectedSkills)
+              : '[User shared only attachments/mentions without text.]'
 
         const titleInput = [
           `User first message:\n${userContext}`,
@@ -578,6 +600,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         snapshotRef: message.snapshotRef,
         id: message.id,
         mentionables: message.mentionables.map(serializeMentionable),
+        selectedSkills: message.selectedSkills ?? [],
         reasoningLevel: message.reasoningLevel,
         similaritySearchResults: message.similaritySearchResults,
       }
@@ -615,6 +638,7 @@ const deserializeChatMessage = (
         mentionables: message.mentionables
           .map((m) => deserializeMentionable(m, app))
           .filter((m): m is Mentionable => m !== null),
+        selectedSkills: message.selectedSkills ?? [],
         reasoningLevel: message.reasoningLevel,
         similaritySearchResults: message.similaritySearchResults,
       }

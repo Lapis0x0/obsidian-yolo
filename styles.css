@@ -5579,10 +5579,15 @@
 }
 
 .smtcmp-chat-user-input-file-badge-delete {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
   height: 100%;
   display: flex;
   align-items: center;
   color: var(--text-muted);
+  cursor: pointer;
 }
 
 .smtcmp-chat-user-input-file-badge-expand {

@@ -794,7 +794,7 @@ export const en: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Type a message...「@ to add references, keep typing to filter」',
+      'Type a message...「@ to add references, / to choose a skill」',
     placeholderCompact: 'Click to expand and edit...',
     sendMessage: 'Send message',
     newChat: 'New chat',
@@ -812,6 +812,7 @@ export const en: TranslationKeys = {
     mentionMenu: {
       back: 'Back',
       entryMode: 'Mode',
+      entrySkill: 'Skill',
       entryAssistant: 'Assistant',
       entryFile: 'File',
       entryFolder: 'Folder',

@@ -36,6 +36,7 @@ const getSnapshotFilePath = (conversationId: string): string =>
 const shouldStorePromptSnapshot = (
   message: SerializedChatUserMessage,
 ): boolean =>
+  (message.selectedSkills?.length ?? 0) > 0 ||
   message.mentionables.some(
     (mentionable) =>
       mentionable.type === 'file' ||
