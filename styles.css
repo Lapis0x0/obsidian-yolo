@@ -7647,11 +7647,11 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-accept {
-  color: var(--interactive-accent);
+  color: rgb(var(--smtcmp-incoming-color-rgb, 4, 120, 87));
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-reject {
-  color: var(--text-muted);
+  color: rgb(var(--smtcmp-current-color-rgb, 185, 28, 28));
 }
 
 .smtcmp-inline-review-host .cm-cursorLayer,
