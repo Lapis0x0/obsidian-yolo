@@ -818,6 +818,7 @@ export const en: TranslationKeys = {
     annotations: 'Annotations',
     mentionMenu: {
       back: 'Back',
+      entryCurrentFile: 'Current file',
       entryMode: 'Mode',
       entrySkill: 'Skill',
       entryAssistant: 'Assistant',

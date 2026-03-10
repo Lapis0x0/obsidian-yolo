@@ -1,5 +1,6 @@
 import {
   FileIcon,
+  FileText,
   FolderClosedIcon,
   FoldersIcon,
   ImageIcon,
@@ -17,7 +18,7 @@ export const getMentionableIcon = (mentionable: Mentionable) => {
     case 'vault':
       return FoldersIcon
     case 'current-file':
-      return FileIcon
+      return FileText
     case 'block':
       return FileIcon
     case 'url':

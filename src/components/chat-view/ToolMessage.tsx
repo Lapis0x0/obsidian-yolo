@@ -1,6 +1,6 @@
 import cx from 'clsx'
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
@@ -8,7 +8,7 @@ import { useSettings } from '../../contexts/settings-context'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
-  parseLocalFsFileOpActionFromArgs,
+  parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { ChatToolMessage } from '../../types/chat'
@@ -21,9 +21,9 @@ import { SplitButton } from '../common/SplitButton'
 
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
 
-type TranslateFn = (keyPath: string, fallback?: string) => string
+export type TranslateFn = (keyPath: string, fallback?: string) => string
 
-type ToolLabels = {
+export type ToolLabels = {
   statusLabels: Record<ToolCallResponseStatus, string>
   unknownStatus: string
   displayNames: Record<string, string>
@@ -58,12 +58,22 @@ type ToolDisplayInfo = {
   summaryText?: string
 }
 
+type ToolRequestLike = {
+  name: string
+  arguments?: string
+}
+
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_list: 'Read Vault',
   fs_search: 'Search Vault',
   fs_read: 'Read File',
   fs_edit: 'Text editing',
   fs_file_ops: 'File operations',
+  fs_create_file: 'Create file',
+  fs_delete_file: 'Delete file',
+  fs_create_dir: 'Create folder',
+  fs_delete_dir: 'Delete folder',
+  fs_move: 'Move path',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
@@ -74,7 +84,7 @@ const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
   move: 'Move path',
 }
 
-const getToolLabels = (t?: TranslateFn): ToolLabels => {
+export const getToolLabels = (t?: TranslateFn): ToolLabels => {
   const translate: TranslateFn = t ?? ((_, fallback) => fallback ?? '')
   return {
     statusLabels: {
@@ -121,6 +131,26 @@ const getToolLabels = (t?: TranslateFn): ToolLabels => {
       fs_file_ops: translate(
         'settings.agent.builtinFsFileOpsLabel',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_file_ops,
+      ),
+      fs_create_file: translate(
+        'chat.toolCall.writeAction.create_file',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_file,
+      ),
+      fs_delete_file: translate(
+        'chat.toolCall.writeAction.delete_file',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_file,
+      ),
+      fs_create_dir: translate(
+        'chat.toolCall.writeAction.create_dir',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_dir,
+      ),
+      fs_delete_dir: translate(
+        'chat.toolCall.writeAction.delete_dir',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_dir,
+      ),
+      fs_move: translate(
+        'chat.toolCall.writeAction.move',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
       ),
     },
     writeActionLabels: {
@@ -254,15 +284,19 @@ const getLocalToolSummaryText = ({
     return path || undefined
   }
 
-  if (toolName === 'fs_file_ops') {
-    const action = parseLocalFsFileOpActionFromArgs(rawArguments)
-    if (!action) {
-      return undefined
+  const action = parseLocalFsActionFromToolArgs({
+    toolName,
+    args: rawArguments,
+  })
+  if (action) {
+    const actionLabel = labels.writeActionLabels[action] ?? action
+    if (toolName !== 'fs_file_ops') {
+      return actionLabel
     }
+
     const itemCount = Array.isArray(argumentsObject?.items)
       ? argumentsObject.items.length
       : 0
-    const actionLabel = labels.writeActionLabels[action] ?? action
     if (itemCount <= 0) {
       return actionLabel
     }
@@ -272,8 +306,8 @@ const getLocalToolSummaryText = ({
   return undefined
 }
 
-const getToolDisplayInfo = (
-  request: ToolCallRequest,
+export const getToolDisplayInfo = (
+  request: ToolRequestLike,
   labels: ToolLabels = getToolLabels(),
 ): ToolDisplayInfo => {
   const localServerName = getLocalFileToolServerName()
@@ -282,14 +316,13 @@ const getToolDisplayInfo = (
     const { serverName, toolName } = parseToolName(request.name)
 
     if (serverName === localServerName) {
-      const isFsFileOps = toolName === 'fs_file_ops'
-      const action = isFsFileOps
-        ? parseLocalFsFileOpActionFromArgs(request.arguments)
-        : null
-      const displayName =
-        isFsFileOps && action
-          ? (labels.writeActionLabels[action] ?? labels.displayNames[toolName])
-          : (labels.displayNames[toolName] ?? toolName)
+      const action = parseLocalFsActionFromToolArgs({
+        toolName,
+        args: request.arguments,
+      })
+      const displayName = action
+        ? (labels.writeActionLabels[action] ?? labels.displayNames[toolName])
+        : (labels.displayNames[toolName] ?? toolName)
 
       return {
         displayName,
@@ -403,6 +436,7 @@ function ToolCallItem({
   conversationId: string
   onResponseUpdate: (response: ToolCallResponse) => void
 }) {
+  const STATUS_TRANSITION_MS = 180
   const {
     handleToolCall,
     handleAllowForConversation,
@@ -449,18 +483,109 @@ function ToolCallItem({
     () => Boolean(serverName) && serverName !== getLocalFileToolServerName(),
     [serverName],
   )
+  const [showRunningActions, setShowRunningActions] = useState(false)
+  const [isStatusTransitioning, setIsStatusTransitioning] = useState(false)
+  const [renderFooter, setRenderFooter] = useState(
+    response.status === ToolCallResponseStatus.PendingApproval,
+  )
+  const [isFooterVisible, setIsFooterVisible] = useState(
+    response.status === ToolCallResponseStatus.PendingApproval,
+  )
+  const [displayFooterMode, setDisplayFooterMode] = useState<
+    'pending' | 'running' | null
+  >(
+    response.status === ToolCallResponseStatus.PendingApproval
+      ? 'pending'
+      : null,
+  )
+
+  useEffect(() => {
+    if (response.status !== ToolCallResponseStatus.Running) {
+      setShowRunningActions(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowRunningActions(true)
+    }, 1000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [response.status])
+
+  useEffect(() => {
+    const statusAtTransitionStart = response.status
+    setIsStatusTransitioning(true)
+    const timer = window.setTimeout(() => {
+      if (statusAtTransitionStart === response.status) {
+        setIsStatusTransitioning(false)
+      }
+    }, STATUS_TRANSITION_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [response.status])
+
+  const shouldShowPendingFooter =
+    response.status === ToolCallResponseStatus.PendingApproval
+  const shouldShowRunningFooter =
+    response.status === ToolCallResponseStatus.Running && showRunningActions
+  const footerMode: 'pending' | 'running' | null = shouldShowPendingFooter
+    ? 'pending'
+    : shouldShowRunningFooter
+      ? 'running'
+      : null
+
+  useEffect(() => {
+    if (footerMode) {
+      setDisplayFooterMode(footerMode)
+      setRenderFooter(true)
+      setIsFooterVisible(true)
+      return
+    }
+
+    if (!renderFooter) {
+      setDisplayFooterMode(null)
+      return
+    }
+
+    setIsFooterVisible(false)
+    const timer = window.setTimeout(() => {
+      setRenderFooter(false)
+      setDisplayFooterMode(null)
+    }, STATUS_TRANSITION_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [footerMode, renderFooter])
 
   return (
     <div className="smtcmp-toolcall">
-      <div
+      <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="smtcmp-toolcall-header"
+        aria-expanded={isOpen}
+        aria-controls={`smtcmp-toolcall-content-${request.id}`}
       >
-        <div className="smtcmp-toolcall-header-icon smtcmp-toolcall-header-icon--status-inline">
+        <div
+          className={cx(
+            'smtcmp-toolcall-header-icon smtcmp-toolcall-header-icon--status-inline',
+            isStatusTransitioning && 'smtcmp-toolcall-status-transition',
+          )}
+        >
           <StatusIcon status={response.status} />
         </div>
         <div className="smtcmp-toolcall-header-content">
-          <span className="smtcmp-toolcall-header-tool-name">
+          <span
+            className={cx(
+              'smtcmp-toolcall-header-tool-name',
+              isStatusTransitioning && 'smtcmp-toolcall-status-transition',
+            )}
+          >
             {getToolHeadlineText({
               status: response.status,
               displayInfo,
@@ -471,9 +596,12 @@ function ToolCallItem({
         <div className="smtcmp-toolcall-header-icon smtcmp-toolcall-header-icon--expand">
           {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
-      </div>
+      </button>
       {isOpen && (
-        <div className="smtcmp-toolcall-content">
+        <div
+          id={`smtcmp-toolcall-content-${request.id}`}
+          className="smtcmp-toolcall-content"
+        >
           <div className="smtcmp-toolcall-content-section">
             <div>{toolLabels.parameters}:</div>
             <ObsidianCodeBlock language="json" content={parameters} />
@@ -492,10 +620,16 @@ function ToolCallItem({
           )}
         </div>
       )}
-      {(response.status === ToolCallResponseStatus.PendingApproval ||
-        response.status === ToolCallResponseStatus.Running) && (
-        <div className="smtcmp-toolcall-footer">
-          {response.status === ToolCallResponseStatus.PendingApproval && (
+      {renderFooter && (
+        <div
+          className={cx(
+            'smtcmp-toolcall-footer',
+            isFooterVisible
+              ? 'smtcmp-toolcall-footer--visible'
+              : 'smtcmp-toolcall-footer--hiding',
+          )}
+        >
+          {displayFooterMode === 'pending' && (
             <div className="smtcmp-toolcall-footer-actions">
               <SplitButton
                 primaryText={toolLabels.allow}
@@ -536,6 +670,7 @@ function ToolCallItem({
                 }
               />
               <button
+                type="button"
                 onClick={() => {
                   handleReject()
                   setIsOpen(false)
@@ -545,9 +680,10 @@ function ToolCallItem({
               </button>
             </div>
           )}
-          {response.status === ToolCallResponseStatus.Running && (
+          {displayFooterMode === 'running' && (
             <div className="smtcmp-toolcall-footer-actions">
               <button
+                type="button"
                 onClick={() => {
                   void handleAbort()
                 }}

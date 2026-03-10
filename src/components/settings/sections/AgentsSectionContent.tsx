@@ -12,7 +12,10 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
+import {
+  getLocalFileToolServerName,
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+} from '../../../core/mcp/localFileTools'
 import { parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
@@ -53,9 +56,12 @@ type AgentEditorTab = 'profile' | 'tools' | 'skills' | 'model'
 
 type AgentToolView = {
   fullName: string
+  toggleTargets: string[]
   displayName: string
   description: string
 }
+
+const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 
 const BUILTIN_TOOL_LABEL_KEYS: Record<
   string,
@@ -437,16 +443,18 @@ export function AgentsSectionContent({
     setDraftAgent(null)
   }
 
-  const toggleTool = (toolName: string, enabled: boolean) => {
+  const toggleTool = (toolNames: string[], enabled: boolean) => {
     setDraftAgent((prev) => {
       if (!prev) {
         return prev
       }
       const current = new Set(prev.enabledToolNames ?? [])
-      if (enabled) {
-        current.add(toolName)
-      } else {
-        current.delete(toolName)
+      for (const toolName of toolNames) {
+        if (enabled) {
+          current.add(toolName)
+        } else {
+          current.delete(toolName)
+        }
       }
       return {
         ...prev,
@@ -530,6 +538,9 @@ export function AgentsSectionContent({
       if (isBuiltin && draftAgent?.includeBuiltinTools === false) {
         return
       }
+      if (isBuiltin && SPLIT_FS_TOOL_NAME_SET.has(toolName)) {
+        return
+      }
 
       const key = serverName
       const title = isBuiltin
@@ -543,8 +554,19 @@ export function AgentsSectionContent({
         ? t(builtinMeta.descKey, builtinMeta.descFallback)
         : tool.description || t('common.none', 'None')
       const group = groups.get(key) ?? { title, tools: [] }
+      const splitToolTargets = LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.flatMap(
+        (splitToolName) =>
+          tool.name.includes('__')
+            ? [`${serverName}__${splitToolName}`]
+            : [splitToolName, `${serverName}__${splitToolName}`],
+      )
+      const toggleTargets =
+        isBuiltin && toolName === 'fs_file_ops'
+          ? [tool.name, ...splitToolTargets]
+          : [tool.name]
       group.tools.push({
         fullName: tool.name,
+        toggleTargets,
         displayName,
         description,
       })
@@ -927,8 +949,8 @@ export function AgentsSectionContent({
                     </div>
                     <div className="smtcmp-agent-tool-list">
                       {group.tools.map((tool) => {
-                        const selected = draftAgent.enabledToolNames?.includes(
-                          tool.fullName,
+                        const selected = tool.toggleTargets.every((target) =>
+                          draftAgent.enabledToolNames?.includes(target),
                         )
 
                         return (
@@ -948,7 +970,7 @@ export function AgentsSectionContent({
                               <ObsidianToggle
                                 value={Boolean(selected)}
                                 onChange={(value) =>
-                                  toggleTool(tool.fullName, value)
+                                  toggleTool(tool.toggleTargets, value)
                                 }
                               />
                             </div>

@@ -3,6 +3,7 @@ export type TextEditMatchMode =
   | 'lineEndingAndTrimLineEnd'
   | 'escapedControlRecovery'
   | 'escapedControlRecoveryLineEndingAndTrimLineEnd'
+  | 'fuzzyUniqueParagraph'
   | 'append'
 
 export type ReplaceTextOperation = {
@@ -80,6 +81,11 @@ type ReplacementFailure = {
 }
 
 type ReplacementResult = ReplacementAttempt | ReplacementFailure
+
+const FUZZY_REPLACE_SIMILARITY_THRESHOLD = 0.95
+const FUZZY_REPLACE_MIN_NORMALIZED_LENGTH = 30
+const FUZZY_REPLACE_LENGTH_RATIO_MIN = 0.7
+const FUZZY_REPLACE_LENGTH_RATIO_MAX = 1.4
 
 const normalizeExpectedOccurrences = (value: number | undefined): number => {
   if (!value || !Number.isFinite(value)) {
@@ -193,6 +199,245 @@ const countRegexMatches = (content: string, regex: RegExp): number => {
     match = regex.exec(content)
   }
   return count
+}
+
+const normalizeFuzzyComparisonText = (value: string): string => {
+  return value
+    .normalize('NFKC')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+const buildCharacterBigramHistogram = (value: string): Map<string, number> => {
+  const normalized = value.replace(/\s+/g, '')
+  const histogram = new Map<string, number>()
+
+  if (normalized.length === 0) {
+    return histogram
+  }
+
+  if (normalized.length === 1) {
+    histogram.set(normalized, 1)
+    return histogram
+  }
+
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    const gram = normalized.slice(index, index + 2)
+    histogram.set(gram, (histogram.get(gram) ?? 0) + 1)
+  }
+
+  return histogram
+}
+
+const getBigramDiceSimilarity = (left: string, right: string): number => {
+  if (left === right) {
+    return 1
+  }
+  if (left.length === 0 || right.length === 0) {
+    return 0
+  }
+
+  const leftHistogram = buildCharacterBigramHistogram(left)
+  const rightHistogram = buildCharacterBigramHistogram(right)
+
+  if (leftHistogram.size === 0 || rightHistogram.size === 0) {
+    return 0
+  }
+
+  let overlap = 0
+  let leftTotal = 0
+  let rightTotal = 0
+
+  leftHistogram.forEach((count, gram) => {
+    leftTotal += count
+    overlap += Math.min(count, rightHistogram.get(gram) ?? 0)
+  })
+  rightHistogram.forEach((count) => {
+    rightTotal += count
+  })
+
+  if (leftTotal === 0 || rightTotal === 0) {
+    return 0
+  }
+
+  return (2 * overlap) / (leftTotal + rightTotal)
+}
+
+type ParagraphSegment = {
+  start: number
+  end: number
+}
+
+const collectParagraphSegments = (content: string): ParagraphSegment[] => {
+  const segments: ParagraphSegment[] = []
+  let cursor = 0
+
+  while (cursor < content.length) {
+    let segmentStart = cursor
+    while (
+      segmentStart < content.length &&
+      /[\r\n]/.test(content[segmentStart])
+    ) {
+      segmentStart += 1
+    }
+
+    if (segmentStart >= content.length) {
+      break
+    }
+
+    let separatorStart = segmentStart
+    while (separatorStart < content.length) {
+      const separatorLength = content.startsWith('\r\n\r\n', separatorStart)
+        ? 4
+        : content.startsWith('\n\n', separatorStart)
+          ? 2
+          : content.startsWith('\r\r', separatorStart)
+            ? 2
+            : 0
+      if (separatorLength > 0) {
+        break
+      }
+      separatorStart += 1
+    }
+
+    segments.push({
+      start: segmentStart,
+      end: separatorStart,
+    })
+
+    cursor = separatorStart
+    while (cursor < content.length && /[\r\n]/.test(content[cursor])) {
+      cursor += 1
+    }
+  }
+
+  return segments
+}
+
+type FuzzyCandidate = {
+  start: number
+  end: number
+  similarity: number
+}
+
+const findFuzzyUniqueParagraphMatch = ({
+  content,
+  oldText,
+}: {
+  content: string
+  oldText: string
+}): {
+  candidate: FuzzyCandidate
+  secondBestSimilarity: number
+  aboveThresholdCount: number
+} | null => {
+  const normalizedOldText = normalizeFuzzyComparisonText(oldText)
+  if (normalizedOldText.length < FUZZY_REPLACE_MIN_NORMALIZED_LENGTH) {
+    return null
+  }
+
+  const oldParagraphCount = Math.max(
+    1,
+    oldText.split(/\r?\n\s*\r?\n/).filter((part) => part.trim().length > 0)
+      .length,
+  )
+  const segments = collectParagraphSegments(content)
+  if (segments.length === 0) {
+    return null
+  }
+
+  const minWindowSize = Math.max(1, oldParagraphCount - 1)
+  const maxWindowSize = Math.min(segments.length, oldParagraphCount + 1)
+  const visited = new Set<string>()
+  const candidates: FuzzyCandidate[] = []
+
+  for (
+    let windowSize = minWindowSize;
+    windowSize <= maxWindowSize;
+    windowSize += 1
+  ) {
+    for (
+      let startIndex = 0;
+      startIndex <= segments.length - windowSize;
+      startIndex += 1
+    ) {
+      const endIndex = startIndex + windowSize - 1
+      const start = segments[startIndex]?.start
+      const end = segments[endIndex]?.end
+      if (start === undefined || end === undefined || end <= start) {
+        continue
+      }
+
+      const key = `${start}:${end}`
+      if (visited.has(key)) {
+        continue
+      }
+      visited.add(key)
+
+      const candidateText = content.slice(start, end)
+      const normalizedCandidateText =
+        normalizeFuzzyComparisonText(candidateText)
+      if (normalizedCandidateText.length === 0) {
+        continue
+      }
+
+      const lengthRatio =
+        normalizedCandidateText.length / normalizedOldText.length
+      if (
+        !Number.isFinite(lengthRatio) ||
+        lengthRatio < FUZZY_REPLACE_LENGTH_RATIO_MIN ||
+        lengthRatio > FUZZY_REPLACE_LENGTH_RATIO_MAX
+      ) {
+        continue
+      }
+
+      const similarity = getBigramDiceSimilarity(
+        normalizedOldText,
+        normalizedCandidateText,
+      )
+      candidates.push({ start, end, similarity })
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null
+  }
+
+  const sorted = candidates.sort((left, right) => {
+    if (right.similarity !== left.similarity) {
+      return right.similarity - left.similarity
+    }
+    return left.start - right.start
+  })
+
+  const best = sorted[0]
+  if (!best || best.similarity < FUZZY_REPLACE_SIMILARITY_THRESHOLD) {
+    return null
+  }
+
+  const aboveThreshold = sorted.filter(
+    (item) => item.similarity >= FUZZY_REPLACE_SIMILARITY_THRESHOLD,
+  )
+  if (aboveThreshold.length !== 1) {
+    return {
+      candidate: best,
+      secondBestSimilarity: sorted[1]?.similarity ?? 0,
+      aboveThresholdCount: aboveThreshold.length,
+    }
+  }
+
+  return {
+    candidate: best,
+    secondBestSimilarity: sorted[1]?.similarity ?? 0,
+    aboveThresholdCount: aboveThreshold.length,
+  }
 }
 
 const getFirstRegexMatchRange = (
@@ -361,6 +606,47 @@ const applyReplaceLikeOperation = ({
         `trimLineEndNormalized=${trimLineEndOccurrences}, ` +
         `recoveredExact=${recoveredExactOccurrences}, ` +
         `recoveredLineEndingAndTrimLineEnd=${recoveredLooseOccurrences}`,
+    }
+  }
+
+  if (normalizedExpected === 1) {
+    const fuzzyMatch = findFuzzyUniqueParagraphMatch({ content, oldText })
+    if (fuzzyMatch && fuzzyMatch.aboveThresholdCount === 1) {
+      const { candidate } = fuzzyMatch
+      const nextContent =
+        content.slice(0, candidate.start) +
+        newText +
+        content.slice(candidate.end)
+      return {
+        ok: true,
+        nextContent,
+        actualOccurrences: 1,
+        expectedOccurrences: normalizedExpected,
+        matchMode: 'fuzzyUniqueParagraph',
+        changed: nextContent !== content,
+        matchedRange: {
+          start: candidate.start,
+          end: candidate.end,
+        },
+        newRange: {
+          start: candidate.start,
+          end: candidate.start + newText.length,
+        },
+      }
+    }
+
+    if (fuzzyMatch && fuzzyMatch.aboveThresholdCount > 1) {
+      return {
+        ok: false,
+        error:
+          `expectedOccurrences mismatch: expected ${normalizedExpected}, found ${exactOccurrences}. ` +
+          `hints: lineEndingNormalized=${lineEndingOccurrences}, ` +
+          `trimLineEndNormalized=${trimLineEndOccurrences}, ` +
+          `fuzzyThreshold=${FUZZY_REPLACE_SIMILARITY_THRESHOLD.toFixed(2)}, ` +
+          `fuzzyTopScore=${fuzzyMatch.candidate.similarity.toFixed(3)}, ` +
+          `fuzzySecondScore=${fuzzyMatch.secondBestSimilarity.toFixed(3)}, ` +
+          `fuzzyCandidatesAboveThreshold=${fuzzyMatch.aboveThresholdCount}`,
+      }
     }
   }
 

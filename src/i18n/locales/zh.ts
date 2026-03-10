@@ -768,6 +768,7 @@ export const zh: TranslationKeys = {
     annotations: '注释',
     mentionMenu: {
       back: '返回上一级',
+      entryCurrentFile: '当前文件',
       entryMode: '模式',
       entrySkill: '技能',
       entryAssistant: '助手',

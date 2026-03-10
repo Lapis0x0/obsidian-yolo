@@ -15,6 +15,7 @@ import ToolMessage from './ToolMessage'
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
   conversationId: string
+  suppressFooter?: boolean
   isApplying: boolean // TODO: isApplying should be a boolean for each assistant message
   activeApplyRequestKey: string | null
   onApply: (
@@ -33,6 +34,7 @@ export type AssistantToolMessageGroupItemProps = {
 export default function AssistantToolMessageGroupItem({
   messages,
   conversationId,
+  suppressFooter = false,
   isApplying,
   activeApplyRequestKey,
   onApply,
@@ -128,30 +130,33 @@ export default function AssistantToolMessageGroupItem({
           </div>
         ),
       )}
-      {messages.length > 0 && !hasPendingAssistantShell && !isStreaming && (
-        <div className="smtcmp-assistant-message-footer">
-          <LLMResponseInlineInfo messages={messages} />
-          <AssistantToolMessageGroupActions
-            messages={messages}
-            onEdit={
-              editableAssistantMessageId && !isStreaming
-                ? () => {
-                    onEditStart(editableAssistantMessageId)
-                  }
-                : undefined
-            }
-            onDelete={
-              !isStreaming
-                ? () => {
-                    onDeleteGroup(messages.map((message) => message.id))
-                  }
-                : undefined
-            }
-            isEditing={isEditingGroup}
-            isDisabled={isStreaming}
-          />
-        </div>
-      )}
+      {messages.length > 0 &&
+        !hasPendingAssistantShell &&
+        !isStreaming &&
+        !suppressFooter && (
+          <div className="smtcmp-assistant-message-footer">
+            <LLMResponseInlineInfo messages={messages} />
+            <AssistantToolMessageGroupActions
+              messages={messages}
+              onEdit={
+                editableAssistantMessageId && !isStreaming
+                  ? () => {
+                      onEditStart(editableAssistantMessageId)
+                    }
+                  : undefined
+              }
+              onDelete={
+                !isStreaming
+                  ? () => {
+                      onDeleteGroup(messages.map((message) => message.id))
+                    }
+                  : undefined
+              }
+              isEditing={isEditingGroup}
+              isDisabled={isStreaming}
+            />
+          </div>
+        )}
     </div>
   )
 }

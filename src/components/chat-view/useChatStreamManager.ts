@@ -20,6 +20,8 @@ import { ConversationOverrideSettings } from '../../types/conversation-settings.
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import { getToolName } from '../../core/mcp/tool-name-utils'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
@@ -36,6 +38,11 @@ type UseChatStreamManagerParams = {
 }
 
 const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
+const CHAT_READONLY_TOOL_NAMES = [
+  getToolName(getLocalFileToolServerName(), 'fs_search'),
+  getToolName(getLocalFileToolServerName(), 'fs_read'),
+  getToolName(getLocalFileToolServerName(), 'open_skill'),
+]
 const MIN_STREAM_FLUSH_INTERVAL_MS = 16
 const FAST_STREAM_FLUSH_INTERVAL_MS = 24
 const BALANCED_STREAM_FLUSH_INTERVAL_MS = 32
@@ -362,26 +369,30 @@ export function useChatStreamManager({
               }
             : resolvedClient.model
         const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
-        const enabledSkillEntries =
-          chatMode === 'agent' && selectedAssistant
-            ? listLiteSkillEntries(app, { settings }).filter((skill) =>
-                isSkillEnabledForAssistant({
-                  assistant: selectedAssistant,
-                  skillId: skill.id,
-                  disabledSkillIds,
-                }),
-              )
-            : []
+        const enabledSkillEntries = selectedAssistant
+          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+              isSkillEnabledForAssistant({
+                assistant: selectedAssistant,
+                skillId: skill.id,
+                disabledSkillIds,
+              }),
+            )
+          : []
         const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
         const effectiveEnableTools =
-          chatMode === 'agent'
-            ? (selectedAssistant?.enableTools ?? true)
-            : false
+          chatMode === 'agent' ? (selectedAssistant?.enableTools ?? true) : true
         const effectiveIncludeBuiltinTools = effectiveEnableTools
-          ? (selectedAssistant?.includeBuiltinTools ?? true)
+          ? chatMode === 'agent'
+            ? (selectedAssistant?.includeBuiltinTools ?? true)
+            : true
           : false
+        const effectiveAllowedToolNames = effectiveEnableTools
+          ? chatMode === 'agent'
+            ? selectedAssistant?.enabledToolNames
+            : CHAT_READONLY_TOOL_NAMES
+          : undefined
 
         const mcpManager = await getMcpManager()
         const onRunnerMessages = (responseMessages: ChatMessage[]) => {
@@ -409,9 +420,16 @@ export function useChatStreamManager({
           pendingLastUserMessageRef.current = lastMessage
           pendingAbortControllerRef.current = abortController
 
-          scheduleRunnerMessagesFlush({
-            immediate: !hasStreamingAssistantMessage(responseMessages),
-          })
+          const hasStreamingAssistant =
+            hasStreamingAssistantMessage(responseMessages)
+          const shouldImmediateFlush =
+            !hasStreamingAssistant &&
+            responseMessages.at(-1)?.role === 'assistant'
+
+          // Coalesce intermediate snapshots to avoid one-frame UI gaps between
+          // tool-phase completion and the next assistant streaming shell.
+          // Flush terminal assistant snapshots immediately for responsiveness.
+          scheduleRunnerMessagesFlush({ immediate: shouldImmediateFlush })
         }
 
         const agentService = plugin.getAgentService()
@@ -438,9 +456,7 @@ export function useChatStreamManager({
             mcpManager,
             abortSignal: abortController.signal,
             reasoningLevel,
-            allowedToolNames: effectiveEnableTools
-              ? selectedAssistant?.enabledToolNames
-              : undefined,
+            allowedToolNames: effectiveAllowedToolNames,
             allowedSkillIds,
             allowedSkillNames,
             requestParams: {

@@ -26,6 +26,7 @@ import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
   MentionableBlock,
+  MentionableCurrentFile,
   MentionableFile,
   MentionableFolder,
   MentionableImage,
@@ -107,6 +108,7 @@ export class PromptGenerator {
       const { promptContent, similaritySearchResults } =
         await this.compileUserMessagePrompt({
           message: lastUserMessage,
+          preferToolRead: hasTools,
         })
       compiledMessages[lastUserMessageIndex] = {
         ...lastUserMessage,
@@ -152,6 +154,7 @@ export class PromptGenerator {
       const { promptContent, similaritySearchResults } =
         await this.compileUserMessagePrompt({
           message,
+          preferToolRead: hasTools,
         })
       compiledMessages[i] = {
         ...message,
@@ -534,10 +537,12 @@ ${message.annotations
     message,
     useVaultSearch,
     onQueryProgressChange,
+    preferToolRead = false,
   }: {
     message: ChatUserMessage
     useVaultSearch?: boolean
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void
+    preferToolRead?: boolean
   }): Promise<{
     promptContent: ChatUserMessage['promptContent']
     shouldUseRAG: boolean
@@ -603,36 +608,54 @@ ${similaritySearchResults
           .filter((m): m is MentionableFolder => m.type === 'folder')
           .map((m) => this.app.vault.getFolderByPath(m.folder.path))
           .filter((folder): folder is TFolder => Boolean(folder))
-        const nestedFiles = folders.flatMap((folder) =>
-          getNestedFiles(folder, this.app.vault),
-        )
-        const allFiles = [...files, ...nestedFiles]
-        const fileEntries = await Promise.all(
-          allFiles.map(async (file) => {
-            try {
-              const content = await readTFileContent(file, this.app.vault)
-              return { file, content }
-            } catch (error) {
-              console.warn(
-                '[Smart Composer] Failed to read mentioned file',
-                file.path,
-                error,
-              )
-              return null
-            }
-          }),
-        )
-        const readableFileEntries = fileEntries.filter(
-          (entry): entry is { file: TFile; content: string } => entry !== null,
-        )
-        const readableFiles = readableFileEntries.map((entry) => entry.file)
-        const fileContents = readableFileEntries.map((entry) => entry.content)
+        const currentFiles = message.mentionables
+          .filter((m): m is MentionableCurrentFile => m.type === 'current-file')
+          .map((m) => m.file)
+          .filter((file): file is TFile => Boolean(file))
 
-        filePrompt = readableFiles
-          .map((file, index) => {
-            return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`
+        if (preferToolRead) {
+          filePrompt = this.buildMentionedPathsPrompt({
+            files,
+            folders,
+            currentFiles,
           })
-          .join('')
+        } else {
+          const nestedFiles = folders.flatMap((folder) =>
+            getNestedFiles(folder, this.app.vault),
+          )
+          const allFiles = [...files, ...currentFiles, ...nestedFiles]
+          const uniqueFiles = allFiles.filter(
+            (file, index, arr) =>
+              arr.findIndex((item) => item.path === file.path) === index,
+          )
+          const fileEntries = await Promise.all(
+            uniqueFiles.map(async (file) => {
+              try {
+                const content = await readTFileContent(file, this.app.vault)
+                return { file, content }
+              } catch (error) {
+                console.warn(
+                  '[Smart Composer] Failed to read mentioned file',
+                  file.path,
+                  error,
+                )
+                return null
+              }
+            }),
+          )
+          const readableFileEntries = fileEntries.filter(
+            (entry): entry is { file: TFile; content: string } =>
+              entry !== null,
+          )
+          const readableFiles = readableFileEntries.map((entry) => entry.file)
+          const fileContents = readableFileEntries.map((entry) => entry.content)
+
+          filePrompt = readableFiles
+            .map((file, index) => {
+              return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`
+            })
+            .join('')
+        }
       }
 
       const blocks = message.mentionables.filter(
@@ -848,6 +871,7 @@ ${customInstruction}
       section += `
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
+- When file paths are provided in context, read only necessary files/ranges with tools and avoid repeatedly reading the same window.
 - If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
@@ -867,11 +891,52 @@ ${customInstruction}
       section += `
 - You can use tools, but consult the provided markdown first. Only call tools when the vault content cannot answer the question.
 - When using tools, briefly state why they are needed and focus on summarizing the results for the user.
+- When file paths are provided in context, read only necessary files/ranges with tools and avoid repeatedly reading the same window.
 - If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
 
     return section
+  }
+
+  private buildMentionedPathsPrompt({
+    files,
+    folders,
+    currentFiles,
+  }: {
+    files: TFile[]
+    folders: TFolder[]
+    currentFiles: TFile[]
+  }): string {
+    const filePathSet = new Set(files.map((file) => file.path))
+    const folderPathSet = new Set(folders.map((folder) => folder.path))
+    const currentFilePathSet = new Set(
+      currentFiles
+        .map((file) => file.path)
+        .filter((path) => path.length > 0 && !filePathSet.has(path)),
+    )
+
+    if (
+      filePathSet.size === 0 &&
+      folderPathSet.size === 0 &&
+      currentFilePathSet.size === 0
+    ) {
+      return ''
+    }
+
+    const formatPaths = (paths: Set<string>): string => {
+      return paths.size > 0
+        ? [...paths].map((path) => `\`${path}\``).join(', ')
+        : '(none)'
+    }
+
+    return `## Mentioned Vault Paths
+- Files: ${formatPaths(filePathSet)}
+- Folders: ${formatPaths(folderPathSet)}
+- Current files: ${formatPaths(currentFilePathSet)}
+
+Use file tools to read only the files and line ranges you actually need before making claims.
+`
   }
 
   private async getCurrentFileMessage(

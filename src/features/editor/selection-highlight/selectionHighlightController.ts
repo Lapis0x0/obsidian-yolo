@@ -11,17 +11,8 @@ import {
 type SelectionHighlightRange = {
   from: number
   to: number
-  label?: string
   variant?: 'selection' | 'updated'
 }
-
-type HighlightMode = 'inline' | 'block'
-
-type HighlightLineRole =
-  | 'is-single'
-  | 'is-block-start'
-  | 'is-block-middle'
-  | 'is-block-end'
 
 type ActiveHighlight = {
   view: EditorView
@@ -52,64 +43,20 @@ const selectionHighlightField = StateField.define<DecorationSet>({
 
       const builder = new RangeSetBuilder<Decoration>()
       for (const range of payload) {
-        const mode = resolveHighlightMode(tr.state.doc, range.from, range.to)
-
-        if (mode === 'inline') {
-          builder.add(
-            range.from,
-            range.to,
-            Decoration.mark({
-              class: [
-                'smtcmp-selection-persisted-inline',
-                range.variant === 'updated'
-                  ? 'smtcmp-selection-persisted-inline-updated'
-                  : '',
-              ]
-                .filter(Boolean)
-                .join(' '),
-            }),
-          )
-          continue
-        }
-
-        const startLine = tr.state.doc.lineAt(range.from).number
-        const endPos = Math.max(range.from, range.to - 1)
-        const endLine = tr.state.doc.lineAt(endPos).number
-        const groups = [
-          Array.from(
-            { length: endLine - startLine + 1 },
-            (_, index) => startLine + index,
-          ),
-        ]
-
-        for (const group of groups) {
-          group.forEach((lineNumber, index) => {
-            const line = tr.state.doc.line(lineNumber)
-            const role = resolveLineRole(index, group.length)
-
-            builder.add(
-              line.from,
-              line.from,
-              Decoration.line({
-                class: [
-                  'smtcmp-selection-persisted-block',
-                  role,
-                  range.variant === 'updated'
-                    ? 'smtcmp-selection-persisted-block-updated'
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(' '),
-                attributes:
-                  (index === 0 || group.length === 1) && range.label
-                    ? {
-                        'data-smtcmp-highlight-label': range.label,
-                      }
-                    : undefined,
-              }),
-            )
-          })
-        }
+        builder.add(
+          range.from,
+          range.to,
+          Decoration.mark({
+            class: [
+              'smtcmp-selection-persisted-inline',
+              range.variant === 'updated'
+                ? 'smtcmp-selection-persisted-inline-updated'
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          }),
+        )
       }
 
       nextDecorations = builder.finish()
@@ -126,48 +73,6 @@ const INTERACTIVE_OVERLAY_SELECTOR = [
   '.smtcmp-selection-chat-overlay-root',
   '.smtcmp-selection-chat-overlay',
 ].join(', ')
-
-function resolveLineRole(index: number, size: number): HighlightLineRole {
-  if (size <= 1) return 'is-single'
-  if (index === 0) return 'is-block-start'
-  if (index === size - 1) return 'is-block-end'
-  return 'is-block-middle'
-}
-
-function resolveHighlightMode(
-  doc: EditorView['state']['doc'],
-  from: number,
-  to: number,
-): HighlightMode {
-  const startLine = doc.lineAt(from)
-  const endPos = Math.max(from, to - 1)
-  const endLine = doc.lineAt(endPos)
-
-  if (startLine.number !== endLine.number) {
-    return 'block'
-  }
-
-  return isEffectivelyFullLineSelected(startLine, from, to) ? 'block' : 'inline'
-}
-
-function isEffectivelyFullLineSelected(
-  line: ReturnType<EditorView['state']['doc']['lineAt']>,
-  from: number,
-  to: number,
-): boolean {
-  const lineText = line.text
-  const firstNonWhitespace = lineText.search(/\S/)
-
-  if (firstNonWhitespace === -1) {
-    return false
-  }
-
-  const lastNonWhitespace = lineText.length - lineText.trimEnd().length
-  const contentFrom = line.from + firstNonWhitespace
-  const contentTo = line.to - lastNonWhitespace
-
-  return from <= contentFrom && to >= contentTo
-}
 
 export class SelectionHighlightController {
   private activeHighlight: ActiveHighlight | null = null
@@ -242,7 +147,6 @@ export class SelectionHighlightController {
       {
         from,
         to,
-        label: 'Selected',
         variant: 'selection',
       },
     ])

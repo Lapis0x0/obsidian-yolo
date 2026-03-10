@@ -307,6 +307,8 @@ export default class SmartComposerPlugin extends Plugin {
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
         pinSelectionHighlight: (view) =>
           selectionHighlightController.pinCurrentSelection(view),
+        clearSelectionHighlight: (view) =>
+          selectionHighlightController.clearHighlight(view),
       })
     }
     return this.selectionChatController
@@ -907,12 +909,14 @@ export default class SmartComposerPlugin extends Plugin {
 
     // Handle tab completion trigger
     this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () => {
+      this.app.workspace.on('active-leaf-change', (leaf) => {
         try {
           const view = this.app.workspace.getActiveViewOfType(MarkdownView)
           const editor = view?.editor
-          if (!editor) return
-          this.handleTabCompletionEditorChange(editor)
+          if (editor) {
+            this.handleTabCompletionEditorChange(editor)
+          }
+          this.selectionChatController?.handleActiveLeafChange(leaf ?? null)
           // Update selection manager with new editor container
           this.initializeSelectionChat()
         } catch (err) {
