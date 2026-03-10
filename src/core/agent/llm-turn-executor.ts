@@ -143,12 +143,36 @@ export class AgentLlmTurnExecutor {
       signal: this.input.abortSignal,
       stream: this.input.requestParams?.stream ?? true,
       geminiTools: this.input.geminiTools,
-      onStreamDelta: ({ contentDelta, reasoningDelta, chunk }) => {
+      onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
         if (contentDelta) {
           assistantMessage.content += contentDelta
         }
         if (reasoningDelta) {
           assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
+        }
+        if (toolCalls && toolCalls.length > 0) {
+          const streamedToolCallRequests = toolCalls
+            .map((toolCall) => {
+              const name = toolCall.function?.name?.trim()
+              if (!name) {
+                return null
+              }
+
+              return {
+                id:
+                  toolCall.id ??
+                  `${assistantMessage.id}-stream-tool-${toolCall.index}`,
+                name: this.normalizeToolCallName(name),
+                arguments: toolCall.function?.arguments,
+              }
+            })
+            .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
+              Boolean(toolCall),
+            )
+
+          if (streamedToolCallRequests.length > 0) {
+            assistantMessage.toolCallRequests = streamedToolCallRequests
+          }
         }
         if (chunk.usage) {
           assistantMessage.metadata = {

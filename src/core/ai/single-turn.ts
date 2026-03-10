@@ -39,6 +39,7 @@ type SingleTurnExecutionInput = {
     contentDelta: string
     reasoningDelta: string
     chunk: LLMResponseStreaming
+    toolCalls?: ToolCallDelta[]
   }) => void
 }
 
@@ -177,10 +178,16 @@ export async function executeSingleTurn({
         )
       }
 
+      const streamedToolCallList = Object.values(streamedToolCalls)
+
       onStreamDelta?.({
         contentDelta,
         reasoningDelta,
         chunk,
+        toolCalls:
+          streamedToolCallList.length > 0
+            ? streamedToolCallList.sort((a, b) => a.index - b.index)
+            : undefined,
       })
     }
 

@@ -1198,8 +1198,8 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1.25px solid var(--text-faint);
-  color: var(--text-muted);
+  border: 1.25px solid var(--interactive-accent);
+  color: var(--interactive-accent);
   box-sizing: border-box;
 }
 
