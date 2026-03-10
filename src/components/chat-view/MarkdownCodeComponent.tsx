@@ -22,6 +22,10 @@ import { ObsidianMarkdown } from './ObsidianMarkdown'
 
 const PLAN_CONTENT_TRANSITION_MS = 260
 
+const trimLeadingBlankLines = (value: string): string => {
+  return value.replace(/^(?:\r?\n)+/, '')
+}
+
 export default function MarkdownCodeComponent({
   onApply,
   isApplying,
@@ -165,8 +169,14 @@ export default function MarkdownCodeComponent({
       : previewContent
 
   const handleCopy = async () => {
+    const copyPayload = parsedPlan
+      ? trimLeadingBlankLines(previewContent)
+      : streamingPreviewContent.length > 0
+        ? trimLeadingBlankLines(streamingPreviewContent)
+        : codeContent
+
     try {
-      await navigator.clipboard.writeText(codeContent)
+      await navigator.clipboard.writeText(copyPayload)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
