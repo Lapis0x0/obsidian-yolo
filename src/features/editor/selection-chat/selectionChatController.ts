@@ -1,5 +1,5 @@
 import { EditorView } from '@codemirror/view'
-import { App, Editor, MarkdownView, Notice } from 'obsidian'
+import { App, Editor, MarkdownView, Notice, type WorkspaceLeaf } from 'obsidian'
 
 import { ChatView } from '../../../ChatView'
 import type {
@@ -64,6 +64,7 @@ type SelectionChatControllerDeps = {
   ) => Promise<void>
   isSmartSpaceOpen: () => boolean
   pinSelectionHighlight: (view: EditorView) => void
+  clearSelectionHighlight: (view?: EditorView) => void
 }
 
 export class SelectionChatController {
@@ -101,11 +102,15 @@ export class SelectionChatController {
   ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
   private readonly pinSelectionHighlight: (view: EditorView) => void
+  private readonly clearSelectionHighlight: (view?: EditorView) => void
 
   private selectionManager: SelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
   private pendingSelectionRewrite: PendingSelectionRewrite | null = null
   private enableSelectionChat = true
+  private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null
+  private lastActiveLeafWasMarkdown = false
+  private highlightTakeoverToken = 0
 
   constructor(deps: SelectionChatControllerDeps) {
     this.plugin = deps.plugin
@@ -118,6 +123,7 @@ export class SelectionChatController {
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
     this.pinSelectionHighlight = deps.pinSelectionHighlight
+    this.clearSelectionHighlight = deps.clearSelectionHighlight
   }
 
   isActive(): boolean {
@@ -135,6 +141,14 @@ export class SelectionChatController {
   }
 
   initialize() {
+    const activeLeaf = this.app.workspace.activeLeaf ?? null
+    this.lastActiveLeafWasMarkdown = !!(
+      activeLeaf?.view instanceof MarkdownView
+    )
+    if (this.lastActiveLeafWasMarkdown && activeLeaf) {
+      this.lastActiveMarkdownLeaf = activeLeaf
+    }
+
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true
     this.enableSelectionChat = enableSelectionChat
@@ -177,6 +191,34 @@ export class SelectionChatController {
     if (this.selectionManager) {
       this.selectionManager.destroy()
       this.selectionManager = null
+    }
+
+    this.lastActiveMarkdownLeaf = null
+    this.lastActiveLeafWasMarkdown = false
+    this.highlightTakeoverToken += 1
+  }
+
+  handleActiveLeafChange(leaf: WorkspaceLeaf | null) {
+    const prevWasMarkdown = this.lastActiveLeafWasMarkdown
+    const nextType = leaf?.getViewState().type ?? null
+    const nextIsMarkdown = !!(leaf?.view instanceof MarkdownView)
+
+    this.lastActiveLeafWasMarkdown = nextIsMarkdown
+    if (nextIsMarkdown && leaf) {
+      this.lastActiveMarkdownLeaf = leaf
+    }
+
+    if (nextType === CHAT_VIEW_TYPE && prevWasMarkdown) {
+      const editorView = this.getTrackedEditorView(true)
+      if (editorView) {
+        this.deferSelectionHighlightTakeover(editorView)
+      }
+      return
+    }
+
+    if (nextType !== CHAT_VIEW_TYPE) {
+      this.highlightTakeoverToken += 1
+      this.clearSelectionHighlight()
     }
   }
 
@@ -352,11 +394,6 @@ export class SelectionChatController {
       return
     }
 
-    const editorView = this.getEditorView(editor)
-    if (editorView && this.shouldPersistSelectionHighlight()) {
-      this.pinSelectionHighlight(editorView)
-    }
-
     chatView.syncSelectionToChat(data)
   }
 
@@ -451,18 +488,61 @@ export class SelectionChatController {
     }
 
     const editorView = this.getEditorView(editor)
-    if (editorView && this.shouldPersistSelectionHighlight()) {
-      this.pinSelectionHighlight(editorView)
-    }
-
     const resolvedPrompt =
       prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
+
+    if (editorView) {
+      this.deferSelectionHighlightTakeover(editorView)
+    }
   }
 
   private shouldPersistSelectionHighlight(): boolean {
     return (
       this.getSettings().continuationOptions.persistSelectionHighlight ?? true
     )
+  }
+
+  private deferSelectionHighlightTakeover(view: EditorView) {
+    if (!this.shouldPersistSelectionHighlight()) {
+      return
+    }
+
+    const token = ++this.highlightTakeoverToken
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (token !== this.highlightTakeoverToken) {
+          return
+        }
+
+        const selection = view.state.selection.main
+        if (
+          selection.empty ||
+          view.hasFocus ||
+          this.app.workspace.activeLeaf?.getViewState().type !== CHAT_VIEW_TYPE
+        ) {
+          return
+        }
+
+        this.pinSelectionHighlight(view)
+      })
+    })
+  }
+
+  private getTrackedEditorView(allowFallback: boolean): EditorView | null {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (activeView?.editor) {
+      return this.getEditorView(activeView.editor)
+    }
+
+    if (
+      allowFallback &&
+      this.lastActiveMarkdownLeaf?.view instanceof MarkdownView
+    ) {
+      return this.getEditorView(this.lastActiveMarkdownLeaf.view.editor)
+    }
+
+    return null
   }
 }

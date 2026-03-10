@@ -98,6 +98,7 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
 
 export class QuickAskController {
   private quickAskWidgetState: QuickAskWidgetState = null
+  private highlightTakeoverToken = 0
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
@@ -107,6 +108,7 @@ export class QuickAskController {
       return
     }
 
+    this.highlightTakeoverToken += 1
     this.deps.clearSelectionHighlight(state.view)
 
     if (!restoreFocus) {
@@ -156,13 +158,6 @@ export class QuickAskController {
     options?: QuickAskShowOptions,
   ) {
     const selection = view.state.selection.main
-    if (
-      !selection.empty &&
-      (this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
-        true)
-    ) {
-      this.deps.pinSelectionHighlight(view)
-    }
     const pos = selection.head
 
     // Get context text around cursor with marker
@@ -245,6 +240,37 @@ export class QuickAskController {
     })
 
     this.quickAskWidgetState = { view, pos, close }
+    this.deferSelectionHighlightTakeover(view, ++this.highlightTakeoverToken)
+  }
+
+  private deferSelectionHighlightTakeover(view: EditorView, token: number) {
+    if (
+      !(
+        this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
+        true
+      )
+    ) {
+      return
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (token !== this.highlightTakeoverToken) {
+          return
+        }
+
+        const selection = view.state.selection.main
+        if (
+          selection.empty ||
+          view.hasFocus ||
+          this.quickAskWidgetState?.view !== view
+        ) {
+          return
+        }
+
+        this.deps.pinSelectionHighlight(view)
+      })
+    })
   }
 
   createTriggerExtension(): Extension {

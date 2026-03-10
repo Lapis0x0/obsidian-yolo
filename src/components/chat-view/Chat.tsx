@@ -1100,10 +1100,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           if (isEditorSynced) {
             selectionHighlightController.highlightRanges(
               editorView,
-              updatedRanges.map((range, index) => ({
+              updatedRanges.map((range) => ({
                 from: range.start,
                 to: range.end,
-                label: index === 0 ? 'Updated' : undefined,
                 variant: 'updated' as const,
               })),
               1050,

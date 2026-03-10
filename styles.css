@@ -11007,73 +11007,16 @@ body.smtcmp-quick-ask-global-interaction * {
   z-index: 2;
 }
 
-.cm-editor .cm-line.smtcmp-selection-persisted-block {
-  background: var(
-    --text-selection,
-    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
-  );
-  color: inherit;
-  position: relative;
-}
-
 .cm-editor .smtcmp-selection-persisted-inline {
   background: var(
     --text-selection,
     color-mix(in srgb, var(--interactive-accent) 18%, transparent)
   );
-  border-radius: 4px;
+  border-radius: 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 
-.cm-editor .cm-line.smtcmp-selection-persisted-block.is-single {
-  border-radius: 6px;
-}
-
-.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-start {
-  border-radius: 6px 6px 0 0;
-}
-
-.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-middle {
-  border-radius: 0;
-}
-
-.cm-editor .cm-line.smtcmp-selection-persisted-block.is-block-end {
-  border-radius: 0 0 6px 6px;
-}
-
-.cm-editor
-  .cm-line.smtcmp-selection-persisted-block.is-single[data-smtcmp-highlight-label]::after,
-.cm-editor
-  .cm-line.smtcmp-selection-persisted-block.is-block-start[data-smtcmp-highlight-label]::after {
-  content: attr(data-smtcmp-highlight-label);
-  position: absolute;
-  top: 0;
-  right: 0;
-  height: 16px;
-  padding: 0 6px;
-  border-radius: 0 6px 0 6px;
-  background: color-mix(
-    in srgb,
-    var(--interactive-accent) 18%,
-    var(--background-primary)
-  );
-  border-left: 1px solid
-    color-mix(in srgb, var(--interactive-accent) 38%, transparent);
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--interactive-accent) 38%, transparent);
-  color: var(--text-muted);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 16px;
-  text-transform: uppercase;
-  box-sizing: border-box;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.cm-editor .cm-line.smtcmp-selection-persisted-block-updated,
 .cm-editor .smtcmp-selection-persisted-inline-updated {
   animation: smtcmp-selection-highlight-updated-fade 3s ease-out forwards;
 }
