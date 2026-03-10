@@ -13,6 +13,7 @@ import MarkdownCodeComponent from './MarkdownCodeComponent'
 import MarkdownReferenceBlock from './MarkdownReferenceBlock'
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 import StreamingMarkdown from './StreamingMarkdown'
+import { getToolDisplayInfo, getToolLabels } from './ToolMessage'
 
 function hasRenderableAssistantContent(blocks: ParsedTagContent[]): boolean {
   return blocks.some((block) => {
@@ -101,12 +102,9 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
     if (generationState !== 'streaming' || !toolCallRequests?.length) {
       return null
     }
+    const labels = getToolLabels(t)
     const toolNames = toolCallRequests
-      .map((toolCall) => {
-        const rawName = toolCall.name
-        const delimiterIndex = rawName.indexOf('__')
-        return delimiterIndex >= 0 ? rawName.slice(delimiterIndex + 2) : rawName
-      })
+      .map((toolCall) => getToolDisplayInfo(toolCall, labels).displayName)
       .filter(
         (name, index, arr) => name.length > 0 && arr.indexOf(name) === index,
       )

@@ -21,9 +21,9 @@ import { SplitButton } from '../common/SplitButton'
 
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
 
-type TranslateFn = (keyPath: string, fallback?: string) => string
+export type TranslateFn = (keyPath: string, fallback?: string) => string
 
-type ToolLabels = {
+export type ToolLabels = {
   statusLabels: Record<ToolCallResponseStatus, string>
   unknownStatus: string
   displayNames: Record<string, string>
@@ -58,6 +58,11 @@ type ToolDisplayInfo = {
   summaryText?: string
 }
 
+type ToolRequestLike = {
+  name: string
+  arguments?: string
+}
+
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_list: 'Read Vault',
   fs_search: 'Search Vault',
@@ -79,7 +84,7 @@ const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
   move: 'Move path',
 }
 
-const getToolLabels = (t?: TranslateFn): ToolLabels => {
+export const getToolLabels = (t?: TranslateFn): ToolLabels => {
   const translate: TranslateFn = t ?? ((_, fallback) => fallback ?? '')
   return {
     statusLabels: {
@@ -284,13 +289,14 @@ const getLocalToolSummaryText = ({
     args: rawArguments,
   })
   if (action) {
-    const itemCount =
-      toolName === 'fs_file_ops'
-        ? Array.isArray(argumentsObject?.items)
-          ? argumentsObject.items.length
-          : 0
-        : 1
     const actionLabel = labels.writeActionLabels[action] ?? action
+    if (toolName !== 'fs_file_ops') {
+      return actionLabel
+    }
+
+    const itemCount = Array.isArray(argumentsObject?.items)
+      ? argumentsObject.items.length
+      : 0
     if (itemCount <= 0) {
       return actionLabel
     }
@@ -300,8 +306,8 @@ const getLocalToolSummaryText = ({
   return undefined
 }
 
-const getToolDisplayInfo = (
-  request: ToolCallRequest,
+export const getToolDisplayInfo = (
+  request: ToolRequestLike,
   labels: ToolLabels = getToolLabels(),
 ): ToolDisplayInfo => {
   const localServerName = getLocalFileToolServerName()

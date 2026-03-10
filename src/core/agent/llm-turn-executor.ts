@@ -184,20 +184,22 @@ export class AgentLlmTurnExecutor {
                 return null
               }
 
+              const normalizedName = this.normalizeToolCallName(name)
+              const isWriteTool = isLocalFsWriteToolName(normalizedName)
+
               return {
                 id:
                   toolCall.id ??
                   `${assistantMessage.id}-stream-tool-${toolCall.index}`,
-                name: this.normalizeToolCallName(name),
-                arguments: toolCall.function?.arguments,
+                name: normalizedName,
+                arguments: isWriteTool
+                  ? undefined
+                  : toolCall.function?.arguments,
               }
             })
-            .filter((toolCall): toolCall is NonNullable<typeof toolCall> => {
-              if (!toolCall) {
-                return false
-              }
-              return !isLocalFsWriteToolName(toolCall.name)
-            })
+            .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
+              Boolean(toolCall),
+            )
 
           if (streamedToolCallRequests.length > 0) {
             assistantMessage.toolCallRequests = streamedToolCallRequests
