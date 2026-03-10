@@ -15,6 +15,7 @@ import {
   Check,
   ChevronRight,
   FileIcon,
+  FileText,
   FolderClosedIcon,
   Infinity as InfinityIcon,
   MessageSquare,
@@ -31,6 +32,7 @@ import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../../../contexts/language-context'
+import { useApp } from '../../../../../contexts/app-context'
 import { Assistant } from '../../../../../types/assistant.types'
 import {
   Mentionable,
@@ -109,7 +111,12 @@ function getFileParentFolderPath(filePath: string): string {
 
 type MentionMenuMode = 'direct-search' | 'entry'
 type MentionMenuScope = 'root' | 'assistant' | 'file' | 'folder' | 'mode'
-type MentionEntryOptionType = 'assistant' | 'file' | 'folder' | 'mode'
+type MentionEntryOptionType =
+  | 'current-file'
+  | 'assistant'
+  | 'file'
+  | 'folder'
+  | 'mode'
 type MentionChatMode = 'chat' | 'agent'
 
 type MentionTypeaheadOptionPayload =
@@ -275,6 +282,13 @@ function MentionsTypeaheadMenuItem({
           className="smtcmp-smart-space-mention-option-icon"
         />
       )
+    } else if (option.payload.entryType === 'current-file') {
+      iconNode = (
+        <FileText
+          size={14}
+          className="smtcmp-smart-space-mention-option-icon"
+        />
+      )
     } else {
       iconNode = (
         <FolderClosedIcon
@@ -399,6 +413,7 @@ export default function NewMentionsPlugin({
   searchFoldersByQuery?: (query: string) => MentionableFolder[]
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
+  const app = useApp()
 
   const [queryString, setQueryString] = useState<string | null>(null)
   const [menuScope, setMenuScope] = useState<MentionMenuScope>('root')
@@ -507,6 +522,10 @@ export default function NewMentionsPlugin({
         label: string
       }> = [
         {
+          entryType: 'current-file',
+          label: t('chat.mentionMenu.entryCurrentFile', '当前文件'),
+        },
+        {
           entryType: 'assistant',
           label: t('chat.mentionMenu.entryAssistant', '助手'),
         },
@@ -520,7 +539,7 @@ export default function NewMentionsPlugin({
         },
       ]
       if (onSelectChatMode) {
-        entryOptions.unshift({
+        entryOptions.splice(1, 0, {
           entryType: 'mode',
           label: t('chat.mentionMenu.entryMode', '模式'),
         })
@@ -687,6 +706,43 @@ export default function NewMentionsPlugin({
       }
 
       if (selectedOption.payload.kind === 'entry') {
+        if (selectedOption.payload.entryType === 'current-file') {
+          const currentFileMentionable: Mentionable = {
+            type: 'current-file',
+            file: app.workspace.getActiveFile(),
+          }
+
+          if (mentionDisplayMode === 'badge') {
+            if (nodeToReplace) {
+              const emptyNode = $createTextNode('')
+              nodeToReplace.replace(emptyNode)
+              emptyNode.select()
+            }
+            onSelectMentionable?.(currentFileMentionable)
+            closeMenu()
+            return
+          }
+
+          const mentionNode = $createMentionNode(
+            getMentionableName(currentFileMentionable, {
+              unitLabel: mentionableUnitLabel,
+              currentFileLabel: t(
+                'chat.mentionMenu.entryCurrentFile',
+                '当前文件',
+              ),
+            }),
+            serializeMentionable(currentFileMentionable),
+          )
+          if (nodeToReplace) {
+            nodeToReplace.replace(mentionNode)
+          }
+          const spaceNode = $createTextNode(' ')
+          mentionNode.insertAfter(spaceNode)
+          spaceNode.select()
+          closeMenu()
+          return
+        }
+
         const nextScope: MentionMenuScope =
           selectedOption.payload.entryType === 'assistant'
             ? 'assistant'
@@ -754,11 +810,13 @@ export default function NewMentionsPlugin({
       closeMenu()
     },
     [
+      app,
       mentionDisplayMode,
       mentionableUnitLabel,
       onSelectAssistant,
       onSelectChatMode,
       onSelectMentionable,
+      t,
     ],
   )
 

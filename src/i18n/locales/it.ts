@@ -805,6 +805,7 @@ export const it: TranslationKeys = {
     annotations: 'Annotazioni',
     mentionMenu: {
       back: 'Torna indietro',
+      entryCurrentFile: 'File corrente',
       entryMode: 'Modalita',
       entrySkill: 'Skill',
       entryAssistant: 'Assistente',

@@ -248,6 +248,7 @@ export function getMentionableName(
   mentionable: Mentionable,
   options?: {
     unitLabel?: string
+    currentFileLabel?: string
   },
 ): string {
   switch (mentionable.type) {
@@ -258,7 +259,9 @@ export function getMentionableName(
     case 'vault':
       return 'Vault'
     case 'current-file':
-      return mentionable.file?.name ?? 'Current file'
+      return (
+        mentionable.file?.name ?? options?.currentFileLabel ?? 'Current file'
+      )
     case 'block': {
       const count =
         mentionable.contentCount ??
