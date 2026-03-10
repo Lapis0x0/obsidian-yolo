@@ -6,7 +6,10 @@ import {
   SettingsProvider,
   useSettings,
 } from '../../../contexts/settings-context'
-import { getLocalFileTools } from '../../../core/mcp/localFileTools'
+import {
+  getLocalFileTools,
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+} from '../../../core/mcp/localFileTools'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
@@ -66,6 +69,8 @@ const BUILTIN_TOOL_I18N_KEYS: Record<
   },
 }
 
+const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+
 export class AgentToolsModal extends ReactModal<AgentToolsModalProps> {
   constructor(app: App, plugin: SmartComposerPlugin) {
     super({
@@ -111,34 +116,42 @@ function AgentToolsModalContent({
 
   const builtinTools = useMemo(
     () =>
-      getLocalFileTools().map((tool) => {
-        const meta = BUILTIN_TOOL_I18N_KEYS[tool.name]
-        return {
-          id: tool.name,
-          label: meta ? t(meta.labelKey, meta.labelFallback) : tool.name,
-          description: meta
-            ? t(meta.descKey, meta.descFallback)
-            : tool.description,
-          enabled: !(
-            settings.mcp.builtinToolOptions[tool.name]?.disabled ?? false
-          ),
-        }
-      }),
+      getLocalFileTools()
+        .filter((tool) => !SPLIT_FS_TOOL_NAME_SET.has(tool.name))
+        .map((tool) => {
+          const meta = BUILTIN_TOOL_I18N_KEYS[tool.name]
+          return {
+            id: tool.name,
+            label: meta ? t(meta.labelKey, meta.labelFallback) : tool.name,
+            description: meta
+              ? t(meta.descKey, meta.descFallback)
+              : tool.description,
+            enabled: !(
+              settings.mcp.builtinToolOptions[tool.name]?.disabled ?? false
+            ),
+          }
+        }),
     [settings.mcp.builtinToolOptions, t],
   )
 
   const handleToggleBuiltinTool = (toolName: string, enabled: boolean) => {
+    const targets =
+      toolName === 'fs_file_ops'
+        ? [toolName, ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES]
+        : [toolName]
+    const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
+    for (const target of targets) {
+      nextBuiltinToolOptions[target] = {
+        ...settings.mcp.builtinToolOptions[target],
+        disabled: !enabled,
+      }
+    }
+
     void setSettings({
       ...settings,
       mcp: {
         ...settings.mcp,
-        builtinToolOptions: {
-          ...settings.mcp.builtinToolOptions,
-          [toolName]: {
-            ...settings.mcp.builtinToolOptions[toolName],
-            disabled: !enabled,
-          },
-        },
+        builtinToolOptions: nextBuiltinToolOptions,
       },
     })
   }

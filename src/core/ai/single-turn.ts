@@ -45,6 +45,28 @@ type SingleTurnExecutionInput = {
 
 const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 12000
 
+const LOCAL_WRITE_TOOL_NAMES = new Set([
+  'fs_edit',
+  'fs_file_ops',
+  'fs_create_file',
+  'fs_delete_file',
+  'fs_create_dir',
+  'fs_delete_dir',
+  'fs_move',
+])
+
+const getBareToolName = (toolName: string): string => {
+  if (!toolName.includes('__')) {
+    return toolName
+  }
+  const parts = toolName.split('__')
+  return parts[parts.length - 1] ?? toolName
+}
+
+const isLocalWriteToolCallName = (toolName: string): boolean => {
+  return LOCAL_WRITE_TOOL_NAMES.has(getBareToolName(toolName))
+}
+
 export async function executeSingleTurn({
   providerClient,
   model,
@@ -191,27 +213,50 @@ export async function executeSingleTurn({
       })
     }
 
+    const streamedToolCallList = Object.values(streamedToolCalls)
+      .map((toolCall) => {
+        const name = toolCall.function?.name?.trim()
+        if (!name) {
+          return null
+        }
+        return {
+          id: toolCall.id,
+          name,
+          arguments: toolCall.function?.arguments,
+        }
+      })
+      .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
+        Boolean(toolCall),
+      )
+
+    const shouldRefreshWriteToolCalls = streamedToolCallList.some((toolCall) =>
+      isLocalWriteToolCallName(toolCall.name),
+    )
+
+    let finalToolCalls: SingleTurnExecutionResult['toolCalls'] =
+      streamedToolCallList
+    let finalFinishReason: SingleTurnExecutionResult['finishReason'] =
+      finishReason ?? undefined
+
+    if (shouldRefreshWriteToolCalls) {
+      try {
+        const nonStreamingResult = await runNonStreaming()
+        if (nonStreamingResult.toolCalls.length > 0) {
+          finalToolCalls = nonStreamingResult.toolCalls
+          finalFinishReason = nonStreamingResult.finishReason
+        }
+      } catch {
+        // Keep streaming tool calls as fallback when refresh fails.
+      }
+    }
+
     return {
       content,
       reasoning: reasoning || undefined,
       annotations,
       usage,
-      finishReason,
-      toolCalls: Object.values(streamedToolCalls)
-        .map((toolCall) => {
-          const name = toolCall.function?.name?.trim()
-          if (!name) {
-            return null
-          }
-          return {
-            id: toolCall.id,
-            name,
-            arguments: toolCall.function?.arguments,
-          }
-        })
-        .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
-          Boolean(toolCall),
-        ),
+      finishReason: finalFinishReason,
+      toolCalls: finalToolCalls,
     }
   } catch (error) {
     const message =

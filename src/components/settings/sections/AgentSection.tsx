@@ -7,7 +7,10 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
-import { getLocalFileTools } from '../../../core/mcp/localFileTools'
+import {
+  getLocalFileTools,
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+} from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
@@ -55,6 +58,8 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     fallback: 'Open Skill',
   },
 }
+
+const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 
 export function AgentSection({ app }: AgentSectionProps) {
   const { settings, setSettings } = useSettings()
@@ -213,16 +218,18 @@ export function AgentSection({ app }: AgentSectionProps) {
 
   const builtinTools = useMemo(
     () =>
-      getLocalFileTools().map((tool) => {
-        const meta = BUILTIN_TOOL_LABEL_KEYS[tool.name]
-        return {
-          id: tool.name,
-          label: meta ? t(meta.key, meta.fallback) : tool.name,
-          enabled: !(
-            settings.mcp.builtinToolOptions[tool.name]?.disabled ?? false
-          ),
-        }
-      }),
+      getLocalFileTools()
+        .filter((tool) => !SPLIT_FS_TOOL_NAME_SET.has(tool.name))
+        .map((tool) => {
+          const meta = BUILTIN_TOOL_LABEL_KEYS[tool.name]
+          return {
+            id: tool.name,
+            label: meta ? t(meta.key, meta.fallback) : tool.name,
+            enabled: !(
+              settings.mcp.builtinToolOptions[tool.name]?.disabled ?? false
+            ),
+          }
+        }),
     [settings.mcp.builtinToolOptions, t],
   )
 

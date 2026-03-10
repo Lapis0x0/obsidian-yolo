@@ -13,7 +13,11 @@ import { ToolCallRequest } from '../../types/tool-call.types'
 import { PromptGenerator } from '../../utils/chat/promptGenerator'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
-import { getLocalFileToolServerName } from '../mcp/localFileTools'
+import {
+  getLocalFileToolServerName,
+  isLocalFsWriteToolName,
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+} from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 
@@ -59,6 +63,11 @@ export class AgentLlmTurnExecutor {
     'fs_search',
     'fs_read',
     'fs_edit',
+    'fs_create_file',
+    'fs_delete_file',
+    'fs_create_dir',
+    'fs_delete_dir',
+    'fs_move',
     'fs_file_ops',
     'open_skill',
   ])
@@ -69,7 +78,7 @@ export class AgentLlmTurnExecutor {
 
   constructor(private readonly input: AgentLlmTurnExecutorInput) {
     this.allowedToolNames = input.allowedToolNames
-      ? new Set(input.allowedToolNames)
+      ? this.expandAllowedToolNames(input.allowedToolNames)
       : undefined
     this.allowedSkillIds = input.allowedSkillIds
       ? new Set(input.allowedSkillIds.map((id) => id.toLowerCase()))
@@ -77,6 +86,23 @@ export class AgentLlmTurnExecutor {
     this.allowedSkillNames = input.allowedSkillNames
       ? new Set(input.allowedSkillNames.map((name) => name.toLowerCase()))
       : undefined
+  }
+
+  private expandAllowedToolNames(toolNames: string[]): Set<string> {
+    const expanded = new Set<string>(toolNames)
+    const localServer = getLocalFileToolServerName()
+    const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
+    if (!expanded.has(localFileOpsTool) && !expanded.has('fs_file_ops')) {
+      return expanded
+    }
+
+    for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
+      expanded.add(
+        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+      )
+      expanded.add(splitToolName)
+    }
+    return expanded
   }
 
   async run(): Promise<AgentLlmTurnExecutorOutput> {
@@ -166,9 +192,12 @@ export class AgentLlmTurnExecutor {
                 arguments: toolCall.function?.arguments,
               }
             })
-            .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
-              Boolean(toolCall),
-            )
+            .filter((toolCall): toolCall is NonNullable<typeof toolCall> => {
+              if (!toolCall) {
+                return false
+              }
+              return !isLocalFsWriteToolName(toolCall.name)
+            })
 
           if (streamedToolCallRequests.length > 0) {
             assistantMessage.toolCallRequests = streamedToolCallRequests

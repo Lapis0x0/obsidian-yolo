@@ -8,7 +8,7 @@ import { useSettings } from '../../contexts/settings-context'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
-  parseLocalFsFileOpActionFromArgs,
+  parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { ChatToolMessage } from '../../types/chat'
@@ -64,6 +64,11 @@ const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_read: 'Read File',
   fs_edit: 'Text editing',
   fs_file_ops: 'File operations',
+  fs_create_file: 'Create file',
+  fs_delete_file: 'Delete file',
+  fs_create_dir: 'Create folder',
+  fs_delete_dir: 'Delete folder',
+  fs_move: 'Move path',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
@@ -121,6 +126,26 @@ const getToolLabels = (t?: TranslateFn): ToolLabels => {
       fs_file_ops: translate(
         'settings.agent.builtinFsFileOpsLabel',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_file_ops,
+      ),
+      fs_create_file: translate(
+        'chat.toolCall.writeAction.create_file',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_file,
+      ),
+      fs_delete_file: translate(
+        'chat.toolCall.writeAction.delete_file',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_file,
+      ),
+      fs_create_dir: translate(
+        'chat.toolCall.writeAction.create_dir',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_dir,
+      ),
+      fs_delete_dir: translate(
+        'chat.toolCall.writeAction.delete_dir',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_dir,
+      ),
+      fs_move: translate(
+        'chat.toolCall.writeAction.move',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
       ),
     },
     writeActionLabels: {
@@ -254,14 +279,17 @@ const getLocalToolSummaryText = ({
     return path || undefined
   }
 
-  if (toolName === 'fs_file_ops') {
-    const action = parseLocalFsFileOpActionFromArgs(rawArguments)
-    if (!action) {
-      return undefined
-    }
-    const itemCount = Array.isArray(argumentsObject?.items)
-      ? argumentsObject.items.length
-      : 0
+  const action = parseLocalFsActionFromToolArgs({
+    toolName,
+    args: rawArguments,
+  })
+  if (action) {
+    const itemCount =
+      toolName === 'fs_file_ops'
+        ? Array.isArray(argumentsObject?.items)
+          ? argumentsObject.items.length
+          : 0
+        : 1
     const actionLabel = labels.writeActionLabels[action] ?? action
     if (itemCount <= 0) {
       return actionLabel
@@ -282,14 +310,13 @@ const getToolDisplayInfo = (
     const { serverName, toolName } = parseToolName(request.name)
 
     if (serverName === localServerName) {
-      const isFsFileOps = toolName === 'fs_file_ops'
-      const action = isFsFileOps
-        ? parseLocalFsFileOpActionFromArgs(request.arguments)
-        : null
-      const displayName =
-        isFsFileOps && action
-          ? (labels.writeActionLabels[action] ?? labels.displayNames[toolName])
-          : (labels.displayNames[toolName] ?? toolName)
+      const action = parseLocalFsActionFromToolArgs({
+        toolName,
+        args: request.arguments,
+      })
+      const displayName = action
+        ? (labels.writeActionLabels[action] ?? labels.displayNames[toolName])
+        : (labels.displayNames[toolName] ?? toolName)
 
       return {
         displayName,

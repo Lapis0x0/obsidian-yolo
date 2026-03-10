@@ -32,6 +32,11 @@ type LocalFileToolName =
   | 'fs_search'
   | 'fs_read'
   | 'fs_edit'
+  | 'fs_create_file'
+  | 'fs_delete_file'
+  | 'fs_create_dir'
+  | 'fs_delete_dir'
+  | 'fs_move'
   | 'fs_file_ops'
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
@@ -77,6 +82,24 @@ type FsEditReviewResult =
   | {
       status: ToolCallResponseStatus.Aborted
     }
+
+const LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION = {
+  fs_create_file: 'create_file',
+  fs_delete_file: 'delete_file',
+  fs_create_dir: 'create_dir',
+  fs_delete_dir: 'delete_dir',
+  fs_move: 'move',
+} as const
+
+export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
+  LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION,
+) as Array<keyof typeof LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION>
+
+const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
+  'fs_edit',
+  'fs_file_ops',
+  ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+])
 
 const asErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -379,9 +402,119 @@ export function getLocalFileTools(): McpTool[] {
       },
     },
     {
+      name: 'fs_create_file',
+      description:
+        'Create a single file in the vault. Use for one-file creation with explicit path and content.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Vault-relative file path.',
+          },
+          content: {
+            type: 'string',
+            description: 'Full file content.',
+          },
+          dryRun: {
+            type: 'boolean',
+            description:
+              'If true, validate and preview result without applying changes.',
+          },
+        },
+        required: ['path', 'content'],
+      },
+    },
+    {
+      name: 'fs_delete_file',
+      description: 'Delete a single existing file in the vault.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Vault-relative file path.',
+          },
+          dryRun: {
+            type: 'boolean',
+            description:
+              'If true, validate and preview result without applying changes.',
+          },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'fs_create_dir',
+      description: 'Create a single folder in the vault.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Vault-relative folder path.',
+          },
+          dryRun: {
+            type: 'boolean',
+            description:
+              'If true, validate and preview result without applying changes.',
+          },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'fs_delete_dir',
+      description: 'Delete a single existing folder in the vault.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Vault-relative folder path.',
+          },
+          recursive: {
+            type: 'boolean',
+            description:
+              'Default false; when false non-empty folders cannot be deleted.',
+          },
+          dryRun: {
+            type: 'boolean',
+            description:
+              'If true, validate and preview result without applying changes.',
+          },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'fs_move',
+      description:
+        'Move or rename a single file/folder path in the vault from oldPath to newPath.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          oldPath: {
+            type: 'string',
+            description: 'Vault-relative source path.',
+          },
+          newPath: {
+            type: 'string',
+            description: 'Vault-relative destination path.',
+          },
+          dryRun: {
+            type: 'boolean',
+            description:
+              'If true, validate and preview result without applying changes.',
+          },
+        },
+        required: ['oldPath', 'newPath'],
+      },
+    },
+    {
       name: 'fs_file_ops',
       description:
-        'Execute file and folder operations in the vault. Use for create, move, and delete operations.',
+        'Legacy batch file/folder operations. Prefer fs_create_file/fs_delete_file/fs_create_dir/fs_delete_dir/fs_move for single operations.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -763,6 +896,234 @@ export function parseLocalFsFileOpActionFromArgs(
   }
 }
 
+const normalizeLocalToolName = (toolName: string): string => {
+  if (!toolName.includes('__')) {
+    return toolName
+  }
+  const parts = toolName.split('__')
+  return parts[parts.length - 1] ?? toolName
+}
+
+export function isLocalFsWriteToolName(toolName: string): boolean {
+  return LOCAL_FS_WRITE_TOOL_NAMES.has(normalizeLocalToolName(toolName))
+}
+
+export function parseLocalFsActionFromToolArgs({
+  toolName,
+  args,
+}: {
+  toolName: string
+  args?: Record<string, unknown> | string
+}): FsFileOpAction | null {
+  const normalizedToolName = normalizeLocalToolName(toolName)
+  const splitAction =
+    LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION[
+      normalizedToolName as keyof typeof LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION
+    ]
+  if (splitAction) {
+    return splitAction
+  }
+  if (normalizedToolName === 'fs_file_ops') {
+    return parseLocalFsFileOpActionFromArgs(args)
+  }
+  return null
+}
+
+const executeFsFileOps = async ({
+  app,
+  action,
+  items,
+  dryRun,
+  signal,
+  tool,
+}: {
+  app: App
+  action: FsFileOpAction
+  items: Record<string, unknown>[]
+  dryRun: boolean
+  signal?: AbortSignal
+  tool: string
+}): Promise<LocalToolCallResult> => {
+  if (items.length === 0) {
+    throw new Error('items cannot be empty.')
+  }
+  if (items.length > MAX_BATCH_WRITE_ITEMS) {
+    throw new Error(
+      `items supports up to ${MAX_BATCH_WRITE_ITEMS} operations per call.`,
+    )
+  }
+
+  const results: FsResultItem[] = []
+
+  for (const item of items) {
+    if (signal?.aborted) {
+      return { status: ToolCallResponseStatus.Aborted }
+    }
+
+    try {
+      if (action === 'create_file') {
+        const path = validateVaultPath(getTextArg(item, 'path'))
+        const content = getTextArg(item, 'content')
+        assertContentSize(content)
+
+        const existing = app.vault.getAbstractFileByPath(path)
+        if (existing) {
+          throw new Error(`Path already exists: ${path}`)
+        }
+        ensureParentFolderExists(app, path)
+
+        if (!dryRun) {
+          await app.vault.create(path, content)
+        }
+
+        results.push({
+          ok: true,
+          action,
+          target: path,
+          message: dryRun ? 'Would create file.' : 'Created file.',
+        })
+        continue
+      }
+
+      if (action === 'delete_file') {
+        const path = validateVaultPath(getTextArg(item, 'path'))
+        const existing = app.vault.getAbstractFileByPath(path)
+        if (!existing || !(existing instanceof TFile)) {
+          throw new Error(`File not found: ${path}`)
+        }
+
+        if (!dryRun) {
+          await app.fileManager.trashFile(existing)
+        }
+
+        results.push({
+          ok: true,
+          action,
+          target: path,
+          message: dryRun ? 'Would delete file.' : 'Deleted file.',
+        })
+        continue
+      }
+
+      if (action === 'create_dir') {
+        const path = validateVaultPath(getTextArg(item, 'path'))
+        const existing = app.vault.getAbstractFileByPath(path)
+        if (existing) {
+          throw new Error(`Path already exists: ${path}`)
+        }
+        ensureParentFolderExists(app, path)
+
+        if (!dryRun) {
+          await app.vault.createFolder(path)
+        }
+
+        results.push({
+          ok: true,
+          action,
+          target: path,
+          message: dryRun ? 'Would create folder.' : 'Created folder.',
+        })
+        continue
+      }
+
+      if (action === 'delete_dir') {
+        const path = validateVaultPath(getTextArg(item, 'path'))
+        const recursive = getOptionalBooleanArg(item, 'recursive') ?? false
+        const existing = app.vault.getAbstractFileByPath(path)
+        if (!existing || !(existing instanceof TFolder)) {
+          throw new Error(`Folder not found: ${path}`)
+        }
+        if (!recursive && existing.children.length > 0) {
+          throw new Error(
+            `Folder is not empty: ${path}. Set recursive=true to delete non-empty folders.`,
+          )
+        }
+
+        if (!dryRun) {
+          await app.fileManager.trashFile(existing)
+        }
+
+        results.push({
+          ok: true,
+          action,
+          target: path,
+          message: dryRun ? 'Would delete folder.' : 'Deleted folder.',
+        })
+        continue
+      }
+
+      if (action === 'move') {
+        const oldPath = validateVaultPath(getTextArg(item, 'oldPath'))
+        const newPath = validateVaultPath(getTextArg(item, 'newPath'))
+
+        if (oldPath === newPath) {
+          throw new Error('oldPath and newPath must be different.')
+        }
+
+        const source = app.vault.getAbstractFileByPath(oldPath)
+        if (!source) {
+          throw new Error(`Source path not found: ${oldPath}`)
+        }
+
+        const targetExists = app.vault.getAbstractFileByPath(newPath)
+        if (targetExists) {
+          throw new Error(`Target path already exists: ${newPath}`)
+        }
+        ensureParentFolderExists(app, newPath)
+
+        if (
+          source instanceof TFolder &&
+          (newPath === source.path || newPath.startsWith(`${source.path}/`))
+        ) {
+          throw new Error('Cannot move a folder into itself or its subfolder.')
+        }
+
+        if (!dryRun) {
+          await app.fileManager.renameFile(source, newPath)
+        }
+
+        results.push({
+          ok: true,
+          action,
+          target: `${oldPath} -> ${newPath}`,
+          message: dryRun ? 'Would move path.' : 'Moved path.',
+        })
+        continue
+      }
+
+      throw new Error(`Unsupported fs action: ${action}`)
+    } catch (error) {
+      results.push({
+        ok: false,
+        action,
+        target:
+          action === 'move'
+            ? `${asOptionalString(item.oldPath)} -> ${asOptionalString(item.newPath)}`
+            : asOptionalString(item.path),
+        message: asErrorMessage(error),
+      })
+    }
+  }
+
+  const successCount = results.filter((item) => item.ok).length
+  const errorCount = results.length - successCount
+
+  return {
+    status: ToolCallResponseStatus.Success,
+    text: formatJsonResult({
+      tool,
+      action,
+      dryRun,
+      summary: {
+        total: results.length,
+        success: successCount,
+        failed: errorCount,
+      },
+      results,
+    }),
+  }
+}
+
 export async function callLocalFileTool({
   app,
   settings,
@@ -1103,6 +1464,82 @@ export async function callLocalFileTool({
         }
       }
 
+      case 'fs_create_file': {
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+        return executeFsFileOps({
+          app,
+          action: 'create_file',
+          items: [
+            {
+              path: getTextArg(args, 'path'),
+              content: getTextArg(args, 'content'),
+            },
+          ],
+          dryRun,
+          signal,
+          tool: 'fs_create_file',
+        })
+      }
+
+      case 'fs_delete_file': {
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+        return executeFsFileOps({
+          app,
+          action: 'delete_file',
+          items: [{ path: getTextArg(args, 'path') }],
+          dryRun,
+          signal,
+          tool: 'fs_delete_file',
+        })
+      }
+
+      case 'fs_create_dir': {
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+        return executeFsFileOps({
+          app,
+          action: 'create_dir',
+          items: [{ path: getTextArg(args, 'path') }],
+          dryRun,
+          signal,
+          tool: 'fs_create_dir',
+        })
+      }
+
+      case 'fs_delete_dir': {
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+        const recursive = getOptionalBooleanArg(args, 'recursive')
+        return executeFsFileOps({
+          app,
+          action: 'delete_dir',
+          items: [
+            {
+              path: getTextArg(args, 'path'),
+              ...(recursive === undefined ? {} : { recursive }),
+            },
+          ],
+          dryRun,
+          signal,
+          tool: 'fs_delete_dir',
+        })
+      }
+
+      case 'fs_move': {
+        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+        return executeFsFileOps({
+          app,
+          action: 'move',
+          items: [
+            {
+              oldPath: getTextArg(args, 'oldPath'),
+              newPath: getTextArg(args, 'newPath'),
+            },
+          ],
+          dryRun,
+          signal,
+          tool: 'fs_move',
+        })
+      }
+
       case 'fs_search': {
         const scope = getFsSearchScope(args)
         const query = (getOptionalTextArg(args, 'query') ?? '').trim()
@@ -1244,189 +1681,14 @@ export async function callLocalFileTool({
         const action = getFsFileOpAction(args)
         const items = getRecordArrayArg(args, 'items')
         const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
-
-        if (items.length === 0) {
-          throw new Error('items cannot be empty.')
-        }
-        if (items.length > MAX_BATCH_WRITE_ITEMS) {
-          throw new Error(
-            `items supports up to ${MAX_BATCH_WRITE_ITEMS} operations per call.`,
-          )
-        }
-
-        const results: FsResultItem[] = []
-
-        for (const item of items) {
-          if (signal?.aborted) {
-            return { status: ToolCallResponseStatus.Aborted }
-          }
-
-          try {
-            if (action === 'create_file') {
-              const path = validateVaultPath(getTextArg(item, 'path'))
-              const content = getTextArg(item, 'content')
-              assertContentSize(content)
-
-              const existing = app.vault.getAbstractFileByPath(path)
-              if (existing) {
-                throw new Error(`Path already exists: ${path}`)
-              }
-              ensureParentFolderExists(app, path)
-
-              if (!dryRun) {
-                await app.vault.create(path, content)
-              }
-
-              results.push({
-                ok: true,
-                action,
-                target: path,
-                message: dryRun ? 'Would create file.' : 'Created file.',
-              })
-              continue
-            }
-
-            if (action === 'delete_file') {
-              const path = validateVaultPath(getTextArg(item, 'path'))
-              const existing = app.vault.getAbstractFileByPath(path)
-              if (!existing || !(existing instanceof TFile)) {
-                throw new Error(`File not found: ${path}`)
-              }
-
-              if (!dryRun) {
-                await app.fileManager.trashFile(existing)
-              }
-
-              results.push({
-                ok: true,
-                action,
-                target: path,
-                message: dryRun ? 'Would delete file.' : 'Deleted file.',
-              })
-              continue
-            }
-
-            if (action === 'create_dir') {
-              const path = validateVaultPath(getTextArg(item, 'path'))
-              const existing = app.vault.getAbstractFileByPath(path)
-              if (existing) {
-                throw new Error(`Path already exists: ${path}`)
-              }
-              ensureParentFolderExists(app, path)
-
-              if (!dryRun) {
-                await app.vault.createFolder(path)
-              }
-
-              results.push({
-                ok: true,
-                action,
-                target: path,
-                message: dryRun ? 'Would create folder.' : 'Created folder.',
-              })
-              continue
-            }
-
-            if (action === 'delete_dir') {
-              const path = validateVaultPath(getTextArg(item, 'path'))
-              const recursive =
-                getOptionalBooleanArg(item, 'recursive') ?? false
-              const existing = app.vault.getAbstractFileByPath(path)
-              if (!existing || !(existing instanceof TFolder)) {
-                throw new Error(`Folder not found: ${path}`)
-              }
-              if (!recursive && existing.children.length > 0) {
-                throw new Error(
-                  `Folder is not empty: ${path}. Set recursive=true to delete non-empty folders.`,
-                )
-              }
-
-              if (!dryRun) {
-                await app.fileManager.trashFile(existing)
-              }
-
-              results.push({
-                ok: true,
-                action,
-                target: path,
-                message: dryRun ? 'Would delete folder.' : 'Deleted folder.',
-              })
-              continue
-            }
-
-            if (action === 'move') {
-              const oldPath = validateVaultPath(getTextArg(item, 'oldPath'))
-              const newPath = validateVaultPath(getTextArg(item, 'newPath'))
-
-              if (oldPath === newPath) {
-                throw new Error('oldPath and newPath must be different.')
-              }
-
-              const source = app.vault.getAbstractFileByPath(oldPath)
-              if (!source) {
-                throw new Error(`Source path not found: ${oldPath}`)
-              }
-
-              const targetExists = app.vault.getAbstractFileByPath(newPath)
-              if (targetExists) {
-                throw new Error(`Target path already exists: ${newPath}`)
-              }
-              ensureParentFolderExists(app, newPath)
-
-              if (
-                source instanceof TFolder &&
-                (newPath === source.path ||
-                  newPath.startsWith(`${source.path}/`))
-              ) {
-                throw new Error(
-                  'Cannot move a folder into itself or its subfolder.',
-                )
-              }
-
-              if (!dryRun) {
-                await app.fileManager.renameFile(source, newPath)
-              }
-
-              results.push({
-                ok: true,
-                action,
-                target: `${oldPath} -> ${newPath}`,
-                message: dryRun ? 'Would move path.' : 'Moved path.',
-              })
-              continue
-            }
-
-            throw new Error(`Unsupported fs_file_ops action: ${action}`)
-          } catch (error) {
-            results.push({
-              ok: false,
-              action,
-              target:
-                action === 'move'
-                  ? `${asOptionalString(item.oldPath)} -> ${asOptionalString(item.newPath)}`
-                  : asOptionalString(item.path),
-              message: asErrorMessage(error),
-            })
-          }
-        }
-
-        const successCount = results.filter((item) => item.ok).length
-        const errorCount = results.length - successCount
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'fs_file_ops',
-            action,
-            dryRun,
-            summary: {
-              total: results.length,
-              success: successCount,
-              failed: errorCount,
-            },
-            results,
-          }),
-        }
+        return executeFsFileOps({
+          app,
+          action,
+          items,
+          dryRun,
+          signal,
+          tool: 'fs_file_ops',
+        })
       }
 
       case 'open_skill': {

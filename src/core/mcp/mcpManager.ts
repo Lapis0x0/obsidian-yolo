@@ -24,8 +24,13 @@ import {
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
-  parseLocalFsFileOpActionFromArgs,
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  parseLocalFsActionFromToolArgs,
 } from './localFileTools'
+
+const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+)
 import {
   getToolName,
   parseToolName,
@@ -65,14 +70,12 @@ export class McpManager {
   }): string {
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
-      if (
-        serverName === getLocalFileToolServerName() &&
-        toolName === 'fs_file_ops'
-      ) {
-        const action = parseLocalFsFileOpActionFromArgs(requestArgs)
-        if (action) {
-          return `${requestToolName}::${action}`
-        }
+      const action =
+        serverName === getLocalFileToolServerName()
+          ? parseLocalFsActionFromToolArgs({ toolName, args: requestArgs })
+          : null
+      if (serverName === getLocalFileToolServerName() && action) {
+        return `${requestToolName}::${action}`
       }
     } catch {
       // ignore and fallback to tool-name-level key
@@ -87,19 +90,32 @@ export class McpManager {
     toolName: string
     requestArgs?: Record<string, unknown> | string
   }): boolean {
-    if (toolName !== 'fs_file_ops') {
-      return true
-    }
-    const action = parseLocalFsFileOpActionFromArgs(requestArgs)
+    const action = parseLocalFsActionFromToolArgs({
+      toolName,
+      args: requestArgs,
+    })
     if (!action) {
-      // Fail closed when action is missing or invalid
-      return false
+      if (toolName === 'fs_file_ops') {
+        // Fail closed when action is missing or invalid
+        return false
+      }
+      return true
     }
     return action !== 'delete_file' && action !== 'delete_dir'
   }
 
   private isLocalToolEnabled(toolName: string): boolean {
-    return !(this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false)
+    const directDisabled =
+      this.settings.mcp.builtinToolOptions[toolName]?.disabled
+    if (typeof directDisabled === 'boolean') {
+      return !directDisabled
+    }
+    if (LOCAL_FS_SPLIT_TOOL_NAME_SET.has(toolName)) {
+      return !(
+        this.settings.mcp.builtinToolOptions.fs_file_ops?.disabled ?? false
+      )
+    }
+    return true
   }
 
   constructor({
