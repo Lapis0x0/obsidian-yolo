@@ -420,9 +420,16 @@ export function useChatStreamManager({
           pendingLastUserMessageRef.current = lastMessage
           pendingAbortControllerRef.current = abortController
 
-          scheduleRunnerMessagesFlush({
-            immediate: !hasStreamingAssistantMessage(responseMessages),
-          })
+          const hasStreamingAssistant =
+            hasStreamingAssistantMessage(responseMessages)
+          const shouldImmediateFlush =
+            !hasStreamingAssistant &&
+            responseMessages.at(-1)?.role === 'assistant'
+
+          // Coalesce intermediate snapshots to avoid one-frame UI gaps between
+          // tool-phase completion and the next assistant streaming shell.
+          // Flush terminal assistant snapshots immediately for responsiveness.
+          scheduleRunnerMessagesFlush({ immediate: shouldImmediateFlush })
         }
 
         const agentService = plugin.getAgentService()

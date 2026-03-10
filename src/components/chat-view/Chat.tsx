@@ -500,6 +500,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return groupAssistantAndToolMessages(chatMessages)
     }, [chatMessages])
 
+  const latestAssistantToolGroupIndex = useMemo(() => {
+    for (let index = groupedChatMessages.length - 1; index >= 0; index -= 1) {
+      if (Array.isArray(groupedChatMessages[index])) {
+        return index
+      }
+    }
+    return -1
+  }, [groupedChatMessages])
+
   const firstUserMessageId = useMemo(() => {
     return chatMessages.find((message) => message.role === 'user')?.id
   }, [chatMessages])
@@ -1954,6 +1963,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 key={messageOrGroup.at(0)?.id}
                 messages={messageOrGroup}
                 conversationId={currentConversationId}
+                suppressFooter={
+                  submitChatMutation.isPending &&
+                  index === latestAssistantToolGroupIndex
+                }
                 isApplying={applyMutation.isPending}
                 activeApplyRequestKey={activeApplyRequestKey}
                 onApply={handleApply}
