@@ -170,27 +170,36 @@ export class SelectionHighlightController {
 
   clearHighlight(view?: EditorView) {
     if (!this.activeHighlight) {
+      if (view?.dom.isConnected) {
+        view.dispatch({
+          effects: setSelectionHighlightEffect.of(null),
+        })
+      }
       return
     }
 
     if (view && this.activeHighlight.view !== view) {
+      if (view.dom.isConnected) {
+        view.dispatch({
+          effects: setSelectionHighlightEffect.of(null),
+        })
+      }
       return
     }
 
     const { view: activeView, timeoutId } = this.activeHighlight
-    this.activeHighlight = null
 
     if (timeoutId !== null) {
       window.clearTimeout(timeoutId)
     }
 
-    if (!activeView.dom.isConnected) {
-      return
+    if (activeView.dom.isConnected) {
+      activeView.dispatch({
+        effects: setSelectionHighlightEffect.of(null),
+      })
     }
 
-    activeView.dispatch({
-      effects: setSelectionHighlightEffect.of(null),
-    })
+    this.activeHighlight = null
   }
 
   private isActiveView(view: EditorView): boolean {
