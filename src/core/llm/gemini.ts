@@ -463,11 +463,25 @@ export class GeminiProvider extends BaseLLMProvider<
     const reasoningText =
       reasoningPieces.length > 0 ? reasoningPieces.join('') : undefined
 
-    const toolCallsRaw = response.functionCalls
+    const functionCalls =
+      response.functionCalls ??
+      GeminiProvider.extractFunctionCallsFromParts(
+        response.candidates?.[0]?.content?.parts,
+      )
+
+    const toolCallsRaw = functionCalls
       ?.map((call) => GeminiProvider.mapFunctionCall(call))
       .filter((call): call is ToolCall => call !== null)
     const toolCalls =
       toolCallsRaw && toolCallsRaw.length > 0 ? toolCallsRaw : undefined
+
+    if (toolCalls && toolCalls.length > 0) {
+      console.debug('[Smart Composer] Gemini non-stream tool calls detected:', {
+        finishReason: response.candidates?.[0]?.finishReason ?? null,
+        count: toolCalls.length,
+        firstTool: toolCalls[0]?.function.name,
+      })
+    }
 
     return {
       id: messageId,
@@ -609,12 +623,26 @@ export class GeminiProvider extends BaseLLMProvider<
         }
       }
     }
+    const functionCalls =
+      chunk.functionCalls ??
+      GeminiProvider.extractFunctionCallsFromParts(
+        chunk.candidates?.[0]?.content?.parts,
+      )
+
     const toolCallDeltaRaw =
-      chunk.functionCalls
+      functionCalls
         ?.map((call, index) => GeminiProvider.mapFunctionCallDelta(call, index))
         .filter((call): call is ToolCallDelta => call !== null) ?? []
     const toolCallDeltas =
       toolCallDeltaRaw.length > 0 ? toolCallDeltaRaw : undefined
+
+    if (toolCallDeltas && toolCallDeltas.length > 0) {
+      console.debug('[Smart Composer] Gemini stream tool call deltas:', {
+        finishReason: chunk.candidates?.[0]?.finishReason ?? null,
+        count: toolCallDeltas.length,
+        firstTool: toolCallDeltas[0]?.function?.name,
+      })
+    }
 
     return {
       id: messageId,
@@ -639,6 +667,30 @@ export class GeminiProvider extends BaseLLMProvider<
           }
         : undefined,
     }
+  }
+
+  private static extractFunctionCallsFromParts(
+    parts: GeminiPart[] | undefined,
+  ): GeminiFunctionCall[] | undefined {
+    if (!Array.isArray(parts) || parts.length === 0) {
+      return undefined
+    }
+
+    const extracted = parts
+      .map((part) => {
+        if (!part || typeof part !== 'object') {
+          return null
+        }
+        const record = part as Record<string, unknown>
+        const functionCall = record.functionCall
+        if (!functionCall || typeof functionCall !== 'object') {
+          return null
+        }
+        return functionCall as GeminiFunctionCall
+      })
+      .filter((call): call is GeminiFunctionCall => call !== null)
+
+    return extracted.length > 0 ? extracted : undefined
   }
 
   private static validateImageType(mimeType: string) {
