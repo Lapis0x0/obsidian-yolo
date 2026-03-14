@@ -457,6 +457,11 @@
 .smtcmp-assistant-message-metadata {
   display: flex;
   flex-direction: column;
+  --smtcmp-assistant-metadata-dot-size: 6px;
+  --smtcmp-assistant-metadata-dot-gap: 8px;
+  --smtcmp-assistant-metadata-line-offset: calc(
+    var(--smtcmp-assistant-metadata-dot-size) / 2
+  );
   margin-top: 2px;
   margin-bottom: var(--size-4-1);
   transition:
@@ -492,8 +497,9 @@
   color: var(--text-muted);
   min-height: 0;
   overflow: hidden;
-  margin-left: 11px;
-  padding: 0 0 0 var(--size-4-2);
+  margin-left: var(--smtcmp-assistant-metadata-line-offset);
+  padding: 0 0 0
+    calc(var(--size-4-2) + var(--smtcmp-assistant-metadata-dot-gap));
   font-size: var(--font-ui-small);
   opacity: 0;
   transform: translateY(-4px);
@@ -537,8 +543,10 @@
 .smtcmp-assistant-message-metadata-preview {
   max-height: 0;
   overflow: hidden;
-  margin-left: 11px;
-  padding-left: var(--size-4-2);
+  margin-left: var(--smtcmp-assistant-metadata-line-offset);
+  padding-left: calc(
+    var(--size-4-2) + var(--smtcmp-assistant-metadata-dot-gap)
+  );
   color: color-mix(in srgb, var(--text-faint) 72%, var(--text-muted));
   font-size: var(--font-ui-smaller);
   line-height: 1.4;
@@ -645,8 +653,8 @@
 }
 
 .smtcmp-assistant-message-metadata-status-dot {
-  width: 6px;
-  height: 6px;
+  width: var(--smtcmp-assistant-metadata-dot-size);
+  height: var(--smtcmp-assistant-metadata-dot-size);
   flex: 0 0 auto;
   border-radius: 999px;
   background: var(--interactive-accent);
