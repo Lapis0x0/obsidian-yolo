@@ -142,7 +142,7 @@ export function applyOpenAICompatibleCapabilities(params: {
           thinkingBudget: budget,
           includeThoughts: true,
         }
-      } else {
+      } else if (!model.reasoning?.enabled) {
         request.reasoning = {
           ...(typeof request.reasoning === 'object' &&
           request.reasoning !== null

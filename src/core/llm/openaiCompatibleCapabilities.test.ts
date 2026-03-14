@@ -69,4 +69,27 @@ describe('openaiCompatibleCapabilities', () => {
 
     expect(capabilities.disableStreamOptions).toBe(true)
   })
+
+  it('does not inject reasoning exclude when reasoning is enabled and thinking is disabled', () => {
+    const request: Record<string, unknown> = {}
+
+    applyOpenAICompatibleCapabilities({
+      request,
+      model: {
+        ...baseModel,
+        thinking: {
+          enabled: false,
+          thinking_budget: 0,
+        },
+        reasoning: {
+          enabled: true,
+          reasoning_effort: 'high',
+        },
+      },
+      baseUrl: 'https://example-proxy.ai/v1',
+    })
+
+    expect(request.reasoning_effort).toBe('high')
+    expect(request.reasoning).toEqual({ effort: 'high' })
+  })
 })
