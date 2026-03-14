@@ -53,6 +53,7 @@ export type AgentWorkerInbound =
       type: 'llm_result'
       runId: string
       hasToolCalls: boolean
+      hasAssistantOutput: boolean
     }
   | {
       type: 'tool_result'

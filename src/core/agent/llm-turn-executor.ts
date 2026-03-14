@@ -54,7 +54,7 @@ type AgentLlmTurnExecutorInput = {
 type AgentLlmTurnExecutorOutput = {
   assistantMessage: ChatAssistantMessage
   toolCallRequests: ToolCallRequest[]
-  modelTerminated: boolean
+  hasAssistantOutput: boolean
 }
 
 export class AgentLlmTurnExecutor {
@@ -245,9 +245,9 @@ export class AgentLlmTurnExecutor {
     return {
       assistantMessage,
       toolCallRequests,
-      modelTerminated: this.isModelTerminationFinishReason(
-        turnResult.finishReason,
-      ),
+      hasAssistantOutput:
+        assistantMessage.content.trim().length > 0 ||
+        (assistantMessage.reasoning?.trim().length ?? 0) > 0,
     }
   }
 
@@ -298,22 +298,5 @@ export class AgentLlmTurnExecutor {
       ...this.input.model,
       ...reasoningLevelToConfig(this.input.reasoningLevel, this.input.model),
     } as ChatModel
-  }
-
-  private isModelTerminationFinishReason(
-    finishReason: string | null | undefined,
-  ): boolean {
-    if (!finishReason) {
-      return false
-    }
-    const normalized = finishReason.toLowerCase()
-    if (
-      normalized === 'tool_calls' ||
-      normalized === 'tool_call' ||
-      normalized === 'function_call'
-    ) {
-      return false
-    }
-    return true
   }
 }

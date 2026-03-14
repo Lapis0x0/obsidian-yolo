@@ -129,6 +129,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   type: 'llm_result',
                   runId,
                   hasToolCalls: shouldProceedToToolPhase(turnResult),
+                  hasAssistantOutput: turnResult.hasAssistantOutput,
                 })
                 return
               }
