@@ -40,6 +40,7 @@ describe('GeminiProvider response parsing', () => {
             content: {
               parts: [
                 {
+                  thoughtSignature: 'sig-stream-1',
                   functionCall: {
                     id: 'fc-2',
                     name: 'yolo_local__fs_search',
@@ -59,5 +60,46 @@ describe('GeminiProvider response parsing', () => {
     expect(parsed.choices[0]?.delta.tool_calls?.[0]?.function?.name).toBe(
       'yolo_local__fs_search',
     )
+    expect(
+      parsed.choices[0]?.delta.tool_calls?.[0]?.metadata?.thoughtSignature,
+    ).toBe('sig-stream-1')
+  })
+
+  it('attaches thought signature metadata when top-level functionCalls exist', () => {
+    const parsed = GeminiProvider.parseNonStreamingResponse(
+      {
+        text: '',
+        functionCalls: [
+          {
+            id: 'fc-3',
+            name: 'yolo_local__fs_list',
+            args: { path: '/' },
+          },
+        ],
+        candidates: [
+          {
+            finishReason: 'STOP',
+            content: {
+              parts: [
+                {
+                  thoughtSignature: 'sig-nonstream-1',
+                  functionCall: {
+                    id: 'fc-3',
+                    name: 'yolo_local__fs_list',
+                    args: { path: '/' },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      } as never,
+      'gemini-2.5-flash',
+      'msg-3',
+    )
+
+    expect(
+      parsed.choices[0]?.message.tool_calls?.[0]?.metadata?.thoughtSignature,
+    ).toBe('sig-nonstream-1')
   })
 })

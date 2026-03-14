@@ -2,6 +2,9 @@ export type ToolCallRequest = {
   id: string
   name: string
   arguments?: string
+  metadata?: {
+    thoughtSignature?: string
+  }
 }
 
 export type ToolCallResponse =

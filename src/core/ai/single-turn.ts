@@ -20,6 +20,9 @@ export type SingleTurnExecutionResult = {
     id?: string
     name: string
     arguments?: string
+    metadata?: {
+      thoughtSignature?: string
+    }
   }[]
 }
 
@@ -110,6 +113,7 @@ export async function executeSingleTurn({
               id: toolCall.id,
               name,
               arguments: toolCall.function?.arguments,
+              metadata: toolCall.metadata,
             }
           })
           .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
@@ -223,6 +227,7 @@ export async function executeSingleTurn({
           id: toolCall.id,
           name,
           arguments: toolCall.function?.arguments,
+          metadata: toolCall.metadata,
         }
       })
       .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
@@ -290,6 +295,7 @@ function mergeToolCallDeltas(
       index,
       id: merged[index].id ?? toolCall.id,
       type: merged[index].type ?? toolCall.type,
+      metadata: merged[index].metadata ?? toolCall.metadata,
     }
 
     if (merged[index].function || toolCall.function) {

@@ -45,6 +45,9 @@ type GeminiStreamChunk =
 type GeminiRequestConfig = GeminiGenerateContentConfig & {
   abortSignal?: AbortSignal
 }
+type GeminiFunctionCallWithMetadata = GeminiFunctionCall & {
+  thoughtSignature?: string
+}
 
 /**
  * TODO: Consider future migration from '@google/generative-ai' to '@google/genai' (https://github.com/googleapis/js-genai)
@@ -463,11 +466,10 @@ export class GeminiProvider extends BaseLLMProvider<
     const reasoningText =
       reasoningPieces.length > 0 ? reasoningPieces.join('') : undefined
 
-    const functionCalls =
-      response.functionCalls ??
-      GeminiProvider.extractFunctionCallsFromParts(
-        response.candidates?.[0]?.content?.parts,
-      )
+    const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
+      functionCalls: response.functionCalls,
+      parts: response.candidates?.[0]?.content?.parts,
+    })
 
     const toolCallsRaw = functionCalls
       ?.map((call) => GeminiProvider.mapFunctionCall(call))
@@ -528,16 +530,23 @@ export class GeminiProvider extends BaseLLMProvider<
   }
 
   private static mapFunctionCall(
-    call: GeminiFunctionCall | undefined,
+    call: GeminiFunctionCallWithMetadata | undefined,
   ): ToolCall | null {
     if (!call?.name) {
       return null
     }
     const args = call.args && typeof call.args === 'object' ? call.args : {}
 
+    const thoughtSignature =
+      typeof call.thoughtSignature === 'string' &&
+      call.thoughtSignature.trim().length > 0
+        ? call.thoughtSignature
+        : undefined
+
     return {
       id: call.id ?? uuidv4(),
       type: 'function' as const,
+      metadata: thoughtSignature ? { thoughtSignature } : undefined,
       function: {
         name: call.name,
         arguments: JSON.stringify(args),
@@ -546,7 +555,7 @@ export class GeminiProvider extends BaseLLMProvider<
   }
 
   private static mapFunctionCallDelta(
-    call: GeminiFunctionCall | undefined,
+    call: GeminiFunctionCallWithMetadata | undefined,
     index: number,
   ): ToolCallDelta | null {
     const base = this.mapFunctionCall(call)
@@ -557,6 +566,7 @@ export class GeminiProvider extends BaseLLMProvider<
       index,
       id: base.id,
       type: base.type,
+      metadata: base.metadata,
       function: base.function,
     }
   }
@@ -623,11 +633,10 @@ export class GeminiProvider extends BaseLLMProvider<
         }
       }
     }
-    const functionCalls =
-      chunk.functionCalls ??
-      GeminiProvider.extractFunctionCallsFromParts(
-        chunk.candidates?.[0]?.content?.parts,
-      )
+    const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
+      functionCalls: chunk.functionCalls,
+      parts: chunk.candidates?.[0]?.content?.parts,
+    })
 
     const toolCallDeltaRaw =
       functionCalls
@@ -669,26 +678,57 @@ export class GeminiProvider extends BaseLLMProvider<
     }
   }
 
+  private static resolveFunctionCallsWithMetadata({
+    functionCalls,
+    parts,
+  }: {
+    functionCalls: GeminiFunctionCall[] | undefined
+    parts: GeminiPart[] | undefined
+  }): GeminiFunctionCallWithMetadata[] | undefined {
+    const fromParts = GeminiProvider.extractFunctionCallsFromParts(parts)
+    if (!functionCalls || functionCalls.length === 0) {
+      return fromParts
+    }
+
+    return functionCalls.map((call, index) => {
+      const partCall = fromParts?.[index]
+      if (!partCall?.thoughtSignature) {
+        return call as GeminiFunctionCallWithMetadata
+      }
+      return {
+        ...(call as GeminiFunctionCallWithMetadata),
+        thoughtSignature: partCall.thoughtSignature,
+      }
+    })
+  }
+
   private static extractFunctionCallsFromParts(
     parts: GeminiPart[] | undefined,
-  ): GeminiFunctionCall[] | undefined {
+  ): GeminiFunctionCallWithMetadata[] | undefined {
     if (!Array.isArray(parts) || parts.length === 0) {
       return undefined
     }
 
-    const extracted = parts
-      .map((part) => {
-        if (!part || typeof part !== 'object') {
-          return null
-        }
-        const record = part as Record<string, unknown>
-        const functionCall = record.functionCall
-        if (!functionCall || typeof functionCall !== 'object') {
-          return null
-        }
-        return functionCall as GeminiFunctionCall
+    const extracted: GeminiFunctionCallWithMetadata[] = []
+
+    for (const part of parts) {
+      if (!part || typeof part !== 'object') {
+        continue
+      }
+      const record = part as Record<string, unknown>
+      const functionCall = record.functionCall
+      if (!functionCall || typeof functionCall !== 'object') {
+        continue
+      }
+      const thoughtSignature =
+        typeof record.thoughtSignature === 'string'
+          ? record.thoughtSignature
+          : undefined
+      extracted.push({
+        ...(functionCall as GeminiFunctionCallWithMetadata),
+        thoughtSignature,
       })
-      .filter((call): call is GeminiFunctionCall => call !== null)
+    }
 
     return extracted.length > 0 ? extracted : undefined
   }

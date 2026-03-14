@@ -195,6 +195,7 @@ export class AgentLlmTurnExecutor {
                 arguments: isWriteTool
                   ? undefined
                   : toolCall.function?.arguments,
+                metadata: toolCall.metadata,
               }
             })
             .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
@@ -236,6 +237,7 @@ export class AgentLlmTurnExecutor {
       id: toolCall.id ?? uuidv4(),
       name: this.normalizeToolCallName(toolCall.name),
       arguments: toolCall.arguments,
+      metadata: toolCall.metadata,
     }))
 
     assistantMessage.toolCallRequests =

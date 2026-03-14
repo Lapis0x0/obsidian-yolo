@@ -70,6 +70,9 @@ type Error = {
 export type ToolCall = {
   id?: string
   type: 'function'
+  metadata?: {
+    thoughtSignature?: string
+  }
   function: {
     arguments?: string
     name: string
@@ -80,6 +83,9 @@ export type ToolCallDelta = {
   index: number
   id?: string
   type?: 'function'
+  metadata?: {
+    thoughtSignature?: string
+  }
   function?: {
     arguments?: string
     name?: string
