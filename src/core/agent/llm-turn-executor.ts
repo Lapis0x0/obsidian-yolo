@@ -15,7 +15,6 @@ import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
   getLocalFileToolServerName,
-  isLocalFsWriteToolName,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
@@ -68,7 +67,6 @@ export class AgentLlmTurnExecutor {
     'fs_create_dir',
     'fs_delete_dir',
     'fs_move',
-    'fs_file_ops',
     'open_skill',
   ])
 
@@ -185,16 +183,13 @@ export class AgentLlmTurnExecutor {
               }
 
               const normalizedName = this.normalizeToolCallName(name)
-              const isWriteTool = isLocalFsWriteToolName(normalizedName)
 
               return {
                 id:
                   toolCall.id ??
                   `${assistantMessage.id}-stream-tool-${toolCall.index}`,
                 name: normalizedName,
-                arguments: isWriteTool
-                  ? undefined
-                  : toolCall.function?.arguments,
+                arguments: toolCall.function?.arguments,
                 metadata: toolCall.metadata,
               }
             })

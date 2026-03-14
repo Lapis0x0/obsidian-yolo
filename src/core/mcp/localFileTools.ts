@@ -37,7 +37,6 @@ type LocalFileToolName =
   | 'fs_create_dir'
   | 'fs_delete_dir'
   | 'fs_move'
-  | 'fs_file_ops'
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsListScope = 'files' | 'dirs' | 'all'
@@ -97,7 +96,6 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
 
 const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'fs_edit',
-  'fs_file_ops',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 ])
 
@@ -512,51 +510,6 @@ export function getLocalFileTools(): McpTool[] {
       },
     },
     {
-      name: 'fs_file_ops',
-      description:
-        'Legacy batch file/folder operations. Prefer fs_create_file/fs_delete_file/fs_create_dir/fs_delete_dir/fs_move for single operations.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          action: {
-            type: 'string',
-            enum: [
-              'create_file',
-              'delete_file',
-              'create_dir',
-              'delete_dir',
-              'move',
-            ],
-            description: 'File operation to run for each item.',
-          },
-          items: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                path: { type: 'string' },
-                oldPath: { type: 'string' },
-                newPath: { type: 'string' },
-                content: { type: 'string' },
-                recursive: {
-                  type: 'boolean',
-                  description:
-                    'Only for delete_dir. Default false; when false non-empty folders cannot be deleted.',
-                },
-              },
-            },
-            description: `Operation items. Maximum ${MAX_BATCH_WRITE_ITEMS} items per call.`,
-          },
-          dryRun: {
-            type: 'boolean',
-            description:
-              'If true, validate and preview results without applying changes.',
-          },
-        },
-        required: ['action', 'items'],
-      },
-    },
-    {
       name: 'open_skill',
       description:
         'Load a lite skill from the configured skills directory by id or name and return full markdown content.',
@@ -846,22 +799,6 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
   return { operations }
 }
 
-const getFsFileOpAction = (args: Record<string, unknown>): FsFileOpAction => {
-  const value = args.action
-  if (
-    value !== 'create_file' &&
-    value !== 'delete_file' &&
-    value !== 'create_dir' &&
-    value !== 'delete_dir' &&
-    value !== 'move'
-  ) {
-    throw new Error(
-      'action must be one of: create_file, delete_file, create_dir, delete_dir, move.',
-    )
-  }
-  return value
-}
-
 const ensureParentFolderExists = (app: App, path: string): void => {
   const parentFolderPath = getParentFolderPath(path)
   if (!parentFolderPath) {
@@ -875,25 +812,6 @@ const ensureParentFolderExists = (app: App, path: string): void => {
 
 const formatJsonResult = (payload: unknown): string => {
   return JSON.stringify(payload, null, 2)
-}
-
-export function parseLocalFsFileOpActionFromArgs(
-  args?: Record<string, unknown> | string,
-): FsFileOpAction | null {
-  try {
-    const parsedArgs: Record<string, unknown> | undefined =
-      typeof args === 'string'
-        ? args.trim() === ''
-          ? {}
-          : (JSON.parse(args) as Record<string, unknown>)
-        : args
-    if (!parsedArgs) {
-      return null
-    }
-    return getFsFileOpAction(parsedArgs)
-  } catch {
-    return null
-  }
 }
 
 const normalizeLocalToolName = (toolName: string): string => {
@@ -910,7 +828,7 @@ export function isLocalFsWriteToolName(toolName: string): boolean {
 
 export function parseLocalFsActionFromToolArgs({
   toolName,
-  args,
+  args: _args,
 }: {
   toolName: string
   args?: Record<string, unknown> | string
@@ -922,9 +840,6 @@ export function parseLocalFsActionFromToolArgs({
     ]
   if (splitAction) {
     return splitAction
-  }
-  if (normalizedToolName === 'fs_file_ops') {
-    return parseLocalFsFileOpActionFromArgs(args)
   }
   return null
 }
@@ -1675,20 +1590,6 @@ export async function callLocalFileTool({
             results,
           }),
         }
-      }
-
-      case 'fs_file_ops': {
-        const action = getFsFileOpAction(args)
-        const items = getRecordArrayArg(args, 'items')
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
-        return executeFsFileOps({
-          app,
-          action,
-          items,
-          dryRun,
-          signal,
-          tool: 'fs_file_ops',
-        })
       }
 
       case 'open_skill': {

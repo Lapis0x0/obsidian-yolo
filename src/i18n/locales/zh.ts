@@ -307,7 +307,8 @@ export const zh: TranslationKeys = {
       fsEditReviewToggleDesc:
         '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
       builtinFsFileOpsLabel: '文件操作',
-      builtinFsFileOpsDesc: '执行文件与文件夹操作（创建、删除、移动）。',
+      builtinFsFileOpsDesc:
+        '聚合文件路径操作：创建/删除文件、创建/删除文件夹、移动路径。',
       builtinOpenSkillLabel: '加载技能',
       builtinOpenSkillDesc: '按 id 或名称读取技能 Markdown 内容。',
       editorDefaultName: '新建 Agent',

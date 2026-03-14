@@ -62,6 +62,7 @@ type AgentToolView = {
 }
 
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
 
 const BUILTIN_TOOL_LABEL_KEYS: Record<
   string,
@@ -102,7 +103,8 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     key: 'settings.agent.builtinFsFileOpsLabel',
     descKey: 'settings.agent.builtinFsFileOpsDesc',
     fallback: 'File Operations',
-    descFallback: 'Create, move, and delete files or folders in the vault.',
+    descFallback:
+      'Grouped file path operations: create/delete file, create/delete folder, and move.',
   },
   open_skill: {
     key: 'settings.agent.builtinOpenSkillLabel',
@@ -520,6 +522,7 @@ export function AgentsSectionContent({
 
   const visibleToolGroups = useMemo(() => {
     const groups = new Map<string, { title: string; tools: AgentToolView[] }>()
+    const localSplitToolTargets = new Set<string>()
 
     availableTools.forEach((tool) => {
       let serverName = localFsServerName
@@ -539,6 +542,7 @@ export function AgentsSectionContent({
         return
       }
       if (isBuiltin && SPLIT_FS_TOOL_NAME_SET.has(toolName)) {
+        localSplitToolTargets.add(tool.name)
         return
       }
 
@@ -554,24 +558,32 @@ export function AgentsSectionContent({
         ? t(builtinMeta.descKey, builtinMeta.descFallback)
         : tool.description || t('common.none', 'None')
       const group = groups.get(key) ?? { title, tools: [] }
-      const splitToolTargets = LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.flatMap(
-        (splitToolName) =>
-          tool.name.includes('__')
-            ? [`${serverName}__${splitToolName}`]
-            : [splitToolName, `${serverName}__${splitToolName}`],
-      )
-      const toggleTargets =
-        isBuiltin && toolName === 'fs_file_ops'
-          ? [tool.name, ...splitToolTargets]
-          : [tool.name]
       group.tools.push({
         fullName: tool.name,
-        toggleTargets,
+        toggleTargets: [tool.name],
         displayName,
         description,
       })
       groups.set(key, group)
     })
+
+    if (
+      draftAgent?.includeBuiltinTools !== false &&
+      localSplitToolTargets.size > 0
+    ) {
+      const key = localFsServerName
+      const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
+      const fileOpsMeta = BUILTIN_TOOL_LABEL_KEYS[FILE_OPS_GROUP_TOOL_NAME]
+      const group = groups.get(key) ?? { title, tools: [] }
+      const prefixedAlias = `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`
+      group.tools.push({
+        fullName: prefixedAlias,
+        toggleTargets: [...localSplitToolTargets],
+        displayName: t(fileOpsMeta.key, fileOpsMeta.fallback),
+        description: t(fileOpsMeta.descKey, fileOpsMeta.descFallback),
+      })
+      groups.set(key, group)
+    }
 
     return [...groups.entries()]
       .sort(([a], [b]) => {
@@ -591,7 +603,10 @@ export function AgentsSectionContent({
     const enabled = new Set(draftAgent?.enabledToolNames ?? [])
     return visibleToolGroups.reduce(
       (sum, group) =>
-        sum + group.tools.filter((tool) => enabled.has(tool.fullName)).length,
+        sum +
+        group.tools.filter((tool) =>
+          tool.toggleTargets.every((target) => enabled.has(target)),
+        ).length,
       0,
     )
   }, [draftAgent?.enabledToolNames, visibleToolGroups])

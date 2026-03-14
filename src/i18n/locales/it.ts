@@ -354,7 +354,7 @@ export const it: TranslationKeys = {
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
       builtinFsFileOpsLabel: 'Operazioni file',
       builtinFsFileOpsDesc:
-        'Crea, sposta ed elimina file o cartelle nel vault.',
+        'Operazioni percorso file raggruppate: crea/elimina file, crea/elimina cartelle e sposta.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
       editorDefaultName: 'Nuovo agent',

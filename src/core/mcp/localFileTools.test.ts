@@ -39,15 +39,6 @@ describe('local fs tool action helpers', () => {
     ).toBe('delete_dir')
   })
 
-  it('parses legacy fs_file_ops actions from arguments', () => {
-    expect(
-      parseLocalFsActionFromToolArgs({
-        toolName: 'fs_file_ops',
-        args: '{"action":"move","items":[{"oldPath":"a.md","newPath":"b.md"}]}',
-      }),
-    ).toBe('move')
-  })
-
   it('recognizes write tool names with local prefixes', () => {
     expect(isLocalFsWriteToolName('fs_edit')).toBe(true)
     expect(isLocalFsWriteToolName('yolo_local__fs_move')).toBe(true)
