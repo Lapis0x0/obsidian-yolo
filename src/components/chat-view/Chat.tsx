@@ -420,6 +420,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [setSettings, settings],
   )
 
+  const persistPreferredChatMode = useCallback(
+    async (mode: ChatMode) => {
+      if (settings.chatOptions.chatMode === mode) {
+        return
+      }
+
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            chatMode: mode,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist preferred chat mode', error)
+      }
+    },
+    [setSettings, settings],
+  )
+
+  const persistPreferredAssistantId = useCallback(
+    async (assistantId: string) => {
+      if (settings.currentAssistantId === assistantId) {
+        return
+      }
+
+      try {
+        await setSettings({
+          ...settings,
+          currentAssistantId: assistantId,
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist preferred assistant', error)
+      }
+    },
+    [setSettings, settings],
+  )
+
   const applyAssistantDefaultModel = useCallback(
     (assistantModelId?: string | null) => {
       if (!assistantModelId) {
@@ -454,6 +493,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     (assistantId: string) => {
       setConversationAssistantId(assistantId)
       conversationAssistantIdRef.current.set(currentConversationId, assistantId)
+      void persistPreferredAssistantId(assistantId)
       const assistant = settings.assistants.find(
         (item) => item.id === assistantId,
       )
@@ -461,7 +501,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         applyAssistantDefaultModel(assistant.modelId)
       }
     },
-    [applyAssistantDefaultModel, currentConversationId, settings.assistants],
+    [
+      applyAssistantDefaultModel,
+      currentConversationId,
+      persistPreferredAssistantId,
+      settings.assistants,
+    ],
   )
 
   useEffect(() => {
@@ -1930,6 +1975,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ),
           onConfirm: () => {
             applyChatModeChange('agent')
+            void persistPreferredChatMode('agent')
             void (async () => {
               try {
                 await setSettings({
@@ -1952,6 +1998,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       applyChatModeChange(resolvedMode)
+      void persistPreferredChatMode(resolvedMode)
 
       if (
         resolvedMode === 'agent' &&
@@ -1967,6 +2014,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       applyChatModeChange,
       conversationModelId,
       selectedAssistant?.modelId,
+      persistPreferredChatMode,
       setSettings,
       settings,
       t,
