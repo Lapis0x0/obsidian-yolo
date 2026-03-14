@@ -1,6 +1,6 @@
 import type { RequestMessage } from '../../types/llm/request'
 
-import { filterRequestMessagesByToolBoundary } from './promptGenerator'
+import { filterRequestMessagesByToolBoundary } from './tool-boundary'
 
 const assistantWithTools = (toolIds: string[]): RequestMessage => ({
   role: 'assistant',
@@ -47,9 +47,26 @@ describe('filterRequestMessagesByToolBoundary', () => {
 
     expect(output).toHaveLength(2)
     expect(output.find((message) => message.role === 'tool')).toBeUndefined()
+    expect(output[0]?.role).toBe('assistant')
+    if (output[0]?.role === 'assistant') {
+      expect(output[0].tool_calls).toBeUndefined()
+    }
   })
 
-  it('keeps multiple ordered tool responses for same assistant', () => {
+  it('drops incomplete tool groups when only partial tool responses exist', () => {
+    const input: RequestMessage[] = [
+      assistantWithTools(['call-1', 'call-2']),
+      toolMessage('call-2'),
+      { role: 'user', content: 'interrupt' },
+    ]
+
+    const output = filterRequestMessagesByToolBoundary(input)
+
+    expect(output).toHaveLength(2)
+    expect(output.filter((message) => message.role === 'tool')).toHaveLength(0)
+  })
+
+  it('keeps complete tool groups with multiple tool responses', () => {
     const input: RequestMessage[] = [
       assistantWithTools(['call-1', 'call-2']),
       toolMessage('call-2'),
