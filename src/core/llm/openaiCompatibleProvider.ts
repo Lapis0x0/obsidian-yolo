@@ -22,6 +22,7 @@ import { extractEmbeddingVector } from './embedding-utils'
 import { LLMBaseUrlNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { applyOpenAICompatibleCapabilities } from './openaiCompatibleCapabilities'
 
 type GeminiThinkingConfig = {
   thinking_budget: number
@@ -140,29 +141,19 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
       }
     }
 
-    // Inject Gemini thinking config for OpenAI-compatible gateways if user selected Gemini reasoning
-    if (model.thinking?.enabled) {
-      const budget = model.thinking.thinking_budget
-      // Use both snake_case and camelCase to maximize compatibility
-      formattedRequest.thinking_config = {
-        thinking_budget: budget,
-        include_thoughts: true,
-      }
-      formattedRequest.thinkingConfig = {
-        thinkingBudget: budget,
-        includeThoughts: true,
-      }
-    }
-    // Inject OpenAI reasoning effort for compatible gateways if user enabled OpenAI reasoning
-    if (model.reasoning?.enabled) {
+    applyOpenAICompatibleCapabilities({
+      request: formattedRequest,
+      model,
+      baseUrl: this.provider.baseUrl,
+    })
+
+    // Keep explicit ReasoningEffort typing fallback for strongly OpenAI-like gateways.
+    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
       const effort = model.reasoning.reasoning_effort as
         | ReasoningEffort
         | undefined
       if (effort) {
-        // Pass the flat field (widely supported by OpenAI-compatible proxies)
         formattedRequest.reasoning_effort = effort
-        // Also add a nested object for gateways that prefer `reasoning: { effort }`
-        formattedRequest.reasoning = { effort }
       }
     }
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
@@ -240,24 +231,18 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
       }
     }
 
-    if (model.thinking?.enabled) {
-      const budget = model.thinking.thinking_budget
-      formattedRequest.thinking_config = {
-        thinking_budget: budget,
-        include_thoughts: true,
-      }
-      formattedRequest.thinkingConfig = {
-        thinkingBudget: budget,
-        includeThoughts: true,
-      }
-    }
-    if (model.reasoning?.enabled) {
+    applyOpenAICompatibleCapabilities({
+      request: formattedRequest,
+      model,
+      baseUrl: this.provider.baseUrl,
+    })
+
+    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
       const effort = model.reasoning.reasoning_effort as
         | ReasoningEffort
         | undefined
       if (effort) {
         formattedRequest.reasoning_effort = effort
-        formattedRequest.reasoning = { effort }
       }
     }
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)

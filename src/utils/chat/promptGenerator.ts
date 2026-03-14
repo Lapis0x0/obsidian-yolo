@@ -38,6 +38,7 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
+import { filterRequestMessagesByToolBoundary } from './tool-boundary'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
@@ -240,46 +241,7 @@ export class PromptGenerator {
       requestMessages.push(...this.parseToolMessage({ message }))
     }
 
-    const filteredRequestMessages: RequestMessage[] = []
-    let pendingToolCallIds = new Set<string>()
-
-    for (const msg of requestMessages) {
-      if (msg.role === 'assistant') {
-        const normalizedToolCalls = msg.tool_calls?.filter((toolCall) => {
-          return (
-            typeof toolCall.id === 'string' && toolCall.id.trim().length > 0
-          )
-        })
-
-        pendingToolCallIds = new Set(
-          (normalizedToolCalls ?? []).map((toolCall) => toolCall.id),
-        )
-
-        filteredRequestMessages.push({
-          ...msg,
-          tool_calls:
-            normalizedToolCalls && normalizedToolCalls.length > 0
-              ? normalizedToolCalls
-              : undefined,
-        })
-        continue
-      }
-
-      if (msg.role === 'tool') {
-        const callId = msg.tool_call.id
-        if (!pendingToolCallIds.has(callId)) {
-          continue
-        }
-        pendingToolCallIds.delete(callId)
-        filteredRequestMessages.push(msg)
-        continue
-      }
-
-      pendingToolCallIds = new Set()
-      filteredRequestMessages.push(msg)
-    }
-
-    return filteredRequestMessages
+    return filterRequestMessagesByToolBoundary(requestMessages)
   }
 
   private async getUserMessageContent({

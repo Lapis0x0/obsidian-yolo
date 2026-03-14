@@ -1,0 +1,81 @@
+import type { RequestMessage } from '../../types/llm/request'
+
+import { filterRequestMessagesByToolBoundary } from './tool-boundary'
+
+const assistantWithTools = (toolIds: string[]): RequestMessage => ({
+  role: 'assistant',
+  content: '',
+  tool_calls: toolIds.map((id, index) => ({
+    id,
+    name: `tool_${index}`,
+    arguments: '{}',
+  })),
+})
+
+const toolMessage = (id: string): RequestMessage => ({
+  role: 'tool',
+  tool_call: {
+    id,
+    name: 'tool',
+    arguments: '{}',
+  },
+  content: `result:${id}`,
+})
+
+describe('filterRequestMessagesByToolBoundary', () => {
+  it('keeps only matching tool responses after assistant tool calls', () => {
+    const input: RequestMessage[] = [
+      assistantWithTools(['call-1']),
+      toolMessage('call-1'),
+      toolMessage('call-x'),
+    ]
+
+    const output = filterRequestMessagesByToolBoundary(input)
+
+    expect(output).toHaveLength(2)
+    expect(output[1]).toEqual(toolMessage('call-1'))
+  })
+
+  it('drops tool responses when boundary is broken by non-tool message', () => {
+    const input: RequestMessage[] = [
+      assistantWithTools(['call-1']),
+      { role: 'user', content: 'next turn' },
+      toolMessage('call-1'),
+    ]
+
+    const output = filterRequestMessagesByToolBoundary(input)
+
+    expect(output).toHaveLength(2)
+    expect(output.find((message) => message.role === 'tool')).toBeUndefined()
+    expect(output[0]?.role).toBe('assistant')
+    if (output[0]?.role === 'assistant') {
+      expect(output[0].tool_calls).toBeUndefined()
+    }
+  })
+
+  it('drops incomplete tool groups when only partial tool responses exist', () => {
+    const input: RequestMessage[] = [
+      assistantWithTools(['call-1', 'call-2']),
+      toolMessage('call-2'),
+      { role: 'user', content: 'interrupt' },
+    ]
+
+    const output = filterRequestMessagesByToolBoundary(input)
+
+    expect(output).toHaveLength(2)
+    expect(output.filter((message) => message.role === 'tool')).toHaveLength(0)
+  })
+
+  it('keeps complete tool groups with multiple tool responses', () => {
+    const input: RequestMessage[] = [
+      assistantWithTools(['call-1', 'call-2']),
+      toolMessage('call-2'),
+      toolMessage('call-1'),
+    ]
+
+    const output = filterRequestMessagesByToolBoundary(input)
+
+    expect(output).toHaveLength(3)
+    expect(output.filter((message) => message.role === 'tool')).toHaveLength(2)
+  })
+})

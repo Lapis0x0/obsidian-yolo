@@ -29,6 +29,7 @@ export type AssistantToolMessageGroupItemProps = {
   onEditCancel: () => void
   onEditSave: (messageId: string, content: string) => void
   onDeleteGroup: (messageIds: string[]) => void
+  onBranchGroup: (messageIds: string[]) => void
 }
 
 export default function AssistantToolMessageGroupItem({
@@ -44,6 +45,7 @@ export default function AssistantToolMessageGroupItem({
   onEditCancel,
   onEditSave,
   onDeleteGroup,
+  onBranchGroup,
 }: AssistantToolMessageGroupItemProps) {
   const assistantMessages = messages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
@@ -138,6 +140,13 @@ export default function AssistantToolMessageGroupItem({
             <LLMResponseInlineInfo messages={messages} />
             <AssistantToolMessageGroupActions
               messages={messages}
+              onBranch={
+                !isStreaming
+                  ? () => {
+                      onBranchGroup(messages.map((message) => message.id))
+                    }
+                  : undefined
+              }
               onEdit={
                 editableAssistantMessageId && !isStreaming
                   ? () => {

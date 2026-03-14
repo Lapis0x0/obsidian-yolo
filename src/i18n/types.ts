@@ -715,6 +715,13 @@ export type TranslationKeys = {
     addContext: string
     applyChanges: string
     copyMessage: string
+    createBranchFromHere?: string
+    branchCreated?: string
+    branchCreateFailed?: string
+    insertAtCursor?: string
+    insertSuccess?: string
+    insertUnavailable?: string
+    noAssistantContent?: string
     regenerate: string
     reasoning: string
     annotations: string

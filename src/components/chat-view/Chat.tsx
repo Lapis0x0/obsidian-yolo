@@ -553,6 +553,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
+  const bottomAnchorRef = useRef<HTMLDivElement>(null)
   const hasStreamingMessages = useMemo(
     () =>
       chatMessages.some(
@@ -565,6 +566,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const { autoScrollToBottom, forceScrollToBottom } = useAutoScroll({
     scrollContainerRef: chatMessagesRef,
+    bottomAnchorRef,
     isStreaming: hasStreamingMessages,
   })
 
@@ -867,6 +869,165 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )
     },
     [persistConversation],
+  )
+
+  const handleAssistantMessageGroupBranch = useCallback(
+    (messageIds: string[]) => {
+      if (messageIds.length === 0) return
+
+      const sourceMessages = chatMessagesStateRef.current
+      const targetIds = new Set(messageIds)
+      let branchEndIndex = -1
+      for (let i = sourceMessages.length - 1; i >= 0; i -= 1) {
+        if (targetIds.has(sourceMessages[i].id)) {
+          branchEndIndex = i
+          break
+        }
+      }
+
+      if (branchEndIndex < 0) {
+        new Notice(t('chat.branchCreateFailed', 'Failed to create branch'))
+        return
+      }
+
+      const nextMessages = sourceMessages.slice(0, branchEndIndex + 1)
+      if (nextMessages.length === 0) {
+        new Notice(t('chat.branchCreateFailed', 'Failed to create branch'))
+        return
+      }
+
+      const sourceTitle =
+        chatList.find((chat) => chat.id === currentConversationId)?.title ??
+        t('chat.newChat', 'New chat')
+      const branchTitle = `${sourceTitle} (copy)`
+
+      const newConversationId = uuidv4()
+      const nextOverrides =
+        conversationOverridesRef.current.get(currentConversationId) ??
+        conversationOverrides ??
+        null
+      const rawNextChatMode = nextOverrides?.chatMode
+      const resolvedNextChatMode: ChatMode =
+        rawNextChatMode === 'agent' || rawNextChatMode === 'chat'
+          ? rawNextChatMode
+          : chatMode
+      const nextChatMode =
+        !Platform.isDesktop && resolvedNextChatMode === 'agent'
+          ? 'chat'
+          : resolvedNextChatMode
+      const storedAutoAttach = nextOverrides?.autoAttachCurrentFile
+      const resolvedAutoAttach =
+        typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
+
+      const resolvedConversationModelId =
+        conversationModelIdRef.current.get(currentConversationId) ??
+        conversationModelId ??
+        settings.chatModelId
+      const resolvedReasoningLevel =
+        conversationReasoningLevelRef.current.get(currentConversationId) ??
+        reasoningLevel
+
+      const retainedUserMessageIds = new Set(
+        nextMessages
+          .filter(
+            (message): message is ChatUserMessage => message.role === 'user',
+          )
+          .map((message) => message.id),
+      )
+
+      const nextMessageModelMap = new Map(
+        Array.from(messageModelMap.entries()).filter(([messageId]) =>
+          retainedUserMessageIds.has(messageId),
+        ),
+      )
+      const nextMessageReasoningMap = new Map(
+        Array.from(messageReasoningMap.entries()).filter(([messageId]) =>
+          retainedUserMessageIds.has(messageId),
+        ),
+      )
+
+      abortActiveStreams()
+      setCurrentConversationId(newConversationId)
+      setChatMessages(nextMessages)
+      setEditingAssistantMessageId(null)
+
+      setConversationOverrides(nextOverrides)
+      if (nextOverrides) {
+        conversationOverridesRef.current.set(newConversationId, nextOverrides)
+      } else {
+        conversationOverridesRef.current.delete(newConversationId)
+      }
+
+      setChatMode(nextChatMode)
+      setAutoAttachCurrentFile(resolvedAutoAttach)
+      conversationAutoAttachRef.current.set(
+        newConversationId,
+        resolvedAutoAttach,
+      )
+
+      setConversationAssistantId(conversationAssistantId)
+      conversationAssistantIdRef.current.set(
+        newConversationId,
+        conversationAssistantId,
+      )
+
+      setConversationModelId(resolvedConversationModelId)
+      conversationModelIdRef.current.set(
+        newConversationId,
+        resolvedConversationModelId,
+      )
+
+      setReasoningLevel(resolvedReasoningLevel)
+      conversationReasoningLevelRef.current.set(
+        newConversationId,
+        resolvedReasoningLevel,
+      )
+
+      setMessageModelMap(nextMessageModelMap)
+      setMessageReasoningMap(nextMessageReasoningMap)
+
+      const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
+      setInputMessage(newInputMessage)
+      setFocusedMessageId(newInputMessage.id)
+      setQueryProgress({ type: 'idle' })
+
+      void (async () => {
+        await createOrUpdateConversationImmediately(
+          newConversationId,
+          nextMessages,
+          {
+            ...(nextOverrides ?? {}),
+            chatMode: nextChatMode,
+            autoAttachCurrentFile: resolvedAutoAttach,
+          },
+          resolvedConversationModelId,
+          serializeMessageModelMap(nextMessages, nextMessageModelMap),
+          resolvedReasoningLevel,
+        )
+        await updateConversationTitle(newConversationId, branchTitle)
+        new Notice(t('chat.branchCreated', 'Branch created'))
+      })().catch((error) => {
+        new Notice(t('chat.branchCreateFailed', 'Failed to create branch'))
+        console.error('Failed to create branched conversation', error)
+      })
+    },
+    [
+      abortActiveStreams,
+      chatList,
+      chatMode,
+      conversationAssistantId,
+      conversationModelId,
+      conversationOverrides,
+      createOrUpdateConversationImmediately,
+      currentConversationId,
+      messageModelMap,
+      messageReasoningMap,
+      reasoningLevel,
+      serializeMessageModelMap,
+      settings.chatModelId,
+      t,
+      updateConversationTitle,
+    ],
   )
 
   const resolveReasoningLevelForMessages = useCallback(
@@ -1978,6 +2139,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 onEditCancel={handleAssistantMessageEditCancel}
                 onEditSave={handleAssistantMessageEditSave}
                 onDeleteGroup={handleAssistantMessageGroupDelete}
+                onBranchGroup={handleAssistantMessageGroupBranch}
               />
             )
           }
@@ -2189,6 +2351,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <div>Stop generation</div>
           </button>
         )}
+        <div
+          ref={bottomAnchorRef}
+          className="smtcmp-chat-bottom-anchor"
+          aria-hidden="true"
+        />
       </div>
       {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
         displayMentionablesForInput.length > 0 && (

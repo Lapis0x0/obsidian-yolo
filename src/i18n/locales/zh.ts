@@ -307,7 +307,8 @@ export const zh: TranslationKeys = {
       fsEditReviewToggleDesc:
         '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
       builtinFsFileOpsLabel: '文件操作',
-      builtinFsFileOpsDesc: '执行文件与文件夹操作（创建、删除、移动）。',
+      builtinFsFileOpsDesc:
+        '聚合文件路径操作：创建/删除文件、创建/删除文件夹、移动路径。',
       builtinOpenSkillLabel: '加载技能',
       builtinOpenSkillDesc: '按 id 或名称读取技能 Markdown 内容。',
       editorDefaultName: '新建 Agent',
@@ -763,6 +764,13 @@ export const zh: TranslationKeys = {
     addContext: '添加上下文',
     applyChanges: '应用更改',
     copyMessage: '复制消息',
+    createBranchFromHere: '从此处分支',
+    branchCreated: '已创建分支会话',
+    branchCreateFailed: '创建分支失败',
+    insertAtCursor: '在光标处插入 / 替换选区',
+    insertSuccess: '已将消息插入当前笔记',
+    insertUnavailable: '未找到可用的 Markdown 编辑器',
+    noAssistantContent: '没有可插入的助手内容',
     regenerate: '重新生成',
     reasoning: '推理过程',
     annotations: '注释',

@@ -40,9 +40,6 @@ import {
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
   'Tool arguments must be valid JSON. Please escape quotes/newlines inside string values and retry.'
 
-const FS_FILE_OPS_MULTI_ACTION_HINT =
-  'Detected concatenated fs_file_ops payloads with mixed actions. Send one valid JSON object per tool call, and keep exactly one action value per call.'
-
 export class McpManager {
   static readonly TOOL_NAME_DELIMITER = '__' // Delimiter for tool name construction (serverName__toolName)
 
@@ -95,10 +92,6 @@ export class McpManager {
       args: requestArgs,
     })
     if (!action) {
-      if (toolName === 'fs_file_ops') {
-        // Fail closed when action is missing or invalid
-        return false
-      }
       return true
     }
     return action !== 'delete_file' && action !== 'delete_dir'
@@ -111,9 +104,11 @@ export class McpManager {
       return !directDisabled
     }
     if (LOCAL_FS_SPLIT_TOOL_NAME_SET.has(toolName)) {
-      return !(
+      const splitToolDisabled =
+        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
+      const groupedFileOpsDisabled =
         this.settings.mcp.builtinToolOptions.fs_file_ops?.disabled ?? false
-      )
+      return !(splitToolDisabled || groupedFileOpsDisabled)
     }
     return true
   }
@@ -573,18 +568,6 @@ export class McpManager {
                 return recoveredObjects[0]
               }
 
-              if (toolName === 'fs_file_ops' && recoveredObjects.length > 1) {
-                const mergedFsFileOpArgs =
-                  this.tryMergeRecoveredFsFileOpArgs(recoveredObjects)
-                if (mergedFsFileOpArgs) {
-                  return mergedFsFileOpArgs
-                }
-
-                throw new Error(
-                  `${INVALID_TOOL_ARGUMENTS_JSON_ERROR} ${FS_FILE_OPS_MULTI_ACTION_HINT}`,
-                )
-              }
-
               throw new Error(INVALID_TOOL_ARGUMENTS_JSON_ERROR)
             })()
           : args
@@ -684,52 +667,6 @@ export class McpManager {
       if (id !== undefined) {
         this.activeToolCalls.delete(id)
       }
-    }
-  }
-
-  private tryMergeRecoveredFsFileOpArgs(
-    recoveredObjects: Record<string, unknown>[],
-  ): Record<string, unknown> | null {
-    let action: string | null = null
-    const mergedItems: Record<string, unknown>[] = []
-    let dryRun: boolean | undefined
-
-    for (const recovered of recoveredObjects) {
-      const currentAction = recovered.action
-      if (typeof currentAction !== 'string' || currentAction.length === 0) {
-        return null
-      }
-      if (action === null) {
-        action = currentAction
-      } else if (action !== currentAction) {
-        return null
-      }
-
-      const currentItems = recovered.items
-      if (!Array.isArray(currentItems) || currentItems.length === 0) {
-        return null
-      }
-
-      for (const item of currentItems) {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) {
-          return null
-        }
-        mergedItems.push(item as Record<string, unknown>)
-      }
-
-      if (typeof recovered.dryRun === 'boolean') {
-        dryRun = recovered.dryRun
-      }
-    }
-
-    if (!action || mergedItems.length === 0) {
-      return null
-    }
-
-    return {
-      action,
-      items: mergedItems,
-      ...(dryRun === undefined ? {} : { dryRun }),
     }
   }
 

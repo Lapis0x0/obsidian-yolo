@@ -45,6 +45,9 @@ type GeminiStreamChunk =
 type GeminiRequestConfig = GeminiGenerateContentConfig & {
   abortSignal?: AbortSignal
 }
+type GeminiFunctionCallWithMetadata = GeminiFunctionCall & {
+  thoughtSignature?: string
+}
 
 /**
  * TODO: Consider future migration from '@google/generative-ai' to '@google/genai' (https://github.com/googleapis/js-genai)
@@ -463,11 +466,24 @@ export class GeminiProvider extends BaseLLMProvider<
     const reasoningText =
       reasoningPieces.length > 0 ? reasoningPieces.join('') : undefined
 
-    const toolCallsRaw = response.functionCalls
+    const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
+      functionCalls: response.functionCalls,
+      parts: response.candidates?.[0]?.content?.parts,
+    })
+
+    const toolCallsRaw = functionCalls
       ?.map((call) => GeminiProvider.mapFunctionCall(call))
       .filter((call): call is ToolCall => call !== null)
     const toolCalls =
       toolCallsRaw && toolCallsRaw.length > 0 ? toolCallsRaw : undefined
+
+    if (toolCalls && toolCalls.length > 0) {
+      console.debug('[Smart Composer] Gemini non-stream tool calls detected:', {
+        finishReason: response.candidates?.[0]?.finishReason ?? null,
+        count: toolCalls.length,
+        firstTool: toolCalls[0]?.function.name,
+      })
+    }
 
     return {
       id: messageId,
@@ -514,16 +530,23 @@ export class GeminiProvider extends BaseLLMProvider<
   }
 
   private static mapFunctionCall(
-    call: GeminiFunctionCall | undefined,
+    call: GeminiFunctionCallWithMetadata | undefined,
   ): ToolCall | null {
     if (!call?.name) {
       return null
     }
     const args = call.args && typeof call.args === 'object' ? call.args : {}
 
+    const thoughtSignature =
+      typeof call.thoughtSignature === 'string' &&
+      call.thoughtSignature.trim().length > 0
+        ? call.thoughtSignature
+        : undefined
+
     return {
       id: call.id ?? uuidv4(),
       type: 'function' as const,
+      metadata: thoughtSignature ? { thoughtSignature } : undefined,
       function: {
         name: call.name,
         arguments: JSON.stringify(args),
@@ -532,7 +555,7 @@ export class GeminiProvider extends BaseLLMProvider<
   }
 
   private static mapFunctionCallDelta(
-    call: GeminiFunctionCall | undefined,
+    call: GeminiFunctionCallWithMetadata | undefined,
     index: number,
   ): ToolCallDelta | null {
     const base = this.mapFunctionCall(call)
@@ -543,6 +566,7 @@ export class GeminiProvider extends BaseLLMProvider<
       index,
       id: base.id,
       type: base.type,
+      metadata: base.metadata,
       function: base.function,
     }
   }
@@ -609,12 +633,25 @@ export class GeminiProvider extends BaseLLMProvider<
         }
       }
     }
+    const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
+      functionCalls: chunk.functionCalls,
+      parts: chunk.candidates?.[0]?.content?.parts,
+    })
+
     const toolCallDeltaRaw =
-      chunk.functionCalls
+      functionCalls
         ?.map((call, index) => GeminiProvider.mapFunctionCallDelta(call, index))
         .filter((call): call is ToolCallDelta => call !== null) ?? []
     const toolCallDeltas =
       toolCallDeltaRaw.length > 0 ? toolCallDeltaRaw : undefined
+
+    if (toolCallDeltas && toolCallDeltas.length > 0) {
+      console.debug('[Smart Composer] Gemini stream tool call deltas:', {
+        finishReason: chunk.candidates?.[0]?.finishReason ?? null,
+        count: toolCallDeltas.length,
+        firstTool: toolCallDeltas[0]?.function?.name,
+      })
+    }
 
     return {
       id: messageId,
@@ -639,6 +676,61 @@ export class GeminiProvider extends BaseLLMProvider<
           }
         : undefined,
     }
+  }
+
+  private static resolveFunctionCallsWithMetadata({
+    functionCalls,
+    parts,
+  }: {
+    functionCalls: GeminiFunctionCall[] | undefined
+    parts: GeminiPart[] | undefined
+  }): GeminiFunctionCallWithMetadata[] | undefined {
+    const fromParts = GeminiProvider.extractFunctionCallsFromParts(parts)
+    if (!functionCalls || functionCalls.length === 0) {
+      return fromParts
+    }
+
+    return functionCalls.map((call, index) => {
+      const partCall = fromParts?.[index]
+      if (!partCall?.thoughtSignature) {
+        return call as GeminiFunctionCallWithMetadata
+      }
+      return {
+        ...(call as GeminiFunctionCallWithMetadata),
+        thoughtSignature: partCall.thoughtSignature,
+      }
+    })
+  }
+
+  private static extractFunctionCallsFromParts(
+    parts: GeminiPart[] | undefined,
+  ): GeminiFunctionCallWithMetadata[] | undefined {
+    if (!Array.isArray(parts) || parts.length === 0) {
+      return undefined
+    }
+
+    const extracted: GeminiFunctionCallWithMetadata[] = []
+
+    for (const part of parts) {
+      if (!part || typeof part !== 'object') {
+        continue
+      }
+      const record = part as Record<string, unknown>
+      const functionCall = record.functionCall
+      if (!functionCall || typeof functionCall !== 'object') {
+        continue
+      }
+      const thoughtSignature =
+        typeof record.thoughtSignature === 'string'
+          ? record.thoughtSignature
+          : undefined
+      extracted.push({
+        ...(functionCall as GeminiFunctionCallWithMetadata),
+        thoughtSignature,
+      })
+    }
+
+    return extracted.length > 0 ? extracted : undefined
   }
 
   private static validateImageType(mimeType: string) {

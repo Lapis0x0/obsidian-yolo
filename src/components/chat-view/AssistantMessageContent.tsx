@@ -41,7 +41,7 @@ export default function AssistantMessageContent({
   ) => void
   isApplying: boolean
   activeApplyRequestKey: string | null
-  generationState?: 'streaming' | 'completed' | 'aborted'
+  generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
 }) {
   const onApply = useCallback(
@@ -84,7 +84,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   children: string
   isApplying: boolean
   activeApplyRequestKey: string | null
-  generationState?: 'streaming' | 'completed' | 'aborted'
+  generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
 }) {
   const { t } = useLanguage()

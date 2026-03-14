@@ -7,8 +7,13 @@ import {
   ToolCallDelta,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
-import { mergeStreamingToolArguments } from '../../utils/chat/tool-arguments'
+import {
+  extractTopLevelJsonObjects,
+  mergeStreamingToolArguments,
+  parseJsonObjectText,
+} from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
+import { isLocalFsWriteToolName } from '../mcp/localFileTools'
 
 export type SingleTurnExecutionResult = {
   content: string
@@ -20,6 +25,9 @@ export type SingleTurnExecutionResult = {
     id?: string
     name: string
     arguments?: string
+    metadata?: {
+      thoughtSignature?: string
+    }
   }[]
 }
 
@@ -45,17 +53,7 @@ type SingleTurnExecutionInput = {
 
 const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 12000
 
-const LOCAL_WRITE_TOOL_NAMES = new Set([
-  'fs_edit',
-  'fs_file_ops',
-  'fs_create_file',
-  'fs_delete_file',
-  'fs_create_dir',
-  'fs_delete_dir',
-  'fs_move',
-])
-
-const getBareToolName = (toolName: string): string => {
+const normalizeToolName = (toolName: string): string => {
   if (!toolName.includes('__')) {
     return toolName
   }
@@ -63,8 +61,149 @@ const getBareToolName = (toolName: string): string => {
   return parts[parts.length - 1] ?? toolName
 }
 
-const isLocalWriteToolCallName = (toolName: string): boolean => {
-  return LOCAL_WRITE_TOOL_NAMES.has(getBareToolName(toolName))
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+const isStringField = (args: Record<string, unknown>, key: string): boolean => {
+  return typeof args[key] === 'string'
+}
+
+const isNonEmptyStringField = (
+  args: Record<string, unknown>,
+  key: string,
+): boolean => {
+  const value = args[key]
+  return typeof value === 'string' && value.length > 0
+}
+
+const isOptionalBooleanField = (
+  args: Record<string, unknown>,
+  key: string,
+): boolean => {
+  const value = args[key]
+  return value === undefined || typeof value === 'boolean'
+}
+
+const isValidFsEditOperation = (value: unknown): boolean => {
+  if (!isObjectRecord(value)) {
+    return false
+  }
+  const operationType = value.type
+  if (operationType === 'replace') {
+    return (
+      isNonEmptyStringField(value, 'oldText') && isStringField(value, 'newText')
+    )
+  }
+  if (operationType === 'insert_after') {
+    return (
+      isNonEmptyStringField(value, 'anchor') && isStringField(value, 'content')
+    )
+  }
+  if (operationType === 'append') {
+    return isStringField(value, 'content')
+  }
+  return false
+}
+
+const isValidWriteToolArguments = ({
+  toolName,
+  args,
+}: {
+  toolName: string
+  args: Record<string, unknown>
+}): boolean => {
+  const normalizedToolName = normalizeToolName(toolName)
+
+  if (normalizedToolName === 'fs_edit') {
+    if (!isStringField(args, 'path')) {
+      return false
+    }
+    const operations = args.operations
+    return (
+      Array.isArray(operations) &&
+      operations.length > 0 &&
+      operations.every((operation) => isValidFsEditOperation(operation))
+    )
+  }
+
+  if (normalizedToolName === 'fs_create_file') {
+    return (
+      isStringField(args, 'path') &&
+      isStringField(args, 'content') &&
+      isOptionalBooleanField(args, 'dryRun')
+    )
+  }
+
+  if (normalizedToolName === 'fs_delete_file') {
+    return isStringField(args, 'path') && isOptionalBooleanField(args, 'dryRun')
+  }
+
+  if (normalizedToolName === 'fs_create_dir') {
+    return isStringField(args, 'path') && isOptionalBooleanField(args, 'dryRun')
+  }
+
+  if (normalizedToolName === 'fs_delete_dir') {
+    return (
+      isStringField(args, 'path') &&
+      isOptionalBooleanField(args, 'recursive') &&
+      isOptionalBooleanField(args, 'dryRun')
+    )
+  }
+
+  if (normalizedToolName === 'fs_move') {
+    return (
+      isStringField(args, 'oldPath') &&
+      isStringField(args, 'newPath') &&
+      isOptionalBooleanField(args, 'dryRun')
+    )
+  }
+
+  return true
+}
+
+const normalizeToolArguments = (rawArguments?: string): string | undefined => {
+  if (!rawArguments) {
+    return undefined
+  }
+
+  const trimmed = rawArguments.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  const parsed = parseJsonObjectText(trimmed)
+  if (parsed) {
+    return JSON.stringify(parsed)
+  }
+
+  const recoveredObjects = extractTopLevelJsonObjects(trimmed)
+  if (recoveredObjects.length > 0) {
+    return JSON.stringify(recoveredObjects[recoveredObjects.length - 1])
+  }
+
+  return rawArguments
+}
+
+const hasInvalidWriteToolArguments = (
+  toolCalls: SingleTurnExecutionResult['toolCalls'],
+): boolean => {
+  return toolCalls.some((toolCall) => {
+    if (!isLocalFsWriteToolName(toolCall.name)) {
+      return false
+    }
+    if (!toolCall.arguments) {
+      return true
+    }
+    const parsed = parseJsonObjectText(toolCall.arguments)
+    if (!parsed) {
+      return true
+    }
+    return !isValidWriteToolArguments({
+      toolName: toolCall.name,
+      args: parsed,
+    })
+  })
 }
 
 export async function executeSingleTurn({
@@ -109,7 +248,8 @@ export async function executeSingleTurn({
             return {
               id: toolCall.id,
               name,
-              arguments: toolCall.function?.arguments,
+              arguments: normalizeToolArguments(toolCall.function?.arguments),
+              metadata: toolCall.metadata,
             }
           })
           .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
@@ -222,31 +362,34 @@ export async function executeSingleTurn({
         return {
           id: toolCall.id,
           name,
-          arguments: toolCall.function?.arguments,
+          arguments: normalizeToolArguments(toolCall.function?.arguments),
+          metadata: toolCall.metadata,
         }
       })
       .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
         Boolean(toolCall),
       )
 
-    const shouldRefreshWriteToolCalls = streamedToolCallList.some((toolCall) =>
-      isLocalWriteToolCallName(toolCall.name),
-    )
-
     let finalToolCalls: SingleTurnExecutionResult['toolCalls'] =
       streamedToolCallList
     let finalFinishReason: SingleTurnExecutionResult['finishReason'] =
       finishReason ?? undefined
 
-    if (shouldRefreshWriteToolCalls) {
+    if (hasInvalidWriteToolArguments(streamedToolCallList)) {
+      const streamedNonWriteToolCalls = streamedToolCallList.filter(
+        (toolCall) => !isLocalFsWriteToolName(toolCall.name),
+      )
       try {
         const nonStreamingResult = await runNonStreaming()
-        if (nonStreamingResult.toolCalls.length > 0) {
+        if (!hasInvalidWriteToolArguments(nonStreamingResult.toolCalls)) {
           finalToolCalls = nonStreamingResult.toolCalls
           finalFinishReason = nonStreamingResult.finishReason
+        } else {
+          finalToolCalls = streamedNonWriteToolCalls
         }
       } catch {
-        // Keep streaming tool calls as fallback when refresh fails.
+        // Never execute invalid streamed write tool arguments.
+        finalToolCalls = streamedNonWriteToolCalls
       }
     }
 
@@ -290,6 +433,7 @@ function mergeToolCallDeltas(
       index,
       id: merged[index].id ?? toolCall.id,
       type: merged[index].type ?? toolCall.type,
+      metadata: merged[index].metadata ?? toolCall.metadata,
     }
 
     if (merged[index].function || toolCall.function) {

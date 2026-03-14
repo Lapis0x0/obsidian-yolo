@@ -15,7 +15,6 @@ import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
   getLocalFileToolServerName,
-  isLocalFsWriteToolName,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
@@ -54,7 +53,7 @@ type AgentLlmTurnExecutorInput = {
 type AgentLlmTurnExecutorOutput = {
   assistantMessage: ChatAssistantMessage
   toolCallRequests: ToolCallRequest[]
-  modelTerminated: boolean
+  hasAssistantOutput: boolean
 }
 
 export class AgentLlmTurnExecutor {
@@ -68,7 +67,6 @@ export class AgentLlmTurnExecutor {
     'fs_create_dir',
     'fs_delete_dir',
     'fs_move',
-    'fs_file_ops',
     'open_skill',
   ])
 
@@ -155,65 +153,78 @@ export class AgentLlmTurnExecutor {
     }
     this.input.onAssistantMessage(assistantMessage)
 
-    const turnResult = await executeSingleTurn({
-      providerClient: this.input.providerClient,
-      model: effectiveModel,
-      request: {
-        model: effectiveModel.model,
-        messages: requestMessages,
-        temperature: this.input.requestParams?.temperature,
-        top_p: this.input.requestParams?.top_p,
-        max_tokens: this.input.requestParams?.max_tokens,
-      },
-      tools,
-      signal: this.input.abortSignal,
-      stream: this.input.requestParams?.stream ?? true,
-      geminiTools: this.input.geminiTools,
-      onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
-        if (contentDelta) {
-          assistantMessage.content += contentDelta
-        }
-        if (reasoningDelta) {
-          assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
-        }
-        if (toolCalls && toolCalls.length > 0) {
-          const streamedToolCallRequests = toolCalls
-            .map((toolCall) => {
-              const name = toolCall.function?.name?.trim()
-              if (!name) {
-                return null
-              }
-
-              const normalizedName = this.normalizeToolCallName(name)
-              const isWriteTool = isLocalFsWriteToolName(normalizedName)
-
-              return {
-                id:
-                  toolCall.id ??
-                  `${assistantMessage.id}-stream-tool-${toolCall.index}`,
-                name: normalizedName,
-                arguments: isWriteTool
-                  ? undefined
-                  : toolCall.function?.arguments,
-              }
-            })
-            .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
-              Boolean(toolCall),
-            )
-
-          if (streamedToolCallRequests.length > 0) {
-            assistantMessage.toolCallRequests = streamedToolCallRequests
+    let turnResult
+    try {
+      turnResult = await executeSingleTurn({
+        providerClient: this.input.providerClient,
+        model: effectiveModel,
+        request: {
+          model: effectiveModel.model,
+          messages: requestMessages,
+          temperature: this.input.requestParams?.temperature,
+          top_p: this.input.requestParams?.top_p,
+          max_tokens: this.input.requestParams?.max_tokens,
+        },
+        tools,
+        signal: this.input.abortSignal,
+        stream: this.input.requestParams?.stream ?? true,
+        geminiTools: this.input.geminiTools,
+        onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
+          if (contentDelta) {
+            assistantMessage.content += contentDelta
           }
-        }
-        if (chunk.usage) {
-          assistantMessage.metadata = {
-            ...assistantMessage.metadata,
-            usage: chunk.usage,
+          if (reasoningDelta) {
+            assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
           }
-        }
-        this.input.onAssistantMessage(assistantMessage)
-      },
-    })
+          if (toolCalls && toolCalls.length > 0) {
+            const streamedToolCallRequests = toolCalls
+              .map((toolCall) => {
+                const name = toolCall.function?.name?.trim()
+                if (!name) {
+                  return null
+                }
+
+                const normalizedName = this.normalizeToolCallName(name)
+
+                return {
+                  id:
+                    toolCall.id ??
+                    `${assistantMessage.id}-stream-tool-${toolCall.index}`,
+                  name: normalizedName,
+                  arguments: toolCall.function?.arguments,
+                  metadata: toolCall.metadata,
+                }
+              })
+              .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
+                Boolean(toolCall),
+              )
+
+            if (streamedToolCallRequests.length > 0) {
+              assistantMessage.toolCallRequests = streamedToolCallRequests
+            }
+          }
+          if (chunk.usage) {
+            assistantMessage.metadata = {
+              ...assistantMessage.metadata,
+              usage: chunk.usage,
+            }
+          }
+          this.input.onAssistantMessage(assistantMessage)
+        },
+      })
+    } catch (error) {
+      const isAborted =
+        this.input.abortSignal?.aborted ||
+        (error instanceof Error && error.name === 'AbortError')
+
+      assistantMessage.metadata = {
+        ...assistantMessage.metadata,
+        durationMs: Date.now() - responseStart,
+        generationState: isAborted ? 'aborted' : 'error',
+      }
+      this.input.onAssistantMessage(assistantMessage)
+      throw error
+    }
 
     if (!this.input.requestParams?.stream) {
       assistantMessage.content = turnResult.content
@@ -236,6 +247,7 @@ export class AgentLlmTurnExecutor {
       id: toolCall.id ?? uuidv4(),
       name: this.normalizeToolCallName(toolCall.name),
       arguments: toolCall.arguments,
+      metadata: toolCall.metadata,
     }))
 
     assistantMessage.toolCallRequests =
@@ -245,9 +257,7 @@ export class AgentLlmTurnExecutor {
     return {
       assistantMessage,
       toolCallRequests,
-      modelTerminated: this.isModelTerminationFinishReason(
-        turnResult.finishReason,
-      ),
+      hasAssistantOutput: assistantMessage.content.trim().length > 0,
     }
   }
 
@@ -298,22 +308,5 @@ export class AgentLlmTurnExecutor {
       ...this.input.model,
       ...reasoningLevelToConfig(this.input.reasoningLevel, this.input.model),
     } as ChatModel
-  }
-
-  private isModelTerminationFinishReason(
-    finishReason: string | null | undefined,
-  ): boolean {
-    if (!finishReason) {
-      return false
-    }
-    const normalized = finishReason.toLowerCase()
-    if (
-      normalized === 'tool_calls' ||
-      normalized === 'tool_call' ||
-      normalized === 'function_call'
-    ) {
-      return false
-    }
-    return true
   }
 }

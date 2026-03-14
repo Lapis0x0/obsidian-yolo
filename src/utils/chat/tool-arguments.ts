@@ -93,21 +93,32 @@ export const mergeStreamingToolArguments = ({
     return existingArgs
   }
 
-  if (newArgs.startsWith(existingArgs)) {
-    return newArgs
-  }
-  if (existingArgs.startsWith(newArgs)) {
-    return existingArgs
-  }
-
   const normalizedNew = parseJsonObjectText(newArgs)
   if (normalizedNew) {
     return JSON.stringify(normalizedNew)
   }
 
+  const extractedFromNew = extractTopLevelJsonObjects(newArgs)
+  if (extractedFromNew.length > 0) {
+    return JSON.stringify(extractedFromNew[extractedFromNew.length - 1])
+  }
+
   const normalizedExisting = parseJsonObjectText(existingArgs)
   if (normalizedExisting) {
+    const concatenated = `${existingArgs}${newArgs}`
+    const recoveredObjects = extractTopLevelJsonObjects(concatenated)
+    if (recoveredObjects.length > 0) {
+      return JSON.stringify(recoveredObjects[recoveredObjects.length - 1])
+    }
+    // Never downgrade from a previously valid JSON object to noisy partial text.
     return JSON.stringify(normalizedExisting)
+  }
+
+  if (newArgs.startsWith(existingArgs)) {
+    return newArgs
+  }
+  if (existingArgs.startsWith(newArgs)) {
+    return existingArgs
   }
 
   const concatenated = `${existingArgs}${newArgs}`

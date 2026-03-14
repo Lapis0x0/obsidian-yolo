@@ -40,4 +40,26 @@ describe('tool-arguments utilities', () => {
       '{"action":"move","items":[{"oldPath":"a.md","newPath":"b.md"}]}',
     )
   })
+
+  it('keeps committed object when a later chunk adds noisy tail', () => {
+    const merged = mergeStreamingToolArguments({
+      existingArgs: '{"path":"a.md","operations":[{"type":"append"}]}',
+      newArgs:
+        '{"path":"a.md","operations":[{"type":"append"}]}\nTool arguments must be valid JSON',
+    })
+
+    expect(merged).toBe('{"path":"a.md","operations":[{"type":"append"}]}')
+  })
+
+  it('extracts latest object from noisy mixed stream payload', () => {
+    const merged = mergeStreamingToolArguments({
+      existingArgs: 'Let me reformat the tool arguments:',
+      newArgs:
+        'Args: {"path":"a.md","operations":[{"type":"append","content":"ok"}]} Error: ...',
+    })
+
+    expect(merged).toBe(
+      '{"path":"a.md","operations":[{"type":"append","content":"ok"}]}',
+    )
+  })
 })

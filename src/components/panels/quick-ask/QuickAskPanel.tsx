@@ -392,7 +392,7 @@ export function QuickAskPanel({
   const renderAssistantBlocks = useCallback(
     (
       rawContent: string | undefined | null,
-      generationState?: 'streaming' | 'completed' | 'aborted',
+      generationState?: 'streaming' | 'completed' | 'aborted' | 'error',
     ) => {
       const parsed = parseTagContents(rawContent ?? '')
       const hasAnswerContent = parsed.some((block) => {

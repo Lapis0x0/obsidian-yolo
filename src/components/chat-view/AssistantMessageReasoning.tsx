@@ -7,7 +7,12 @@ import DotLoader from '../common/DotLoader'
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 import StreamingMarkdown from './StreamingMarkdown'
 
-type ReasoningStage = 'requesting' | 'thinking' | 'generating' | 'settled'
+type ReasoningStage =
+  | 'requesting'
+  | 'thinking'
+  | 'generating'
+  | 'error'
+  | 'settled'
 
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoning,
@@ -17,7 +22,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
 }: {
   reasoning: string
   hasAnswerContent: boolean
-  generationState?: 'streaming' | 'completed' | 'aborted'
+  generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   MarkdownComponent?: React.ComponentType<{
     content: string
     scale?: 'xs' | 'sm' | 'base'
@@ -51,8 +56,11 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     if (isStreaming && hasAnswerContent) {
       return 'generating'
     }
+    if (generationState === 'error') {
+      return 'error'
+    }
     return 'settled'
-  }, [hasAnswerContent, hasReasoningText, isStreaming])
+  }, [generationState, hasAnswerContent, hasReasoningText, isStreaming])
 
   const stageLabel = useMemo(() => {
     if (stage === 'requesting') {
@@ -63,6 +71,9 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     }
     if (stage === 'generating') {
       return t('quickAsk.statusGenerating', 'Generating...')
+    }
+    if (stage === 'error') {
+      return t('quickAsk.error', 'Failed to generate response')
     }
     return t('chat.reasoning', 'Reasoning')
   }, [stage, t])

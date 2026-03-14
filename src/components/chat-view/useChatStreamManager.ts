@@ -210,7 +210,12 @@ export function useChatStreamManager({
       ])
     })
     if (!hasStreamingAssistantMessage(responseMessages)) {
-      autoScrollToBottom()
+      requestAnimationFrame(() => {
+        autoScrollToBottom()
+        requestAnimationFrame(() => {
+          autoScrollToBottom()
+        })
+      })
     }
   }, [autoScrollToBottom, setChatMessages])
 

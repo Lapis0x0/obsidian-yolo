@@ -68,7 +68,6 @@ const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_search: 'Search Vault',
   fs_read: 'Read File',
   fs_edit: 'Text editing',
-  fs_file_ops: 'File operations',
   fs_create_file: 'Create file',
   fs_delete_file: 'Delete file',
   fs_create_dir: 'Create folder',
@@ -127,10 +126,6 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       fs_edit: translate(
         'settings.agent.builtinFsEditLabel',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_edit,
-      ),
-      fs_file_ops: translate(
-        'settings.agent.builtinFsFileOpsLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_file_ops,
       ),
       fs_create_file: translate(
         'chat.toolCall.writeAction.create_file',
@@ -290,17 +285,7 @@ const getLocalToolSummaryText = ({
   })
   if (action) {
     const actionLabel = labels.writeActionLabels[action] ?? action
-    if (toolName !== 'fs_file_ops') {
-      return actionLabel
-    }
-
-    const itemCount = Array.isArray(argumentsObject?.items)
-      ? argumentsObject.items.length
-      : 0
-    if (itemCount <= 0) {
-      return actionLabel
-    }
-    return `${actionLabel} x${itemCount}`
+    return actionLabel
   }
 
   return undefined

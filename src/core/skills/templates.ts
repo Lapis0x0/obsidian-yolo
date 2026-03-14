@@ -110,7 +110,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for existing-file content changes, and \`fs_file_ops\` only for create, move, or delete operations. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for existing-file content changes, and \`fs_create_file\` / \`fs_delete_file\` / \`fs_create_dir\` / \`fs_delete_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
 
 ## Anatomy of a Skill
 
@@ -202,7 +202,11 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 | \`fs_search\` | Find files by keyword or pattern |
 | \`fs_read\` | Read file contents |
 | \`fs_edit\` | Apply targeted text edits to an existing file (\`replace\`, \`insert_after\`, \`append\`) |
-| \`fs_file_ops\` | Create, move, and delete files or folders (supports \`dryRun\`) |
+| \`fs_create_file\` | Create a file with provided content (supports \`dryRun\`) |
+| \`fs_delete_file\` | Delete a file path (supports \`dryRun\`) |
+| \`fs_create_dir\` | Create a directory path (supports \`dryRun\`) |
+| \`fs_delete_dir\` | Delete a directory path (supports \`recursive\` and \`dryRun\`) |
+| \`fs_move\` | Move or rename a file/folder path (supports \`dryRun\`) |
 
 Skills should be designed around these capabilities. There is no script execution environment, no shell access, and no external API calls. All skill workflows must be achievable through file operations and the agent's reasoning.
 
@@ -276,8 +280,8 @@ Body guidelines:
 Always preview before committing:
 
 ~~~
-fs_file_ops { action: "create_file", items: [{ path: "YOLO/skills/<skill-id>.md", content: "..." }], dryRun: true } -> preview
-fs_file_ops { action: "create_file", items: [{ path: "YOLO/skills/<skill-id>.md", content: "..." }] } -> commit
+fs_create_file { path: "YOLO/skills/<skill-id>.md", content: "...", dryRun: true } -> preview
+fs_create_file { path: "YOLO/skills/<skill-id>.md", content: "..." } -> commit
 ~~~
 
 For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted changes rather than rewriting the entire file.
@@ -305,7 +309,7 @@ Before finalizing any skill, verify:
 - [ ] Frontmatter includes \`id\`, \`name\`, and \`description\`
 - [ ] Description states clear trigger conditions (not buried in body)
 - [ ] \`id\` is kebab-case and matches the filename
-- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_file_ops\`)
+- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_create_file\`, \`fs_delete_file\`, \`fs_create_dir\`, \`fs_delete_dir\`, \`fs_move\`)
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters
 - [ ] Body is under 300 lines

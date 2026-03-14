@@ -60,6 +60,7 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
 }
 
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
 
 export function AgentSection({ app }: AgentSectionProps) {
   const { settings, setSettings } = useSettings()
@@ -216,22 +217,40 @@ export function AgentSection({ app }: AgentSectionProps) {
     [mcpServers],
   )
 
-  const builtinTools = useMemo(
-    () =>
-      getLocalFileTools()
-        .filter((tool) => !SPLIT_FS_TOOL_NAME_SET.has(tool.name))
-        .map((tool) => {
-          const meta = BUILTIN_TOOL_LABEL_KEYS[tool.name]
-          return {
-            id: tool.name,
-            label: meta ? t(meta.key, meta.fallback) : tool.name,
-            enabled: !(
-              settings.mcp.builtinToolOptions[tool.name]?.disabled ?? false
-            ),
-          }
-        }),
-    [settings.mcp.builtinToolOptions, t],
-  )
+  const builtinTools = useMemo(() => {
+    const toolOptions = settings.mcp.builtinToolOptions
+    const tools = getLocalFileTools()
+      .filter((tool) => !SPLIT_FS_TOOL_NAME_SET.has(tool.name))
+      .map((tool) => {
+        const meta = BUILTIN_TOOL_LABEL_KEYS[tool.name]
+        return {
+          id: tool.name,
+          label: meta ? t(meta.key, meta.fallback) : tool.name,
+          enabled: !(toolOptions[tool.name]?.disabled ?? false),
+        }
+      })
+
+    const splitToolEnabled = LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const fileOpsMeta = BUILTIN_TOOL_LABEL_KEYS[FILE_OPS_GROUP_TOOL_NAME]
+    const fileOpsTool = {
+      id: FILE_OPS_GROUP_TOOL_NAME,
+      label: t(fileOpsMeta.key, fileOpsMeta.fallback),
+      enabled: splitToolEnabled,
+    }
+
+    const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
+    if (openSkillIndex >= 0) {
+      tools.splice(openSkillIndex, 0, fileOpsTool)
+    } else {
+      tools.push(fileOpsTool)
+    }
+
+    return tools
+  }, [settings.mcp.builtinToolOptions, t])
 
   const allSkillEntries = useMemo(
     () => listLiteSkillEntries(app, { settings }),

@@ -14,6 +14,7 @@ import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
 import { AgentRuntime } from './runtime'
 import { AgentToolGateway } from './tool-gateway'
+import { shouldProceedToToolPhase } from './tool-phase'
 import {
   AgentRuntimeLoopConfig,
   AgentRuntimeRunInput,
@@ -127,9 +128,8 @@ export class NativeAgentRuntime implements AgentRuntime {
                 worker.postMessage({
                   type: 'llm_result',
                   runId,
-                  hasToolCalls:
-                    !turnResult.modelTerminated &&
-                    turnResult.toolCallRequests.length > 0,
+                  hasToolCalls: shouldProceedToToolPhase(turnResult),
+                  hasAssistantOutput: turnResult.hasAssistantOutput,
                 })
                 return
               }
