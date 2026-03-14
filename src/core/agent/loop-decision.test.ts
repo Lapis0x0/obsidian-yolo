@@ -23,6 +23,17 @@ describe('loop decisions', () => {
     expect(result).toEqual({ type: 'llm_request', nextIteration: 2 })
   })
 
+  it('continues llm request for reasoning-only turns', () => {
+    const result = decideAfterLlmResult({
+      hasToolCalls: false,
+      hasAssistantOutput: false,
+      iteration: 1,
+      maxIterations: 6,
+    })
+
+    expect(result).toEqual({ type: 'llm_request', nextIteration: 2 })
+  })
+
   it('completes when no tools but assistant has output', () => {
     const result = decideAfterLlmResult({
       hasToolCalls: false,

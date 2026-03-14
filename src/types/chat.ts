@@ -43,7 +43,7 @@ export type ChatAssistantMessage = {
     usage?: ResponseUsage
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
-    generationState?: 'streaming' | 'completed' | 'aborted'
+    generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   }
 }
 export type ChatToolMessage = {
@@ -89,7 +89,7 @@ export type SerializedChatAssistantMessage = {
     usage?: ResponseUsage
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
-    generationState?: 'streaming' | 'completed' | 'aborted'
+    generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   }
 }
 export type SerializedChatToolMessage = {

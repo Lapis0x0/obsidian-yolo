@@ -44,7 +44,7 @@ export default function MarkdownCodeComponent({
   activeApplyRequestKey: string | null
   filename?: string
   language?: string
-  generationState?: 'streaming' | 'completed' | 'aborted'
+  generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
 }>) {
   const app = useApp()
   const { t } = useLanguage()
@@ -99,7 +99,9 @@ export default function MarkdownCodeComponent({
   }, [codeContent])
 
   const isPartialJsonPreviewBlock =
-    (generationState === 'streaming' || generationState === 'aborted') &&
+    (generationState === 'streaming' ||
+      generationState === 'aborted' ||
+      generationState === 'error') &&
     language === 'json'
 
   const streamingPreviewContent = useMemo(() => {
