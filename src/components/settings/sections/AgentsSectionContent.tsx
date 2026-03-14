@@ -13,6 +13,13 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  getDefaultApprovalModeForTool,
+  getAssistantToolApprovalMode,
+  getAssistantToolPreferences,
+  getEnabledAssistantToolNames,
+  isAssistantToolEnabled,
+} from '../../../core/agent/tool-preferences'
+import {
   getLocalFileToolServerName,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../../../core/mcp/localFileTools'
@@ -30,6 +37,8 @@ import {
   AgentPersona,
   Assistant,
   AssistantSkillLoadMode,
+  AssistantToolApprovalMode,
+  AssistantToolPreference,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
 import {
@@ -174,6 +183,7 @@ function createNewAgent(defaultModelId: string): Assistant {
     enableTools: true,
     includeBuiltinTools: true,
     enabledToolNames: [],
+    toolPreferences: {},
     enabledSkills: [],
     skillPreferences: {},
     temperature: undefined,
@@ -194,7 +204,8 @@ function toDraftAgent(
     ...assistant,
     persona: assistant.persona ?? DEFAULT_PERSONA,
     modelId: assistant.modelId ?? fallbackModelId,
-    enabledToolNames: assistant.enabledToolNames ?? [],
+    enabledToolNames: getEnabledAssistantToolNames(assistant),
+    toolPreferences: getAssistantToolPreferences(assistant),
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
     enableTools: assistant.enableTools ?? true,
@@ -207,6 +218,18 @@ function toDraftAgent(
   }
 }
 
+function normalizeToolPreferences(
+  toolPreferences: Record<string, AssistantToolPreference> | undefined,
+  availableTools: McpTool[],
+): Record<string, AssistantToolPreference> {
+  const available = new Set(availableTools.map((tool) => tool.name))
+  const entries = Object.entries(toolPreferences ?? {}).filter(([toolName]) =>
+    available.has(toolName),
+  )
+
+  return Object.fromEntries(entries)
+}
+
 function normalizeToolSelection(
   enabledToolNames: string[] | undefined,
   availableTools: McpTool[],
@@ -216,6 +239,28 @@ function normalizeToolSelection(
   }
   const available = new Set(availableTools.map((tool) => tool.name))
   return enabledToolNames.filter((toolName) => available.has(toolName))
+}
+
+function updateDraftToolPreferences(
+  assistant: Assistant,
+  updater: (
+    current: Record<string, AssistantToolPreference>,
+  ) => Record<string, AssistantToolPreference>,
+): Assistant {
+  const current = {
+    ...getAssistantToolPreferences(assistant),
+  }
+  const nextToolPreferences = updater(current)
+  const nextEnabledToolNames = getEnabledAssistantToolNames({
+    ...assistant,
+    toolPreferences: nextToolPreferences,
+  })
+
+  return {
+    ...assistant,
+    toolPreferences: nextToolPreferences,
+    enabledToolNames: nextEnabledToolNames,
+  }
 }
 
 export function AgentsSectionContent({
@@ -416,8 +461,12 @@ export function AgentsSectionContent({
         sanitizedCustomParameters.length > 0
           ? sanitizedCustomParameters
           : undefined,
+      toolPreferences: normalizeToolPreferences(
+        draftAgent.toolPreferences,
+        availableTools,
+      ),
       enabledToolNames: normalizeToolSelection(
-        draftAgent.enabledToolNames,
+        getEnabledAssistantToolNames(draftAgent),
         availableTools,
       ),
       updatedAt: Date.now(),
@@ -450,18 +499,43 @@ export function AgentsSectionContent({
       if (!prev) {
         return prev
       }
-      const current = new Set(prev.enabledToolNames ?? [])
-      for (const toolName of toolNames) {
-        if (enabled) {
-          current.add(toolName)
-        } else {
-          current.delete(toolName)
+
+      return updateDraftToolPreferences(prev, (current) => {
+        const next = { ...current }
+        for (const toolName of toolNames) {
+          next[toolName] = {
+            ...next[toolName],
+            enabled,
+            approvalMode:
+              next[toolName]?.approvalMode ??
+              getDefaultApprovalModeForTool(toolName),
+          }
         }
+        return next
+      })
+    })
+  }
+
+  const setToolApprovalMode = (
+    toolNames: string[],
+    approvalMode: AssistantToolApprovalMode,
+  ) => {
+    setDraftAgent((prev) => {
+      if (!prev) {
+        return prev
       }
-      return {
-        ...prev,
-        enabledToolNames: [...current],
-      }
+
+      return updateDraftToolPreferences(prev, (current) => {
+        const next = { ...current }
+        for (const toolName of toolNames) {
+          next[toolName] = {
+            ...next[toolName],
+            enabled: next[toolName]?.enabled ?? true,
+            approvalMode,
+          }
+        }
+        return next
+      })
     })
   }
 
@@ -600,7 +674,7 @@ export function AgentsSectionContent({
   )
 
   const enabledVisibleToolsCount = useMemo(() => {
-    const enabled = new Set(draftAgent?.enabledToolNames ?? [])
+    const enabled = new Set(getEnabledAssistantToolNames(draftAgent))
     return visibleToolGroups.reduce(
       (sum, group) =>
         sum +
@@ -609,7 +683,7 @@ export function AgentsSectionContent({
         ).length,
       0,
     )
-  }, [draftAgent?.enabledToolNames, visibleToolGroups])
+  }, [draftAgent, visibleToolGroups])
 
   const skillEntries = useMemo<LiteSkillEntry[]>(
     () => listLiteSkillEntries(app, { settings }),
@@ -650,6 +724,19 @@ export function AgentsSectionContent({
     () =>
       skillRows.filter((skill) => skill.enabled && skill.loadMode === 'lazy'),
     [skillRows],
+  )
+  const toolApprovalOptions = useMemo(
+    () => [
+      {
+        value: 'require_approval',
+        label: t('settings.agent.toolApprovalRequire', 'Require approval'),
+      },
+      {
+        value: 'full_access',
+        label: t('settings.agent.toolApprovalFullAccess', 'Full access'),
+      },
+    ],
+    [t],
   )
 
   const resetModelParams = () => {
@@ -913,8 +1000,11 @@ export function AgentsSectionContent({
                       }
 
                       const nextEnabledToolNames = new Set(
-                        prev.enabledToolNames ?? [],
+                        getEnabledAssistantToolNames(prev),
                       )
+                      const nextToolPreferences = {
+                        ...getAssistantToolPreferences(prev),
+                      }
 
                       if (value && !prev.includeBuiltinTools) {
                         availableTools.forEach((tool) => {
@@ -927,6 +1017,13 @@ export function AgentsSectionContent({
 
                           if (serverName === localFsServerName) {
                             nextEnabledToolNames.add(tool.name)
+                            nextToolPreferences[tool.name] = {
+                              ...nextToolPreferences[tool.name],
+                              enabled: true,
+                              approvalMode:
+                                nextToolPreferences[tool.name]?.approvalMode ??
+                                getDefaultApprovalModeForTool(tool.name),
+                            }
                           }
                         })
                       }
@@ -934,6 +1031,7 @@ export function AgentsSectionContent({
                       return {
                         ...prev,
                         includeBuiltinTools: value,
+                        toolPreferences: nextToolPreferences,
                         enabledToolNames: [...nextEnabledToolNames],
                       }
                     })
@@ -965,8 +1063,15 @@ export function AgentsSectionContent({
                     <div className="smtcmp-agent-tool-list">
                       {group.tools.map((tool) => {
                         const selected = tool.toggleTargets.every((target) =>
-                          draftAgent.enabledToolNames?.includes(target),
+                          isAssistantToolEnabled(draftAgent, target),
                         )
+                        const approvalMode = tool.toggleTargets.every(
+                          (target) =>
+                            getAssistantToolApprovalMode(draftAgent, target) ===
+                            'full_access',
+                        )
+                          ? 'full_access'
+                          : 'require_approval'
 
                         return (
                           <div
@@ -981,7 +1086,23 @@ export function AgentsSectionContent({
                                 {tool.description}
                               </div>
                             </div>
-                            <div className="smtcmp-agent-tool-toggle">
+                            <div className="smtcmp-agent-tool-controls">
+                              {selected && (
+                                <div className="smtcmp-agent-tool-approval">
+                                  <SimpleSelect
+                                    value={approvalMode}
+                                    options={toolApprovalOptions}
+                                    onChange={(value) =>
+                                      setToolApprovalMode(
+                                        tool.toggleTargets,
+                                        value as AssistantToolApprovalMode,
+                                      )
+                                    }
+                                    align="end"
+                                    contentClassName="smtcmp-agent-tool-approval-menu"
+                                  />
+                                </div>
+                              )}
                               <ObsidianToggle
                                 value={Boolean(selected)}
                                 onChange={(value) =>

@@ -1,6 +1,9 @@
 jest.mock('obsidian')
 
+import { App, TFile } from 'obsidian'
+
 import {
+  callLocalFileTool,
   isLocalFsWriteToolName,
   parseLocalFsActionFromToolArgs,
   recoverLikelyEscapedBackslashSequences,
@@ -43,5 +46,45 @@ describe('local fs tool action helpers', () => {
     expect(isLocalFsWriteToolName('fs_edit')).toBe(true)
     expect(isLocalFsWriteToolName('yolo_local__fs_move')).toBe(true)
     expect(isLocalFsWriteToolName('yolo_local__fs_read')).toBe(false)
+  })
+
+  it('routes fs_edit approval through apply review', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const modify = jest.fn()
+    const read = jest.fn().mockResolvedValue('hello world')
+    const openApplyReview = jest.fn().mockImplementation(async (state) => {
+      state.callbacks?.onComplete?.({ finalContent: 'hello changed' })
+      return true
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      openApplyReview,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        operations: [
+          {
+            type: 'replace',
+            oldText: 'world',
+            newText: 'changed',
+          },
+        ],
+      },
+      requireReview: true,
+    })
+
+    expect(openApplyReview).toHaveBeenCalledTimes(1)
+    expect(modify).not.toHaveBeenCalled()
+    expect(result.status).toBe('success')
   })
 })

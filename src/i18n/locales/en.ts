@@ -367,6 +367,9 @@ export const en: TranslationKeys = {
       editorIncludeBuiltinTools: 'Include built-in tools',
       editorIncludeBuiltinToolsDesc:
         'Allow local vault file tools for this agent',
+      toolApproval: 'Approval',
+      toolApprovalFullAccess: 'Full access',
+      toolApprovalRequire: 'Require approval',
       editorEnabled: 'Enabled',
       editorDisabled: 'Disabled',
       editorModel: 'Model',

@@ -1045,6 +1045,7 @@ export async function callLocalFileTool({
   openApplyReview,
   toolName,
   args,
+  requireReview = false,
   signal,
 }: {
   app: App
@@ -1052,6 +1053,7 @@ export async function callLocalFileTool({
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
   toolName: string
   args: Record<string, unknown>
+  requireReview?: boolean
   signal?: AbortSignal
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
@@ -1325,10 +1327,9 @@ export async function callLocalFileTool({
         const nextContent = materialized.newContent
 
         assertContentSize(nextContent)
-        const shouldRequireReview = settings?.mcp.fsEditRequireReview ?? false
         let appliedContent = nextContent
 
-        if (shouldRequireReview) {
+        if (requireReview) {
           if (!openApplyReview) {
             throw new Error('Apply review is unavailable for fs_edit.')
           }
@@ -1372,9 +1373,7 @@ export async function callLocalFileTool({
               matchMode: result.matchMode,
             })),
             changed: content !== appliedContent,
-            message: shouldRequireReview
-              ? 'Applied reviewed edit.'
-              : 'Applied edit.',
+            message: requireReview ? 'Applied reviewed edit.' : 'Applied edit.',
           }),
         }
       }

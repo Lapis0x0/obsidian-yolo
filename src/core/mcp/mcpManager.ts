@@ -80,23 +80,6 @@ export class McpManager {
     return requestToolName
   }
 
-  private isLocalToolAutoExecutable({
-    toolName,
-    requestArgs,
-  }: {
-    toolName: string
-    requestArgs?: Record<string, unknown> | string
-  }): boolean {
-    const action = parseLocalFsActionFromToolArgs({
-      toolName,
-      args: requestArgs,
-    })
-    if (!action) {
-      return true
-    }
-    return action !== 'delete_file' && action !== 'delete_dir'
-  }
-
   private isLocalToolEnabled(toolName: string): boolean {
     const directDisabled =
       this.settings.mcp.builtinToolOptions[toolName]?.disabled
@@ -477,42 +460,45 @@ export class McpManager {
     requestToolName,
     conversationId,
     requestArgs,
+    requireAutoExecution = false,
   }: {
     requestToolName: string
     conversationId?: string
     requestArgs?: Record<string, unknown> | string
+    requireAutoExecution?: boolean
   }): boolean {
-    const allowanceKey = this.buildExecutionAllowanceKey({
-      requestToolName,
-      requestArgs,
-    })
-
-    // Check if the tool is allowed for the conversation
-    if (conversationId) {
-      if (
-        this.allowedToolsByConversation.get(conversationId)?.has(allowanceKey)
-      ) {
-        return true
-      }
-    }
-
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (serverName === getLocalFileToolServerName()) {
         if (!this.isLocalToolEnabled(toolName)) {
           return false
         }
-        return this.isLocalToolAutoExecutable({ toolName, requestArgs })
+      } else {
+        const server = this.servers.find((server) => server.name === serverName)
+        if (!server) {
+          return false
+        }
+        const toolOption = server.config.toolOptions[toolName]
+        if (toolOption?.disabled ?? false) {
+          return false
+        }
       }
-      const server = this.servers.find((server) => server.name === serverName)
-      if (!server) {
-        return false
+
+      if (!conversationId) {
+        return requireAutoExecution
       }
-      const toolOption = server.config.toolOptions[toolName]
-      if (!toolOption) {
-        return false
+
+      const allowanceKey = this.buildExecutionAllowanceKey({
+        requestToolName,
+        requestArgs,
+      })
+      if (
+        this.allowedToolsByConversation.get(conversationId)?.has(allowanceKey)
+      ) {
+        return true
       }
-      return toolOption.allowAutoExecution ?? false
+
+      return requireAutoExecution
     } catch (error) {
       if (error instanceof InvalidToolNameException) {
         return false
@@ -526,11 +512,13 @@ export class McpManager {
     args,
     id,
     signal,
+    requireReview = false,
   }: {
     name: string
     args?: Record<string, unknown> | string | undefined
     id?: string
     signal?: AbortSignal
+    requireReview?: boolean
   }): Promise<ToolCallResponse> {
     if (this.disabled) {
       throw new McpNotAvailableException()
@@ -582,6 +570,7 @@ export class McpManager {
           openApplyReview: this.openApplyReview,
           toolName,
           args: parsedArgs ?? {},
+          requireReview,
           signal: compositeSignal,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {

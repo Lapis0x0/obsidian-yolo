@@ -21,6 +21,7 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
+import { isAssistantToolEnabled } from '../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../core/llm/manager'
@@ -364,16 +365,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return false
     }
 
-    const enabledToolNames = selectedAssistant?.enabledToolNames
-    if (!enabledToolNames) {
+    if (
+      !selectedAssistant?.toolPreferences &&
+      !selectedAssistant?.enabledToolNames
+    ) {
       return true
     }
 
-    if (enabledToolNames.length === 0) {
-      return false
-    }
-
-    return enabledToolNames.includes(LOCAL_FS_READ_TOOL)
+    return isAssistantToolEnabled(selectedAssistant, LOCAL_FS_READ_TOOL)
   }, [chatMode, selectedAssistant])
 
   // Per-conversation model id (do NOT write back to global settings)

@@ -256,6 +256,9 @@ export type TranslationKeys = {
       editorEnableToolsDesc?: string
       editorIncludeBuiltinTools?: string
       editorIncludeBuiltinToolsDesc?: string
+      toolApproval?: string
+      toolApprovalFullAccess?: string
+      toolApprovalRequire?: string
       editorEnabled?: string
       editorDisabled?: string
       editorModel?: string

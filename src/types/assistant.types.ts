@@ -28,6 +28,24 @@ export type AssistantSkillPreference = z.infer<
   typeof assistantSkillPreferenceSchema
 >
 
+export const assistantToolApprovalModeSchema = z.enum([
+  'full_access',
+  'require_approval',
+])
+
+export type AssistantToolApprovalMode = z.infer<
+  typeof assistantToolApprovalModeSchema
+>
+
+export const assistantToolPreferenceSchema = z.object({
+  enabled: z.boolean().optional(),
+  approvalMode: assistantToolApprovalModeSchema.optional(),
+})
+
+export type AssistantToolPreference = z.infer<
+  typeof assistantToolPreferenceSchema
+>
+
 // Assistant type definition
 export const assistantSchema = z.object({
   id: z.string(),
@@ -45,6 +63,9 @@ export const assistantSchema = z.object({
   enableTools: z.boolean().optional(),
   includeBuiltinTools: z.boolean().optional(),
   enabledToolNames: z.array(z.string()).optional(),
+  toolPreferences: z
+    .record(z.string(), assistantToolPreferenceSchema)
+    .optional(),
   enabledSkills: z.array(z.string()).optional(),
   skillPreferences: z
     .record(z.string(), assistantSkillPreferenceSchema)

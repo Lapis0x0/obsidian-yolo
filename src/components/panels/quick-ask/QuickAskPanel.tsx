@@ -26,6 +26,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useMcp } from '../../../contexts/mcp-context'
 import { useRAG } from '../../../contexts/rag-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
@@ -1035,8 +1036,9 @@ export function QuickAskPanel({
             mcpManager,
             abortSignal: abortController.signal,
             allowedToolNames: effectiveEnableTools
-              ? selectedAssistant?.enabledToolNames
+              ? getEnabledAssistantToolNames(selectedAssistant)
               : undefined,
+            toolPreferences: selectedAssistant?.toolPreferences,
             requestParams: {
               stream: true,
             },

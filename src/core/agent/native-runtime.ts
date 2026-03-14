@@ -69,6 +69,7 @@ export class NativeAgentRuntime implements AgentRuntime {
 
     const toolGateway = new AgentToolGateway(input.mcpManager, {
       allowedToolNames: input.allowedToolNames,
+      toolPreferences: input.toolPreferences,
       allowedSkillIds: input.allowedSkillIds,
       allowedSkillNames: input.allowedSkillNames,
     })

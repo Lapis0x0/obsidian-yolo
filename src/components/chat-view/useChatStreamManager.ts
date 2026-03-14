@@ -13,6 +13,7 @@ import {
   LLMModelNotFoundException,
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
+import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { ChatMessage } from '../../types/chat'
@@ -395,7 +396,7 @@ export function useChatStreamManager({
           : false
         const effectiveAllowedToolNames = effectiveEnableTools
           ? chatMode === 'agent'
-            ? selectedAssistant?.enabledToolNames
+            ? getEnabledAssistantToolNames(selectedAssistant)
             : CHAT_READONLY_TOOL_NAMES
           : undefined
 
@@ -462,6 +463,10 @@ export function useChatStreamManager({
             abortSignal: abortController.signal,
             reasoningLevel,
             allowedToolNames: effectiveAllowedToolNames,
+            toolPreferences:
+              chatMode === 'agent'
+                ? selectedAssistant?.toolPreferences
+                : undefined,
             allowedSkillIds,
             allowedSkillNames,
             requestParams: {

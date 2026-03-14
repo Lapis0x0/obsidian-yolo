@@ -26,6 +26,13 @@ export type AgentRuntimeRunInput = {
     max_tokens?: number
   }
   allowedToolNames?: string[]
+  toolPreferences?: Record<
+    string,
+    {
+      enabled?: boolean
+      approvalMode?: 'full_access' | 'require_approval'
+    }
+  >
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   maxContextOverride?: number
