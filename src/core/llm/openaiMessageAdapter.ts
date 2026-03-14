@@ -358,6 +358,12 @@ export class OpenAIMessageAdapter {
     | ChatCompletionCreateParamsStreaming
     | ChatCompletionCreateParamsNonStreaming {
     if (stream) {
+      const streamOptions = hasObjectProperty(request, 'stream_options')
+        ? ((request as Record<string, unknown>).stream_options as
+            | ChatCompletionCreateParamsStreaming['stream_options']
+            | undefined)
+        : { include_usage: true }
+
       const params: ChatCompletionCreateParamsStreaming &
         Record<string, unknown> = {
         model: request.model,
@@ -374,9 +380,7 @@ export class OpenAIMessageAdapter {
         logit_bias: request.logit_bias,
         prediction: request.prediction,
         stream: true,
-        stream_options: {
-          include_usage: true,
-        },
+        stream_options: streamOptions,
       }
       return this.attachVendorExtensions(params, request)
     }
