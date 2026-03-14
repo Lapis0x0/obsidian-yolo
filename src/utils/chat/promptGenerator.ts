@@ -41,6 +41,53 @@ import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
+export const filterRequestMessagesByToolBoundary = (
+  requestMessages: RequestMessage[],
+): RequestMessage[] => {
+  const filteredRequestMessages: RequestMessage[] = []
+  let pendingToolCallIds = new Set<string>()
+  let expectingToolResponses = false
+
+  for (const msg of requestMessages) {
+    if (msg.role === 'assistant') {
+      const normalizedToolCalls = msg.tool_calls?.filter((toolCall) => {
+        return typeof toolCall.id === 'string' && toolCall.id.trim().length > 0
+      })
+
+      pendingToolCallIds = new Set(
+        (normalizedToolCalls ?? []).map((toolCall) => toolCall.id),
+      )
+      expectingToolResponses = pendingToolCallIds.size > 0
+
+      filteredRequestMessages.push({
+        ...msg,
+        tool_calls:
+          normalizedToolCalls && normalizedToolCalls.length > 0
+            ? normalizedToolCalls
+            : undefined,
+      })
+      continue
+    }
+
+    if (msg.role === 'tool') {
+      const callId = msg.tool_call.id
+      if (!expectingToolResponses || !pendingToolCallIds.has(callId)) {
+        continue
+      }
+      pendingToolCallIds.delete(callId)
+      filteredRequestMessages.push(msg)
+      expectingToolResponses = pendingToolCallIds.size > 0
+      continue
+    }
+
+    pendingToolCallIds = new Set()
+    expectingToolResponses = false
+    filteredRequestMessages.push(msg)
+  }
+
+  return filteredRequestMessages
+}
+
 type PromptGeneratorOptions = {
   includeSkills?: boolean
 }
@@ -240,46 +287,7 @@ export class PromptGenerator {
       requestMessages.push(...this.parseToolMessage({ message }))
     }
 
-    const filteredRequestMessages: RequestMessage[] = []
-    let pendingToolCallIds = new Set<string>()
-
-    for (const msg of requestMessages) {
-      if (msg.role === 'assistant') {
-        const normalizedToolCalls = msg.tool_calls?.filter((toolCall) => {
-          return (
-            typeof toolCall.id === 'string' && toolCall.id.trim().length > 0
-          )
-        })
-
-        pendingToolCallIds = new Set(
-          (normalizedToolCalls ?? []).map((toolCall) => toolCall.id),
-        )
-
-        filteredRequestMessages.push({
-          ...msg,
-          tool_calls:
-            normalizedToolCalls && normalizedToolCalls.length > 0
-              ? normalizedToolCalls
-              : undefined,
-        })
-        continue
-      }
-
-      if (msg.role === 'tool') {
-        const callId = msg.tool_call.id
-        if (!pendingToolCallIds.has(callId)) {
-          continue
-        }
-        pendingToolCallIds.delete(callId)
-        filteredRequestMessages.push(msg)
-        continue
-      }
-
-      pendingToolCallIds = new Set()
-      filteredRequestMessages.push(msg)
-    }
-
-    return filteredRequestMessages
+    return filterRequestMessagesByToolBoundary(requestMessages)
   }
 
   private async getUserMessageContent({
