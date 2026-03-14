@@ -1,5 +1,5 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Check, CopyIcon, Import, Pencil, Trash2 } from 'lucide-react'
+import { Check, CopyIcon, GitFork, Import, Pencil, Trash2 } from 'lucide-react'
 import { htmlToMarkdown, MarkdownView, Notice } from 'obsidian'
 import { useMemo, useRef, useState } from 'react'
 
@@ -189,20 +189,24 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
 
 export default function AssistantToolMessageGroupActions({
   messages,
+  onBranch,
   onEdit,
   onDelete,
   isEditing = false,
   isDisabled = false,
 }: {
   messages: AssistantToolMessageGroup
+  onBranch?: () => void
   onEdit?: () => void
   onDelete?: () => void
   isEditing?: boolean
   isDisabled?: boolean
 }) {
   const { t } = useLanguage()
+  const branchLabel = t('chat.createBranchFromHere', 'Create branch from here')
   const editLabel = t('common.edit', 'Edit')
   const deleteLabel = t('common.delete', 'Delete')
+  const isBranchDisabled = isDisabled || !onBranch
   const isEditDisabled = isDisabled || !onEdit || isEditing
   const isDeleteDisabled = isDisabled || !onDelete
 
@@ -210,6 +214,26 @@ export default function AssistantToolMessageGroupActions({
     <div className="smtcmp-assistant-message-actions">
       <InsertButton messages={messages} />
       <CopyButton messages={messages} />
+      <Tooltip.Provider delayDuration={0}>
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <button
+              type="button"
+              onClick={isBranchDisabled ? undefined : onBranch}
+              className="clickable-icon"
+              aria-label={branchLabel}
+              disabled={isBranchDisabled}
+            >
+              <GitFork size={12} />
+            </button>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content className="smtcmp-tooltip-content">
+              {branchLabel}
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </Tooltip.Provider>
       <Tooltip.Provider delayDuration={0}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
