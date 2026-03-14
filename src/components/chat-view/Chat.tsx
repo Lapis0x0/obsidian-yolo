@@ -553,6 +553,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
+  const bottomAnchorRef = useRef<HTMLDivElement>(null)
   const hasStreamingMessages = useMemo(
     () =>
       chatMessages.some(
@@ -565,6 +566,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const { autoScrollToBottom, forceScrollToBottom } = useAutoScroll({
     scrollContainerRef: chatMessagesRef,
+    bottomAnchorRef,
     isStreaming: hasStreamingMessages,
   })
 
@@ -2189,6 +2191,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <div>Stop generation</div>
           </button>
         )}
+        <div
+          ref={bottomAnchorRef}
+          className="smtcmp-chat-bottom-anchor"
+          aria-hidden="true"
+        />
       </div>
       {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
         displayMentionablesForInput.length > 0 && (

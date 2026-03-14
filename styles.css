@@ -5115,6 +5115,13 @@
   }
 }
 
+.smtcmp-chat-bottom-anchor {
+  height: 1px;
+  margin-top: 1px;
+  margin-bottom: 8px;
+  pointer-events: none;
+}
+
 .smtcmp-chat-empty-state {
   margin: auto;
   width: min(560px, calc(100% - var(--size-4-4)));
