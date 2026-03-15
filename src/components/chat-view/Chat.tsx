@@ -50,7 +50,7 @@ import {
   serializeMentionable,
 } from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { readTFileContent } from '../../utils/obsidian'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 
@@ -236,8 +236,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }),
     [conversationAssistantId, settings],
   )
-  const promptGenerator = useMemo(() => {
-    return new PromptGenerator(getRAGEngine, app, effectiveSettings)
+  const requestContextBuilder = useMemo(() => {
+    return new RequestContextBuilder(getRAGEngine, app, effectiveSettings)
   }, [app, effectiveSettings, getRAGEngine])
 
   const normalizeReasoningLevel = useCallback(
@@ -617,7 +617,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const { abortActiveStreams, submitChatMutation } = useChatStreamManager({
     setChatMessages,
     autoScrollToBottom,
-    promptGenerator,
+    requestContextBuilder,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
@@ -1178,7 +1178,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         inputChatMessages.map(async (message) => {
           if (message.role === 'user' && message.id === lastMessage.id) {
             const { promptContent, similaritySearchResults } =
-              await promptGenerator.compileUserMessagePrompt({
+              await requestContextBuilder.compileUserMessagePrompt({
                 message,
                 useVaultSearch,
                 onQueryProgressChange: setQueryProgress,
@@ -1193,7 +1193,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             // Ensure all user messages have prompt content
             // This is a fallback for cases where compilation was missed earlier in the process
             const { promptContent, similaritySearchResults } =
-              await promptGenerator.compileUserMessagePrompt({
+              await requestContextBuilder.compileUserMessagePrompt({
                 message,
                 preferToolRead: shouldPreferToolReadMentions,
               })
@@ -1249,7 +1249,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       currentConversationId,
       conversationModelId,
       conversationOverrides,
-      promptGenerator,
+      requestContextBuilder,
       abortActiveStreams,
       forceScrollToBottom,
       createOrUpdateConversation,

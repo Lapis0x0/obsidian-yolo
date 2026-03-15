@@ -4,7 +4,7 @@ import { ReasoningLevel } from '../../components/chat-view/chat-input/ReasoningS
 import { ChatMessage } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMProvider } from '../../types/provider.types'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'
 
@@ -15,7 +15,7 @@ export type AgentRuntimeRunInput = {
   model: ChatModel
   messages: ChatMessage[]
   conversationId: string
-  promptGenerator: PromptGenerator
+  requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   abortSignal?: AbortSignal
   reasoningLevel?: ReasoningLevel

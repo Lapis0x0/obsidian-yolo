@@ -100,7 +100,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                 const llmTurnExecutor = new AgentLlmTurnExecutor({
                   providerClient: input.providerClient,
                   model: input.model,
-                  promptGenerator: input.promptGenerator,
+                  requestContextBuilder: input.requestContextBuilder,
                   mcpManager: input.mcpManager,
                   conversationId: input.conversationId,
                   messages: [...input.messages, ...this.messages],
@@ -237,7 +237,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     const llmTurnExecutor = new AgentLlmTurnExecutor({
       providerClient: input.providerClient,
       model: input.model,
-      promptGenerator: input.promptGenerator,
+      requestContextBuilder: input.requestContextBuilder,
       mcpManager: input.mcpManager,
       conversationId: input.conversationId,
       messages: [...input.messages, ...this.messages],

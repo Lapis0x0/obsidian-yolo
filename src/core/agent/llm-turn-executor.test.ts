@@ -10,7 +10,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import type { McpManager } from '../mcp/mcpManager'
 
@@ -140,11 +140,11 @@ describe('AgentLlmTurnExecutor', () => {
       }
     })
 
-    const promptGenerator = {
+    const requestContextBuilder = {
       generateRequestMessages: jest
         .fn()
         .mockResolvedValue([{ role: 'user', content: 'hello' }]),
-    } as unknown as PromptGenerator
+    } as unknown as RequestContextBuilder
 
     const mcpManager = {
       listAvailableTools: jest.fn().mockResolvedValue([
@@ -163,7 +163,7 @@ describe('AgentLlmTurnExecutor', () => {
     const executor = new AgentLlmTurnExecutor({
       providerClient: provider,
       model: TEST_MODEL,
-      promptGenerator,
+      requestContextBuilder,
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
@@ -212,11 +212,11 @@ describe('AgentLlmTurnExecutor', () => {
 
   it('marks assistant message error when single turn fails', async () => {
     const provider = new MockProvider()
-    const promptGenerator = {
+    const requestContextBuilder = {
       generateRequestMessages: jest
         .fn()
         .mockResolvedValue([{ role: 'user', content: 'hello' }]),
-    } as unknown as PromptGenerator
+    } as unknown as RequestContextBuilder
 
     const mcpManager = {
       listAvailableTools: jest.fn().mockResolvedValue([]),
@@ -228,7 +228,7 @@ describe('AgentLlmTurnExecutor', () => {
     const executor = new AgentLlmTurnExecutor({
       providerClient: provider,
       model: TEST_MODEL,
-      promptGenerator,
+      requestContextBuilder,
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
@@ -263,11 +263,11 @@ describe('AgentLlmTurnExecutor', () => {
 
   it('marks assistant message aborted on abort errors', async () => {
     const provider = new MockProvider()
-    const promptGenerator = {
+    const requestContextBuilder = {
       generateRequestMessages: jest
         .fn()
         .mockResolvedValue([{ role: 'user', content: 'hello' }]),
-    } as unknown as PromptGenerator
+    } as unknown as RequestContextBuilder
 
     const mcpManager = {
       listAvailableTools: jest.fn().mockResolvedValue([]),
@@ -283,7 +283,7 @@ describe('AgentLlmTurnExecutor', () => {
     const executor = new AgentLlmTurnExecutor({
       providerClient: provider,
       model: TEST_MODEL,
-      promptGenerator,
+      requestContextBuilder,
       mcpManager,
       conversationId: 'conv-1',
       messages: [],
@@ -314,11 +314,11 @@ describe('AgentLlmTurnExecutor', () => {
 
   it('does not treat reasoning-only turns as completed output', async () => {
     const provider = new MockProvider()
-    const promptGenerator = {
+    const requestContextBuilder = {
       generateRequestMessages: jest
         .fn()
         .mockResolvedValue([{ role: 'user', content: 'hello' }]),
-    } as unknown as PromptGenerator
+    } as unknown as RequestContextBuilder
 
     const mcpManager = {
       listAvailableTools: jest.fn().mockResolvedValue([]),
@@ -353,7 +353,7 @@ describe('AgentLlmTurnExecutor', () => {
     const executor = new AgentLlmTurnExecutor({
       providerClient: provider,
       model: TEST_MODEL,
-      promptGenerator,
+      requestContextBuilder,
       mcpManager,
       conversationId: 'conv-1',
       messages: [],

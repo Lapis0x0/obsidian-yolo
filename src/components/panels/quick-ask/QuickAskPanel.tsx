@@ -53,7 +53,7 @@ import {
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
-import { PromptGenerator } from '../../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
@@ -582,8 +582,8 @@ export function QuickAskPanel({
     [app, mentionables, selectionMentionable],
   )
 
-  // Build promptGenerator with context
-  const promptGenerator = useMemo(() => {
+  // Build requestContextBuilder with context
+  const requestContextBuilder = useMemo(() => {
     const globalSystemPrompt = settings.systemPrompt || ''
     const assistantPrompt = selectedAssistant?.systemPrompt || ''
     const trimmedTitle = fileTitle.trim()
@@ -610,7 +610,7 @@ export function QuickAskPanel({
     const combinedSystemPrompt =
       `${globalSystemPrompt}\n\n${assistantPrompt}${contextSection}`.trim()
 
-    return new PromptGenerator(
+    return new RequestContextBuilder(
       getRAGEngine,
       app,
       {
@@ -1032,7 +1032,7 @@ export function QuickAskPanel({
             model,
             messages: newMessages,
             conversationId,
-            promptGenerator,
+            requestContextBuilder,
             mcpManager,
             abortSignal: abortController.signal,
             allowedToolNames: effectiveEnableTools
@@ -1100,7 +1100,7 @@ export function QuickAskPanel({
       mentionables,
       model,
       plugin,
-      promptGenerator,
+      requestContextBuilder,
       providerClient,
       selectedAssistant,
       t,

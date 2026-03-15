@@ -42,11 +42,11 @@ import { filterRequestMessagesByToolBoundary } from './tool-boundary'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
-type PromptGeneratorOptions = {
+type RequestContextBuilderOptions = {
   includeSkills?: boolean
 }
 
-export class PromptGenerator {
+export class RequestContextBuilder {
   private getRagEngine: () => Promise<RAGEngine>
   private app: App
   private settings: SmartComposerSettings
@@ -57,7 +57,7 @@ export class PromptGenerator {
     getRagEngine: () => Promise<RAGEngine>,
     app: App,
     settings: SmartComposerSettings,
-    options?: PromptGeneratorOptions,
+    options?: RequestContextBuilderOptions,
   ) {
     this.getRagEngine = getRagEngine
     this.app = app

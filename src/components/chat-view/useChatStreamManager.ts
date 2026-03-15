@@ -18,7 +18,7 @@ import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { ChatMessage } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
@@ -30,7 +30,7 @@ import { ReasoningLevel } from './chat-input/ReasoningSelect'
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   autoScrollToBottom: () => void
-  promptGenerator: PromptGenerator
+  requestContextBuilder: RequestContextBuilder
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
@@ -140,7 +140,7 @@ export type UseChatStreamManager = {
 export function useChatStreamManager({
   setChatMessages,
   autoScrollToBottom,
-  promptGenerator,
+  requestContextBuilder,
   conversationOverrides,
   modelId,
   chatMode,
@@ -458,7 +458,7 @@ export function useChatStreamManager({
             model: effectiveModel,
             messages: chatMessages,
             conversationId,
-            promptGenerator,
+            requestContextBuilder,
             mcpManager,
             abortSignal: abortController.signal,
             reasoningLevel,

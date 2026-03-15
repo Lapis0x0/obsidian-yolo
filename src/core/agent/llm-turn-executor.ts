@@ -10,7 +10,7 @@ import { ChatModel } from '../../types/chat-model.types'
 import { RequestTool } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
 import { ToolCallRequest } from '../../types/tool-call.types'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
@@ -23,7 +23,7 @@ import { parseToolName } from '../mcp/tool-name-utils'
 type AgentLlmTurnExecutorInput = {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
-  promptGenerator: PromptGenerator
+  requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   conversationId: string
   messages: ChatMessage[]
@@ -115,7 +115,7 @@ export class AgentLlmTurnExecutor {
 
     const hasTools = filteredTools.length > 0
     const requestMessages =
-      await this.input.promptGenerator.generateRequestMessages({
+      await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
         hasTools,
         maxContextOverride: this.input.maxContextOverride,
@@ -153,7 +153,7 @@ export class AgentLlmTurnExecutor {
     }
     this.input.onAssistantMessage(assistantMessage)
 
-    let turnResult
+    let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     try {
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
