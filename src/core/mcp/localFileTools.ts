@@ -1020,20 +1020,12 @@ const executeFsFileOps = async ({
     }
   }
 
-  const successCount = results.filter((item) => item.ok).length
-  const errorCount = results.length - successCount
-
   return {
     status: ToolCallResponseStatus.Success,
     text: formatJsonResult({
       tool,
       action,
       dryRun,
-      summary: {
-        total: results.length,
-        success: successCount,
-        failed: errorCount,
-      },
       results,
     }),
   }
@@ -1130,10 +1122,6 @@ export async function callLocalFileTool({
             path: scopeFolder.normalizedPath,
             scope,
             depth,
-            summary: {
-              returned: entries.length,
-              maxResults,
-            },
             entries,
           }),
         }
@@ -1279,9 +1267,6 @@ export async function callLocalFileTool({
           })
         }
 
-        const successCount = results.filter((result) => result.ok).length
-        const errorCount = results.length - successCount
-
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
@@ -1291,11 +1276,6 @@ export async function callLocalFileTool({
               endLine: endLine ?? null,
               maxLines: endLine === undefined ? maxLines : null,
               maxCharsPerFile,
-            },
-            summary: {
-              total: results.length,
-              success: successCount,
-              failed: errorCount,
             },
             results,
           }),
@@ -1498,8 +1478,6 @@ export async function callLocalFileTool({
               snippet: string
             }
         > = []
-        let skippedLargeFiles = 0
-
         if (includeFiles) {
           const files = app.vault
             .getFiles()
@@ -1548,7 +1526,6 @@ export async function callLocalFileTool({
               return { status: ToolCallResponseStatus.Aborted }
             }
             if (file.stat.size > MAX_FILE_SIZE_BYTES) {
-              skippedLargeFiles += 1
               continue
             }
 
@@ -1581,11 +1558,6 @@ export async function callLocalFileTool({
             scope,
             query,
             path: scopeFolder.normalizedPath,
-            summary: {
-              returned: results.length,
-              maxResults,
-              skippedLargeFiles,
-            },
             results,
           }),
         }
