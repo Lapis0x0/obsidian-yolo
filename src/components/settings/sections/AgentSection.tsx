@@ -50,7 +50,7 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
   },
   fs_file_ops: {
     key: 'settings.agent.builtinFsFileOpsLabel',
-    fallback: 'File Operations',
+    fallback: 'File Operation Toolset',
   },
   memory_ops: {
     key: 'settings.agent.builtinMemoryOpsLabel',

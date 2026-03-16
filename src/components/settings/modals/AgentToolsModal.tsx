@@ -59,7 +59,7 @@ const BUILTIN_TOOL_I18N_KEYS: Record<
   fs_file_ops: {
     labelKey: 'settings.agent.builtinFsFileOpsLabel',
     descKey: 'settings.agent.builtinFsFileOpsDesc',
-    labelFallback: 'File Operations',
+    labelFallback: 'File Operation Toolset',
     descFallback:
       'Grouped file path operations: create/delete file, create/delete folder, and move.',
   },

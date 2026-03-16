@@ -306,7 +306,7 @@ export const zh: TranslationKeys = {
       fsEditReviewToggle: '编辑文件是否需要审批',
       fsEditReviewToggleDesc:
         '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
-      builtinFsFileOpsLabel: '文件操作',
+      builtinFsFileOpsLabel: '文件操作集',
       builtinFsFileOpsDesc:
         '聚合文件路径操作：创建/删除文件、创建/删除文件夹、移动路径。',
       builtinMemoryOpsLabel: '记忆工具集',
@@ -890,7 +890,7 @@ export const zh: TranslationKeys = {
         fs_search: '搜索文件',
         fs_read: '读取文件',
         fs_edit: '文本编辑',
-        fs_file_ops: '文件操作',
+        fs_file_ops: '文件操作集',
         memory_add: '新增记忆',
         memory_update: '更新记忆',
         memory_delete: '删除记忆',
