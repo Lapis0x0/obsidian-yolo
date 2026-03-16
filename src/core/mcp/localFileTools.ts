@@ -14,7 +14,12 @@ import {
   getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../skills/liteSkills'
-import { memoryAdd, memoryDelete, memoryUpdate } from '../memory/memoryManager'
+import {
+  memoryAdd,
+  memoryDelete,
+  memoryUpdate,
+  type MemoryScope,
+} from '../memory/memoryManager'
 
 export { recoverLikelyEscapedBackslashSequences }
 
@@ -519,13 +524,34 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'memory_add',
       description:
-        'Add a memory entry to global or assistant memory. Category defaults to other and id is auto-assigned.',
+        'Add memory entries to global or assistant memory. Supports single entry or batch items; category defaults to other and id is auto-assigned.',
       inputSchema: {
         type: 'object',
         properties: {
           content: {
             type: 'string',
             description: 'Memory content text to store.',
+          },
+          items: {
+            type: 'array',
+            description:
+              'Batch add items. Each item accepts content, optional category, and optional scope.',
+            items: {
+              type: 'object',
+              properties: {
+                content: {
+                  type: 'string',
+                },
+                category: {
+                  type: 'string',
+                },
+                scope: {
+                  type: 'string',
+                  enum: ['global', 'assistant'],
+                },
+              },
+              required: ['content'],
+            },
           },
           category: {
             type: 'string',
@@ -539,7 +565,6 @@ export function getLocalFileTools(): McpTool[] {
               'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
           },
         },
-        required: ['content'],
       },
     },
     {
@@ -570,13 +595,21 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'memory_delete',
       description:
-        'Delete a memory entry by id from global or assistant memory.',
+        'Delete memory entries by id from global or assistant memory. Supports single id or batch ids.',
       inputSchema: {
         type: 'object',
         properties: {
           id: {
             type: 'string',
             description: 'Memory id such as Preference_1.',
+          },
+          ids: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+            description:
+              'Batch delete ids. Each id must exist in the selected memory scope.',
           },
           scope: {
             type: 'string',
@@ -585,7 +618,6 @@ export function getLocalFileTools(): McpTool[] {
               'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
           },
         },
-        required: ['id'],
       },
     },
     {
@@ -1666,6 +1698,73 @@ export async function callLocalFileTool({
       }
 
       case 'memory_add': {
+        if (args.items !== undefined) {
+          const items = getRecordArrayArg(args, 'items')
+          if (items.length === 0) {
+            throw new Error('items cannot be empty.')
+          }
+
+          const results: Array<
+            | {
+                ok: true
+                id: string
+                scope: MemoryScope
+                filePath: string
+              }
+            | {
+                ok: false
+                error: string
+                scope: MemoryScope
+              }
+          > = []
+
+          for (const item of items) {
+            try {
+              const result = await memoryAdd({
+                app,
+                settings,
+                content: item.content,
+                category: item.category,
+                scope: item.scope ?? args.scope,
+                assistantId: settings?.currentAssistantId,
+              })
+              results.push({
+                ok: true,
+                id: result.id,
+                scope: result.scope,
+                filePath: result.filePath,
+              })
+            } catch (error) {
+              results.push({
+                ok: false,
+                error: asErrorMessage(error),
+                scope:
+                  typeof (item.scope ?? args.scope) === 'string' &&
+                  String(item.scope ?? args.scope)
+                    .trim()
+                    .toLowerCase() === 'global'
+                    ? 'global'
+                    : 'assistant',
+              })
+            }
+          }
+
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'memory_add',
+              mode: 'batch',
+              results,
+              okCount: results.filter((result) => result.ok).length,
+              failCount: results.filter((result) => !result.ok).length,
+            }),
+          }
+        }
+
+        if (args.content === undefined) {
+          throw new Error('content or items is required.')
+        }
+
         const result = await memoryAdd({
           app,
           settings,
@@ -1708,6 +1807,72 @@ export async function callLocalFileTool({
       }
 
       case 'memory_delete': {
+        if (args.ids !== undefined) {
+          const ids = getStringArrayArg(args, 'ids')
+          if (ids.length === 0) {
+            throw new Error('ids cannot be empty.')
+          }
+
+          const results: Array<
+            | {
+                ok: true
+                id: string
+                scope: MemoryScope
+                filePath: string
+              }
+            | {
+                ok: false
+                id: string
+                error: string
+                scope: MemoryScope
+              }
+          > = []
+
+          for (const id of ids) {
+            try {
+              const result = await memoryDelete({
+                app,
+                settings,
+                id,
+                scope: args.scope,
+                assistantId: settings?.currentAssistantId,
+              })
+              results.push({
+                ok: true,
+                id: result.id,
+                scope: result.scope,
+                filePath: result.filePath,
+              })
+            } catch (error) {
+              results.push({
+                ok: false,
+                id,
+                error: asErrorMessage(error),
+                scope:
+                  typeof args.scope === 'string' &&
+                  args.scope.trim().toLowerCase() === 'global'
+                    ? 'global'
+                    : 'assistant',
+              })
+            }
+          }
+
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'memory_delete',
+              mode: 'batch',
+              results,
+              okCount: results.filter((result) => result.ok).length,
+              failCount: results.filter((result) => !result.ok).length,
+            }),
+          }
+        }
+
+        if (args.id === undefined) {
+          throw new Error('id or ids is required.')
+        }
+
         const result = await memoryDelete({
           app,
           settings,

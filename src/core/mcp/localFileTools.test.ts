@@ -138,6 +138,7 @@ describe('local fs tool action helpers', () => {
       assistants: [
         {
           id: 'helper',
+          name: 'Helper Agent',
           systemPrompt: 'You are helper.',
         },
       ],
@@ -153,7 +154,8 @@ describe('local fs tool action helpers', () => {
       },
     })
     expect(addResult.status).toBe('success')
-    expect(contents.get('YOLO/memory/assistant-helper.md') ?? '').toContain(
+    const assistantMemoryPath = 'YOLO/memory/Helper Agent.md'
+    expect(contents.get(assistantMemoryPath!) ?? '').toContain(
       'Preference_1: 用户希望回答保持简洁',
     )
 
@@ -177,8 +179,134 @@ describe('local fs tool action helpers', () => {
       },
     })
     expect(deleteResult.status).toBe('success')
-    expect(contents.get('YOLO/memory/assistant-helper.md') ?? '').not.toContain(
+    expect(contents.get(assistantMemoryPath!) ?? '').not.toContain(
       'Preference_1',
     )
+  })
+
+  it('supports partial-success batch add and delete for memory tools', async () => {
+    const entries = new Map<string, unknown>()
+    const contents = new Map<string, string>()
+
+    const app = {
+      vault: {
+        getAbstractFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) => entries.get(path) ?? null),
+        createFolder: jest.fn().mockImplementation(async (path: string) => {
+          const folder = Object.assign(new TFolder(), {
+            path,
+            children: [],
+          })
+          entries.set(path, folder)
+          return folder
+        }),
+        create: jest
+          .fn()
+          .mockImplementation(async (path: string, content: string) => {
+            const file = Object.assign(new TFile(), {
+              path,
+              stat: { size: content.length },
+            })
+            entries.set(path, file)
+            contents.set(path, content)
+            return file
+          }),
+        read: jest
+          .fn()
+          .mockImplementation(
+            async (file: TFile) => contents.get(file.path) ?? '',
+          ),
+        modify: jest
+          .fn()
+          .mockImplementation(async (file: TFile, content: string) => {
+            contents.set(file.path, content)
+            ;(file as { stat?: { size?: number } }).stat = {
+              size: content.length,
+            }
+          }),
+      },
+    } as unknown as App
+
+    const settings = {
+      yolo: { baseDir: 'YOLO' },
+      currentAssistantId: 'helper',
+      assistants: [
+        {
+          id: 'helper',
+          name: 'Helper Agent',
+          systemPrompt: 'You are helper.',
+        },
+      ],
+    } as never
+
+    const batchAddResult = await callLocalFileTool({
+      app,
+      settings,
+      toolName: 'memory_add',
+      args: {
+        items: [
+          {
+            content: '批量记录 1',
+            category: 'other',
+          },
+          {
+            content: '   ',
+            category: 'other',
+          },
+          {
+            content: '批量记录 2',
+            category: 'other',
+          },
+        ],
+      },
+    })
+    expect(batchAddResult.status).toBe('success')
+    if (batchAddResult.status !== 'success') {
+      throw new Error('expected success')
+    }
+    const batchAddPayload = JSON.parse(batchAddResult.text) as {
+      mode: string
+      okCount: number
+      failCount: number
+      results: Array<{ ok: boolean; id?: string }>
+    }
+    expect(batchAddPayload.mode).toBe('batch')
+    expect(batchAddPayload.okCount).toBe(2)
+    expect(batchAddPayload.failCount).toBe(1)
+    const createdIds = batchAddPayload.results
+      .filter((result) => result.ok)
+      .map((result) => result.id)
+    expect(createdIds).toEqual(['Memory_1', 'Memory_2'])
+
+    const assistantMemoryPath = 'YOLO/memory/Helper Agent.md'
+
+    const batchDeleteResult = await callLocalFileTool({
+      app,
+      settings,
+      toolName: 'memory_delete',
+      args: {
+        ids: ['Memory_1', 'NotExist_404', 'Memory_2'],
+      },
+    })
+    expect(batchDeleteResult.status).toBe('success')
+    if (batchDeleteResult.status !== 'success') {
+      throw new Error('expected success')
+    }
+    const batchDeletePayload = JSON.parse(batchDeleteResult.text) as {
+      mode: string
+      okCount: number
+      failCount: number
+      results: Array<{ ok: boolean; id: string }>
+    }
+    expect(batchDeletePayload.mode).toBe('batch')
+    expect(batchDeletePayload.okCount).toBe(2)
+    expect(batchDeletePayload.failCount).toBe(1)
+    expect(
+      batchDeletePayload.results.filter((result) => !result.ok)[0]?.id,
+    ).toBe('NotExist_404')
+
+    expect(contents.get(assistantMemoryPath!) ?? '').not.toContain('Memory_1')
+    expect(contents.get(assistantMemoryPath!) ?? '').not.toContain('Memory_2')
   })
 })

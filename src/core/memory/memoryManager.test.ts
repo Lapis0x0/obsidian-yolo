@@ -89,6 +89,7 @@ describe('memoryManager', () => {
       assistants: [
         {
           id: 'dev/1',
+          name: 'Dev Helper',
           systemPrompt: 'You are my engineering assistant.',
         },
       ],
@@ -123,7 +124,7 @@ describe('memoryManager', () => {
     expect(second.id).toBe('Profile_2')
     expect(third.id).toBe('Profile_3')
     expect(first.scope).toBe('assistant')
-    expect(first.filePath).toBe('YOLO/memory/assistant-dev_1.md')
+    expect(first.filePath).toBe('YOLO/memory/Dev Helper.md')
 
     const fileContent = readByPath(first.filePath)
     expect(fileContent).not.toContain('Profile_1')
@@ -139,6 +140,7 @@ describe('memoryManager', () => {
       assistants: [
         {
           id: 'helper',
+          name: '助手A',
           systemPrompt: 'You are helper.',
         },
       ],
@@ -174,5 +176,137 @@ describe('memoryManager', () => {
 
     expect(context.global).toContain('Preference_1')
     expect(context.assistant).toContain('Memory_1: 当前在实现 YOLO 记忆机制')
+  })
+
+  it('parses section heading aliases and preserves custom text', async () => {
+    const { app, readByPath } = createMockVaultApp()
+    const settings = {
+      yolo: { baseDir: 'YOLO' },
+    }
+
+    const seedContent = [
+      '## user profile',
+      '> keep this note',
+      '',
+      '* Profile_4：已有记录',
+      '',
+      '## Preferences',
+      '- Preference_1: existing pref',
+      '',
+      '## Other Memory',
+      '- Memory_2: other item',
+      '',
+      'Some custom footer text.',
+      '',
+    ].join('\n')
+
+    await (
+      app as unknown as {
+        vault: { createFolder: (path: string) => Promise<unknown> }
+      }
+    ).vault.createFolder('YOLO')
+    await (
+      app as unknown as {
+        vault: { createFolder: (path: string) => Promise<unknown> }
+      }
+    ).vault.createFolder('YOLO/memory')
+    await (
+      app as unknown as {
+        vault: { create: (path: string, content: string) => Promise<unknown> }
+      }
+    ).vault.create('YOLO/memory/global.md', seedContent)
+
+    const result = await memoryAdd({
+      app,
+      settings,
+      content: '新增档案',
+      category: 'profile',
+      scope: 'global',
+    })
+
+    expect(result.id).toBe('Profile_5')
+    const content = readByPath('YOLO/memory/global.md')
+    expect(content).toContain('> keep this note')
+    expect(content).toContain('Some custom footer text.')
+    expect(content).toContain('- Profile_5: 新增档案')
+  })
+
+  it('throws when duplicated id is found in memory file', async () => {
+    const { app } = createMockVaultApp()
+    const settings = {
+      yolo: { baseDir: 'YOLO' },
+    }
+
+    const duplicatedContent = [
+      '# User Profile',
+      '- Profile_1: A',
+      '',
+      '# Preferences',
+      '- Profile_1: B',
+      '',
+      '# Other Memory',
+      '',
+    ].join('\n')
+
+    await (
+      app as unknown as {
+        vault: { createFolder: (path: string) => Promise<unknown> }
+      }
+    ).vault.createFolder('YOLO')
+    await (
+      app as unknown as {
+        vault: { createFolder: (path: string) => Promise<unknown> }
+      }
+    ).vault.createFolder('YOLO/memory')
+    await (
+      app as unknown as {
+        vault: { create: (path: string, content: string) => Promise<unknown> }
+      }
+    ).vault.create('YOLO/memory/global.md', duplicatedContent)
+
+    await expect(
+      memoryUpdate({
+        app,
+        settings,
+        id: 'Profile_1',
+        newContent: 'C',
+        scope: 'global',
+      }),
+    ).rejects.toThrow('Memory id duplicated: Profile_1')
+  })
+
+  it('uses assistant name and appends index for duplicate names', async () => {
+    const { app } = createMockVaultApp()
+    const settings = {
+      yolo: { baseDir: 'YOLO' },
+      currentAssistantId: 'helper-2',
+      assistants: [
+        {
+          id: 'helper-1',
+          name: '测试 Agent',
+          systemPrompt: 'A1',
+        },
+        {
+          id: 'helper-2',
+          name: '测试 Agent',
+          systemPrompt: 'A2',
+        },
+      ],
+    }
+
+    const addResult = await memoryAdd({
+      app,
+      settings,
+      content: 'test memory',
+      scope: 'assistant',
+    })
+    expect(addResult.filePath).toBe('YOLO/memory/测试 Agent (2).md')
+
+    const context = await getMemoryPromptContext({
+      app,
+      settings,
+      assistantId: 'helper-2',
+    })
+    expect(context.assistant).toContain('Memory_1: test memory')
   })
 })
