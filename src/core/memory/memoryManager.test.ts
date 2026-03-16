@@ -79,6 +79,11 @@ describe('memoryManager', () => {
     expect(readByPath(result.filePath)).toContain(
       '- Memory_1: 用户不喜欢结尾反问',
     )
+    expect(readByPath(result.filePath)).not.toContain(
+      'Long-term characteristics',
+    )
+    expect(readByPath(result.filePath)).not.toContain('behavioral patterns')
+    expect(readByPath(result.filePath)).not.toContain('Contextual facts')
   })
 
   it('keeps section ids monotonic after delete', async () => {

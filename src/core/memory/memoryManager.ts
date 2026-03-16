@@ -23,7 +23,6 @@ type MemorySectionKey = 'profile' | 'preferences' | 'other'
 type MemorySectionDefinition = {
   key: MemorySectionKey
   title: string
-  description: string
   idPrefix: string
   headingAliases: string[]
 }
@@ -55,23 +54,18 @@ const MEMORY_SECTIONS: MemorySectionDefinition[] = [
   {
     key: 'profile',
     title: 'User Profile',
-    description:
-      'Long-term characteristics about the user. Update when user info changes.',
     idPrefix: 'Profile',
     headingAliases: ['user profile', 'profile', '用户画像', '用户信息'],
   },
   {
     key: 'preferences',
     title: 'Preferences',
-    description:
-      "User's interaction preferences and behavioral patterns. Add when patterns emerge.",
     idPrefix: 'Preference',
     headingAliases: ['preferences', 'preference', '偏好'],
   },
   {
     key: 'other',
     title: 'Other Memory',
-    description: 'Contextual facts and temporary notes. Default category.',
     idPrefix: 'Memory',
     headingAliases: ['other memory', 'memory', 'other', '其他记忆'],
   },
@@ -207,7 +201,7 @@ const getSectionDefinitionByKey = (
 }
 
 const renderTemplateSection = (section: MemorySectionDefinition): string[] => {
-  return [`# ${section.title}`, `> ${section.description}`, '']
+  return [`# ${section.title}`]
 }
 
 const buildMemoryTemplateContent = (): string => {
