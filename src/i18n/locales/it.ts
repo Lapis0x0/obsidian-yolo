@@ -355,6 +355,9 @@ export const it: TranslationKeys = {
       builtinFsFileOpsLabel: 'Operazioni file',
       builtinFsFileOpsDesc:
         'Operazioni percorso file raggruppate: crea/elimina file, crea/elimina cartelle e sposta.',
+      builtinMemoryOpsLabel: 'Set strumenti memoria',
+      builtinMemoryOpsDesc:
+        'Operazioni memoria raggruppate: aggiungi, aggiorna ed elimina memoria.',
       builtinMemoryAddLabel: 'Aggiungi memoria',
       builtinMemoryAddDesc:
         "Aggiunge una memoria globale o dell'assistant con id assegnato automaticamente.",

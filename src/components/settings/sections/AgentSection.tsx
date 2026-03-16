@@ -9,6 +9,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import {
   getLocalFileTools,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
@@ -51,6 +52,10 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     key: 'settings.agent.builtinFsFileOpsLabel',
     fallback: 'File Operations',
   },
+  memory_ops: {
+    key: 'settings.agent.builtinMemoryOpsLabel',
+    fallback: 'Memory Toolset',
+  },
   memory_add: {
     key: 'settings.agent.builtinMemoryAddLabel',
     fallback: 'Add Memory',
@@ -70,7 +75,11 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
 }
 
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+)
 const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
+const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
 
 export function AgentSection({ app }: AgentSectionProps) {
   const { settings, setSettings } = useSettings()
@@ -220,7 +229,11 @@ export function AgentSection({ app }: AgentSectionProps) {
   const builtinTools = useMemo(() => {
     const toolOptions = settings.mcp.builtinToolOptions
     const tools = getLocalFileTools()
-      .filter((tool) => !SPLIT_FS_TOOL_NAME_SET.has(tool.name))
+      .filter(
+        (tool) =>
+          !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name),
+      )
       .map((tool) => {
         const meta = BUILTIN_TOOL_LABEL_KEYS[tool.name]
         return {
@@ -242,11 +255,25 @@ export function AgentSection({ app }: AgentSectionProps) {
       enabled: splitToolEnabled,
     }
 
+    const memorySplitToolEnabled = LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[MEMORY_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const memoryOpsMeta = BUILTIN_TOOL_LABEL_KEYS[MEMORY_OPS_GROUP_TOOL_NAME]
+    const memoryOpsTool = {
+      id: MEMORY_OPS_GROUP_TOOL_NAME,
+      label: t(memoryOpsMeta.key, memoryOpsMeta.fallback),
+      enabled: memorySplitToolEnabled,
+    }
+
     const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
     if (openSkillIndex >= 0) {
       tools.splice(openSkillIndex, 0, fileOpsTool)
+      tools.splice(openSkillIndex + 1, 0, memoryOpsTool)
     } else {
       tools.push(fileOpsTool)
+      tools.push(memoryOpsTool)
     }
 
     return tools

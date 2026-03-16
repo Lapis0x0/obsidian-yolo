@@ -345,6 +345,9 @@ export const en: TranslationKeys = {
       builtinFsFileOpsLabel: 'File Operations',
       builtinFsFileOpsDesc:
         'Grouped file path operations: create/delete file, create/delete folder, and move.',
+      builtinMemoryOpsLabel: 'Memory Toolset',
+      builtinMemoryOpsDesc:
+        'Grouped memory operations: add, update, and delete memory.',
       builtinMemoryAddLabel: 'Add Memory',
       builtinMemoryAddDesc:
         'Add one memory item into global or assistant memory and auto-assign an id.',

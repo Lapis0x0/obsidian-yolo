@@ -235,6 +235,8 @@ export type TranslationKeys = {
       safetyControlsDesc?: string
       builtinFsFileOpsLabel?: string
       builtinFsFileOpsDesc?: string
+      builtinMemoryOpsLabel?: string
+      builtinMemoryOpsDesc?: string
       builtinMemoryAddLabel?: string
       builtinMemoryAddDesc?: string
       builtinMemoryUpdateLabel?: string

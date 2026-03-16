@@ -24,12 +24,16 @@ import {
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
 
 const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+)
+const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
 import {
   getToolName,
@@ -92,6 +96,13 @@ export class McpManager {
       const groupedFileOpsDisabled =
         this.settings.mcp.builtinToolOptions.fs_file_ops?.disabled ?? false
       return !(splitToolDisabled || groupedFileOpsDisabled)
+    }
+    if (LOCAL_MEMORY_SPLIT_TOOL_NAME_SET.has(toolName)) {
+      const splitToolDisabled =
+        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
+      const groupedMemoryOpsDisabled =
+        this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
+      return !(splitToolDisabled || groupedMemoryOpsDisabled)
     }
     return true
   }

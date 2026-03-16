@@ -309,6 +309,8 @@ export const zh: TranslationKeys = {
       builtinFsFileOpsLabel: '文件操作',
       builtinFsFileOpsDesc:
         '聚合文件路径操作：创建/删除文件、创建/删除文件夹、移动路径。',
+      builtinMemoryOpsLabel: '记忆工具集',
+      builtinMemoryOpsDesc: '聚合记忆操作：新增、更新、删除记忆。',
       builtinMemoryAddLabel: '新增记忆',
       builtinMemoryAddDesc: '向全局或助手记忆新增一条内容，并自动分配编号。',
       builtinMemoryUpdateLabel: '更新记忆',

@@ -103,6 +103,12 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
   LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION,
 ) as Array<keyof typeof LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION>
 
+export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
+  'memory_add',
+  'memory_update',
+  'memory_delete',
+] as const
+
 const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'fs_edit',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,

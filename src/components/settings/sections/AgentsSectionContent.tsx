@@ -21,6 +21,7 @@ import {
 } from '../../../core/agent/tool-preferences'
 import {
   getLocalFileToolServerName,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../../../core/mcp/localFileTools'
 import { parseToolName } from '../../../core/mcp/tool-name-utils'
@@ -71,7 +72,11 @@ type AgentToolView = {
 }
 
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+)
 const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
+const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
 
 const BUILTIN_TOOL_LABEL_KEYS: Record<
   string,
@@ -114,6 +119,12 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     fallback: 'File Operations',
     descFallback:
       'Grouped file path operations: create/delete file, create/delete folder, and move.',
+  },
+  memory_ops: {
+    key: 'settings.agent.builtinMemoryOpsLabel',
+    descKey: 'settings.agent.builtinMemoryOpsDesc',
+    fallback: 'Memory Toolset',
+    descFallback: 'Grouped memory operations: add, update, and delete memory.',
   },
   memory_add: {
     key: 'settings.agent.builtinMemoryAddLabel',
@@ -616,6 +627,7 @@ export function AgentsSectionContent({
   const visibleToolGroups = useMemo(() => {
     const groups = new Map<string, { title: string; tools: AgentToolView[] }>()
     const localSplitToolTargets = new Set<string>()
+    const localMemorySplitToolTargets = new Set<string>()
 
     availableTools.forEach((tool) => {
       let serverName = localFsServerName
@@ -636,6 +648,10 @@ export function AgentsSectionContent({
       }
       if (isBuiltin && SPLIT_FS_TOOL_NAME_SET.has(toolName)) {
         localSplitToolTargets.add(tool.name)
+        return
+      }
+      if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
+        localMemorySplitToolTargets.add(tool.name)
         return
       }
 
@@ -674,6 +690,24 @@ export function AgentsSectionContent({
         toggleTargets: [...localSplitToolTargets],
         displayName: t(fileOpsMeta.key, fileOpsMeta.fallback),
         description: t(fileOpsMeta.descKey, fileOpsMeta.descFallback),
+      })
+      groups.set(key, group)
+    }
+
+    if (
+      draftAgent?.includeBuiltinTools !== false &&
+      localMemorySplitToolTargets.size > 0
+    ) {
+      const key = localFsServerName
+      const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
+      const memoryOpsMeta = BUILTIN_TOOL_LABEL_KEYS[MEMORY_OPS_GROUP_TOOL_NAME]
+      const group = groups.get(key) ?? { title, tools: [] }
+      const prefixedAlias = `${localFsServerName}__${MEMORY_OPS_GROUP_TOOL_NAME}`
+      group.tools.push({
+        fullName: prefixedAlias,
+        toggleTargets: [...localMemorySplitToolTargets],
+        displayName: t(memoryOpsMeta.key, memoryOpsMeta.fallback),
+        description: t(memoryOpsMeta.descKey, memoryOpsMeta.descFallback),
       })
       groups.set(key, group)
     }

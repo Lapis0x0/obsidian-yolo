@@ -15,6 +15,7 @@ import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
   getLocalFileToolServerName,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
@@ -93,15 +94,32 @@ export class AgentLlmTurnExecutor {
     const expanded = new Set<string>(toolNames)
     const localServer = getLocalFileToolServerName()
     const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
-    if (!expanded.has(localFileOpsTool) && !expanded.has('fs_file_ops')) {
+    const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
+    const hasFileOpsGroup =
+      expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
+    const hasMemoryOpsGroup =
+      expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
+
+    if (!hasFileOpsGroup && !hasMemoryOpsGroup) {
       return expanded
     }
 
-    for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
-      expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-      )
-      expanded.add(splitToolName)
+    if (hasFileOpsGroup) {
+      for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
+        expanded.add(
+          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+        )
+        expanded.add(splitToolName)
+      }
+    }
+
+    if (hasMemoryOpsGroup) {
+      for (const splitToolName of LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES) {
+        expanded.add(
+          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+        )
+        expanded.add(splitToolName)
+      }
     }
     return expanded
   }
