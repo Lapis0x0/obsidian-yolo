@@ -69,6 +69,7 @@ export class RequestContextBuilder {
   public async generateRequestMessages({
     messages,
     hasTools = false,
+    hasMemoryTools = false,
     maxContextOverride,
     model,
     conversationId,
@@ -77,6 +78,7 @@ export class RequestContextBuilder {
   }: {
     messages: ChatMessage[]
     hasTools?: boolean
+    hasMemoryTools?: boolean
     maxContextOverride?: number
     model: ChatModel
     conversationId: string
@@ -180,7 +182,7 @@ export class RequestContextBuilder {
 
     const systemMessage = isBaseModel
       ? null
-      : await this.getSystemMessage(shouldUseRAG, hasTools)
+      : await this.getSystemMessage(shouldUseRAG, hasTools, hasMemoryTools)
 
     const currentFile = currentFileOverride ?? null
     const currentFileMessage =
@@ -693,13 +695,14 @@ ${await this.getWebsiteContent(url)}
   private async getSystemMessage(
     shouldUseRAG: boolean,
     hasTools = false,
+    hasMemoryTools = false,
   ): Promise<RequestMessage> {
     // When both RAG and tools are available, prioritize based on context
     const useRAGPrompt = shouldUseRAG && !hasTools
 
     // Build user custom instructions section (priority: placed first)
     const customInstructionsSection =
-      await this.buildCustomInstructionsSection()
+      await this.buildCustomInstructionsSection(hasMemoryTools)
 
     // Build base behavior section
     const baseBehaviorSection = useRAGPrompt
@@ -717,7 +720,9 @@ ${await this.getWebsiteContent(url)}
     }
   }
 
-  private async buildCustomInstructionsSection(): Promise<string | null> {
+  private async buildCustomInstructionsSection(
+    hasMemoryTools: boolean,
+  ): Promise<string | null> {
     // Get custom system prompt
     const customInstruction = this.settings.systemPrompt.trim()
 
@@ -759,6 +764,15 @@ ${memoryContext.assistant}
       parts.push(`<memory>
 ${memoryParts.join('\n\n')}
 </memory>`)
+    }
+
+    if (hasMemoryTools) {
+      parts.push(`<memory_rules>
+- Memory stores durable user profile, interaction preferences, corrected assistant behavior, and cross-session continuity that would not naturally live in vault notes.
+- When the user reveals important durable information or corrects your behavior, proactively use memory tools to add or update memory.
+- When a memory becomes outdated, redundant, or clearly superseded, proactively update or delete it.
+- Prefer updating an existing relevant memory instead of adding duplicates.
+</memory_rules>`)
     }
 
     if (this.includeSkills) {

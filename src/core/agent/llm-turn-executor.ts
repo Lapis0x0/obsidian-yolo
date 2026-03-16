@@ -58,6 +58,13 @@ type AgentLlmTurnExecutorOutput = {
 }
 
 export class AgentLlmTurnExecutor {
+  private static readonly LOCAL_MEMORY_TOOL_NAMES = new Set([
+    'memory_ops',
+    'memory_add',
+    'memory_update',
+    'memory_delete',
+  ])
+
   private static readonly LOCAL_TOOL_NAMES = new Set([
     'fs_list',
     'fs_search',
@@ -135,10 +142,14 @@ export class AgentLlmTurnExecutor {
     )
 
     const hasTools = filteredTools.length > 0
+    const hasMemoryTools = filteredTools.some((tool) =>
+      this.isMemoryToolAvailable(tool.name),
+    )
     const requestMessages =
       await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
         hasTools,
+        hasMemoryTools,
         maxContextOverride: this.input.maxContextOverride,
         model: this.input.model,
         conversationId: this.input.conversationId,
@@ -306,6 +317,18 @@ export class AgentLlmTurnExecutor {
       return true
     }
     return this.allowedToolNames.has(toolName)
+  }
+
+  private isMemoryToolAvailable(toolName: string): boolean {
+    try {
+      const parsed = parseToolName(toolName)
+      return (
+        parsed.serverName === getLocalFileToolServerName() &&
+        AgentLlmTurnExecutor.LOCAL_MEMORY_TOOL_NAMES.has(parsed.toolName)
+      )
+    } catch {
+      return AgentLlmTurnExecutor.LOCAL_MEMORY_TOOL_NAMES.has(toolName)
+    }
   }
 
   private isOpenSkillToolName(toolName: string): boolean {

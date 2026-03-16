@@ -372,4 +372,112 @@ describe('AgentLlmTurnExecutor', () => {
     expect(result.toolCallRequests).toEqual([])
     expect(result.hasAssistantOutput).toBe(false)
   })
+
+  it('passes hasMemoryTools when memory tools are available', async () => {
+    const provider = new MockProvider()
+    const requestContextBuilder = {
+      generateRequestMessages: jest
+        .fn()
+        .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+    } as unknown as RequestContextBuilder
+
+    const mcpManager = {
+      listAvailableTools: jest.fn().mockResolvedValue([
+        {
+          name: 'yolo_local__memory_add',
+          description: 'Add memory',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      ]),
+    } as unknown as McpManager
+
+    mockExecuteSingleTurn.mockResolvedValue({
+      content: 'done',
+      reasoning: '',
+      annotations: undefined,
+      usage: undefined,
+      toolCalls: [],
+    })
+
+    const executor = new AgentLlmTurnExecutor({
+      providerClient: provider,
+      model: TEST_MODEL,
+      requestContextBuilder,
+      mcpManager,
+      conversationId: 'conv-1',
+      messages: [],
+      enableTools: true,
+      includeBuiltinTools: true,
+      requestParams: {
+        stream: false,
+      },
+      onAssistantMessage: () => {},
+    })
+
+    await executor.run()
+
+    expect(requestContextBuilder.generateRequestMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hasTools: true,
+        hasMemoryTools: true,
+      }),
+    )
+  })
+
+  it('does not pass hasMemoryTools for non-memory tools', async () => {
+    const provider = new MockProvider()
+    const requestContextBuilder = {
+      generateRequestMessages: jest
+        .fn()
+        .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+    } as unknown as RequestContextBuilder
+
+    const mcpManager = {
+      listAvailableTools: jest.fn().mockResolvedValue([
+        {
+          name: 'yolo_local__fs_read',
+          description: 'Read file',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      ]),
+    } as unknown as McpManager
+
+    mockExecuteSingleTurn.mockResolvedValue({
+      content: 'done',
+      reasoning: '',
+      annotations: undefined,
+      usage: undefined,
+      toolCalls: [],
+    })
+
+    const executor = new AgentLlmTurnExecutor({
+      providerClient: provider,
+      model: TEST_MODEL,
+      requestContextBuilder,
+      mcpManager,
+      conversationId: 'conv-1',
+      messages: [],
+      enableTools: true,
+      includeBuiltinTools: true,
+      requestParams: {
+        stream: false,
+      },
+      onAssistantMessage: () => {},
+    })
+
+    await executor.run()
+
+    expect(requestContextBuilder.generateRequestMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hasTools: true,
+        hasMemoryTools: false,
+      }),
+    )
+  })
 })
