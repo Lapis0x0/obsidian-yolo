@@ -115,6 +115,25 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     descFallback:
       'Grouped file path operations: create/delete file, create/delete folder, and move.',
   },
+  memory_add: {
+    key: 'settings.agent.builtinMemoryAddLabel',
+    descKey: 'settings.agent.builtinMemoryAddDesc',
+    fallback: 'Add Memory',
+    descFallback:
+      'Add one memory item into global or assistant memory and auto-assign an id.',
+  },
+  memory_update: {
+    key: 'settings.agent.builtinMemoryUpdateLabel',
+    descKey: 'settings.agent.builtinMemoryUpdateDesc',
+    fallback: 'Update Memory',
+    descFallback: 'Update an existing memory item by id.',
+  },
+  memory_delete: {
+    key: 'settings.agent.builtinMemoryDeleteLabel',
+    descKey: 'settings.agent.builtinMemoryDeleteDesc',
+    fallback: 'Delete Memory',
+    descFallback: 'Delete an existing memory item by id.',
+  },
   open_skill: {
     key: 'settings.agent.builtinOpenSkillLabel',
     descKey: 'settings.agent.builtinOpenSkillDesc',

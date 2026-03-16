@@ -309,6 +309,12 @@ export const zh: TranslationKeys = {
       builtinFsFileOpsLabel: '文件操作',
       builtinFsFileOpsDesc:
         '聚合文件路径操作：创建/删除文件、创建/删除文件夹、移动路径。',
+      builtinMemoryAddLabel: '新增记忆',
+      builtinMemoryAddDesc: '向全局或助手记忆新增一条内容，并自动分配编号。',
+      builtinMemoryUpdateLabel: '更新记忆',
+      builtinMemoryUpdateDesc: '根据编号更新已有记忆内容。',
+      builtinMemoryDeleteLabel: '删除记忆',
+      builtinMemoryDeleteDesc: '根据编号删除已有记忆内容。',
       builtinOpenSkillLabel: '加载技能',
       builtinOpenSkillDesc: '按 id 或名称读取技能 Markdown 内容。',
       editorDefaultName: '新建 Agent',
@@ -883,6 +889,9 @@ export const zh: TranslationKeys = {
         fs_read: '读取文件',
         fs_edit: '文本编辑',
         fs_file_ops: '文件操作',
+        memory_add: '新增记忆',
+        memory_update: '更新记忆',
+        memory_delete: '删除记忆',
         open_skill: '加载技能',
       },
       writeAction: {

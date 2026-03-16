@@ -12,6 +12,7 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
+import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import type { SelectEmbedding } from '../../database/schema'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
@@ -736,6 +737,28 @@ ${await this.getWebsiteContent(url)}
       parts.push(`<assistant_instructions name="${currentAssistant.name}">
 ${currentAssistant.systemPrompt}
 </assistant_instructions>`)
+    }
+
+    const memoryContext = await getMemoryPromptContext({
+      app: this.app,
+      settings: this.settings,
+      assistantId: currentAssistant?.id,
+    })
+    if (memoryContext.global || memoryContext.assistant) {
+      const memoryParts: string[] = []
+      if (memoryContext.global) {
+        memoryParts.push(`<global>
+${memoryContext.global}
+</global>`)
+      }
+      if (memoryContext.assistant) {
+        memoryParts.push(`<assistant>
+${memoryContext.assistant}
+</assistant>`)
+      }
+      parts.push(`<memory>
+${memoryParts.join('\n\n')}
+</memory>`)
     }
 
     if (this.includeSkills) {

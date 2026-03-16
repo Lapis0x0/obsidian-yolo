@@ -71,6 +71,9 @@ const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_create_dir: 'Create folder',
   fs_delete_dir: 'Delete folder',
   fs_move: 'Move path',
+  memory_add: 'Add memory',
+  memory_update: 'Update memory',
+  memory_delete: 'Delete memory',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
@@ -144,6 +147,18 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       fs_move: translate(
         'chat.toolCall.writeAction.move',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
+      ),
+      memory_add: translate(
+        'chat.toolCall.displayName.memory_add',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_add,
+      ),
+      memory_update: translate(
+        'chat.toolCall.displayName.memory_update',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_update,
+      ),
+      memory_delete: translate(
+        'chat.toolCall.displayName.memory_delete',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_delete,
       ),
     },
     writeActionLabels: {

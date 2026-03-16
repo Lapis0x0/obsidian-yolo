@@ -42,6 +42,9 @@ const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
 const CHAT_READONLY_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'fs_search'),
   getToolName(getLocalFileToolServerName(), 'fs_read'),
+  getToolName(getLocalFileToolServerName(), 'memory_add'),
+  getToolName(getLocalFileToolServerName(), 'memory_update'),
+  getToolName(getLocalFileToolServerName(), 'memory_delete'),
   getToolName(getLocalFileToolServerName(), 'open_skill'),
 ]
 const MIN_STREAM_FLUSH_INTERVAL_MS = 16

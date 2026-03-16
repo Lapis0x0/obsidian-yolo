@@ -67,6 +67,9 @@ export class AgentLlmTurnExecutor {
     'fs_create_dir',
     'fs_delete_dir',
     'fs_move',
+    'memory_add',
+    'memory_update',
+    'memory_delete',
     'open_skill',
   ])
 

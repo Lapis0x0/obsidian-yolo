@@ -345,6 +345,13 @@ export const en: TranslationKeys = {
       builtinFsFileOpsLabel: 'File Operations',
       builtinFsFileOpsDesc:
         'Grouped file path operations: create/delete file, create/delete folder, and move.',
+      builtinMemoryAddLabel: 'Add Memory',
+      builtinMemoryAddDesc:
+        'Add one memory item into global or assistant memory and auto-assign an id.',
+      builtinMemoryUpdateLabel: 'Update Memory',
+      builtinMemoryUpdateDesc: 'Update an existing memory item by id.',
+      builtinMemoryDeleteLabel: 'Delete Memory',
+      builtinMemoryDeleteDesc: 'Delete an existing memory item by id.',
       builtinOpenSkillLabel: 'Open Skill',
       builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
       editorDefaultName: 'New agent',
@@ -941,6 +948,9 @@ export const en: TranslationKeys = {
         fs_read: 'Read files',
         fs_edit: 'Text editing',
         fs_file_ops: 'File operations',
+        memory_add: 'Add memory',
+        memory_update: 'Update memory',
+        memory_delete: 'Delete memory',
         open_skill: 'Open skill',
       },
       writeAction: {

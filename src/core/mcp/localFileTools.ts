@@ -14,6 +14,7 @@ import {
   getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../skills/liteSkills'
+import { memoryAdd, memoryDelete, memoryUpdate } from '../memory/memoryManager'
 
 export { recoverLikelyEscapedBackslashSequences }
 
@@ -37,6 +38,9 @@ type LocalFileToolName =
   | 'fs_create_dir'
   | 'fs_delete_dir'
   | 'fs_move'
+  | 'memory_add'
+  | 'memory_update'
+  | 'memory_delete'
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsListScope = 'files' | 'dirs' | 'all'
@@ -97,6 +101,9 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
 const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'fs_edit',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  'memory_add',
+  'memory_update',
+  'memory_delete',
 ])
 
 const asErrorMessage = (error: unknown): string => {
@@ -507,6 +514,78 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['oldPath', 'newPath'],
+      },
+    },
+    {
+      name: 'memory_add',
+      description:
+        'Add a memory entry to global or assistant memory. Category defaults to other and id is auto-assigned.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          content: {
+            type: 'string',
+            description: 'Memory content text to store.',
+          },
+          category: {
+            type: 'string',
+            description:
+              'Memory category. Use profile, preferences, or other. Defaults to other.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['global', 'assistant'],
+            description:
+              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
+          },
+        },
+        required: ['content'],
+      },
+    },
+    {
+      name: 'memory_update',
+      description:
+        'Update an existing memory entry by id within global or assistant memory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Memory id such as Profile_2 or Memory_4.',
+          },
+          new_content: {
+            type: 'string',
+            description: 'Replacement content for the target memory id.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['global', 'assistant'],
+            description:
+              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
+          },
+        },
+        required: ['id', 'new_content'],
+      },
+    },
+    {
+      name: 'memory_delete',
+      description:
+        'Delete a memory entry by id from global or assistant memory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Memory id such as Preference_1.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['global', 'assistant'],
+            description:
+              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
+          },
+        },
+        required: ['id'],
       },
     },
     {
@@ -1582,6 +1661,68 @@ export async function callLocalFileTool({
             tool: 'open_skill',
             skill: skill.entry,
             content: skill.content,
+          }),
+        }
+      }
+
+      case 'memory_add': {
+        const result = await memoryAdd({
+          app,
+          settings,
+          content: args.content,
+          category: args.category,
+          scope: args.scope,
+          assistantId: settings?.currentAssistantId,
+        })
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'memory_add',
+            id: result.id,
+            scope: result.scope,
+            filePath: result.filePath,
+          }),
+        }
+      }
+
+      case 'memory_update': {
+        const result = await memoryUpdate({
+          app,
+          settings,
+          id: args.id,
+          newContent: args.new_content,
+          scope: args.scope,
+          assistantId: settings?.currentAssistantId,
+        })
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'memory_update',
+            id: result.id,
+            scope: result.scope,
+            filePath: result.filePath,
+          }),
+        }
+      }
+
+      case 'memory_delete': {
+        const result = await memoryDelete({
+          app,
+          settings,
+          id: args.id,
+          scope: args.scope,
+          assistantId: settings?.currentAssistantId,
+        })
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'memory_delete',
+            id: result.id,
+            scope: result.scope,
+            filePath: result.filePath,
           }),
         }
       }

@@ -51,6 +51,18 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     key: 'settings.agent.builtinFsFileOpsLabel',
     fallback: 'File Operations',
   },
+  memory_add: {
+    key: 'settings.agent.builtinMemoryAddLabel',
+    fallback: 'Add Memory',
+  },
+  memory_update: {
+    key: 'settings.agent.builtinMemoryUpdateLabel',
+    fallback: 'Update Memory',
+  },
+  memory_delete: {
+    key: 'settings.agent.builtinMemoryDeleteLabel',
+    fallback: 'Delete Memory',
+  },
   open_skill: {
     key: 'settings.agent.builtinOpenSkillLabel',
     fallback: 'Open Skill',

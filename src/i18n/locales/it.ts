@@ -355,6 +355,13 @@ export const it: TranslationKeys = {
       builtinFsFileOpsLabel: 'Operazioni file',
       builtinFsFileOpsDesc:
         'Operazioni percorso file raggruppate: crea/elimina file, crea/elimina cartelle e sposta.',
+      builtinMemoryAddLabel: 'Aggiungi memoria',
+      builtinMemoryAddDesc:
+        "Aggiunge una memoria globale o dell'assistant con id assegnato automaticamente.",
+      builtinMemoryUpdateLabel: 'Aggiorna memoria',
+      builtinMemoryUpdateDesc: 'Aggiorna una memoria esistente tramite id.',
+      builtinMemoryDeleteLabel: 'Elimina memoria',
+      builtinMemoryDeleteDesc: 'Elimina una memoria esistente tramite id.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
       editorDefaultName: 'Nuovo agent',
@@ -941,6 +948,9 @@ export const it: TranslationKeys = {
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
         fs_file_ops: 'Operazioni file',
+        memory_add: 'Aggiungi memoria',
+        memory_update: 'Aggiorna memoria',
+        memory_delete: 'Elimina memoria',
         open_skill: 'Apri skill',
       },
       writeAction: {

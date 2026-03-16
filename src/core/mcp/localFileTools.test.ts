@@ -1,6 +1,6 @@
 jest.mock('obsidian')
 
-import { App, TFile } from 'obsidian'
+import { App, TFile, TFolder } from 'obsidian'
 
 import {
   callLocalFileTool,
@@ -86,5 +86,99 @@ describe('local fs tool action helpers', () => {
     expect(openApplyReview).toHaveBeenCalledTimes(1)
     expect(modify).not.toHaveBeenCalled()
     expect(result.status).toBe('success')
+  })
+
+  it('handles memory tools through local tool dispatcher', async () => {
+    const entries = new Map<string, unknown>()
+    const contents = new Map<string, string>()
+
+    const app = {
+      vault: {
+        getAbstractFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) => entries.get(path) ?? null),
+        createFolder: jest.fn().mockImplementation(async (path: string) => {
+          const folder = Object.assign(new TFolder(), {
+            path,
+            children: [],
+          })
+          entries.set(path, folder)
+          return folder
+        }),
+        create: jest
+          .fn()
+          .mockImplementation(async (path: string, content: string) => {
+            const file = Object.assign(new TFile(), {
+              path,
+              stat: { size: content.length },
+            })
+            entries.set(path, file)
+            contents.set(path, content)
+            return file
+          }),
+        read: jest
+          .fn()
+          .mockImplementation(
+            async (file: TFile) => contents.get(file.path) ?? '',
+          ),
+        modify: jest
+          .fn()
+          .mockImplementation(async (file: TFile, content: string) => {
+            contents.set(file.path, content)
+            ;(file as { stat?: { size?: number } }).stat = {
+              size: content.length,
+            }
+          }),
+      },
+    } as unknown as App
+
+    const settings = {
+      yolo: { baseDir: 'YOLO' },
+      currentAssistantId: 'helper',
+      assistants: [
+        {
+          id: 'helper',
+          systemPrompt: 'You are helper.',
+        },
+      ],
+    } as never
+
+    const addResult = await callLocalFileTool({
+      app,
+      settings,
+      toolName: 'memory_add',
+      args: {
+        content: '用户希望回答保持简洁',
+        category: 'preferences',
+      },
+    })
+    expect(addResult.status).toBe('success')
+    expect(contents.get('YOLO/memory/assistant-helper.md') ?? '').toContain(
+      'Preference_1: 用户希望回答保持简洁',
+    )
+
+    const updateResult = await callLocalFileTool({
+      app,
+      settings,
+      toolName: 'memory_update',
+      args: {
+        id: 'Preference_1',
+        new_content: '用户希望回答保持简洁并直接',
+      },
+    })
+    expect(updateResult.status).toBe('success')
+
+    const deleteResult = await callLocalFileTool({
+      app,
+      settings,
+      toolName: 'memory_delete',
+      args: {
+        id: 'Preference_1',
+      },
+    })
+    expect(deleteResult.status).toBe('success')
+    expect(contents.get('YOLO/memory/assistant-helper.md') ?? '').not.toContain(
+      'Preference_1',
+    )
   })
 })

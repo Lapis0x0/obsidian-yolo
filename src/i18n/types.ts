@@ -235,6 +235,12 @@ export type TranslationKeys = {
       safetyControlsDesc?: string
       builtinFsFileOpsLabel?: string
       builtinFsFileOpsDesc?: string
+      builtinMemoryAddLabel?: string
+      builtinMemoryAddDesc?: string
+      builtinMemoryUpdateLabel?: string
+      builtinMemoryUpdateDesc?: string
+      builtinMemoryDeleteLabel?: string
+      builtinMemoryDeleteDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
       editorDefaultName?: string
@@ -812,6 +818,9 @@ export type TranslationKeys = {
         fs_read?: string
         fs_edit?: string
         fs_file_ops?: string
+        memory_add?: string
+        memory_update?: string
+        memory_delete?: string
         open_skill?: string
       }
       writeAction?: {
