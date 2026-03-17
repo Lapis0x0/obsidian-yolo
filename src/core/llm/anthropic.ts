@@ -49,7 +49,7 @@ export class AnthropicProvider extends BaseLLMProvider<
     super(provider)
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const useObsidianRequestUrl =
-      provider.additionalSettings?.useObsidianRequestUrl
+      provider.additionalSettings?.useObsidianRequestUrl ?? !!provider.baseUrl
     const clientOptions = {
       apiKey: provider.apiKey,
       baseURL: provider.baseUrl
