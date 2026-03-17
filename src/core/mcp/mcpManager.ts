@@ -24,12 +24,16 @@ import {
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
 
 const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+)
+const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
 import {
   getToolName,
@@ -80,23 +84,6 @@ export class McpManager {
     return requestToolName
   }
 
-  private isLocalToolAutoExecutable({
-    toolName,
-    requestArgs,
-  }: {
-    toolName: string
-    requestArgs?: Record<string, unknown> | string
-  }): boolean {
-    const action = parseLocalFsActionFromToolArgs({
-      toolName,
-      args: requestArgs,
-    })
-    if (!action) {
-      return true
-    }
-    return action !== 'delete_file' && action !== 'delete_dir'
-  }
-
   private isLocalToolEnabled(toolName: string): boolean {
     const directDisabled =
       this.settings.mcp.builtinToolOptions[toolName]?.disabled
@@ -109,6 +96,13 @@ export class McpManager {
       const groupedFileOpsDisabled =
         this.settings.mcp.builtinToolOptions.fs_file_ops?.disabled ?? false
       return !(splitToolDisabled || groupedFileOpsDisabled)
+    }
+    if (LOCAL_MEMORY_SPLIT_TOOL_NAME_SET.has(toolName)) {
+      const splitToolDisabled =
+        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
+      const groupedMemoryOpsDisabled =
+        this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
+      return !(splitToolDisabled || groupedMemoryOpsDisabled)
     }
     return true
   }
@@ -477,42 +471,45 @@ export class McpManager {
     requestToolName,
     conversationId,
     requestArgs,
+    requireAutoExecution = false,
   }: {
     requestToolName: string
     conversationId?: string
     requestArgs?: Record<string, unknown> | string
+    requireAutoExecution?: boolean
   }): boolean {
-    const allowanceKey = this.buildExecutionAllowanceKey({
-      requestToolName,
-      requestArgs,
-    })
-
-    // Check if the tool is allowed for the conversation
-    if (conversationId) {
-      if (
-        this.allowedToolsByConversation.get(conversationId)?.has(allowanceKey)
-      ) {
-        return true
-      }
-    }
-
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (serverName === getLocalFileToolServerName()) {
         if (!this.isLocalToolEnabled(toolName)) {
           return false
         }
-        return this.isLocalToolAutoExecutable({ toolName, requestArgs })
+      } else {
+        const server = this.servers.find((server) => server.name === serverName)
+        if (!server) {
+          return false
+        }
+        const toolOption = server.config.toolOptions[toolName]
+        if (toolOption?.disabled ?? false) {
+          return false
+        }
       }
-      const server = this.servers.find((server) => server.name === serverName)
-      if (!server) {
-        return false
+
+      if (!conversationId) {
+        return requireAutoExecution
       }
-      const toolOption = server.config.toolOptions[toolName]
-      if (!toolOption) {
-        return false
+
+      const allowanceKey = this.buildExecutionAllowanceKey({
+        requestToolName,
+        requestArgs,
+      })
+      if (
+        this.allowedToolsByConversation.get(conversationId)?.has(allowanceKey)
+      ) {
+        return true
       }
-      return toolOption.allowAutoExecution ?? false
+
+      return requireAutoExecution
     } catch (error) {
       if (error instanceof InvalidToolNameException) {
         return false
@@ -526,11 +523,13 @@ export class McpManager {
     args,
     id,
     signal,
+    requireReview = false,
   }: {
     name: string
     args?: Record<string, unknown> | string | undefined
     id?: string
     signal?: AbortSignal
+    requireReview?: boolean
   }): Promise<ToolCallResponse> {
     if (this.disabled) {
       throw new McpNotAvailableException()
@@ -582,6 +581,7 @@ export class McpManager {
           openApplyReview: this.openApplyReview,
           toolName,
           args: parsedArgs ?? {},
+          requireReview,
           signal: compositeSignal,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {

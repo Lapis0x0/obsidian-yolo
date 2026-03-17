@@ -488,7 +488,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           paragraphNode = created
         }
         const paragraph = paragraphNode as ParagraphNode
-        const insertBefore = paragraph.getFirstChild()
+        const cursorSelection = $getSelection()
+        const canInsertAtCursor =
+          $isRangeSelection(cursorSelection) && cursorSelection.isCollapsed()
 
         let didInsert = false
         mentionablesToMirror.forEach((mentionable) => {
@@ -503,9 +505,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             serialized,
           )
           const spacer = $createTextNode(' ')
-          if (insertBefore) {
-            insertBefore.insertBefore(spacer)
-            insertBefore.insertBefore(mentionNode)
+          if (canInsertAtCursor) {
+            cursorSelection.insertNodes([mentionNode, spacer])
           } else {
             paragraph.append(mentionNode)
             paragraph.append(spacer)

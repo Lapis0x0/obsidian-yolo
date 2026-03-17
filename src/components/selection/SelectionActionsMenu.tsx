@@ -64,6 +64,12 @@ export function SelectionActionsMenu({
         mode: 'ask' as const,
       },
       {
+        id: 'add-to-sidebar',
+        label: t('selection.actions.addToSidebar', '添加到侧边栏'),
+        instruction: '',
+        mode: 'chat-input' as const,
+      },
+      {
         id: 'explain',
         label: t('selection.actions.explain', '深入解释'),
         instruction: t('selection.actions.explain', '深入解释'),
@@ -87,24 +93,27 @@ export function SelectionActionsMenu({
 
   const actions: SelectionAction[] = useMemo(() => {
     const customActions = settings?.continuationOptions?.selectionChatActions
-    const resolvedActions: SelectionActionPreset[] =
-      customActions && customActions.length > 0
-        ? customActions
-            .filter((action) => action.enabled)
-            .map((action) => ({
-              id: action.id,
-              label: action.label,
-              instruction: action.instruction,
-              mode:
-                action.mode ??
-                (action.id === 'rewrite' || action.id === 'custom-rewrite'
-                  ? 'rewrite'
-                  : 'ask'),
-              rewriteBehavior: action.rewriteBehavior,
-            }))
-        : defaultActions
+    const resolvedActions: SelectionActionPreset[] = customActions
+      ? customActions
+          .filter((action) => action.enabled)
+          .map((action) => ({
+            id: action.id,
+            label: action.label,
+            instruction: action.instruction,
+            mode:
+              action.mode ??
+              (action.id === 'rewrite' || action.id === 'custom-rewrite'
+                ? 'rewrite'
+                : 'ask'),
+            rewriteBehavior: action.rewriteBehavior,
+          }))
+      : defaultActions
 
-    const fixedActionIds = new Set(['custom-rewrite', 'custom-ask'])
+    const fixedActionIds = new Set([
+      'custom-rewrite',
+      'custom-ask',
+      'add-to-sidebar',
+    ])
     const displayActions = defaultActions
       .filter((action) => fixedActionIds.has(action.id))
       .concat(

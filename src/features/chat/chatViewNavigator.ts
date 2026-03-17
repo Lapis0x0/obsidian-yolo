@@ -65,6 +65,15 @@ export class ChatViewNavigator {
     const data = getMentionableBlockData(editor, view)
     if (!data) return
 
+    await this.addSelectionBlockToChat(data)
+  }
+
+  async addSelectionBlockToChat(selectedBlock: MentionableBlockData) {
+    const data: MentionableBlockData = {
+      ...selectedBlock,
+      source: 'selection-pinned',
+    }
+
     const leaves = this.plugin.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
     if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
       await this.activateChatView({

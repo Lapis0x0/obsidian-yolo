@@ -306,9 +306,17 @@ export const zh: TranslationKeys = {
       fsEditReviewToggle: '编辑文件是否需要审批',
       fsEditReviewToggleDesc:
         '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
-      builtinFsFileOpsLabel: '文件操作',
+      builtinFsFileOpsLabel: '文件操作集',
       builtinFsFileOpsDesc:
         '聚合文件路径操作：创建/删除文件、创建/删除文件夹、移动路径。',
+      builtinMemoryOpsLabel: '记忆工具集',
+      builtinMemoryOpsDesc: '聚合记忆操作：新增、更新、删除记忆。',
+      builtinMemoryAddLabel: '新增记忆',
+      builtinMemoryAddDesc: '向全局或助手记忆新增一条内容，并自动分配编号。',
+      builtinMemoryUpdateLabel: '更新记忆',
+      builtinMemoryUpdateDesc: '根据编号更新已有记忆内容。',
+      builtinMemoryDeleteLabel: '删除记忆',
+      builtinMemoryDeleteDesc: '根据编号删除已有记忆内容。',
       builtinOpenSkillLabel: '加载技能',
       builtinOpenSkillDesc: '按 id 或名称读取技能 Markdown 内容。',
       editorDefaultName: '新建 Agent',
@@ -330,6 +338,9 @@ export const zh: TranslationKeys = {
       editorEnableToolsDesc: '允许该 Agent 调用工具',
       editorIncludeBuiltinTools: '包含内置工具',
       editorIncludeBuiltinToolsDesc: '允许该 Agent 使用本地库文件工具',
+      toolApproval: '审批',
+      toolApprovalFullAccess: '完全放行',
+      toolApprovalRequire: '需要审批',
       editorEnabled: '已启用',
       editorDisabled: '已禁用',
       editorModel: '模型',
@@ -742,6 +753,7 @@ export const zh: TranslationKeys = {
   selection: {
     actions: {
       addToChat: '添加到对话',
+      addToSidebar: '添加到侧边栏',
       customRewrite: '自定义改写',
       customAsk: '自定义提问',
       rewrite: 'AI 改写',
@@ -879,7 +891,10 @@ export const zh: TranslationKeys = {
         fs_search: '搜索文件',
         fs_read: '读取文件',
         fs_edit: '文本编辑',
-        fs_file_ops: '文件操作',
+        fs_file_ops: '文件操作集',
+        memory_add: '新增记忆',
+        memory_update: '更新记忆',
+        memory_delete: '删除记忆',
         open_skill: '加载技能',
       },
       writeAction: {

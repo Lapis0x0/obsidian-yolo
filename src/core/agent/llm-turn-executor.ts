@@ -10,11 +10,12 @@ import { ChatModel } from '../../types/chat-model.types'
 import { RequestTool } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
 import { ToolCallRequest } from '../../types/tool-call.types'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
   getLocalFileToolServerName,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
@@ -23,7 +24,7 @@ import { parseToolName } from '../mcp/tool-name-utils'
 type AgentLlmTurnExecutorInput = {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
-  promptGenerator: PromptGenerator
+  requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   conversationId: string
   messages: ChatMessage[]
@@ -57,6 +58,13 @@ type AgentLlmTurnExecutorOutput = {
 }
 
 export class AgentLlmTurnExecutor {
+  private static readonly LOCAL_MEMORY_TOOL_NAMES = new Set([
+    'memory_ops',
+    'memory_add',
+    'memory_update',
+    'memory_delete',
+  ])
+
   private static readonly LOCAL_TOOL_NAMES = new Set([
     'fs_list',
     'fs_search',
@@ -67,6 +75,9 @@ export class AgentLlmTurnExecutor {
     'fs_create_dir',
     'fs_delete_dir',
     'fs_move',
+    'memory_add',
+    'memory_update',
+    'memory_delete',
     'open_skill',
   ])
 
@@ -90,15 +101,32 @@ export class AgentLlmTurnExecutor {
     const expanded = new Set<string>(toolNames)
     const localServer = getLocalFileToolServerName()
     const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
-    if (!expanded.has(localFileOpsTool) && !expanded.has('fs_file_ops')) {
+    const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
+    const hasFileOpsGroup =
+      expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
+    const hasMemoryOpsGroup =
+      expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
+
+    if (!hasFileOpsGroup && !hasMemoryOpsGroup) {
       return expanded
     }
 
-    for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
-      expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-      )
-      expanded.add(splitToolName)
+    if (hasFileOpsGroup) {
+      for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
+        expanded.add(
+          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+        )
+        expanded.add(splitToolName)
+      }
+    }
+
+    if (hasMemoryOpsGroup) {
+      for (const splitToolName of LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES) {
+        expanded.add(
+          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+        )
+        expanded.add(splitToolName)
+      }
     }
     return expanded
   }
@@ -114,10 +142,14 @@ export class AgentLlmTurnExecutor {
     )
 
     const hasTools = filteredTools.length > 0
+    const hasMemoryTools = filteredTools.some((tool) =>
+      this.isMemoryToolAvailable(tool.name),
+    )
     const requestMessages =
-      await this.input.promptGenerator.generateRequestMessages({
+      await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
         hasTools,
+        hasMemoryTools,
         maxContextOverride: this.input.maxContextOverride,
         model: this.input.model,
         conversationId: this.input.conversationId,
@@ -153,7 +185,7 @@ export class AgentLlmTurnExecutor {
     }
     this.input.onAssistantMessage(assistantMessage)
 
-    let turnResult
+    let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     try {
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
@@ -285,6 +317,18 @@ export class AgentLlmTurnExecutor {
       return true
     }
     return this.allowedToolNames.has(toolName)
+  }
+
+  private isMemoryToolAvailable(toolName: string): boolean {
+    try {
+      const parsed = parseToolName(toolName)
+      return (
+        parsed.serverName === getLocalFileToolServerName() &&
+        AgentLlmTurnExecutor.LOCAL_MEMORY_TOOL_NAMES.has(parsed.toolName)
+      )
+    } catch {
+      return AgentLlmTurnExecutor.LOCAL_MEMORY_TOOL_NAMES.has(toolName)
+    }
   }
 
   private isOpenSkillToolName(toolName: string): boolean {

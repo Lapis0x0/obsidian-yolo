@@ -13,6 +13,7 @@ const buildDefaultAssistant = (modelId: string) => ({
   enableTools: false,
   includeBuiltinTools: false,
   enabledToolNames: [],
+  toolPreferences: {},
   enabledSkills: [],
   skillPreferences: {},
   customParameters: [],

@@ -235,6 +235,14 @@ export type TranslationKeys = {
       safetyControlsDesc?: string
       builtinFsFileOpsLabel?: string
       builtinFsFileOpsDesc?: string
+      builtinMemoryOpsLabel?: string
+      builtinMemoryOpsDesc?: string
+      builtinMemoryAddLabel?: string
+      builtinMemoryAddDesc?: string
+      builtinMemoryUpdateLabel?: string
+      builtinMemoryUpdateDesc?: string
+      builtinMemoryDeleteLabel?: string
+      builtinMemoryDeleteDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
       editorDefaultName?: string
@@ -256,6 +264,9 @@ export type TranslationKeys = {
       editorEnableToolsDesc?: string
       editorIncludeBuiltinTools?: string
       editorIncludeBuiltinToolsDesc?: string
+      toolApproval?: string
+      toolApprovalFullAccess?: string
+      toolApprovalRequire?: string
       editorEnabled?: string
       editorDisabled?: string
       editorModel?: string
@@ -692,6 +703,7 @@ export type TranslationKeys = {
   selection?: {
     actions?: {
       addToChat?: string
+      addToSidebar?: string
       customRewrite?: string
       customAsk?: string
       rewrite?: string
@@ -809,6 +821,9 @@ export type TranslationKeys = {
         fs_read?: string
         fs_edit?: string
         fs_file_ops?: string
+        memory_add?: string
+        memory_update?: string
+        memory_delete?: string
         open_skill?: string
       }
       writeAction?: {

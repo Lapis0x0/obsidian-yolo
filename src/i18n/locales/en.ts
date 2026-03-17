@@ -110,6 +110,7 @@ export const en: TranslationKeys = {
   selection: {
     actions: {
       addToChat: 'Add to chat',
+      addToSidebar: 'Add to sidebar',
       customRewrite: 'Custom rewrite',
       customAsk: 'Custom ask',
       rewrite: 'AI rewrite',
@@ -342,9 +343,19 @@ export const en: TranslationKeys = {
       fsEditReviewToggle: 'Require approval before editing files',
       fsEditReviewToggleDesc:
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
-      builtinFsFileOpsLabel: 'File Operations',
+      builtinFsFileOpsLabel: 'File Operation Toolset',
       builtinFsFileOpsDesc:
         'Grouped file path operations: create/delete file, create/delete folder, and move.',
+      builtinMemoryOpsLabel: 'Memory Toolset',
+      builtinMemoryOpsDesc:
+        'Grouped memory operations: add, update, and delete memory.',
+      builtinMemoryAddLabel: 'Add Memory',
+      builtinMemoryAddDesc:
+        'Add one memory item into global or assistant memory and auto-assign an id.',
+      builtinMemoryUpdateLabel: 'Update Memory',
+      builtinMemoryUpdateDesc: 'Update an existing memory item by id.',
+      builtinMemoryDeleteLabel: 'Delete Memory',
+      builtinMemoryDeleteDesc: 'Delete an existing memory item by id.',
       builtinOpenSkillLabel: 'Open Skill',
       builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
       editorDefaultName: 'New agent',
@@ -367,6 +378,9 @@ export const en: TranslationKeys = {
       editorIncludeBuiltinTools: 'Include built-in tools',
       editorIncludeBuiltinToolsDesc:
         'Allow local vault file tools for this agent',
+      toolApproval: 'Approval',
+      toolApprovalFullAccess: 'Full access',
+      toolApprovalRequire: 'Require approval',
       editorEnabled: 'Enabled',
       editorDisabled: 'Disabled',
       editorModel: 'Model',
@@ -937,7 +951,10 @@ export const en: TranslationKeys = {
         fs_search: 'Search files',
         fs_read: 'Read files',
         fs_edit: 'Text editing',
-        fs_file_ops: 'File operations',
+        fs_file_ops: 'File Operation Toolset',
+        memory_add: 'Add memory',
+        memory_update: 'Update memory',
+        memory_delete: 'Delete memory',
         open_skill: 'Open skill',
       },
       writeAction: {

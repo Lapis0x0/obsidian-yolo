@@ -35,7 +35,6 @@ describe('parseSmartComposerSettings', () => {
     })
 
     expect(result.mcp.servers).toEqual([])
-    expect(result.mcp.fsEditRequireReview).toBe(false)
     expect(result.yolo).toEqual({ baseDir: 'YOLO' })
 
     expect(result.chatOptions).toMatchObject({

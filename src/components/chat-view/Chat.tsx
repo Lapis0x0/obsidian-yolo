@@ -21,6 +21,7 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
+import { isAssistantToolEnabled } from '../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../core/llm/manager'
@@ -49,7 +50,7 @@ import {
   serializeMentionable,
 } from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { readTFileContent } from '../../utils/obsidian'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 
@@ -164,15 +165,30 @@ const createSelectionBlockMentionable = (
   selectedBlock: MentionableBlockData,
 ): MentionableBlock => {
   const { count, unit } = getBlockMentionableCountInfo(selectedBlock.content)
+  const source = normalizeSelectionSource(selectedBlock.source)
   return {
     type: 'block',
-    source: 'selection',
     ...selectedBlock,
+    source,
     contentHash:
       selectedBlock.contentHash ?? getBlockContentHash(selectedBlock.content),
     contentCount: selectedBlock.contentCount ?? count,
     contentUnit: selectedBlock.contentUnit ?? unit,
   }
+}
+
+const normalizeSelectionSource = (
+  source: MentionableBlockData['source'],
+): 'selection-sync' | 'selection-pinned' => {
+  return source === 'selection-pinned' ? 'selection-pinned' : 'selection-sync'
+}
+
+const isSyncSelectionSource = (source: MentionableBlock['source']): boolean => {
+  return source === 'selection' || source === 'selection-sync'
+}
+
+const isSyncSelectionMentionable = (mentionable: MentionableBlock): boolean => {
+  return isSyncSelectionSource(mentionable.source)
 }
 
 const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [
@@ -235,8 +251,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }),
     [conversationAssistantId, settings],
   )
-  const promptGenerator = useMemo(() => {
-    return new PromptGenerator(getRAGEngine, app, effectiveSettings)
+  const requestContextBuilder = useMemo(() => {
+    return new RequestContextBuilder(getRAGEngine, app, effectiveSettings)
   }, [app, effectiveSettings, getRAGEngine])
 
   const normalizeReasoningLevel = useCallback(
@@ -364,16 +380,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return false
     }
 
-    const enabledToolNames = selectedAssistant?.enabledToolNames
-    if (!enabledToolNames) {
+    if (
+      !selectedAssistant?.toolPreferences &&
+      !selectedAssistant?.enabledToolNames
+    ) {
       return true
     }
 
-    if (enabledToolNames.length === 0) {
-      return false
-    }
-
-    return enabledToolNames.includes(LOCAL_FS_READ_TOOL)
+    return isAssistantToolEnabled(selectedAssistant, LOCAL_FS_READ_TOOL)
   }, [chatMode, selectedAssistant])
 
   // Per-conversation model id (do NOT write back to global settings)
@@ -421,6 +435,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [setSettings, settings],
   )
 
+  const persistPreferredChatMode = useCallback(
+    async (mode: ChatMode) => {
+      if (settings.chatOptions.chatMode === mode) {
+        return
+      }
+
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            chatMode: mode,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist preferred chat mode', error)
+      }
+    },
+    [setSettings, settings],
+  )
+
+  const persistPreferredAssistantId = useCallback(
+    async (assistantId: string) => {
+      if (settings.currentAssistantId === assistantId) {
+        return
+      }
+
+      try {
+        await setSettings({
+          ...settings,
+          currentAssistantId: assistantId,
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist preferred assistant', error)
+      }
+    },
+    [setSettings, settings],
+  )
+
   const applyAssistantDefaultModel = useCallback(
     (assistantModelId?: string | null) => {
       if (!assistantModelId) {
@@ -455,6 +508,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     (assistantId: string) => {
       setConversationAssistantId(assistantId)
       conversationAssistantIdRef.current.set(currentConversationId, assistantId)
+      void persistPreferredAssistantId(assistantId)
       const assistant = settings.assistants.find(
         (item) => item.id === assistantId,
       )
@@ -462,7 +516,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         applyAssistantDefaultModel(assistant.modelId)
       }
     },
-    [applyAssistantDefaultModel, currentConversationId, settings.assistants],
+    [
+      applyAssistantDefaultModel,
+      currentConversationId,
+      persistPreferredAssistantId,
+      settings.assistants,
+    ],
   )
 
   useEffect(() => {
@@ -573,7 +632,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const { abortActiveStreams, submitChatMutation } = useChatStreamManager({
     setChatMessages,
     autoScrollToBottom,
-    promptGenerator,
+    requestContextBuilder,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
@@ -1134,7 +1193,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         inputChatMessages.map(async (message) => {
           if (message.role === 'user' && message.id === lastMessage.id) {
             const { promptContent, similaritySearchResults } =
-              await promptGenerator.compileUserMessagePrompt({
+              await requestContextBuilder.compileUserMessagePrompt({
                 message,
                 useVaultSearch,
                 onQueryProgressChange: setQueryProgress,
@@ -1149,7 +1208,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             // Ensure all user messages have prompt content
             // This is a fallback for cases where compilation was missed earlier in the process
             const { promptContent, similaritySearchResults } =
-              await promptGenerator.compileUserMessagePrompt({
+              await requestContextBuilder.compileUserMessagePrompt({
                 message,
                 preferToolRead: shouldPreferToolReadMentions,
               })
@@ -1205,7 +1264,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       currentConversationId,
       conversationModelId,
       conversationOverrides,
-      promptGenerator,
+      requestContextBuilder,
       abortActiveStreams,
       forceScrollToBottom,
       createOrUpdateConversation,
@@ -1517,7 +1576,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     (mentionables: ChatUserMessage['mentionables']) =>
       mentionables.filter(
         (mentionable) =>
-          !(mentionable.type === 'block' && mentionable.source === 'selection'),
+          !(
+            mentionable.type === 'block' &&
+            isSyncSelectionMentionable(mentionable)
+          ),
       ),
     [],
   )
@@ -1534,7 +1596,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (focusedMessageId === inputMessage.id) {
         setInputMessage((prevInputMessage) => {
           const existingSelection = prevInputMessage.mentionables.find(
-            (m) => m.type === 'block' && m.source === 'selection',
+            (m) => m.type === 'block' && isSyncSelectionMentionable(m),
           )
           if (existingSelection) {
             const existingKey = getMentionableKey(
@@ -1561,7 +1623,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         prevChatHistory.map((message) => {
           if (message.id === focusedMessageId && message.role === 'user') {
             const existingSelection = message.mentionables.find(
-              (m) => m.type === 'block' && m.source === 'selection',
+              (m) => m.type === 'block' && isSyncSelectionMentionable(m),
             )
             if (existingSelection) {
               const existingKey = getMentionableKey(
@@ -1677,7 +1739,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     openNewChat: (selectedBlock?: MentionableBlockData) =>
       handleNewChat(selectedBlock),
     addSelectionToChat: (selectedBlock: MentionableBlockData) => {
-      const mentionable = createSelectionBlockMentionable(selectedBlock)
+      const mentionable = createSelectionBlockMentionable({
+        ...selectedBlock,
+        source: 'selection-pinned',
+      })
 
       setAddedBlockKey(null)
 
@@ -1686,7 +1751,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           const mentionableKey = getMentionableKey(
             serializeMentionable(mentionable),
           )
-          // Check if mentionable already exists
+          let changed = false
+          const nextMentionables = prevInputMessage.mentionables.map((m) => {
+            const key = getMentionableKey(serializeMentionable(m))
+            if (key !== mentionableKey) return m
+            if (m.type === 'block' && isSyncSelectionMentionable(m)) {
+              changed = true
+              return mentionable
+            }
+            return m
+          })
+
+          if (changed) {
+            return {
+              ...prevInputMessage,
+              mentionables: nextMentionables,
+              promptContent: null,
+            }
+          }
+
           if (
             prevInputMessage.mentionables.some(
               (m) =>
@@ -1695,9 +1778,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ) {
             return prevInputMessage
           }
+
           return {
             ...prevInputMessage,
             mentionables: [...prevInputMessage.mentionables, mentionable],
+            promptContent: null,
           }
         })
       } else {
@@ -1707,7 +1792,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               const mentionableKey = getMentionableKey(
                 serializeMentionable(mentionable),
               )
-              // Check if mentionable already exists
+              let changed = false
+              const nextMentionables = message.mentionables.map((m) => {
+                const key = getMentionableKey(serializeMentionable(m))
+                if (key !== mentionableKey) return m
+                if (m.type === 'block' && isSyncSelectionMentionable(m)) {
+                  changed = true
+                  return mentionable
+                }
+                return m
+              })
+
+              if (changed) {
+                return {
+                  ...message,
+                  mentionables: nextMentionables,
+                  promptContent: null,
+                }
+              }
+
               if (
                 message.mentionables.some(
                   (m) =>
@@ -1720,6 +1823,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               return {
                 ...message,
                 mentionables: [...message.mentionables, mentionable],
+                promptContent: null,
               }
             }
             return message
@@ -1931,6 +2035,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ),
           onConfirm: () => {
             applyChatModeChange('agent')
+            void persistPreferredChatMode('agent')
             void (async () => {
               try {
                 await setSettings({
@@ -1953,6 +2058,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       applyChatModeChange(resolvedMode)
+      void persistPreferredChatMode(resolvedMode)
 
       if (
         resolvedMode === 'agent' &&
@@ -1968,6 +2074,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       applyChatModeChange,
       conversationModelId,
       selectedAssistant?.modelId,
+      persistPreferredChatMode,
       setSettings,
       settings,
       t,

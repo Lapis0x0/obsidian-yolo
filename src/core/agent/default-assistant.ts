@@ -1,6 +1,12 @@
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { Assistant } from '../../types/assistant.types'
 
+import {
+  buildAssistantToolPreferencesFromEnabledToolNames,
+  getEnabledAssistantToolNames,
+  getAssistantToolPreferences,
+} from './tool-preferences'
+
 export const DEFAULT_ASSISTANT_ID = '__default_agent__'
 
 const DEFAULT_ASSISTANT_NAME = 'Default'
@@ -20,6 +26,7 @@ export const createDefaultAssistant = (fallbackModelId: string): Assistant => ({
   enableTools: true,
   includeBuiltinTools: true,
   enabledToolNames: [],
+  toolPreferences: {},
   enabledSkills: [],
   skillPreferences: {},
   customParameters: [],
@@ -42,6 +49,8 @@ const hasDefaultAssistantChanged = (
     current.includeBuiltinTools !== normalized.includeBuiltinTools ||
     JSON.stringify(current.enabledToolNames ?? []) !==
       JSON.stringify(normalized.enabledToolNames ?? []) ||
+    JSON.stringify(current.toolPreferences ?? {}) !==
+      JSON.stringify(normalized.toolPreferences ?? {}) ||
     JSON.stringify(current.enabledSkills ?? []) !==
       JSON.stringify(normalized.enabledSkills ?? []) ||
     JSON.stringify(current.skillPreferences ?? {}) !==
@@ -56,6 +65,7 @@ const normalizeDefaultAssistant = (
   fallbackModelId: string,
 ): Assistant => {
   const createdAt = assistant.createdAt ?? Date.now()
+  const toolPreferences = getAssistantToolPreferences(assistant)
   const normalizedBase: Assistant = {
     ...assistant,
     id: DEFAULT_ASSISTANT_ID,
@@ -68,7 +78,13 @@ const normalizeDefaultAssistant = (
     modelId: assistant.modelId || fallbackModelId,
     enableTools: assistant.enableTools ?? true,
     includeBuiltinTools: assistant.includeBuiltinTools ?? true,
-    enabledToolNames: assistant.enabledToolNames ?? [],
+    enabledToolNames: getEnabledAssistantToolNames(assistant),
+    toolPreferences:
+      Object.keys(toolPreferences).length > 0
+        ? toolPreferences
+        : buildAssistantToolPreferencesFromEnabledToolNames(
+            assistant.enabledToolNames,
+          ),
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
     customParameters: assistant.customParameters ?? [],

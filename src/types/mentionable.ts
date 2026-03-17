@@ -20,7 +20,7 @@ export type MentionableBlockData = {
   file: TFile
   startLine: number
   endLine: number
-  source?: 'selection'
+  source?: 'selection' | 'selection-sync' | 'selection-pinned'
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
@@ -65,7 +65,7 @@ export type SerializedMentionableBlock = {
   file: string
   startLine: number
   endLine: number
-  source?: 'selection'
+  source?: 'selection' | 'selection-sync' | 'selection-pinned'
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'

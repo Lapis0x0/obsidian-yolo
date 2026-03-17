@@ -48,6 +48,9 @@ type GeminiRequestConfig = GeminiGenerateContentConfig & {
 type GeminiFunctionCallWithMetadata = GeminiFunctionCall & {
   thoughtSignature?: string
 }
+type GeminiReplayPart = GeminiPart & {
+  thoughtSignature?: string
+}
 
 /**
  * TODO: Consider future migration from '@google/generative-ai' to '@google/genai' (https://github.com/googleapis/js-genai)
@@ -138,11 +141,7 @@ export class GeminiProvider extends BaseLLMProvider<
       // Prepare tools including Gemini native tools
       const tools = this.prepareTools(request, model, options)
 
-      const contents = request.messages
-        .map((message) => GeminiProvider.parseRequestMessage(message))
-        .filter((content): content is GeminiContent =>
-          GeminiProvider.isGeminiContent(content),
-        )
+      const contents = GeminiProvider.buildRequestContents(request.messages)
 
       const shouldIncludeConfig =
         (tools?.length ?? 0) > 0 ||
@@ -237,11 +236,7 @@ export class GeminiProvider extends BaseLLMProvider<
       // Prepare tools including Gemini native tools
       const tools = this.prepareTools(request, model, options)
 
-      const contents = request.messages
-        .map((message) => GeminiProvider.parseRequestMessage(message))
-        .filter((content): content is GeminiContent =>
-          GeminiProvider.isGeminiContent(content),
-        )
+      const contents = GeminiProvider.buildRequestContents(request.messages)
 
       const shouldIncludeConfig =
         (tools?.length ?? 0) > 0 ||
@@ -378,76 +373,182 @@ export class GeminiProvider extends BaseLLMProvider<
     return error
   }
 
+  static buildRequestContents(messages: RequestMessage[]): GeminiContent[] {
+    const contents: GeminiContent[] = []
+
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index]
+
+      if (message.role === 'system') {
+        continue
+      }
+
+      if (message.role === 'user') {
+        const content = GeminiProvider.parseUserMessage(message)
+        if (content) {
+          contents.push(content)
+        }
+        continue
+      }
+
+      if (message.role === 'assistant') {
+        const assistantContent = GeminiProvider.parseAssistantMessage(message)
+        if (assistantContent) {
+          contents.push(assistantContent)
+        }
+
+        const toolResponses: Extract<RequestMessage, { role: 'tool' }>[] = []
+        let lookaheadIndex = index + 1
+        while (
+          lookaheadIndex < messages.length &&
+          messages[lookaheadIndex]?.role === 'tool'
+        ) {
+          const toolMessage = messages[lookaheadIndex]
+          if (toolMessage.role !== 'tool') {
+            break
+          }
+          toolResponses.push(toolMessage)
+          lookaheadIndex += 1
+        }
+
+        const toolContent = GeminiProvider.parseToolMessages(toolResponses)
+        if (toolContent) {
+          contents.push(toolContent)
+          index = lookaheadIndex - 1
+        }
+        continue
+      }
+
+      const toolContent = GeminiProvider.parseToolMessages([message])
+      if (toolContent) {
+        contents.push(toolContent)
+      }
+    }
+
+    return contents
+  }
+
+  private static parseUserMessage(
+    message: Extract<RequestMessage, { role: 'user' }>,
+  ): GeminiContent | null {
+    const contentParts: GeminiReplayPart[] = Array.isArray(message.content)
+      ? message.content.flatMap((part) => {
+          if (part.type === 'text') {
+            return [{ text: part.text } as GeminiReplayPart]
+          }
+          if (part.type === 'image_url') {
+            const { mimeType, base64Data } = parseImageDataUrl(
+              part.image_url.url,
+            )
+            GeminiProvider.validateImageType(mimeType)
+            return [
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType,
+                },
+              } as GeminiReplayPart,
+            ]
+          }
+          return []
+        })
+      : [{ text: message.content } as GeminiReplayPart]
+
+    return contentParts.length > 0
+      ? {
+          role: 'user',
+          parts: contentParts,
+        }
+      : null
+  }
+
+  private static parseAssistantMessage(
+    message: Extract<RequestMessage, { role: 'assistant' }>,
+  ): GeminiContent | null {
+    const contentParts: GeminiReplayPart[] = []
+
+    if (typeof message.content === 'string' && message.content !== '') {
+      contentParts.push({ text: message.content })
+    }
+
+    if (Array.isArray(message.tool_calls)) {
+      contentParts.push(
+        ...message.tool_calls.map((toolCall) =>
+          GeminiProvider.mapToolCallRequestToPart(toolCall),
+        ),
+      )
+    }
+
+    if (contentParts.length === 0) {
+      return null
+    }
+
+    return {
+      role: 'model',
+      parts: contentParts,
+    }
+  }
+
+  private static parseToolMessages(
+    messages: RequestMessage[],
+  ): GeminiContent | null {
+    const functionResponses = messages
+      .filter(
+        (message): message is Extract<RequestMessage, { role: 'tool' }> =>
+          message.role === 'tool',
+      )
+      .map((message) => ({
+        functionResponse: {
+          id: message.tool_call.id,
+          name: message.tool_call.name,
+          response: { result: message.content },
+        },
+      }))
+
+    if (functionResponses.length === 0) {
+      return null
+    }
+
+    return {
+      role: 'user',
+      parts: functionResponses,
+    }
+  }
+
+  private static mapToolCallRequestToPart(toolCall: {
+    id: string
+    name: string
+    arguments?: string
+    metadata?: {
+      thoughtSignature?: string
+    }
+  }): GeminiReplayPart {
+    const part: GeminiReplayPart = {
+      functionCall: {
+        id: toolCall.id,
+        name: toolCall.name,
+        args: GeminiProvider.safeParseJsonObject(toolCall.arguments ?? '{}'),
+      },
+    }
+
+    if (toolCall.metadata?.thoughtSignature) {
+      part.thoughtSignature = toolCall.metadata.thoughtSignature
+    }
+
+    return part
+  }
+
   static parseRequestMessage(message: RequestMessage): GeminiContent | null {
     switch (message.role) {
       case 'system':
         // System messages should be extracted and handled separately
         return null
-      case 'user': {
-        const contentParts: GeminiPart[] = Array.isArray(message.content)
-          ? message.content.flatMap((part) => {
-              if (part.type === 'text') {
-                return [{ text: part.text }]
-              }
-              if (part.type === 'image_url') {
-                const { mimeType, base64Data } = parseImageDataUrl(
-                  part.image_url.url,
-                )
-                GeminiProvider.validateImageType(mimeType)
-                return [
-                  {
-                    inlineData: {
-                      data: base64Data,
-                      mimeType,
-                    },
-                  } as GeminiPart,
-                ]
-              }
-              return []
-            })
-          : [{ text: message.content } as GeminiPart]
-
-        return {
-          role: 'user',
-          parts: contentParts,
-        }
-      }
-      case 'assistant': {
-        const contentParts: GeminiPart[] = []
-        if (typeof message.content === 'string' && message.content !== '') {
-          contentParts.push({ text: message.content })
-        }
-
-        // NOTE:
-        // For Gemini thinking/tool models, replaying historical functionCall
-        // parts without provider-issued thought signatures can trigger 400:
-        // "Function call is missing a thought_signature...".
-        // We therefore avoid rehydrating assistant tool_calls here and rely on
-        // the corresponding tool/functionResponse messages as execution context.
-
-        if (contentParts.length === 0) {
-          return null
-        }
-
-        return {
-          role: 'model',
-          parts: contentParts,
-        }
-      }
-      case 'tool': {
-        return {
-          role: 'user',
-          parts: [
-            {
-              functionResponse: {
-                id: message.tool_call.id,
-                name: message.tool_call.name,
-                response: { result: message.content },
-              },
-            },
-          ],
-        }
-      }
+      case 'user':
+        return GeminiProvider.parseUserMessage(message)
+      case 'assistant':
+        return GeminiProvider.parseAssistantMessage(message)
+      case 'tool':
+        return GeminiProvider.parseToolMessages([message])
     }
   }
 
@@ -457,14 +558,8 @@ export class GeminiProvider extends BaseLLMProvider<
     messageId: string,
   ): LLMResponseNonStreaming {
     const parts = response.candidates?.[0]?.content?.parts ?? []
-    const reasoningPieces = parts
-      .filter(
-        (part): part is GeminiPart & { text: string } =>
-          Boolean(part?.thought) && typeof part?.text === 'string',
-      )
-      .map((part) => part.text)
-    const reasoningText =
-      reasoningPieces.length > 0 ? reasoningPieces.join('') : undefined
+    const { contentText, reasoningText } =
+      GeminiProvider.extractTextSegments(parts)
 
     const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
       functionCalls: response.functionCalls,
@@ -491,7 +586,7 @@ export class GeminiProvider extends BaseLLMProvider<
         {
           finish_reason: response.candidates?.[0]?.finishReason ?? null,
           message: {
-            content: response.text ?? '',
+            content: contentText,
             reasoning: reasoningText ?? null,
             role: 'assistant',
             tool_calls: toolCalls,
@@ -619,20 +714,9 @@ export class GeminiProvider extends BaseLLMProvider<
     model: string,
     messageId: string,
   ): LLMResponseStreaming {
-    // Separate answer text and thought summaries if present in parts
-    let contentPiece = ''
-    let reasoningPiece = ''
     const parts = chunk.candidates?.[0]?.content?.parts ?? []
-    if (Array.isArray(parts) && parts.length > 0) {
-      for (const p of parts) {
-        if (typeof p?.text !== 'string') continue
-        if (p.thought) {
-          reasoningPiece += p.text
-        } else {
-          contentPiece += p.text
-        }
-      }
-    }
+    const { contentText: contentPiece, reasoningText: reasoningPiece } =
+      GeminiProvider.extractTextSegments(parts)
     const functionCalls = GeminiProvider.resolveFunctionCallsWithMetadata({
       functionCalls: chunk.functionCalls,
       parts: chunk.candidates?.[0]?.content?.parts,
@@ -659,7 +743,7 @@ export class GeminiProvider extends BaseLLMProvider<
         {
           finish_reason: chunk.candidates?.[0]?.finishReason ?? null,
           delta: {
-            content: contentPiece || chunk.text || '',
+            content: contentPiece,
             reasoning: reasoningPiece || undefined,
             tool_calls: toolCallDeltas,
           },
@@ -675,6 +759,34 @@ export class GeminiProvider extends BaseLLMProvider<
             total_tokens: chunk.usageMetadata.totalTokenCount ?? 0,
           }
         : undefined,
+    }
+  }
+
+  private static extractTextSegments(parts: GeminiPart[] | undefined): {
+    contentText: string
+    reasoningText?: string
+  } {
+    let contentText = ''
+    let reasoningText = ''
+
+    if (!Array.isArray(parts) || parts.length === 0) {
+      return { contentText }
+    }
+
+    for (const part of parts) {
+      if (typeof part?.text !== 'string') {
+        continue
+      }
+      if (part.thought) {
+        reasoningText += part.text
+      } else {
+        contentText += part.text
+      }
+    }
+
+    return {
+      contentText,
+      reasoningText: reasoningText || undefined,
     }
   }
 

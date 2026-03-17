@@ -304,6 +304,11 @@ export default class SmartComposerPlugin extends Plugin {
             text,
           )
         },
+        addSelectionToSidebarChat: async (selectedBlock) => {
+          await this.getChatViewNavigator().addSelectionBlockToChat(
+            selectedBlock,
+          )
+        },
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
         pinSelectionHighlight: (view) =>
           selectionHighlightController.pinCurrentSelection(view),

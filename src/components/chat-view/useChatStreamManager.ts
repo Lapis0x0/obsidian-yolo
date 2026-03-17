@@ -13,11 +13,12 @@ import {
   LLMModelNotFoundException,
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
+import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { ChatMessage } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
-import { PromptGenerator } from '../../utils/chat/promptGenerator'
+import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
@@ -29,7 +30,7 @@ import { ReasoningLevel } from './chat-input/ReasoningSelect'
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   autoScrollToBottom: () => void
-  promptGenerator: PromptGenerator
+  requestContextBuilder: RequestContextBuilder
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
@@ -41,6 +42,9 @@ const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
 const CHAT_READONLY_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'fs_search'),
   getToolName(getLocalFileToolServerName(), 'fs_read'),
+  getToolName(getLocalFileToolServerName(), 'memory_add'),
+  getToolName(getLocalFileToolServerName(), 'memory_update'),
+  getToolName(getLocalFileToolServerName(), 'memory_delete'),
   getToolName(getLocalFileToolServerName(), 'open_skill'),
 ]
 const MIN_STREAM_FLUSH_INTERVAL_MS = 16
@@ -139,7 +143,7 @@ export type UseChatStreamManager = {
 export function useChatStreamManager({
   setChatMessages,
   autoScrollToBottom,
-  promptGenerator,
+  requestContextBuilder,
   conversationOverrides,
   modelId,
   chatMode,
@@ -395,7 +399,7 @@ export function useChatStreamManager({
           : false
         const effectiveAllowedToolNames = effectiveEnableTools
           ? chatMode === 'agent'
-            ? selectedAssistant?.enabledToolNames
+            ? getEnabledAssistantToolNames(selectedAssistant)
             : CHAT_READONLY_TOOL_NAMES
           : undefined
 
@@ -457,11 +461,15 @@ export function useChatStreamManager({
             model: effectiveModel,
             messages: chatMessages,
             conversationId,
-            promptGenerator,
+            requestContextBuilder,
             mcpManager,
             abortSignal: abortController.signal,
             reasoningLevel,
             allowedToolNames: effectiveAllowedToolNames,
+            toolPreferences:
+              chatMode === 'agent'
+                ? selectedAssistant?.toolPreferences
+                : undefined,
             allowedSkillIds,
             allowedSkillNames,
             requestParams: {

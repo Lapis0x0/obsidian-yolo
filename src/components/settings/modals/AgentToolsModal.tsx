@@ -8,6 +8,7 @@ import {
 } from '../../../contexts/settings-context'
 import {
   getLocalFileTools,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 } from '../../../core/mcp/localFileTools'
 import SmartComposerPlugin from '../../../main'
@@ -58,9 +59,15 @@ const BUILTIN_TOOL_I18N_KEYS: Record<
   fs_file_ops: {
     labelKey: 'settings.agent.builtinFsFileOpsLabel',
     descKey: 'settings.agent.builtinFsFileOpsDesc',
-    labelFallback: 'File Operations',
+    labelFallback: 'File Operation Toolset',
     descFallback:
       'Grouped file path operations: create/delete file, create/delete folder, and move.',
+  },
+  memory_ops: {
+    labelKey: 'settings.agent.builtinMemoryOpsLabel',
+    descKey: 'settings.agent.builtinMemoryOpsDesc',
+    labelFallback: 'Memory Toolset',
+    descFallback: 'Grouped memory operations: add, update, and delete memory.',
   },
   open_skill: {
     labelKey: 'settings.agent.builtinOpenSkillLabel',
@@ -71,7 +78,11 @@ const BUILTIN_TOOL_I18N_KEYS: Record<
 }
 
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+)
 const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
+const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
 
 export class AgentToolsModal extends ReactModal<AgentToolsModalProps> {
   constructor(app: App, plugin: SmartComposerPlugin) {
@@ -119,7 +130,11 @@ function AgentToolsModalContent({
   const builtinTools = useMemo(() => {
     const toolOptions = settings.mcp.builtinToolOptions
     const tools = getLocalFileTools()
-      .filter((tool) => !SPLIT_FS_TOOL_NAME_SET.has(tool.name))
+      .filter(
+        (tool) =>
+          !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name),
+      )
       .map((tool) => {
         const meta = BUILTIN_TOOL_I18N_KEYS[tool.name]
         return {
@@ -145,11 +160,26 @@ function AgentToolsModalContent({
       enabled: splitToolEnabled,
     }
 
+    const memorySplitToolEnabled = LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[MEMORY_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const memoryOpsMeta = BUILTIN_TOOL_I18N_KEYS[MEMORY_OPS_GROUP_TOOL_NAME]
+    const memoryOpsTool = {
+      id: MEMORY_OPS_GROUP_TOOL_NAME,
+      label: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
+      description: t(memoryOpsMeta.descKey, memoryOpsMeta.descFallback),
+      enabled: memorySplitToolEnabled,
+    }
+
     const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
     if (openSkillIndex >= 0) {
       tools.splice(openSkillIndex, 0, fileOpsTool)
+      tools.splice(openSkillIndex + 1, 0, memoryOpsTool)
     } else {
       tools.push(fileOpsTool)
+      tools.push(memoryOpsTool)
     }
 
     return tools
@@ -159,7 +189,12 @@ function AgentToolsModalContent({
     const targets =
       toolName === FILE_OPS_GROUP_TOOL_NAME
         ? [FILE_OPS_GROUP_TOOL_NAME, ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES]
-        : [toolName]
+        : toolName === MEMORY_OPS_GROUP_TOOL_NAME
+          ? [
+              MEMORY_OPS_GROUP_TOOL_NAME,
+              ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+            ]
+          : [toolName]
     const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
     for (const target of targets) {
       nextBuiltinToolOptions[target] = {

@@ -4,7 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
-import { useSettings } from '../../contexts/settings-context'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -40,7 +39,6 @@ export type ToolLabels = {
   allow: string
   reject: string
   abort: string
-  alwaysAllowThisTool: string
   allowForThisChat: string
 }
 
@@ -73,6 +71,9 @@ const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_create_dir: 'Create folder',
   fs_delete_dir: 'Delete folder',
   fs_move: 'Move path',
+  memory_add: 'Add memory',
+  memory_update: 'Update memory',
+  memory_delete: 'Delete memory',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
@@ -147,6 +148,18 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.move',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
       ),
+      memory_add: translate(
+        'chat.toolCall.displayName.memory_add',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_add,
+      ),
+      memory_update: translate(
+        'chat.toolCall.displayName.memory_update',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_update,
+      ),
+      memory_delete: translate(
+        'chat.toolCall.displayName.memory_delete',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_delete,
+      ),
     },
     writeActionLabels: {
       create_file: translate(
@@ -182,10 +195,6 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
     allow: translate('chat.toolCall.allow', 'Allow'),
     reject: translate('chat.toolCall.reject', 'Reject'),
     abort: translate('chat.toolCall.abort', 'Abort'),
-    alwaysAllowThisTool: translate(
-      'chat.toolCall.alwaysAllowThisTool',
-      'Always allow this tool',
-    ),
     allowForThisChat: translate(
       'chat.toolCall.allowForThisChat',
       'Allow for this chat',
@@ -425,7 +434,6 @@ function ToolCallItem({
   const {
     handleToolCall,
     handleAllowForConversation,
-    handleAllowAutoExecution,
     handleReject,
     handleAbort,
   } = useToolCall(request, conversationId, onResponseUpdate)
@@ -435,19 +443,6 @@ function ToolCallItem({
     response.status === ToolCallResponseStatus.PendingApproval,
   )
 
-  const { serverName } = useMemo(() => {
-    try {
-      const parsed = parseToolName(request.name)
-      return { serverName: parsed.serverName }
-    } catch (error) {
-      if (error instanceof InvalidToolNameException) {
-        return {
-          serverName: null,
-        }
-      }
-      throw error
-    }
-  }, [request.name])
   const { t } = useLanguage()
   const toolLabels = useMemo(() => getToolLabels(t), [t])
   const displayInfo = useMemo(
@@ -464,10 +459,6 @@ function ToolCallItem({
       return request.arguments
     }
   }, [request.arguments, toolLabels.noParameters])
-  const supportsAutoAllow = useMemo(
-    () => Boolean(serverName) && serverName !== getLocalFileToolServerName(),
-    [serverName],
-  )
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [isStatusTransitioning, setIsStatusTransitioning] = useState(false)
   const [renderFooter, setRenderFooter] = useState(
@@ -622,37 +613,16 @@ function ToolCallItem({
                   void handleToolCall()
                   setIsOpen(false)
                 }}
-                menuOptions={
-                  supportsAutoAllow
-                    ? [
-                        {
-                          label: toolLabels.alwaysAllowThisTool,
-                          onClick: () => {
-                            void handleToolCall()
-                            handleAllowAutoExecution()
-                            setIsOpen(false)
-                          },
-                        },
-                        {
-                          label: toolLabels.allowForThisChat,
-                          onClick: () => {
-                            void handleToolCall()
-                            void handleAllowForConversation()
-                            setIsOpen(false)
-                          },
-                        },
-                      ]
-                    : [
-                        {
-                          label: toolLabels.allowForThisChat,
-                          onClick: () => {
-                            void handleToolCall()
-                            void handleAllowForConversation()
-                            setIsOpen(false)
-                          },
-                        },
-                      ]
-                }
+                menuOptions={[
+                  {
+                    label: toolLabels.allowForThisChat,
+                    onClick: () => {
+                      void handleToolCall()
+                      void handleAllowForConversation()
+                      setIsOpen(false)
+                    },
+                  },
+                ]}
               />
               <button
                 type="button"
@@ -688,7 +658,6 @@ function useToolCall(
   conversationId: string,
   onResponseUpdate: (response: ToolCallResponse) => void,
 ) {
-  const { settings, setSettings } = useSettings()
   const { getMcpManager } = useMcp()
 
   const handleToolCall = useCallback(async () => {
@@ -713,48 +682,6 @@ function useToolCall(
     )
   }, [request, conversationId, getMcpManager])
 
-  const handleAllowAutoExecution = useCallback(() => {
-    const { serverName, toolName } = parseToolName(request.name)
-    const server = settings.mcp.servers.find((s) => s.id === serverName)
-    if (!server) {
-      console.error(`Server ${serverName} not found`)
-      return
-    }
-    const toolOptions = { ...server.toolOptions }
-    if (!toolOptions[toolName]) {
-      // If the tool is not in the toolOptions, add it with default values
-      toolOptions[toolName] = {
-        allowAutoExecution: false,
-        disabled: false,
-      }
-    }
-    toolOptions[toolName] = {
-      ...toolOptions[toolName],
-      allowAutoExecution: true,
-    }
-
-    void (async () => {
-      try {
-        await setSettings({
-          ...settings,
-          mcp: {
-            ...settings.mcp,
-            servers: settings.mcp.servers.map((s) =>
-              s.id === server.id
-                ? {
-                    ...s,
-                    toolOptions: toolOptions,
-                  }
-                : s,
-            ),
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to allow tool auto execution', error)
-      }
-    })()
-  }, [request, settings, setSettings])
-
   const handleReject = useCallback(() => {
     onResponseUpdate({
       status: ToolCallResponseStatus.Rejected,
@@ -772,7 +699,6 @@ function useToolCall(
   return {
     handleToolCall,
     handleAllowForConversation,
-    handleAllowAutoExecution,
     handleReject,
     handleAbort,
   }

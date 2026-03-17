@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 
 import { ChatToolMessage } from '../../types/chat'
+import { AssistantToolPreference } from '../../types/assistant.types'
 import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallRequest,
@@ -9,9 +10,14 @@ import {
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+import {
+  getAssistantToolApprovalMode,
+  isAssistantToolEnabled,
+} from './tool-preferences'
 
 export class AgentToolGateway {
   private readonly allowedToolNames?: Set<string>
+  private readonly toolPreferences?: Record<string, AssistantToolPreference>
   private readonly allowedSkillIds?: Set<string>
   private readonly allowedSkillNames?: Set<string>
 
@@ -19,6 +25,7 @@ export class AgentToolGateway {
     private readonly mcpManager: McpManager,
     options?: {
       allowedToolNames?: string[]
+      toolPreferences?: Record<string, AssistantToolPreference>
       allowedSkillIds?: string[]
       allowedSkillNames?: string[]
     },
@@ -26,6 +33,7 @@ export class AgentToolGateway {
     this.allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : undefined
+    this.toolPreferences = options?.toolPreferences
     this.allowedSkillIds = options?.allowedSkillIds
       ? new Set(options.allowedSkillIds.map((id) => id.toLowerCase()))
       : undefined
@@ -55,7 +63,7 @@ export class AgentToolGateway {
       toolCalls: toolCallRequests.map((request) => ({
         request,
         response: {
-          status: this.shouldAutoExecuteTool({ request, conversationId })
+          status: this.shouldStartToolCallRunning({ request, conversationId })
             ? ToolCallResponseStatus.Running
             : ToolCallResponseStatus.PendingApproval,
         },
@@ -84,6 +92,7 @@ export class AgentToolGateway {
           name: toolCall.request.name,
           args: toolCall.request.arguments,
           id: toolCall.request.id,
+          requireReview: this.shouldUseFsEditReview(toolCall.request.name),
           signal,
         }),
       ),
@@ -148,7 +157,58 @@ export class AgentToolGateway {
       requestToolName: request.name,
       conversationId,
       requestArgs: request.arguments,
+      requireAutoExecution:
+        getAssistantToolApprovalMode(
+          {
+            toolPreferences: this.toolPreferences,
+            enabledToolNames: this.allowedToolNames
+              ? [...this.allowedToolNames]
+              : undefined,
+          },
+          request.name,
+        ) === 'full_access',
     })
+  }
+
+  private shouldStartToolCallRunning({
+    request,
+    conversationId,
+  }: {
+    request: ToolCallRequest
+    conversationId: string
+  }): boolean {
+    if (!this.isToolAllowed(request.name)) {
+      return false
+    }
+    if (!this.isSkillPermissionAllowed(request)) {
+      return false
+    }
+
+    return (
+      this.shouldAutoExecuteTool({ request, conversationId }) ||
+      this.shouldUseFsEditReview(request.name)
+    )
+  }
+
+  private shouldUseFsEditReview(toolName: string): boolean {
+    try {
+      const parsed = parseToolName(toolName)
+      return (
+        parsed.serverName === getLocalFileToolServerName() &&
+        parsed.toolName === 'fs_edit' &&
+        getAssistantToolApprovalMode(
+          {
+            toolPreferences: this.toolPreferences,
+            enabledToolNames: this.allowedToolNames
+              ? [...this.allowedToolNames]
+              : undefined,
+          },
+          toolName,
+        ) === 'require_approval'
+      )
+    } catch {
+      return false
+    }
   }
 
   private isToolAllowed(toolName: string): boolean {
@@ -164,7 +224,17 @@ export class AgentToolGateway {
     if (!this.allowedToolNames) {
       return true
     }
-    return this.allowedToolNames.has(toolName)
+    if (!this.allowedToolNames.has(toolName)) {
+      return false
+    }
+
+    return isAssistantToolEnabled(
+      {
+        toolPreferences: this.toolPreferences,
+        enabledToolNames: [...this.allowedToolNames],
+      },
+      toolName,
+    )
   }
 
   private isOpenSkillToolName(toolName: string): boolean {

@@ -14,6 +14,12 @@ import {
   getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../skills/liteSkills'
+import {
+  memoryAdd,
+  memoryDelete,
+  memoryUpdate,
+  type MemoryScope,
+} from '../memory/memoryManager'
 
 export { recoverLikelyEscapedBackslashSequences }
 
@@ -37,6 +43,9 @@ type LocalFileToolName =
   | 'fs_create_dir'
   | 'fs_delete_dir'
   | 'fs_move'
+  | 'memory_add'
+  | 'memory_update'
+  | 'memory_delete'
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsListScope = 'files' | 'dirs' | 'all'
@@ -94,9 +103,18 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
   LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION,
 ) as Array<keyof typeof LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION>
 
+export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
+  'memory_add',
+  'memory_update',
+  'memory_delete',
+] as const
+
 const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'fs_edit',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  'memory_add',
+  'memory_update',
+  'memory_delete',
 ])
 
 const asErrorMessage = (error: unknown): string => {
@@ -507,6 +525,105 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['oldPath', 'newPath'],
+      },
+    },
+    {
+      name: 'memory_add',
+      description:
+        'Add memory entries to global or assistant memory. Supports single entry or batch items; category defaults to other and id is auto-assigned.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          content: {
+            type: 'string',
+            description: 'Memory content text to store.',
+          },
+          items: {
+            type: 'array',
+            description:
+              'Batch add items. Each item accepts content, optional category, and optional scope.',
+            items: {
+              type: 'object',
+              properties: {
+                content: {
+                  type: 'string',
+                },
+                category: {
+                  type: 'string',
+                },
+                scope: {
+                  type: 'string',
+                  enum: ['global', 'assistant'],
+                },
+              },
+              required: ['content'],
+            },
+          },
+          category: {
+            type: 'string',
+            description:
+              'Memory category. Use profile, preferences, or other. Defaults to other.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['global', 'assistant'],
+            description:
+              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
+          },
+        },
+      },
+    },
+    {
+      name: 'memory_update',
+      description:
+        'Update an existing memory entry by id within global or assistant memory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Memory id such as Profile_2 or Memory_4.',
+          },
+          new_content: {
+            type: 'string',
+            description: 'Replacement content for the target memory id.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['global', 'assistant'],
+            description:
+              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
+          },
+        },
+        required: ['id', 'new_content'],
+      },
+    },
+    {
+      name: 'memory_delete',
+      description:
+        'Delete memory entries by id from global or assistant memory. Supports single id or batch ids.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Memory id such as Preference_1.',
+          },
+          ids: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+            description:
+              'Batch delete ids. Each id must exist in the selected memory scope.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['global', 'assistant'],
+            description:
+              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
+          },
+        },
       },
     },
     {
@@ -1020,20 +1137,12 @@ const executeFsFileOps = async ({
     }
   }
 
-  const successCount = results.filter((item) => item.ok).length
-  const errorCount = results.length - successCount
-
   return {
     status: ToolCallResponseStatus.Success,
     text: formatJsonResult({
       tool,
       action,
       dryRun,
-      summary: {
-        total: results.length,
-        success: successCount,
-        failed: errorCount,
-      },
       results,
     }),
   }
@@ -1045,6 +1154,7 @@ export async function callLocalFileTool({
   openApplyReview,
   toolName,
   args,
+  requireReview = false,
   signal,
 }: {
   app: App
@@ -1052,6 +1162,7 @@ export async function callLocalFileTool({
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
   toolName: string
   args: Record<string, unknown>
+  requireReview?: boolean
   signal?: AbortSignal
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
@@ -1128,10 +1239,6 @@ export async function callLocalFileTool({
             path: scopeFolder.normalizedPath,
             scope,
             depth,
-            summary: {
-              returned: entries.length,
-              maxResults,
-            },
             entries,
           }),
         }
@@ -1277,9 +1384,6 @@ export async function callLocalFileTool({
           })
         }
 
-        const successCount = results.filter((result) => result.ok).length
-        const errorCount = results.length - successCount
-
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
@@ -1289,11 +1393,6 @@ export async function callLocalFileTool({
               endLine: endLine ?? null,
               maxLines: endLine === undefined ? maxLines : null,
               maxCharsPerFile,
-            },
-            summary: {
-              total: results.length,
-              success: successCount,
-              failed: errorCount,
             },
             results,
           }),
@@ -1325,10 +1424,9 @@ export async function callLocalFileTool({
         const nextContent = materialized.newContent
 
         assertContentSize(nextContent)
-        const shouldRequireReview = settings?.mcp.fsEditRequireReview ?? false
         let appliedContent = nextContent
 
-        if (shouldRequireReview) {
+        if (requireReview) {
           if (!openApplyReview) {
             throw new Error('Apply review is unavailable for fs_edit.')
           }
@@ -1372,9 +1470,7 @@ export async function callLocalFileTool({
               matchMode: result.matchMode,
             })),
             changed: content !== appliedContent,
-            message: shouldRequireReview
-              ? 'Applied reviewed edit.'
-              : 'Applied edit.',
+            message: requireReview ? 'Applied reviewed edit.' : 'Applied edit.',
           }),
         }
       }
@@ -1499,8 +1595,6 @@ export async function callLocalFileTool({
               snippet: string
             }
         > = []
-        let skippedLargeFiles = 0
-
         if (includeFiles) {
           const files = app.vault
             .getFiles()
@@ -1549,7 +1643,6 @@ export async function callLocalFileTool({
               return { status: ToolCallResponseStatus.Aborted }
             }
             if (file.stat.size > MAX_FILE_SIZE_BYTES) {
-              skippedLargeFiles += 1
               continue
             }
 
@@ -1582,11 +1675,6 @@ export async function callLocalFileTool({
             scope,
             query,
             path: scopeFolder.normalizedPath,
-            summary: {
-              returned: results.length,
-              maxResults,
-              skippedLargeFiles,
-            },
             results,
           }),
         }
@@ -1611,6 +1699,201 @@ export async function callLocalFileTool({
             tool: 'open_skill',
             skill: skill.entry,
             content: skill.content,
+          }),
+        }
+      }
+
+      case 'memory_add': {
+        if (args.items !== undefined) {
+          const items = getRecordArrayArg(args, 'items')
+          if (items.length === 0) {
+            throw new Error('items cannot be empty.')
+          }
+
+          const results: Array<
+            | {
+                ok: true
+                id: string
+                scope: MemoryScope
+                filePath: string
+              }
+            | {
+                ok: false
+                error: string
+                scope: MemoryScope
+              }
+          > = []
+
+          for (const item of items) {
+            try {
+              const result = await memoryAdd({
+                app,
+                settings,
+                content: item.content,
+                category: item.category,
+                scope: item.scope ?? args.scope,
+                assistantId: settings?.currentAssistantId,
+              })
+              results.push({
+                ok: true,
+                id: result.id,
+                scope: result.scope,
+                filePath: result.filePath,
+              })
+            } catch (error) {
+              results.push({
+                ok: false,
+                error: asErrorMessage(error),
+                scope:
+                  typeof (item.scope ?? args.scope) === 'string' &&
+                  String(item.scope ?? args.scope)
+                    .trim()
+                    .toLowerCase() === 'global'
+                    ? 'global'
+                    : 'assistant',
+              })
+            }
+          }
+
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'memory_add',
+              mode: 'batch',
+              results,
+              okCount: results.filter((result) => result.ok).length,
+              failCount: results.filter((result) => !result.ok).length,
+            }),
+          }
+        }
+
+        if (args.content === undefined) {
+          throw new Error('content or items is required.')
+        }
+
+        const result = await memoryAdd({
+          app,
+          settings,
+          content: args.content,
+          category: args.category,
+          scope: args.scope,
+          assistantId: settings?.currentAssistantId,
+        })
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'memory_add',
+            id: result.id,
+            scope: result.scope,
+            filePath: result.filePath,
+          }),
+        }
+      }
+
+      case 'memory_update': {
+        const result = await memoryUpdate({
+          app,
+          settings,
+          id: args.id,
+          newContent: args.new_content,
+          scope: args.scope,
+          assistantId: settings?.currentAssistantId,
+        })
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'memory_update',
+            id: result.id,
+            scope: result.scope,
+            filePath: result.filePath,
+          }),
+        }
+      }
+
+      case 'memory_delete': {
+        if (args.ids !== undefined) {
+          const ids = getStringArrayArg(args, 'ids')
+          if (ids.length === 0) {
+            throw new Error('ids cannot be empty.')
+          }
+
+          const results: Array<
+            | {
+                ok: true
+                id: string
+                scope: MemoryScope
+                filePath: string
+              }
+            | {
+                ok: false
+                id: string
+                error: string
+                scope: MemoryScope
+              }
+          > = []
+
+          for (const id of ids) {
+            try {
+              const result = await memoryDelete({
+                app,
+                settings,
+                id,
+                scope: args.scope,
+                assistantId: settings?.currentAssistantId,
+              })
+              results.push({
+                ok: true,
+                id: result.id,
+                scope: result.scope,
+                filePath: result.filePath,
+              })
+            } catch (error) {
+              results.push({
+                ok: false,
+                id,
+                error: asErrorMessage(error),
+                scope:
+                  typeof args.scope === 'string' &&
+                  args.scope.trim().toLowerCase() === 'global'
+                    ? 'global'
+                    : 'assistant',
+              })
+            }
+          }
+
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'memory_delete',
+              mode: 'batch',
+              results,
+              okCount: results.filter((result) => result.ok).length,
+              failCount: results.filter((result) => !result.ok).length,
+            }),
+          }
+        }
+
+        if (args.id === undefined) {
+          throw new Error('id or ids is required.')
+        }
+
+        const result = await memoryDelete({
+          app,
+          settings,
+          id: args.id,
+          scope: args.scope,
+          assistantId: settings?.currentAssistantId,
+        })
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'memory_delete',
+            id: result.id,
+            scope: result.scope,
+            filePath: result.filePath,
           }),
         }
       }

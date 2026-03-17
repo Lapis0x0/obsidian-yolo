@@ -62,6 +62,9 @@ type SelectionChatControllerDeps = {
     selectedBlock: MentionableBlockData,
     text: string,
   ) => Promise<void>
+  addSelectionToSidebarChat: (
+    selectedBlock: MentionableBlockData,
+  ) => Promise<void>
   isSmartSpaceOpen: () => boolean
   pinSelectionHighlight: (view: EditorView) => void
   clearSelectionHighlight: (view?: EditorView) => void
@@ -100,6 +103,9 @@ export class SelectionChatController {
     selectedBlock: MentionableBlockData,
     text: string,
   ) => Promise<void>
+  private readonly addSelectionToSidebarChat: (
+    selectedBlock: MentionableBlockData,
+  ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
   private readonly pinSelectionHighlight: (view: EditorView) => void
   private readonly clearSelectionHighlight: (view?: EditorView) => void
@@ -121,6 +127,7 @@ export class SelectionChatController {
     this.showQuickAskWithOptions = deps.showQuickAskWithOptions
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
+    this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
     this.pinSelectionHighlight = deps.pinSelectionHighlight
     this.clearSelectionHighlight = deps.clearSelectionHighlight
@@ -302,6 +309,10 @@ export class SelectionChatController {
     }
 
     if (mode === 'chat-input') {
+      if (actionId === 'add-to-sidebar') {
+        await this.addToSidebar(editor)
+        return
+      }
       await this.addToChatInput(editor, instruction)
       return
     }
@@ -492,6 +503,27 @@ export class SelectionChatController {
       prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
     await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
 
+    if (editorView) {
+      this.deferSelectionHighlightTakeover(editorView)
+    }
+  }
+
+  private async addToSidebar(editor: Editor) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!editor || !view) {
+      new Notice('无法获取当前编辑器')
+      return
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      new Notice('无法创建选区数据')
+      return
+    }
+
+    await this.addSelectionToSidebarChat(data)
+
+    const editorView = this.getEditorView(editor)
     if (editorView) {
       this.deferSelectionHighlightTakeover(editorView)
     }

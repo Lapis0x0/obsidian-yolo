@@ -12,6 +12,7 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
+import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import type { SelectEmbedding } from '../../database/schema'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
@@ -42,11 +43,11 @@ import { filterRequestMessagesByToolBoundary } from './tool-boundary'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
-type PromptGeneratorOptions = {
+type RequestContextBuilderOptions = {
   includeSkills?: boolean
 }
 
-export class PromptGenerator {
+export class RequestContextBuilder {
   private getRagEngine: () => Promise<RAGEngine>
   private app: App
   private settings: SmartComposerSettings
@@ -57,7 +58,7 @@ export class PromptGenerator {
     getRagEngine: () => Promise<RAGEngine>,
     app: App,
     settings: SmartComposerSettings,
-    options?: PromptGeneratorOptions,
+    options?: RequestContextBuilderOptions,
   ) {
     this.getRagEngine = getRagEngine
     this.app = app
@@ -68,6 +69,7 @@ export class PromptGenerator {
   public async generateRequestMessages({
     messages,
     hasTools = false,
+    hasMemoryTools = false,
     maxContextOverride,
     model,
     conversationId,
@@ -76,6 +78,7 @@ export class PromptGenerator {
   }: {
     messages: ChatMessage[]
     hasTools?: boolean
+    hasMemoryTools?: boolean
     maxContextOverride?: number
     model: ChatModel
     conversationId: string
@@ -179,7 +182,7 @@ export class PromptGenerator {
 
     const systemMessage = isBaseModel
       ? null
-      : await this.getSystemMessage(shouldUseRAG, hasTools)
+      : await this.getSystemMessage(shouldUseRAG, hasTools, hasMemoryTools)
 
     const currentFile = currentFileOverride ?? null
     const currentFileMessage =
@@ -692,13 +695,14 @@ ${await this.getWebsiteContent(url)}
   private async getSystemMessage(
     shouldUseRAG: boolean,
     hasTools = false,
+    hasMemoryTools = false,
   ): Promise<RequestMessage> {
     // When both RAG and tools are available, prioritize based on context
     const useRAGPrompt = shouldUseRAG && !hasTools
 
     // Build user custom instructions section (priority: placed first)
     const customInstructionsSection =
-      await this.buildCustomInstructionsSection()
+      await this.buildCustomInstructionsSection(hasMemoryTools)
 
     // Build base behavior section
     const baseBehaviorSection = useRAGPrompt
@@ -716,7 +720,9 @@ ${await this.getWebsiteContent(url)}
     }
   }
 
-  private async buildCustomInstructionsSection(): Promise<string | null> {
+  private async buildCustomInstructionsSection(
+    hasMemoryTools: boolean,
+  ): Promise<string | null> {
     // Get custom system prompt
     const customInstruction = this.settings.systemPrompt.trim()
 
@@ -736,6 +742,37 @@ ${await this.getWebsiteContent(url)}
       parts.push(`<assistant_instructions name="${currentAssistant.name}">
 ${currentAssistant.systemPrompt}
 </assistant_instructions>`)
+    }
+
+    const memoryContext = await getMemoryPromptContext({
+      app: this.app,
+      settings: this.settings,
+      assistantId: currentAssistant?.id,
+    })
+    if (memoryContext.global || memoryContext.assistant) {
+      const memoryParts: string[] = []
+      if (memoryContext.global) {
+        memoryParts.push(`<global>
+${memoryContext.global}
+</global>`)
+      }
+      if (memoryContext.assistant) {
+        memoryParts.push(`<assistant>
+${memoryContext.assistant}
+</assistant>`)
+      }
+      parts.push(`<memory>
+${memoryParts.join('\n\n')}
+</memory>`)
+    }
+
+    if (hasMemoryTools) {
+      parts.push(`<memory_rules>
+- Memory stores durable user profile, interaction preferences, corrected assistant behavior, and cross-session continuity that would not naturally live in vault notes.
+- When the user reveals important durable information or corrects your behavior, proactively use memory tools to add or update memory.
+- When a memory becomes outdated, redundant, or clearly superseded, proactively update or delete it.
+- Prefer updating an existing relevant memory instead of adding duplicates.
+</memory_rules>`)
     }
 
     if (this.includeSkills) {

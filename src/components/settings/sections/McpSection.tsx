@@ -322,14 +322,13 @@ function McpToolComponent({
 
   const toolOption = server.config.toolOptions[tool.name]
   const disabled = toolOption?.disabled ?? false
-  const allowAutoExecution = toolOption?.allowAutoExecution ?? false
 
   const handleToggleEnabled = (enabled: boolean) => {
     const toolOptions = {
       ...server.config.toolOptions,
       [tool.name]: {
         disabled: !enabled,
-        allowAutoExecution,
+        ...server.config.toolOptions[tool.name],
       },
     }
     Promise.resolve(
@@ -352,32 +351,6 @@ function McpToolComponent({
     })
   }
 
-  const handleToggleAutoExecution = (autoExecution: boolean) => {
-    const toolOptions = { ...server.config.toolOptions }
-    toolOptions[tool.name] = {
-      ...toolOptions[tool.name],
-      allowAutoExecution: autoExecution,
-    }
-    Promise.resolve(
-      setSettings({
-        ...settings,
-        mcp: {
-          ...settings.mcp,
-          servers: settings.mcp.servers.map((s) =>
-            s.id === server.name
-              ? {
-                  ...s,
-                  toolOptions,
-                }
-              : s,
-          ),
-        },
-      }),
-    ).catch((error: unknown) => {
-      console.error('Failed to toggle MCP tool auto execution', error)
-    })
-  }
-
   return (
     <div className="smtcmp-mcp-tool">
       <div className="smtcmp-mcp-tool-info">
@@ -391,15 +364,6 @@ function McpToolComponent({
         <ObsidianToggle
           value={!disabled}
           onChange={(value) => handleToggleEnabled(value)}
-        />
-      </div>
-      <div className="smtcmp-mcp-tool-toggle">
-        <span className="smtcmp-mcp-tool-toggle-label">
-          {t('settings.mcp.autoExecute')}
-        </span>
-        <ObsidianToggle
-          value={allowAutoExecution}
-          onChange={(value) => handleToggleAutoExecution(value)}
         />
       </div>
     </div>

@@ -110,6 +110,7 @@ export const it: TranslationKeys = {
   selection: {
     actions: {
       addToChat: 'Aggiungi alla chat',
+      addToSidebar: 'Aggiungi alla barra laterale',
       customRewrite: 'Riscrittura personalizzata',
       customAsk: 'Domanda personalizzata',
       rewrite: 'AI riscrivi',
@@ -352,9 +353,19 @@ export const it: TranslationKeys = {
       fsEditReviewToggle: 'Richiedi approvazione prima di modificare i file',
       fsEditReviewToggleDesc:
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
-      builtinFsFileOpsLabel: 'Operazioni file',
+      builtinFsFileOpsLabel: 'Set operazioni file',
       builtinFsFileOpsDesc:
         'Operazioni percorso file raggruppate: crea/elimina file, crea/elimina cartelle e sposta.',
+      builtinMemoryOpsLabel: 'Set strumenti memoria',
+      builtinMemoryOpsDesc:
+        'Operazioni memoria raggruppate: aggiungi, aggiorna ed elimina memoria.',
+      builtinMemoryAddLabel: 'Aggiungi memoria',
+      builtinMemoryAddDesc:
+        "Aggiunge una memoria globale o dell'assistant con id assegnato automaticamente.",
+      builtinMemoryUpdateLabel: 'Aggiorna memoria',
+      builtinMemoryUpdateDesc: 'Aggiorna una memoria esistente tramite id.',
+      builtinMemoryDeleteLabel: 'Elimina memoria',
+      builtinMemoryDeleteDesc: 'Elimina una memoria esistente tramite id.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
       editorDefaultName: 'Nuovo agent',
@@ -940,7 +951,10 @@ export const it: TranslationKeys = {
         fs_search: 'Cerca file',
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
-        fs_file_ops: 'Operazioni file',
+        fs_file_ops: 'Set operazioni file',
+        memory_add: 'Aggiungi memoria',
+        memory_update: 'Aggiorna memoria',
+        memory_delete: 'Elimina memoria',
         open_skill: 'Apri skill',
       },
       writeAction: {
