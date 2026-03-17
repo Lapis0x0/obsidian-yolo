@@ -341,6 +341,8 @@ export function AgentsSectionContent({
   const activeTabIndexRef = useRef(activeTabIndex)
   const tabsNavRef = useRef<HTMLDivElement | null>(null)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const initializedNewAgentBuiltinToolsRef = useRef(false)
+  const localFsServerName = getLocalFileToolServerName()
 
   const updateTabsGlider = useCallback(() => {
     const nav = tabsNavRef.current
@@ -408,6 +410,72 @@ export function AgentsSectionContent({
       mounted = false
     }
   }, [plugin])
+
+  useEffect(() => {
+    if (!isDirectCreateEntry || initializedNewAgentBuiltinToolsRef.current) {
+      return
+    }
+
+    if (!draftAgent || availableTools.length === 0) {
+      return
+    }
+
+    const existingPreferences = getAssistantToolPreferences(draftAgent)
+    const hasCustomToolSelection =
+      (draftAgent.enabledToolNames?.length ?? 0) > 0 ||
+      Object.keys(existingPreferences).length > 0
+    if (
+      hasCustomToolSelection ||
+      !draftAgent.enableTools ||
+      draftAgent.includeBuiltinTools === false
+    ) {
+      initializedNewAgentBuiltinToolsRef.current = true
+      return
+    }
+
+    const builtinToolNames = availableTools
+      .filter((tool) => {
+        try {
+          return parseToolName(tool.name).serverName === localFsServerName
+        } catch {
+          return true
+        }
+      })
+      .map((tool) => tool.name)
+
+    if (builtinToolNames.length === 0) {
+      return
+    }
+
+    initializedNewAgentBuiltinToolsRef.current = true
+    setDraftAgent((prev) => {
+      if (!prev) {
+        return prev
+      }
+
+      const nextToolPreferences = {
+        ...getAssistantToolPreferences(prev),
+      }
+      const nextEnabledToolNames = new Set(getEnabledAssistantToolNames(prev))
+
+      for (const toolName of builtinToolNames) {
+        nextEnabledToolNames.add(toolName)
+        nextToolPreferences[toolName] = {
+          ...nextToolPreferences[toolName],
+          enabled: true,
+          approvalMode:
+            nextToolPreferences[toolName]?.approvalMode ??
+            getDefaultApprovalModeForTool(toolName),
+        }
+      }
+
+      return {
+        ...prev,
+        toolPreferences: nextToolPreferences,
+        enabledToolNames: [...nextEnabledToolNames],
+      }
+    })
+  }, [availableTools, draftAgent, isDirectCreateEntry, localFsServerName])
 
   const agentModelOptionGroups = useMemo(() => {
     const providerOrder = settings.providers.map((provider) => provider.id)
@@ -621,8 +689,6 @@ export function AgentsSectionContent({
       skillPreferences: nextPreferences,
     })
   }
-
-  const localFsServerName = getLocalFileToolServerName()
 
   const visibleToolGroups = useMemo(() => {
     const groups = new Map<string, { title: string; tools: AgentToolView[] }>()
