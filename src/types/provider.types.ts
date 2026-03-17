@@ -32,6 +32,11 @@ export const llmProviderSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('anthropic'),
     ...baseLlmProviderSchema.shape,
+    additionalSettings: z
+      .object({
+        useObsidianRequestUrl: z.boolean().optional(),
+      })
+      .optional(),
   }),
   z.object({
     type: z.literal('gemini'),
