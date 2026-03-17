@@ -131,6 +131,7 @@ export default tseslint.config(
       '*.log',
       '*.md',
       '*.sublime-workspace',
+      'Reference',
       'c9/',
       'compile-migration.js',
       'coverage',
