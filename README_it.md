@@ -41,6 +41,11 @@ La modalità Agent di YOLO permette ai LLM di andare oltre le semplici "macchine
 | ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) | ![Quick Ask](./assets/Quickask.gif) |
 | Trasforma l'intero Vault nella knowledge base dell'AI: con RAG, YOLO risponde usando il contesto reale dei tuoi appunti invece di output generici | Richiamalo ovunque per continuare liberamente il tuo flusso creativo con una generazione di contenuti fluida | Attivalo con un carattere (predefinito `@`) per un assistente inline che supporta Q&A, modifica e continuazione, rendendo l'editing dei documenti senza interruzioni |
 
+## Novita recenti
+
+- `1.5.2`: Il nuovo sistema di memoria e ora disponibile e permette a YOLO di ricordare in modo piu naturale le tue preferenze, abitudini e il contesto a lungo termine tra conversazioni diverse.
+- `1.5.1`: YOLO introduce una nuovissima modalita Agent: l'AI non si limita piu a rispondere, ma puo usare strumenti, organizzare passaggi e partecipare davvero al lavoro da svolgere.
+
 ## Funzionalità
 
 Oltre alle capacità principali sopra descritte, YOLO fornisce anche:

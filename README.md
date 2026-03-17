@@ -41,6 +41,11 @@ YOLO's Agent mode lets LLMs go beyond just "Q&A machines" — they can actually 
 | ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) | ![Quick Ask](./assets/Quickask.gif) |
 | Turn your entire Vault into the AI's knowledge base, powered by RAG to answer with context from your notes instead of generic output | Summon anywhere to freely continue your creative flow with smooth content generation | Trigger with a character (default `@`) to open an inline assistant for Q&A, editing, and continuation, making document editing seamless |
 
+## What's New
+
+- `1.5.2`: The new memory system is now live, allowing YOLO to more naturally remember your preferences, habits, and long-term context across conversations.
+- `1.5.1`: YOLO introduced an all-new Agent mode, turning AI from a chat assistant into something that can call tools, organize steps, and actively help get real work done.
+
 ## Features
 
 Beyond the core capabilities above, YOLO also provides:
