@@ -29,6 +29,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
+import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -47,12 +48,15 @@ export class AnthropicProvider extends BaseLLMProvider<
   constructor(provider: Extract<LLMProvider, { type: 'anthropic' }>) {
     super(provider)
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
+    const useObsidianRequestUrl =
+      provider.additionalSettings?.useObsidianRequestUrl
     const clientOptions = {
       apiKey: provider.apiKey,
       baseURL: provider.baseUrl
         ? provider.baseUrl.replace(/\/+$/, '')
         : undefined, // use default
       dangerouslyAllowBrowser: true,
+      fetch: useObsidianRequestUrl ? createObsidianFetch() : undefined,
       ...(defaultHeaders ? { defaultHeaders } : {}),
     }
     this.client = new Anthropic(clientOptions)
