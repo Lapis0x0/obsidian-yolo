@@ -23,6 +23,11 @@
   <a href="./README.md">English</a> | <a href="./README_zh-CN.md">简体中文</a> | <b>Italiano</b>
 </p>
 
+## Novita recenti
+
+- `1.5.2`: Il nuovo sistema di memoria e ora disponibile e permette a YOLO di ricordare in modo piu naturale le tue preferenze, abitudini e il contesto a lungo termine tra conversazioni diverse.
+- `1.5.1`: YOLO introduce una nuovissima modalita Agent: l'AI non si limita piu a rispondere, ma puo usare strumenti, organizzare passaggi e partecipare davvero al lavoro da svolgere.
+
 ## Highlights
 
 ### 🤖 Modalità Agent
@@ -41,11 +46,6 @@ La modalità Agent di YOLO permette ai LLM di andare oltre le semplici "macchine
 | ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) | ![Quick Ask](./assets/Quickask.gif) |
 | Trasforma l'intero Vault nella knowledge base dell'AI: con RAG, YOLO risponde usando il contesto reale dei tuoi appunti invece di output generici | Richiamalo ovunque per continuare liberamente il tuo flusso creativo con una generazione di contenuti fluida | Attivalo con un carattere (predefinito `@`) per un assistente inline che supporta Q&A, modifica e continuazione, rendendo l'editing dei documenti senza interruzioni |
 
-## Novita recenti
-
-- `1.5.2`: Il nuovo sistema di memoria e ora disponibile e permette a YOLO di ricordare in modo piu naturale le tue preferenze, abitudini e il contesto a lungo termine tra conversazioni diverse.
-- `1.5.1`: YOLO introduce una nuovissima modalita Agent: l'AI non si limita piu a rispondere, ma puo usare strumenti, organizzare passaggi e partecipare davvero al lavoro da svolgere.
-
 ## Funzionalità
 
 Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
@@ -53,6 +53,7 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
 | Funzionalità | Descrizione |
 |--------------|-------------|
 | 💬 Chat Sidebar | Conversazione seamless con LLM, iniezione di contesto, prompt preimpostati, parsing smart di Markdown |
+| 🧠 Sistema di memoria | Permette a YOLO di ricordare preferenze, abitudini e contesto a lungo termine per conversazioni piu coerenti |
 | 🪡 Cursor Chat | Aggiunta contesto con un click, conversazione a portata di mano |
 | ⌨️ Completamento Tab | Completamento AI in tempo reale per una scrittura più fluida e naturale |
 | 🎛️ Supporto Multi-Modello | OpenAI, Claude, Gemini, DeepSeek e altri modelli mainstream, liberamente commutabili |
