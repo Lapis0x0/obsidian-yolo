@@ -93,22 +93,21 @@ export function SelectionActionsMenu({
 
   const actions: SelectionAction[] = useMemo(() => {
     const customActions = settings?.continuationOptions?.selectionChatActions
-    const resolvedActions: SelectionActionPreset[] =
-      customActions && customActions.length > 0
-        ? customActions
-            .filter((action) => action.enabled)
-            .map((action) => ({
-              id: action.id,
-              label: action.label,
-              instruction: action.instruction,
-              mode:
-                action.mode ??
-                (action.id === 'rewrite' || action.id === 'custom-rewrite'
-                  ? 'rewrite'
-                  : 'ask'),
-              rewriteBehavior: action.rewriteBehavior,
-            }))
-        : defaultActions
+    const resolvedActions: SelectionActionPreset[] = customActions
+      ? customActions
+          .filter((action) => action.enabled)
+          .map((action) => ({
+            id: action.id,
+            label: action.label,
+            instruction: action.instruction,
+            mode:
+              action.mode ??
+              (action.id === 'rewrite' || action.id === 'custom-rewrite'
+                ? 'rewrite'
+                : 'ask'),
+            rewriteBehavior: action.rewriteBehavior,
+          }))
+      : defaultActions
 
     const fixedActionIds = new Set([
       'custom-rewrite',
