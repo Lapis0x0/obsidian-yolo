@@ -110,6 +110,7 @@ export const it: TranslationKeys = {
   selection: {
     actions: {
       addToChat: 'Aggiungi alla chat',
+      addToSidebar: 'Aggiungi alla barra laterale',
       customRewrite: 'Riscrittura personalizzata',
       customAsk: 'Domanda personalizzata',
       rewrite: 'AI riscrivi',

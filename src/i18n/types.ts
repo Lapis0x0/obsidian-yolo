@@ -703,6 +703,7 @@ export type TranslationKeys = {
   selection?: {
     actions?: {
       addToChat?: string
+      addToSidebar?: string
       customRewrite?: string
       customAsk?: string
       rewrite?: string

@@ -64,6 +64,12 @@ export function SelectionActionsMenu({
         mode: 'ask' as const,
       },
       {
+        id: 'add-to-sidebar',
+        label: t('selection.actions.addToSidebar', '添加到侧边栏'),
+        instruction: '',
+        mode: 'chat-input' as const,
+      },
+      {
         id: 'explain',
         label: t('selection.actions.explain', '深入解释'),
         instruction: t('selection.actions.explain', '深入解释'),
@@ -104,7 +110,11 @@ export function SelectionActionsMenu({
             }))
         : defaultActions
 
-    const fixedActionIds = new Set(['custom-rewrite', 'custom-ask'])
+    const fixedActionIds = new Set([
+      'custom-rewrite',
+      'custom-ask',
+      'add-to-sidebar',
+    ])
     const displayActions = defaultActions
       .filter((action) => fixedActionIds.has(action.id))
       .concat(

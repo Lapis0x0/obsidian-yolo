@@ -165,15 +165,30 @@ const createSelectionBlockMentionable = (
   selectedBlock: MentionableBlockData,
 ): MentionableBlock => {
   const { count, unit } = getBlockMentionableCountInfo(selectedBlock.content)
+  const source = normalizeSelectionSource(selectedBlock.source)
   return {
     type: 'block',
-    source: 'selection',
     ...selectedBlock,
+    source,
     contentHash:
       selectedBlock.contentHash ?? getBlockContentHash(selectedBlock.content),
     contentCount: selectedBlock.contentCount ?? count,
     contentUnit: selectedBlock.contentUnit ?? unit,
   }
+}
+
+const normalizeSelectionSource = (
+  source: MentionableBlockData['source'],
+): 'selection-sync' | 'selection-pinned' => {
+  return source === 'selection-pinned' ? 'selection-pinned' : 'selection-sync'
+}
+
+const isSyncSelectionSource = (source: MentionableBlock['source']): boolean => {
+  return source === 'selection' || source === 'selection-sync'
+}
+
+const isSyncSelectionMentionable = (mentionable: MentionableBlock): boolean => {
+  return isSyncSelectionSource(mentionable.source)
 }
 
 const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [
@@ -1561,7 +1576,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     (mentionables: ChatUserMessage['mentionables']) =>
       mentionables.filter(
         (mentionable) =>
-          !(mentionable.type === 'block' && mentionable.source === 'selection'),
+          !(
+            mentionable.type === 'block' &&
+            isSyncSelectionMentionable(mentionable)
+          ),
       ),
     [],
   )
@@ -1578,7 +1596,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (focusedMessageId === inputMessage.id) {
         setInputMessage((prevInputMessage) => {
           const existingSelection = prevInputMessage.mentionables.find(
-            (m) => m.type === 'block' && m.source === 'selection',
+            (m) => m.type === 'block' && isSyncSelectionMentionable(m),
           )
           if (existingSelection) {
             const existingKey = getMentionableKey(
@@ -1605,7 +1623,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         prevChatHistory.map((message) => {
           if (message.id === focusedMessageId && message.role === 'user') {
             const existingSelection = message.mentionables.find(
-              (m) => m.type === 'block' && m.source === 'selection',
+              (m) => m.type === 'block' && isSyncSelectionMentionable(m),
             )
             if (existingSelection) {
               const existingKey = getMentionableKey(
@@ -1721,7 +1739,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     openNewChat: (selectedBlock?: MentionableBlockData) =>
       handleNewChat(selectedBlock),
     addSelectionToChat: (selectedBlock: MentionableBlockData) => {
-      const mentionable = createSelectionBlockMentionable(selectedBlock)
+      const mentionable = createSelectionBlockMentionable({
+        ...selectedBlock,
+        source: 'selection-pinned',
+      })
 
       setAddedBlockKey(null)
 
@@ -1730,7 +1751,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           const mentionableKey = getMentionableKey(
             serializeMentionable(mentionable),
           )
-          // Check if mentionable already exists
+          let changed = false
+          const nextMentionables = prevInputMessage.mentionables.map((m) => {
+            const key = getMentionableKey(serializeMentionable(m))
+            if (key !== mentionableKey) return m
+            if (m.type === 'block' && isSyncSelectionMentionable(m)) {
+              changed = true
+              return mentionable
+            }
+            return m
+          })
+
+          if (changed) {
+            return {
+              ...prevInputMessage,
+              mentionables: nextMentionables,
+              promptContent: null,
+            }
+          }
+
           if (
             prevInputMessage.mentionables.some(
               (m) =>
@@ -1739,9 +1778,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ) {
             return prevInputMessage
           }
+
           return {
             ...prevInputMessage,
             mentionables: [...prevInputMessage.mentionables, mentionable],
+            promptContent: null,
           }
         })
       } else {
@@ -1751,7 +1792,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               const mentionableKey = getMentionableKey(
                 serializeMentionable(mentionable),
               )
-              // Check if mentionable already exists
+              let changed = false
+              const nextMentionables = message.mentionables.map((m) => {
+                const key = getMentionableKey(serializeMentionable(m))
+                if (key !== mentionableKey) return m
+                if (m.type === 'block' && isSyncSelectionMentionable(m)) {
+                  changed = true
+                  return mentionable
+                }
+                return m
+              })
+
+              if (changed) {
+                return {
+                  ...message,
+                  mentionables: nextMentionables,
+                  promptContent: null,
+                }
+              }
+
               if (
                 message.mentionables.some(
                   (m) =>
@@ -1764,6 +1823,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               return {
                 ...message,
                 mentionables: [...message.mentionables, mentionable],
+                promptContent: null,
               }
             }
             return message

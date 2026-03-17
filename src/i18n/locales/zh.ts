@@ -753,6 +753,7 @@ export const zh: TranslationKeys = {
   selection: {
     actions: {
       addToChat: '添加到对话',
+      addToSidebar: '添加到侧边栏',
       customRewrite: '自定义改写',
       customAsk: '自定义提问',
       rewrite: 'AI 改写',
