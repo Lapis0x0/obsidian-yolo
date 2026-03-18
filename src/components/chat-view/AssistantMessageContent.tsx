@@ -122,7 +122,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
         const blockKey =
           block.type === 'string' || block.type === 'think'
             ? `${block.type}-${block.content.slice(0, 64)}`
-            : `${block.type}-${block.filename ?? ''}-${block.startLine ?? ''}-${block.endLine ?? ''}-${block.language ?? ''}-${block.content.slice(0, 64)}`
+            : `${block.type}-${block.filename ?? ''}-${block.startLine ?? ''}-${block.endLine ?? ''}-${block.content.slice(0, 64)}`
 
         return block.type === 'string' ? (
           <div key={blockKey}>
@@ -153,7 +153,6 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             isApplying={isApplying}
             activeApplyRequestKey={activeApplyRequestKey}
             filename={block.filename}
-            language={block.language}
             generationState={generationState}
           >
             {block.content}

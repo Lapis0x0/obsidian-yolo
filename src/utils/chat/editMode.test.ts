@@ -1,16 +1,14 @@
 import { parseEditPlan } from './editMode'
 
 describe('parseEditPlan', () => {
-  it('parses direct JSON plans', () => {
-    const result = parseEditPlan(`{
-      "operations": [
-        {
-          "type": "replace",
-          "oldText": "a",
-          "newText": "b"
-        }
-      ]
-    }`)
+  it('parses direct dsl plans', () => {
+    const result = parseEditPlan(`<<<<<<< REPLACE
+[old]
+a
+=======
+[new]
+b
+>>>>>>> END`)
 
     expect(result).toEqual({
       operations: [
@@ -18,24 +16,16 @@ describe('parseEditPlan', () => {
           type: 'replace',
           oldText: 'a',
           newText: 'b',
-          expectedOccurrences: undefined,
         },
       ],
     })
   })
 
-  it('parses a JSON object wrapped in extra text', () => {
+  it('rejects wrapped or malformed content', () => {
     const result = parseEditPlan(
-      'Here is the plan: {"operations":[{"type":"append","content":"tail"}]}',
+      'Here is the plan: <<<<<<< APPEND\n[content]\ntail',
     )
 
-    expect(result).toEqual({
-      operations: [
-        {
-          type: 'append',
-          content: 'tail',
-        },
-      ],
-    })
+    expect(result).toBeNull()
   })
 })

@@ -15,7 +15,7 @@ Store your skill files here.
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---
 id: obsidian-output-format
 name: Obsidian Output Format
-description: Use <smtcmp_block> only for markdown file edit plans. Output raw JSON only.
+description: Use <smtcmp_block> only for markdown file edit plans. Output the compact edit DSL only.
 mode: always
 ---
 
@@ -26,44 +26,35 @@ Use \`<smtcmp_block>\` only when proposing edits to an existing markdown file.
 ## Rules
 
 1. Output exactly one \`<smtcmp_block>\` when proposing file edits.
-2. Inside \`<smtcmp_block>\`, output raw JSON only.
-3. Do not use triple backticks or triple tildes inside \`<smtcmp_block>\`.
-4. Do not put markdown, explanations, or commentary inside \`<smtcmp_block>\`.
-5. Keep commentary outside \`<smtcmp_block>\`.
-
+2. Inside \`<smtcmp_block>\`, output one edit block only.
+3. The \`<smtcmp_block>\` block does not require any code block wrapping.
 
 ## Format
 
-~~~xml
-<smtcmp_block language="json" filename="path/to/file.md">
-{
-  "type": "text_edit_plan",
-  "version": 1,
-  "operations": [
-    {
-      "type": "replace",
-      "oldText": "exact old text",
-      "newText": "new text",
-      "expectedOccurrences": 1
-    }
-  ]
-}
+Normal output text before the \`<smtcmp_block>\` block.
+<smtcmp_block filename="path/to/file.md">
+<<<<<<< REPLACE/INSERT_AFTER/APPEND
+[old]
+exact old text
+=======
+[new]
+new text
+>>>>>>> END
 </smtcmp_block>
-~~~
+Normal output text after the \`<smtcmp_block>\` block.
 
 Allowed operation types:
 
-1. \`replace\` for replacement
-2. \`insert_after\` for insertion after an anchor
-3. \`append\` for appending to the end
+1. \`REPLACE\` for replacement
+2. \`INSERT_AFTER\` for insertion after an anchor
+3. \`APPEND\` for appending to the end
 
 ## Operation Rules
 
-- Keep \`oldText\` or \`anchor\` minimal but uniquely matchable.
-- Preserve exact markdown source in \`oldText\`, including whitespace and punctuation.
-- For repeated text, set \`expectedOccurrences\` explicitly.
-- For deletion, use \`replace\` with an empty \`newText\`.
-- Multiple operations are allowed.
+- Keep \`[old]\` or \`[anchor]\` minimal but uniquely matchable.
+- Preserve exact markdown source in \`[old]\`, including whitespace and punctuation.
+- The \`APPEND\` operation only requires outputting the New text; there is no need to output \`[old]\`, exact old text,and \`>>>>>>> END\`
+- Each \`<smtcmp_block>\` must contain exactly one operation.
 - Do not dump the full file unless explicitly requested.
 `
 

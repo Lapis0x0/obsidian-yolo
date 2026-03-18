@@ -1,5 +1,3 @@
-import { parseFragment } from 'parse5'
-
 export type ParsedTagContent =
   | { type: 'string'; content: string }
   | {
@@ -15,103 +13,252 @@ export type ParsedTagContent =
       content: string
     }
 
+type TagMatch =
+  | {
+      type: 'smtcmp_block'
+      start: number
+      openEnd: number
+      closeStart: number
+      closeEnd: number
+      attrs: Record<string, string>
+    }
+  | {
+      type: 'think'
+      start: number
+      openEnd: number
+      closeStart: number
+      closeEnd: number
+    }
+
+const SMTCMP_OPEN_TAG_PATTERN = /<smtcmp_block\b[^>]*>/g
+const THINK_OPEN_TAG_PATTERN = /<think>/g
+const ATTRIBUTE_PATTERN = /([A-Za-z0-9_-]+)="([^"]*)"/g
+const SMTCMP_CLOSE_TAG = '</smtcmp_block>'
+const THINK_CLOSE_TAG = '</think>'
+
+const isStandaloneTag = ({
+  input,
+  start,
+  end,
+}: {
+  input: string
+  start: number
+  end: number
+}): boolean => {
+  const lineStart = input.lastIndexOf('\n', start - 1) + 1
+  const lineEndIndex = input.indexOf('\n', end)
+  const lineEnd = lineEndIndex === -1 ? input.length : lineEndIndex
+  const before = input.slice(lineStart, start)
+  const after = input.slice(end, lineEnd)
+  return /^[ \t]*$/.test(before) && /^[ \t]*$/.test(after)
+}
+
+const isStandaloneSmtcmpOpenTag = ({
+  input,
+  start,
+  end,
+}: {
+  input: string
+  start: number
+  end: number
+}): boolean => {
+  const lineStart = input.lastIndexOf('\n', start - 1) + 1
+  const lineEndIndex = input.indexOf('\n', end)
+  const lineEnd = lineEndIndex === -1 ? input.length : lineEndIndex
+  const before = input.slice(lineStart, start)
+  const after = input.slice(end, lineEnd)
+  return (
+    /^[ \t]*$/.test(before) && /^[ \t]*(?:<\/smtcmp_block>)?[ \t]*$/.test(after)
+  )
+}
+
+const parseAttributes = (tagText: string): Record<string, string> => {
+  const attrs: Record<string, string> = {}
+  ATTRIBUTE_PATTERN.lastIndex = 0
+
+  let match = ATTRIBUTE_PATTERN.exec(tagText)
+  while (match) {
+    attrs[match[1].toLowerCase()] = match[2]
+    match = ATTRIBUTE_PATTERN.exec(tagText)
+  }
+
+  return attrs
+}
+
+const findNextStandaloneSmtcmpOpen = (
+  input: string,
+  fromIndex: number,
+): {
+  start: number
+  openEnd: number
+  attrs: Record<string, string>
+} | null => {
+  SMTCMP_OPEN_TAG_PATTERN.lastIndex = fromIndex
+
+  let match = SMTCMP_OPEN_TAG_PATTERN.exec(input)
+  while (match) {
+    const start = match.index
+    const openEnd = start + match[0].length
+    if (!isStandaloneSmtcmpOpenTag({ input, start, end: openEnd })) {
+      match = SMTCMP_OPEN_TAG_PATTERN.exec(input)
+      continue
+    }
+
+    return {
+      start,
+      openEnd,
+      attrs: parseAttributes(match[0]),
+    }
+  }
+
+  return null
+}
+
+const findMatchingSmtcmpCloseTag = ({
+  input,
+  fromIndex,
+}: {
+  input: string
+  fromIndex: number
+}): { start: number; end: number } | null => {
+  let depth = 1
+  let searchIndex = fromIndex
+
+  while (searchIndex < input.length) {
+    const nextOpen = findNextStandaloneSmtcmpOpen(input, searchIndex)
+    const nextCloseStart = input.indexOf(SMTCMP_CLOSE_TAG, searchIndex)
+
+    if (nextCloseStart === -1) {
+      return null
+    }
+
+    if (!nextOpen || nextCloseStart < nextOpen.start) {
+      depth -= 1
+      if (depth === 0) {
+        return {
+          start: nextCloseStart,
+          end: nextCloseStart + SMTCMP_CLOSE_TAG.length,
+        }
+      }
+      searchIndex = nextCloseStart + SMTCMP_CLOSE_TAG.length
+      continue
+    }
+
+    depth += 1
+    searchIndex = nextOpen.openEnd
+  }
+
+  return null
+}
+
+const findNextSmtcmpBlock = (
+  input: string,
+  fromIndex: number,
+): Extract<TagMatch, { type: 'smtcmp_block' }> | null => {
+  const nextOpen = findNextStandaloneSmtcmpOpen(input, fromIndex)
+  if (!nextOpen) {
+    return null
+  }
+
+  const close = findMatchingSmtcmpCloseTag({
+    input,
+    fromIndex: nextOpen.openEnd,
+  })
+
+  return {
+    type: 'smtcmp_block',
+    start: nextOpen.start,
+    openEnd: nextOpen.openEnd,
+    closeStart: close?.start ?? input.length,
+    closeEnd: close?.end ?? input.length,
+    attrs: nextOpen.attrs,
+  }
+}
+
+const findNextThinkBlock = (
+  input: string,
+  fromIndex: number,
+): Extract<TagMatch, { type: 'think' }> | null => {
+  THINK_OPEN_TAG_PATTERN.lastIndex = fromIndex
+  const match = THINK_OPEN_TAG_PATTERN.exec(input)
+  if (!match) {
+    return null
+  }
+
+  const start = match.index
+  const openEnd = start + match[0].length
+  const closeStart = input.indexOf(THINK_CLOSE_TAG, openEnd)
+  const closeEnd =
+    closeStart === -1 ? input.length : closeStart + THINK_CLOSE_TAG.length
+
+  return {
+    type: 'think',
+    start,
+    openEnd,
+    closeStart: closeStart === -1 ? input.length : closeStart,
+    closeEnd,
+  }
+}
+
+const findNextTag = (input: string, fromIndex: number): TagMatch | null => {
+  const nextSmtcmp = findNextSmtcmpBlock(input, fromIndex)
+  const nextThink = findNextThinkBlock(input, fromIndex)
+
+  if (!nextSmtcmp) {
+    return nextThink
+  }
+  if (!nextThink) {
+    return nextSmtcmp
+  }
+
+  return nextSmtcmp.start < nextThink.start ? nextSmtcmp : nextThink
+}
+
 /**
  * Parses text containing <smtcmp_block> and <think> tags into structured content
  */
 export function parseTagContents(input: string): ParsedTagContent[] {
   const parsedResult: ParsedTagContent[] = []
-  const fragment = parseFragment(input, {
-    sourceCodeLocationInfo: true,
-  })
-  let lastEndOffset = 0
-  for (const node of fragment.childNodes) {
-    if (node.nodeName === 'smtcmp_block') {
-      if (!node.sourceCodeLocation) {
-        throw new Error('sourceCodeLocation is undefined')
-      }
-      const startOffset = node.sourceCodeLocation.startOffset
-      const endOffset = node.sourceCodeLocation.endOffset
-      if (startOffset > lastEndOffset) {
-        parsedResult.push({
-          type: 'string',
-          content: input.slice(lastEndOffset, startOffset),
-        })
-      }
+  let cursor = 0
 
-      const language = node.attrs.find(
-        (attr) => attr.name === 'language',
-      )?.value
-      const filename = node.attrs.find(
-        (attr) => attr.name === 'filename',
-      )?.value
-      const startLine = node.attrs.find(
-        (attr) => attr.name === 'startline',
-      )?.value
-      const endLine = node.attrs.find((attr) => attr.name === 'endline')?.value
-
-      const children = node.childNodes
-      if (children.length === 0) {
-        parsedResult.push({
-          type: 'smtcmp_block',
-          content: '',
-          language,
-          filename,
-          startLine: startLine ? parseInt(startLine) : undefined,
-          endLine: endLine ? parseInt(endLine) : undefined,
-        })
-      } else {
-        const innerContentStartOffset =
-          children[0].sourceCodeLocation?.startOffset
-        const innerContentEndOffset =
-          children[children.length - 1].sourceCodeLocation?.endOffset
-        if (!innerContentStartOffset || !innerContentEndOffset) {
-          throw new Error('sourceCodeLocation is undefined')
-        }
-        parsedResult.push({
-          type: 'smtcmp_block',
-          content: input.slice(innerContentStartOffset, innerContentEndOffset),
-          language,
-          filename,
-          startLine: startLine ? parseInt(startLine) : undefined,
-          endLine: endLine ? parseInt(endLine) : undefined,
-        })
-      }
-      lastEndOffset = endOffset
-    } else if (node.nodeName === 'think') {
-      if (!node.sourceCodeLocation) {
-        throw new Error('sourceCodeLocation is undefined')
-      }
-      const startOffset = node.sourceCodeLocation.startOffset
-      const endOffset = node.sourceCodeLocation.endOffset
-      if (startOffset > lastEndOffset) {
-        parsedResult.push({
-          type: 'string',
-          content: input.slice(lastEndOffset, startOffset),
-        })
-      }
-
-      const children = node.childNodes
-      if (children.length > 0) {
-        const innerContentStartOffset =
-          children[0].sourceCodeLocation?.startOffset
-        const innerContentEndOffset =
-          children[children.length - 1].sourceCodeLocation?.endOffset
-        if (!innerContentStartOffset || !innerContentEndOffset) {
-          throw new Error('sourceCodeLocation is undefined')
-        }
-        parsedResult.push({
-          type: 'think',
-          content: input.slice(innerContentStartOffset, innerContentEndOffset),
-        })
-      }
-      lastEndOffset = endOffset
+  while (cursor < input.length) {
+    const nextTag = findNextTag(input, cursor)
+    if (!nextTag) {
+      parsedResult.push({
+        type: 'string',
+        content: input.slice(cursor),
+      })
+      break
     }
-  }
-  if (lastEndOffset < input.length) {
-    parsedResult.push({
-      type: 'string',
-      content: input.slice(lastEndOffset),
-    })
+
+    if (nextTag.start > cursor) {
+      parsedResult.push({
+        type: 'string',
+        content: input.slice(cursor, nextTag.start),
+      })
+    }
+
+    if (nextTag.type === 'smtcmp_block') {
+      parsedResult.push({
+        type: 'smtcmp_block',
+        content: input.slice(nextTag.openEnd, nextTag.closeStart),
+        language: nextTag.attrs.language,
+        filename: nextTag.attrs.filename,
+        startLine: nextTag.attrs.startline
+          ? parseInt(nextTag.attrs.startline, 10)
+          : undefined,
+        endLine: nextTag.attrs.endline
+          ? parseInt(nextTag.attrs.endline, 10)
+          : undefined,
+      })
+    } else {
+      parsedResult.push({
+        type: 'think',
+        content: input.slice(nextTag.openEnd, nextTag.closeStart),
+      })
+    }
+
+    cursor = nextTag.closeEnd
   }
 
   const normalizedBlocks: ParsedTagContent[] = []
@@ -149,19 +296,6 @@ export function parseTagContents(input: string): ParsedTagContent[] {
     normalizedBlocks.push(...nestedSmtcmpBlocks)
   })
 
-  /**
-   * Remove a single leading/trailing newline from each block's content.
-   *
-   * Example input:
-   * hello world
-   * <smtcmp_block>
-   * some content
-   * </smtcmp_block>
-   *
-   * Becomes:
-   * { type: 'string', content: 'hello world' }
-   * { type: 'smtcmp_block', content: 'some content' }
-   */
   normalizedBlocks.forEach((block) => {
     block.content = block.content.replace(/^\n|\n$/g, '')
   })

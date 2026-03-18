@@ -1305,7 +1305,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       })
 
       if (!plan) {
-        throw new Error('当前内容不包含可应用的 JSON 编辑计划。')
+        throw new Error('当前内容不包含可应用的编辑计划。')
       }
 
       const materialized = materializeTextEditPlan({
