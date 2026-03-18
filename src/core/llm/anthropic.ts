@@ -38,6 +38,7 @@ import {
   LLMAPIKeyNotSetException,
 } from './exception'
 import {
+  createRequestTransportMemoryKey,
   resolveRequestTransportMode,
   runWithRequestTransportForStream,
   runWithRequestTransport,
@@ -49,15 +50,46 @@ export class AnthropicProvider extends BaseLLMProvider<
   private browserClient: Anthropic
   private obsidianClient: Anthropic
   private requestTransportMode: RequestTransportMode
+  private requestTransportMemoryKey: string
+  private onAutoPromoteToObsidian?: () => void
+  private hasAutoPromoted = false
+
+  private promoteTransportModeToObsidian = () => {
+    if (this.requestTransportMode === 'obsidian') {
+      return
+    }
+
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: 'obsidian',
+    }
+    this.requestTransportMode = 'obsidian'
+    if (!this.hasAutoPromoted) {
+      this.hasAutoPromoted = true
+      this.onAutoPromoteToObsidian?.()
+    }
+  }
 
   private static readonly DEFAULT_MAX_TOKENS = 8192
 
-  constructor(provider: Extract<LLMProvider, { type: 'anthropic' }>) {
+  constructor(
+    provider: Extract<LLMProvider, { type: 'anthropic' }>,
+    options?: {
+      onAutoPromoteToObsidian?: () => void
+    },
+  ) {
     super(provider)
+    this.onAutoPromoteToObsidian = options?.onAutoPromoteToObsidian
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
+    this.requestTransportMemoryKey = createRequestTransportMemoryKey({
+      providerType: provider.type,
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+    })
     this.requestTransportMode = resolveRequestTransportMode({
       additionalSettings: provider.additionalSettings,
       hasCustomBaseUrl: !!provider.baseUrl,
+      memoryKey: this.requestTransportMemoryKey,
     })
     const clientOptions = {
       apiKey: provider.apiKey,
@@ -129,6 +161,8 @@ export class AnthropicProvider extends BaseLLMProvider<
 
       const response = await runWithRequestTransport({
         mode: this.requestTransportMode,
+        memoryKey: this.requestTransportMemoryKey,
+        onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
         runBrowser: () =>
           this.browserClient.messages.create(payload, {
             signal: options?.signal,
@@ -235,6 +269,8 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
 
       const stream = (await runWithRequestTransportForStream({
         mode: this.requestTransportMode,
+        memoryKey: this.requestTransportMemoryKey,
+        onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
         createBrowserStream: () =>
           this.browserClient.messages.create(payload, {
             signal: options?.signal,

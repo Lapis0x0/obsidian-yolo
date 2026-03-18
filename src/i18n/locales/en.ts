@@ -1019,6 +1019,8 @@ export const en: TranslationKeys = {
       'Failed to migrate to JSON storage; please check the console for details.',
     reloadingPlugin: 'Reloading "next-composer" due to migration',
     settingsInvalid: 'Invalid settings',
+    transportModeAutoPromoted:
+      'Detected network/CORS issue. Automatically switched this provider to Obsidian requestUrl.',
   },
 
   errors: {

@@ -14,6 +14,7 @@ import {
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
+import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { ChatMessage } from '../../types/chat'
@@ -152,7 +153,7 @@ export function useChatStreamManager({
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
   const plugin = usePlugin()
-  const { settings } = useSettings()
+  const { settings, setSettings } = useSettings()
   const { getMcpManager } = useMcp()
 
   const activeStreamAbortControllersRef = useRef<AbortController[]>([])
@@ -175,6 +176,17 @@ export function useChatStreamManager({
     smoothedCharsPerSecondRef.current = 0
     lastObservedRunnerSnapshotRef.current = { at: 0, textLength: 0 }
   }, [])
+
+  const handleAutoPromoteToObsidian = useCallback(
+    (providerId: string) => {
+      void promoteProviderTransportModeToObsidian({
+        getSettings: () => plugin.settings,
+        setSettings,
+        providerId,
+      })
+    },
+    [plugin, setSettings],
+  )
 
   const cancelScheduledRunnerFlush = useCallback(() => {
     if (streamFlushTimeoutRef.current) {
@@ -339,6 +351,7 @@ export function useChatStreamManager({
           resolvedClient = getChatModelClient({
             settings,
             modelId: requestedModelId,
+            onAutoPromoteToObsidian: handleAutoPromoteToObsidian,
           })
         } catch (error) {
           if (
@@ -348,6 +361,7 @@ export function useChatStreamManager({
             resolvedClient = getChatModelClient({
               settings,
               modelId: settings.chatModels[0].id,
+              onAutoPromoteToObsidian: handleAutoPromoteToObsidian,
             })
           } else {
             throw error

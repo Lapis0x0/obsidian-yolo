@@ -24,6 +24,7 @@ import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { applyOpenAICompatibleCapabilities } from './openaiCompatibleCapabilities'
 import {
+  createRequestTransportMemoryKey,
   resolveRequestTransportMode,
   runWithRequestTransportForStream,
   runWithRequestTransport,
@@ -58,14 +59,45 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
   private browserClient: OpenAI
   private obsidianClient: OpenAI
   private requestTransportMode: RequestTransportMode
+  private requestTransportMemoryKey: string
+  private onAutoPromoteToObsidian?: () => void
+  private hasAutoPromoted = false
 
-  constructor(provider: Extract<LLMProvider, { type: 'openai-compatible' }>) {
+  private promoteTransportModeToObsidian = () => {
+    if (this.requestTransportMode === 'obsidian') {
+      return
+    }
+
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: 'obsidian',
+    }
+    this.requestTransportMode = 'obsidian'
+    if (!this.hasAutoPromoted) {
+      this.hasAutoPromoted = true
+      this.onAutoPromoteToObsidian?.()
+    }
+  }
+
+  constructor(
+    provider: Extract<LLMProvider, { type: 'openai-compatible' }>,
+    options?: {
+      onAutoPromoteToObsidian?: () => void
+    },
+  ) {
     super(provider)
+    this.onAutoPromoteToObsidian = options?.onAutoPromoteToObsidian
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
+    this.requestTransportMemoryKey = createRequestTransportMemoryKey({
+      providerType: provider.type,
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+    })
     this.requestTransportMode = resolveRequestTransportMode({
       additionalSettings: provider.additionalSettings,
       hasCustomBaseUrl: !!provider.baseUrl,
+      memoryKey: this.requestTransportMemoryKey,
     })
     const ClientCtor = provider.additionalSettings?.noStainless
       ? NoStainlessOpenAI
@@ -174,6 +206,8 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
     return runWithRequestTransport({
       mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
       runBrowser: () =>
         this.adapter.generateResponse(
           this.browserClient,
@@ -277,6 +311,8 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
     return runWithRequestTransportForStream({
       mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
       createBrowserStream: () =>
         this.adapter.streamResponse(
           this.browserClient,
@@ -295,6 +331,8 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
   async getEmbedding(model: string, text: string): Promise<number[]> {
     const embedding = await runWithRequestTransport({
       mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
       runBrowser: () =>
         this.browserClient.embeddings.create({
           model: model,

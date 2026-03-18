@@ -3,6 +3,7 @@ import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 
 import { executeSingleTurn } from '../../../core/ai/single-turn'
 import { getChatModelClient } from '../../../core/llm/manager'
+import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import type { RAGEngine } from '../../../core/rag/ragEngine'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -21,6 +22,7 @@ import {
 type WriteAssistDeps = {
   app: App
   getSettings: () => SmartComposerSettings
+  setSettings: (newSettings: SmartComposerSettings) => Promise<void>
   t: (key: string, fallback?: string) => string
   getActiveConversationOverrides: () => ConversationOverrideSettings | undefined
   resolveContinuationParams: (overrides?: ConversationOverrideSettings) => {
@@ -121,6 +123,13 @@ export class WriteAssistController {
       const { providerClient, model } = getChatModelClient({
         settings,
         modelId: rewriteModelId,
+        onAutoPromoteToObsidian: (providerId) => {
+          void promoteProviderTransportModeToObsidian({
+            getSettings: this.deps.getSettings,
+            setSettings: this.deps.setSettings,
+            providerId,
+          })
+        },
       })
 
       const systemPrompt =

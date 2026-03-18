@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
 import { getChatModelClient } from '../../../core/llm/manager'
+import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import {
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
@@ -42,6 +43,7 @@ type ActiveInlineSuggestion = {
 
 type TabCompletionDeps = {
   getSettings: () => SmartComposerSettings
+  setSettings: (newSettings: SmartComposerSettings) => Promise<void>
   getEditorView: (editor: Editor) => EditorView | null
   getActiveMarkdownView: () => MarkdownView | null
   getActiveConversationOverrides: () => ConversationOverrideSettings | undefined
@@ -371,6 +373,13 @@ export class TabCompletionController {
       const { providerClient, model } = getChatModelClient({
         settings,
         modelId,
+        onAutoPromoteToObsidian: (providerId) => {
+          void promoteProviderTransportModeToObsidian({
+            getSettings: this.deps.getSettings,
+            setSettings: this.deps.setSettings,
+            providerId,
+          })
+        },
       })
 
       const fileTitle = this.deps.getActiveFileTitle()

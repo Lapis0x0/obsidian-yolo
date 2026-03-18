@@ -535,6 +535,7 @@ export default class SmartComposerPlugin extends Plugin {
       const inlineSuggestionController = this.getInlineSuggestionController()
       this.tabCompletionController = new TabCompletionController({
         getSettings: () => this.settings,
+        setSettings: (newSettings) => this.setSettings(newSettings),
         getEditorView: (editor) => this.getEditorView(editor),
         getActiveMarkdownView: () =>
           this.app.workspace.getActiveViewOfType(MarkdownView),
@@ -616,6 +617,7 @@ export default class SmartComposerPlugin extends Plugin {
       this.writeAssistController = new WriteAssistController({
         app: this.app,
         getSettings: () => this.settings,
+        setSettings: (newSettings) => this.setSettings(newSettings),
         t: (key, fallback) => this.t(key, fallback),
         getActiveConversationOverrides: () =>
           this.getActiveConversationOverrides(),
