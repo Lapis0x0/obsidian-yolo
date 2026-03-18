@@ -80,6 +80,38 @@ print("Hello, world!")
     expect(result).toEqual(expected)
   })
 
+  it('should ignore inline literal smtcmp_block mentions and still parse real blocks', () => {
+    const input = `下面演示如何使用 \`<smtcmp_block>\`：
+
+<smtcmp_block filename="example.md">
+<<<<<<< REPLACE
+[old]
+旧内容
+=======
+[new]
+新内容
+>>>>>>> END
+</smtcmp_block>`
+
+    expect(parseTagContents(input)).toEqual([
+      { type: 'string', content: '下面演示如何使用 `<smtcmp_block>`：\n' },
+      {
+        type: 'smtcmp_block',
+        content: `<<<<<<< REPLACE
+[old]
+旧内容
+=======
+[new]
+新内容
+>>>>>>> END`,
+        filename: 'example.md',
+        language: undefined,
+        startLine: undefined,
+        endLine: undefined,
+      },
+    ])
+  })
+
   it('should handle multiple smtcmp_block elements', () => {
     const input = `Start
 <smtcmp_block language="python" filename="script.py">

@@ -14,6 +14,7 @@ import { useLanguage } from '../../contexts/language-context'
 import {
   getStreamingTextEditPlanPreviewContent,
   getTextEditPlanPreviewContent,
+  isTextEditPlanStreamingCandidate,
   parseTextEditPlan,
 } from '../../core/edits/textEditPlan'
 import { openMarkdownFile } from '../../utils/obsidian'
@@ -31,7 +32,6 @@ export default function MarkdownCodeComponent({
   isApplying,
   activeApplyRequestKey,
   filename,
-  language,
   generationState,
   children,
 }: PropsWithChildren<{
@@ -43,7 +43,6 @@ export default function MarkdownCodeComponent({
   isApplying: boolean
   activeApplyRequestKey: string | null
   filename?: string
-  language?: string
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
 }>) {
   const app = useApp()
@@ -98,23 +97,23 @@ export default function MarkdownCodeComponent({
     })
   }, [codeContent])
 
-  const isPartialJsonPreviewBlock =
+  const isStreamingPlanCandidate =
     (generationState === 'streaming' ||
       generationState === 'aborted' ||
       generationState === 'error') &&
-    language === 'json'
+    isTextEditPlanStreamingCandidate(codeContent)
 
   const streamingPreviewContent = useMemo(() => {
-    if (!isPartialJsonPreviewBlock || parsedPlan) {
+    if (!isStreamingPlanCandidate || parsedPlan) {
       return ''
     }
 
     return getStreamingTextEditPlanPreviewContent(codeContent)
-  }, [codeContent, isPartialJsonPreviewBlock, parsedPlan])
+  }, [codeContent, isStreamingPlanCandidate, parsedPlan])
 
   const isStreamingPlanStatusVisible =
     generationState === 'streaming' &&
-    isPartialJsonPreviewBlock &&
+    isStreamingPlanCandidate &&
     !parsedPlan &&
     streamingPreviewContent.length === 0
 

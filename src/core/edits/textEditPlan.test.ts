@@ -3,27 +3,18 @@ import {
   getStreamingTextEditPlanPreviewContent,
   isTextEditPlanStreamingCandidate,
   parseTextEditPlan,
-  TEXT_EDIT_PLAN_TYPE,
-  TEXT_EDIT_PLAN_VERSION,
 } from './textEditPlan'
 
 describe('parseTextEditPlan', () => {
-  it('parses document-typed JSON plans', () => {
+  it('parses replace plans in the new dsl format', () => {
     const result = parseTextEditPlan(
-      `{
-      "type": "${TEXT_EDIT_PLAN_TYPE}",
-      "version": ${TEXT_EDIT_PLAN_VERSION},
-      "operations": [
-        {
-          "type": "replace",
-          "oldText": "a",
-          "newText": "b"
-        }
-      ]
-    }`,
-      {
-        requireDocumentType: true,
-      },
+      `<<<<<<< REPLACE
+[old]
+a
+=======
+[new]
+b
+>>>>>>> END`,
     )
 
     expect(result).toEqual({
@@ -32,21 +23,263 @@ describe('parseTextEditPlan', () => {
           type: 'replace',
           oldText: 'a',
           newText: 'b',
-          expectedOccurrences: undefined,
         },
       ],
     })
   })
 
-  it('rejects plans without the document type when required', () => {
+  it('parses replace plans when the old marker is omitted', () => {
     const result = parseTextEditPlan(
-      '{"operations":[{"type":"append","content":"tail"}]}',
-      {
-        requireDocumentType: true,
-      },
+      `<<<<<<< REPLACE
+a
+=======
+[new]
+b
+>>>>>>> END`,
     )
 
-    expect(result).toBeNull()
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'replace',
+          oldText: 'a',
+          newText: 'b',
+        },
+      ],
+    })
+  })
+
+  it('parses replace plans when the new marker is omitted', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< REPLACE
+[old]
+a
+=======
+b
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'replace',
+          oldText: 'a',
+          newText: 'b',
+        },
+      ],
+    })
+  })
+
+  it('parses replace plans when the new marker uses content', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< REPLACE
+[old]
+a
+=======
+[content]
+b
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'replace',
+          oldText: 'a',
+          newText: 'b',
+        },
+      ],
+    })
+  })
+
+  it('parses replace plans when both old and new markers are omitted', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< REPLACE
+a
+=======
+b
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'replace',
+          oldText: 'a',
+          newText: 'b',
+        },
+      ],
+    })
+  })
+
+  it('parses insert_after plans in the new dsl format', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< INSERT_AFTER
+[anchor]
+## heading
+=======
+[content]
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'insert_after',
+          anchor: '## heading',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses insert_after plans when the anchor marker is omitted', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< INSERT_AFTER
+## heading
+=======
+[content]
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'insert_after',
+          anchor: '## heading',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses insert_after plans when the content marker is omitted', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< INSERT_AFTER
+[anchor]
+## heading
+=======
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'insert_after',
+          anchor: '## heading',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses insert_after plans when both markers are omitted', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< INSERT_AFTER
+## heading
+=======
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'insert_after',
+          anchor: '## heading',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses insert_after plans when the content marker uses new', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< INSERT_AFTER
+[anchor]
+## heading
+=======
+[new]
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'insert_after',
+          anchor: '## heading',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses append plans when the content marker is omitted', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< APPEND
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'append',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses append plans in diff style with new marker', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< APPEND
+=======
+[new]
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'append',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('parses append plans in diff style without markers', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< APPEND
+=======
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'append',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
+  it('rejects malformed plans', () => {
+    expect(
+      parseTextEditPlan(`<<<<<<< REPLACE
+[old]
+a
+oops
+>>>>>>> END`),
+    ).toBeNull()
   })
 })
 
@@ -72,13 +305,10 @@ describe('getTextEditPlanPreviewContent', () => {
 })
 
 describe('isTextEditPlanStreamingCandidate', () => {
-  it('detects streamed text edit plan headers before the plan is complete', () => {
-    expect(
-      isTextEditPlanStreamingCandidate(`{
-        "type": "${TEXT_EDIT_PLAN_TYPE}",
-        "version": 1,
-        "operations": [`),
-    ).toBe(true)
+  it('detects streamed dsl plan headers before the plan is complete', () => {
+    expect(isTextEditPlanStreamingCandidate('<<<<<<< REPLACE\n[old]\n')).toBe(
+      true,
+    )
   })
 
   it('ignores regular markdown blocks', () => {
@@ -87,20 +317,35 @@ describe('isTextEditPlanStreamingCandidate', () => {
 })
 
 describe('streaming text edit helpers', () => {
-  it('extracts partial preview content before the json document is complete', () => {
+  it('extracts partial preview content before the dsl document is complete', () => {
     expect(
-      getStreamingTextEditPlanPreviewContent(`{
-        "type": "${TEXT_EDIT_PLAN_TYPE}",
-        "version": 1,
-        "operations": [
-          {
-            "type": "replace",
-            "oldText": "old paragraph",
-            "newText": "new first line\\nnew second line"
-          },
-          {
-            "type": "append",
-            "content": "tail fragment`),
-    ).toBe('new first line\nnew second line\n\ntail fragment')
+      getStreamingTextEditPlanPreviewContent(`<<<<<<< REPLACE
+[old]
+old paragraph
+=======
+[new]
+new first line
+new second line`),
+    ).toBe('new first line\nnew second line')
+  })
+
+  it('extracts preview content when insert_after uses new marker', () => {
+    expect(
+      getStreamingTextEditPlanPreviewContent(`<<<<<<< INSERT_AFTER
+[anchor]
+heading
+=======
+[new]
+tail fragment`),
+    ).toBe('tail fragment')
+  })
+
+  it('extracts preview content for diff style append blocks', () => {
+    expect(
+      getStreamingTextEditPlanPreviewContent(`<<<<<<< APPEND
+=======
+[new]
+tail fragment`),
+    ).toBe('tail fragment')
   })
 })

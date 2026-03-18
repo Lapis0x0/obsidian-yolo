@@ -1,10 +1,6 @@
 import { TFile } from 'obsidian'
 
-import {
-  parseTextEditPlan,
-  TEXT_EDIT_PLAN_TYPE,
-  TEXT_EDIT_PLAN_VERSION,
-} from '../../core/edits/textEditPlan'
+import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { TextEditPlan } from '../../core/edits/textEditEngine'
 import { BaseLLMProvider } from '../../core/llm/base'
 import { ChatModel } from '../../types/chat-model.types'
@@ -13,39 +9,35 @@ import { LLMProvider } from '../../types/provider.types'
 
 const EDIT_MODE_SYSTEM_PROMPT = `You are an intelligent markdown editor.
 
-Return ONLY a single JSON object with this shape:
-{
-  "type": "${TEXT_EDIT_PLAN_TYPE}",
-  "version": ${TEXT_EDIT_PLAN_VERSION},
-  "operations": [
-    {
-      "type": "replace",
-      "oldText": "exact text to replace",
-      "newText": "replacement text",
-      "expectedOccurrences": 1
-    }
-  ]
-}
+Return ONLY a single edit block in this format:
+
+<<<<<<< REPLACE
+[old]
+exact text to replace
+=======
+[new]
+replacement text
+>>>>>>> END
 
 Supported operation types:
-1. replace
+1. REPLACE
    - Replace exact text.
-   - Fields: type, oldText, newText, optional expectedOccurrences.
+   - Sections: [old], [new].
 
-2. insert_after
+2. INSERT_AFTER
    - Insert content after exact anchor text.
-   - Fields: type, anchor, content, optional expectedOccurrences.
+   - Sections: [anchor], [content].
 
-3. append
+3. APPEND
    - Append content to the end of the document.
-   - Fields: type, content.
+   - Section: [content].
 
 Rules:
-- Output valid JSON only. No markdown fences. No explanation.
+- Output only the edit block. No markdown fences. No JSON. No explanation.
 - Keep edits minimal and localized.
-- Prefer replace for modifications, insert_after for inserting near existing text, append only for true continuation.
-- oldText/anchor must include enough surrounding context to match uniquely.
-- For repeated text, set expectedOccurrences explicitly.
+- Prefer REPLACE for modifications, INSERT_AFTER for inserting near existing text, APPEND only for true continuation.
+- old/anchor must include enough surrounding context to match uniquely.
+- The marker lines must be exact and appear on their own lines.
 - Preserve markdown structure unless the instruction requires changing it.`
 
 export const parseEditPlan = (content: string): TextEditPlan | null => {
@@ -113,7 +105,7 @@ function generateEditPrompt({
   const selectionGuidance = scopedToSelection
     ? `
 - The provided content is the selected slice the user wants to edit.
-- For broad transformations like translate, rewrite, summarize, or table-wide edits, prefer a single replace operation where oldText is the exact full provided content and newText is the fully transformed result.
+- For broad transformations like translate, rewrite, summarize, or table-wide edits, prefer a single REPLACE block where [old] is the exact full provided content and [new] is the fully transformed result.
 - Do not update only the heading or table header if the request clearly applies to the full selected block.`
     : ''
 
@@ -132,13 +124,13 @@ ${instruction}
 
 # Your Task
 
-Return a JSON object with an operations array.
-- Use replace for rewriting existing text.
-- Use insert_after for inserting new content after existing text.
-- Use append only when the user explicitly wants continuation at the end.
+Return a single edit block using REPLACE, INSERT_AFTER, or APPEND.
+- Use REPLACE for rewriting existing text.
+- Use INSERT_AFTER for inserting new content after existing text.
+- Use APPEND only when the user explicitly wants continuation at the end.
 - Keep changes minimal.
 - Preserve full markdown structures such as tables, lists, and headings when editing them.
 - If a markdown table is being transformed, update all affected rows and cells, not just the header.
-- oldText in replace should include the exact markdown source, including pipes and separator rows for tables.${selectionGuidance}
-- Output JSON only.`
+- [old] in REPLACE should include the exact markdown source, including pipes and separator rows for tables.${selectionGuidance}
+- Output the edit block only.`
 }

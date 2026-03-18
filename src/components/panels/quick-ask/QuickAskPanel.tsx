@@ -45,6 +45,10 @@ import {
 } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
+import {
+  getTextEditPlanPreviewContent,
+  parseTextEditPlan,
+} from '../../../core/edits/textEditPlan'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
@@ -423,8 +427,10 @@ export function QuickAskPanel({
         }
 
         if (block.type === 'smtcmp_block') {
-          const normalizedContent =
-            block.language && block.language !== 'markdown'
+          const parsedPlan = parseTextEditPlan(block.content)
+          const normalizedContent = parsedPlan
+            ? getTextEditPlanPreviewContent(parsedPlan)
+            : block.language && block.language !== 'markdown'
               ? `\`\`\`${block.language}\n${block.content}\n\`\`\``
               : block.content
           if (!normalizedContent.trim()) return

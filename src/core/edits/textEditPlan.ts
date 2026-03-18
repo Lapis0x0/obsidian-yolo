@@ -1,231 +1,195 @@
 import type { TextEditOperation, TextEditPlan } from './textEditEngine'
 
-import {
-  extractTopLevelJsonObjects,
-  parseJsonObjectText,
-} from '../../utils/chat/tool-arguments'
+const ACTION_PATTERN = /^<<<<<<< (REPLACE|INSERT_AFTER|APPEND)\s*$/m
 
-export const TEXT_EDIT_PLAN_TYPE = 'text_edit_plan'
-export const TEXT_EDIT_PLAN_VERSION = 1
-
-const TEXT_EDIT_PLAN_TYPE_PATTERN = new RegExp(
-  `"type"\\s*:\\s*"${TEXT_EDIT_PLAN_TYPE}"`,
-  'i',
-)
-const PREVIEW_VALUE_PATTERN = /"(?:newText|content|replace)"\s*:\s*"/gi
-
-type JsonObject = Record<string, unknown>
-
-const asObject = (value: unknown): JsonObject | null => {
-  if (!value || Array.isArray(value) || typeof value !== 'object') {
-    return null
-  }
-  return value as JsonObject
+const normalizePlanSource = (content: string): string => {
+  return content.replace(/\r\n/g, '\n').trim()
 }
 
-const asPositiveInteger = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return undefined
-  }
-  const normalized = Math.floor(value)
-  return normalized > 0 ? normalized : undefined
-}
-
-const getString = (record: JsonObject, key: string): string => {
-  const value = record[key]
-  return typeof value === 'string' ? value : ''
-}
-
-const normalizeOperation = (value: unknown): TextEditOperation | null => {
-  const record = asObject(value)
-  if (!record) {
+const parseReplaceOperation = (
+  content: string,
+): Extract<TextEditOperation, { type: 'replace' }> | null => {
+  const match = content.match(
+    /^<<<<<<< REPLACE\n(?:\[old\]\n)?([\s\S]*?)\n=======\n(?:\[(?:new|content)\]\n)?([\s\S]*?)\n>>>>>>> END$/,
+  )
+  if (!match) {
     return null
   }
 
-  const rawType = getString(record, 'type').trim().toLowerCase()
-  if (rawType === 'replace') {
-    return {
-      type: 'replace',
-      oldText: getString(record, 'oldText') || getString(record, 'search'),
-      newText: getString(record, 'newText') || getString(record, 'replace'),
-      expectedOccurrences:
-        asPositiveInteger(record.expectedOccurrences) ??
-        asPositiveInteger(record.occurrences),
-    }
+  return {
+    type: 'replace',
+    oldText: match[1],
+    newText: match[2],
+  }
+}
+
+const parseInsertAfterOperation = (
+  content: string,
+): Extract<TextEditOperation, { type: 'insert_after' }> | null => {
+  const match = content.match(
+    /^<<<<<<< INSERT_AFTER\n(?:\[anchor\]\n)?([\s\S]*?)\n=======\n(?:\[(?:content|new)\]\n)?([\s\S]*?)\n>>>>>>> END$/,
+  )
+  if (!match) {
+    return null
   }
 
-  if (rawType === 'insert_after' || rawType === 'insertafter') {
-    return {
-      type: 'insert_after',
-      anchor: getString(record, 'anchor') || getString(record, 'oldText'),
-      content: getString(record, 'content') || getString(record, 'newText'),
-      expectedOccurrences:
-        asPositiveInteger(record.expectedOccurrences) ??
-        asPositiveInteger(record.occurrences),
-    }
+  return {
+    type: 'insert_after',
+    anchor: match[1],
+    content: match[2],
   }
+}
 
-  if (rawType === 'append' || rawType === 'continue') {
+const parseAppendOperation = (
+  content: string,
+): Extract<TextEditOperation, { type: 'append' }> | null => {
+  const diffStyleMatch = content.match(
+    /^<<<<<<< APPEND\n(?:([\s\S]*?)\n)?=======\n(?:\[(?:content|new)\]\n)?([\s\S]*?)\n>>>>>>> END$/,
+  )
+  if (diffStyleMatch) {
     return {
       type: 'append',
-      content: getString(record, 'content') || getString(record, 'newText'),
+      content: diffStyleMatch[2],
     }
   }
 
-  return null
-}
-
-const parseRootObject = (content: string): JsonObject | null => {
-  const trimmed = content.trim()
-  if (!trimmed) {
+  const directMatch = content.match(
+    /^<<<<<<< APPEND\n(?:\[content\]\n)?([\s\S]*?)\n>>>>>>> END$/,
+  )
+  if (!directMatch) {
     return null
   }
 
-  return (
-    parseJsonObjectText(trimmed) ??
-    extractTopLevelJsonObjects(trimmed)[0] ??
-    null
-  )
+  return {
+    type: 'append',
+    content: directMatch[1],
+  }
 }
 
 export const parseTextEditPlan = (
   content: string,
-  options?: { requireDocumentType?: boolean },
+  _options?: { requireDocumentType?: boolean },
 ): TextEditPlan | null => {
-  const root = parseRootObject(content)
-  if (!root) {
+  const normalized = normalizePlanSource(content)
+  if (!normalized) {
     return null
   }
 
-  if (options?.requireDocumentType) {
-    if (getString(root, 'type') !== TEXT_EDIT_PLAN_TYPE) {
-      return null
-    }
-    const rawVersion = root.version
-    if (
-      typeof rawVersion !== 'number' ||
-      !Number.isFinite(rawVersion) ||
-      rawVersion < TEXT_EDIT_PLAN_VERSION
-    ) {
-      return null
-    }
-  }
+  const operation =
+    parseReplaceOperation(normalized) ??
+    parseInsertAfterOperation(normalized) ??
+    parseAppendOperation(normalized)
 
-  const operationsValue = Array.isArray(root.operations)
-    ? root.operations
-    : Array.isArray(root.edits)
-      ? root.edits
-      : null
-  if (!operationsValue) {
+  if (!operation) {
     return null
   }
 
-  const operations = operationsValue
-    .map((item) => normalizeOperation(item))
-    .filter((item): item is TextEditOperation => Boolean(item))
-
-  if (operations.length === 0) {
-    return null
-  }
-
-  return { operations }
+  return { operations: [operation] }
 }
 
 export const isTextEditPlanStreamingCandidate = (content: string): boolean => {
-  return TEXT_EDIT_PLAN_TYPE_PATTERN.test(content)
+  return ACTION_PATTERN.test(content)
 }
 
-const decodePartialJsonString = (rawValue: string): string => {
-  let decoded = ''
-
-  for (let index = 0; index < rawValue.length; index += 1) {
-    const currentChar = rawValue[index]
-    if (currentChar !== '\\') {
-      decoded += currentChar
-      continue
-    }
-
-    const nextChar = rawValue[index + 1]
-    if (!nextChar) {
-      break
-    }
-
-    if (nextChar === 'u') {
-      const unicodeHex = rawValue.slice(index + 2, index + 6)
-      if (!/^[0-9a-fA-F]{4}$/.test(unicodeHex)) {
-        break
-      }
-      decoded += String.fromCharCode(parseInt(unicodeHex, 16))
-      index += 5
-      continue
-    }
-
-    if (nextChar === 'n') {
-      decoded += '\n'
-    } else if (nextChar === 'r') {
-      decoded += '\r'
-    } else if (nextChar === 't') {
-      decoded += '\t'
-    } else if (nextChar === 'b') {
-      decoded += '\b'
-    } else if (nextChar === 'f') {
-      decoded += '\f'
-    } else {
-      decoded += nextChar
-    }
-
-    index += 1
+const extractReplacePreview = (content: string): string => {
+  const startIndex = findPreviewStartIndex(content)
+  if (startIndex === -1) {
+    return ''
   }
 
-  return decoded
+  const previewStart = startIndex
+  const endMarkerIndex = content.indexOf('\n>>>>>>> END', previewStart)
+  const preview =
+    endMarkerIndex === -1
+      ? content.slice(previewStart)
+      : content.slice(previewStart, endMarkerIndex)
+
+  return preview.trim()
 }
 
-const extractStreamingJsonStringValue = (
-  content: string,
-  startIndex: number,
-): string => {
-  let escaped = false
-  let rawValue = ''
-
-  for (let index = startIndex; index < content.length; index += 1) {
-    const currentChar = content[index]
-    if (!escaped && currentChar === '"') {
-      return decodePartialJsonString(rawValue)
-    }
-
-    rawValue += currentChar
-    if (escaped) {
-      escaped = false
-      continue
-    }
-
-    escaped = currentChar === '\\'
+const extractInsertAfterPreview = (content: string): string => {
+  const startIndex = findPreviewStartIndex(content)
+  if (startIndex === -1) {
+    return ''
   }
 
-  return decodePartialJsonString(rawValue)
+  const previewStart = startIndex
+  const endMarkerIndex = content.indexOf('\n>>>>>>> END', previewStart)
+  const preview =
+    endMarkerIndex === -1
+      ? content.slice(previewStart)
+      : content.slice(previewStart, endMarkerIndex)
+
+  return preview.trim()
+}
+
+const extractAppendPreview = (content: string): string => {
+  const diffPreviewStartIndex = findPreviewStartIndex(content)
+  if (diffPreviewStartIndex !== -1) {
+    const endMarkerIndex = content.indexOf(
+      '\n>>>>>>> END',
+      diffPreviewStartIndex,
+    )
+    const preview =
+      endMarkerIndex === -1
+        ? content.slice(diffPreviewStartIndex)
+        : content.slice(diffPreviewStartIndex, endMarkerIndex)
+
+    return preview.trim()
+  }
+
+  const marker = '<<<<<<< APPEND\n'
+  const startIndex = content.indexOf(marker)
+  if (startIndex === -1) {
+    return ''
+  }
+
+  const contentStart = startIndex + marker.length
+  const previewStart = content.startsWith('[content]\n', contentStart)
+    ? contentStart + '[content]\n'.length
+    : contentStart
+  const endMarkerIndex = content.indexOf('\n>>>>>>> END', previewStart)
+  const preview =
+    endMarkerIndex === -1
+      ? content.slice(previewStart)
+      : content.slice(previewStart, endMarkerIndex)
+
+  return preview.trim()
 }
 
 export const getStreamingTextEditPlanPreviewContent = (
   content: string,
 ): string => {
-  const previewChunks: string[] = []
-  PREVIEW_VALUE_PATTERN.lastIndex = 0
+  const normalized = content.replace(/\r\n/g, '\n')
 
-  let match = PREVIEW_VALUE_PATTERN.exec(content)
-  while (match) {
-    const extracted = extractStreamingJsonStringValue(
-      content,
-      match.index + match[0].length,
-    ).trim()
-
-    if (extracted.length > 0) {
-      previewChunks.push(extracted)
-    }
-
-    match = PREVIEW_VALUE_PATTERN.exec(content)
+  if (normalized.includes('<<<<<<< REPLACE')) {
+    return extractReplacePreview(normalized)
+  }
+  if (normalized.includes('<<<<<<< INSERT_AFTER')) {
+    return extractInsertAfterPreview(normalized)
+  }
+  if (normalized.includes('<<<<<<< APPEND')) {
+    return extractAppendPreview(normalized)
   }
 
-  return previewChunks.join('\n\n')
+  return ''
+}
+
+const findPreviewStartIndex = (content: string): number => {
+  const markerIndex = content.indexOf('\n=======\n')
+  if (markerIndex === -1) {
+    return -1
+  }
+
+  const afterDividerIndex = markerIndex + '\n=======\n'.length
+  if (content.startsWith('[new]\n', afterDividerIndex)) {
+    return afterDividerIndex + '[new]\n'.length
+  }
+  if (content.startsWith('[content]\n', afterDividerIndex)) {
+    return afterDividerIndex + '[content]\n'.length
+  }
+
+  return afterDividerIndex
 }
 
 export const getTextEditPlanPreviewContent = (plan: TextEditPlan): string => {
