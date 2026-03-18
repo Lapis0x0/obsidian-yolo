@@ -88,6 +88,46 @@ describe('local fs tool action helpers', () => {
     expect(result.status).toBe('success')
   })
 
+  it('treats fs_edit review close as abort without persisting', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const modify = jest.fn()
+    const read = jest.fn().mockResolvedValue('hello world')
+    const openApplyReview = jest.fn().mockImplementation(async (state) => {
+      state.callbacks?.onCancel?.()
+      return true
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      openApplyReview,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        operations: [
+          {
+            type: 'replace',
+            oldText: 'world',
+            newText: 'changed',
+          },
+        ],
+      },
+      requireReview: true,
+    })
+
+    expect(openApplyReview).toHaveBeenCalledTimes(1)
+    expect(modify).not.toHaveBeenCalled()
+    expect(result.status).toBe('aborted')
+  })
+
   it('handles memory tools through local tool dispatcher', async () => {
     const entries = new Map<string, unknown>()
     const contents = new Map<string, string>()

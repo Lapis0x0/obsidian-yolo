@@ -235,6 +235,24 @@ tail
     })
   })
 
+  it('parses append plans when direct style uses new marker', () => {
+    const result = parseTextEditPlan(
+      `<<<<<<< APPEND
+[new]
+tail
+>>>>>>> END`,
+    )
+
+    expect(result).toEqual({
+      operations: [
+        {
+          type: 'append',
+          content: 'tail',
+        },
+      ],
+    })
+  })
+
   it('parses append plans in diff style with new marker', () => {
     const result = parseTextEditPlan(
       `<<<<<<< APPEND
@@ -344,6 +362,14 @@ tail fragment`),
     expect(
       getStreamingTextEditPlanPreviewContent(`<<<<<<< APPEND
 =======
+[new]
+tail fragment`),
+    ).toBe('tail fragment')
+  })
+
+  it('extracts preview content for direct style append blocks with new marker', () => {
+    expect(
+      getStreamingTextEditPlanPreviewContent(`<<<<<<< APPEND
 [new]
 tail fragment`),
     ).toBe('tail fragment')

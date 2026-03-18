@@ -45,12 +45,30 @@ describe('materializeTextEditPlan', () => {
       },
     })
 
-    expect(result.newContent).toBe('Intro\n\nInserted paragraph\n\nBody')
+    expect(result.newContent).toBe('Intro\nInserted paragraph\n\nBody')
     expect(result.appliedCount).toBe(1)
     expect(result.operationResults[0]?.newRange).toEqual({
-      start: 7,
-      end: 25,
+      start: 6,
+      end: 24,
     })
+  })
+
+  it('does not add an extra blank line for list insert_after operations', () => {
+    const result = materializeTextEditPlan({
+      content: ['- A', '- B', '- C'].join('\n'),
+      plan: {
+        operations: [
+          {
+            type: 'insert_after',
+            anchor: '- B',
+            content: '- B.1',
+          },
+        ],
+      },
+    })
+
+    expect(result.newContent).toBe(['- A', '- B', '- B.1', '- C'].join('\n'))
+    expect(result.appliedCount).toBe(1)
   })
 
   it('applies append operations', () => {

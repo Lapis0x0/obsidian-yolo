@@ -340,9 +340,7 @@ export class InlineDiffReviewOverlay {
       acceptIncomingActive: () => this.acceptIncomingActive(),
       acceptCurrentActive: () => this.acceptCurrentActive(),
       undoActive: () => this.undoActive(),
-      close: () => {
-        void this.persistAndClose()
-      },
+      close: () => this.options.onClose(),
     })
   }
 
@@ -453,7 +451,7 @@ export class InlineDiffReviewOverlay {
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
-        void this.persistAndClose()
+        this.options.onClose()
         return
       }
       if (isMod && event.key === 'Enter') {

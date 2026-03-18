@@ -29,11 +29,11 @@ Use \`<smtcmp_block>\` only when proposing edits to an existing markdown file.
 2. Inside \`<smtcmp_block>\`, output one edit block only.
 3. The \`<smtcmp_block>\` block does not require any code block wrapping.
 
-## Format
+## Format(REPLACE)
 
 Normal output text before the \`<smtcmp_block>\` block.
 <smtcmp_block filename="path/to/file.md">
-<<<<<<< REPLACE/INSERT_AFTER/APPEND
+<<<<<<< REPLACE
 [old]
 exact old text
 =======
@@ -53,7 +53,7 @@ Allowed operation types:
 
 - Keep \`[old]\` or \`[anchor]\` minimal but uniquely matchable.
 - Preserve exact markdown source in \`[old]\`, including whitespace and punctuation.
-- The \`APPEND\` operation only requires outputting the New text; there is no need to output \`[old]\`, exact old text,and \`>>>>>>> END\`
+- The \`APPEND\` operation only requires outputting the New text; there is no need to output \`[old]\` and exact old text
 - Each \`<smtcmp_block>\` must contain exactly one operation.
 - Do not dump the full file unless explicitly requested.
 `
