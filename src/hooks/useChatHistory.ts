@@ -9,6 +9,7 @@ import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
 import { useSettings } from '../contexts/settings-context'
 import { getChatModelClient } from '../core/llm/manager'
+import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
 import { ChatConversationMetadata } from '../database/json/chat/types'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import {
@@ -105,12 +106,28 @@ type UseChatHistory = {
 
 export function useChatHistory(): UseChatHistory {
   const app = useApp()
-  const { settings } = useSettings()
+  const { settings, setSettings } = useSettings()
   const { language } = useLanguage()
   const chatManager = useChatManager()
   const [chatList, setChatList] = useState<ChatConversationMetadata[]>([])
   const titleGenerationInFlightRef = useRef<Set<string>>(new Set())
   const titleGenerationCooldownUntilRef = useRef<Map<string, number>>(new Map())
+  const settingsRef = useRef(settings)
+
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
+  const handleAutoPromoteToObsidian = useCallback(
+    (providerId: string) => {
+      void promoteProviderTransportModeToObsidian({
+        getSettings: () => settingsRef.current,
+        setSettings,
+        providerId,
+      })
+    },
+    [setSettings],
+  )
 
   const fetchChatList = useCallback(async () => {
     const list = await chatManager.listChats()
@@ -484,6 +501,7 @@ export function useChatHistory(): UseChatHistory {
             const { providerClient, model } = getChatModelClient({
               settings,
               modelId: settings.applyModelId,
+              onAutoPromoteToObsidian: handleAutoPromoteToObsidian,
             })
 
             const defaultTitlePrompt =
@@ -574,7 +592,13 @@ export function useChatHistory(): UseChatHistory {
         titleGenerationInFlightRef.current.delete(id)
       }
     },
-    [chatManager, fetchChatList, language, settings],
+    [
+      chatManager,
+      fetchChatList,
+      handleAutoPromoteToObsidian,
+      language,
+      settings,
+    ],
   )
 
   return {

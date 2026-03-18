@@ -27,9 +27,11 @@ import { PerplexityProvider } from './perplexityProvider'
 export function getProviderClient({
   settings,
   providerId,
+  onAutoPromoteToObsidian,
 }: {
   settings: SmartComposerSettings
   providerId: string
+  onAutoPromoteToObsidian?: (providerId: string) => void
 }): BaseLLMProvider<LLMProvider> {
   const provider = settings.providers.find((p) => p.id === providerId)
   if (!provider) {
@@ -41,7 +43,9 @@ export function getProviderClient({
       return new OpenAIAuthenticatedProvider(provider)
     }
     case 'anthropic': {
-      return new AnthropicProvider(provider)
+      return new AnthropicProvider(provider, {
+        onAutoPromoteToObsidian: () => onAutoPromoteToObsidian?.(provider.id),
+      })
     }
     case 'gemini': {
       return new GeminiProvider(provider)
@@ -74,7 +78,9 @@ export function getProviderClient({
       return new AzureOpenAIProvider(provider)
     }
     case 'openai-compatible': {
-      return new OpenAICompatibleProvider(provider)
+      return new OpenAICompatibleProvider(provider, {
+        onAutoPromoteToObsidian: () => onAutoPromoteToObsidian?.(provider.id),
+      })
     }
   }
 }
@@ -82,9 +88,11 @@ export function getProviderClient({
 export function getChatModelClient({
   settings,
   modelId,
+  onAutoPromoteToObsidian,
 }: {
   settings: SmartComposerSettings
   modelId: string
+  onAutoPromoteToObsidian?: (providerId: string) => void
 }): {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
@@ -97,6 +105,7 @@ export function getChatModelClient({
   const providerClient = getProviderClient({
     settings,
     providerId: chatModel.providerId,
+    onAutoPromoteToObsidian,
   })
 
   return {

@@ -942,6 +942,8 @@ export const zh: TranslationKeys = {
     migrationFailed: 'JSON 存储迁移失败。请查看控制台了解详情。',
     reloadingPlugin: '由于迁移，正在重新加载 "next-composer"',
     settingsInvalid: '设置无效',
+    transportModeAutoPromoted:
+      '检测到网络/CORS 问题，已自动将该 Provider 切换为 Obsidian requestUrl。',
   },
 
   errors: {

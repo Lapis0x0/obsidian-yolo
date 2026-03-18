@@ -871,6 +871,7 @@ export type TranslationKeys = {
     migrationFailed: string
     reloadingPlugin: string
     settingsInvalid: string
+    transportModeAutoPromoted: string
   }
 
   // Errors

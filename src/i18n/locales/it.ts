@@ -1004,6 +1004,8 @@ export const it: TranslationKeys = {
       'Migrazione a storage JSON fallita; controlla la console per i dettagli.',
     reloadingPlugin: 'Ricaricamento "next-composer" a causa della migrazione',
     settingsInvalid: 'Impostazioni non valide',
+    transportModeAutoPromoted:
+      'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su Obsidian requestUrl.',
   },
 
   errors: {
