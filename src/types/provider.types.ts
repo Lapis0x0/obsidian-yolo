@@ -9,6 +9,12 @@ const providerHeaderSchema = z.object({
   value: z.string().default(''),
 })
 
+export const requestTransportModeSchema = z.enum([
+  'auto',
+  'browser',
+  'obsidian',
+])
+
 export const baseLlmProviderSchema = z.object({
   id: z.string().min(1, 'id is required'),
   baseUrl: z.string().optional(),
@@ -34,6 +40,7 @@ export const llmProviderSchema = z.discriminatedUnion('type', [
     ...baseLlmProviderSchema.shape,
     additionalSettings: z
       .object({
+        requestTransportMode: requestTransportModeSchema.optional(),
         useObsidianRequestUrl: z.boolean().optional(),
       })
       .optional(),
@@ -101,6 +108,7 @@ export const llmProviderSchema = z.discriminatedUnion('type', [
     additionalSettings: z
       .object({
         noStainless: z.boolean().optional(),
+        requestTransportMode: requestTransportModeSchema.optional(),
         useObsidianRequestUrl: z.boolean().optional(),
       })
       .optional(),
@@ -110,3 +118,4 @@ export const llmProviderSchema = z.discriminatedUnion('type', [
 export type LLMProvider = z.infer<typeof llmProviderSchema>
 export type LLMProviderType = LLMProvider['type']
 export type ProviderHeader = z.infer<typeof providerHeaderSchema>
+export type RequestTransportMode = z.infer<typeof requestTransportModeSchema>

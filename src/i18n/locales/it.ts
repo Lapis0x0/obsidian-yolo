@@ -439,6 +439,12 @@ export const it: TranslationKeys = {
       useObsidianRequestUrl: 'Usa requestUrl di Obsidian',
       useObsidianRequestUrlDesc:
         'Usa requestUrl di Obsidian per aggirare le restrizioni CORS. Le risposte in streaming verranno bufferizzate.',
+      requestTransportMode: 'Modalita trasporto richieste',
+      requestTransportModeDesc:
+        'Auto prova prima il fetch del browser e passa a requestUrl di Obsidian in caso di errori CORS/rete. In modalita Obsidian lo streaming viene bufferizzato.',
+      requestTransportModeAuto: 'Auto (consigliato)',
+      requestTransportModeBrowser: 'Solo fetch browser',
+      requestTransportModeObsidian: 'Solo requestUrl Obsidian',
       customHeaders: 'Header personalizzati',
       customHeadersDesc:
         'Aggiungi header HTTP extra a tutte le richieste inviate tramite questo provider.',

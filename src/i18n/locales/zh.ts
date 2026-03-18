@@ -401,6 +401,12 @@ export const zh: TranslationKeys = {
       useObsidianRequestUrl: '使用 Obsidian requestUrl',
       useObsidianRequestUrlDesc:
         '使用 Obsidian requestUrl 绕过 CORS 限制。流式响应将会被缓冲后再返回。',
+      requestTransportMode: '请求传输模式',
+      requestTransportModeDesc:
+        '自动模式会先尝试浏览器 fetch，遇到 CORS/网络错误时回退到 Obsidian requestUrl。仅 Obsidian 模式下流式响应会被缓冲。',
+      requestTransportModeAuto: '自动（推荐）',
+      requestTransportModeBrowser: '仅浏览器 fetch',
+      requestTransportModeObsidian: '仅 Obsidian requestUrl',
       customHeaders: '自定义请求头',
       customHeadersDesc: '为此提供商发出的所有请求附加额外的 HTTP Header。',
       customHeadersAdd: '添加请求头',

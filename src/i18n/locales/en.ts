@@ -443,6 +443,12 @@ export const en: TranslationKeys = {
       useObsidianRequestUrl: 'Use Obsidian requestUrl',
       useObsidianRequestUrlDesc:
         'Use Obsidian requestUrl to bypass cross-origin restrictions. Streaming responses are buffered.',
+      requestTransportMode: 'Request transport mode',
+      requestTransportModeDesc:
+        'Auto tries browser fetch first and falls back to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses.',
+      requestTransportModeAuto: 'Auto (recommended)',
+      requestTransportModeBrowser: 'Browser fetch only',
+      requestTransportModeObsidian: 'Obsidian requestUrl only',
       customHeaders: 'Custom headers',
       customHeadersDesc:
         'Attach extra HTTP headers to all requests sent through this provider.',
