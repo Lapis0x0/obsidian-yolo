@@ -764,28 +764,30 @@ export function ProvidersAndModelsSection({
       }
 
       try {
-        const vectorManager = await plugin.tryGetVectorManager()
+        if (associatedEmbeddingModels.length > 0) {
+          const vectorManager = await plugin.tryGetVectorManager()
 
-        if (vectorManager) {
-          const embeddingStats = await vectorManager.getEmbeddingStats()
+          if (vectorManager) {
+            const embeddingStats = await vectorManager.getEmbeddingStats()
 
-          for (const embeddingModel of associatedEmbeddingModels) {
-            const embeddingStat = embeddingStats.find(
-              (v) => v.model === embeddingModel.id,
-            )
+            for (const embeddingModel of associatedEmbeddingModels) {
+              const embeddingStat = embeddingStats.find(
+                (v) => v.model === embeddingModel.id,
+              )
 
-            if (embeddingStat?.rowCount && embeddingStat.rowCount > 0) {
-              const embeddingModelClient = getEmbeddingModelClient({
-                settings,
-                embeddingModelId: embeddingModel.id,
-              })
-              await vectorManager.clearAllVectors(embeddingModelClient)
+              if (embeddingStat?.rowCount && embeddingStat.rowCount > 0) {
+                const embeddingModelClient = getEmbeddingModelClient({
+                  settings,
+                  embeddingModelId: embeddingModel.id,
+                })
+                await vectorManager.clearAllVectors(embeddingModelClient)
+              }
             }
+          } else {
+            console.warn(
+              '[Smart Composer] Skip clearing embeddings because vector manager is unavailable.',
+            )
           }
-        } else {
-          console.warn(
-            '[Smart Composer] Skip clearing embeddings because vector manager is unavailable.',
-          )
         }
 
         // Delete provider and associated models
