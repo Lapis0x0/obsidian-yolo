@@ -50,9 +50,8 @@ export function generateReviewContent(
       const original = block.originalValue
       const incoming = block.modifiedValue
       const decision = decisions.get(index) ?? defaultDecision
-      const resolvedIncoming =
-        incoming !== undefined ? incoming : (original ?? '')
-      const resolvedCurrent = original ?? ''
+      const resolvedIncoming = incoming ?? null
+      const resolvedCurrent = original ?? null
 
       if (decision === 'incoming') return resolvedIncoming
       if (decision === 'pending' && defaultDecision === 'incoming') {
@@ -60,6 +59,7 @@ export function generateReviewContent(
       }
       return resolvedCurrent
     })
+    .filter((segment): segment is string => segment !== null)
     .join('\n')
 }
 

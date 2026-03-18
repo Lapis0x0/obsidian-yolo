@@ -716,7 +716,7 @@ export const materializeTextEditPlan = ({
         ? {
             type: 'replace',
             oldText: operation.anchor,
-            newText: `${operation.anchor}\n\n${operation.content}`,
+            newText: `${operation.anchor}\n${operation.content}`,
             expectedOccurrences: operation.expectedOccurrences,
           }
         : operation

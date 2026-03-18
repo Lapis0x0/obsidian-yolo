@@ -54,7 +54,7 @@ const parseAppendOperation = (
   }
 
   const directMatch = content.match(
-    /^<<<<<<< APPEND\n(?:\[content\]\n)?([\s\S]*?)\n>>>>>>> END$/,
+    /^<<<<<<< APPEND\n(?:\[(?:content|new)\]\n)?([\s\S]*?)\n>>>>>>> END$/,
   )
   if (!directMatch) {
     return null
@@ -147,7 +147,9 @@ const extractAppendPreview = (content: string): string => {
   const contentStart = startIndex + marker.length
   const previewStart = content.startsWith('[content]\n', contentStart)
     ? contentStart + '[content]\n'.length
-    : contentStart
+    : content.startsWith('[new]\n', contentStart)
+      ? contentStart + '[new]\n'.length
+      : contentStart
   const endMarkerIndex = content.indexOf('\n>>>>>>> END', previewStart)
   const preview =
     endMarkerIndex === -1

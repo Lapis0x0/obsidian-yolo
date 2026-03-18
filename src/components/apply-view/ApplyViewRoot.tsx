@@ -375,16 +375,16 @@ export default function ApplyViewRoot({
       acceptIncomingActive,
       acceptCurrentActive,
       undoActive,
-      close: () => void persistAndClose(),
+      close,
     })
     return () => onActionsReady(null)
   }, [
     acceptCurrentActive,
     acceptIncomingActive,
+    close,
     goToNextDiff,
     goToPreviousDiff,
     onActionsReady,
-    persistAndClose,
     undoActive,
   ])
 
