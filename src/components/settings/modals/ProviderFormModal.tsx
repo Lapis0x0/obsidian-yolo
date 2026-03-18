@@ -24,6 +24,25 @@ type ProviderFormComponentProps = {
   provider: LLMProvider | null // null for new provider
 }
 
+const getRequestTransportModeValue = (
+  additionalSettings: Record<string, unknown> | undefined,
+): 'auto' | 'browser' | 'obsidian' => {
+  const mode = additionalSettings?.requestTransportMode
+  if (mode === 'auto' || mode === 'browser' || mode === 'obsidian') {
+    return mode
+  }
+
+  if (additionalSettings?.useObsidianRequestUrl === true) {
+    return 'obsidian'
+  }
+
+  if (additionalSettings?.useObsidianRequestUrl === false) {
+    return 'browser'
+  }
+
+  return 'auto'
+}
+
 export class AddProviderModal extends ReactModal<ProviderFormComponentProps> {
   constructor(app: App, plugin: SmartComposerPlugin) {
     super({
@@ -284,14 +303,14 @@ function ProviderFormComponent({
         const label =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeaders')
-            : setting.key === 'useObsidianRequestUrl'
-              ? t('settings.providers.useObsidianRequestUrl')
+            : setting.key === 'requestTransportMode'
+              ? t('settings.providers.requestTransportMode')
               : setting.label
         const description =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeadersDesc')
-            : setting.key === 'useObsidianRequestUrl'
-              ? t('settings.providers.useObsidianRequestUrlDesc')
+            : setting.key === 'requestTransportMode'
+              ? t('settings.providers.requestTransportModeDesc')
               : (setting as { description?: string }).description
 
         return (
@@ -309,6 +328,33 @@ function ProviderFormComponent({
                   ] ?? false
                 }
                 onChange={(value: boolean) =>
+                  setFormData(
+                    (prev) =>
+                      ({
+                        ...prev,
+                        additionalSettings: {
+                          ...(prev.additionalSettings ?? {}),
+                          [setting.key]: value,
+                        },
+                      }) as LLMProvider,
+                  )
+                }
+              />
+            ) : setting.type === 'select' ? (
+              <ObsidianDropdown
+                value={getRequestTransportModeValue(
+                  formData.additionalSettings as
+                    | Record<string, unknown>
+                    | undefined,
+                )}
+                options={{
+                  auto: t('settings.providers.requestTransportModeAuto'),
+                  browser: t('settings.providers.requestTransportModeBrowser'),
+                  obsidian: t(
+                    'settings.providers.requestTransportModeObsidian',
+                  ),
+                }}
+                onChange={(value: string) =>
                   setFormData(
                     (prev) =>
                       ({

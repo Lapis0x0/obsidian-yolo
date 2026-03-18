@@ -27,7 +27,7 @@ import {
   ResponseUsage,
   ToolCall,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
@@ -37,29 +37,42 @@ import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
 } from './exception'
+import {
+  resolveRequestTransportMode,
+  runWithRequestTransportForStream,
+  runWithRequestTransport,
+} from './requestTransport'
 
 export class AnthropicProvider extends BaseLLMProvider<
   Extract<LLMProvider, { type: 'anthropic' }>
 > {
-  private client: Anthropic
+  private browserClient: Anthropic
+  private obsidianClient: Anthropic
+  private requestTransportMode: RequestTransportMode
 
   private static readonly DEFAULT_MAX_TOKENS = 8192
 
   constructor(provider: Extract<LLMProvider, { type: 'anthropic' }>) {
     super(provider)
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
-    const useObsidianRequestUrl =
-      provider.additionalSettings?.useObsidianRequestUrl ?? !!provider.baseUrl
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: !!provider.baseUrl,
+    })
     const clientOptions = {
       apiKey: provider.apiKey,
       baseURL: provider.baseUrl
         ? provider.baseUrl.replace(/\/+$/, '')
         : undefined, // use default
       dangerouslyAllowBrowser: true,
-      fetch: useObsidianRequestUrl ? createObsidianFetch() : undefined,
+      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
       ...(defaultHeaders ? { defaultHeaders } : {}),
     }
-    this.client = new Anthropic(clientOptions)
+    this.browserClient = new Anthropic(clientOptions)
+    this.obsidianClient = new Anthropic({
+      ...clientOptions,
+      fetch: createObsidianFetch(),
+    })
   }
 
   async generateResponse(
@@ -71,7 +84,7 @@ export class AnthropicProvider extends BaseLLMProvider<
       throw new Error('Model is not a Anthropic model')
     }
 
-    if (!this.client.apiKey) {
+    if (!this.provider.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
@@ -114,8 +127,16 @@ export class AnthropicProvider extends BaseLLMProvider<
         ...payloadBase,
       })
 
-      const response = await this.client.messages.create(payload, {
-        signal: options?.signal,
+      const response = await runWithRequestTransport({
+        mode: this.requestTransportMode,
+        runBrowser: () =>
+          this.browserClient.messages.create(payload, {
+            signal: options?.signal,
+          }),
+        runObsidian: () =>
+          this.obsidianClient.messages.create(payload, {
+            signal: options?.signal,
+          }),
       })
 
       return AnthropicProvider.parseNonStreamingResponse(response)
@@ -168,7 +189,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       throw new Error('Model is not a Anthropic model')
     }
 
-    if (!this.client.apiKey) {
+    if (!this.provider.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
@@ -212,9 +233,18 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         ...payloadBase,
       })
 
-      const stream = (await this.client.messages.create(payload, {
-        signal: options?.signal,
-        stream: true,
+      const stream = (await runWithRequestTransportForStream({
+        mode: this.requestTransportMode,
+        createBrowserStream: () =>
+          this.browserClient.messages.create(payload, {
+            signal: options?.signal,
+            stream: true,
+          }),
+        createObsidianStream: () =>
+          this.obsidianClient.messages.create(payload, {
+            signal: options?.signal,
+            stream: true,
+          }),
       })) as unknown as AsyncIterable<MessageStreamEvent>
 
       return this.streamResponseGenerator(stream)

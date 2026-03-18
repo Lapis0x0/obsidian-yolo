@@ -42,7 +42,21 @@ export const PROVIDER_TYPES_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [
+      {
+        label: 'Request transport mode',
+        key: 'requestTransportMode',
+        type: 'select',
+        required: false,
+        options: {
+          auto: 'Auto',
+          browser: 'Browser fetch',
+          obsidian: 'Obsidian requestUrl',
+        },
+        description:
+          'Auto: try browser fetch first and fallback to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses.',
+      },
+    ],
   },
   gemini: {
     label: 'Gemini',
@@ -155,12 +169,17 @@ export const PROVIDER_TYPES_INFO = {
           'Enable this if you encounter CORS errors related to Stainless headers (x-stainless-os, etc.)',
       },
       {
-        label: 'Use Obsidian requestUrl',
-        key: 'useObsidianRequestUrl',
-        type: 'toggle',
+        label: 'Request transport mode',
+        key: 'requestTransportMode',
+        type: 'select',
         required: false,
+        options: {
+          auto: 'Auto',
+          browser: 'Browser fetch',
+          obsidian: 'Obsidian requestUrl',
+        },
         description:
-          'Use Obsidian requestUrl to bypass CORS restrictions. Streaming responses will be buffered.',
+          'Auto: try browser fetch first and fallback to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses.',
       },
     ],
   },
@@ -175,7 +194,8 @@ export const PROVIDER_TYPES_INFO = {
     additionalSettings: {
       label: string
       key: string
-      type: 'text' | 'toggle'
+      type: 'text' | 'toggle' | 'select'
+      options?: Record<string, string>
       placeholder?: string
       description?: string
       required?: boolean

@@ -312,6 +312,11 @@ export type TranslationKeys = {
       noStainlessHeadersDesc: string
       useObsidianRequestUrl: string
       useObsidianRequestUrlDesc: string
+      requestTransportMode: string
+      requestTransportModeDesc: string
+      requestTransportModeAuto: string
+      requestTransportModeBrowser: string
+      requestTransportModeObsidian: string
       customHeaders: string
       customHeadersDesc: string
       customHeadersAdd: string

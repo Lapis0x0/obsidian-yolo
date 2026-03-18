@@ -12,7 +12,7 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
@@ -23,6 +23,11 @@ import { LLMBaseUrlNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { applyOpenAICompatibleCapabilities } from './openaiCompatibleCapabilities'
+import {
+  resolveRequestTransportMode,
+  runWithRequestTransportForStream,
+  runWithRequestTransport,
+} from './requestTransport'
 
 type GeminiThinkingConfig = {
   thinking_budget: number
@@ -50,23 +55,33 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
   Extract<LLMProvider, { type: 'openai-compatible' }>
 > {
   private adapter: OpenAIMessageAdapter
-  private client: OpenAI
+  private browserClient: OpenAI
+  private obsidianClient: OpenAI
+  private requestTransportMode: RequestTransportMode
 
   constructor(provider: Extract<LLMProvider, { type: 'openai-compatible' }>) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
-    const useObsidianRequestUrl =
-      provider.additionalSettings?.useObsidianRequestUrl
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: !!provider.baseUrl,
+    })
+    const ClientCtor = provider.additionalSettings?.noStainless
+      ? NoStainlessOpenAI
+      : OpenAI
     // Prefer standard OpenAI SDK; allow opting into NoStainless to bypass headers/validation when needed
-    this.client = new (
-      provider.additionalSettings?.noStainless ? NoStainlessOpenAI : OpenAI
-    )({
+    const clientOptions = {
       apiKey: provider.apiKey ?? '',
       baseURL: provider.baseUrl ? provider.baseUrl?.replace(/\/+$/, '') : '',
       dangerouslyAllowBrowser: true,
-      fetch: useObsidianRequestUrl ? createObsidianFetch() : undefined,
+      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
       defaultHeaders,
+    }
+    this.browserClient = new ClientCtor(clientOptions)
+    this.obsidianClient = new ClientCtor({
+      ...clientOptions,
+      fetch: createObsidianFetch(),
     })
   }
 
@@ -157,7 +172,21 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
       }
     }
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
-    return this.adapter.generateResponse(this.client, formattedRequest, options)
+    return runWithRequestTransport({
+      mode: this.requestTransportMode,
+      runBrowser: () =>
+        this.adapter.generateResponse(
+          this.browserClient,
+          formattedRequest,
+          options,
+        ),
+      runObsidian: () =>
+        this.adapter.generateResponse(
+          this.obsidianClient,
+          formattedRequest,
+          options,
+        ),
+    })
   }
 
   async streamResponse(
@@ -246,14 +275,38 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
       }
     }
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
-    return this.adapter.streamResponse(this.client, formattedRequest, options)
+    return runWithRequestTransportForStream({
+      mode: this.requestTransportMode,
+      createBrowserStream: () =>
+        this.adapter.streamResponse(
+          this.browserClient,
+          formattedRequest,
+          options,
+        ),
+      createObsidianStream: () =>
+        this.adapter.streamResponse(
+          this.obsidianClient,
+          formattedRequest,
+          options,
+        ),
+    })
   }
 
   async getEmbedding(model: string, text: string): Promise<number[]> {
-    const embedding = await this.client.embeddings.create({
-      model: model,
-      input: text,
-      encoding_format: 'float',
+    const embedding = await runWithRequestTransport({
+      mode: this.requestTransportMode,
+      runBrowser: () =>
+        this.browserClient.embeddings.create({
+          model: model,
+          input: text,
+          encoding_format: 'float',
+        }),
+      runObsidian: () =>
+        this.obsidianClient.embeddings.create({
+          model: model,
+          input: text,
+          encoding_format: 'float',
+        }),
     })
     return extractEmbeddingVector(embedding)
   }
