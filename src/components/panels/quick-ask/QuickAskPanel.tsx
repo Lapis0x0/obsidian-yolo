@@ -469,6 +469,22 @@ export function QuickAskPanel({
     return t('quickAsk.statusModifying', 'Modifying...')
   }, [runStatus, t])
 
+  const hasStreamingAssistantPlaceholder = useMemo(
+    () =>
+      chatMessages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.generationState === 'streaming',
+      ),
+    [chatMessages],
+  )
+
+  const shouldShowInlineRunStatus =
+    isStreaming &&
+    !!runStatusLabel &&
+    ((executionMode !== 'agent' && executionMode !== 'chat') ||
+      !hasStreamingAssistantPlaceholder)
+
   const noop = useCallback(() => {}, [])
   const noopSetMentionables = useCallback((_items: Mentionable[]) => {}, [])
 
@@ -1962,7 +1978,7 @@ export function QuickAskPanel({
               {t('quickAsk.inputPlaceholder', 'Ask a question...')}
             </div>
           )}
-          {isStreaming && runStatusLabel && (
+          {shouldShowInlineRunStatus && (
             <div className="smtcmp-quick-ask-run-status" aria-live="polite">
               <span
                 className="smtcmp-quick-ask-run-status-dot"
