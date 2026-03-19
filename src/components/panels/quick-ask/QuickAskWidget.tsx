@@ -177,8 +177,7 @@ export class QuickAskOverlay {
   }
 
   private mountOverlay() {
-    // 将浮层挂载到编辑器 DOM 内部，使其层级/裁剪行为更接近正文内容，避免遮挡标题栏
-    const overlayHost = this.options.view.dom ?? document.body
+    const overlayHost = this.resolveOverlayHost()
     this.overlayHost = overlayHost
 
     const overlayRoot = QuickAskOverlay.getOverlayRoot(overlayHost)
@@ -262,6 +261,65 @@ export class QuickAskOverlay {
     )
     if (scrollDom) this.resizeObserver.observe(scrollDom)
     this.resizeObserver.observe(overlayContainer)
+  }
+
+  private resolveOverlayHost(): HTMLElement {
+    const viewDom = this.options.view.dom
+    if (!viewDom) {
+      return document.body
+    }
+
+    const workspaceRoot =
+      viewDom.closest('.workspace') ?? viewDom.closest('.app-container')
+    if (workspaceRoot instanceof HTMLElement) {
+      return workspaceRoot
+    }
+
+    const leafContent = viewDom.closest('.workspace-leaf-content')
+    if (leafContent instanceof HTMLElement) {
+      return leafContent
+    }
+
+    const workspaceLeaf = viewDom.closest('.workspace-leaf')
+    if (workspaceLeaf instanceof HTMLElement) {
+      return workspaceLeaf
+    }
+
+    return viewDom
+  }
+
+  private getMinimumTopOffset(margin: number): number {
+    return margin
+  }
+
+  private getDockReferenceRect(): DOMRect {
+    const viewDom = this.options.view.dom
+    const leafContent = viewDom?.closest('.workspace-leaf-content')
+    if (leafContent instanceof HTMLElement) {
+      return leafContent.getBoundingClientRect()
+    }
+
+    const scrollRect = this.options.view.scrollDOM?.getBoundingClientRect()
+    if (scrollRect) {
+      return scrollRect
+    }
+
+    const viewRect = viewDom?.getBoundingClientRect()
+    if (viewRect) {
+      return viewRect
+    }
+
+    return (
+      this.overlayHost?.getBoundingClientRect() ??
+      document.body.getBoundingClientRect()
+    )
+  }
+
+  private getPanelHeight(): number | null {
+    const rect = this.containerRef.current?.getBoundingClientRect()
+    if (!rect || !Number.isFinite(rect.height)) return null
+    if (rect.height <= 0) return null
+    return rect.height
   }
 
   private setupGlobalListeners() {
@@ -424,6 +482,20 @@ export class QuickAskOverlay {
       Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
 
     const panelHeight = this.resizeSize?.height
+    const measuredHeight = this.getPanelHeight()
+    const minTop = this.getMinimumTopOffset(margin)
+    const minLeft = margin
+    const maxLeft = Math.max(minLeft, hostRect.width - margin - panelWidth)
+    const effectiveHeight = panelHeight ?? measuredHeight ?? 0
+    const maxTop = Math.max(minTop, hostRect.height - margin - effectiveHeight)
+    const nextLeft = Math.min(
+      maxLeft,
+      Math.max(minLeft, Math.round(this.dragPosition.x - hostRect.left)),
+    )
+    const nextTop = Math.min(
+      maxTop,
+      Math.max(minTop, Math.round(this.dragPosition.y - hostRect.top)),
+    )
 
     updateDynamicStyleClass(
       this.overlayContainer,
@@ -431,8 +503,8 @@ export class QuickAskOverlay {
       {
         width: panelWidth,
         ...(panelHeight ? { height: panelHeight } : {}),
-        left: Math.round(this.dragPosition.x - hostRect.left),
-        top: Math.round(this.dragPosition.y - hostRect.top),
+        left: nextLeft,
+        top: nextTop,
       },
     )
   }
@@ -445,6 +517,7 @@ export class QuickAskOverlay {
     const hostRect =
       this.overlayHost?.getBoundingClientRect() ??
       document.body.getBoundingClientRect()
+    const dockRect = this.getDockReferenceRect()
 
     const measuredWidth = this.getPanelWidth()
 
@@ -471,8 +544,14 @@ export class QuickAskOverlay {
       measuredWidth ??
       Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
 
-    const left = hostRect.right - margin - panelWidth
-    const top = hostRect.top + margin
+    const left = Math.min(
+      dockRect.right - margin - panelWidth,
+      hostRect.right - margin - panelWidth,
+    )
+    const top = Math.max(
+      hostRect.top + this.getMinimumTopOffset(margin),
+      dockRect.top + margin,
+    )
 
     this.dragPosition = { x: left, y: top }
     this.updateDragPosition()
