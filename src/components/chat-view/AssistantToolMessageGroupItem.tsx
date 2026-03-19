@@ -16,6 +16,12 @@ export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
   conversationId: string
   suppressFooter?: boolean
+  showInlineInfo?: boolean
+  showInsertAction?: boolean
+  showCopyAction?: boolean
+  showBranchAction?: boolean
+  showEditAction?: boolean
+  showDeleteAction?: boolean
   isApplying: boolean // TODO: isApplying should be a boolean for each assistant message
   activeApplyRequestKey: string | null
   onApply: (
@@ -36,6 +42,12 @@ export default function AssistantToolMessageGroupItem({
   messages,
   conversationId,
   suppressFooter = false,
+  showInlineInfo = true,
+  showInsertAction = true,
+  showCopyAction = true,
+  showBranchAction = true,
+  showEditAction = true,
+  showDeleteAction = true,
   isApplying,
   activeApplyRequestKey,
   onApply,
@@ -137,9 +149,14 @@ export default function AssistantToolMessageGroupItem({
         !isStreaming &&
         !suppressFooter && (
           <div className="smtcmp-assistant-message-footer">
-            <LLMResponseInlineInfo messages={messages} />
+            {showInlineInfo && <LLMResponseInlineInfo messages={messages} />}
             <AssistantToolMessageGroupActions
               messages={messages}
+              showInsert={showInsertAction}
+              showCopy={showCopyAction}
+              showBranch={showBranchAction}
+              showEdit={showEditAction}
+              showDelete={showDeleteAction}
               onBranch={
                 !isStreaming
                   ? () => {
