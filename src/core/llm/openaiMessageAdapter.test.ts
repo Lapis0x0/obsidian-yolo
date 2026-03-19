@@ -1,7 +1,11 @@
 import { LLMRequestNonStreaming, RequestMessage } from '../../types/llm/request'
+import {
+  createCompleteToolCallArguments,
+  createPartialToolCallArguments,
+} from '../../types/tool-call.types'
 
-import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
+import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 class TestableOpenAIMessageAdapter extends OpenAIMessageAdapter {
   public parseRequestMessageForTest(message: RequestMessage) {
@@ -22,8 +26,9 @@ class TestableDeepSeekMessageAdapter extends DeepSeekMessageAdapter {
 }
 
 describe('OpenAIMessageAdapter', () => {
-  it('normalizes malformed assistant tool arguments to an empty object', () => {
+  it('passes partial assistant tool arguments through unchanged', () => {
     const adapter = new TestableOpenAIMessageAdapter()
+    const partialArguments = '{"path":"note.md","newText":"He said \\"ok\\""}'
     const message: RequestMessage = {
       role: 'assistant',
       content: '',
@@ -31,7 +36,7 @@ describe('OpenAIMessageAdapter', () => {
         {
           id: 'toolu_123',
           name: 'yolo_local__fs_edit',
-          arguments: '{"path":"note.md","newText":"He said "ok""}',
+          arguments: createPartialToolCallArguments(partialArguments),
         },
       ],
     }
@@ -42,7 +47,7 @@ describe('OpenAIMessageAdapter', () => {
       throw new Error('Expected assistant tool calls in parsed message')
     }
 
-    expect(parsed.tool_calls[0].function.arguments).toBe('{}')
+    expect(parsed.tool_calls[0].function.arguments).toBe(partialArguments)
   })
 
   it('keeps valid assistant tool arguments as JSON object text', () => {
@@ -54,8 +59,18 @@ describe('OpenAIMessageAdapter', () => {
         {
           id: 'toolu_456',
           name: 'yolo_local__fs_edit',
-          arguments:
-            '{"path":"note.md","operations":[{"type":"replace","oldText":"foo","newText":"bar"}]}',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'note.md',
+              operations: [
+                {
+                  type: 'replace',
+                  oldText: 'foo',
+                  newText: 'bar',
+                },
+              ],
+            },
+          }),
         },
       ],
     }
@@ -102,7 +117,7 @@ describe('OpenAIMessageAdapter', () => {
         {
           id: 'toolu_789',
           name: 'yolo_local__fs_edit',
-          arguments: '{}',
+          arguments: createCompleteToolCallArguments({ value: {} }),
         },
       ],
     }
@@ -124,7 +139,7 @@ describe('OpenAIMessageAdapter', () => {
         {
           id: 'toolu_999',
           name: 'yolo_local__fs_edit',
-          arguments: '{}',
+          arguments: createCompleteToolCallArguments({ value: {} }),
         },
       ],
     }

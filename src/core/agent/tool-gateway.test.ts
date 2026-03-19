@@ -1,9 +1,14 @@
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import {
+  ToolCallResponseStatus,
+  createCompleteToolCallArguments,
+} from '../../types/tool-call.types'
 import { McpManager } from '../mcp/mcpManager'
 
 import { AgentToolGateway } from './tool-gateway'
 
 describe('AgentToolGateway', () => {
+  const emptyArgs = createCompleteToolCallArguments({ value: {} })
+
   it('auto executes tools with full access', () => {
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),
@@ -21,7 +26,7 @@ describe('AgentToolGateway', () => {
 
     const message = gateway.createToolMessage({
       toolCallRequests: [
-        { id: 'tool-1', name: 'server__tool_a', arguments: '{}' },
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
       ],
       conversationId: 'conv-1',
     })
@@ -32,7 +37,7 @@ describe('AgentToolGateway', () => {
     expect(mcpManager.isToolExecutionAllowed).toHaveBeenCalledWith({
       requestToolName: 'server__tool_a',
       conversationId: 'conv-1',
-      requestArgs: '{}',
+      requestArgs: {},
       requireAutoExecution: true,
     })
   })
@@ -54,7 +59,7 @@ describe('AgentToolGateway', () => {
 
     const message = gateway.createToolMessage({
       toolCallRequests: [
-        { id: 'tool-1', name: 'server__tool_a', arguments: '{}' },
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
       ],
       conversationId: 'conv-1',
     })
@@ -65,7 +70,7 @@ describe('AgentToolGateway', () => {
     expect(mcpManager.isToolExecutionAllowed).toHaveBeenCalledWith({
       requestToolName: 'server__tool_a',
       conversationId: 'conv-1',
-      requestArgs: '{}',
+      requestArgs: {},
       requireAutoExecution: false,
     })
   })
@@ -87,7 +92,7 @@ describe('AgentToolGateway', () => {
 
     const message = gateway.createToolMessage({
       toolCallRequests: [
-        { id: 'tool-1', name: 'server__tool_a', arguments: '{}' },
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
       ],
       conversationId: 'conv-1',
     })
@@ -118,7 +123,7 @@ describe('AgentToolGateway', () => {
 
     const message = gateway.createToolMessage({
       toolCallRequests: [
-        { id: 'tool-1', name: 'yolo_local__fs_edit', arguments: '{}' },
+        { id: 'tool-1', name: 'yolo_local__fs_edit', arguments: emptyArgs },
       ],
       conversationId: 'conv-1',
     })
@@ -131,7 +136,7 @@ describe('AgentToolGateway', () => {
 
     expect(mcpManager.callTool).toHaveBeenCalledWith({
       name: 'yolo_local__fs_edit',
-      args: '{}',
+      args: {},
       id: 'tool-1',
       requireReview: true,
       signal: undefined,

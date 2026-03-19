@@ -25,6 +25,10 @@ import {
   ToolCallDelta,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import {
+  type ToolCallArguments,
+  getToolCallArgumentsObject,
+} from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
@@ -518,7 +522,7 @@ export class GeminiProvider extends BaseLLMProvider<
   private static mapToolCallRequestToPart(toolCall: {
     id: string
     name: string
-    arguments?: string
+    arguments?: ToolCallArguments
     metadata?: {
       thoughtSignature?: string
     }
@@ -527,7 +531,7 @@ export class GeminiProvider extends BaseLLMProvider<
       functionCall: {
         id: toolCall.id,
         name: toolCall.name,
-        args: GeminiProvider.safeParseJsonObject(toolCall.arguments ?? '{}'),
+        args: getToolCallArgumentsObject(toolCall.arguments) ?? {},
       },
     }
 
@@ -610,18 +614,6 @@ export class GeminiProvider extends BaseLLMProvider<
     content: GeminiContent | null,
   ): content is GeminiContent {
     return content !== null
-  }
-
-  private static safeParseJsonObject(raw: string): Record<string, unknown> {
-    try {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') {
-        return parsed as Record<string, unknown>
-      }
-    } catch {
-      // swallow parse errors and fallback to empty object
-    }
-    return {}
   }
 
   private static mapFunctionCall(

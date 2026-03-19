@@ -1,15 +1,17 @@
 import { v4 as uuidv4 } from 'uuid'
 
-import { ChatToolMessage } from '../../types/chat'
 import { AssistantToolPreference } from '../../types/assistant.types'
+import { ChatToolMessage } from '../../types/chat'
 import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallRequest,
   ToolCallResponseStatus,
+  getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+
 import {
   getAssistantToolApprovalMode,
   isAssistantToolEnabled,
@@ -90,7 +92,7 @@ export class AgentToolGateway {
       runnableIndexes.map(({ toolCall }) =>
         this.mcpManager.callTool({
           name: toolCall.request.name,
-          args: toolCall.request.arguments,
+          args: getToolCallArgumentsObject(toolCall.request.arguments),
           id: toolCall.request.id,
           requireReview: this.shouldUseFsEditReview(toolCall.request.name),
           signal,
@@ -156,7 +158,7 @@ export class AgentToolGateway {
     return this.mcpManager.isToolExecutionAllowed({
       requestToolName: request.name,
       conversationId,
-      requestArgs: request.arguments,
+      requestArgs: getToolCallArgumentsObject(request.arguments),
       requireAutoExecution:
         getAssistantToolApprovalMode(
           {
@@ -249,29 +251,6 @@ export class AgentToolGateway {
     }
   }
 
-  private parseToolArguments(
-    args?: Record<string, unknown> | string,
-  ): Record<string, unknown> {
-    if (!args) {
-      return {}
-    }
-    if (typeof args === 'string') {
-      if (args.trim().length === 0) {
-        return {}
-      }
-      try {
-        const parsed = JSON.parse(args)
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          return parsed as Record<string, unknown>
-        }
-      } catch {
-        return {}
-      }
-      return {}
-    }
-    return args
-  }
-
   private isSkillPermissionAllowed(request: ToolCallRequest): boolean {
     try {
       const parsed = parseToolName(request.name)
@@ -286,7 +265,7 @@ export class AgentToolGateway {
         return false
       }
 
-      const args = this.parseToolArguments(request.arguments)
+      const args = getToolCallArgumentsObject(request.arguments) ?? {}
       const id = typeof args.id === 'string' ? args.id.trim().toLowerCase() : ''
       const name =
         typeof args.name === 'string' ? args.name.trim().toLowerCase() : ''

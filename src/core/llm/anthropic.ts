@@ -28,6 +28,7 @@ import {
   ToolCall,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import { getToolCallArgumentsObject } from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
@@ -40,8 +41,8 @@ import {
 import {
   createRequestTransportMemoryKey,
   resolveRequestTransportMode,
-  runWithRequestTransportForStream,
   runWithRequestTransport,
+  runWithRequestTransportForStream,
 } from './requestTransport'
 
 export class AnthropicProvider extends BaseLLMProvider<
@@ -412,22 +413,11 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       case 'assistant': {
         const anthropicToolCalls = message.tool_calls?.map(
           (toolCall): ContentBlockParam => {
-            const parsedArgs = (() => {
-              if (toolCall.arguments && toolCall.arguments.length > 0) {
-                try {
-                  return JSON.parse(toolCall.arguments) as unknown
-                } catch {
-                  return {}
-                }
-              }
-              return {}
-            })()
-
             return {
               type: 'tool_use' as const,
               id: toolCall.id,
               name: toolCall.name,
-              input: parsedArgs,
+              input: getToolCallArgumentsObject(toolCall.arguments) ?? {},
             }
           },
         )

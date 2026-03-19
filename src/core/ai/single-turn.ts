@@ -8,9 +8,12 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import {
-  extractTopLevelJsonObjects,
+  type ToolCallArguments,
+  getToolCallArgumentsObject,
+} from '../../types/tool-call.types'
+import {
+  createToolCallArguments,
   mergeStreamingToolArguments,
-  parseJsonObjectText,
 } from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
@@ -24,11 +27,24 @@ export type SingleTurnExecutionResult = {
   toolCalls: {
     id?: string
     name: string
-    arguments?: string
+    arguments?: ToolCallArguments
     metadata?: {
       thoughtSignature?: string
     }
   }[]
+}
+
+type StreamedToolCall = {
+  index: number
+  id?: string
+  type?: 'function'
+  metadata?: {
+    thoughtSignature?: string
+  }
+  function?: {
+    name?: string
+    arguments?: ToolCallArguments
+  }
 }
 
 type SingleTurnExecutionInput = {
@@ -47,7 +63,7 @@ type SingleTurnExecutionInput = {
     contentDelta: string
     reasoningDelta: string
     chunk: LLMResponseStreaming
-    toolCalls?: ToolCallDelta[]
+    toolCalls?: StreamedToolCall[]
   }) => void
 }
 
@@ -162,29 +178,6 @@ const isValidWriteToolArguments = ({
   return true
 }
 
-const normalizeToolArguments = (rawArguments?: string): string | undefined => {
-  if (!rawArguments) {
-    return undefined
-  }
-
-  const trimmed = rawArguments.trim()
-  if (trimmed.length === 0) {
-    return undefined
-  }
-
-  const parsed = parseJsonObjectText(trimmed)
-  if (parsed) {
-    return JSON.stringify(parsed)
-  }
-
-  const recoveredObjects = extractTopLevelJsonObjects(trimmed)
-  if (recoveredObjects.length > 0) {
-    return JSON.stringify(recoveredObjects[recoveredObjects.length - 1])
-  }
-
-  return rawArguments
-}
-
 const hasInvalidWriteToolArguments = (
   toolCalls: SingleTurnExecutionResult['toolCalls'],
 ): boolean => {
@@ -192,10 +185,7 @@ const hasInvalidWriteToolArguments = (
     if (!isLocalFsWriteToolName(toolCall.name)) {
       return false
     }
-    if (!toolCall.arguments) {
-      return true
-    }
-    const parsed = parseJsonObjectText(toolCall.arguments)
+    const parsed = getToolCallArgumentsObject(toolCall.arguments)
     if (!parsed) {
       return true
     }
@@ -248,7 +238,7 @@ export async function executeSingleTurn({
             return {
               id: toolCall.id,
               name,
-              arguments: normalizeToolArguments(toolCall.function?.arguments),
+              arguments: createToolCallArguments(toolCall.function?.arguments),
               metadata: toolCall.metadata,
             }
           })
@@ -274,7 +264,7 @@ export async function executeSingleTurn({
   let annotations: Annotation[] | undefined
   let usage: ResponseUsage | undefined
   let finishReason: string | null = null
-  let streamedToolCalls: Record<number, ToolCallDelta> = {}
+  let streamedToolCalls: Record<number, StreamedToolCall> = {}
 
   const clearTimeoutId = () => {
     if (timeoutId) {
@@ -362,7 +352,10 @@ export async function executeSingleTurn({
         return {
           id: toolCall.id,
           name,
-          arguments: normalizeToolArguments(toolCall.function?.arguments),
+          arguments:
+            toolCall.function?.arguments?.kind === 'complete'
+              ? toolCall.function.arguments
+              : undefined,
           metadata: toolCall.metadata,
         }
       })
@@ -419,17 +412,30 @@ export async function executeSingleTurn({
 
 function mergeToolCallDeltas(
   next: ToolCallDelta[],
-  prev: Record<number, ToolCallDelta>,
-): Record<number, ToolCallDelta> {
+  prev: Record<number, StreamedToolCall>,
+): Record<number, StreamedToolCall> {
   const merged = { ...prev }
   for (const toolCall of next) {
     const { index } = toolCall
     if (!merged[index]) {
-      merged[index] = toolCall
+      merged[index] = {
+        index,
+        id: toolCall.id,
+        type: toolCall.type,
+        metadata: toolCall.metadata,
+        function: toolCall.function
+          ? {
+              name: toolCall.function.name,
+              arguments: createToolCallArguments(toolCall.function.arguments, {
+                allowPartial: true,
+              }),
+            }
+          : undefined,
+      }
       continue
     }
 
-    const mergedCall: ToolCallDelta = {
+    const mergedCall: StreamedToolCall = {
       index,
       id: merged[index].id ?? toolCall.id,
       type: merged[index].type ?? toolCall.type,

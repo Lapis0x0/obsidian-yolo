@@ -1,6 +1,9 @@
 import { RequestMessage } from '../../types/llm/request'
+import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
 import { formatMessages } from './request'
+
+const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
 describe('formatMessages', () => {
   it('does not merge consecutive tool messages', () => {
@@ -10,18 +13,18 @@ describe('formatMessages', () => {
         role: 'assistant',
         content: 'calling tools',
         tool_calls: [
-          { id: 'call_1', name: 'toolA', arguments: '{}' },
-          { id: 'call_2', name: 'toolA', arguments: '{}' },
+          { id: 'call_1', name: 'toolA', arguments: emptyArgs },
+          { id: 'call_2', name: 'toolA', arguments: emptyArgs },
         ],
       },
       {
         role: 'tool',
-        tool_call: { id: 'call_1', name: 'toolA', arguments: '{}' },
+        tool_call: { id: 'call_1', name: 'toolA', arguments: emptyArgs },
         content: '{"result":1}',
       },
       {
         role: 'tool',
-        tool_call: { id: 'call_2', name: 'toolA', arguments: '{}' },
+        tool_call: { id: 'call_2', name: 'toolA', arguments: emptyArgs },
         content: '{"result":2}',
       },
     ]

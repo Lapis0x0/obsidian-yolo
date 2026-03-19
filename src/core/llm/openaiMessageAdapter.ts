@@ -22,6 +22,7 @@ import {
   ToolCall,
   ToolCallDelta,
 } from '../../types/llm/response'
+import { getToolCallArgumentsText } from '../../types/tool-call.types'
 
 function hasObjectProperty<T extends object, K extends PropertyKey>(
   value: T,
@@ -121,21 +122,21 @@ function normalizeFunctionArguments(value: unknown): string | undefined {
 }
 
 function normalizeRequestToolCallArguments(value: unknown): string {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'kind' in value &&
+    typeof (value as { kind?: unknown }).kind === 'string'
+  ) {
+    return (
+      getToolCallArgumentsText(
+        value as Parameters<typeof getToolCallArgumentsText>[0],
+      ) ?? '{}'
+    )
+  }
+
   const argumentsText = normalizeFunctionArguments(value)
-  if (!argumentsText || argumentsText.trim().length === 0) {
-    return '{}'
-  }
-
-  try {
-    const parsed = JSON.parse(argumentsText)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return JSON.stringify(parsed)
-    }
-  } catch {
-    // fallback below
-  }
-
-  return '{}'
+  return argumentsText && argumentsText.trim().length > 0 ? argumentsText : '{}'
 }
 
 function normalizeToolCalls(source: unknown): ToolCall[] | undefined {

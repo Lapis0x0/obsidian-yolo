@@ -14,18 +14,15 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
-import {
-  extractTopLevelJsonObjects,
-  parseJsonObjectText,
-} from '../../utils/chat/tool-arguments'
+import {} from '../../utils/chat/tool-arguments'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import {
+  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
 
@@ -67,7 +64,7 @@ export class McpManager {
     requestArgs,
   }: {
     requestToolName: string
-    requestArgs?: Record<string, unknown> | string
+    requestArgs?: Record<string, unknown>
   }): string {
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
@@ -453,7 +450,7 @@ export class McpManager {
   public allowToolForConversation(
     requestToolName: string,
     conversationId: string,
-    requestArgs?: Record<string, unknown> | string,
+    requestArgs?: Record<string, unknown>,
   ): void {
     let allowedTools = this.allowedToolsByConversation.get(conversationId)
     if (!allowedTools) {
@@ -475,7 +472,7 @@ export class McpManager {
   }: {
     requestToolName: string
     conversationId?: string
-    requestArgs?: Record<string, unknown> | string
+    requestArgs?: Record<string, unknown>
     requireAutoExecution?: boolean
   }): boolean {
     try {
@@ -526,7 +523,7 @@ export class McpManager {
     requireReview = false,
   }: {
     name: string
-    args?: Record<string, unknown> | string | undefined
+    args?: Record<string, unknown> | undefined
     id?: string
     signal?: AbortSignal
     requireReview?: boolean
@@ -550,26 +547,7 @@ export class McpManager {
 
     try {
       const { serverName, toolName } = parseToolName(name)
-      const parsedArgs: Record<string, unknown> | undefined =
-        typeof args === 'string'
-          ? (() => {
-              const trimmedArgs = args.trim()
-              if (trimmedArgs.length === 0) {
-                return {}
-              }
-              const directParsed = parseJsonObjectText(trimmedArgs)
-              if (directParsed) {
-                return directParsed
-              }
-
-              const recoveredObjects = extractTopLevelJsonObjects(trimmedArgs)
-              if (recoveredObjects.length === 1) {
-                return recoveredObjects[0]
-              }
-
-              throw new Error(INVALID_TOOL_ARGUMENTS_JSON_ERROR)
-            })()
-          : args
+      const parsedArgs: Record<string, unknown> | undefined = args
 
       if (serverName === getLocalFileToolServerName()) {
         if (!this.isLocalToolEnabled(toolName)) {

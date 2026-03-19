@@ -15,6 +15,8 @@ import {
   ToolCallRequest,
   ToolCallResponse,
   ToolCallResponseStatus,
+  getToolCallArgumentsObject,
+  getToolCallArgumentsText,
 } from '../../types/tool-call.types'
 import { SplitButton } from '../common/SplitButton'
 
@@ -58,7 +60,7 @@ type ToolDisplayInfo = {
 
 type ToolRequestLike = {
   name: string
-  arguments?: string
+  arguments?: ToolCallRequest['arguments']
 }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -210,24 +212,9 @@ const truncateText = (text: string, maxLength: number): string => {
 }
 
 const parseToolArguments = (
-  rawArguments?: string,
+  rawArguments?: ToolCallRequest['arguments'],
 ): Record<string, unknown> | null => {
-  if (!rawArguments) {
-    return null
-  }
-  try {
-    const parsed = JSON.parse(rawArguments) as unknown
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      return null
-    }
-    return parsed as Record<string, unknown>
-  } catch {
-    return null
-  }
+  return getToolCallArgumentsObject(rawArguments) ?? null
 }
 
 const asStringArray = (value: unknown): string[] | null => {
@@ -248,7 +235,7 @@ const getLocalToolSummaryText = ({
 }: {
   toolName: string
   argumentsObject: Record<string, unknown> | null
-  rawArguments?: string
+  rawArguments?: ToolCallRequest['arguments']
   labels: ToolLabels
 }): string | undefined => {
   if (toolName === 'fs_list') {
@@ -290,7 +277,7 @@ const getLocalToolSummaryText = ({
 
   const action = parseLocalFsActionFromToolArgs({
     toolName,
-    args: rawArguments,
+    args: getToolCallArgumentsObject(rawArguments),
   })
   if (action) {
     const actionLabel = labels.writeActionLabels[action] ?? action
@@ -312,7 +299,7 @@ export const getToolDisplayInfo = (
     if (serverName === localServerName) {
       const action = parseLocalFsActionFromToolArgs({
         toolName,
-        args: request.arguments,
+        args: argumentsObject ?? undefined,
       })
       const displayName = action
         ? (labels.writeActionLabels[action] ?? labels.displayNames[toolName])
@@ -377,7 +364,9 @@ export const getToolMessageContent = (
           labels,
         }),
         ...(toolCall.request.arguments
-          ? [`${labels.parameters}: ${toolCall.request.arguments}`]
+          ? [
+              `${labels.parameters}: ${getToolCallArgumentsText(toolCall.request.arguments) ?? ''}`,
+            ]
           : []),
       ].join('\n')
     })
@@ -453,11 +442,13 @@ function ToolCallItem({
     if (!request.arguments) {
       return toolLabels.noParameters
     }
-    try {
-      return JSON.stringify(JSON.parse(request.arguments), null, 2)
-    } catch {
-      return request.arguments
+    const parsed = getToolCallArgumentsObject(request.arguments)
+    if (parsed) {
+      return JSON.stringify(parsed, null, 2)
     }
+    return (
+      getToolCallArgumentsText(request.arguments) ?? toolLabels.noParameters
+    )
   }, [request.arguments, toolLabels.noParameters])
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [isStatusTransitioning, setIsStatusTransitioning] = useState(false)
@@ -667,7 +658,7 @@ function useToolCall(
     })
     const toolCallResponse: ToolCallResponse = await mcpManager.callTool({
       name: request.name,
-      args: request.arguments,
+      args: getToolCallArgumentsObject(request.arguments),
       id: request.id,
     })
     onResponseUpdate(toolCallResponse)
@@ -678,7 +669,7 @@ function useToolCall(
     mcpManager.allowToolForConversation(
       request.name,
       conversationId,
-      request.arguments,
+      getToolCallArgumentsObject(request.arguments),
     )
   }, [request, conversationId, getMcpManager])
 

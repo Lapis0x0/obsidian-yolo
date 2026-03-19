@@ -1,7 +1,7 @@
 import { ChatModel } from '../../types/chat-model.types'
 import {
-  LLMRequestBase,
   LLMOptions,
+  LLMRequestBase,
   LLMRequestNonStreaming,
   LLMRequestStreaming,
 } from '../../types/llm/request'
@@ -10,6 +10,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 import { BaseLLMProvider } from '../llm/base'
 
 import { executeSingleTurn } from './single-turn'
@@ -63,6 +64,9 @@ const TEST_REQUEST: LLMRequestBase = {
   model: TEST_MODEL.model,
   messages: [{ role: 'user', content: 'hi' }],
 }
+
+const completeArgs = (value: Record<string, unknown>, rawText: string) =>
+  createCompleteToolCallArguments({ value, rawText })
 
 async function* toAsyncIterable(
   chunks: LLMResponseStreaming[],
@@ -150,7 +154,10 @@ describe('executeSingleTurn', () => {
       {
         id: 'tool-1',
         name: 'yolo_local__fs_move',
-        arguments: '{"oldPath":"a.md","newPath":"b.md"}',
+        arguments: completeArgs(
+          { oldPath: 'a.md', newPath: 'b.md' },
+          '{"oldPath":"a.md","newPath":"b.md"}',
+        ),
         metadata: undefined,
       },
     ])
@@ -266,8 +273,13 @@ describe('executeSingleTurn', () => {
       {
         id: 'tool-valid',
         name: 'yolo_local__fs_edit',
-        arguments:
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operations: [{ type: 'append', content: 'ok' }],
+          },
           '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+        ),
         metadata: undefined,
       },
     ])
@@ -352,8 +364,13 @@ describe('executeSingleTurn', () => {
       {
         id: 'tool-valid-2',
         name: 'yolo_local__fs_edit',
-        arguments:
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operations: [{ type: 'append', content: 'ok' }],
+          },
           '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+        ),
         metadata: undefined,
       },
     ])
@@ -492,8 +509,13 @@ describe('executeSingleTurn', () => {
       {
         id: 'tool-valid-3',
         name: 'yolo_local__fs_edit',
-        arguments:
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operations: [{ type: 'append', content: 'ok' }],
+          },
           '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+        ),
         metadata: undefined,
       },
     ])
