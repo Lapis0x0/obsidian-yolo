@@ -18,7 +18,14 @@ import {
   X,
 } from 'lucide-react'
 import { Component, Editor, MarkdownRenderer, Notice } from 'obsidian'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
 import { useApp } from '../../../contexts/app-context'
@@ -214,6 +221,7 @@ function createPlainTextEditorState(text: string): SerializedEditorState {
 function SimpleMarkdownContent({
   content,
   component,
+  scale = 'sm',
 }: {
   content: string
   component: Component
@@ -238,7 +246,7 @@ function SimpleMarkdownContent({
   return (
     <div
       ref={containerRef}
-      className="markdown-rendered smtcmp-markdown-rendered"
+      className={`markdown-rendered smtcmp-markdown-rendered smtcmp-scale-${scale}`}
     />
   )
 }
@@ -373,6 +381,7 @@ export function QuickAskPanel({
     width: number
     height: number
   } | null>(null)
+  const compactMinHeightRef = useRef<number | null>(null)
   const selectionMentionable = activeSelectionScope?.mentionable ?? null
   const selectionEditContextText =
     activeSelectionScope?.mentionable.content ?? editContextText ?? ''
@@ -388,6 +397,22 @@ export function QuickAskPanel({
     },
     [selectionEditContextText],
   )
+
+  useLayoutEffect(() => {
+    if (
+      chatMessages.length > 0 ||
+      panelSize?.height ||
+      !containerRef?.current
+    ) {
+      return
+    }
+
+    const rect = containerRef.current.getBoundingClientRect()
+    if (!Number.isFinite(rect.height) || rect.height <= 0) return
+
+    compactMinHeightRef.current = rect.height
+  }, [chatMessages.length, containerRef, panelSize?.height])
+
   const resolveEditTargetFile = useCallback(() => {
     if (sourceFilePath) {
       return app.vault.getFileByPath(sourceFilePath)
@@ -1541,6 +1566,7 @@ export function QuickAskPanel({
 
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
+  const isResizedEmptyState = !hasMessages && !!panelSize?.height
   const lastAssistantMessageId = useMemo(
     () => [...chatMessages].reverse().find((m) => m.role === 'assistant')?.id,
     [chatMessages],
@@ -1643,6 +1669,9 @@ export function QuickAskPanel({
       let newHeight = resizeStartRef.current.height
       let newX = resizeStartRef.current.panelX
       const newY = resizeStartRef.current.panelY
+      const minHeight = hasMessages
+        ? 200
+        : (compactMinHeightRef.current ?? resizeStartRef.current.height)
 
       if (
         resizeStartRef.current.direction === 'right' ||
@@ -1661,10 +1690,10 @@ export function QuickAskPanel({
         resizeStartRef.current.direction === 'bottom' ||
         resizeStartRef.current.direction === 'bottom-right'
       ) {
-        newHeight = Math.max(200, resizeStartRef.current.height + deltaY)
+        newHeight = Math.max(minHeight, resizeStartRef.current.height + deltaY)
       }
       if (resizeStartRef.current.direction === 'bottom-left') {
-        newHeight = Math.max(200, resizeStartRef.current.height + deltaY)
+        newHeight = Math.max(minHeight, resizeStartRef.current.height + deltaY)
       }
 
       setPanelSize({ width: newWidth, height: newHeight })
@@ -1699,7 +1728,7 @@ export function QuickAskPanel({
         '--smtcmp-quick-ask-global-user-select': '',
       })
     }
-  }, [isResizing, containerRef, onResize])
+  }, [hasMessages, isResizing, containerRef, onDragOffset, onResize])
 
   // Drag handle mouse down
   const handleDragStart = useCallback(
@@ -1744,7 +1773,7 @@ export function QuickAskPanel({
 
   return (
     <div
-      className={`smtcmp-quick-ask-panel ${hasMessages ? 'has-messages' : ''} ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
+      className={`smtcmp-quick-ask-panel ${hasMessages ? 'has-messages' : ''} ${isResizedEmptyState ? 'is-resized-empty' : ''} ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
       ref={containerRef ?? undefined}
       style={
         panelSize
