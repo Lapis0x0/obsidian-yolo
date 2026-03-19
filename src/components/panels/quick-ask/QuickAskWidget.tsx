@@ -10,7 +10,10 @@ import { PluginProvider } from '../../../contexts/plugin-context'
 import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
 import SmartComposerPlugin from '../../../main'
-import type { QuickAskSelectionScope } from '../../../features/editor/quick-ask/quickAsk.types'
+import type {
+  QuickAskLaunchMode,
+  QuickAskSelectionScope,
+} from '../../../features/editor/quick-ask/quickAsk.types'
 import type { Mentionable } from '../../../types/mentionable'
 import {
   clearDynamicStyleClass,
@@ -54,7 +57,7 @@ export class QuickAskOverlay {
       sourceFilePath?: string
       initialPrompt?: string
       initialMentionables?: Mentionable[]
-      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialMode?: QuickAskLaunchMode
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }

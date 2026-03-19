@@ -384,8 +384,10 @@ export const smartComposerSettingsSchema = z.object({
       enableQuickAsk: z.boolean().optional(),
       // trigger character for quick ask (default: @)
       quickAskTrigger: z.string().optional(),
-      // quick ask mode: 'ask' for Q&A, 'edit' for document editing with preview, 'edit-direct' for direct editing
-      quickAskMode: z.enum(['ask', 'edit', 'edit-direct']).optional(),
+      // quick ask mode: support legacy ask/edit values and current chat/agent values
+      quickAskMode: z
+        .enum(['ask', 'edit', 'edit-direct', 'chat', 'agent'])
+        .optional(),
       // auto dock quick ask to editor top right after sending
       quickAskAutoDockToTopRight: z.boolean().optional(),
       // quick ask context chars before cursor
@@ -423,7 +425,7 @@ export const smartComposerSettingsSchema = z.object({
       smartSpaceUseUrlContext: false,
       enableQuickAsk: true,
       quickAskTrigger: '@',
-      quickAskMode: 'ask',
+      quickAskMode: 'chat',
       quickAskAutoDockToTopRight: true,
       quickAskContextBeforeChars: 5000,
       quickAskContextAfterChars: 2000,

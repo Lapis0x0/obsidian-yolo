@@ -21,6 +21,7 @@ import type {
 } from '../../../types/mentionable'
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
+import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -41,7 +42,7 @@ type SelectionChatControllerDeps = {
     options: {
       initialPrompt?: string
       initialMentionables?: Mentionable[]
-      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialMode?: QuickAskLaunchMode
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
@@ -82,7 +83,7 @@ export class SelectionChatController {
     options: {
       initialPrompt?: string
       initialMentionables?: Mentionable[]
-      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialMode?: QuickAskLaunchMode
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
@@ -345,7 +346,7 @@ export class SelectionChatController {
     }
 
     this.showQuickAskWithOptions(editor, editorView, {
-      initialMode: 'ask',
+      initialMode: 'chat',
       initialMentionables: [mentionable],
       selectionScope: this.createSelectionScope(mentionable, editor),
     })

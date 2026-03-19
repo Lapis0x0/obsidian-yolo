@@ -2,18 +2,17 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   ChevronDown,
   ChevronUp,
+  Infinity as InfinityIcon,
   MessageSquare,
-  Pencil,
-  Zap,
 } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 
-export type QuickAskMode = 'ask' | 'edit' | 'edit-direct'
+export type QuickAskMode = 'chat' | 'agent'
 
 const isQuickAskMode = (value: string): value is QuickAskMode =>
-  value === 'ask' || value === 'edit' || value === 'edit-direct'
+  value === 'chat' || value === 'agent'
 
 type ModeOption = {
   value: QuickAskMode
@@ -26,28 +25,20 @@ type ModeOption = {
 
 const MODE_OPTIONS: ModeOption[] = [
   {
-    value: 'ask',
-    labelKey: 'quickAsk.modeAsk',
-    labelFallback: 'Ask',
-    descKey: 'quickAsk.modeAskDesc',
-    descFallback: 'Ask questions and get answers',
+    value: 'chat',
+    labelKey: 'chatMode.chat',
+    labelFallback: 'Chat',
+    descKey: 'chatMode.chatDesc',
+    descFallback: 'Normal conversation mode',
     icon: <MessageSquare size={14} />,
   },
   {
-    value: 'edit',
-    labelKey: 'quickAsk.modeEdit',
-    labelFallback: 'Edit',
-    descKey: 'quickAsk.modeEditDesc',
-    descFallback: 'Edit the current document',
-    icon: <Pencil size={14} />,
-  },
-  {
-    value: 'edit-direct',
-    labelKey: 'quickAsk.modeEditDirect',
-    labelFallback: 'Edit (Full Access)',
-    descKey: 'quickAsk.modeEditDirectDesc',
-    descFallback: 'Edit document directly without confirmation',
-    icon: <Zap size={14} />,
+    value: 'agent',
+    labelKey: 'chatMode.agent',
+    labelFallback: 'Agent',
+    descKey: 'chatMode.agentDesc',
+    descFallback: 'Enable tool calling capabilities',
+    icon: <InfinityIcon size={14} />,
   },
 ]
 
@@ -88,9 +79,8 @@ export const ModeSelect = forwardRef<
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
     const itemRefs = useRef<Record<QuickAskMode, HTMLDivElement | null>>({
-      ask: null,
-      edit: null,
-      'edit-direct': null,
+      chat: null,
+      agent: null,
     })
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
@@ -118,7 +108,7 @@ export const ModeSelect = forwardRef<
 
     const focusByDelta = useCallback(
       (delta: number) => {
-        const values: QuickAskMode[] = ['ask', 'edit', 'edit-direct']
+        const values: QuickAskMode[] = ['chat', 'agent']
         const currentIndex = values.indexOf(mode)
         const nextIndex = (currentIndex + delta + values.length) % values.length
         const nextValue = values[nextIndex]
@@ -186,8 +176,8 @@ export const ModeSelect = forwardRef<
           <div className="smtcmp-mode-select__icon">{currentOption?.icon}</div>
           <div className="smtcmp-chat-input-model-select__model-name">
             {t(
-              currentOption?.labelKey ?? 'quickAsk.modeAsk',
-              currentOption?.labelFallback ?? 'Ask',
+              currentOption?.labelKey ?? 'chatMode.chat',
+              currentOption?.labelFallback ?? 'Chat',
             )}
           </div>
           <div className="smtcmp-chat-input-model-select__icon">

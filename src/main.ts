@@ -33,6 +33,7 @@ import { QuickAskController } from './features/editor/quick-ask/quickAskControll
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
 import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
+import type { QuickAskLaunchMode } from './features/editor/quick-ask/quickAsk.types'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,
@@ -270,7 +271,7 @@ export default class SmartComposerPlugin extends Plugin {
     options: {
       initialPrompt?: string
       initialMentionables?: Mentionable[]
-      initialMode?: 'ask' | 'edit' | 'edit-direct'
+      initialMode?: QuickAskLaunchMode
       initialInput?: string
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
