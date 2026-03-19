@@ -3,6 +3,7 @@ import { htmlToMarkdown, requestUrl } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
+import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
   getLiteSkillDocument,
@@ -12,9 +13,8 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
-import { getMemoryPromptContext } from '../../core/memory/memoryManager'
-import type { SelectEmbedding } from '../../database/schema'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
+import type { SelectEmbedding } from '../../database/schema'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
@@ -35,11 +35,15 @@ import type {
   MentionableVault,
 } from '../../types/mentionable'
 import type { ToolCallRequest } from '../../types/tool-call.types'
+import {
+  createCompleteToolCallArguments,
+  getToolCallArgumentsObject,
+} from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 
-import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 import { filterRequestMessagesByToolBoundary } from './tool-boundary'
+import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
@@ -418,34 +422,21 @@ ${message.annotations
       return null
     }
 
-    if (!toolCall.arguments || toolCall.arguments.trim().length === 0) {
+    const args = getToolCallArgumentsObject(toolCall.arguments)
+    if (!args) {
       return {
         ...toolCall,
         id: callId,
         name,
-        arguments: '{}',
+        arguments: createCompleteToolCallArguments({ value: {} }),
       }
-    }
-
-    try {
-      const parsed = JSON.parse(toolCall.arguments)
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return {
-          ...toolCall,
-          id: callId,
-          name,
-          arguments: JSON.stringify(parsed),
-        }
-      }
-    } catch {
-      // fall through
     }
 
     return {
       ...toolCall,
       id: callId,
       name,
-      arguments: '{}',
+      arguments: createCompleteToolCallArguments({ value: args }),
     }
   }
 

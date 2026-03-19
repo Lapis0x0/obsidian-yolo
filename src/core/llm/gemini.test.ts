@@ -1,4 +1,9 @@
+import { createCompleteToolCallArguments } from '../../types/tool-call.types'
+
 import { GeminiProvider } from './gemini'
+
+const args = (value: Record<string, unknown>, rawText?: string) =>
+  createCompleteToolCallArguments({ value, rawText })
 
 describe('GeminiProvider response parsing', () => {
   it('replays assistant tool calls and tool responses as Gemini turns', () => {
@@ -11,7 +16,7 @@ describe('GeminiProvider response parsing', () => {
           {
             id: 'call-1',
             name: 'yolo_local__fs_read',
-            arguments: '{"path":"README.md"}',
+            arguments: args({ path: 'README.md' }),
             metadata: {
               thoughtSignature: 'sig-1',
             },
@@ -23,7 +28,7 @@ describe('GeminiProvider response parsing', () => {
         tool_call: {
           id: 'call-1',
           name: 'yolo_local__fs_read',
-          arguments: '{"path":"README.md"}',
+          arguments: args({ path: 'README.md' }),
         },
         content: '# README',
       },
@@ -71,7 +76,7 @@ describe('GeminiProvider response parsing', () => {
           {
             id: 'call-1',
             name: 'yolo_local__fs_read',
-            arguments: '{"path":"a.md"}',
+            arguments: args({ path: 'a.md' }),
             metadata: {
               thoughtSignature: 'sig-a',
             },
@@ -79,7 +84,7 @@ describe('GeminiProvider response parsing', () => {
           {
             id: 'call-2',
             name: 'yolo_local__fs_read',
-            arguments: '{"path":"b.md"}',
+            arguments: args({ path: 'b.md' }),
             metadata: {
               thoughtSignature: 'sig-b',
             },
@@ -91,7 +96,7 @@ describe('GeminiProvider response parsing', () => {
         tool_call: {
           id: 'call-1',
           name: 'yolo_local__fs_read',
-          arguments: '{"path":"a.md"}',
+          arguments: args({ path: 'a.md' }),
         },
         content: 'A',
       },
@@ -100,7 +105,7 @@ describe('GeminiProvider response parsing', () => {
         tool_call: {
           id: 'call-2',
           name: 'yolo_local__fs_read',
-          arguments: '{"path":"b.md"}',
+          arguments: args({ path: 'b.md' }),
         },
         content: 'B',
       },
@@ -160,7 +165,7 @@ describe('GeminiProvider response parsing', () => {
           {
             id: 'call-3',
             name: 'yolo_local__fs_list',
-            arguments: '{"path":"/"}',
+            arguments: args({ path: '/' }),
             metadata: {
               thoughtSignature: 'sig-tool-only',
             },

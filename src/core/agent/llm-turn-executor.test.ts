@@ -10,11 +10,15 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import {
+  createCompleteToolCallArguments,
+  createPartialToolCallArguments,
+} from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import type { McpManager } from '../mcp/mcpManager'
 
-import { executeSingleTurn } from '../ai/single-turn'
 
 jest.mock('../mcp/mcpManager', () => {
   class MockedMcpManager {
@@ -118,7 +122,9 @@ describe('AgentLlmTurnExecutor', () => {
             type: 'function',
             function: {
               name: 'fs_move',
-              arguments: '{"oldPath":"a.md","newPath":"b.md"}',
+              arguments: createPartialToolCallArguments(
+                '{"oldPath":"a.md","newPath":"b.md"}',
+              ),
             },
           },
         ],
@@ -133,7 +139,10 @@ describe('AgentLlmTurnExecutor', () => {
           {
             id: 'tool-1',
             name: 'fs_move',
-            arguments: '{"oldPath":"a.md","newPath":"b.md"}',
+            arguments: createCompleteToolCallArguments({
+              value: { oldPath: 'a.md', newPath: 'b.md' },
+              rawText: '{"oldPath":"a.md","newPath":"b.md"}',
+            }),
             metadata: undefined,
           },
         ],
@@ -198,14 +207,19 @@ describe('AgentLlmTurnExecutor', () => {
     expect(streamingPreview?.toolCallRequests?.[0]).toEqual({
       id: 'tool-1',
       name: 'yolo_local__fs_move',
-      arguments: '{"oldPath":"a.md","newPath":"b.md"}',
+      arguments: createPartialToolCallArguments(
+        '{"oldPath":"a.md","newPath":"b.md"}',
+      ),
       metadata: undefined,
     })
 
     expect(result.toolCallRequests[0]).toEqual({
       id: 'tool-1',
       name: 'yolo_local__fs_move',
-      arguments: '{"oldPath":"a.md","newPath":"b.md"}',
+      arguments: createCompleteToolCallArguments({
+        value: { oldPath: 'a.md', newPath: 'b.md' },
+        rawText: '{"oldPath":"a.md","newPath":"b.md"}',
+      }),
       metadata: undefined,
     })
   })

@@ -1,5 +1,13 @@
+import {
+  type ToolCallArguments,
+  createCompleteToolCallArguments,
+  createPartialToolCallArguments,
+  getToolCallArgumentsText,
+  isToolCallArgumentsRecord,
+} from '../../types/tool-call.types'
+
 const isJsonObject = (value: unknown): value is Record<string, unknown> => {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return isToolCallArgumentsRecord(value)
 }
 
 export const parseJsonObjectText = (
@@ -77,55 +85,80 @@ export const mergeStreamingToolArguments = ({
   existingArgs,
   newArgs,
 }: {
-  existingArgs?: string
+  existingArgs?: ToolCallArguments
   newArgs?: string
-}): string | undefined => {
+}): ToolCallArguments | undefined => {
   if (!existingArgs && !newArgs) {
     return undefined
   }
   if (!existingArgs) {
-    return newArgs
+    return createToolCallArguments(newArgs, { allowPartial: true })
   }
   if (!newArgs) {
     return existingArgs
   }
-  if (existingArgs === newArgs) {
+  const existingText = getToolCallArgumentsText(existingArgs)
+  if (existingText === newArgs) {
     return existingArgs
   }
 
-  const normalizedNew = parseJsonObjectText(newArgs)
-  if (normalizedNew) {
-    return JSON.stringify(normalizedNew)
-  }
-
-  const extractedFromNew = extractTopLevelJsonObjects(newArgs)
-  if (extractedFromNew.length > 0) {
-    return JSON.stringify(extractedFromNew[extractedFromNew.length - 1])
-  }
-
-  const normalizedExisting = parseJsonObjectText(existingArgs)
-  if (normalizedExisting) {
-    const concatenated = `${existingArgs}${newArgs}`
-    const recoveredObjects = extractTopLevelJsonObjects(concatenated)
-    if (recoveredObjects.length > 0) {
-      return JSON.stringify(recoveredObjects[recoveredObjects.length - 1])
+  const candidate = (() => {
+    if (!existingText || existingText.length === 0) {
+      return newArgs
     }
-    // Never downgrade from a previously valid JSON object to noisy partial text.
-    return JSON.stringify(normalizedExisting)
+    if (newArgs.startsWith(existingText)) {
+      return newArgs
+    }
+    if (existingText.startsWith(newArgs)) {
+      return existingText
+    }
+    return `${existingText}${newArgs}`
+  })()
+
+  const recovered = createToolCallArguments(candidate, { allowPartial: true })
+  if (recovered?.kind === 'complete') {
+    return recovered
   }
 
-  if (newArgs.startsWith(existingArgs)) {
-    return newArgs
-  }
-  if (existingArgs.startsWith(newArgs)) {
+  if (existingArgs.kind === 'complete') {
     return existingArgs
   }
 
-  const concatenated = `${existingArgs}${newArgs}`
-  const recoveredObjects = extractTopLevelJsonObjects(concatenated)
-  if (recoveredObjects.length > 0) {
-    return JSON.stringify(recoveredObjects[recoveredObjects.length - 1])
+  return recovered
+}
+
+export const createToolCallArguments = (
+  rawText: string | undefined,
+  options?: { allowPartial?: boolean },
+): ToolCallArguments | undefined => {
+  if (!rawText) {
+    return undefined
   }
 
-  return concatenated
+  const trimmed = rawText.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  const parsed = parseJsonObjectText(trimmed)
+  if (parsed) {
+    return createCompleteToolCallArguments({
+      value: parsed,
+      rawText,
+    })
+  }
+
+  const recoveredObjects = extractTopLevelJsonObjects(trimmed)
+  if (recoveredObjects.length > 0) {
+    return createCompleteToolCallArguments({
+      value: recoveredObjects[recoveredObjects.length - 1],
+      rawText,
+    })
+  }
+
+  if (options?.allowPartial) {
+    return createPartialToolCallArguments(rawText)
+  }
+
+  return undefined
 }

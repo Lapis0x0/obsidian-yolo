@@ -1,4 +1,7 @@
+import { getToolCallArgumentsObject } from '../../types/tool-call.types'
+
 import {
+  createToolCallArguments,
   extractTopLevelJsonObjects,
   mergeStreamingToolArguments,
   parseJsonObjectText,
@@ -30,36 +33,47 @@ describe('tool-arguments utilities', () => {
 
   it('recovers latest complete object when stream chunks are mixed', () => {
     const merged = mergeStreamingToolArguments({
-      existingArgs:
+      existingArgs: createToolCallArguments(
         '{"action":"create_file","items":[{"path":"a.md","content":"x"}]}',
+      ),
       newArgs:
         '{"action":"move","items":[{"oldPath":"a.md","newPath":"b.md"}]}',
     })
 
-    expect(merged).toBe(
-      '{"action":"move","items":[{"oldPath":"a.md","newPath":"b.md"}]}',
-    )
+    expect(getToolCallArgumentsObject(merged)).toEqual({
+      action: 'move',
+      items: [{ oldPath: 'a.md', newPath: 'b.md' }],
+    })
   })
 
   it('keeps committed object when a later chunk adds noisy tail', () => {
     const merged = mergeStreamingToolArguments({
-      existingArgs: '{"path":"a.md","operations":[{"type":"append"}]}',
+      existingArgs: createToolCallArguments(
+        '{"path":"a.md","operations":[{"type":"append"}]}',
+      ),
       newArgs:
         '{"path":"a.md","operations":[{"type":"append"}]}\nTool arguments must be valid JSON',
     })
 
-    expect(merged).toBe('{"path":"a.md","operations":[{"type":"append"}]}')
+    expect(getToolCallArgumentsObject(merged)).toEqual({
+      path: 'a.md',
+      operations: [{ type: 'append' }],
+    })
   })
 
   it('extracts latest object from noisy mixed stream payload', () => {
     const merged = mergeStreamingToolArguments({
-      existingArgs: 'Let me reformat the tool arguments:',
+      existingArgs: createToolCallArguments(
+        'Let me reformat the tool arguments:',
+        { allowPartial: true },
+      ),
       newArgs:
         'Args: {"path":"a.md","operations":[{"type":"append","content":"ok"}]} Error: ...',
     })
 
-    expect(merged).toBe(
-      '{"path":"a.md","operations":[{"type":"append","content":"ok"}]}',
-    )
+    expect(getToolCallArgumentsObject(merged)).toEqual({
+      path: 'a.md',
+      operations: [{ type: 'append', content: 'ok' }],
+    })
   })
 })

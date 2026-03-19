@@ -1,6 +1,9 @@
 import type { RequestMessage } from '../../types/llm/request'
+import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
 import { filterRequestMessagesByToolBoundary } from './tool-boundary'
+
+const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
 const assistantWithTools = (toolIds: string[]): RequestMessage => ({
   role: 'assistant',
@@ -8,7 +11,7 @@ const assistantWithTools = (toolIds: string[]): RequestMessage => ({
   tool_calls: toolIds.map((id, index) => ({
     id,
     name: `tool_${index}`,
-    arguments: '{}',
+    arguments: emptyArgs,
   })),
 })
 
@@ -17,7 +20,7 @@ const toolMessage = (id: string): RequestMessage => ({
   tool_call: {
     id,
     name: 'tool',
-    arguments: '{}',
+    arguments: emptyArgs,
   },
   content: `result:${id}`,
 })
