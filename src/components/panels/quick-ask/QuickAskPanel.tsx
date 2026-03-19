@@ -35,11 +35,16 @@ import { useRAG } from '../../../contexts/rag-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { getChatModelClient } from '../../../core/llm/manager'
+import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
+import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
-import type { QuickAskSelectionScope } from '../../../features/editor/quick-ask/quickAsk.types'
+import type {
+  QuickAskLaunchMode,
+  QuickAskSelectionScope,
+} from '../../../features/editor/quick-ask/quickAsk.types'
 import {
   ChatAssistantMessage,
   ChatMessage,
@@ -65,6 +70,7 @@ import {
 } from '../../../utils/chat/mentionable'
 import { parseTagContents } from '../../../utils/chat/parse-tag-content'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
+import { mergeCustomParameters } from '../../../utils/custom-parameters'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
 import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
@@ -80,8 +86,27 @@ import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
-const QUICK_ASK_MAX_ITERATIONS = 1
+type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
+
+const QUICK_ASK_CHAT_MAX_ITERATIONS = 1
+const QUICK_ASK_AGENT_MAX_ITERATIONS = 100
 const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
+
+function normalizeQuickAskVisibleMode(
+  mode?: QuickAskLaunchMode | null,
+): QuickAskMode {
+  return mode === 'agent' ? 'agent' : 'chat'
+}
+
+function normalizeQuickAskExecutionMode(
+  mode?: QuickAskLaunchMode | null,
+): QuickAskExecutionMode {
+  if (mode === 'agent' || mode === 'edit' || mode === 'edit-direct') {
+    return mode
+  }
+
+  return 'chat'
+}
 
 function getSelectionMentionable(
   mentionables: Mentionable[],
@@ -170,7 +195,7 @@ type QuickAskPanelProps = {
   sourceFilePath?: string
   initialPrompt?: string
   initialMentionables?: Mentionable[]
-  initialMode?: QuickAskMode
+  initialMode?: QuickAskLaunchMode
   initialInput?: string
   editContextText?: string
   editSelectionFrom?: { line: number; ch: number }
@@ -319,8 +344,16 @@ export function QuickAskPanel({
     () => t('common.characters', 'chars'),
     [t],
   )
-  const [mode, setMode] = useState<QuickAskMode>(
-    () => initialMode ?? settings.continuationOptions?.quickAskMode ?? 'ask',
+  const [mode, setMode] = useState<QuickAskMode>(() =>
+    normalizeQuickAskVisibleMode(
+      initialMode ?? settings.continuationOptions?.quickAskMode,
+    ),
+  )
+  const [executionMode, setExecutionMode] = useState<QuickAskExecutionMode>(
+    () =>
+      normalizeQuickAskExecutionMode(
+        initialMode ?? settings.continuationOptions?.quickAskMode,
+      ),
   )
   const assistantDropdownRef = useRef<HTMLDivElement | null>(null)
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -340,7 +373,8 @@ export function QuickAskPanel({
 
   useEffect(() => {
     if (initialMode) {
-      setMode(initialMode)
+      setMode(normalizeQuickAskVisibleMode(initialMode))
+      setExecutionMode(normalizeQuickAskExecutionMode(initialMode))
     }
   }, [initialMode])
 
@@ -650,12 +684,13 @@ export function QuickAskPanel({
         systemPrompt: combinedSystemPrompt,
       },
       {
-        includeSkills: false,
+        includeSkills: executionMode === 'agent',
       },
     )
   }, [
     app,
     contextText,
+    executionMode,
     fileTitle,
     getRAGEngine,
     mentionables,
@@ -1029,8 +1064,36 @@ export function QuickAskPanel({
       try {
         const mcpManager = await getMcpManager()
 
-        const effectiveEnableTools = false
-        const effectiveIncludeBuiltinTools = false
+        const isAgentMode = executionMode === 'agent'
+        const effectiveEnableTools = isAgentMode
+          ? (selectedAssistant?.enableTools ?? true)
+          : false
+        const effectiveIncludeBuiltinTools = effectiveEnableTools
+          ? (selectedAssistant?.includeBuiltinTools ?? true)
+          : false
+        const effectiveModel =
+          isAgentMode && selectedAssistant
+            ? {
+                ...model,
+                customParameters: mergeCustomParameters(
+                  model.customParameters,
+                  selectedAssistant.customParameters,
+                ),
+              }
+            : model
+        const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+        const enabledSkillEntries =
+          isAgentMode && selectedAssistant
+            ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+                isSkillEnabledForAssistant({
+                  assistant: selectedAssistant,
+                  skillId: skill.id,
+                  disabledSkillIds,
+                }),
+              )
+            : []
+        const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
+        const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
         const agentService = plugin.getAgentService()
         unsubscribeRunner = agentService.subscribe(
@@ -1055,12 +1118,14 @@ export function QuickAskPanel({
           conversationId,
           loopConfig: {
             enableTools: effectiveEnableTools,
-            maxAutoIterations: QUICK_ASK_MAX_ITERATIONS,
+            maxAutoIterations: isAgentMode
+              ? QUICK_ASK_AGENT_MAX_ITERATIONS
+              : QUICK_ASK_CHAT_MAX_ITERATIONS,
             includeBuiltinTools: effectiveIncludeBuiltinTools,
           },
           input: {
             providerClient,
-            model,
+            model: effectiveModel,
             messages: newMessages,
             conversationId,
             requestContextBuilder,
@@ -1070,6 +1135,8 @@ export function QuickAskPanel({
               ? getEnabledAssistantToolNames(selectedAssistant)
               : undefined,
             toolPreferences: selectedAssistant?.toolPreferences,
+            allowedSkillIds,
+            allowedSkillNames,
             requestParams: {
               stream: true,
             },
@@ -1129,11 +1196,14 @@ export function QuickAskPanel({
       getMcpManager,
       isStreaming,
       mentionables,
+      executionMode,
       model,
       plugin,
       requestContextBuilder,
       providerClient,
+      app,
       selectedAssistant,
+      settings,
       t,
     ],
   )
@@ -1215,7 +1285,8 @@ export function QuickAskPanel({
 
       let closedForReview = false
       try {
-        const scopedToSelection = mode === 'edit' && hasScopedSelectionForEdit
+        const scopedToSelection =
+          executionMode === 'edit' && hasScopedSelectionForEdit
 
         const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
@@ -1295,10 +1366,10 @@ export function QuickAskPanel({
     },
     [
       buildEditInstruction,
+      executionMode,
       generatePlannedEdit,
       hasScopedSelectionForEdit,
       isStreaming,
-      mode,
       onClose,
       plugin,
       resolveEditTargetFile,
@@ -1335,7 +1406,7 @@ export function QuickAskPanel({
 
       try {
         const scopedToSelection =
-          mode === 'edit-direct' && hasScopedSelectionForEdit
+          executionMode === 'edit-direct' && hasScopedSelectionForEdit
 
         const editResult = await generatePlannedEdit({
           instruction: resolvedInstruction,
@@ -1415,10 +1486,10 @@ export function QuickAskPanel({
     [
       app,
       buildEditInstruction,
+      executionMode,
       generatePlannedEdit,
       hasScopedSelectionForEdit,
       isStreaming,
-      mode,
       onClose,
       resolveEditTargetFile,
       t,
@@ -1441,12 +1512,12 @@ export function QuickAskPanel({
 
       autoSendRef.current = true
 
-      if (mode === 'edit') {
+      if (executionMode === 'edit') {
         void submitEditMode(prompt)
         return
       }
 
-      if (mode === 'edit-direct') {
+      if (executionMode === 'edit-direct') {
         void submitEditDirect(prompt)
         return
       }
@@ -1490,7 +1561,7 @@ export function QuickAskPanel({
     initialMentionables,
     initialPrompt,
     mentionableUnitLabel,
-    mode,
+    executionMode,
     submitEditDirect,
     submitEditMode,
     submitMessage,
@@ -1500,6 +1571,7 @@ export function QuickAskPanel({
   const handleModeChange = useCallback(
     (newMode: QuickAskMode) => {
       setMode(newMode)
+      setExecutionMode(newMode)
       void setSettings({
         ...settings,
         continuationOptions: {
@@ -1521,16 +1593,16 @@ export function QuickAskPanel({
         const editorState = lexicalEditor.getEditorState().toJSON()
         const textContent = editorStateToPlainText(editorState)
 
-        if (mode === 'edit') {
+        if (executionMode === 'edit') {
           void submitEditMode(textContent)
-        } else if (mode === 'edit-direct') {
+        } else if (executionMode === 'edit-direct') {
           void submitEditDirect(textContent)
         } else {
           void submitMessage(editorState)
         }
       }
     },
-    [mode, submitEditMode, submitEditDirect, submitMessage],
+    [executionMode, submitEditMode, submitEditDirect, submitMessage],
   )
 
   // Copy last assistant message
@@ -2123,8 +2195,10 @@ export function QuickAskPanel({
                   const editorState = lexicalEditor.getEditorState().toJSON()
                   const textContent = editorStateToPlainText(editorState)
 
-                  if (mode === 'edit') {
+                  if (executionMode === 'edit') {
                     void submitEditMode(textContent)
+                  } else if (executionMode === 'edit-direct') {
+                    void submitEditDirect(textContent)
                   } else {
                     void submitMessage(editorState)
                   }

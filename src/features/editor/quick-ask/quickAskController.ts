@@ -9,6 +9,7 @@ import type { SmartComposerSettings } from '../../../settings/schema/setting.typ
 import type { Mentionable } from '../../../types/mentionable'
 
 import type {
+  QuickAskLaunchMode,
   QuickAskSelectionScope,
   QuickAskShowOptions,
 } from './quickAsk.types'
@@ -24,7 +25,7 @@ type QuickAskWidgetPayload = {
     sourceFilePath?: string
     initialPrompt?: string
     initialMentionables?: Mentionable[]
-    initialMode?: 'ask' | 'edit' | 'edit-direct'
+    initialMode?: QuickAskLaunchMode
     initialInput?: string
     editContextText?: string
     editSelectionFrom?: { line: number; ch: number }
@@ -144,7 +145,7 @@ export class QuickAskController {
     },
   ) {
     this.showWithOptions(editor, view, {
-      initialMode: 'ask',
+      initialMode: 'chat',
       autoSend: true,
       initialPrompt: options.prompt,
       initialMentionables: options.mentionables,
