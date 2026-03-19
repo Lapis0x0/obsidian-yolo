@@ -1,11 +1,12 @@
 import { UseMutationResult, useMutation } from '@tanstack/react-query'
 import { Notice, TFile } from 'obsidian'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import { useBufferedRunnerMessages } from '../../hooks/useBufferedRunnerMessages'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -48,85 +49,6 @@ const CHAT_READONLY_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'memory_delete'),
   getToolName(getLocalFileToolServerName(), 'open_skill'),
 ]
-const MIN_STREAM_FLUSH_INTERVAL_MS = 16
-const FAST_STREAM_FLUSH_INTERVAL_MS = 24
-const BALANCED_STREAM_FLUSH_INTERVAL_MS = 32
-const IDLE_STREAM_FLUSH_INTERVAL_MS = 40
-
-function getNowMs(): number {
-  if (typeof performance !== 'undefined') {
-    return performance.now()
-  }
-
-  return Date.now()
-}
-
-function getAssistantVisibleTextLength(messages: ChatMessage[]): number {
-  return messages.reduce((total, message) => {
-    if (message.role !== 'assistant') {
-      return total
-    }
-
-    return total + message.content.length + (message.reasoning?.length ?? 0)
-  }, 0)
-}
-
-function hasStreamingAssistantMessage(messages: ChatMessage[]): boolean {
-  return messages.some(
-    (message) =>
-      message.role === 'assistant' &&
-      message.metadata?.generationState === 'streaming',
-  )
-}
-
-function getStreamFlushInterval(charsPerSecond: number): number {
-  if (charsPerSecond >= 220) {
-    return MIN_STREAM_FLUSH_INTERVAL_MS
-  }
-
-  if (charsPerSecond >= 120) {
-    return FAST_STREAM_FLUSH_INTERVAL_MS
-  }
-
-  if (charsPerSecond >= 48) {
-    return BALANCED_STREAM_FLUSH_INTERVAL_MS
-  }
-
-  return IDLE_STREAM_FLUSH_INTERVAL_MS
-}
-
-const reconcileAssistantGenerationState = (
-  previousMessages: ChatMessage[],
-  nextMessages: ChatMessage[],
-): ChatMessage[] => {
-  const previousAssistantStateMap = new Map(
-    previousMessages
-      .filter((message) => message.role === 'assistant')
-      .map((message) => [message.id, message.metadata?.generationState]),
-  )
-
-  return nextMessages.map((message) => {
-    if (message.role !== 'assistant') {
-      return message
-    }
-
-    const previousGenerationState = previousAssistantStateMap.get(message.id)
-    if (
-      previousGenerationState === 'aborted' &&
-      message.metadata?.generationState === 'streaming'
-    ) {
-      return {
-        ...message,
-        metadata: {
-          ...message.metadata,
-          generationState: 'aborted',
-        },
-      }
-    }
-
-    return message
-  })
-}
 
 export type UseChatStreamManager = {
   abortActiveStreams: () => void
@@ -157,25 +79,16 @@ export function useChatStreamManager({
   const { getMcpManager } = useMcp()
 
   const activeStreamAbortControllersRef = useRef<AbortController[]>([])
-  const pendingRunnerMessagesRef = useRef<ChatMessage[] | null>(null)
-  const pendingLastUserMessageRef = useRef<ChatMessage | null>(null)
-  const pendingAbortControllerRef = useRef<AbortController | null>(null)
-  const streamFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  )
-  const streamFlushRafRef = useRef<number | null>(null)
-  const lastFlushAtRef = useRef(0)
-  const smoothedCharsPerSecondRef = useRef(0)
-  const lastObservedRunnerSnapshotRef = useRef({ at: 0, textLength: 0 })
 
-  const resetStreamSchedulingState = useCallback(() => {
-    pendingRunnerMessagesRef.current = null
-    pendingLastUserMessageRef.current = null
-    pendingAbortControllerRef.current = null
-    lastFlushAtRef.current = 0
-    smoothedCharsPerSecondRef.current = 0
-    lastObservedRunnerSnapshotRef.current = { at: 0, textLength: 0 }
-  }, [])
+  const {
+    beginBufferedRunnerSession,
+    queueBufferedRunnerMessages,
+    flushBufferedRunnerMessages,
+    abortBufferedRunnerSession,
+  } = useBufferedRunnerMessages({
+    setChatMessages,
+    autoScrollToBottom,
+  })
 
   const handleAutoPromoteToObsidian = useCallback(
     (providerId: string) => {
@@ -188,129 +101,13 @@ export function useChatStreamManager({
     [plugin, setSettings],
   )
 
-  const cancelScheduledRunnerFlush = useCallback(() => {
-    if (streamFlushTimeoutRef.current) {
-      clearTimeout(streamFlushTimeoutRef.current)
-      streamFlushTimeoutRef.current = null
-    }
-
-    if (streamFlushRafRef.current !== null) {
-      cancelAnimationFrame(streamFlushRafRef.current)
-      streamFlushRafRef.current = null
-    }
-  }, [])
-
-  const flushPendingRunnerMessages = useCallback(() => {
-    const responseMessages = pendingRunnerMessagesRef.current
-    const lastUserMessage = pendingLastUserMessageRef.current
-    if (!responseMessages || !lastUserMessage) {
-      return
-    }
-
-    pendingRunnerMessagesRef.current = null
-    pendingLastUserMessageRef.current = null
-    lastFlushAtRef.current = getNowMs()
-
-    setChatMessages((prevChatMessages) => {
-      const lastMessageIndex = prevChatMessages.findIndex(
-        (message) => message.id === lastUserMessage.id,
-      )
-      if (lastMessageIndex === -1) {
-        pendingAbortControllerRef.current?.abort()
-        return prevChatMessages
-      }
-
-      return reconcileAssistantGenerationState(prevChatMessages, [
-        ...prevChatMessages.slice(0, lastMessageIndex + 1),
-        ...responseMessages,
-      ])
-    })
-    if (!hasStreamingAssistantMessage(responseMessages)) {
-      requestAnimationFrame(() => {
-        autoScrollToBottom()
-        requestAnimationFrame(() => {
-          autoScrollToBottom()
-        })
-      })
-    }
-  }, [autoScrollToBottom, setChatMessages])
-
-  const scheduleRunnerMessagesFlush = useCallback(
-    (options?: { immediate?: boolean }) => {
-      const immediate = options?.immediate ?? false
-      cancelScheduledRunnerFlush()
-
-      const requestFlush = () => {
-        streamFlushRafRef.current = requestAnimationFrame(() => {
-          streamFlushRafRef.current = null
-          flushPendingRunnerMessages()
-        })
-      }
-
-      if (immediate) {
-        flushPendingRunnerMessages()
-        return
-      }
-
-      const now = getNowMs()
-      const targetInterval = getStreamFlushInterval(
-        smoothedCharsPerSecondRef.current,
-      )
-      const elapsedSinceLastFlush = lastFlushAtRef.current
-        ? now - lastFlushAtRef.current
-        : targetInterval
-      const waitMs = Math.max(0, targetInterval - elapsedSinceLastFlush)
-
-      if (waitMs === 0) {
-        requestFlush()
-        return
-      }
-
-      streamFlushTimeoutRef.current = setTimeout(() => {
-        streamFlushTimeoutRef.current = null
-        requestFlush()
-      }, waitMs)
-    },
-    [cancelScheduledRunnerFlush, flushPendingRunnerMessages],
-  )
-
-  useEffect(() => {
-    return () => {
-      cancelScheduledRunnerFlush()
-      resetStreamSchedulingState()
-    }
-  }, [cancelScheduledRunnerFlush, resetStreamSchedulingState])
-
   const abortActiveStreams = useCallback(() => {
-    cancelScheduledRunnerFlush()
-    resetStreamSchedulingState()
     for (const abortController of activeStreamAbortControllersRef.current) {
       abortController.abort()
     }
-    setChatMessages((prevChatMessages) => {
-      let hasUpdates = false
-      const nextChatMessages = prevChatMessages.map((message) => {
-        if (
-          message.role !== 'assistant' ||
-          message.metadata?.generationState !== 'streaming'
-        ) {
-          return message
-        }
-
-        hasUpdates = true
-        return {
-          ...message,
-          metadata: {
-            ...message.metadata,
-            generationState: 'aborted' as const,
-          },
-        }
-      })
-
-      return hasUpdates ? nextChatMessages : prevChatMessages
-    })
+    abortBufferedRunnerSession()
     activeStreamAbortControllersRef.current = []
-  }, [cancelScheduledRunnerFlush, resetStreamSchedulingState, setChatMessages])
+  }, [abortBufferedRunnerSession])
 
   const submitChatMutation = useMutation({
     mutationFn: async ({
@@ -329,6 +126,7 @@ export function useChatStreamManager({
       }
 
       abortActiveStreams()
+      beginBufferedRunnerSession(chatMessages)
       const abortController = new AbortController()
       activeStreamAbortControllersRef.current.push(abortController)
 
@@ -418,48 +216,16 @@ export function useChatStreamManager({
           : undefined
 
         const mcpManager = await getMcpManager()
-        const onRunnerMessages = (responseMessages: ChatMessage[]) => {
-          const now = getNowMs()
-          const nextVisibleTextLength =
-            getAssistantVisibleTextLength(responseMessages)
-          const previousSnapshot = lastObservedRunnerSnapshotRef.current
-          const textDelta = nextVisibleTextLength - previousSnapshot.textLength
-          const timeDelta = now - previousSnapshot.at
-
-          if (textDelta > 0 && timeDelta > 0) {
-            const instantaneousCharsPerSecond = (textDelta * 1000) / timeDelta
-            smoothedCharsPerSecondRef.current =
-              smoothedCharsPerSecondRef.current
-                ? smoothedCharsPerSecondRef.current * 0.65 +
-                  instantaneousCharsPerSecond * 0.35
-                : instantaneousCharsPerSecond
-          }
-
-          lastObservedRunnerSnapshotRef.current = {
-            at: now,
-            textLength: nextVisibleTextLength,
-          }
-          pendingRunnerMessagesRef.current = responseMessages
-          pendingLastUserMessageRef.current = lastMessage
-          pendingAbortControllerRef.current = abortController
-
-          const hasStreamingAssistant =
-            hasStreamingAssistantMessage(responseMessages)
-          const shouldImmediateFlush =
-            !hasStreamingAssistant &&
-            responseMessages.at(-1)?.role === 'assistant'
-
-          // Coalesce intermediate snapshots to avoid one-frame UI gaps between
-          // tool-phase completion and the next assistant streaming shell.
-          // Flush terminal assistant snapshots immediately for responsiveness.
-          scheduleRunnerMessagesFlush({ immediate: shouldImmediateFlush })
-        }
 
         const agentService = plugin.getAgentService()
         unsubscribeRunner = agentService.subscribe(
           conversationId,
           (state) => {
-            onRunnerMessages(state.messages)
+            queueBufferedRunnerMessages({
+              responseMessages: state.messages,
+              anchorMessageId: lastMessage.id,
+              abortController,
+            })
           },
           { emitCurrent: false },
         )
@@ -514,9 +280,7 @@ export function useChatStreamManager({
         }
         throw error
       } finally {
-        cancelScheduledRunnerFlush()
-        flushPendingRunnerMessages()
-        resetStreamSchedulingState()
+        flushBufferedRunnerMessages()
         if (unsubscribeRunner) {
           unsubscribeRunner()
         }

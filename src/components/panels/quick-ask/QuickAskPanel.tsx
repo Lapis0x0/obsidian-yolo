@@ -35,6 +35,7 @@ import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferenc
 import { getChatModelClient } from '../../../core/llm/manager'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
+import { useBufferedRunnerMessages } from '../../../hooks/useBufferedRunnerMessages'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -671,6 +672,24 @@ export function QuickAskPanel({
     }
   }, [chatMessages])
 
+  const autoScrollToBottom = useCallback(() => {
+    if (!chatAreaRef.current || !shouldAutoScrollRef.current) {
+      return
+    }
+
+    chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
+  }, [])
+
+  const {
+    beginBufferedRunnerSession,
+    queueBufferedRunnerMessages,
+    flushBufferedRunnerMessages,
+    getLatestBufferedMessages,
+  } = useBufferedRunnerMessages({
+    setChatMessages,
+    autoScrollToBottom,
+  })
+
   // Focus input on mount
   useEffect(() => {
     setTimeout(() => {
@@ -972,6 +991,7 @@ export function QuickAskPanel({
         userMessage,
       ]
       setChatMessages(newMessages)
+      beginBufferedRunnerSession(newMessages)
 
       // Create abort controller
       const abortController = new AbortController()
@@ -1017,15 +1037,10 @@ export function QuickAskPanel({
           conversationId,
           (state) => {
             setRunStatus(deriveAskRunStatus(state.messages))
-            setChatMessages((prev) => {
-              const lastMessageIndex = prev.findIndex(
-                (m) => m.id === userMessage.id,
-              )
-              if (lastMessageIndex === -1) {
-                abortController.abort()
-                return prev
-              }
-              return [...prev.slice(0, lastMessageIndex + 1), ...state.messages]
+            queueBufferedRunnerMessages({
+              responseMessages: state.messages,
+              anchorMessageId: userMessage.id,
+              abortController,
             })
           },
           { emitCurrent: false },
@@ -1061,18 +1076,15 @@ export function QuickAskPanel({
           },
         })
 
-        // Save conversation
-        const finalMessages = [...newMessages]
-        setChatMessages((current) => {
-          finalMessages.push(...current.slice(newMessages.length))
-          return current
-        })
+        const finalMessages = flushBufferedRunnerMessages()
+        const persistedMessages =
+          finalMessages.length > 0 ? finalMessages : getLatestBufferedMessages()
 
         void (async () => {
           try {
             await createOrUpdateConversationImmediately(
               conversationId,
-              finalMessages,
+              persistedMessages,
             )
           } catch (error) {
             console.error('Failed to save quick ask conversation', error)
@@ -1080,7 +1092,7 @@ export function QuickAskPanel({
           }
 
           try {
-            await generateConversationTitle(conversationId, finalMessages)
+            await generateConversationTitle(conversationId, persistedMessages)
           } catch (error) {
             console.error(
               'Failed to generate quick ask conversation title',
@@ -1109,13 +1121,17 @@ export function QuickAskPanel({
       conversationId,
       createOrUpdateConversationImmediately,
       deriveAskRunStatus,
+      flushBufferedRunnerMessages,
       generateConversationTitle,
+      getLatestBufferedMessages,
       getMcpManager,
       isStreaming,
       mentionables,
+      beginBufferedRunnerSession,
       executionMode,
       model,
       plugin,
+      queueBufferedRunnerMessages,
       requestContextBuilder,
       providerClient,
       app,
