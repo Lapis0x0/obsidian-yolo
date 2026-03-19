@@ -189,6 +189,11 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
 
 export default function AssistantToolMessageGroupActions({
   messages,
+  showInsert = true,
+  showCopy = true,
+  showBranch = true,
+  showEdit = true,
+  showDelete = true,
   onBranch,
   onEdit,
   onDelete,
@@ -196,6 +201,11 @@ export default function AssistantToolMessageGroupActions({
   isDisabled = false,
 }: {
   messages: AssistantToolMessageGroup
+  showInsert?: boolean
+  showCopy?: boolean
+  showBranch?: boolean
+  showEdit?: boolean
+  showDelete?: boolean
   onBranch?: () => void
   onEdit?: () => void
   onDelete?: () => void
@@ -212,68 +222,74 @@ export default function AssistantToolMessageGroupActions({
 
   return (
     <div className="smtcmp-assistant-message-actions">
-      <InsertButton messages={messages} />
-      <CopyButton messages={messages} />
-      <Tooltip.Provider delayDuration={0}>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              type="button"
-              onClick={isBranchDisabled ? undefined : onBranch}
-              className="clickable-icon"
-              aria-label={branchLabel}
-              disabled={isBranchDisabled}
-            >
-              <GitFork size={12} />
-            </button>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content className="smtcmp-tooltip-content">
-              {branchLabel}
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      </Tooltip.Provider>
-      <Tooltip.Provider delayDuration={0}>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              type="button"
-              onClick={isEditDisabled ? undefined : onEdit}
-              className="clickable-icon"
-              aria-label={editLabel}
-              disabled={isEditDisabled}
-            >
-              <Pencil size={12} />
-            </button>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content className="smtcmp-tooltip-content">
-              {editLabel}
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      </Tooltip.Provider>
-      <Tooltip.Provider delayDuration={0}>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              type="button"
-              onClick={isDeleteDisabled ? undefined : onDelete}
-              className="clickable-icon"
-              aria-label={deleteLabel}
-              disabled={isDeleteDisabled}
-            >
-              <Trash2 size={12} />
-            </button>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content className="smtcmp-tooltip-content">
-              {deleteLabel}
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      </Tooltip.Provider>
+      {showInsert && <InsertButton messages={messages} />}
+      {showCopy && <CopyButton messages={messages} />}
+      {showBranch && (
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button
+                type="button"
+                onClick={isBranchDisabled ? undefined : onBranch}
+                className="clickable-icon"
+                aria-label={branchLabel}
+                disabled={isBranchDisabled}
+              >
+                <GitFork size={12} />
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="smtcmp-tooltip-content">
+                {branchLabel}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      )}
+      {showEdit && (
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button
+                type="button"
+                onClick={isEditDisabled ? undefined : onEdit}
+                className="clickable-icon"
+                aria-label={editLabel}
+                disabled={isEditDisabled}
+              >
+                <Pencil size={12} />
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="smtcmp-tooltip-content">
+                {editLabel}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      )}
+      {showDelete && (
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button
+                type="button"
+                onClick={isDeleteDisabled ? undefined : onDelete}
+                className="clickable-icon"
+                aria-label={deleteLabel}
+                disabled={isDeleteDisabled}
+              >
+                <Trash2 size={12} />
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="smtcmp-tooltip-content">
+                {deleteLabel}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      )}
     </div>
   )
 }

@@ -98,6 +98,8 @@ export type ChatUserInputProps = {
   // Reasoning level
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
+  showReasoningSelect?: boolean
+  showPlaceholder?: boolean
   // Compact mode: hide controls for historical messages
   compact?: boolean
   hideBadgeMentionables?: boolean
@@ -137,6 +139,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onDeleteFromAll,
       reasoningLevel,
       onReasoningChange,
+      showReasoningSelect = true,
+      showPlaceholder = true,
       compact = false,
       hideBadgeMentionables = false,
       onToggleCompact,
@@ -248,6 +252,20 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         setInputText($getRoot().getTextContent())
       })
     }, [isEditorReady])
+
+    useEffect(() => {
+      if (!compact) {
+        return
+      }
+
+      const activeElement = document.activeElement
+      if (
+        activeElement instanceof HTMLElement &&
+        containerRef.current?.contains(activeElement)
+      ) {
+        activeElement.blur()
+      }
+    }, [compact])
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -819,6 +837,36 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [],
     )
 
+    const handleContainerMouseDown = useCallback(
+      (event: ReactMouseEvent<HTMLDivElement>) => {
+        if (compact) {
+          return
+        }
+
+        const target = event.target as HTMLElement | null
+        if (!target) {
+          return
+        }
+
+        if (
+          target.closest('.smtcmp-chat-user-input-controls') ||
+          target.closest('button') ||
+          target.closest('[role="button"]')
+        ) {
+          return
+        }
+
+        if (target.closest('.mention')) {
+          return
+        }
+
+        requestAnimationFrame(() => {
+          contentEditableRef.current?.focus()
+        })
+      },
+      [compact],
+    )
+
     return (
       <div
         className={`smtcmp-chat-user-input-wrapper${compact ? ' smtcmp-chat-user-input-wrapper--compact' : ''}`}
@@ -861,6 +909,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           className="smtcmp-chat-user-input-container"
           ref={containerRef}
           onClick={compact ? onToggleCompact : undefined}
+          onMouseDown={handleContainerMouseDown}
         >
           <div
             className="smtcmp-chat-user-input-editor"
@@ -874,7 +923,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                   {t('chat.placeholderCompact', '点击展开编辑...')}
                 </div>
               )}
-            {!compact &&
+            {showPlaceholder &&
+              !compact &&
               inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
               effectiveSelectedSkills.length === 0 && (
@@ -943,7 +993,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                   alignOffset={-6}
                   contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
                 />
-                {supportsReasoning(currentModel) && (
+                {showReasoningSelect && supportsReasoning(currentModel) && (
                   <ReasoningSelect
                     model={currentModel}
                     value={resolvedReasoningLevel}

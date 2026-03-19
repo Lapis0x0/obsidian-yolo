@@ -4,11 +4,13 @@ import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
 import { AppProvider } from '../../../contexts/app-context'
+import { ChatViewProvider } from '../../../contexts/chat-view-context'
 import { LanguageProvider } from '../../../contexts/language-context'
 import { McpProvider } from '../../../contexts/mcp-context'
 import { PluginProvider } from '../../../contexts/plugin-context'
 import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
+import { ChatView } from '../../../ChatView'
 import SmartComposerPlugin from '../../../main'
 import type {
   QuickAskLaunchMode,
@@ -191,52 +193,54 @@ export class QuickAskOverlay {
 
     this.root = createRoot(overlayContainer)
     this.root.render(
-      <PluginProvider plugin={this.options.plugin}>
-        <SettingsProvider
-          settings={this.options.plugin.settings}
-          setSettings={(newSettings) =>
-            this.options.plugin.setSettings(newSettings)
-          }
-          addSettingsChangeListener={(listener) =>
-            this.options.plugin.addSettingsChangeListener(listener)
-          }
-        >
-          <LanguageProvider>
-            <AppProvider app={this.options.plugin.app}>
-              <RAGProvider
-                getRAGEngine={() => this.options.plugin.getRAGEngine()}
-              >
-                <McpProvider
-                  getMcpManager={() => this.options.plugin.getMcpManager()}
+      <ChatViewProvider chatView={this.options.plugin as unknown as ChatView}>
+        <PluginProvider plugin={this.options.plugin}>
+          <SettingsProvider
+            settings={this.options.plugin.settings}
+            setSettings={(newSettings) =>
+              this.options.plugin.setSettings(newSettings)
+            }
+            addSettingsChangeListener={(listener) =>
+              this.options.plugin.addSettingsChangeListener(listener)
+            }
+          >
+            <LanguageProvider>
+              <AppProvider app={this.options.plugin.app}>
+                <RAGProvider
+                  getRAGEngine={() => this.options.plugin.getRAGEngine()}
                 >
-                  <QuickAskPanel
-                    plugin={this.options.plugin}
-                    editor={this.options.editor}
-                    view={this.options.view}
-                    contextText={this.options.contextText}
-                    fileTitle={this.options.fileTitle}
-                    sourceFilePath={this.options.sourceFilePath}
-                    initialPrompt={this.options.initialPrompt}
-                    initialMentionables={this.options.initialMentionables}
-                    initialMode={this.options.initialMode}
-                    initialInput={this.options.initialInput}
-                    editContextText={this.options.editContextText}
-                    editSelectionFrom={this.options.editSelectionFrom}
-                    selectionScope={this.options.selectionScope}
-                    autoSend={this.options.autoSend}
-                    onClose={this.closeWithAnimation}
-                    containerRef={this.containerRef}
-                    onOverlayStateChange={this.handleOverlayStateChange}
-                    onDragOffset={this.handleDragOffset}
-                    onResize={this.handleResize}
-                    onDockToTopRight={this.handleDockToTopRight}
-                  />
-                </McpProvider>
-              </RAGProvider>
-            </AppProvider>
-          </LanguageProvider>
-        </SettingsProvider>
-      </PluginProvider>,
+                  <McpProvider
+                    getMcpManager={() => this.options.plugin.getMcpManager()}
+                  >
+                    <QuickAskPanel
+                      plugin={this.options.plugin}
+                      editor={this.options.editor}
+                      view={this.options.view}
+                      contextText={this.options.contextText}
+                      fileTitle={this.options.fileTitle}
+                      sourceFilePath={this.options.sourceFilePath}
+                      initialPrompt={this.options.initialPrompt}
+                      initialMentionables={this.options.initialMentionables}
+                      initialMode={this.options.initialMode}
+                      initialInput={this.options.initialInput}
+                      editContextText={this.options.editContextText}
+                      editSelectionFrom={this.options.editSelectionFrom}
+                      selectionScope={this.options.selectionScope}
+                      autoSend={this.options.autoSend}
+                      onClose={this.closeWithAnimation}
+                      containerRef={this.containerRef}
+                      onOverlayStateChange={this.handleOverlayStateChange}
+                      onDragOffset={this.handleDragOffset}
+                      onResize={this.handleResize}
+                      onDockToTopRight={this.handleDockToTopRight}
+                    />
+                  </McpProvider>
+                </RAGProvider>
+              </AppProvider>
+            </LanguageProvider>
+          </SettingsProvider>
+        </PluginProvider>
+      </ChatViewProvider>,
     )
 
     const handleScroll = () => this.schedulePositionUpdate()

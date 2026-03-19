@@ -773,8 +773,9 @@
 }
 
 .smtcmp-quick-ask-user-message {
-  align-self: stretch;
-  max-width: none;
+  align-self: flex-end;
+  width: auto;
+  max-width: 85%;
   display: flex;
   justify-content: flex-end;
   padding: 0;
@@ -785,6 +786,125 @@
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.smtcmp-quick-ask-user-message .smtcmp-chat-user-input-wrapper {
+  width: auto;
+  max-width: 100%;
+}
+
+.smtcmp-quick-ask-user-message .smtcmp-chat-user-input-wrapper--compact {
+  max-width: 100%;
+}
+
+.smtcmp-quick-ask-user-message--editing {
+  max-width: min(440px, 92%);
+  cursor: text;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-chat-user-input-wrapper {
+  width: min(440px, 100%);
+  cursor: text;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-chat-user-input-container {
+  padding: var(--size-2-3);
+  gap: var(--size-2-2);
+  cursor: text;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-chat-user-input-editor {
+  min-height: 0;
+  height: auto;
+  cursor: text;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-content-editable,
+.smtcmp-quick-ask-user-message--editing .smtcmp-obsidian-textarea {
+  min-height: 0;
+  max-height: 120px;
+  height: auto;
+  padding: 0;
+  line-height: 1.45;
+  overflow-y: auto;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-lexical-content-editable-root {
+  min-height: 0;
+}
+
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-lexical-content-editable-paragraph {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-editor:has(.smtcmp-content-editable) {
+  display: flex;
+  align-items: flex-start;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-chat-user-input-controls {
+  height: auto;
+  min-height: 28px;
+  gap: var(--size-2-3);
+  margin-top: 0;
+  cursor: default;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-chat-user-input-controls__left {
+  gap: var(--size-2-3);
+}
+
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-controls__left
+  .smtcmp-chat-input-model-select {
+  max-width: 170px;
+}
+
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-controls__left
+  .smtcmp-chat-input-model-select__model-name {
+  max-width: 128px;
+}
+
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-controls
+  .smtcmp-chat-input-model-select,
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-controls
+  .smtcmp-chat-input-model-select
+  *,
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-controls
+  button {
+  cursor: pointer;
+}
+
+.smtcmp-quick-ask-user-message--editing .smtcmp-chat-user-input-submit-button,
+.smtcmp-quick-ask-user-message--editing
+  .smtcmp-chat-user-input-submit-button-circle {
+  transform: scale(0.95);
+  transform-origin: center;
+}
+
+.smtcmp-quick-ask-chat-area--shared .smtcmp-assistant-tool-message-group {
+  gap: var(--size-2-3);
+  padding-bottom: var(--size-2-2);
+}
+
+.smtcmp-quick-ask-chat-area--shared .smtcmp-chat-messages-assistant {
+  max-width: 100%;
+}
+
+.smtcmp-quick-ask-chat-area--shared .smtcmp-toolcall-content-section {
+  overflow: hidden;
+}
+
+.smtcmp-quick-ask-chat-area--shared .smtcmp-code-block,
+.smtcmp-quick-ask-chat-area--shared .smtcmp-toolcall {
+  font-size: var(--font-ui-smaller);
 }
 
 .smtcmp-quick-ask-assistant-message {

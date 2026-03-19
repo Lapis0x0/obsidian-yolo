@@ -8,16 +8,14 @@ import {
   SerializedEditorState,
 } from 'lexical'
 import {
-  Check,
   ChevronDown,
   ChevronUp,
-  CopyIcon,
   RotateCcw,
   Send,
   Square,
   X,
 } from 'lucide-react'
-import { Component, Editor, MarkdownRenderer, Notice } from 'obsidian'
+import { Editor, Notice } from 'obsidian'
 import React, {
   useCallback,
   useEffect,
@@ -46,8 +44,10 @@ import type {
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
 import {
+  AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatMessage,
+  ChatToolMessage,
   ChatUserMessage,
 } from '../../../types/chat'
 import {
@@ -57,10 +57,7 @@ import {
 } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
-import {
-  getTextEditPlanPreviewContent,
-  parseTextEditPlan,
-} from '../../../core/edits/textEditPlan'
+import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
@@ -68,12 +65,14 @@ import {
   getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { parseTagContents } from '../../../utils/chat/parse-tag-content'
+import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { mergeCustomParameters } from '../../../utils/custom-parameters'
 import { readTFileContent } from '../../../utils/obsidian'
-import AssistantMessageReasoning from '../../chat-view/AssistantMessageReasoning'
-import ChatUserInput from '../../chat-view/chat-input/ChatUserInput'
+import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
+import ChatUserInput, {
+  ChatUserInputRef,
+} from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import {
@@ -242,40 +241,6 @@ function createPlainTextEditorState(text: string): SerializedEditorState {
   return state as SerializedEditorState
 }
 
-// Simple markdown renderer component for Quick Ask
-function SimpleMarkdownContent({
-  content,
-  component,
-  scale = 'sm',
-}: {
-  content: string
-  component: Component
-  scale?: 'xs' | 'sm' | 'base'
-}) {
-  const app = useApp()
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (containerRef.current && content) {
-      containerRef.current.replaceChildren()
-      void MarkdownRenderer.render(
-        app,
-        content,
-        containerRef.current,
-        '',
-        component,
-      )
-    }
-  }, [app, component, content])
-
-  return (
-    <div
-      ref={containerRef}
-      className={`markdown-rendered smtcmp-markdown-rendered smtcmp-scale-${scale}`}
-    />
-  )
-}
-
 export function QuickAskPanel({
   plugin,
   editor: _editor,
@@ -336,7 +301,10 @@ export function QuickAskPanel({
   )
   const [activeSelectionScope, setActiveSelectionScope] =
     useState<QuickAskSelectionScope | null>(() => selectionScope ?? null)
-  const [copied, setCopied] = useState(false)
+  const [isApplying, setIsApplying] = useState(false)
+  const [activeApplyRequestKey, setActiveApplyRequestKey] = useState<
+    string | null
+  >(null)
   const hasDockedRef = useRef(false)
   const enableAutoDock =
     settings.continuationOptions.quickAskAutoDockToTopRight ?? true
@@ -362,14 +330,19 @@ export function QuickAskPanel({
 
   const inputRowRef = useRef<HTMLDivElement | null>(null)
   const contentEditableRef = useRef<HTMLDivElement>(null)
+  const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const applyAbortControllerRef = useRef<AbortController | null>(null)
   const shouldAutoScrollRef = useRef(true)
   const userDisabledAutoScrollRef = useRef(false)
   const lastScrollTopRef = useRef(0)
   const autoSendRef = useRef(false)
   const hasAppliedInitialInputRef = useRef(false)
+  const [focusedUserMessageId, setFocusedUserMessageId] = useState<
+    string | null
+  >(null)
 
   useEffect(() => {
     if (initialMode) {
@@ -453,69 +426,6 @@ export function QuickAskPanel({
     }
     return app.workspace.getActiveFile()
   }, [app, sourceFilePath])
-  const renderAssistantBlocks = useCallback(
-    (
-      rawContent: string | undefined | null,
-      generationState?: 'streaming' | 'completed' | 'aborted' | 'error',
-    ) => {
-      const parsed = parseTagContents(rawContent ?? '')
-      const hasAnswerContent = parsed.some((block) => {
-        if (block.type === 'think') {
-          return false
-        }
-
-        return block.content.trim().length > 0
-      })
-      const rendered: React.JSX.Element[] = []
-
-      parsed.forEach((block, index) => {
-        if (block.type === 'think') {
-          if (!block.content.trim()) return
-          rendered.push(
-            <AssistantMessageReasoning
-              key={index}
-              reasoning={block.content}
-              hasAnswerContent={hasAnswerContent}
-              generationState={generationState}
-              MarkdownComponent={({ content }) => (
-                <SimpleMarkdownContent content={content} component={plugin} />
-              )}
-            />,
-          )
-          return
-        }
-
-        if (block.type === 'smtcmp_block') {
-          const parsedPlan = parseTextEditPlan(block.content)
-          const normalizedContent = parsedPlan
-            ? getTextEditPlanPreviewContent(parsedPlan)
-            : block.language && block.language !== 'markdown'
-              ? `\`\`\`${block.language}\n${block.content}\n\`\`\``
-              : block.content
-          if (!normalizedContent.trim()) return
-          rendered.push(
-            <div key={index} className="smtcmp-quick-ask-assistant-block">
-              <SimpleMarkdownContent
-                content={normalizedContent}
-                component={plugin}
-              />
-            </div>,
-          )
-          return
-        }
-
-        if (!block.content.trim()) return
-        rendered.push(
-          <div key={index} className="smtcmp-quick-ask-assistant-block">
-            <SimpleMarkdownContent content={block.content} component={plugin} />
-          </div>,
-        )
-      })
-
-      return rendered
-    },
-    [plugin],
-  )
 
   const deriveAskRunStatus = useCallback(
     (
@@ -1018,6 +928,10 @@ export function QuickAskPanel({
     async (
       editorState: SerializedEditorState,
       mentionablesOverride?: Mentionable[],
+      options?: {
+        baseMessages?: ChatMessage[]
+        userMessageId?: string
+      },
     ) => {
       if (isStreaming) return
 
@@ -1046,14 +960,17 @@ export function QuickAskPanel({
         role: 'user',
         content: editorState,
         promptContent: null,
-        id: uuidv4(),
+        id: options?.userMessageId ?? uuidv4(),
         mentionables: mentionablesOverride ?? mentionables,
       }
 
       // Clear mentionables after creating the message
       setMentionables([])
 
-      const newMessages: ChatMessage[] = [...chatMessages, userMessage]
+      const newMessages: ChatMessage[] = [
+        ...(options?.baseMessages ?? chatMessages),
+        userMessage,
+      ]
       setChatMessages(newMessages)
 
       // Create abort controller
@@ -1206,6 +1123,143 @@ export function QuickAskPanel({
       settings,
       t,
     ],
+  )
+
+  const handleToolMessageUpdate = useCallback(
+    (toolMessage: ChatToolMessage) => {
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === toolMessage.id ? toolMessage : message,
+        ),
+      )
+    },
+    [],
+  )
+
+  const registerChatUserInputRef = useCallback(
+    (messageId: string, ref: ChatUserInputRef | null) => {
+      if (ref) {
+        chatUserInputRefs.current.set(messageId, ref)
+        return
+      }
+      chatUserInputRefs.current.delete(messageId)
+    },
+    [],
+  )
+
+  const handleDeleteGroup = useCallback(
+    (messageIds: string[]) => {
+      setChatMessages((prev) => {
+        const nextMessages = prev.filter(
+          (message) => !messageIds.includes(message.id),
+        )
+
+        void createOrUpdateConversationImmediately(
+          conversationId,
+          nextMessages,
+        ).catch((error) => {
+          console.error(
+            'Failed to persist quick ask conversation deletion',
+            error,
+          )
+        })
+
+        return nextMessages
+      })
+      setFocusedUserMessageId((prev) =>
+        prev && messageIds.includes(prev) ? null : prev,
+      )
+    },
+    [conversationId, createOrUpdateConversationImmediately],
+  )
+
+  const handleApply = useCallback(
+    async (
+      blockToApply: string,
+      applyRequestKey: string,
+      targetFilePath?: string,
+    ) => {
+      if (isApplying) {
+        if (activeApplyRequestKey === applyRequestKey) {
+          applyAbortControllerRef.current?.abort()
+          applyAbortControllerRef.current = null
+          setActiveApplyRequestKey(null)
+          setIsApplying(false)
+        }
+        return
+      }
+
+      const abortController = new AbortController()
+      applyAbortControllerRef.current = abortController
+      setActiveApplyRequestKey(applyRequestKey)
+      setIsApplying(true)
+
+      try {
+        if (abortController.signal.aborted) {
+          throw new DOMException('Apply aborted', 'AbortError')
+        }
+
+        const targetFile = targetFilePath
+          ? app.vault.getFileByPath(targetFilePath)
+          : resolveEditTargetFile()
+        if (!targetFile) {
+          throw new Error('No file is currently open to apply changes.')
+        }
+
+        const targetFileContent = await readTFileContent(targetFile, app.vault)
+        const plan = parseTextEditPlan(blockToApply, {
+          requireDocumentType: true,
+        })
+
+        if (!plan) {
+          throw new Error('当前内容不包含可应用的编辑计划。')
+        }
+
+        const materialized = materializeTextEditPlan({
+          content: targetFileContent,
+          plan,
+        })
+
+        if (materialized.errors.length > 0) {
+          console.warn('[Quick Ask Apply] Some planned edits failed.', {
+            filePath: targetFile.path,
+            errors: materialized.errors,
+          })
+        }
+
+        if (materialized.appliedCount === 0) {
+          throw new Error('当前编辑计划未匹配到可修改内容，请重新生成。')
+        }
+
+        await plugin.openApplyReview({
+          file: targetFile,
+          originalContent: targetFileContent,
+          newContent: materialized.newContent,
+          reviewMode: 'full',
+        } satisfies ApplyViewState)
+      } catch (error) {
+        if (
+          (error instanceof Error && error.name === 'AbortError') ||
+          (error instanceof Error && /abort/i.test(error.message))
+        ) {
+          return
+        }
+
+        if (error instanceof Error) {
+          new Notice(error.message)
+          console.error('Failed to apply changes in quick ask', error)
+          return
+        }
+
+        new Notice('Failed to apply changes')
+        console.error('Failed to apply changes in quick ask', error)
+      } finally {
+        applyAbortControllerRef.current = null
+        setActiveApplyRequestKey(null)
+        setIsApplying(false)
+      }
+    },
+    [activeApplyRequestKey, app, isApplying, plugin, resolveEditTargetFile],
   )
 
   useEffect(() => {
@@ -1605,24 +1659,6 @@ export function QuickAskPanel({
     [executionMode, submitEditMode, submitEditDirect, submitMessage],
   )
 
-  // Copy last assistant message
-  const copyLastResponse = useCallback(() => {
-    const lastAssistantMessage = [...chatMessages]
-      .reverse()
-      .find((m) => m.role === 'assistant')
-    if (lastAssistantMessage && lastAssistantMessage.role === 'assistant') {
-      void navigator.clipboard
-        .writeText(lastAssistantMessage.content || '')
-        .then(() => {
-          setCopied(true)
-          window.setTimeout(() => setCopied(false), 1500)
-        })
-        .catch((error) => {
-          console.error('Failed to copy to clipboard', error)
-        })
-    }
-  }, [chatMessages])
-
   // Clear conversation
   const clearConversation = useCallback(() => {
     setChatMessages([])
@@ -1639,10 +1675,8 @@ export function QuickAskPanel({
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
   const isResizedEmptyState = !hasMessages && !!panelSize?.height
-  const lastAssistantMessageId = useMemo(
-    () => [...chatMessages].reverse().find((m) => m.role === 'assistant')?.id,
-    [chatMessages],
-  )
+  const groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[] =
+    useMemo(() => groupAssistantAndToolMessages(chatMessages), [chatMessages])
 
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
@@ -1915,6 +1949,7 @@ export function QuickAskPanel({
           )}
         </div>
         <button
+          type="button"
           className="smtcmp-quick-ask-close-button"
           onClick={onClose}
           aria-label={t('quickAsk.close', 'Close')}
@@ -1926,72 +1961,137 @@ export function QuickAskPanel({
       {/* Chat area - only shown when there are messages */}
       {hasMessages && (
         <div
-          className="smtcmp-quick-ask-chat-area"
+          className="smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared"
           ref={chatAreaRef}
           style={panelSize?.height ? { maxHeight: 'none' } : undefined}
         >
-          {chatMessages.map((message) => {
-            if (message.role === 'user') {
+          {groupedChatMessages.map((messageOrGroup, index) => {
+            if (Array.isArray(messageOrGroup)) {
               return (
-                <div key={message.id} className="smtcmp-quick-ask-user-message">
-                  <ChatUserInput
-                    initialSerializedEditorState={message.content}
-                    onChange={noop}
-                    onSubmit={noop}
-                    onFocus={noop}
-                    onBlur={noop}
-                    mentionables={message.mentionables ?? []}
-                    setMentionables={noopSetMentionables}
-                    compact={true}
-                  />
-                </div>
+                <AssistantToolMessageGroupItem
+                  key={messageOrGroup.at(0)?.id}
+                  messages={messageOrGroup}
+                  conversationId={conversationId}
+                  suppressFooter={false}
+                  showInlineInfo={false}
+                  showInsertAction={false}
+                  showCopyAction={true}
+                  showBranchAction={false}
+                  showEditAction={false}
+                  showDeleteAction={true}
+                  isApplying={isApplying}
+                  activeApplyRequestKey={activeApplyRequestKey}
+                  onApply={handleApply}
+                  onToolMessageUpdate={handleToolMessageUpdate}
+                  onEditStart={noop}
+                  onEditCancel={noop}
+                  onEditSave={noop}
+                  onDeleteGroup={handleDeleteGroup}
+                  onBranchGroup={noop}
+                />
               )
             }
-            if (message.role === 'assistant') {
-              const isLatestAssistant = message.id === lastAssistantMessageId
-              return (
-                <div
-                  key={message.id}
-                  className="smtcmp-quick-ask-assistant-message"
-                >
-                  {message.reasoning?.trim() && (
-                    <AssistantMessageReasoning
-                      reasoning={message.reasoning}
-                      hasAnswerContent={message.content.trim().length > 0}
-                      generationState={message.metadata?.generationState}
-                      MarkdownComponent={({ content }) => (
-                        <SimpleMarkdownContent
-                          content={content}
-                          component={plugin}
-                        />
-                      )}
-                    />
-                  )}
-                  {renderAssistantBlocks(
-                    message.content,
-                    message.metadata?.generationState,
-                  )}
-                  {isLatestAssistant && (
-                    <div className="smtcmp-quick-ask-assistant-footer">
-                      <div className="smtcmp-assistant-message-actions">
-                        <button
-                          className="clickable-icon"
-                          onClick={copyLastResponse}
-                          title={t('quickAsk.copy', 'Copy')}
-                        >
-                          {copied ? (
-                            <Check size={12} />
-                          ) : (
-                            <CopyIcon size={12} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            }
-            return null
+            return (
+              <div
+                key={messageOrGroup.id}
+                className={`smtcmp-quick-ask-user-message${focusedUserMessageId === messageOrGroup.id ? ' smtcmp-quick-ask-user-message--editing' : ''}`}
+              >
+                <ChatUserInput
+                  ref={(ref) =>
+                    registerChatUserInputRef(messageOrGroup.id, ref)
+                  }
+                  initialSerializedEditorState={messageOrGroup.content}
+                  onChange={(content) => {
+                    setChatMessages((prev) =>
+                      prev.map((message) =>
+                        message.role === 'user' &&
+                        message.id === messageOrGroup.id
+                          ? {
+                              ...message,
+                              content,
+                              promptContent: null,
+                            }
+                          : message,
+                      ),
+                    )
+                  }}
+                  onSubmit={(content) => {
+                    if (
+                      editorStateToPlainText(content).trim() === '' &&
+                      messageOrGroup.mentionables.length === 0
+                    ) {
+                      return
+                    }
+
+                    const baseMessages = groupedChatMessages
+                      .slice(0, index)
+                      .flatMap((group): ChatMessage[] =>
+                        Array.isArray(group) ? group : [group],
+                      )
+
+                    void submitMessage(content, messageOrGroup.mentionables, {
+                      baseMessages,
+                      userMessageId: messageOrGroup.id,
+                    })
+                    setFocusedUserMessageId(null)
+                    requestAnimationFrame(() => {
+                      contentEditableRef.current?.focus()
+                    })
+                  }}
+                  onFocus={() => {
+                    setFocusedUserMessageId(messageOrGroup.id)
+                  }}
+                  onBlur={() => {
+                    setFocusedUserMessageId((current) =>
+                      current === messageOrGroup.id ? null : current,
+                    )
+                  }}
+                  mentionables={messageOrGroup.mentionables ?? []}
+                  setMentionables={(nextMentionables) => {
+                    setChatMessages((prev) =>
+                      prev.map((message) =>
+                        message.role === 'user' &&
+                        message.id === messageOrGroup.id
+                          ? {
+                              ...message,
+                              mentionables: nextMentionables,
+                              promptContent: null,
+                            }
+                          : message,
+                      ),
+                    )
+                  }}
+                  compact={focusedUserMessageId !== messageOrGroup.id}
+                  onToggleCompact={() => {
+                    setFocusedUserMessageId(messageOrGroup.id)
+                    requestAnimationFrame(() => {
+                      chatUserInputRefs.current.get(messageOrGroup.id)?.focus()
+                    })
+                  }}
+                  modelId={
+                    settings.continuationOptions?.continuationModelId &&
+                    settings.chatModels.some(
+                      (m) =>
+                        m.id ===
+                        settings.continuationOptions?.continuationModelId,
+                    )
+                      ? settings.continuationOptions?.continuationModelId
+                      : settings.chatModelId
+                  }
+                  onModelChange={(modelId) => {
+                    void setSettings({
+                      ...settings,
+                      continuationOptions: {
+                        ...settings.continuationOptions,
+                        continuationModelId: modelId,
+                      },
+                    })
+                  }}
+                  showReasoningSelect={false}
+                  showPlaceholder={false}
+                />
+              </div>
+            )
           })}
         </div>
       )}
@@ -2001,6 +2101,7 @@ export function QuickAskPanel({
         {/* Left: Assistant selector */}
         <div className="smtcmp-quick-ask-toolbar-left">
           <button
+            type="button"
             ref={assistantTriggerRef}
             className="smtcmp-quick-ask-assistant-trigger"
             onClick={() => setIsAssistantMenuOpen(!isAssistantMenuOpen)}
@@ -2168,6 +2269,7 @@ export function QuickAskPanel({
           {/* Clear conversation button - only shown when there are messages */}
           {hasMessages && (
             <button
+              type="button"
               className="smtcmp-quick-ask-toolbar-button"
               onClick={clearConversation}
               aria-label={t('quickAsk.clear', 'Clear conversation')}
@@ -2180,6 +2282,7 @@ export function QuickAskPanel({
           {/* Send/Stop button */}
           {isStreaming ? (
             <button
+              type="button"
               className="smtcmp-quick-ask-send-button stop"
               onClick={abortStream}
               aria-label={t('quickAsk.stop', 'Stop')}
@@ -2188,6 +2291,7 @@ export function QuickAskPanel({
             </button>
           ) : (
             <button
+              type="button"
               className="smtcmp-quick-ask-send-button"
               onClick={() => {
                 const lexicalEditor = lexicalEditorRef.current
