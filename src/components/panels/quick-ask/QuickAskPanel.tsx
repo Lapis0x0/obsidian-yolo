@@ -1912,7 +1912,15 @@ export function QuickAskPanel({
           : undefined
       }
     >
-      {/* Drag handle */}
+      <button
+        type="button"
+        className="smtcmp-quick-ask-close-button"
+        onClick={onClose}
+        aria-label={t('quickAsk.close', 'Close')}
+      >
+        <X size={14} />
+      </button>
+
       <div
         ref={dragHandleRef}
         className="smtcmp-quick-ask-drag-handle"
@@ -1921,7 +1929,7 @@ export function QuickAskPanel({
         <div className="smtcmp-quick-ask-drag-indicator" />
       </div>
 
-      {/* Top: Input row with close button (Cursor style) */}
+      {/* Top: Input row */}
       <div className="smtcmp-quick-ask-input-row" ref={inputRowRef}>
         <div
           className={`smtcmp-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
@@ -1964,14 +1972,6 @@ export function QuickAskPanel({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="smtcmp-quick-ask-close-button"
-          onClick={onClose}
-          aria-label={t('quickAsk.close', 'Close')}
-        >
-          <X size={14} />
-        </button>
       </div>
 
       {/* Chat area - only shown when there are messages */}
