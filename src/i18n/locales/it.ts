@@ -1088,6 +1088,8 @@ export const it: TranslationKeys = {
   chatMode: {
     chat: 'Chat',
     chatDesc: 'Chiedi, rifinisci, crea',
+    rewrite: 'Riscrivi',
+    rewriteDesc: 'Modifica solo la selezione corrente',
     agent: 'Agent',
     agentDesc: 'Strumenti per task complessi',
     warning: {

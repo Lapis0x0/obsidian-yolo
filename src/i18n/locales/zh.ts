@@ -1027,6 +1027,8 @@ export const zh: TranslationKeys = {
   chatMode: {
     chat: '对话',
     chatDesc: '适合提问、润色与改写',
+    rewrite: '改写',
+    rewriteDesc: '仅修改当前选区',
     agent: 'Agent',
     agentDesc: '启用工具链，处理多步骤任务',
     warning: {

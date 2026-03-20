@@ -958,6 +958,8 @@ export type TranslationKeys = {
   chatMode?: {
     chat?: string
     chatDesc?: string
+    rewrite?: string
+    rewriteDesc?: string
     agent?: string
     agentDesc?: string
     warning?: {
