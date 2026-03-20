@@ -8,6 +8,7 @@ import {
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { getNodeBody, getNodeWindow } from '../../../utils/dom/window-context'
 
 export type ChatMode = 'chat' | 'agent'
 
@@ -78,6 +79,7 @@ export const ChatModeSelect = forwardRef<
     const { t } = useLanguage()
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
+    const resolvedContainer = container ?? getNodeBody(triggerRef.current)
     const itemRefs = useRef<Record<ChatMode, HTMLDivElement | null>>({
       chat: null,
       agent: null,
@@ -124,10 +126,11 @@ export const ChatModeSelect = forwardRef<
 
     useEffect(() => {
       if (!isOpen) return
-      const rafId = window.requestAnimationFrame(() => {
+      const ownerWindow = getNodeWindow(triggerRef.current)
+      const rafId = ownerWindow.requestAnimationFrame(() => {
         focusSelectedItem()
       })
-      return () => window.cancelAnimationFrame(rafId)
+      return () => ownerWindow.cancelAnimationFrame(rafId)
     }, [isOpen, focusSelectedItem])
 
     const handleTriggerKeyDown = (
@@ -188,7 +191,7 @@ export const ChatModeSelect = forwardRef<
           </div>
         </DropdownMenu.Trigger>
 
-        <DropdownMenu.Portal container={container}>
+        <DropdownMenu.Portal container={resolvedContainer}>
           <DropdownMenu.Content
             className={
               contentClassName

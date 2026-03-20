@@ -4,6 +4,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { ChatModel } from '../../../types/chat-model.types'
+import { getNodeBody, getNodeWindow } from '../../../utils/dom/window-context'
 import { detectReasoningTypeFromModelId } from '../../../utils/model-id-utils'
 
 export type ReasoningLevel =
@@ -243,6 +244,7 @@ export const ReasoningSelect = forwardRef<
     const { t } = useLanguage()
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
+    const resolvedContainer = container ?? getNodeBody(triggerRef.current)
     const itemRefs = useRef<Record<ReasoningLevel, HTMLDivElement | null>>({
       off: null,
       on: null,
@@ -305,10 +307,11 @@ export const ReasoningSelect = forwardRef<
 
     useEffect(() => {
       if (!isOpen) return
-      const rafId = window.requestAnimationFrame(() => {
+      const ownerWindow = getNodeWindow(triggerRef.current)
+      const rafId = ownerWindow.requestAnimationFrame(() => {
         focusSelectedItem()
       })
-      return () => window.cancelAnimationFrame(rafId)
+      return () => ownerWindow.cancelAnimationFrame(rafId)
     }, [isOpen, focusSelectedItem])
 
     const handleOpenChange = (open: boolean) => {
@@ -357,7 +360,7 @@ export const ReasoningSelect = forwardRef<
           </div>
         </DropdownMenu.Trigger>
 
-        <DropdownMenu.Portal container={container}>
+        <DropdownMenu.Portal container={resolvedContainer}>
           <DropdownMenu.Content
             className={
               contentClassName

@@ -3,6 +3,11 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useSettings } from '../../../contexts/settings-context'
+import {
+  getNodeBody,
+  getNodeDocument,
+  getNodeWindow,
+} from '../../../utils/dom/window-context'
 import { getModelDisplayName } from '../../../utils/model-id-utils'
 
 export const ModelSelect = forwardRef<
@@ -42,8 +47,22 @@ export const ModelSelect = forwardRef<
   ) => {
     const { settings, setSettings } = useSettings()
     const [isOpen, setIsOpen] = useState(false)
+    const triggerRef = useRef<HTMLButtonElement | null>(null)
     const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
     const selectedModelId = externalModelId ?? settings.chatModelId
+    const resolvedContainer = container ?? getNodeBody(triggerRef.current)
+
+    const setTriggerRef = useCallback(
+      (node: HTMLButtonElement | null) => {
+        triggerRef.current = node
+        if (typeof ref === 'function') {
+          ref(node)
+        } else if (ref) {
+          ref.current = node
+        }
+      },
+      [ref],
+    )
 
     const enabledModels = settings.chatModels.filter(
       ({ enable }) => enable ?? true,
@@ -94,7 +113,8 @@ export const ModelSelect = forwardRef<
     const focusByDelta = useCallback(
       (delta: number) => {
         if (orderedModelIds.length === 0) return
-        const activeElement = document.activeElement as HTMLElement | null
+        const activeElement = getNodeDocument(triggerRef.current)
+          .activeElement as HTMLElement | null
         const activeId =
           activeElement?.dataset?.modelId &&
           orderedModelIds.includes(activeElement.dataset.modelId)
@@ -118,10 +138,11 @@ export const ModelSelect = forwardRef<
 
     useEffect(() => {
       if (!isOpen) return
-      const rafId = window.requestAnimationFrame(() => {
+      const ownerWindow = getNodeWindow(triggerRef.current)
+      const rafId = ownerWindow.requestAnimationFrame(() => {
         focusSelectedItem()
       })
-      return () => window.cancelAnimationFrame(rafId)
+      return () => ownerWindow.cancelAnimationFrame(rafId)
     }, [isOpen, focusSelectedItem])
 
     const handleTriggerKeyDown = (
@@ -169,7 +190,7 @@ export const ModelSelect = forwardRef<
     return (
       <DropdownMenu.Root open={isOpen} onOpenChange={handleOpenChange}>
         <DropdownMenu.Trigger
-          ref={ref}
+          ref={setTriggerRef}
           className="smtcmp-chat-input-model-select"
           onKeyDown={handleTriggerKeyDown}
         >
@@ -181,7 +202,7 @@ export const ModelSelect = forwardRef<
           </div>
         </DropdownMenu.Trigger>
 
-        <DropdownMenu.Portal container={container}>
+        <DropdownMenu.Portal container={resolvedContainer}>
           <DropdownMenu.Content
             className={
               contentClassName
@@ -199,8 +220,8 @@ export const ModelSelect = forwardRef<
               e.stopPropagation()
             }}
             onCloseAutoFocus={(e) => {
-              // 防止关闭后自动聚焦，保持焦点在触发器上
               e.preventDefault()
+              triggerRef.current?.focus({ preventScroll: true })
             }}
           >
             <DropdownMenu.RadioGroup

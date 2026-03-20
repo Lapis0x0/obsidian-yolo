@@ -3,6 +3,8 @@ import { Check, ChevronDown } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
+import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
+
 export type RollerOption = {
   value: string
   label: string
@@ -60,11 +62,13 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
   )
   const [incomingValue, setIncomingValue] = useState<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
+    const ownerWindow = getNodeWindow(triggerRef.current)
     return () => {
       if (timeoutRef.current !== null) {
-        window.clearTimeout(timeoutRef.current)
+        ownerWindow.clearTimeout(timeoutRef.current)
         timeoutRef.current = null
       }
     }
@@ -78,11 +82,12 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
     }
 
     setIncomingValue(currentOption.value)
+    const ownerWindow = getNodeWindow(triggerRef.current)
     if (timeoutRef.current !== null) {
-      window.clearTimeout(timeoutRef.current)
+      ownerWindow.clearTimeout(timeoutRef.current)
       timeoutRef.current = null
     }
-    timeoutRef.current = window.setTimeout(() => {
+    timeoutRef.current = ownerWindow.setTimeout(() => {
       setVisibleValue(currentOption.value)
       setIncomingValue(null)
       timeoutRef.current = null
@@ -112,6 +117,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
       onOpenChange={handleOpenChange}
     >
       <DropdownMenu.Trigger
+        ref={triggerRef}
         className={
           triggerClassName
             ? `smtcmp-roller-select-trigger ${triggerClassName}${isOpen ? ' is-open' : ''}`
@@ -158,7 +164,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
         </span>
       </DropdownMenu.Trigger>
 
-      <DropdownMenu.Portal>
+      <DropdownMenu.Portal container={getNodeBody(triggerRef.current)}>
         <DropdownMenu.Content
           className={
             contentClassName

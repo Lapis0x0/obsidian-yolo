@@ -41,6 +41,11 @@ import {
   clearDynamicStyleClass,
   updateDynamicStyleClass,
 } from '../../../../../utils/dom/dynamicStyleManager'
+import {
+  getNodeBody,
+  getNodeDocument,
+  getNodeWindow,
+} from '../../../../../utils/dom/window-context'
 
 export type MenuTextMatch = {
   leadOffset: number
@@ -83,14 +88,16 @@ export type MenuRenderFn<TOption extends MenuOption> = (
 ) => ReactPortal | ReactJSX.Element | null
 
 const scrollIntoViewIfNeeded = (target: HTMLElement) => {
-  const typeaheadContainerNode = document.getElementById('typeahead-menu')
+  const ownerDocument = getNodeDocument(target)
+  const ownerWindow = getNodeWindow(target)
+  const typeaheadContainerNode = ownerDocument.getElementById('typeahead-menu')
   if (!typeaheadContainerNode) {
     return
   }
 
   const typeaheadRect = typeaheadContainerNode.getBoundingClientRect()
 
-  if (typeaheadRect.top + typeaheadRect.height > window.innerHeight) {
+  if (typeaheadRect.top + typeaheadRect.height > ownerWindow.innerHeight) {
     typeaheadContainerNode.scrollIntoView({
       block: 'center',
     })
@@ -171,7 +178,7 @@ export function getScrollParent(
   const excludeStaticParent = style.position === 'absolute'
   const overflowRegex = includeHidden ? /(auto|scroll|hidden)/ : /(auto|scroll)/
   if (style.position === 'fixed') {
-    return document.body
+    return getNodeBody(element)
   }
   for (
     let parent: HTMLElement | null = element;
@@ -188,7 +195,7 @@ export function getScrollParent(
       return parent
     }
   }
-  return document.body
+  return getNodeBody(element)
 }
 
 function isTriggerVisibleInNearestScrollContainer(
@@ -210,11 +217,13 @@ export function useDynamicPositioning(
   const [editor] = useLexicalComposerContext()
   useEffect(() => {
     if (targetElement != null && resolution != null) {
+      const ownerDocument = getNodeDocument(targetElement)
+      const ownerWindow = getNodeWindow(targetElement)
       const rootElement = editor.getRootElement()
       const rootScrollParent =
         rootElement != null
           ? getScrollParent(rootElement, false)
-          : document.body
+          : getNodeBody(targetElement)
       let ticking = false
       let previousIsInView = isTriggerVisibleInNearestScrollContainer(
         targetElement,
@@ -222,7 +231,7 @@ export function useDynamicPositioning(
       )
       const handleScroll = function () {
         if (!ticking) {
-          window.requestAnimationFrame(function () {
+          ownerWindow.requestAnimationFrame(function () {
             onReposition()
             ticking = false
           })
@@ -240,16 +249,16 @@ export function useDynamicPositioning(
         }
       }
       const resizeObserver = new ResizeObserver(onReposition)
-      window.addEventListener('resize', onReposition)
-      document.addEventListener('scroll', handleScroll, {
+      ownerWindow.addEventListener('resize', onReposition)
+      ownerDocument.addEventListener('scroll', handleScroll, {
         capture: true,
         passive: true,
       })
       resizeObserver.observe(targetElement)
       return () => {
         resizeObserver.unobserve(targetElement)
-        window.removeEventListener('resize', onReposition)
-        document.removeEventListener('scroll', handleScroll, true)
+        ownerWindow.removeEventListener('resize', onReposition)
+        ownerDocument.removeEventListener('scroll', handleScroll, true)
       }
     }
   }, [targetElement, editor, onVisibilityChange, onReposition, resolution])
@@ -523,165 +532,182 @@ export function useMenuAnchorRef(
   resolution: MenuResolution | null,
   setResolution: (r: MenuResolution | null) => void,
   className?: string,
-  parent: HTMLElement = document.body,
+  parent?: HTMLElement,
   _shouldIncludePageYOffset__EXPERIMENTAL = true,
 ): MutableRefObject<HTMLElement> {
   const [editor] = useLexicalComposerContext()
   const anchorElementRef = useRef<HTMLElement>(document.createElement('div'))
   const positionMenu = useCallback(() => {
+    const rootElement = editor.getRootElement()
+    if (rootElement === null || resolution === null) {
+      return
+    }
+
+    const ownerDocument = getNodeDocument(rootElement)
+    const ownerWindow = getNodeWindow(rootElement)
+    const portalParent = parent ?? getNodeBody(rootElement)
+    let containerDiv = anchorElementRef.current
+
+    if (containerDiv.ownerDocument !== ownerDocument) {
+      if (containerDiv.isConnected) {
+        clearDynamicStyleClass(containerDiv)
+        containerDiv.remove()
+      }
+      containerDiv = ownerDocument.createElement('div')
+      anchorElementRef.current = containerDiv
+    }
+
     // 通过动态样式类固定定位弹窗容器
-    const containerDiv = anchorElementRef.current
     containerDiv.classList.remove(
       'smtcmp-menu-above',
       'smtcmp-menu-right-align',
     )
 
-    const rootElement = editor.getRootElement()
     const menuEle = containerDiv.firstChild as HTMLElement | null
 
-    if (rootElement !== null && resolution !== null) {
-      const rect = resolution.getRect()
-      const { left, top } = rect
+    const rect = resolution.getRect()
+    const { left, top } = rect
 
-      if (!containerDiv.isConnected) {
-        if (className != null) {
-          containerDiv.className = className
-        }
-        containerDiv.classList.add('smtcmp-typeahead-menu')
-        containerDiv.setAttribute('aria-label', 'Typeahead menu')
-        containerDiv.setAttribute('id', 'typeahead-menu')
-        containerDiv.setAttribute('role', 'listbox')
-        // defer append to reposition() so we can choose the correct parent
+    if (!containerDiv.isConnected) {
+      if (className != null) {
+        containerDiv.className = className
       }
+      containerDiv.classList.add('smtcmp-typeahead-menu')
+      containerDiv.setAttribute('aria-label', 'Typeahead menu')
+      containerDiv.setAttribute('id', 'typeahead-menu')
+      containerDiv.setAttribute('role', 'listbox')
+      // defer append to reposition() so we can choose the correct parent
+    }
 
-      const reposition = () => {
-        const offsetTop = 4
-        const margin = 8
-        const containerEl = rootElement.closest(
-          '.smtcmp-chat-user-input-container, .smtcmp-quick-ask-panel',
-        )
-        const centeredChatContainer = rootElement.closest(
-          '.smtcmp-chat-container--centered',
-        )
-        const isCenteredChatContainer = Boolean(centeredChatContainer)
-        const centeredChatTypeaheadMaxWidth = centeredChatContainer
-          ? getComputedStyle(centeredChatContainer)
-              .getPropertyValue('--smtcmp-chat-typeahead-max-width')
-              .trim() || '560px'
-          : '560px'
+    const reposition = () => {
+      const offsetTop = 4
+      const margin = 8
+      const containerEl = rootElement.closest(
+        '.smtcmp-chat-user-input-container, .smtcmp-quick-ask-panel',
+      )
+      const centeredChatContainer = rootElement.closest(
+        '.smtcmp-chat-container--centered',
+      )
+      const isCenteredChatContainer = Boolean(centeredChatContainer)
+      const centeredChatTypeaheadMaxWidth = centeredChatContainer
+        ? getComputedStyle(centeredChatContainer)
+            .getPropertyValue('--smtcmp-chat-typeahead-max-width')
+            .trim() || '560px'
+        : '560px'
 
-        if (containerEl) {
-          // Position the menu in document.body with fixed positioning to avoid clipping by container bounds
-          if (containerDiv.parentElement !== parent) {
-            parent.appendChild(containerDiv)
-          }
-
-          const rect = containerEl.getBoundingClientRect()
-          const cs = getComputedStyle(containerEl)
-
-          // Calculate focus ring thickness from box-shadow
-          const boxShadow = cs.boxShadow || ''
-          let ring = 0
-          const matches = boxShadow.match(/0px\s+0px\s+0px\s+([0-9.]+)px/g)
-          if (matches) {
-            for (const m of matches) {
-              const match = m.match(/([0-9.]+)px$/)
-              const value = match ? match[1] : '0'
-              const n = parseFloat(value) || 0
-              if (n > ring) ring = n
-            }
-          }
-
-          // Position menu to align with the outermost edge of the focus ring
-          const menuLeft = rect.left - ring
-          const menuWidth = rect.width + ring * 2
-          const menuTop = rect.top - offsetTop
-
-          updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
-            position: 'fixed',
-            left: Math.round(menuLeft),
-            top: Math.round(menuTop),
-            width: Math.round(menuWidth),
-            zIndex: '1000',
-          })
-
-          if (menuEle) {
-            const available = Math.max(margin, Math.floor(rect.top - margin))
-            const isMentionPopover = menuEle.classList.contains(
-              'smtcmp-smart-space-mention-popover',
-            )
-            if (isMentionPopover) {
-              const mentionPopoverWidth = isCenteredChatContainer
-                ? `min(100%, ${centeredChatTypeaheadMaxWidth})`
-                : '100%'
-              updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
-                position: 'absolute',
-                left: 0,
-                right: isCenteredChatContainer ? 'auto' : 0,
-                bottom: 0,
-                width: mentionPopoverWidth,
-                maxWidth: mentionPopoverWidth,
-                boxSizing: 'border-box',
-                overflow: 'visible',
-                '--smtcmp-typeahead-available-height': `${available}px`,
-              })
-            } else {
-              updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                width: '100%',
-                maxWidth: 'none',
-                boxSizing: 'border-box',
-                overflowY: 'auto',
-                maxHeight: available,
-              })
-            }
-            // Limit height to available space above the input
-            // Top cleared automatically by omission
-          }
-          return
+      if (containerEl) {
+        // Position the menu in the current window body to avoid clipping by container bounds
+        if (containerDiv.parentElement !== portalParent) {
+          portalParent.appendChild(containerDiv)
         }
 
-        // Fallback: position fixed above the caret rect
-        const estimatedH = 260
-        const leftPos = Math.max(
-          margin,
-          Math.min(left, window.innerWidth - margin),
-        )
-        const topPos = Math.max(margin, top - offsetTop - estimatedH)
-        if (!containerDiv.isConnected) parent.append(containerDiv)
+        const rect = containerEl.getBoundingClientRect()
+        const cs = getComputedStyle(containerEl)
+
+        // Calculate focus ring thickness from box-shadow
+        const boxShadow = cs.boxShadow || ''
+        let ring = 0
+        const matches = boxShadow.match(/0px\s+0px\s+0px\s+([0-9.]+)px/g)
+        if (matches) {
+          for (const m of matches) {
+            const match = m.match(/([0-9.]+)px$/)
+            const value = match ? match[1] : '0'
+            const n = parseFloat(value) || 0
+            if (n > ring) ring = n
+          }
+        }
+
+        // Position menu to align with the outermost edge of the focus ring
+        const menuLeft = rect.left - ring
+        const menuWidth = rect.width + ring * 2
+        const menuTop = rect.top - offsetTop
+
         updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
           position: 'fixed',
-          left: Math.round(leftPos),
-          top: Math.round(topPos),
-          width: 360,
+          left: Math.round(menuLeft),
+          top: Math.round(menuTop),
+          width: Math.round(menuWidth),
           zIndex: '1000',
         })
-        // Avoid adding smtcmp-menu-above here; topPos is already computed above the caret
+
         if (menuEle) {
-          updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
-            width: '100%',
-          })
-          requestAnimationFrame(() => {
-            const finalH = menuEle.getBoundingClientRect().height || estimatedH
-            const t2 = Math.max(margin, top - offsetTop - finalH)
-            updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
-              position: 'fixed',
-              left: Math.round(leftPos),
-              top: Math.round(t2),
-              width: 360,
-              zIndex: '1000',
+          const available = Math.max(margin, Math.floor(rect.top - margin))
+          const isMentionPopover = menuEle.classList.contains(
+            'smtcmp-smart-space-mention-popover',
+          )
+          if (isMentionPopover) {
+            const mentionPopoverWidth = isCenteredChatContainer
+              ? `min(100%, ${centeredChatTypeaheadMaxWidth})`
+              : '100%'
+            updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+              position: 'absolute',
+              left: 0,
+              right: isCenteredChatContainer ? 'auto' : 0,
+              bottom: 0,
+              width: mentionPopoverWidth,
+              maxWidth: mentionPopoverWidth,
+              boxSizing: 'border-box',
+              overflow: 'visible',
+              '--smtcmp-typeahead-available-height': `${available}px`,
             })
-          })
+          } else {
+            updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              maxWidth: 'none',
+              boxSizing: 'border-box',
+              overflowY: 'auto',
+              maxHeight: available,
+            })
+          }
+          // Limit height to available space above the input
+          // Top cleared automatically by omission
         }
+        return
       }
 
-      reposition()
-      anchorElementRef.current = containerDiv
-      rootElement.setAttribute('aria-controls', 'typeahead-menu')
+      // Fallback: position fixed above the caret rect
+      const estimatedH = 260
+      const leftPos = Math.max(
+        margin,
+        Math.min(left, ownerWindow.innerWidth - margin),
+      )
+      const topPos = Math.max(margin, top - offsetTop - estimatedH)
+      if (!containerDiv.isConnected) {
+        portalParent.append(containerDiv)
+      }
+      updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
+        position: 'fixed',
+        left: Math.round(leftPos),
+        top: Math.round(topPos),
+        width: 360,
+        zIndex: '1000',
+      })
+      // Avoid adding smtcmp-menu-above here; topPos is already computed above the caret
+      if (menuEle) {
+        updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
+          width: '100%',
+        })
+        ownerWindow.requestAnimationFrame(() => {
+          const finalH = menuEle.getBoundingClientRect().height || estimatedH
+          const t2 = Math.max(margin, top - offsetTop - finalH)
+          updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
+            position: 'fixed',
+            left: Math.round(leftPos),
+            top: Math.round(t2),
+            width: 360,
+            zIndex: '1000',
+          })
+        })
+      }
     }
+
+    reposition()
+    anchorElementRef.current = containerDiv
+    rootElement.setAttribute('aria-controls', 'typeahead-menu')
   }, [editor, resolution, className, parent])
 
   useEffect(() => {

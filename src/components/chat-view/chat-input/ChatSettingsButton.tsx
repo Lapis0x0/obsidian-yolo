@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { ChatModel } from '../../../types/chat-model.types'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
+import { getNodeBody, getNodeWindow } from '../../../utils/dom/window-context'
 
 export default function ChatSettingsButton({
   overrides,
@@ -51,14 +52,15 @@ export default function ChatSettingsButton({
     compute()
 
     const onResize = () => compute()
+    const ownerWindow = getNodeWindow(btn)
 
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(onResize)
       ro.observe(wrapper)
       return () => ro.disconnect()
     } else {
-      window.addEventListener('resize', onResize)
-      return () => window.removeEventListener('resize', onResize)
+      ownerWindow.addEventListener('resize', onResize)
+      return () => ownerWindow.removeEventListener('resize', onResize)
     }
   }, [])
 
@@ -84,42 +86,44 @@ export default function ChatSettingsButton({
           <SlidersHorizontal size={14} />
         </button>
       </Popover.Trigger>
-      <Popover.Content
-        className={popoverClassName}
-        style={popoverWidthStyle}
-        side="bottom"
-        align="end"
-        sideOffset={6}
-      >
-        <div className="smtcmp-chat-settings">
-          <div className="smtcmp-chat-settings-section">
-            <div className="smtcmp-chat-settings-section-title">
-              {t('chat.conversationSettings.vaultSearch', 'Vault search')}
-            </div>
-            <div className="smtcmp-chat-settings-row-inline">
-              <div className="smtcmp-chat-settings-label">
-                {t('chat.conversationSettings.useVaultSearch', 'RAG search')}
+      <Popover.Portal container={getNodeBody(triggerRef.current)}>
+        <Popover.Content
+          className={popoverClassName}
+          style={popoverWidthStyle}
+          side="bottom"
+          align="end"
+          sideOffset={6}
+        >
+          <div className="smtcmp-chat-settings">
+            <div className="smtcmp-chat-settings-section">
+              <div className="smtcmp-chat-settings-section-title">
+                {t('chat.conversationSettings.vaultSearch', 'Vault search')}
               </div>
-              <div className="smtcmp-segmented">
-                <button
-                  type="button"
-                  className={value.useVaultSearch === true ? 'active' : ''}
-                  onClick={() => updateVaultSearch(true)}
-                >
-                  {t('common.on', 'On')}
-                </button>
-                <button
-                  type="button"
-                  className={value.useVaultSearch === false ? 'active' : ''}
-                  onClick={() => updateVaultSearch(false)}
-                >
-                  {t('common.off', 'Off')}
-                </button>
+              <div className="smtcmp-chat-settings-row-inline">
+                <div className="smtcmp-chat-settings-label">
+                  {t('chat.conversationSettings.useVaultSearch', 'RAG search')}
+                </div>
+                <div className="smtcmp-segmented">
+                  <button
+                    type="button"
+                    className={value.useVaultSearch === true ? 'active' : ''}
+                    onClick={() => updateVaultSearch(true)}
+                  >
+                    {t('common.on', 'On')}
+                  </button>
+                  <button
+                    type="button"
+                    className={value.useVaultSearch === false ? 'active' : ''}
+                    onClick={() => updateVaultSearch(false)}
+                  >
+                    {t('common.off', 'Off')}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </Popover.Content>
+        </Popover.Content>
+      </Popover.Portal>
     </Popover.Root>
   )
 }
