@@ -27,6 +27,7 @@ import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../core/llm/manager'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
+import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
 import type { ApplyViewState } from '../../types/apply-view.types'
@@ -221,6 +222,7 @@ export type ChatProps = {
   selectedBlock?: MentionableBlockData
   activeView?: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
+  placement?: ChatLeafPlacement
   initialConversationId?: string
   onConversationContextChange?: (context: {
     currentConversationId?: string
@@ -345,13 +347,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     type: 'idle',
   })
 
-  const activeView = props.activeView ?? 'chat'
+  const isSidebarPlacement = props.placement === 'sidebar'
+  const activeView = isSidebarPlacement ? (props.activeView ?? 'chat') : 'chat'
   const onChangeView = props.onChangeView
-
-  const viewLabel =
-    activeView === 'composer'
-      ? t('sidebar.tabs.composer', 'Composer')
-      : t('sidebar.tabs.chat', 'Chat')
 
   // Per-conversation override settings (temperature, top_p, context, stream)
   const conversationOverridesRef = useRef<
@@ -2120,10 +2118,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onChangeView={onChangeView}
           chatMode={chatMode}
           onChangeChatMode={handleChatModeChange}
+          showComposer={isSidebarPlacement}
           disabled={false}
         />
       ) : (
-        <h1 className="smtcmp-chat-header-title">{viewLabel}</h1>
+        <h1 className="smtcmp-chat-header-title">
+          {t('sidebar.tabs.chat', 'Chat')}
+        </h1>
       )}
       {activeView === 'chat' && (
         <div className="smtcmp-chat-header-right">

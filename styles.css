@@ -6502,8 +6502,8 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 
 .smtcmp-view-toggle-button:hover:not(.smtcmp-view-toggle-button--active) {
   color: var(--text-normal);
-  background-color: transparent !important;
   background: none !important;
+  background-color: transparent !important;
 }
 
 .smtcmp-view-toggle-button--active {
@@ -6566,6 +6566,33 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
     0 2px 8px
       color-mix(in srgb, var(--background-modifier-box-shadow) 20%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.smtcmp-view-toggle--single {
+  width: calc(var(--smtcmp-expanded-width) + 8px);
+  min-width: calc(var(--smtcmp-expanded-width) + 8px);
+}
+
+.smtcmp-view-toggle--single .smtcmp-view-toggle-button--roller {
+  width: var(--smtcmp-expanded-width);
+  justify-content: center;
+  gap: 6px;
+}
+
+.smtcmp-view-toggle--single .smtcmp-view-toggle-button-label {
+  opacity: 1;
+  max-width: 100px;
+}
+
+.smtcmp-view-toggle--single .smtcmp-roller-select-caret {
+  width: 14px;
+  margin-left: 4px;
+  opacity: 0.92;
+}
+
+.smtcmp-view-toggle-indicator--single {
+  width: calc(100% - 8px) !important;
+  transform: translateX(0) !important;
 }
 
 /* Roller behavior on top of original accordion style */
