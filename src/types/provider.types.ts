@@ -36,6 +36,10 @@ export const llmProviderSchema = z.discriminatedUnion('type', [
     ...baseLlmProviderSchema.shape,
   }),
   z.object({
+    type: z.literal('chatgpt-oauth'),
+    ...baseLlmProviderSchema.shape,
+  }),
+  z.object({
     type: z.literal('anthropic'),
     ...baseLlmProviderSchema.shape,
     additionalSettings: z

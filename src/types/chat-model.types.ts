@@ -43,6 +43,16 @@ export const chatModelSchema = z.discriminatedUnion('providerType', [
       .optional(),
   }),
   z.object({
+    providerType: z.literal('chatgpt-oauth'),
+    ...baseChatModelSchema.shape,
+    reasoning: z
+      .object({
+        enabled: z.boolean(),
+        reasoning_effort: z.string().optional(),
+      })
+      .optional(),
+  }),
+  z.object({
     providerType: z.literal('anthropic'),
     ...baseChatModelSchema.shape,
     thinking: z

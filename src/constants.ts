@@ -36,6 +36,14 @@ export const PROVIDER_TYPES_INFO = {
     supportEmbedding: true,
     additionalSettings: [],
   },
+  'chatgpt-oauth': {
+    label: 'ChatGPT OAuth',
+    defaultProviderId: 'chatgpt-oauth',
+    requireApiKey: false,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    additionalSettings: [],
+  },
   anthropic: {
     label: 'Anthropic',
     defaultProviderId: 'anthropic',
@@ -214,6 +222,10 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
     id: PROVIDER_TYPES_INFO.openai.defaultProviderId,
   },
   {
+    type: 'chatgpt-oauth',
+    id: PROVIDER_TYPES_INFO['chatgpt-oauth'].defaultProviderId,
+  },
+  {
     type: 'anthropic',
     id: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
   },
@@ -278,6 +290,30 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     id: 'openai/gpt-5',
     model: 'gpt-5',
     enable: true,
+  },
+  {
+    providerType: 'chatgpt-oauth',
+    providerId: PROVIDER_TYPES_INFO['chatgpt-oauth'].defaultProviderId,
+    id: 'chatgpt-oauth/gpt-5.3-codex',
+    model: 'gpt-5.3-codex',
+    name: 'GPT-5.3 Codex',
+    enable: false,
+    reasoning: {
+      enabled: true,
+      reasoning_effort: 'medium',
+    },
+  },
+  {
+    providerType: 'chatgpt-oauth',
+    providerId: PROVIDER_TYPES_INFO['chatgpt-oauth'].defaultProviderId,
+    id: 'chatgpt-oauth/gpt-5.4',
+    model: 'gpt-5.4',
+    name: 'GPT-5.4',
+    enable: false,
+    reasoning: {
+      enabled: true,
+      reasoning_effort: 'medium',
+    },
   },
   {
     providerType: 'openai',
