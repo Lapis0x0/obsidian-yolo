@@ -22,7 +22,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { App, Notice } from 'obsidian'
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   DEFAULT_CHAT_MODELS,
@@ -69,6 +69,148 @@ type ProviderSectionItemProps = {
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
 }
 
+function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
+  const [loading, setLoading] = useState(true)
+  const [connected, setConnected] = useState(false)
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [pendingCode, setPendingCode] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const refreshStatus = useCallback(async () => {
+    setLoading(true)
+    try {
+      const status = await plugin.getChatGPTOAuthStatus()
+      setConnected(status.connected)
+      setAccountId(status.accountId ?? null)
+      setExpiresAt(status.expiresAt ?? null)
+    } catch (error) {
+      console.error(
+        '[Smart Composer] Failed to load ChatGPT OAuth status:',
+        error,
+      )
+      setConnected(false)
+      setAccountId(null)
+      setExpiresAt(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [plugin])
+
+  useEffect(() => {
+    void refreshStatus()
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [refreshStatus])
+
+  const handleConnect = () => {
+    const execute = async () => {
+      setIsConnecting(true)
+      const service = plugin.getChatGPTOAuthService()
+      const authorization = await service.beginDeviceAuthorization()
+      setPendingCode(authorization.userCode)
+      abortRef.current?.abort()
+      const abortController = new AbortController()
+      abortRef.current = abortController
+
+      if (navigator.clipboard?.writeText) {
+        void navigator.clipboard
+          .writeText(authorization.userCode)
+          .catch(() => {})
+      }
+
+      window.open(
+        authorization.verificationUri,
+        '_blank',
+        'noopener,noreferrer',
+      )
+      new Notice(`请在打开的网页中输入设备码：${authorization.userCode}`, 12000)
+
+      await service.pollDeviceAuthorization(
+        authorization,
+        abortController.signal,
+      )
+      setPendingCode(null)
+      new Notice('ChatGPT OAuth 连接成功')
+      await refreshStatus()
+    }
+
+    void execute()
+      .catch((error: unknown) => {
+        console.error(
+          '[Smart Composer] Failed to connect ChatGPT OAuth:',
+          error,
+        )
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Failed to connect ChatGPT OAuth.'
+        new Notice(message)
+      })
+      .finally(() => {
+        setIsConnecting(false)
+      })
+  }
+
+  const handleDisconnect = () => {
+    const execute = async () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+      await plugin.disconnectChatGPTOAuthAccount()
+      setPendingCode(null)
+      new Notice('ChatGPT OAuth 已断开')
+      await refreshStatus()
+    }
+
+    void execute().catch((error: unknown) => {
+      console.error(
+        '[Smart Composer] Failed to disconnect ChatGPT OAuth:',
+        error,
+      )
+      new Notice('Failed to disconnect ChatGPT OAuth.')
+    })
+  }
+
+  return (
+    <div className="smtcmp-models-subsection">
+      <div className="smtcmp-models-subsection-header">
+        <span>ChatGPT OAuth</span>
+      </div>
+      <div className="smtcmp-no-models">
+        {loading
+          ? 'Loading ChatGPT OAuth status...'
+          : connected
+            ? `已连接${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · expires ${new Date(expiresAt).toLocaleString()}` : ''}`
+            : '未连接。连接后即可使用 ChatGPT Plus / Pro 账号模型。'}
+        {pendingCode ? ` 当前设备码：${pendingCode}` : ''}
+      </div>
+      <div className="smtcmp-provider-actions" style={{ marginTop: '8px' }}>
+        {!connected ? (
+          <button
+            type="button"
+            onClick={handleConnect}
+            className="clickable-icon"
+            disabled={isConnecting}
+          >
+            {isConnecting ? 'Connecting...' : 'Connect'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            className="clickable-icon"
+            disabled={isConnecting}
+          >
+            Disconnect
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ProviderSectionItem({
   provider,
   app,
@@ -86,6 +228,7 @@ function ProviderSectionItem({
   handleChatModelDragEnd,
   handleEmbeddingModelDragEnd,
 }: ProviderSectionItemProps) {
+  const isChatGPTOAuth = provider.type === 'chatgpt-oauth'
   const {
     attributes,
     listeners,
@@ -142,38 +285,52 @@ function ProviderSectionItem({
           <span
             className="smtcmp-provider-api-key"
             onClick={(e) => {
+              if (isChatGPTOAuth) {
+                return
+              }
               e.stopPropagation()
               new EditProviderModal(app, plugin, provider).open()
             }}
           >
-            {provider.apiKey ? '••••••••' : 'Set API key'}
+            {isChatGPTOAuth
+              ? 'OAuth login'
+              : provider.apiKey
+                ? '••••••••'
+                : 'Set API key'}
           </span>
         </div>
 
         <div className="smtcmp-provider-actions">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              new EditProviderModal(app, plugin, provider).open()
-            }}
-            className="clickable-icon"
-          >
-            <Settings />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDeleteProvider(provider)
-            }}
-            className="clickable-icon"
-          >
-            <Trash2 />
-          </button>
+          {!isChatGPTOAuth && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                new EditProviderModal(app, plugin, provider).open()
+              }}
+              className="clickable-icon"
+            >
+              <Settings />
+            </button>
+          )}
+          {!isChatGPTOAuth && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteProvider(provider)
+              }}
+              className="clickable-icon"
+            >
+              <Trash2 />
+            </button>
+          )}
         </div>
       </div>
 
       {isExpanded && (
         <div className="smtcmp-provider-models">
+          {isChatGPTOAuth && <ChatGPTOAuthPanel plugin={plugin} />}
           <ChatModelsTable
             provider={provider}
             app={app}
@@ -231,15 +388,18 @@ function ChatModelsTable({
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
         <span>{t('settings.models.chatModels')}</span>
-        <button
-          className="smtcmp-add-model-btn"
-          onClick={() => {
-            const modal = new AddChatModelModal(app, plugin, provider)
-            modal.open()
-          }}
-        >
-          + {t('settings.models.addChatModel')}
-        </button>
+        {provider.type !== 'chatgpt-oauth' && (
+          <button
+            type="button"
+            className="smtcmp-add-model-btn"
+            onClick={() => {
+              const modal = new AddChatModelModal(app, plugin, provider)
+              modal.open()
+            }}
+          >
+            + {t('settings.models.addChatModel')}
+          </button>
+        )}
       </div>
 
       {models.length > 0 ? (
@@ -319,15 +479,18 @@ function EmbeddingModelsTable({
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
         <span>{t('settings.models.embeddingModels')}</span>
-        <button
-          className="smtcmp-add-model-btn"
-          onClick={() => {
-            const modal = new AddEmbeddingModelModal(app, plugin, provider)
-            modal.open()
-          }}
-        >
-          + {t('settings.models.addEmbeddingModel')}
-        </button>
+        {provider.type !== 'chatgpt-oauth' && (
+          <button
+            type="button"
+            className="smtcmp-add-model-btn"
+            onClick={() => {
+              const modal = new AddEmbeddingModelModal(app, plugin, provider)
+              modal.open()
+            }}
+          >
+            + {t('settings.models.addEmbeddingModel')}
+          </button>
+        )}
       </div>
 
       {models.length > 0 ? (
@@ -372,7 +535,9 @@ function EmbeddingModelsTable({
         </DndContext>
       ) : (
         <div className="smtcmp-no-models">
-          {t('settings.models.noEmbeddingModelsConfigured')}
+          {provider.type === 'chatgpt-oauth'
+            ? 'ChatGPT OAuth provider does not support embeddings.'
+            : t('settings.models.noEmbeddingModelsConfigured')}
         </div>
       )}
     </div>
@@ -720,6 +885,11 @@ export function ProvidersAndModelsSection({
   }
 
   const handleDeleteProvider = (provider: LLMProvider) => {
+    if (provider.type === 'chatgpt-oauth') {
+      new Notice('ChatGPT OAuth 是内置 provider，不能删除。')
+      return
+    }
+
     void (async () => {
       const associatedChatModels = settings.chatModels.filter(
         (m) => m.providerId === provider.id,
