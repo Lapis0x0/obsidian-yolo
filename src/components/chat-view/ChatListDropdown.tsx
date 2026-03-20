@@ -7,6 +7,7 @@ import { ChatConversationMetadata } from '../../database/json/chat/types'
 import { useChatManager } from '../../hooks/useJsonManagers'
 import { SerializedChatMessage } from '../../types/chat'
 import { ContentPart } from '../../types/llm/request'
+import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
 
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
@@ -517,6 +518,7 @@ export function ChatListDropdown({
     syncPopoverWidth()
     const sidebar = triggerRef.current?.closest('.smtcmp-chat-container')
     if (!sidebar) return
+    const ownerWindow = getNodeWindow(triggerRef.current)
     const handleResize = () => {
       syncPopoverWidth()
     }
@@ -527,9 +529,9 @@ export function ChatListDropdown({
       })
       resizeObserver.observe(sidebar)
     }
-    window.addEventListener('resize', handleResize)
+    ownerWindow.addEventListener('resize', handleResize)
     return () => {
-      window.removeEventListener('resize', handleResize)
+      ownerWindow.removeEventListener('resize', handleResize)
       resizeObserver?.disconnect()
     }
   }, [open, syncPopoverWidth])
@@ -593,7 +595,7 @@ export function ChatListDropdown({
         </button>
       </Popover.Trigger>
 
-      <Popover.Portal>
+      <Popover.Portal container={getNodeBody(triggerRef.current)}>
         <Popover.Content
           ref={contentRef}
           className="smtcmp-popover smtcmp-chat-sidebar-popover smtcmp-chat-list-dropdown-content"

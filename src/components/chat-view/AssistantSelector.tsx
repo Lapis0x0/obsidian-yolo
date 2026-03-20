@@ -1,6 +1,6 @@
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
@@ -9,6 +9,7 @@ import {
   isDefaultAssistantId,
 } from '../../core/agent/default-assistant'
 import { Assistant } from '../../types/assistant.types'
+import { getNodeBody } from '../../utils/dom/window-context'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
 
 type AssistantSelectorProps = {
@@ -23,6 +24,7 @@ export function AssistantSelector({
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const isControlled = typeof currentAssistantId === 'string'
 
   // Get assistant list and currently selected assistant
@@ -92,6 +94,7 @@ export function AssistantSelector({
       <Popover.Trigger asChild>
         <button
           type="button"
+          ref={triggerRef}
           className="smtcmp-assistant-selector-button"
           data-state={open ? 'open' : 'closed'}
         >
@@ -111,7 +114,7 @@ export function AssistantSelector({
         </button>
       </Popover.Trigger>
 
-      <Popover.Portal>
+      <Popover.Portal container={getNodeBody(triggerRef.current)}>
         <Popover.Content
           className="smtcmp-popover smtcmp-chat-sidebar-popover smtcmp-assistant-selector-content"
           sideOffset={14}
