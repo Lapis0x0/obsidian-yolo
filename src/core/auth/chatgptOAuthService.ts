@@ -1,3 +1,10 @@
+import {
+  createServer,
+  type Server,
+  type ServerResponse,
+  type IncomingMessage,
+} from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { requestUrl } from 'obsidian'
 
 import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
@@ -6,6 +13,20 @@ const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
 const DEVICE_VERIFICATION_URI = `${ISSUER}/codex/device`
 const DEVICE_CODE_POLL_MARGIN_MS = 3000
+const BROWSER_OAUTH_PORTS = [1455, 1456, 1457]
+const OAUTH_CALLBACK_HOST = 'localhost'
+
+interface PkceCodes {
+  verifier: string
+  challenge: string
+}
+
+type PendingBrowserAuthorization = {
+  state: string
+  pkce: PkceCodes
+  resolve: (credential: ChatGPTOAuthCredential) => void
+  reject: (error: Error) => void
+}
 
 type TokenResponse = {
   id_token?: string
@@ -36,6 +57,12 @@ export type ChatGPTOAuthDeviceAuthorization = {
   intervalMs: number
 }
 
+export type ChatGPTOAuthBrowserAuthorization = {
+  authorizationUrl: string
+  redirectUri: string
+  complete: Promise<ChatGPTOAuthCredential>
+}
+
 export interface IdTokenClaims {
   chatgpt_account_id?: string
   organizations?: Array<{ id: string }>
@@ -45,6 +72,56 @@ export interface IdTokenClaims {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const generateRandomString = (length: number): string => {
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+  const bytes = crypto.getRandomValues(new Uint8Array(length))
+  return Array.from(bytes)
+    .map((value) => chars[value % chars.length])
+    .join('')
+}
+
+const base64UrlEncode = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer)
+  const binary = String.fromCharCode(...bytes)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+const generateState = (): string => {
+  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)).buffer)
+}
+
+export async function generatePKCE(): Promise<PkceCodes> {
+  const verifier = generateRandomString(43)
+  const encoder = new TextEncoder()
+  const hash = await crypto.subtle.digest('SHA-256', encoder.encode(verifier))
+  return {
+    verifier,
+    challenge: base64UrlEncode(hash),
+  }
+}
+
+export function buildAuthorizeUrl(
+  redirectUri: string,
+  pkce: PkceCodes,
+  state: string,
+): string {
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: CLIENT_ID,
+    redirect_uri: redirectUri,
+    scope: 'openid profile email offline_access',
+    code_challenge: pkce.challenge,
+    code_challenge_method: 'S256',
+    id_token_add_organizations: 'true',
+    codex_cli_simplified_flow: 'true',
+    state,
+    originator: 'opencode',
+  })
+
+  return `${ISSUER}/oauth/authorize?${params.toString()}`
+}
 
 const toErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -102,6 +179,10 @@ export class ChatGPTOAuthError extends Error {
 }
 
 export class ChatGPTOAuthService {
+  private oauthServer: Server | null = null
+  private oauthPort: number | null = null
+  private pendingBrowserAuthorization: PendingBrowserAuthorization | null = null
+
   constructor(private readonly store: ChatGPTOAuthStore) {}
 
   async getCredential(): Promise<ChatGPTOAuthCredential | null> {
@@ -109,7 +190,70 @@ export class ChatGPTOAuthService {
   }
 
   async clearCredential(): Promise<void> {
+    this.cancelPendingBrowserAuthorization('ChatGPT OAuth login was cancelled.')
     await this.store.clear()
+  }
+
+  async beginBrowserAuthorization(): Promise<ChatGPTOAuthBrowserAuthorization> {
+    if (this.pendingBrowserAuthorization) {
+      throw new ChatGPTOAuthError(
+        'Another ChatGPT OAuth login is already in progress.',
+      )
+    }
+
+    const redirectUri = await this.ensureOAuthServer()
+    const pkce = await generatePKCE()
+    const state = generateState()
+    const authorizationUrl = buildAuthorizeUrl(redirectUri, pkce, state)
+
+    const complete = new Promise<ChatGPTOAuthCredential>((resolve, reject) => {
+      const timeoutId = setTimeout(
+        () => {
+          if (!this.pendingBrowserAuthorization) {
+            return
+          }
+          this.pendingBrowserAuthorization = null
+          reject(
+            new ChatGPTOAuthError(
+              'OAuth callback timeout - authorization took too long',
+            ),
+          )
+        },
+        5 * 60 * 1000,
+      )
+
+      this.pendingBrowserAuthorization = {
+        state,
+        pkce,
+        resolve: (credential) => {
+          clearTimeout(timeoutId)
+          this.pendingBrowserAuthorization = null
+          resolve(credential)
+        },
+        reject: (error) => {
+          clearTimeout(timeoutId)
+          this.pendingBrowserAuthorization = null
+          reject(error)
+        },
+      }
+    })
+
+    return {
+      authorizationUrl,
+      redirectUri,
+      complete,
+    }
+  }
+
+  cancelPendingBrowserAuthorization(
+    message = 'ChatGPT OAuth login was cancelled.',
+  ) {
+    if (!this.pendingBrowserAuthorization) {
+      return
+    }
+
+    this.pendingBrowserAuthorization.reject(new ChatGPTOAuthError(message))
+    this.pendingBrowserAuthorization = null
   }
 
   async beginDeviceAuthorization(): Promise<ChatGPTOAuthDeviceAuthorization> {
@@ -118,13 +262,15 @@ export class ChatGPTOAuthService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'obsidian-yolo/chatgpt-oauth',
       },
       body: JSON.stringify({ client_id: CLIENT_ID }),
+      throw: false,
     })
 
     if (response.status < 200 || response.status >= 300) {
       throw new ChatGPTOAuthError(
-        `Failed to start device authorization: ${response.status}`,
+        `Failed to start device authorization: ${response.status}${this.describeErrorResponse(response)}`,
       )
     }
 
@@ -149,11 +295,13 @@ export class ChatGPTOAuthService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'User-Agent': 'obsidian-yolo/chatgpt-oauth',
         },
         body: JSON.stringify({
           device_auth_id: authorization.deviceAuthId,
           user_code: authorization.userCode,
         }),
+        throw: false,
       })
 
       if (response.status >= 200 && response.status < 300) {
@@ -179,7 +327,7 @@ export class ChatGPTOAuthService {
 
       if (response.status !== 403 && response.status !== 404) {
         throw new ChatGPTOAuthError(
-          `Device authorization polling failed: ${response.status}`,
+          `Device authorization polling failed: ${response.status}${this.describeErrorResponse(response)}`,
         )
       }
 
@@ -201,10 +349,13 @@ export class ChatGPTOAuthService {
         refresh_token: credential.refreshToken,
         client_id: CLIENT_ID,
       }).toString(),
+      throw: false,
     })
 
     if (response.status < 200 || response.status >= 300) {
-      throw new ChatGPTOAuthError(`Token refresh failed: ${response.status}`)
+      throw new ChatGPTOAuthError(
+        `Token refresh failed: ${response.status}${this.describeErrorResponse(response)}`,
+      )
     }
 
     const data = response.json as TokenResponse
@@ -249,10 +400,13 @@ export class ChatGPTOAuthService {
         client_id: CLIENT_ID,
         code_verifier: input.codeVerifier,
       }).toString(),
+      throw: false,
     })
 
     if (response.status < 200 || response.status >= 300) {
-      throw new ChatGPTOAuthError(`Token exchange failed: ${response.status}`)
+      throw new ChatGPTOAuthError(
+        `Token exchange failed: ${response.status}${this.describeErrorResponse(response)}`,
+      )
     }
 
     return this.toCredential(response.json as TokenResponse)
@@ -274,5 +428,151 @@ export class ChatGPTOAuthService {
           }
         : {}),
     }
+  }
+
+  private async ensureOAuthServer(): Promise<string> {
+    if (this.oauthServer && this.oauthPort) {
+      return `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`
+    }
+
+    for (const port of BROWSER_OAUTH_PORTS) {
+      try {
+        const redirectUri = await this.startOAuthServer(port)
+        return redirectUri
+      } catch {
+        continue
+      }
+    }
+
+    throw new ChatGPTOAuthError('Failed to start local OAuth callback server.')
+  }
+
+  private startOAuthServer(port: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const server = createServer((req, res) => {
+        void this.handleOAuthRequest(req.url ?? '/', res)
+      })
+
+      const onError = (error: Error) => {
+        server.removeListener('listening', onListening)
+        reject(error)
+      }
+
+      const onListening = () => {
+        server.removeListener('error', onError)
+        this.oauthServer = server
+        this.oauthPort = (server.address() as AddressInfo).port
+        resolve(`http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`)
+      }
+
+      server.once('error', onError)
+      server.once('listening', onListening)
+      server.listen(port, OAUTH_CALLBACK_HOST)
+    })
+  }
+
+  private async handleOAuthRequest(
+    rawUrl: string,
+    res: ServerResponse<IncomingMessage>,
+  ): Promise<void> {
+    const url = new URL(rawUrl, `http://${OAUTH_CALLBACK_HOST}`)
+
+    if (url.pathname === '/cancel') {
+      this.cancelPendingBrowserAuthorization(
+        'ChatGPT OAuth login was cancelled.',
+      )
+      this.respondHtml(res, 200, 'Login cancelled')
+      return
+    }
+
+    if (url.pathname !== '/auth/callback') {
+      this.respondHtml(res, 404, 'Not found')
+      return
+    }
+
+    const error = url.searchParams.get('error')
+    const errorDescription = url.searchParams.get('error_description')
+    if (error) {
+      const message = errorDescription || error
+      this.pendingBrowserAuthorization?.reject(new ChatGPTOAuthError(message))
+      this.pendingBrowserAuthorization = null
+      this.respondHtml(res, 400, `Authorization failed: ${message}`)
+      return
+    }
+
+    const code = url.searchParams.get('code')
+    const state = url.searchParams.get('state')
+    if (!code || !state || !this.pendingBrowserAuthorization) {
+      this.respondHtml(res, 400, 'Missing authorization code or state')
+      return
+    }
+
+    if (state !== this.pendingBrowserAuthorization.state) {
+      this.pendingBrowserAuthorization.reject(
+        new ChatGPTOAuthError('Invalid state returned from ChatGPT OAuth.'),
+      )
+      this.pendingBrowserAuthorization = null
+      this.respondHtml(res, 400, 'Invalid state')
+      return
+    }
+
+    const pending = this.pendingBrowserAuthorization
+    try {
+      const credential = await this.exchangeAuthorizationCode({
+        code,
+        codeVerifier: pending.pkce.verifier,
+        redirectUri: `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`,
+      })
+      await this.store.set(credential)
+      pending.resolve(credential)
+      this.respondHtml(
+        res,
+        200,
+        'Authorization successful. You can close this window.',
+      )
+    } catch (oauthError) {
+      pending.reject(
+        oauthError instanceof Error
+          ? oauthError
+          : new ChatGPTOAuthError('Unknown OAuth callback error'),
+      )
+      this.respondHtml(
+        res,
+        500,
+        `Authorization failed: ${toErrorMessage(oauthError)}`,
+      )
+    }
+  }
+
+  private respondHtml(
+    res: ServerResponse<IncomingMessage>,
+    statusCode: number,
+    message: string,
+  ) {
+    res.writeHead(statusCode, {
+      'Content-Type': 'text/html; charset=utf-8',
+    })
+    res.end(
+      `<!doctype html><html><body><p>${message}</p><script>setTimeout(() => window.close(), 1500)</script></body></html>`,
+    )
+  }
+
+  private describeErrorResponse(response: {
+    text?: string
+    json?: unknown
+  }): string {
+    if (typeof response.text === 'string' && response.text.trim()) {
+      return ` - ${response.text.trim()}`
+    }
+
+    if (response.json && typeof response.json === 'object') {
+      try {
+        return ` - ${JSON.stringify(response.json)}`
+      } catch {
+        return ''
+      }
+    }
+
+    return ''
   }
 }

@@ -7,8 +7,10 @@ import { requestUrl } from 'obsidian'
 
 import {
   ChatGPTOAuthService,
+  buildAuthorizeUrl,
   extractAccountId,
   extractAccountIdFromClaims,
+  generatePKCE,
   parseJwtClaims,
 } from './chatgptOAuthService'
 import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
@@ -34,6 +36,25 @@ function createStoreMock(): jest.Mocked<ChatGPTOAuthStore> {
 }
 
 describe('chatgptOAuthService helpers', () => {
+  it('builds browser authorization url', async () => {
+    const pkce = await generatePKCE()
+    const url = new URL(
+      buildAuthorizeUrl('http://127.0.0.1:1455/auth/callback', pkce, 'state-1'),
+    )
+
+    expect(url.origin).toBe('https://auth.openai.com')
+    expect(url.pathname).toBe('/oauth/authorize')
+    expect(url.searchParams.get('client_id')).toBe(
+      'app_EMoamEEZ73f0CkXaXp7hrann',
+    )
+    expect(url.searchParams.get('state')).toBe('state-1')
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'http://127.0.0.1:1455/auth/callback',
+    )
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    expect(url.searchParams.get('originator')).toBe('opencode')
+  })
+
   it('parses JWT claims', () => {
     const token = createJwt({ chatgpt_account_id: 'acc-1' })
     expect(parseJwtClaims(token)).toEqual({ chatgpt_account_id: 'acc-1' })
