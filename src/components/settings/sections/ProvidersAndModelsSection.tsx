@@ -109,30 +109,15 @@ function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
     const execute = async () => {
       setIsConnecting(true)
       const service = plugin.getChatGPTOAuthService()
-      const authorization = await service.beginDeviceAuthorization()
-      setPendingCode(authorization.userCode)
-      abortRef.current?.abort()
-      const abortController = new AbortController()
-      abortRef.current = abortController
-
-      if (navigator.clipboard?.writeText) {
-        void navigator.clipboard
-          .writeText(authorization.userCode)
-          .catch(() => {})
-      }
-
+      const authorization = await service.beginBrowserAuthorization()
+      setPendingCode(null)
       window.open(
-        authorization.verificationUri,
+        authorization.authorizationUrl,
         '_blank',
         'noopener,noreferrer',
       )
-      new Notice(`请在打开的网页中输入设备码：${authorization.userCode}`, 12000)
-
-      await service.pollDeviceAuthorization(
-        authorization,
-        abortController.signal,
-      )
-      setPendingCode(null)
+      new Notice('已打开 ChatGPT OAuth 登录页面，请在浏览器中完成授权。', 8000)
+      await authorization.complete
       new Notice('ChatGPT OAuth 连接成功')
       await refreshStatus()
     }
@@ -158,6 +143,7 @@ function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
     const execute = async () => {
       abortRef.current?.abort()
       abortRef.current = null
+      plugin.getChatGPTOAuthService().cancelPendingBrowserAuthorization()
       await plugin.disconnectChatGPTOAuthAccount()
       setPendingCode(null)
       new Notice('ChatGPT OAuth 已断开')
