@@ -11,6 +11,7 @@ export type ChatGPTOAuthCredential = {
 }
 
 const CREDENTIAL_FILE_NAME = 'chatgpt-oauth.json'
+const EXPIRY_BUFFER_MS = 30_000
 
 export class ChatGPTOAuthStore {
   private readonly dir: string
@@ -80,7 +81,7 @@ export class ChatGPTOAuthStore {
   }
 
   isExpired(credential: Pick<ChatGPTOAuthCredential, 'expiresAt'>): boolean {
-    return credential.expiresAt <= Date.now()
+    return credential.expiresAt <= Date.now() + EXPIRY_BUFFER_MS
   }
 
   private async ensureDir(): Promise<void> {
