@@ -4483,6 +4483,25 @@
   }
 }
 
+.smtcmp-chat-container--centered {
+  --smtcmp-chat-content-max-width: min(720px, calc(100% - var(--size-4-6)));
+}
+
+.smtcmp-chat-container--centered > .smtcmp-chat-user-input-files,
+.smtcmp-chat-container--centered > .smtcmp-chat-input-wrapper {
+  width: min(100%, var(--smtcmp-chat-content-max-width));
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.smtcmp-chat-container--centered
+  .smtcmp-chat-messages
+  > :not(.smtcmp-chat-bottom-anchor) {
+  width: min(100%, var(--smtcmp-chat-content-max-width));
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .smtcmp-sidebar-root {
   display: flex;
   flex-direction: column;

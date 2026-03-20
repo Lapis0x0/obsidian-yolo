@@ -2207,7 +2207,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   if (activeView === 'composer') {
     return (
-      <div className="smtcmp-chat-container">
+      <div
+        className={`smtcmp-chat-container${
+          isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
+        }`}
+      >
         {header}
         <div className="smtcmp-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
@@ -2220,7 +2224,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     groupedChatMessages.length === 0 && !submitChatMutation.isPending
 
   return (
-    <div className="smtcmp-chat-container">
+    <div
+      className={`smtcmp-chat-container${
+        isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
+      }`}
+    >
       {header}
       {showEmptyState && (
         <div className="smtcmp-chat-empty-state-overlay" aria-hidden="true">
