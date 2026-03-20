@@ -4482,6 +4482,7 @@
 
 .smtcmp-chat-container--centered {
   --smtcmp-chat-content-max-width: min(720px, calc(100% - var(--size-4-6)));
+  --smtcmp-chat-typeahead-max-width: 400px;
 }
 
 .smtcmp-chat-container--centered > .smtcmp-chat-footer,
@@ -8680,6 +8681,11 @@ button.smtcmp-chat-input-model-select {
   border: none;
   box-shadow: none;
   padding: 0;
+}
+
+.smtcmp-chat-container--centered .smtcmp-smart-space-mention-dropdown {
+  width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
+  max-width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
 }
 
 .smtcmp-smart-space-mention-list {
