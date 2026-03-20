@@ -34,6 +34,20 @@ type ChatGPTOAuthRequest = ResponseCreateParams & Record<string, unknown>
 type StreamState = {
   toolIndexByItemId: Map<string, number>
   sawToolCall: boolean
+  reasoningSummaryIndices: Map<string, Set<number>>
+}
+
+type ReasoningSummaryPartAddedEvent = {
+  type: 'response.reasoning_summary_part.added'
+  item_id: string
+  summary_index: number
+}
+
+type ReasoningSummaryTextDeltaEvent = {
+  type: 'response.reasoning_summary_text.delta'
+  delta: string
+  item_id: string
+  summary_index: number
 }
 
 const toInputContent = (
@@ -252,10 +266,17 @@ export class ChatGPTOAuthResponsesAdapter {
 
     if (request.reasoning_effort) {
       reasoning.effort = request.reasoning_effort
+      reasoning.summary = 'auto'
     }
 
     if (Object.keys(reasoning).length > 0) {
       body.reasoning = reasoning
+    }
+
+    if (reasoning.effort) {
+      body.include = [
+        'reasoning.encrypted_content',
+      ] as unknown as ResponseCreateParams['include']
     }
 
     for (const [key, value] of Object.entries(requestRecord)) {
@@ -348,6 +369,31 @@ export class ChatGPTOAuthResponsesAdapter {
     event: ResponseStreamEvent,
     state: StreamState,
   ): Generator<LLMResponseStreaming> {
+    const reasoningPart = this.getReasoningSummaryPartAdded(event)
+    if (reasoningPart) {
+      const indices =
+        state.reasoningSummaryIndices.get(reasoningPart.itemId) ??
+        new Set<number>()
+      const isNewPart = !indices.has(reasoningPart.summaryIndex)
+      indices.add(reasoningPart.summaryIndex)
+      state.reasoningSummaryIndices.set(reasoningPart.itemId, indices)
+
+      if (isNewPart && reasoningPart.summaryIndex > 0) {
+        yield this.createChunk(reasoningPart.itemId, {
+          reasoning: '\n\n',
+        })
+      }
+      return
+    }
+
+    const reasoningDelta = this.getReasoningSummaryTextDelta(event)
+    if (reasoningDelta) {
+      yield this.createChunk(reasoningDelta.itemId, {
+        reasoning: reasoningDelta.delta,
+      })
+      return
+    }
+
     switch (event.type) {
       case 'response.output_text.delta': {
         yield this.createChunk(event.item_id, {
@@ -497,6 +543,7 @@ export class ChatGPTOAuthResponsesAdapter {
     return {
       toolIndexByItemId: new Map(),
       sawToolCall: false,
+      reasoningSummaryIndices: new Map(),
     }
   }
 
@@ -520,5 +567,41 @@ export class ChatGPTOAuthResponsesAdapter {
         },
       ],
     }
+  }
+
+  private getReasoningSummaryTextDelta(
+    event: ResponseStreamEvent,
+  ): { itemId: string; delta: string } | null {
+    const value = event as unknown as Partial<ReasoningSummaryTextDeltaEvent>
+    if (
+      value.type === 'response.reasoning_summary_text.delta' &&
+      typeof value.item_id === 'string' &&
+      typeof value.delta === 'string'
+    ) {
+      return {
+        itemId: value.item_id,
+        delta: value.delta,
+      }
+    }
+
+    return null
+  }
+
+  private getReasoningSummaryPartAdded(
+    event: ResponseStreamEvent,
+  ): { itemId: string; summaryIndex: number } | null {
+    const value = event as unknown as Partial<ReasoningSummaryPartAddedEvent>
+    if (
+      value.type === 'response.reasoning_summary_part.added' &&
+      typeof value.item_id === 'string' &&
+      typeof value.summary_index === 'number'
+    ) {
+      return {
+        itemId: value.item_id,
+        summaryIndex: value.summary_index,
+      }
+    }
+
+    return null
   }
 }
