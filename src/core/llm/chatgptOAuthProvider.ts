@@ -1,7 +1,6 @@
 import OpenAI from 'openai'
 import type {
   Response,
-  ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
   ResponseStreamEvent,
 } from 'openai/resources/responses/responses'
@@ -26,22 +25,22 @@ import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import {
   createRequestTransportMemoryKey,
-  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
+const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const OAUTH_PROVIDER_API_KEY = 'chatgpt-oauth'
-const REQUEST_TRANSPORT_MODES = new Set(['auto', 'browser', 'obsidian'])
-
-type RequestTransportMode = 'auto' | 'browser' | 'obsidian'
+type RequestTransportMode = 'obsidian'
 
 export class ChatGPTOAuthProvider extends BaseLLMProvider<
   Extract<LLMProvider, { type: 'chatgpt-oauth' }>
 > {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
+  private readonly chatAdapter = new OpenAIMessageAdapter()
   private readonly browserClient: OpenAI
   private readonly obsidianClient: OpenAI
   private readonly requestTransportMode: RequestTransportMode
@@ -54,18 +53,7 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
       providerId: provider.id,
       baseUrl: CODEX_BASE_URL,
     })
-    this.requestTransportMode = resolveRequestTransportMode({
-      additionalSettings: {
-        requestTransportMode: REQUEST_TRANSPORT_MODES.has(
-          provider.additionalSettings?.requestTransportMode ?? '',
-        )
-          ? (provider.additionalSettings
-              ?.requestTransportMode as RequestTransportMode)
-          : 'auto',
-      },
-      hasCustomBaseUrl: true,
-      memoryKey: this.requestTransportMemoryKey,
-    })
+    this.requestTransportMode = 'obsidian'
 
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const createClient = (customFetch: typeof fetch) =>
@@ -73,7 +61,7 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
         apiKey: OAUTH_PROVIDER_API_KEY,
         baseURL: CODEX_BASE_URL,
         dangerouslyAllowBrowser: true,
-        maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+        maxRetries: undefined,
         defaultHeaders,
         fetch: this.createAuthorizedFetch(customFetch),
       })
@@ -102,23 +90,28 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
     }
 
     const body = this.adapter.buildRequest(
-      this.applyCustomModelParameters(model, formattedRequest),
-    ) as ResponseCreateParamsNonStreaming
+      this.applyCustomModelParameters(model, {
+        ...formattedRequest,
+        stream: true,
+      }),
+    ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       runBrowser: async () =>
-        this.adapter.parseResponse(
-          (await this.browserClient.responses.create(body, {
-            signal: options?.signal,
-          })) as Response,
+        this.generateResponseWithFallback(
+          this.browserClient,
+          body,
+          formattedRequest,
+          options,
         ),
       runObsidian: async () =>
-        this.adapter.parseResponse(
-          (await this.obsidianClient.responses.create(body, {
-            signal: options?.signal,
-          })) as Response,
+        this.generateResponseWithFallback(
+          this.obsidianClient,
+          body,
+          formattedRequest,
+          options,
         ),
     })
   }
@@ -150,16 +143,18 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       createBrowserStream: async () =>
-        this.toStream(
-          (await this.browserClient.responses.create(body, {
-            signal: options?.signal,
-          })) as AsyncIterable<ResponseStreamEvent>,
+        this.streamResponseWithFallback(
+          this.browserClient,
+          body,
+          formattedRequest,
+          options,
         ),
       createObsidianStream: async () =>
-        this.toStream(
-          (await this.obsidianClient.responses.create(body, {
-            signal: options?.signal,
-          })) as AsyncIterable<ResponseStreamEvent>,
+        this.streamResponseWithFallback(
+          this.obsidianClient,
+          body,
+          formattedRequest,
+          options,
         ),
     })
   }
@@ -186,20 +181,88 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
         )
       }
 
+      const target = this.rewriteCodexUrl(input)
       const headers = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       )
       headers.set('Authorization', `Bearer ${credential.accessToken}`)
-      headers.set('originator', 'obsidian-yolo')
+      headers.set('originator', 'opencode')
 
       if (credential.accountId) {
         headers.set('ChatGPT-Account-Id', credential.accountId)
       }
 
-      return baseFetch(input, {
+      return baseFetch(target, {
         ...init,
         headers,
       })
+    }
+  }
+
+  private rewriteCodexUrl(input: RequestInfo | URL): string | Request {
+    const url =
+      input instanceof Request
+        ? input.url
+        : input instanceof URL
+          ? input.toString()
+          : input
+    const parsed = new URL(url)
+    if (
+      parsed.pathname.includes('/v1/responses') ||
+      parsed.pathname.includes('/chat/completions') ||
+      parsed.pathname.endsWith('/responses')
+    ) {
+      return CODEX_API_ENDPOINT
+    }
+    return input instanceof Request ? new Request(url, input) : url
+  }
+
+  private isBadRequest(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      (error as { status?: unknown }).status === 400
+    )
+  }
+
+  private async generateResponseWithFallback(
+    client: OpenAI,
+    body: ResponseCreateParamsStreaming,
+    request: LLMRequestNonStreaming,
+    options?: LLMOptions,
+  ): Promise<LLMResponseNonStreaming> {
+    try {
+      return await this.collectResponseFromStream(
+        (await client.responses.create(body, {
+          signal: options?.signal,
+        })) as AsyncIterable<ResponseStreamEvent>,
+      )
+    } catch (error) {
+      if (!this.isBadRequest(error)) {
+        throw error
+      }
+      return this.chatAdapter.generateResponse(client, request, options)
+    }
+  }
+
+  private async streamResponseWithFallback(
+    client: OpenAI,
+    body: ResponseCreateParamsStreaming,
+    request: LLMRequestStreaming,
+    options?: LLMOptions,
+  ): Promise<AsyncIterable<LLMResponseStreaming>> {
+    try {
+      return await this.toStream(
+        (await client.responses.create(body, {
+          signal: options?.signal,
+        })) as AsyncIterable<ResponseStreamEvent>,
+      )
+    } catch (error) {
+      if (!this.isBadRequest(error)) {
+        throw error
+      }
+      return this.chatAdapter.streamResponse(client, request, options)
     }
   }
 
@@ -220,5 +283,31 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
         }
       },
     }
+  }
+
+  private async collectResponseFromStream(
+    stream: AsyncIterable<ResponseStreamEvent>,
+  ): Promise<LLMResponseNonStreaming> {
+    for await (const event of stream) {
+      if (event.type === 'response.completed') {
+        return this.adapter.parseResponse(event.response as Response)
+      }
+
+      if (event.type === 'response.incomplete') {
+        return this.adapter.parseResponse(event.response as Response)
+      }
+
+      if (event.type === 'response.failed') {
+        throw new Error(
+          event.response.error?.message ?? 'ChatGPT OAuth response failed',
+        )
+      }
+
+      if (event.type === 'error') {
+        throw new Error(event.message)
+      }
+    }
+
+    throw new Error('ChatGPT OAuth stream ended without a completed response')
   }
 }

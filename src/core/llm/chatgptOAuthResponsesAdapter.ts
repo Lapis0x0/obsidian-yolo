@@ -116,6 +116,17 @@ const toInputItems = (messages: RequestMessage[]): ResponseInput => {
   })
 }
 
+const toInstructions = (messages: RequestMessage[]): string => {
+  return messages
+    .filter(
+      (message): message is Extract<RequestMessage, { role: 'system' }> =>
+        message.role === 'system',
+    )
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 const toTools = (tools?: LLMRequest['tools']): FunctionTool[] | undefined => {
   if (!tools || tools.length === 0) {
     return undefined
@@ -216,9 +227,13 @@ export class ChatGPTOAuthResponsesAdapter {
   buildRequest(request: LLMRequestNonStreaming): ChatGPTOAuthRequest
   buildRequest(request: LLMRequestStreaming): ChatGPTOAuthRequest
   buildRequest(request: LLMRequest): ChatGPTOAuthRequest {
+    const instructions = toInstructions(request.messages)
     const body: ChatGPTOAuthRequest = {
       model: request.model,
-      input: toInputItems(request.messages),
+      instructions: instructions || 'You are a helpful assistant.',
+      input: toInputItems(
+        request.messages.filter((message) => message.role !== 'system'),
+      ),
       tools: toTools(request.tools),
       tool_choice: toToolChoice(request.tool_choice),
       max_output_tokens: request.max_tokens,
@@ -226,6 +241,7 @@ export class ChatGPTOAuthResponsesAdapter {
       top_p: request.top_p,
       parallel_tool_calls: true,
       stream: request.stream === true,
+      store: false,
     }
 
     const requestRecord = request as Record<string, unknown>
