@@ -30,6 +30,7 @@ type QuickAskWidgetPayload = {
     editContextText?: string
     editSelectionFrom?: { line: number; ch: number }
     selectionScope?: QuickAskSelectionScope
+    selectionAnchor?: { from: number; to: number }
     autoSend?: boolean
     onClose: () => void
   }
@@ -62,6 +63,7 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
   class {
     private overlay: QuickAskOverlay | null = null
     private pos: number | null = null
+    private selectionAnchor: { from: number; to: number } | null = null
 
     constructor(private readonly view: EditorView) {}
 
@@ -78,6 +80,7 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
           }
           this.overlay?.destroy()
           this.pos = payload.pos
+          this.selectionAnchor = payload.options.selectionAnchor ?? null
           this.overlay = new QuickAskOverlay(payload.options)
           this.overlay.mount(payload.pos)
         }
@@ -85,7 +88,13 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
 
       if (this.overlay && this.pos !== null && update.docChanged) {
         this.pos = update.changes.mapPos(this.pos)
-        this.overlay.updatePosition(this.pos)
+        if (this.selectionAnchor) {
+          this.selectionAnchor = {
+            from: update.changes.mapPos(this.selectionAnchor.from, -1),
+            to: update.changes.mapPos(this.selectionAnchor.to, 1),
+          }
+        }
+        this.overlay.updatePosition(this.pos, this.selectionAnchor)
       }
     }
 
@@ -93,6 +102,7 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
       this.overlay?.destroy()
       this.overlay = null
       this.pos = null
+      this.selectionAnchor = null
     }
   },
 )
@@ -160,6 +170,10 @@ export class QuickAskController {
   ) {
     const selection = view.state.selection.main
     const pos = selection.head
+    const selectionAnchor =
+      selection.empty || selection.from === selection.to
+        ? undefined
+        : { from: selection.from, to: selection.to }
 
     // Get context text around cursor with marker
     const continuationOptions = this.deps.getSettings().continuationOptions
@@ -233,6 +247,7 @@ export class QuickAskController {
             editContextText,
             editSelectionFrom,
             selectionScope,
+            selectionAnchor,
             autoSend,
             onClose: () => close(true),
           },
