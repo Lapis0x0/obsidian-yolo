@@ -53,6 +53,23 @@ const collectModelIdentifiers = (values: unknown[]): string[] =>
     .map((entry) => extractModelIdentifier(entry))
     .filter((id): id is string => Boolean(id))
 
+const sortModelsForEmbedding = (models: string[]): string[] => {
+  const embeddingKeywords = ['embedding', 'embed', 'text-embedding']
+  const embeddingModels: string[] = []
+  const otherModels: string[] = []
+
+  models.forEach((model) => {
+    const modelLower = model.toLowerCase()
+    if (embeddingKeywords.some((keyword) => modelLower.includes(keyword))) {
+      embeddingModels.push(model)
+      return
+    }
+    otherModels.push(model)
+  })
+
+  return [...embeddingModels.sort(), ...otherModels.sort()]
+}
+
 export class AddEmbeddingModelModal extends ReactModal<AddEmbeddingModelModalComponentProps> {
   constructor(app: App, plugin: SmartComposerPlugin, provider?: LLMProvider) {
     super({
@@ -76,7 +93,10 @@ function AddEmbeddingModelModalComponent({
   const selectedProvider: LLMProvider | undefined =
     provider ?? plugin.settings.providers[0]
   const initialProviderId = selectedProvider?.id ?? ''
-  const initialProviderType = selectedProvider?.type ?? 'openai-compatible'
+  const initialProviderType =
+    selectedProvider?.type === 'chatgpt-oauth'
+      ? 'openai-compatible'
+      : (selectedProvider?.type ?? 'openai-compatible')
   const [formData, setFormData] = useState<Omit<EmbeddingModel, 'dimension'>>({
     providerId: initialProviderId,
     providerType: initialProviderType,
@@ -89,24 +109,6 @@ function AddEmbeddingModelModalComponent({
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState<boolean>(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-
-  // Sort models with embedding-related ones first
-  const sortModelsForEmbedding = (models: string[]): string[] => {
-    const embeddingKeywords = ['embedding', 'embed', 'text-embedding']
-    const embeddingModels: string[] = []
-    const otherModels: string[] = []
-
-    models.forEach((model) => {
-      const modelLower = model.toLowerCase()
-      if (embeddingKeywords.some((keyword) => modelLower.includes(keyword))) {
-        embeddingModels.push(model)
-      } else {
-        otherModels.push(model)
-      }
-    })
-
-    return [...embeddingModels.sort(), ...otherModels.sort()]
-  }
 
   useEffect(() => {
     const fetchModels = async () => {

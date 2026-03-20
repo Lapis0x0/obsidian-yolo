@@ -24,6 +24,10 @@ type ProviderFormComponentProps = {
   provider: LLMProvider | null // null for new provider
 }
 
+const CUSTOM_PROVIDER_TYPE_ENTRIES = Object.entries(PROVIDER_TYPES_INFO).filter(
+  ([key]) => key !== 'chatgpt-oauth',
+)
+
 const getRequestTransportModeValue = (
   additionalSettings: Record<string, unknown> | undefined,
 ): 'auto' | 'browser' | 'obsidian' => {
@@ -162,25 +166,28 @@ function ProviderFormComponent({
               })
             : plugin.settings.chatModels
 
-        const updatedEmbeddingModels =
+        const updatedEmbeddingModels: typeof plugin.settings.embeddingModels =
           providerIdChanged || providerTypeChanged
-            ? plugin.settings.embeddingModels.map((model) => {
-                if (model.providerId !== provider.id) {
-                  return model
-                }
-                const updatedModel = {
-                  ...model,
-                  ...(providerIdChanged
-                    ? { providerId: validatedProvider.id }
-                    : {}),
-                  ...(providerTypeChanged
-                    ? { providerType: validatedProvider.type }
-                    : {}),
-                }
-                return providerTypeChanged
-                  ? embeddingModelSchema.parse(updatedModel)
-                  : updatedModel
-              })
+            ? providerTypeChanged &&
+              !PROVIDER_TYPES_INFO[validatedProvider.type].supportEmbedding
+              ? plugin.settings.embeddingModels
+              : plugin.settings.embeddingModels.map((model) => {
+                  if (model.providerId !== provider.id) {
+                    return model
+                  }
+                  const updatedModel = {
+                    ...model,
+                    ...(providerIdChanged
+                      ? { providerId: validatedProvider.id }
+                      : {}),
+                    ...(providerTypeChanged
+                      ? { providerType: validatedProvider.type }
+                      : {}),
+                  }
+                  return providerTypeChanged
+                    ? embeddingModelSchema.parse(updatedModel)
+                    : (updatedModel as typeof model)
+                })
             : plugin.settings.embeddingModels
 
         await plugin.setSettings({
@@ -253,7 +260,7 @@ function ProviderFormComponent({
         <ObsidianDropdown
           value={formData.type}
           options={Object.fromEntries(
-            Object.entries(PROVIDER_TYPES_INFO).map(([key, info]) => [
+            CUSTOM_PROVIDER_TYPE_ENTRIES.map(([key, info]) => [
               key,
               info.label,
             ]),

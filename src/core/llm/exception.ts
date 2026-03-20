@@ -47,3 +47,13 @@ export class LLMModelNotFoundException extends Error {
     this.name = 'LLMModelNotFoundException'
   }
 }
+
+export class LLMProviderNotConfiguredException extends Error {
+  constructor(
+    message: string,
+    public rawError?: Error,
+  ) {
+    super(message)
+    this.name = 'LLMProviderNotConfiguredException'
+  }
+}

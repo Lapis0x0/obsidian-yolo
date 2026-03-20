@@ -5,6 +5,7 @@ import { LLMProvider } from '../../types/provider.types'
 import { AnthropicProvider } from './anthropic'
 import { AzureOpenAIProvider } from './azureOpenaiProvider'
 import { BaseLLMProvider } from './base'
+import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
 import { DeepSeekStudioProvider } from './deepseekStudioProvider'
 import { LLMModelNotFoundException } from './exception'
 import { GeminiProvider } from './gemini'
@@ -41,6 +42,9 @@ export function getProviderClient({
   switch (provider.type) {
     case 'openai': {
       return new OpenAIAuthenticatedProvider(provider)
+    }
+    case 'chatgpt-oauth': {
+      return new ChatGPTOAuthProvider(provider)
     }
     case 'anthropic': {
       return new AnthropicProvider(provider, {
