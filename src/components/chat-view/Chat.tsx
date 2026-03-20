@@ -2665,6 +2665,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             currentChatMode={chatMode}
             onSelectChatModeForConversation={handleChatModeChange}
             allowAgentModeOption={Platform.isDesktop}
+            enableResize
           />
         </div>
       </div>

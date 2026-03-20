@@ -1090,11 +1090,39 @@
   }
 }
 
+.smtcmp-chat-user-input-container[data-resizable='true']
+  .smtcmp-obsidian-textarea,
+.smtcmp-chat-user-input-container[data-resizable='true']
+  .smtcmp-content-editable {
+  min-height: var(--smtcmp-chat-user-input-height, 80px);
+  max-height: var(--smtcmp-chat-user-input-height, 80px);
+  height: var(--smtcmp-chat-user-input-height, 80px);
+}
+
+.smtcmp-chat-user-input-container[data-resizable='true'] {
+  cursor: text;
+}
+
+.smtcmp-chat-user-input-container[data-resize-hotspot-active='true'] {
+  cursor: ns-resize;
+}
+
 .smtcmp-chat-user-input-wrapper {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--size-2-2);
   width: 100%;
+}
+
+.smtcmp-chat-user-input-resize-hitbox {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  right: 44px;
+  height: 12px;
+  cursor: ns-resize;
+  z-index: 2;
 }
 
 .smtcmp-chat-user-input-wrapper--compact {

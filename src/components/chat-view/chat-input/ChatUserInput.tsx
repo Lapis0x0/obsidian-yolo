@@ -1,3 +1,5 @@
+/* eslint-disable jsx-a11y/no-static-element-interactions -- Chat input uses wrapper divs for Lexical focus forwarding and pointer-only resize interactions */
+
 import {
   $createParagraphNode,
   $createTextNode,
@@ -14,6 +16,7 @@ import {
 } from 'lexical'
 import { Notice } from 'obsidian'
 import {
+  type CSSProperties,
   type FocusEvent,
   type MouseEvent as ReactMouseEvent,
   forwardRef,
@@ -110,6 +113,7 @@ export type ChatUserInputProps = {
   currentChatMode?: 'chat' | 'agent'
   onSelectChatModeForConversation?: (mode: 'chat' | 'agent') => void
   allowAgentModeOption?: boolean
+  enableResize?: boolean
 }
 
 type ChatSubmitOptions = {
@@ -117,6 +121,9 @@ type ChatSubmitOptions = {
 }
 
 const INLINE_MENTIONABLE_TYPES = ['file', 'folder', 'current-file', 'block']
+const DEFAULT_INPUT_HEIGHT = 80
+const MIN_INPUT_HEIGHT = 80
+const MAX_INPUT_HEIGHT = 520
 
 const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
   (
@@ -150,6 +157,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       currentChatMode,
       onSelectChatModeForConversation,
       allowAgentModeOption = true,
+      enableResize = false,
     },
     ref,
   ) => {
@@ -176,6 +184,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const suppressedDestroyedMentionableKeysRef = useRef<Set<string>>(new Set())
     const suppressedDestroyedSkillIdsRef = useRef<Set<string>>(new Set())
     const [inputText, setInputText] = useState('')
+    const [resizedHeight, setResizedHeight] = useState<number | null>(null)
+    const dragStartYRef = useRef(0)
+    const dragStartHeightRef = useRef(DEFAULT_INPUT_HEIGHT)
 
     const effectiveMentionables = useMemo(
       () => displayMentionables ?? mentionables,
@@ -266,6 +277,15 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         activeElement.blur()
       }
     }, [compact])
+
+    useEffect(() => {
+      return () => {
+        document.body.setCssProps({
+          '--smtcmp-chat-input-resize-cursor': '',
+          '--smtcmp-chat-input-resize-user-select': '',
+        })
+      }
+    }, [])
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -837,6 +857,73 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [],
     )
 
+    const clearResizeBodyStyles = useCallback(() => {
+      document.body.setCssProps({
+        '--smtcmp-chat-input-resize-cursor': '',
+        '--smtcmp-chat-input-resize-user-select': '',
+      })
+    }, [])
+
+    const startResize = useCallback(
+      (clientY: number) => {
+        dragStartYRef.current = clientY
+        dragStartHeightRef.current =
+          resizedHeight ??
+          contentEditableRef.current?.offsetHeight ??
+          DEFAULT_INPUT_HEIGHT
+
+        document.body.setCssProps({
+          '--smtcmp-chat-input-resize-cursor': 'ns-resize',
+          '--smtcmp-chat-input-resize-user-select': 'none',
+        })
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+          const deltaY = dragStartYRef.current - moveEvent.clientY
+          const nextHeight = Math.max(
+            MIN_INPUT_HEIGHT,
+            Math.min(MAX_INPUT_HEIGHT, dragStartHeightRef.current + deltaY),
+          )
+          setResizedHeight(nextHeight)
+        }
+
+        const handleMouseUp = () => {
+          window.removeEventListener('mousemove', handleMouseMove)
+          window.removeEventListener('mouseup', handleMouseUp)
+          clearResizeBodyStyles()
+        }
+
+        window.addEventListener('mousemove', handleMouseMove)
+        window.addEventListener('mouseup', handleMouseUp)
+      },
+      [clearResizeBodyStyles, resizedHeight],
+    )
+
+    const handleResizeHitboxMouseDown = useCallback(
+      (event: ReactMouseEvent<HTMLDivElement>) => {
+        if (!enableResize || compact) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        startResize(event.clientY)
+      },
+      [compact, enableResize, startResize],
+    )
+
+    const handleResizeHitboxDoubleClick = useCallback(
+      (event: ReactMouseEvent<HTMLDivElement>) => {
+        if (!enableResize || compact) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        setResizedHeight(null)
+      },
+      [compact, enableResize],
+    )
+
     const handleContainerMouseDown = useCallback(
       (event: ReactMouseEvent<HTMLDivElement>) => {
         if (compact) {
@@ -867,11 +954,30 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [compact],
     )
 
+    const containerStyle = useMemo<CSSProperties | undefined>(() => {
+      if (!enableResize || compact || resizedHeight === null) {
+        return undefined
+      }
+
+      return {
+        ['--smtcmp-chat-user-input-height' as string]: `${resizedHeight}px`,
+      }
+    }, [compact, enableResize, resizedHeight])
+
     return (
       <div
         className={`smtcmp-chat-user-input-wrapper${compact ? ' smtcmp-chat-user-input-wrapper--compact' : ''}`}
         onBlur={handleBlur}
+        role="presentation"
       >
+        {enableResize && !compact && (
+          <div
+            className="smtcmp-chat-user-input-resize-hitbox"
+            onMouseDown={handleResizeHitboxMouseDown}
+            onDoubleClick={handleResizeHitboxDoubleClick}
+            role="presentation"
+          />
+        )}
         {mentionDisplayMode === 'badge' &&
           effectiveSelectedSkills.length > 0 && (
             <div className="smtcmp-chat-user-input-files">
@@ -908,12 +1014,27 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         <div
           className="smtcmp-chat-user-input-container"
           ref={containerRef}
+          data-resizable={enableResize && !compact ? 'true' : 'false'}
           onClick={compact ? onToggleCompact : undefined}
+          onKeyDown={
+            compact
+              ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onToggleCompact?.()
+                  }
+                }
+              : undefined
+          }
           onMouseDown={handleContainerMouseDown}
+          role={compact ? 'button' : 'presentation'}
+          tabIndex={compact ? 0 : undefined}
+          style={containerStyle}
         >
           <div
             className="smtcmp-chat-user-input-editor"
             onMouseDown={handleEditorBackgroundMouseDown}
+            role="presentation"
           >
             {inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
