@@ -2492,6 +2492,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             </button>
           </div>
         )}
+        <div
+          ref={bottomAnchorRef}
+          className="smtcmp-chat-bottom-anchor"
+          aria-hidden="true"
+        />
+      </div>
+      <div
+        className={`smtcmp-chat-footer${
+          submitChatMutation.isPending ? ' is-generating' : ''
+        }`}
+      >
         {submitChatMutation.isPending && (
           <button
             type="button"
@@ -2502,35 +2513,136 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <div>Stop generation</div>
           </button>
         )}
-        <div
-          ref={bottomAnchorRef}
-          className="smtcmp-chat-bottom-anchor"
-          aria-hidden="true"
-        />
-      </div>
-      {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
-        displayMentionablesForInput.length > 0 && (
-          <div className="smtcmp-chat-user-input-files">
-            {displayMentionablesForInput.map((mentionable) => {
-              const mentionableKey = getMentionableKey(
-                serializeMentionable(mentionable),
-              )
-              return (
-                <MentionableBadge
-                  key={mentionableKey}
-                  mentionable={mentionable}
-                  onDelete={() => handleMentionableDeleteFromAll(mentionable)}
-                  onClick={() => {}}
-                />
-              )
-            })}
+        {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
+          displayMentionablesForInput.length > 0 && (
+            <div className="smtcmp-chat-user-input-files">
+              {displayMentionablesForInput.map((mentionable) => {
+                const mentionableKey = getMentionableKey(
+                  serializeMentionable(mentionable),
+                )
+                return (
+                  <MentionableBadge
+                    key={mentionableKey}
+                    mentionable={mentionable}
+                    onDelete={() => handleMentionableDeleteFromAll(mentionable)}
+                    onClick={() => {}}
+                  />
+                )
+              })}
+            </div>
+          )}
+        <div className="smtcmp-chat-input-wrapper">
+          <div className="smtcmp-chat-input-settings-outer">
+            <ChatSettingsButton
+              overrides={conversationOverrides}
+              onChange={(next) => {
+                const nextOverrides = next
+                  ? {
+                      ...next,
+                      chatMode,
+                      autoAttachCurrentFile,
+                    }
+                  : { chatMode, autoAttachCurrentFile }
+                setConversationOverrides(nextOverrides)
+                conversationOverridesRef.current.set(
+                  currentConversationId,
+                  nextOverrides,
+                )
+              }}
+              currentModel={settings.chatModels?.find(
+                (m) => m.id === conversationModelId,
+              )}
+            />
           </div>
-        )}
-      <div className="smtcmp-chat-input-wrapper">
-        <div className="smtcmp-chat-input-settings-outer">
-          <ChatSettingsButton
-            overrides={conversationOverrides}
-            onChange={(next) => {
+          <ChatUserInput
+            key={inputMessage.id} // this is needed to clear the editor when the user submits a new message
+            ref={(ref) => registerChatUserInputRef(inputMessage.id, ref)}
+            initialSerializedEditorState={inputMessage.content}
+            onChange={(content) => {
+              setInputMessage((prevInputMessage) => ({
+                ...prevInputMessage,
+                content,
+              }))
+            }}
+            onSubmit={(content, useVaultSearch) => {
+              if (
+                editorStateToPlainText(content).trim() === '' &&
+                inputMessage.mentionables.length === 0 &&
+                (inputMessage.selectedSkills?.length ?? 0) === 0
+              ) {
+                return
+              }
+              const messageForSubmit = buildInputMessageForSubmit(content)
+              const nextMessageModelMap = new Map(messageModelMap)
+              nextMessageModelMap.set(inputMessage.id, conversationModelId)
+              void handleUserMessageSubmit({
+                inputChatMessages: [...chatMessages, messageForSubmit],
+                useVaultSearch,
+                persistedMessageModelMap: nextMessageModelMap,
+              })
+              // Record the model used for this just-submitted input message
+              setMessageModelMap(nextMessageModelMap)
+              setMessageReasoningMap((prev) => {
+                const next = new Map(prev)
+                next.set(inputMessage.id, reasoningLevel)
+                return next
+              })
+              setInputMessage(getNewInputMessage(reasoningLevel))
+            }}
+            onFocus={() => {
+              setFocusedMessageId(inputMessage.id)
+            }}
+            mentionables={inputMessage.mentionables}
+            setMentionables={(mentionables) => {
+              setInputMessage((prevInputMessage) => {
+                return {
+                  ...prevInputMessage,
+                  mentionables,
+                }
+              })
+            }}
+            selectedSkills={inputMessage.selectedSkills ?? []}
+            setSelectedSkills={(selectedSkills) => {
+              setInputMessage((prevInputMessage) => ({
+                ...prevInputMessage,
+                selectedSkills,
+                promptContent: null,
+                snapshotRef: undefined,
+                similaritySearchResults: undefined,
+              }))
+            }}
+            modelId={conversationModelId}
+            onModelChange={(id) => {
+              setConversationModelId(id)
+              conversationModelIdRef.current.set(currentConversationId, id)
+              const nextReasoningLevel = getReasoningLevelForModelId(id)
+              setReasoningLevel(nextReasoningLevel)
+              conversationReasoningLevelRef.current.set(
+                currentConversationId,
+                nextReasoningLevel,
+              )
+              setInputMessage((prev) => ({
+                ...prev,
+                reasoningLevel: nextReasoningLevel,
+              }))
+            }}
+            reasoningLevel={reasoningLevel}
+            onReasoningChange={(level) => {
+              setReasoningLevel(level)
+              conversationReasoningLevelRef.current.set(
+                currentConversationId,
+                level,
+              )
+              void persistReasoningLevelForModel(conversationModelId, level)
+              setInputMessage((prev) => ({
+                ...prev,
+                reasoningLevel: level,
+              }))
+            }}
+            autoFocus
+            addedBlockKey={addedBlockKey}
+            conversationOverrides={conversationOverrides}
+            onConversationOverridesChange={(next) => {
               const nextOverrides = next
                 ? {
                     ...next,
@@ -2544,123 +2656,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 nextOverrides,
               )
             }}
-            currentModel={settings.chatModels?.find(
-              (m) => m.id === conversationModelId,
-            )}
+            showConversationSettingsButton={false}
+            hideBadgeMentionables
+            displayMentionables={displayMentionablesForInput}
+            onDeleteFromAll={handleMentionableDeleteFromAll}
+            currentAssistantId={conversationAssistantId}
+            onSelectAssistantForConversation={handleConversationAssistantSelect}
+            currentChatMode={chatMode}
+            onSelectChatModeForConversation={handleChatModeChange}
+            allowAgentModeOption={Platform.isDesktop}
           />
         </div>
-        <ChatUserInput
-          key={inputMessage.id} // this is needed to clear the editor when the user submits a new message
-          ref={(ref) => registerChatUserInputRef(inputMessage.id, ref)}
-          initialSerializedEditorState={inputMessage.content}
-          onChange={(content) => {
-            setInputMessage((prevInputMessage) => ({
-              ...prevInputMessage,
-              content,
-            }))
-          }}
-          onSubmit={(content, useVaultSearch) => {
-            if (
-              editorStateToPlainText(content).trim() === '' &&
-              inputMessage.mentionables.length === 0 &&
-              (inputMessage.selectedSkills?.length ?? 0) === 0
-            ) {
-              return
-            }
-            const messageForSubmit = buildInputMessageForSubmit(content)
-            const nextMessageModelMap = new Map(messageModelMap)
-            nextMessageModelMap.set(inputMessage.id, conversationModelId)
-            void handleUserMessageSubmit({
-              inputChatMessages: [...chatMessages, messageForSubmit],
-              useVaultSearch,
-              persistedMessageModelMap: nextMessageModelMap,
-            })
-            // Record the model used for this just-submitted input message
-            setMessageModelMap(nextMessageModelMap)
-            setMessageReasoningMap((prev) => {
-              const next = new Map(prev)
-              next.set(inputMessage.id, reasoningLevel)
-              return next
-            })
-            setInputMessage(getNewInputMessage(reasoningLevel))
-          }}
-          onFocus={() => {
-            setFocusedMessageId(inputMessage.id)
-          }}
-          mentionables={inputMessage.mentionables}
-          setMentionables={(mentionables) => {
-            setInputMessage((prevInputMessage) => {
-              return {
-                ...prevInputMessage,
-                mentionables,
-              }
-            })
-          }}
-          selectedSkills={inputMessage.selectedSkills ?? []}
-          setSelectedSkills={(selectedSkills) => {
-            setInputMessage((prevInputMessage) => ({
-              ...prevInputMessage,
-              selectedSkills,
-              promptContent: null,
-              snapshotRef: undefined,
-              similaritySearchResults: undefined,
-            }))
-          }}
-          modelId={conversationModelId}
-          onModelChange={(id) => {
-            setConversationModelId(id)
-            conversationModelIdRef.current.set(currentConversationId, id)
-            const nextReasoningLevel = getReasoningLevelForModelId(id)
-            setReasoningLevel(nextReasoningLevel)
-            conversationReasoningLevelRef.current.set(
-              currentConversationId,
-              nextReasoningLevel,
-            )
-            setInputMessage((prev) => ({
-              ...prev,
-              reasoningLevel: nextReasoningLevel,
-            }))
-          }}
-          reasoningLevel={reasoningLevel}
-          onReasoningChange={(level) => {
-            setReasoningLevel(level)
-            conversationReasoningLevelRef.current.set(
-              currentConversationId,
-              level,
-            )
-            void persistReasoningLevelForModel(conversationModelId, level)
-            setInputMessage((prev) => ({
-              ...prev,
-              reasoningLevel: level,
-            }))
-          }}
-          autoFocus
-          addedBlockKey={addedBlockKey}
-          conversationOverrides={conversationOverrides}
-          onConversationOverridesChange={(next) => {
-            const nextOverrides = next
-              ? {
-                  ...next,
-                  chatMode,
-                  autoAttachCurrentFile,
-                }
-              : { chatMode, autoAttachCurrentFile }
-            setConversationOverrides(nextOverrides)
-            conversationOverridesRef.current.set(
-              currentConversationId,
-              nextOverrides,
-            )
-          }}
-          showConversationSettingsButton={false}
-          hideBadgeMentionables
-          displayMentionables={displayMentionablesForInput}
-          onDeleteFromAll={handleMentionableDeleteFromAll}
-          currentAssistantId={conversationAssistantId}
-          onSelectAssistantForConversation={handleConversationAssistantSelect}
-          currentChatMode={chatMode}
-          onSelectChatModeForConversation={handleChatModeChange}
-          allowAgentModeOption={Platform.isDesktop}
-        />
       </div>
     </div>
   )
