@@ -70,6 +70,10 @@ export class ChatView extends ItemView {
       this.root = createRoot(this.containerEl.children[1])
     }
 
+    const placement =
+      this.plugin.getChatLeafSessionManager().getLeafPlacement(this.leaf) ??
+      'sidebar'
+
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -114,6 +118,7 @@ export class ChatView extends ItemView {
                             >
                               <ChatSidebarTabs
                                 chatRef={this.chatRef}
+                                placement={placement}
                                 initialChatProps={this.initialChatProps}
                                 onConversationContextChange={(context) => {
                                   this.plugin
