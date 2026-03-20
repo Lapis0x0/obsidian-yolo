@@ -38,6 +38,7 @@ const AUTO_TITLE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
 const AUTO_TITLE_INPUT_MAX_LENGTH = 1200
 const AUTO_TITLE_WAIT_CONVERSATION_RETRIES = 15
 const AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS = 200
+const CHAT_HISTORY_UPDATED_EVENT = 'smtcmp:chat-history-updated'
 
 const isUntitledConversationTitle = (title: string): boolean =>
   LEGACY_UNTITLED_CONVERSATION_TITLES.has(title)
@@ -134,6 +135,10 @@ export function useChatHistory(): UseChatHistory {
     setChatList(list)
   }, [chatManager])
 
+  const emitChatHistoryUpdated = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(CHAT_HISTORY_UPDATED_EVENT))
+  }, [])
+
   useEffect(() => {
     void fetchChatList()
   }, [fetchChatList])
@@ -144,8 +149,11 @@ export function useChatHistory(): UseChatHistory {
       void fetchChatList()
     }
     window.addEventListener('smtcmp:chat-history-cleared', handler)
-    return () =>
+    window.addEventListener(CHAT_HISTORY_UPDATED_EVENT, handler)
+    return () => {
       window.removeEventListener('smtcmp:chat-history-cleared', handler)
+      window.removeEventListener(CHAT_HISTORY_UPDATED_EVENT, handler)
+    }
   }, [fetchChatList])
 
   const persistConversationInternal = useCallback(
@@ -217,9 +225,10 @@ export function useChatHistory(): UseChatHistory {
         })
       }
 
+      emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [app, chatManager, fetchChatList],
+    [app, chatManager, emitChatHistoryUpdated, fetchChatList],
   )
 
   const debouncedCreateOrUpdateConversation = useMemo(
@@ -282,9 +291,10 @@ export function useChatHistory(): UseChatHistory {
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await chatManager.deleteChat(id)
+      emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [chatManager, fetchChatList],
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
   )
 
   const getChatMessagesById = useCallback(
@@ -336,9 +346,10 @@ export function useChatHistory(): UseChatHistory {
       if (!updatedConversation) {
         throw new Error('Conversation not found')
       }
+      emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [chatManager, fetchChatList],
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
   )
 
   const toggleConversationPinned = useCallback(
@@ -368,10 +379,11 @@ export function useChatHistory(): UseChatHistory {
           pinnedAt,
         })
       } finally {
+        emitChatHistoryUpdated()
         await fetchChatList()
       }
     },
-    [chatManager, fetchChatList],
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
   )
 
   const generateConversationTitle = useCallback(
@@ -586,6 +598,7 @@ export function useChatHistory(): UseChatHistory {
               touchUpdatedAt: false,
             },
           )
+          emitChatHistoryUpdated()
           await fetchChatList()
         }
       } finally {
@@ -598,6 +611,7 @@ export function useChatHistory(): UseChatHistory {
       handleAutoPromoteToObsidian,
       language,
       settings,
+      emitChatHistoryUpdated,
     ],
   )
 

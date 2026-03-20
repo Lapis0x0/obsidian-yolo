@@ -3,6 +3,11 @@ import type { TranslationKeys } from '../types'
 export const zh: TranslationKeys = {
   commands: {
     openChat: '打开聊天',
+    openChatSidebar: '打开聊天（侧栏）',
+    openChatTab: '打开聊天（新标签页）',
+    openChatWindow: '打开聊天（新窗口）',
+    openNewChatTab: '在新标签页打开新对话',
+    openNewChatWindow: '在新窗口打开新对话',
     addSelectionToChat: '添加选中内容到聊天',
     addFileToChat: '添加文件到聊天',
     addFolderToChat: '添加文件夹到聊天',

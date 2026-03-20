@@ -203,6 +203,7 @@ const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [
 
 export type ChatRef = {
   openNewChat: (selectedBlock?: MentionableBlockData) => void
+  loadConversation: (conversationId: string) => Promise<void>
   addSelectionToChat: (selectedBlock: MentionableBlockData) => void
   syncSelectionToChat: (selectedBlock: MentionableBlockData) => void
   clearSelectionFromChat: () => void
@@ -221,6 +222,11 @@ export type ChatProps = {
   activeView?: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
   initialConversationId?: string
+  onConversationContextChange?: (context: {
+    currentConversationId?: string
+    currentModelId?: string
+    currentOverrides?: ConversationOverrideSettings
+  }) => void
 }
 
 const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
@@ -845,6 +851,29 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (!props.initialConversationId) return
     void handleLoadConversation(props.initialConversationId)
   }, [handleLoadConversation, props.initialConversationId])
+
+  useEffect(() => {
+    props.onConversationContextChange?.({
+      currentConversationId,
+      currentModelId:
+        conversationModelId ??
+        (currentConversationId
+          ? conversationModelIdRef.current.get(currentConversationId)
+          : undefined),
+      currentOverrides:
+        conversationOverrides === null
+          ? undefined
+          : (conversationOverrides ??
+            (currentConversationId
+              ? conversationOverridesRef.current.get(currentConversationId)
+              : undefined)),
+    })
+  }, [
+    conversationModelId,
+    conversationOverrides,
+    currentConversationId,
+    props.onConversationContextChange,
+  ])
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
     const newId = uuidv4()
@@ -1738,6 +1767,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   useImperativeHandle(ref, () => ({
     openNewChat: (selectedBlock?: MentionableBlockData) =>
       handleNewChat(selectedBlock),
+    loadConversation: async (conversationId: string) =>
+      await handleLoadConversation(conversationId),
     addSelectionToChat: (selectedBlock: MentionableBlockData) => {
       const mentionable = createSelectionBlockMentionable({
         ...selectedBlock,

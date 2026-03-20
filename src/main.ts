@@ -12,7 +12,6 @@ import {
 import { getLanguage } from 'obsidian'
 
 import { ChatView } from './ChatView'
-import { ChatProps } from './components/chat-view/Chat'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CHAT_VIEW_TYPE } from './constants'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
@@ -26,6 +25,10 @@ import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
+import {
+  ChatLeafPlacement,
+  ChatLeafSessionManager,
+} from './features/chat/chatLeafSessionManager'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
@@ -49,14 +52,13 @@ import { parseSmartComposerSettings } from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import type { Mentionable } from './types/mentionable'
+import type { Mentionable, MentionableBlockData } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
-  initialChatProps?: ChatProps // TODO: change this to use view state like ApplyView
   settingsChangeListeners: ((newSettings: SmartComposerSettings) => void)[] = []
   mcpManager: McpManager | null = null
   dbManager: DatabaseManager | null = null
@@ -73,6 +75,7 @@ export default class SmartComposerPlugin extends Plugin {
   // Selection chat state
   private selectionChatController: SelectionChatController | null = null
   private chatViewNavigator: ChatViewNavigator | null = null
+  private chatLeafSessionManager: ChatLeafSessionManager | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
   private mcpCoordinator: McpCoordinator | null = null
@@ -90,6 +93,13 @@ export default class SmartComposerPlugin extends Plugin {
 
   setSmartSpaceDraftState(state: SmartSpaceDraftState) {
     this.smartSpaceDraftState = state
+  }
+
+  getChatLeafSessionManager(): ChatLeafSessionManager {
+    if (!this.chatLeafSessionManager) {
+      this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
+    }
+    return this.chatLeafSessionManager
   }
 
   // Get cached model list for a provider
@@ -375,32 +385,23 @@ export default class SmartComposerPlugin extends Plugin {
   private getActiveConversationOverrides():
     | ConversationOverrideSettings
     | undefined {
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    for (const leaf of leaves) {
-      const view = leaf.view
-      if (
-        view instanceof ChatView &&
-        typeof view.getCurrentConversationOverrides === 'function'
-      ) {
-        return view.getCurrentConversationOverrides()
-      }
+    const leaf = this.getChatViewNavigator().resolveTargetChatLeaf({
+      allowCreate: false,
+    })
+    if (!(leaf?.view instanceof ChatView)) {
+      return undefined
     }
-    return undefined
+    return leaf.view.getCurrentConversationOverrides()
   }
 
   private getActiveConversationModelId(): string | undefined {
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    for (const leaf of leaves) {
-      const view = leaf.view
-      if (
-        view instanceof ChatView &&
-        typeof view.getCurrentConversationModelId === 'function'
-      ) {
-        const modelId = view.getCurrentConversationModelId()
-        if (modelId) return modelId
-      }
+    const leaf = this.getChatViewNavigator().resolveTargetChatLeaf({
+      allowCreate: false,
+    })
+    if (!(leaf?.view instanceof ChatView)) {
+      return undefined
     }
-    return undefined
+    return leaf.view.getCurrentConversationModelId()
   }
 
   private resolveContinuationParams(overrides?: ConversationOverrideSettings): {
@@ -701,15 +702,54 @@ export default class SmartComposerPlugin extends Plugin {
 
     // This creates an icon in the left ribbon.
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
-      void this.openChatView()
+      void this.openChatView({ placement: 'sidebar' })
     })
 
-    // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: 'open-new-chat',
-      name: this.t('commands.openChat'),
+      name: this.t('commands.openChatSidebar'),
       callback: () => {
-        void this.openChatView(true)
+        void this.openChatView({ placement: 'sidebar' })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-chat-tab',
+      name: this.t('commands.openChatTab'),
+      callback: () => {
+        void this.openChatView({ placement: 'tab' })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-chat-window',
+      name: this.t('commands.openChatWindow'),
+      callback: () => {
+        void this.openChatView({ placement: 'window' })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-new-chat-tab',
+      name: this.t('commands.openNewChatTab'),
+      callback: () => {
+        void this.openChatView({
+          placement: 'tab',
+          openNewChat: true,
+          forceNewLeaf: true,
+        })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-new-chat-window',
+      name: this.t('commands.openNewChatWindow'),
+      callback: () => {
+        void this.openChatView({
+          placement: 'window',
+          openNewChat: true,
+          forceNewLeaf: true,
+        })
       },
     })
 
@@ -919,6 +959,9 @@ export default class SmartComposerPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         try {
+          if (leaf?.view instanceof ChatView) {
+            this.getChatLeafSessionManager().touchLeafActive(leaf)
+          }
           const view = this.app.workspace.getActiveViewOfType(MarkdownView)
           const editor = view?.editor
           if (editor) {
@@ -1038,12 +1081,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
-  async openChatView(openNewChat = false) {
-    await this.getChatViewNavigator().openChatView(openNewChat)
-  }
-
-  async activateChatView(chatProps?: ChatProps, openNewChat = false) {
-    await this.getChatViewNavigator().activateChatView(chatProps, openNewChat)
+  async openChatView(options?: {
+    placement?: ChatLeafPlacement
+    openNewChat?: boolean
+    selectedBlock?: MentionableBlockData
+    initialConversationId?: string
+    prefillText?: string
+    forceNewLeaf?: boolean
+  }) {
+    await this.getChatViewNavigator().openChatView(options)
   }
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
@@ -1183,12 +1229,26 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   // removed migrateToJsonStorage (templates)
 
   private async reloadChatView() {
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
+    const records = this.getChatLeafSessionManager().getAllLeafRecords()
+    if (records.length === 0) {
       return
     }
     new Notice('Reloading "next-composer" due to migration', 1000)
-    leaves[0].detach()
-    await this.activateChatView()
+    const snapshots = records.map((record) => ({
+      placement: record.placement,
+      currentConversationId: record.currentConversationId,
+    }))
+
+    for (const record of records) {
+      record.leaf.detach()
+    }
+
+    for (const snapshot of snapshots) {
+      await this.openChatView({
+        placement: snapshot.placement,
+        initialConversationId: snapshot.currentConversationId,
+        forceNewLeaf: snapshot.placement !== 'sidebar',
+      })
+    }
   }
 }
