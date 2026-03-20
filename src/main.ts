@@ -14,6 +14,10 @@ import { getLanguage } from 'obsidian'
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CHAT_VIEW_TYPE } from './constants'
+import {
+  getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
+  initializeChatGPTOAuthRuntime,
+} from './core/auth/chatgptOAuthRuntime'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentService } from './core/agent/service'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
@@ -122,6 +126,34 @@ export default class SmartComposerPlugin extends Plugin {
   // Clear all model list cache (called when settings modal closes)
   clearModelListCache(): void {
     this.modelListCache.clear()
+  }
+
+  getChatGPTOAuthService() {
+    return (
+      getChatGPTOAuthServiceRuntime() ??
+      initializeChatGPTOAuthRuntime(this.app, this.manifest.id)
+    )
+  }
+
+  async getChatGPTOAuthStatus(): Promise<{
+    connected: boolean
+    accountId?: string
+    expiresAt?: number
+  }> {
+    const credential = await this.getChatGPTOAuthService().getUsableCredential()
+    if (!credential) {
+      return { connected: false }
+    }
+
+    return {
+      connected: true,
+      ...(credential.accountId ? { accountId: credential.accountId } : {}),
+      expiresAt: credential.expiresAt,
+    }
+  }
+
+  async disconnectChatGPTOAuthAccount(): Promise<void> {
+    await this.getChatGPTOAuthService().clearCredential()
   }
 
   private resolvePgliteResourcePath(): string {
@@ -690,6 +722,7 @@ export default class SmartComposerPlugin extends Plugin {
     ensureBufferByteLengthCompat()
 
     await this.loadSettings()
+    this.getChatGPTOAuthService()
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
 
