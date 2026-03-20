@@ -10,6 +10,7 @@ import {
 import {
   ChevronDown,
   ChevronUp,
+  PencilLine,
   RotateCcw,
   Send,
   Square,
@@ -397,6 +398,15 @@ export function QuickAskPanel({
     activeSelectionScope?.selectionFrom ?? editSelectionFrom
   const hasScopedSelectionForEdit =
     selectionEditContextText.trim().length > 0 && !!selectionEditFrom
+  const isTemporaryRewriteMode =
+    (executionMode === 'edit' || executionMode === 'edit-direct') &&
+    hasScopedSelectionForEdit
+  const modeTriggerLabel = isTemporaryRewriteMode
+    ? t('chatMode.rewrite', '改写')
+    : undefined
+  const modeTriggerIcon = isTemporaryRewriteMode ? (
+    <PencilLine size={14} />
+  ) : undefined
   const buildEditInstruction = useCallback(
     (instruction: string) => {
       const context = selectionEditContextText.trim()
@@ -2261,6 +2271,8 @@ export function QuickAskPanel({
               ref={modeTriggerRef}
               mode={mode}
               onChange={handleModeChange}
+              triggerLabel={modeTriggerLabel}
+              triggerIcon={modeTriggerIcon}
               onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
               container={containerRef?.current ?? undefined}
               side="bottom"

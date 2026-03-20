@@ -1089,6 +1089,8 @@ export const en: TranslationKeys = {
   chatMode: {
     chat: 'Chat',
     chatDesc: 'Ask, refine, create',
+    rewrite: 'Rewrite',
+    rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
     warning: {

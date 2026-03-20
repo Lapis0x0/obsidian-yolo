@@ -47,6 +47,8 @@ export const ModeSelect = forwardRef<
   {
     mode: QuickAskMode
     onChange: (mode: QuickAskMode) => void
+    triggerLabel?: string
+    triggerIcon?: React.ReactNode
     onMenuOpenChange?: (isOpen: boolean) => void
     onKeyDown?: (
       event: React.KeyboardEvent<HTMLButtonElement>,
@@ -64,6 +66,8 @@ export const ModeSelect = forwardRef<
     {
       mode,
       onChange,
+      triggerLabel,
+      triggerIcon,
       onMenuOpenChange,
       onKeyDown,
       container,
@@ -173,12 +177,15 @@ export const ModeSelect = forwardRef<
           className="smtcmp-chat-input-model-select smtcmp-mode-select"
           onKeyDown={handleTriggerKeyDown}
         >
-          <div className="smtcmp-mode-select__icon">{currentOption?.icon}</div>
+          <div className="smtcmp-mode-select__icon">
+            {triggerIcon ?? currentOption?.icon}
+          </div>
           <div className="smtcmp-chat-input-model-select__model-name">
-            {t(
-              currentOption?.labelKey ?? 'chatMode.chat',
-              currentOption?.labelFallback ?? 'Chat',
-            )}
+            {triggerLabel ??
+              t(
+                currentOption?.labelKey ?? 'chatMode.chat',
+                currentOption?.labelFallback ?? 'Chat',
+              )}
           </div>
           <div className="smtcmp-chat-input-model-select__icon">
             {isOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
