@@ -4,6 +4,11 @@ export type TranslationKeys = {
   // Commands
   commands: {
     openChat: string
+    openChatSidebar: string
+    openChatTab: string
+    openChatWindow: string
+    openNewChatTab: string
+    openNewChatWindow: string
     addSelectionToChat: string
     addFileToChat: string
     addFolderToChat: string

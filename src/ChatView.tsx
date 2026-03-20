@@ -16,6 +16,7 @@ import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
 import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
+import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import SmartComposerPlugin from './main'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import { MentionableBlockData } from './types/mentionable'
@@ -30,11 +31,6 @@ export class ChatView extends ItemView {
     private plugin: SmartComposerPlugin,
   ) {
     super(leaf)
-    this.initialChatProps = plugin.initialChatProps
-  }
-
-  setInitialChatProps(chatProps?: ChatProps) {
-    this.initialChatProps = chatProps
   }
 
   getViewType() {
@@ -50,13 +46,21 @@ export class ChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    await this.render()
+    const manager = this.plugin.getChatLeafSessionManager()
+    const pendingPayload = manager.consumePendingPayload(this.leaf)
+    const placement =
+      pendingPayload?.placement ?? manager.getLeafPlacement(this.leaf)
+    manager.registerLeaf(this.leaf, placement)
+    this.initialChatProps = this.getInitialChatProps(pendingPayload)
 
-    // Consume chatProps
+    await this.render()
+    await this.applyDeferredPayload(pendingPayload)
+
     this.initialChatProps = undefined
   }
 
   onClose(): Promise<void> {
+    this.plugin.getChatLeafSessionManager().unregisterLeaf(this.leaf)
     this.root?.unmount()
     return Promise.resolve()
   }
@@ -111,6 +115,11 @@ export class ChatView extends ItemView {
                               <ChatSidebarTabs
                                 chatRef={this.chatRef}
                                 initialChatProps={this.initialChatProps}
+                                onConversationContextChange={(context) => {
+                                  this.plugin
+                                    .getChatLeafSessionManager()
+                                    .updateLeafSummary(this.leaf, context)
+                                }}
                               />
                             </DialogContainerProvider>
                           </React.StrictMode>
@@ -129,14 +138,22 @@ export class ChatView extends ItemView {
   }
 
   openNewChat(selectedBlock?: MentionableBlockData) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.openNewChat(selectedBlock)
   }
 
+  async loadConversation(conversationId: string) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    await this.chatRef.current?.loadConversation(conversationId)
+  }
+
   addSelectionToChat(selectedBlock: MentionableBlockData) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.addSelectionToChat(selectedBlock)
   }
 
   syncSelectionToChat(selectedBlock: MentionableBlockData) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.syncSelectionToChat(selectedBlock)
   }
 
@@ -145,18 +162,22 @@ export class ChatView extends ItemView {
   }
 
   addFileToChat(file: TFile) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.addFileToChat(file)
   }
 
   addFolderToChat(folder: TFolder) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.addFolderToChat(folder)
   }
 
   insertTextToInput(text: string) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.insertTextToInput(text)
   }
 
   focusMessage() {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.focusMessage()
   }
 
@@ -166,5 +187,62 @@ export class ChatView extends ItemView {
 
   getCurrentConversationModelId(): string | undefined {
     return this.chatRef.current?.getCurrentConversationModelId()
+  }
+
+  private getInitialChatProps(
+    payload?: PendingChatOpenPayload,
+  ): ChatProps | undefined {
+    if (!payload) {
+      return undefined
+    }
+
+    if (!payload.selectedBlock && !payload.initialConversationId) {
+      return undefined
+    }
+
+    return {
+      selectedBlock: payload.selectedBlock,
+      initialConversationId: payload.initialConversationId,
+    }
+  }
+
+  private async applyDeferredPayload(
+    payload?: PendingChatOpenPayload,
+  ): Promise<void> {
+    if (!payload) {
+      return
+    }
+
+    const chatRef = await this.waitForChatRef()
+    if (!chatRef) {
+      return
+    }
+
+    if (payload.fileToAdd) {
+      chatRef.addFileToChat(payload.fileToAdd)
+    }
+
+    if (payload.folderToAdd) {
+      chatRef.addFolderToChat(payload.folderToAdd)
+    }
+
+    if (payload.prefillText) {
+      chatRef.insertTextToInput(payload.prefillText)
+    }
+
+    if (payload.fileToAdd || payload.folderToAdd || payload.prefillText) {
+      chatRef.focusMessage()
+    }
+  }
+
+  private async waitForChatRef(): Promise<ChatRef | null> {
+    for (let index = 0; index < 30; index += 1) {
+      if (this.chatRef.current) {
+        return this.chatRef.current
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 16))
+    }
+
+    return null
   }
 }

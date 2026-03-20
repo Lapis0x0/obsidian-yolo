@@ -379,12 +379,14 @@ export class SelectionChatController {
   }
 
   private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {
-    const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)
-    if (leaves.length === 0 || !(leaves[0].view instanceof ChatView)) {
+    const targetLeaf = this.plugin
+      .getChatLeafSessionManager()
+      .resolveTargetLeaf()
+    if (!(targetLeaf?.view instanceof ChatView)) {
       return
     }
 
-    const chatView = leaves[0].view
+    const chatView = targetLeaf.view
 
     if (!selection) {
       const activeMarkdownView =
@@ -550,10 +552,14 @@ export class SelectionChatController {
         }
 
         const selection = view.state.selection.main
+        const targetLeaf = this.plugin
+          .getChatLeafSessionManager()
+          .resolveTargetLeaf()
         if (
           selection.empty ||
           view.hasFocus ||
-          this.app.workspace.activeLeaf?.getViewState().type !== CHAT_VIEW_TYPE
+          !targetLeaf ||
+          this.app.workspace.activeLeaf !== targetLeaf
         ) {
           return
         }

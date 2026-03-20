@@ -3,6 +3,11 @@ import type { TranslationKeys } from '../types'
 export const it: TranslationKeys = {
   commands: {
     openChat: 'Apri chat',
+    openChatSidebar: 'Apri chat (barra laterale)',
+    openChatTab: 'Apri chat (nuova scheda)',
+    openChatWindow: 'Apri chat (nuova finestra)',
+    openNewChatTab: 'Apri nuova chat (nuova scheda)',
+    openNewChatWindow: 'Apri nuova chat (nuova finestra)',
     addSelectionToChat: 'Aggiungi selezione alla chat',
     addFileToChat: 'Aggiungi file alla chat',
     addFolderToChat: 'Aggiungi cartella alla chat',
