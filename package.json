@@ -82,6 +82,7 @@
     "exponential-backoff": "^3.1.1",
     "fuzzysort": "^3.1.0",
     "groq-sdk": "^0.7.0",
+    "proxy-agent": "^6.5.0",
     "js-tiktoken": "^1.0.15",
     "langchain": "^0.3.2",
     "lexical": "^0.17.1",

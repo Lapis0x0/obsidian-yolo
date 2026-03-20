@@ -15,6 +15,7 @@ import {
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
 import {} from '../../utils/chat/tool-arguments'
+import { createNodeStreamingFetch } from '../../utils/mcp/node-streaming-fetch'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import {
@@ -358,6 +359,8 @@ export class McpManager {
           requestInit: serverParams.headers
             ? { headers: serverParams.headers }
             : undefined,
+          fetch:
+            createNodeStreamingFetch() as import('@modelcontextprotocol/sdk/shared/transport.js').FetchLike,
         })
       }
       case 'sse': {
@@ -371,6 +374,8 @@ export class McpManager {
           requestInit: serverParams.headers
             ? { headers: serverParams.headers }
             : undefined,
+          fetch:
+            createNodeStreamingFetch() as import('@modelcontextprotocol/sdk/shared/transport.js').FetchLike,
         })
       }
       case 'ws': {
