@@ -24,6 +24,8 @@ import {
 
 import { QuickAskPanel } from './QuickAskPanel'
 
+type EditorRect = ReturnType<EditorView['coordsAtPos']>
+
 export class QuickAskOverlay {
   private static overlayRoot: HTMLElement | null = null
   private static currentInstance: QuickAskOverlay | null = null
@@ -48,6 +50,7 @@ export class QuickAskOverlay {
   // Resize state - when set, override panel size
   private resizeSize: { width: number; height: number } | null = null
   private pos: number | null = null
+  private selectionAnchor: { from: number; to: number } | null = null
 
   constructor(
     private readonly options: {
@@ -64,10 +67,13 @@ export class QuickAskOverlay {
       editContextText?: string
       editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      selectionAnchor?: { from: number; to: number }
       autoSend?: boolean
       onClose: () => void
     },
-  ) {}
+  ) {
+    this.selectionAnchor = options.selectionAnchor ?? null
+  }
 
   mount(pos: number): void {
     this.pos = pos
@@ -355,11 +361,39 @@ export class QuickAskOverlay {
     })
   }
 
-  updatePosition(pos?: number): void {
+  updatePosition(
+    pos?: number,
+    selectionAnchor?: { from: number; to: number } | null,
+  ): void {
     if (typeof pos === 'number') {
       this.pos = pos
     }
+    if (selectionAnchor !== undefined) {
+      this.selectionAnchor = selectionAnchor
+    }
     this.schedulePositionUpdate()
+  }
+
+  private getSelectionAnchorRects(): {
+    startRect: NonNullable<EditorRect>
+    endRect: NonNullable<EditorRect>
+  } | null {
+    if (!this.selectionAnchor) {
+      return null
+    }
+
+    const { from, to } = this.selectionAnchor
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) {
+      return null
+    }
+
+    const startRect = this.options.view.coordsAtPos(from)
+    const endRect = this.options.view.coordsAtPos(to)
+    if (!startRect || !endRect) {
+      return null
+    }
+
+    return { startRect, endRect }
   }
 
   private updateOverlayPosition() {
@@ -376,7 +410,9 @@ export class QuickAskOverlay {
       return
     }
 
-    const anchorRect = this.options.view.coordsAtPos(this.pos)
+    const selectionAnchorRects = this.getSelectionAnchorRects()
+    const fallbackRect = this.options.view.coordsAtPos(this.pos)
+    const anchorRect = selectionAnchorRects?.endRect ?? fallbackRect
     if (!anchorRect) {
       return
     }
@@ -412,6 +448,7 @@ export class QuickAskOverlay {
       (sizerRect?.left ?? scrollRect?.left ?? hostRect.left + margin) -
       hostRect.left
     const contentRight = contentLeft + editorContentWidth
+    const panelHeight = this.resizeSize?.height ?? this.getPanelHeight()
 
     let left = anchorRect.left - hostRect.left
     left = Math.min(left, contentRight - maxPanelWidth)
@@ -419,7 +456,29 @@ export class QuickAskOverlay {
     left = Math.min(left, viewportWidth - margin - maxPanelWidth)
     left = Math.max(left, margin)
 
-    const top = anchorRect.bottom - hostRect.top + offsetY
+    const minTop = this.getMinimumTopOffset(margin)
+    const preferredBelowTop = anchorRect.bottom - hostRect.top + offsetY
+    const preferredAboveTop =
+      (selectionAnchorRects?.startRect.top ?? anchorRect.top) -
+      hostRect.top -
+      offsetY -
+      (panelHeight ?? 0)
+
+    let top = preferredBelowTop
+    if (panelHeight !== null) {
+      const maxTop = Math.max(minTop, hostRect.height - margin - panelHeight)
+      const fitsBelow =
+        preferredBelowTop + panelHeight <= hostRect.height - margin
+      const fitsAbove = preferredAboveTop >= minTop
+
+      if (!fitsBelow && fitsAbove) {
+        top = preferredAboveTop
+      } else if (!fitsBelow) {
+        top = Math.min(maxTop, Math.max(minTop, preferredBelowTop))
+      }
+    }
+
+    top = Math.max(minTop, Math.round(top))
 
     updateDynamicStyleClass(
       this.overlayContainer,
@@ -427,7 +486,7 @@ export class QuickAskOverlay {
       {
         width: maxPanelWidth,
         left: Math.round(left),
-        top: Math.round(top),
+        top,
       },
     )
   }
