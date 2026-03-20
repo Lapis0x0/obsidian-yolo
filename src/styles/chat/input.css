@@ -212,6 +212,7 @@
 
 .smtcmp-chat-container--centered {
   --smtcmp-chat-content-max-width: min(720px, calc(100% - var(--size-4-6)));
+  --smtcmp-chat-typeahead-max-width: 400px;
 }
 
 .smtcmp-chat-container--centered > .smtcmp-chat-footer,

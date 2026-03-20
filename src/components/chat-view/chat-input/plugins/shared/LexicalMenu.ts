@@ -560,6 +560,15 @@ export function useMenuAnchorRef(
         const containerEl = rootElement.closest(
           '.smtcmp-chat-user-input-container, .smtcmp-quick-ask-panel',
         )
+        const centeredChatContainer = rootElement.closest(
+          '.smtcmp-chat-container--centered',
+        )
+        const isCenteredChatContainer = Boolean(centeredChatContainer)
+        const centeredChatTypeaheadMaxWidth = centeredChatContainer
+          ? getComputedStyle(centeredChatContainer)
+              .getPropertyValue('--smtcmp-chat-typeahead-max-width')
+              .trim() || '560px'
+          : '560px'
 
         if (containerEl) {
           // Position the menu in document.body with fixed positioning to avoid clipping by container bounds
@@ -602,13 +611,16 @@ export function useMenuAnchorRef(
               'smtcmp-smart-space-mention-popover',
             )
             if (isMentionPopover) {
+              const mentionPopoverWidth = isCenteredChatContainer
+                ? `min(100%, ${centeredChatTypeaheadMaxWidth})`
+                : '100%'
               updateDynamicStyleClass(menuEle, 'smtcmp-typeahead-pop', {
                 position: 'absolute',
                 left: 0,
-                right: 0,
+                right: isCenteredChatContainer ? 'auto' : 0,
                 bottom: 0,
-                width: '100%',
-                maxWidth: 'none',
+                width: mentionPopoverWidth,
+                maxWidth: mentionPopoverWidth,
                 boxSizing: 'border-box',
                 overflow: 'visible',
                 '--smtcmp-typeahead-available-height': `${available}px`,

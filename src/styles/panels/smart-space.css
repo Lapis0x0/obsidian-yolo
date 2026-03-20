@@ -264,6 +264,11 @@
   padding: 0;
 }
 
+.smtcmp-chat-container--centered .smtcmp-smart-space-mention-dropdown {
+  width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
+  max-width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
+}
+
 .smtcmp-smart-space-mention-list {
   width: 100%;
   display: flex;
