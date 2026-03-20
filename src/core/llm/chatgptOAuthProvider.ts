@@ -34,16 +34,13 @@ import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const OAUTH_PROVIDER_API_KEY = 'chatgpt-oauth'
-type RequestTransportMode = 'obsidian'
 
 export class ChatGPTOAuthProvider extends BaseLLMProvider<
   Extract<LLMProvider, { type: 'chatgpt-oauth' }>
 > {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
   private readonly chatAdapter = new OpenAIMessageAdapter()
-  private readonly browserClient: OpenAI
   private readonly obsidianClient: OpenAI
-  private readonly requestTransportMode: RequestTransportMode
   private readonly requestTransportMemoryKey: string
 
   constructor(provider: Extract<LLMProvider, { type: 'chatgpt-oauth' }>) {
@@ -53,7 +50,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
       providerId: provider.id,
       baseUrl: CODEX_BASE_URL,
     })
-    this.requestTransportMode = 'obsidian'
 
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const createClient = (customFetch: typeof fetch) =>
@@ -66,7 +62,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
         fetch: this.createAuthorizedFetch(customFetch),
       })
 
-    this.browserClient = createClient(fetch)
     this.obsidianClient = createClient(createObsidianFetch())
   }
 
@@ -97,11 +92,11 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransport({
-      mode: this.requestTransportMode,
+      mode: 'obsidian',
       memoryKey: this.requestTransportMemoryKey,
       runBrowser: async () =>
         this.generateResponseWithFallback(
-          this.browserClient,
+          this.obsidianClient,
           body,
           formattedRequest,
           options,
@@ -140,11 +135,11 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransportForStream({
-      mode: this.requestTransportMode,
+      mode: 'obsidian',
       memoryKey: this.requestTransportMemoryKey,
       createBrowserStream: async () =>
         this.streamResponseWithFallback(
-          this.browserClient,
+          this.obsidianClient,
           body,
           formattedRequest,
           options,

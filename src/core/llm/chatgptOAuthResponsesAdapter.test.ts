@@ -64,11 +64,6 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
 
     expect(request.input).toEqual([
       {
-        role: 'system',
-        content: 'You are helpful.',
-        type: 'message',
-      },
-      {
         role: 'user',
         content: 'Read README.md',
         type: 'message',
@@ -85,6 +80,7 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
         output: '# Hello',
       },
     ])
+    expect(request.instructions).toBe('You are helpful.')
   })
 
   it('parses non-streaming responses into chat completion shape', () => {
@@ -286,6 +282,75 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
             finish_reason: null,
             delta: {
               content: 'Done',
+            },
+          },
+        ],
+      },
+    ])
+  })
+
+  it('maps reasoning summary part and delta events', () => {
+    const state = adapter.createStreamState()
+    const events = [
+      {
+        type: 'response.reasoning_summary_text.delta',
+        item_id: 'rs_1',
+        summary_index: 0,
+        delta: 'First summary part',
+      },
+      {
+        type: 'response.reasoning_summary_part.added',
+        item_id: 'rs_1',
+        summary_index: 1,
+      },
+      {
+        type: 'response.reasoning_summary_text.delta',
+        item_id: 'rs_1',
+        summary_index: 1,
+        delta: 'Second summary part',
+      },
+    ] as unknown as ResponseStreamEvent[]
+
+    const chunks = events.flatMap((event) =>
+      Array.from(adapter.parseStreamEvent(event, state)),
+    )
+
+    expect(chunks).toEqual([
+      {
+        id: 'rs_1',
+        model: 'chatgpt-oauth',
+        object: 'chat.completion.chunk',
+        choices: [
+          {
+            finish_reason: null,
+            delta: {
+              reasoning: 'First summary part',
+            },
+          },
+        ],
+      },
+      {
+        id: 'rs_1',
+        model: 'chatgpt-oauth',
+        object: 'chat.completion.chunk',
+        choices: [
+          {
+            finish_reason: null,
+            delta: {
+              reasoning: '\n\n',
+            },
+          },
+        ],
+      },
+      {
+        id: 'rs_1',
+        model: 'chatgpt-oauth',
+        object: 'chat.completion.chunk',
+        choices: [
+          {
+            finish_reason: null,
+            delta: {
+              reasoning: 'Second summary part',
             },
           },
         ],
