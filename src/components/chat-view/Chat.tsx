@@ -2111,7 +2111,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const header = (
-    <div className="smtcmp-chat-header">
+    <div
+      className={`smtcmp-chat-header${
+        isSidebarPlacement ? '' : ' smtcmp-chat-header--workspace'
+      }`}
+    >
       {onChangeView ? (
         <ViewToggle
           activeView={activeView}
