@@ -696,11 +696,21 @@
   margin-right: auto;
 }
 
+.smtcmp-chat-header--workspace .smtcmp-view-toggle {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 .smtcmp-view-toggle:hover {
   box-shadow:
     0 2px 8px
       color-mix(in srgb, var(--background-modifier-box-shadow) 20%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.smtcmp-chat-header--workspace .smtcmp-view-toggle:hover {
+  box-shadow: none;
 }
 
 .smtcmp-view-toggle--single {
