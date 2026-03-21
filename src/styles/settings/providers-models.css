@@ -35,6 +35,7 @@
 }
 
 .smtcmp-provider-drag-handle {
+  all: unset;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -42,6 +43,9 @@
   cursor: grab;
   user-select: none;
   padding: 0;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
   transition:
     transform 120ms ease,
     color 120ms ease;
@@ -53,6 +57,36 @@
 
 .smtcmp-provider-drag-handle:active {
   cursor: grabbing;
+}
+
+.smtcmp-provider-main-trigger {
+  all: unset;
+  flex: 0 0 auto;
+  min-width: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.smtcmp-provider-main-trigger:hover,
+.smtcmp-provider-main-trigger:focus,
+.smtcmp-provider-main-trigger:focus-visible,
+.smtcmp-provider-main-trigger:active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.smtcmp-provider-header > .smtcmp-provider-drag-handle,
+.smtcmp-provider-header > .smtcmp-provider-main-trigger {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .smtcmp-provider-drag-handle svg {
@@ -90,10 +124,10 @@
 }
 
 .smtcmp-provider-info {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: var(--size-4-3);
+  gap: 6px;
 }
 
 .smtcmp-provider-id {
@@ -104,6 +138,85 @@
 .smtcmp-provider-type {
   color: var(--text-muted);
   min-width: 100px;
+  max-width: 260px;
+  font-size: var(--font-ui-smallest);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtcmp-provider-base-url-btn {
+  all: unset;
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: auto;
+  max-width: none;
+  font-size: 12px;
+  line-height: 1.2;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.smtcmp-provider-base-url-text {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtcmp-provider-base-url-btn:hover,
+.smtcmp-provider-base-url-btn:focus-visible {
+  color: var(--text-normal);
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
+
+.smtcmp-provider-base-url-btn.is-disabled {
+  cursor: default;
+}
+
+.smtcmp-provider-base-url-btn.is-disabled:hover,
+.smtcmp-provider-base-url-btn.is-disabled:focus-visible {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.smtcmp-provider-header > .smtcmp-provider-base-url-btn {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.smtcmp-provider-model-counts {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.smtcmp-provider-secondary-trigger {
+  all: unset;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  cursor: pointer;
+}
+
+.smtcmp-provider-header > .smtcmp-provider-secondary-trigger {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .smtcmp-provider-api-key {
@@ -118,6 +231,21 @@
 .smtcmp-provider-actions {
   display: flex;
   gap: var(--size-4-1);
+  flex-shrink: 0;
+}
+
+.smtcmp-provider-actions .clickable-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.smtcmp-provider-actions .clickable-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .smtcmp-provider-models {
@@ -160,6 +288,29 @@
   width: 100%;
   border-collapse: collapse;
   font-size: var(--font-ui-smaller);
+}
+
+.smtcmp-models-table .smtcmp-drag-handle {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: grab;
+}
+
+.smtcmp-models-table .smtcmp-drag-handle:hover,
+.smtcmp-models-table .smtcmp-drag-handle:focus,
+.smtcmp-models-table .smtcmp-drag-handle:focus-visible,
+.smtcmp-models-table .smtcmp-drag-handle:active {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.smtcmp-models-table .smtcmp-drag-handle:active {
+  cursor: grabbing;
 }
 
 .smtcmp-models-table th {

@@ -27,7 +27,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_EMBEDDING_MODELS,
-  PROVIDER_TYPES_INFO,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -67,6 +66,33 @@ type ProviderSectionItemProps = {
   handleToggleEnableChatModel: (modelId: string, value: boolean) => void
   handleChatModelDragEnd: (event: DragEndEvent) => void
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
+}
+
+const PROVIDER_DISPLAY_BASE_URLS: Partial<Record<LLMProvider['type'], string>> =
+  {
+    openai: 'https://api.openai.com',
+    'chatgpt-oauth': 'https://chatgpt.com/backend-api/codex',
+    anthropic: 'https://api.anthropic.com',
+    gemini: 'https://generativelanguage.googleapis.com',
+    deepseek: 'https://api.deepseek.com',
+    perplexity: 'https://api.perplexity.ai',
+    groq: 'https://api.groq.com/openai',
+    mistral: 'https://api.mistral.ai',
+    openrouter: 'https://openrouter.ai/api',
+    ollama: 'http://127.0.0.1:11434',
+    'lm-studio': 'http://127.0.0.1:1234',
+    morph: 'https://api.morphllm.com',
+  }
+
+function getProviderDisplayBaseUrl(provider: LLMProvider): string {
+  const rawBaseUrl =
+    provider.baseUrl?.trim() || PROVIDER_DISPLAY_BASE_URLS[provider.type]
+
+  if (!rawBaseUrl) {
+    return ''
+  }
+
+  return rawBaseUrl.replace(/\/+$/, '').replace(/\/v1$/i, '')
 }
 
 function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
@@ -215,6 +241,9 @@ function ProviderSectionItem({
   handleEmbeddingModelDragEnd,
 }: ProviderSectionItemProps) {
   const isChatGPTOAuth = provider.type === 'chatgpt-oauth'
+  const displayBaseUrl = getProviderDisplayBaseUrl(provider)
+  const chatModelsLabel = `${chatModels.length} ${t('settings.providers.chatModels').replace(/^个/, '')}`
+  const embeddingModelsLabel = `${embeddingModels.length} ${t('settings.providers.embeddingModels').replace(/^个/, '')}`
   const {
     attributes,
     listeners,
@@ -237,19 +266,9 @@ function ProviderSectionItem({
       data-provider-id={provider.id}
       {...attributes}
     >
-      <div
-        className="smtcmp-provider-header smtcmp-clickable"
-        onClick={() => toggleProvider(provider.id)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            toggleProvider(provider.id)
-          }
-        }}
-      >
-        <span
+      <div className="smtcmp-provider-header">
+        <button
+          type="button"
           className="smtcmp-provider-drag-handle"
           aria-label={t('settings.providers.dragHandle', 'Drag to reorder')}
           onClick={(e) => e.stopPropagation()}
@@ -257,60 +276,73 @@ function ProviderSectionItem({
           {...listeners}
         >
           <GripVertical />
-        </span>
+        </button>
 
-        <div className="smtcmp-provider-expand-btn">
-          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </div>
+        <button
+          type="button"
+          className="smtcmp-provider-main-trigger smtcmp-clickable"
+          onClick={() => toggleProvider(provider.id)}
+        >
+          <div className="smtcmp-provider-expand-btn">
+            {isExpanded ? (
+              <ChevronDown size={16} />
+            ) : (
+              <ChevronRight size={16} />
+            )}
+          </div>
 
-        <div className="smtcmp-provider-info">
-          <span className="smtcmp-provider-id">{provider.id}</span>
-          <span className="smtcmp-provider-type">
-            {PROVIDER_TYPES_INFO[provider.type].label}
+          <div className="smtcmp-provider-info">
+            <span className="smtcmp-provider-id">{provider.id}</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          className={`smtcmp-provider-type smtcmp-provider-base-url-btn${isChatGPTOAuth ? ' is-disabled' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (isChatGPTOAuth) {
+              return
+            }
+            new EditProviderModal(app, plugin, provider).open()
+          }}
+        >
+          <span className="smtcmp-provider-base-url-text">
+            {displayBaseUrl}
           </span>
-          <span
-            className="smtcmp-provider-api-key"
+        </button>
+
+        <button
+          type="button"
+          className="smtcmp-provider-secondary-trigger smtcmp-clickable"
+          onClick={() => toggleProvider(provider.id)}
+        >
+          <span className="smtcmp-provider-model-counts">
+            {chatModelsLabel} · {embeddingModelsLabel}
+          </span>
+        </button>
+
+        <div className="smtcmp-provider-actions">
+          <button
+            type="button"
             onClick={(e) => {
-              if (isChatGPTOAuth) {
-                return
-              }
               e.stopPropagation()
               new EditProviderModal(app, plugin, provider).open()
             }}
+            className="clickable-icon"
           >
-            {isChatGPTOAuth
-              ? 'OAuth login'
-              : provider.apiKey
-                ? '••••••••'
-                : 'Set API key'}
-          </span>
-        </div>
-
-        <div className="smtcmp-provider-actions">
-          {!isChatGPTOAuth && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                new EditProviderModal(app, plugin, provider).open()
-              }}
-              className="clickable-icon"
-            >
-              <Settings />
-            </button>
-          )}
-          {!isChatGPTOAuth && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDeleteProvider(provider)
-              }}
-              className="clickable-icon"
-            >
-              <Trash2 />
-            </button>
-          )}
+            <Settings />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDeleteProvider(provider)
+            }}
+            className="clickable-icon"
+          >
+            <Trash2 />
+          </button>
         </div>
       </div>
 
@@ -578,12 +610,13 @@ function ChatModelRow({
       {...listeners}
     >
       <td>
-        <span
+        <button
+          type="button"
           className="smtcmp-drag-handle"
           aria-label={t('settings.models.dragHandle', 'Drag to reorder')}
         >
           <GripVertical />
-        </span>
+        </button>
       </td>
       <td title={model.id}>{model.name || model.model || model.id}</td>
       <td>{model.model || model.id}</td>
@@ -596,6 +629,7 @@ function ChatModelRow({
       <td>
         <div className="smtcmp-settings-actions">
           <button
+            type="button"
             onClick={() => new EditChatModelModal(app, plugin, model).open()}
             className="clickable-icon"
             title="Edit model"
@@ -605,6 +639,7 @@ function ChatModelRow({
           </button>
           {!isDefault && (
             <button
+              type="button"
               onClick={() => onDelete(model.id)}
               className="clickable-icon"
               onPointerDown={(event) => event.stopPropagation()}
@@ -664,12 +699,13 @@ function EmbeddingModelRow({
       {...listeners}
     >
       <td>
-        <span
+        <button
+          type="button"
           className="smtcmp-drag-handle"
           aria-label={t('settings.models.dragHandle', 'Drag to reorder')}
         >
           <GripVertical />
-        </span>
+        </button>
       </td>
       <td title={model.id}>{model.name ?? model.model ?? model.id}</td>
       <td title={model.model}>{model.model}</td>
@@ -679,6 +715,7 @@ function EmbeddingModelRow({
           {!isDefault && (
             <>
               <button
+                type="button"
                 onClick={() =>
                   new EditEmbeddingModelModal(app, plugin, model).open()
                 }
@@ -689,6 +726,7 @@ function EmbeddingModelRow({
                 <Edit />
               </button>
               <button
+                type="button"
                 onClick={() => onDelete(model.id)}
                 className="clickable-icon"
                 onPointerDown={(event) => event.stopPropagation()}
@@ -1150,6 +1188,7 @@ export function ProvidersAndModelsSection({
         </DndContext>
 
         <button
+          type="button"
           className="smtcmp-add-provider-btn"
           onClick={() => new AddProviderModal(app, plugin).open()}
         >
