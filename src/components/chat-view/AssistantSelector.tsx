@@ -15,11 +15,15 @@ import { renderAssistantIcon } from '../../utils/assistant-icon'
 type AssistantSelectorProps = {
   currentAssistantId?: string
   onAssistantChange?: (assistant: Assistant) => void
+  triggerClassName?: string
+  contentClassName?: string
 }
 
 export function AssistantSelector({
   currentAssistantId,
   onAssistantChange,
+  triggerClassName,
+  contentClassName,
 }: AssistantSelectorProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
@@ -95,7 +99,9 @@ export function AssistantSelector({
         <button
           type="button"
           ref={triggerRef}
-          className="smtcmp-assistant-selector-button"
+          className={`smtcmp-assistant-selector-button${
+            triggerClassName ? ` ${triggerClassName}` : ''
+          }`}
           data-state={open ? 'open' : 'closed'}
         >
           {currentAssistant && (
@@ -116,7 +122,9 @@ export function AssistantSelector({
 
       <Popover.Portal container={getNodeBody(triggerRef.current)}>
         <Popover.Content
-          className="smtcmp-popover smtcmp-chat-sidebar-popover smtcmp-assistant-selector-content"
+          className={`smtcmp-popover smtcmp-chat-sidebar-popover smtcmp-assistant-selector-content${
+            contentClassName ? ` ${contentClassName}` : ''
+          }`}
           sideOffset={14}
         >
           <ul className="smtcmp-assistant-selector-list smtcmp-model-select-list">
