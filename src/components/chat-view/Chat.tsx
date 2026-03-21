@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { CSSProperties } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
 import { useApp } from '../../contexts/app-context'
@@ -294,7 +295,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     app.workspace.getActiveFile(),
   )
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const headerRef = useRef<HTMLDivElement | null>(null)
   const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
+  const [workspaceWideHeaderHeight, setWorkspaceWideHeaderHeight] = useState(0)
 
   const [inputMessage, setInputMessage] = useState<ChatUserMessage>(() => {
     const newMessage = getNewInputMessage(initialReasoningLevel)
@@ -382,6 +385,34 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [isSidebarPlacement])
 
+  useEffect(() => {
+    if (isSidebarPlacement || !isWorkspaceWideHeader) {
+      setWorkspaceWideHeaderHeight(0)
+      return
+    }
+
+    const element = headerRef.current
+    if (!element) return
+
+    const updateHeaderHeight = (height: number) => {
+      setWorkspaceWideHeaderHeight(Math.ceil(height))
+    }
+
+    updateHeaderHeight(element.getBoundingClientRect().height)
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      updateHeaderHeight(entry.contentRect.height)
+    })
+
+    resizeObserver.observe(element)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [isSidebarPlacement, isWorkspaceWideHeader])
+
   const containerClassName = `smtcmp-chat-container${
     isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
   }${
@@ -389,6 +420,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ? ' smtcmp-chat-container--workspace-wide-header'
       : ''
   }`
+  const containerStyle =
+    !isSidebarPlacement && isWorkspaceWideHeader
+      ? ({
+          '--smtcmp-chat-workspace-header-height': `${workspaceWideHeaderHeight}px`,
+        } as CSSProperties)
+      : undefined
 
   // Per-conversation override settings (temperature, top_p, context, stream)
   const conversationOverridesRef = useRef<
@@ -2151,6 +2188,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const header = (
     <div
+      ref={headerRef}
       className={`smtcmp-chat-header${
         isSidebarPlacement ? '' : ' smtcmp-chat-header--workspace'
       }`}
@@ -2173,6 +2211,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <div className="smtcmp-chat-header-right">
           <AssistantSelector
             currentAssistantId={conversationAssistantId}
+            triggerClassName={
+              !isSidebarPlacement && isWorkspaceWideHeader
+                ? 'smtcmp-assistant-selector-button--workspace-floating'
+                : undefined
+            }
+            contentClassName={
+              !isSidebarPlacement && isWorkspaceWideHeader
+                ? 'smtcmp-assistant-selector-content--workspace-floating'
+                : undefined
+            }
             onAssistantChange={(assistant) => {
               handleConversationAssistantSelect(assistant.id)
             }}
@@ -2250,7 +2298,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   if (activeView === 'composer') {
     return (
-      <div ref={containerRef} className={containerClassName}>
+      <div
+        ref={containerRef}
+        className={containerClassName}
+        style={containerStyle}
+      >
         {header}
         <div className="smtcmp-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
@@ -2263,7 +2315,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     groupedChatMessages.length === 0 && !submitChatMutation.isPending
 
   return (
-    <div ref={containerRef} className={containerClassName}>
+    <div
+      ref={containerRef}
+      className={containerClassName}
+      style={containerStyle}
+    >
       {header}
       {showEmptyState && (
         <div className="smtcmp-chat-empty-state-overlay" aria-hidden="true">

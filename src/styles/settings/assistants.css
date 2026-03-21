@@ -158,6 +158,12 @@
   overflow: hidden;
 }
 
+.smtcmp-assistant-selector-content.smtcmp-assistant-selector-content--workspace-floating {
+  width: auto;
+  min-width: max(var(--radix-popover-trigger-width, 0px), 200px);
+  max-width: 240px;
+}
+
 .smtcmp-assistant-selector-empty {
   padding: var(--size-4-2);
   color: var(--text-muted);
