@@ -101,9 +101,6 @@ export function DefaultModelsAndPromptsSection() {
       ? settings.chatOptions.chatTitlePrompt!
       : defaultTitlePrompt
 
-  const baseModelSpecialPromptValue =
-    settings.chatOptions.baseModelSpecialPrompt ?? ''
-
   return (
     <div className="smtcmp-settings-section">
       <div className="smtcmp-settings-header">
@@ -169,29 +166,6 @@ export function DefaultModelsAndPromptsSection() {
                 },
               },
               'chatTitlePrompt',
-            )
-          }}
-        />
-      </ObsidianSetting>
-
-      <ObsidianSetting
-        name={t('settings.defaults.baseModelSpecialPrompt')}
-        desc={t('settings.defaults.baseModelSpecialPromptDesc')}
-        className="smtcmp-settings-textarea-header"
-      />
-
-      <ObsidianSetting className="smtcmp-settings-textarea">
-        <ObsidianTextArea
-          value={baseModelSpecialPromptValue}
-          onChange={(value: string) => {
-            commitSettingsUpdate(
-              {
-                chatOptions: {
-                  ...settings.chatOptions,
-                  baseModelSpecialPrompt: value,
-                },
-              },
-              'baseModelSpecialPrompt',
             )
           }}
         />

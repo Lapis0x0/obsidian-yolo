@@ -158,9 +158,6 @@ export const it: TranslationKeys = {
       chatTitlePrompt: 'Prompt titolo chat',
       chatTitlePromptDesc:
         'Prompt usato quando si generano automaticamente i titoli delle conversazioni dal primo messaggio utente.',
-      baseModelSpecialPrompt: 'Prompt speciale modello base',
-      baseModelSpecialPromptDesc:
-        'Parole prompt speciali usate come modello base.',
       tabCompletionSystemPrompt: 'Prompt di sistema completamento tab',
       tabCompletionSystemPromptDesc:
         'Messaggio di sistema applicato quando si generano suggerimenti di completamento tab; lascia vuoto per usare quello predefinito incorporato.',
@@ -485,9 +482,6 @@ export const it: TranslationKeys = {
       reasoningTypeGemini: 'Gemini',
       reasoningTypeAnthropic: 'Claude Extended Thinking',
       reasoningTypeGeneric: 'Modello di ragionamento generico',
-      reasoningTypeBase: 'Base',
-      baseModelWarning:
-        'I modelli base mostrano il processo di ragionamento completo nelle risposte. Non adatto per la maggior parte degli usi.',
       openaiReasoningEffort: 'Sforzo di ragionamento OpenAI',
       openaiReasoningEffortDesc:
         'Controlla quanto tempo il modello dedica al ragionamento (basso/medio/alto).',

@@ -138,8 +138,6 @@ export type TranslationKeys = {
       continuationSystemPromptDesc: string
       chatTitlePrompt: string
       chatTitlePromptDesc: string
-      baseModelSpecialPrompt?: string
-      baseModelSpecialPromptDesc?: string
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
     }
@@ -368,8 +366,6 @@ export type TranslationKeys = {
       reasoningTypeGemini?: string
       reasoningTypeAnthropic?: string
       reasoningTypeGeneric?: string
-      reasoningTypeBase?: string
-      baseModelWarning?: string
       openaiReasoningEffort?: string
       openaiReasoningEffortDesc?: string
       geminiThinkingBudget?: string

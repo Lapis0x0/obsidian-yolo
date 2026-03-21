@@ -271,7 +271,6 @@ export const smartComposerSettingsSchema = z.object({
       mentionDisplayMode: z.enum(['inline', 'badge']).optional(),
       chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
-      baseModelSpecialPrompt: z.string().optional(),
       // Chat mode (chat/agent)
       chatMode: z.enum(['chat', 'agent']).optional(),
       // Whether the user has acknowledged the first-time agent mode warning
@@ -293,7 +292,6 @@ export const smartComposerSettingsSchema = z.object({
       mentionDisplayMode: 'inline',
       chatApplyMode: 'review-required',
       chatTitlePrompt: '',
-      baseModelSpecialPrompt: '',
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},

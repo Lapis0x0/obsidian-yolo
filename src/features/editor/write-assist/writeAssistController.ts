@@ -136,26 +136,14 @@ export class WriteAssistController {
         'You are an intelligent assistant that rewrites ONLY the provided markdown text according to the instruction. Preserve the original meaning, structure, and any markdown (links, emphasis, code) unless explicitly told otherwise. Output ONLY the rewritten text without code fences or extra explanations.'
 
       const instruction = (customPrompt ?? '').trim()
-      const isBaseModel = Boolean(model.isBaseModel)
-      const baseModelSpecialPrompt = (
-        settings.chatOptions.baseModelSpecialPrompt ?? ''
-      ).trim()
-      const basePromptSection =
-        isBaseModel && baseModelSpecialPrompt.length > 0
-          ? `${baseModelSpecialPrompt}\n\n`
-          : ''
       const requestMessages: RequestMessage[] = [
-        ...(isBaseModel
-          ? []
-          : [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]),
+        {
+          role: 'system' as const,
+          content: systemPrompt,
+        },
         {
           role: 'user' as const,
-          content: `${basePromptSection}Instruction:\n${instruction}\n\nSelected text:\n${selected}\n\nRewrite the selected text accordingly. Output only the rewritten text.`,
+          content: `Instruction:\n${instruction}\n\nSelected text:\n${selected}\n\nRewrite the selected text accordingly. Output only the rewritten text.`,
         },
       ]
 
@@ -484,29 +472,10 @@ export class WriteAssistController {
         hasContext && limitedContextHasContent
           ? `Context (up to recent portion):\n\n${limitedContext}\n\n`
           : ''
-      const baseModelContextSection = `${
-        referenceRulesSection
-      }${mentionableContextSection}${
-        hasContext && limitedContextHasContent ? `${limitedContext}\n\n` : ''
-      }${ragContextSection}`
       const combinedContextSection = `${referenceRulesSection}${mentionableContextSection}${contextSection}${ragContextSection}`
 
-      const isBaseModel = Boolean(model.isBaseModel)
-      const baseModelSpecialPrompt = (
-        settings.chatOptions.baseModelSpecialPrompt ?? ''
-      ).trim()
-      const basePromptSection =
-        isBaseModel && baseModelSpecialPrompt.length > 0
-          ? `${baseModelSpecialPrompt}\n\n`
-          : ''
-      const baseModelCoreContent = `${basePromptSection}${titleLine}${instructionSection}${baseModelContextSection}`
-
-      const userMessageContent = isBaseModel
-        ? `${baseModelCoreContent}`
-        : `${basePromptSection}${titleLine}${instructionSection}${combinedContextSection}`
-
       const requestMessages: RequestMessage[] = [
-        ...(!isBaseModel && systemPrompt.length > 0
+        ...(systemPrompt.length > 0
           ? [
               {
                 role: 'system' as const,
@@ -516,7 +485,7 @@ export class WriteAssistController {
           : []),
         {
           role: 'user' as const,
-          content: userMessageContent,
+          content: `${titleLine}${instructionSection}${combinedContextSection}`,
         },
       ]
 

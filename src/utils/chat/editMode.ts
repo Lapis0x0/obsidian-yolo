@@ -61,12 +61,10 @@ export async function generateEditPlan({
 }): Promise<TextEditPlan | null> {
   const requestMessages: RequestMessage[] = []
 
-  if (!model.isBaseModel) {
-    requestMessages.push({
-      role: 'system',
-      content: EDIT_MODE_SYSTEM_PROMPT,
-    })
-  }
+  requestMessages.push({
+    role: 'system',
+    content: EDIT_MODE_SYSTEM_PROMPT,
+  })
 
   requestMessages.push({
     role: 'user',

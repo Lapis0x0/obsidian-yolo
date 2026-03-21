@@ -16,10 +16,6 @@ export const migrateFrom28To29: SettingMigration['migrate'] = (data) => {
     }
 
     const record = model as Record<string, unknown>
-    if (record.isBaseModel === true) {
-      return model
-    }
-
     if (typeof record.reasoningType === 'string') {
       return model
     }

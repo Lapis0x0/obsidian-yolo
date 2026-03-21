@@ -157,8 +157,6 @@ export const en: TranslationKeys = {
       chatTitlePrompt: 'Chat title prompt',
       chatTitlePromptDesc:
         'Prompt used when automatically generating conversation titles from the first user message.',
-      baseModelSpecialPrompt: 'Base model special prompt',
-      baseModelSpecialPromptDesc: 'Special prompt words used as base model.',
       tabCompletionSystemPrompt: 'Tab completion system prompt',
       tabCompletionSystemPromptDesc:
         'System message applied when generating tab completion suggestions; leave empty to use the built-in default.',
@@ -489,9 +487,6 @@ export const en: TranslationKeys = {
       reasoningTypeGemini: 'Gemini reasoning (3 pro / flash / flash-lite)',
       reasoningTypeAnthropic: 'Claude extended thinking',
       reasoningTypeGeneric: 'Generic reasoning model',
-      reasoningTypeBase: 'Special: base model',
-      baseModelWarning:
-        'When enabled, no system prompts (including assistant prompts) will be injected for this model; enable only if you understand how base models behave.',
       openaiReasoningEffort: 'Reasoning effort',
       openaiReasoningEffortDesc:
         'Choose effort: minimal (gpt-5 only) / low / medium / high',
