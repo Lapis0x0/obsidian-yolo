@@ -5497,6 +5497,10 @@
     flex-direction: column;
     gap: var(--size-4-1);
   }
+
+  .smtcmp-chat-messages-user + .smtcmp-assistant-tool-message-group {
+    margin-top: var(--size-4-4);
+  }
 }
 
 .smtcmp-chat-bottom-anchor {
