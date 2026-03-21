@@ -215,6 +215,14 @@
   gap: var(--size-4-2);
 }
 
+.smtcmp-provider-header > .smtcmp-provider-drag-handle,
+.smtcmp-provider-header > .smtcmp-provider-main-trigger,
+.smtcmp-provider-header > .smtcmp-provider-base-url-btn,
+.smtcmp-provider-header > .smtcmp-provider-secondary-trigger {
+  margin-block: calc(var(--size-4-2) * -1);
+  padding-block: var(--size-4-2);
+}
+
 .smtcmp-provider-expand-btn {
   background: none;
   border: none;
