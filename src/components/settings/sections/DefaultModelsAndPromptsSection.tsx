@@ -103,73 +103,87 @@ export function DefaultModelsAndPromptsSection() {
 
   return (
     <div className="smtcmp-settings-section">
-      <div className="smtcmp-settings-header">
-        {t('settings.defaults.title')}
-      </div>
+      <section className="smtcmp-models-block smtcmp-default-models-block">
+        <div className="smtcmp-models-block-head">
+          <div className="smtcmp-models-block-head-title-row">
+            <div className="smtcmp-settings-sub-header smtcmp-models-block-title">
+              {t('settings.defaults.title')}
+            </div>
+          </div>
+        </div>
 
-      <ObsidianSetting
-        name={t('settings.defaults.defaultChatModel')}
-        desc={t('settings.defaults.defaultChatModelDesc')}
-      >
-        <ObsidianDropdown
-          value={settings.chatModelId}
-          groupedOptions={chatModelGroupedOptions}
-          onChange={(value) => {
-            commitSettingsUpdate({ chatModelId: value }, 'chatModelId')
-          }}
-        />
-      </ObsidianSetting>
+        <div className="smtcmp-models-block-content">
+          <ObsidianSetting
+            name={t('settings.defaults.defaultChatModel')}
+            desc={t('settings.defaults.defaultChatModelDesc')}
+            className="smtcmp-models-select-card"
+          >
+            <ObsidianDropdown
+              value={settings.chatModelId}
+              groupedOptions={chatModelGroupedOptions}
+              onChange={(value) => {
+                commitSettingsUpdate({ chatModelId: value }, 'chatModelId')
+              }}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.defaults.toolModel')}
-        desc={t('settings.defaults.toolModelDesc')}
-      >
-        <ObsidianDropdown
-          value={settings.applyModelId}
-          groupedOptions={applyModelGroupedOptions}
-          onChange={(value) => {
-            commitSettingsUpdate({ applyModelId: value }, 'applyModelId')
-          }}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.defaults.toolModel')}
+            desc={t('settings.defaults.toolModelDesc')}
+            className="smtcmp-models-select-card"
+          >
+            <ObsidianDropdown
+              value={settings.applyModelId}
+              groupedOptions={applyModelGroupedOptions}
+              onChange={(value) => {
+                commitSettingsUpdate({ applyModelId: value }, 'applyModelId')
+              }}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.defaults.globalSystemPrompt')}
-        desc={t('settings.defaults.globalSystemPromptDesc')}
-        className="smtcmp-settings-textarea-header"
-      />
+          <div className="smtcmp-models-textarea-card">
+            <ObsidianSetting
+              name={t('settings.defaults.globalSystemPrompt')}
+              desc={t('settings.defaults.globalSystemPromptDesc')}
+              className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
+            />
 
-      <ObsidianSetting className="smtcmp-settings-textarea">
-        <ObsidianTextArea
-          value={settings.systemPrompt}
-          onChange={(value: string) => {
-            commitSettingsUpdate({ systemPrompt: value }, 'systemPrompt')
-          }}
-        />
-      </ObsidianSetting>
+            <ObsidianSetting className="smtcmp-settings-textarea smtcmp-models-textarea-card-body">
+              <ObsidianTextArea
+                value={settings.systemPrompt}
+                onChange={(value: string) => {
+                  commitSettingsUpdate({ systemPrompt: value }, 'systemPrompt')
+                }}
+              />
+            </ObsidianSetting>
+          </div>
 
-      <ObsidianSetting
-        name={t('settings.defaults.chatTitlePrompt')}
-        desc={t('settings.defaults.chatTitlePromptDesc')}
-        className="smtcmp-settings-textarea-header"
-      />
+          <div className="smtcmp-models-textarea-card">
+            <ObsidianSetting
+              name={t('settings.defaults.chatTitlePrompt')}
+              desc={t('settings.defaults.chatTitlePromptDesc')}
+              className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
+            />
 
-      <ObsidianSetting className="smtcmp-settings-textarea">
-        <ObsidianTextArea
-          value={chatTitlePromptValue}
-          onChange={(value: string) => {
-            commitSettingsUpdate(
-              {
-                chatOptions: {
-                  ...settings.chatOptions,
-                  chatTitlePrompt: value,
-                },
-              },
-              'chatTitlePrompt',
-            )
-          }}
-        />
-      </ObsidianSetting>
+            <ObsidianSetting className="smtcmp-settings-textarea smtcmp-models-textarea-card-body">
+              <ObsidianTextArea
+                value={chatTitlePromptValue}
+                onChange={(value: string) => {
+                  commitSettingsUpdate(
+                    {
+                      chatOptions: {
+                        ...settings.chatOptions,
+                        chatTitlePrompt: value,
+                      },
+                    },
+                    'chatTitlePrompt',
+                  )
+                }}
+              />
+            </ObsidianSetting>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

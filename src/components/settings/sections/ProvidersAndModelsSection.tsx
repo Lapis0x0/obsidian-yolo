@@ -35,6 +35,7 @@ import SmartComposerPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
 import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
+import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
 import { AddEmbeddingModelModal } from '../modals/AddEmbeddingModelModal'
@@ -766,6 +767,10 @@ export function ProvidersAndModelsSection({
     () => settings.providers.map((provider) => provider.id),
     [settings.providers],
   )
+  const providersCountLabel = t(
+    'settings.providers.providersCount',
+    '已添加 {count} 个提供商',
+  ).replace('{count}', String(settings.providers.length))
 
   // Robustly highlight the moved row after DOM re-render
   const triggerProviderDropSuccess = (providerId: string, movedId: string) => {
@@ -1124,77 +1129,73 @@ export function ProvidersAndModelsSection({
 
   return (
     <div className="smtcmp-settings-section">
-      <div className="smtcmp-settings-header">
-        {t('settings.providers.title')}
-      </div>
+      <section className="smtcmp-models-block smtcmp-providers-models-block">
+        <div className="smtcmp-models-block-head smtcmp-providers-models-block-head">
+          <div className="smtcmp-models-block-head-title-row">
+            <div className="smtcmp-settings-sub-header smtcmp-models-block-title">
+              {t('settings.providers.title')}
+            </div>
+            <div className="smtcmp-settings-desc smtcmp-models-block-desc">
+              {providersCountLabel}
+            </div>
+          </div>
+          <div className="smtcmp-models-block-action smtcmp-providers-models-block-action">
+            <ObsidianButton
+              text={t('settings.providers.addProvider')}
+              onClick={() => new AddProviderModal(app, plugin).open()}
+              cta
+            />
+          </div>
+        </div>
 
-      <div className="smtcmp-settings-desc">
-        <span>{t('settings.providers.desc')}</span>
-        <br />
-        <a
-          href="https://github.com/glowingjade/obsidian-smart-composer/wiki/1.2-Initial-Setup#getting-your-api-key"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t('settings.providers.howToGetApiKeys')}
-        </a>
-      </div>
-
-      <div className="smtcmp-providers-models-container">
-        <DndContext
-          sensors={providerSensors}
-          collisionDetection={closestCenter}
-          onDragEnd={(event) => void handleProviderDragEnd(event)}
-        >
-          <SortableContext
-            items={providerIds}
-            strategy={verticalListSortingStrategy}
+        <div className="smtcmp-providers-models-container">
+          <DndContext
+            sensors={providerSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(event) => void handleProviderDragEnd(event)}
           >
-            {settings.providers.map((provider) => {
-              const isExpanded = expandedProviders.has(provider.id)
-              const chatModels = settings.chatModels.filter(
-                (m) => m.providerId === provider.id,
-              )
-              const embeddingModels = settings.embeddingModels.filter(
-                (m) => m.providerId === provider.id,
-              )
+            <SortableContext
+              items={providerIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {settings.providers.map((provider) => {
+                const isExpanded = expandedProviders.has(provider.id)
+                const chatModels = settings.chatModels.filter(
+                  (m) => m.providerId === provider.id,
+                )
+                const embeddingModels = settings.embeddingModels.filter(
+                  (m) => m.providerId === provider.id,
+                )
 
-              return (
-                <ProviderSectionItem
-                  key={provider.id}
-                  provider={provider}
-                  app={app}
-                  plugin={plugin}
-                  t={t}
-                  isExpanded={isExpanded}
-                  toggleProvider={toggleProvider}
-                  chatModels={chatModels}
-                  embeddingModels={embeddingModels}
-                  modelSensors={modelSensors}
-                  handleDeleteProvider={handleDeleteProvider}
-                  handleDeleteChatModel={handleDeleteChatModel}
-                  handleDeleteEmbeddingModel={handleDeleteEmbeddingModel}
-                  handleToggleEnableChatModel={handleToggleEnableChatModel}
-                  handleChatModelDragEnd={(event) =>
-                    void handleChatModelDragEnd(provider.id, event)
-                  }
-                  handleEmbeddingModelDragEnd={(event) =>
-                    void handleEmbeddingModelDragEnd(provider.id, event)
-                  }
-                />
-              )
-            })}
-          </SortableContext>
-        </DndContext>
-
-        <button
-          type="button"
-          className="smtcmp-add-provider-btn"
-          onClick={() => new AddProviderModal(app, plugin).open()}
-        >
-          {t('settings.providers.addCustomProvider')}
-        </button>
-      </div>
+                return (
+                  <ProviderSectionItem
+                    key={provider.id}
+                    provider={provider}
+                    app={app}
+                    plugin={plugin}
+                    t={t}
+                    isExpanded={isExpanded}
+                    toggleProvider={toggleProvider}
+                    chatModels={chatModels}
+                    embeddingModels={embeddingModels}
+                    modelSensors={modelSensors}
+                    handleDeleteProvider={handleDeleteProvider}
+                    handleDeleteChatModel={handleDeleteChatModel}
+                    handleDeleteEmbeddingModel={handleDeleteEmbeddingModel}
+                    handleToggleEnableChatModel={handleToggleEnableChatModel}
+                    handleChatModelDragEnd={(event) =>
+                      void handleChatModelDragEnd(provider.id, event)
+                    }
+                    handleEmbeddingModelDragEnd={(event) =>
+                      void handleEmbeddingModelDragEnd(provider.id, event)
+                    }
+                  />
+                )
+              })}
+            </SortableContext>
+          </DndContext>
+        </div>
+      </section>
     </div>
   )
 }

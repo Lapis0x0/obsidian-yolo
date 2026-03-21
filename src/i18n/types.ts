@@ -304,6 +304,7 @@ export type TranslationKeys = {
       desc: string
       howToGetApiKeys: string
       addProvider: string
+      providersCount: string
       editProvider: string
       editProviderTitle: string
       deleteProvider: string
@@ -312,7 +313,6 @@ export type TranslationKeys = {
       chatModels: string
       embeddingModels: string
       embeddingsWillBeDeleted: string
-      addCustomProvider: string
       providerId: string
       providerIdDesc: string
       providerIdPlaceholder: string

@@ -1360,6 +1360,102 @@
 
 /* Providers and Models Section Styles */
 
+.smtcmp-models-block,
+.smtcmp-providers-models-block {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
+  padding: var(--size-4-3);
+}
+
+.smtcmp-models-block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+  margin-bottom: var(--size-4-3);
+}
+
+.smtcmp-models-block-head-title-row {
+  min-width: 0;
+}
+
+.smtcmp-models-block-title {
+  margin: 0;
+}
+
+.smtcmp-models-block-desc {
+  margin: var(--size-4-1) 0 0;
+}
+
+.smtcmp-models-block-action {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.smtcmp-models-block-content {
+  min-width: 0;
+}
+
+.smtcmp-models-select-card.setting-item {
+  border: 1px solid var(--background-modifier-border) !important;
+  border-radius: var(--radius-m);
+  background: var(--background-primary) !important;
+  padding: var(--size-4-3) !important;
+  margin-bottom: var(--size-4-3);
+}
+
+.smtcmp-models-select-card.setting-item:last-of-type {
+  margin-bottom: var(--size-4-3);
+}
+
+.smtcmp-models-select-card.setting-item .setting-item-control,
+.smtcmp-models-select-card.setting-item .smtcmp-item-control {
+  align-self: center;
+}
+
+.smtcmp-models-textarea-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  padding: var(--size-4-3);
+  margin-bottom: var(--size-4-3);
+}
+
+.smtcmp-models-textarea-card:last-child {
+  margin-bottom: 0;
+}
+
+.smtcmp-models-textarea-card .setting-item {
+  border-top: none !important;
+  background: transparent;
+}
+
+.smtcmp-models-textarea-card-header.setting-item {
+  padding: 0 0 var(--size-4-2) 0 !important;
+}
+
+.smtcmp-models-textarea-card-body.setting-item {
+  padding: 0 !important;
+  margin-bottom: 0;
+}
+
+.smtcmp-models-textarea-card-body .setting-item-control,
+.smtcmp-models-textarea-card-body .smtcmp-item-control,
+.smtcmp-models-textarea-card-body .smtcmp-textarea-container {
+  width: 100%;
+}
+
+.smtcmp-models-textarea-card-body textarea {
+  width: 100%;
+  min-height: 120px;
+}
+
+.smtcmp-providers-models-block-head {
+  margin-bottom: var(--size-4-3);
+}
+
 .smtcmp-providers-models-container {
   display: flex;
   flex-direction: column;
@@ -1369,8 +1465,13 @@
 .smtcmp-provider-section {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
+  background: var(--background-primary);
   overflow: hidden;
   cursor: grab;
+  transition:
+    border-color 160ms ease,
+    box-shadow 180ms ease,
+    background-color 160ms ease;
 }
 
 .smtcmp-provider-section:active {
@@ -1380,10 +1481,16 @@
 /* Provider drag visual feedback */
 
 .smtcmp-provider-dragging {
-  background-color: var(--background-modifier-hover);
+  background-color: var(--background-primary);
   transform: translateX(2px) scale(0.995);
   opacity: 0.98;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.smtcmp-provider-section:hover,
+.smtcmp-provider-section:focus-within {
+  border-color: var(--background-modifier-border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
 }
 
 .smtcmp-provider-drag-over-before {
@@ -1466,8 +1573,8 @@
 .smtcmp-provider-header {
   display: flex;
   align-items: center;
-  padding: var(--size-4-2);
-  background-color: var(--background-primary-alt);
+  padding: var(--size-4-2) var(--size-4-3);
+  background: var(--background-primary);
   gap: var(--size-4-2);
 }
 
@@ -1496,13 +1603,14 @@
 .smtcmp-provider-id {
   font-weight: 600;
   min-width: 120px;
+  color: var(--text-normal);
 }
 
 .smtcmp-provider-type {
   color: var(--text-muted);
   min-width: 100px;
   max-width: 260px;
-  font-size: var(--font-ui-smallest);
+  font-size: var(--font-ui-smaller);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1558,9 +1666,9 @@
 .smtcmp-provider-model-counts {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: var(--background-modifier-hover);
+  background: color-mix(in srgb, var(--background-secondary) 82%, white 18%);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   white-space: nowrap;
@@ -1604,6 +1712,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-s);
+}
+
+.smtcmp-provider-actions .clickable-icon:hover,
+.smtcmp-provider-actions .clickable-icon:focus-visible {
+  background: color-mix(in srgb, var(--background-secondary) 88%, transparent);
 }
 
 .smtcmp-provider-actions .clickable-icon svg {
@@ -1613,7 +1727,7 @@
 
 .smtcmp-provider-models {
   padding: var(--size-4-3);
-  background-color: var(--background-primary);
+  background: var(--background-primary);
   border-top: 1px solid var(--background-modifier-border);
 }
 
@@ -1704,19 +1818,29 @@
 
 /* Note: Embedding table uses <colgroup> with last two 60px columns to align with chat models */
 
-.smtcmp-add-provider-btn {
-  width: 100%;
-  padding: var(--size-4-2);
-  background-color: var(--interactive-normal);
-  border: 1px dashed var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  cursor: pointer;
-  transition: all 0.2s;
-}
+@media (max-width: 720px) {
+  .smtcmp-models-block,
+  .smtcmp-providers-models-block {
+    padding: var(--size-4-2);
+  }
 
-.smtcmp-add-provider-btn:hover {
-  background-color: var(--interactive-hover);
-  border-color: var(--background-modifier-border-hover);
+  .smtcmp-models-block-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--size-4-2);
+  }
+
+  .smtcmp-providers-models-block-head {
+    margin-bottom: var(--size-4-2);
+  }
+
+  .smtcmp-models-block-action {
+    justify-content: flex-end;
+  }
+
+  .smtcmp-provider-header {
+    padding-inline: var(--size-4-2);
+  }
 }
 
 .smtcmp-chat-model-modal-form .setting-item:not(.smtcmp-settings-kv-entry) {

@@ -419,6 +419,7 @@ export const en: TranslationKeys = {
       desc: 'Enter your API keys for the providers you want to use',
       howToGetApiKeys: 'How to obtain API keys',
       addProvider: 'Add provider',
+      providersCount: '{count} providers added',
       editProvider: 'Edit provider',
       deleteProvider: 'Delete provider',
       deleteConfirm: 'Are you sure you want to delete provider',
@@ -427,7 +428,6 @@ export const en: TranslationKeys = {
       embeddingModels: 'Embedding models',
       embeddingsWillBeDeleted:
         'All embeddings generated using the related embedding models will also be deleted.',
-      addCustomProvider: 'Add custom provider',
       editProviderTitle: 'Edit provider',
       providerId: 'ID',
       providerIdDesc:

@@ -414,6 +414,7 @@ export const it: TranslationKeys = {
       desc: 'Configura i provider di modelli AI e le loro chiavi API.',
       howToGetApiKeys: 'Come ottenere le chiavi API',
       addProvider: 'Aggiungi provider',
+      providersCount: '{count} provider aggiunti',
       editProvider: 'Modifica provider',
       editProviderTitle: 'Modifica provider',
       deleteProvider: 'Elimina provider',
@@ -424,7 +425,6 @@ export const it: TranslationKeys = {
       embeddingModels: 'Modelli embedding',
       embeddingsWillBeDeleted:
         'Tutti gli embeddings esistenti saranno eliminati quando cambi il modello embedding.',
-      addCustomProvider: 'Aggiungi provider personalizzato',
       providerId: 'ID provider',
       providerIdDesc:
         'Identificatore univoco per questo provider (ad es., openai, anthropic).',
