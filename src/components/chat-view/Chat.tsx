@@ -78,6 +78,7 @@ import ViewToggle from './ViewToggle'
 
 const LOCAL_FILE_TOOL_SERVER = getLocalFileToolServerName()
 const LOCAL_FS_READ_TOOL = getToolName(LOCAL_FILE_TOOL_SERVER, 'fs_read')
+const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
   const clampedOffset = Math.max(0, Math.min(offset, content.length))
@@ -292,6 +293,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [activeFile, setActiveFile] = useState<TFile | null>(() =>
     app.workspace.getActiveFile(),
   )
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
 
   const [inputMessage, setInputMessage] = useState<ChatUserMessage>(() => {
     const newMessage = getNewInputMessage(initialReasoningLevel)
@@ -350,6 +353,42 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const isSidebarPlacement = props.placement === 'sidebar'
   const activeView = isSidebarPlacement ? (props.activeView ?? 'chat') : 'chat'
   const onChangeView = props.onChangeView
+
+  useEffect(() => {
+    if (isSidebarPlacement) {
+      setIsWorkspaceWideHeader(false)
+      return
+    }
+
+    const element = containerRef.current
+    if (!element) return
+
+    const updateIsWideHeader = (width: number) => {
+      setIsWorkspaceWideHeader(width >= WORKSPACE_WIDE_HEADER_MIN_WIDTH)
+    }
+
+    updateIsWideHeader(element.getBoundingClientRect().width)
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      updateIsWideHeader(entry.contentRect.width)
+    })
+
+    resizeObserver.observe(element)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [isSidebarPlacement])
+
+  const containerClassName = `smtcmp-chat-container${
+    isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
+  }${
+    !isSidebarPlacement && isWorkspaceWideHeader
+      ? ' smtcmp-chat-container--workspace-wide-header'
+      : ''
+  }`
 
   // Per-conversation override settings (temperature, top_p, context, stream)
   const conversationOverridesRef = useRef<
@@ -2211,11 +2250,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   if (activeView === 'composer') {
     return (
-      <div
-        className={`smtcmp-chat-container${
-          isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
-        }`}
-      >
+      <div ref={containerRef} className={containerClassName}>
         {header}
         <div className="smtcmp-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
@@ -2228,11 +2263,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     groupedChatMessages.length === 0 && !submitChatMutation.isPending
 
   return (
-    <div
-      className={`smtcmp-chat-container${
-        isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
-      }`}
-    >
+    <div ref={containerRef} className={containerClassName}>
       {header}
       {showEmptyState && (
         <div className="smtcmp-chat-empty-state-overlay" aria-hidden="true">
