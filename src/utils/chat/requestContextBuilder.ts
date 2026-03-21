@@ -175,18 +175,11 @@ export class RequestContextBuilder {
     const shouldUseRAG =
       effectiveLastUserMessage.similaritySearchResults !== undefined
 
-    const isBaseModel = Boolean(model.isBaseModel)
-    const baseModelSpecialPrompt = (
-      this.settings.chatOptions.baseModelSpecialPrompt ?? ''
-    ).trim()
-    const baseModelSpecialPromptMessage =
-      isBaseModel && baseModelSpecialPrompt.length > 0
-        ? [{ role: 'user' as const, content: baseModelSpecialPrompt }]
-        : []
-
-    const systemMessage = isBaseModel
-      ? null
-      : await this.getSystemMessage(shouldUseRAG, hasTools, hasMemoryTools)
+    const systemMessage = await this.getSystemMessage(
+      shouldUseRAG,
+      hasTools,
+      hasMemoryTools,
+    )
 
     const currentFile = currentFileOverride ?? null
     const currentFileMessage =
@@ -195,7 +188,6 @@ export class RequestContextBuilder {
         : undefined
 
     const requestMessages: RequestMessage[] = [
-      ...baseModelSpecialPromptMessage,
       ...(systemMessage ? [systemMessage] : []),
       ...(await this.getChatHistoryMessages({
         messages: compiledMessages,

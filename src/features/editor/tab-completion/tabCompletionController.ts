@@ -401,31 +401,16 @@ export class TabCompletionController {
         combinedConstraints,
       )
 
-      const isBaseModel = Boolean(model.isBaseModel)
-      const baseModelSpecialPrompt = (
-        settings.chatOptions?.baseModelSpecialPrompt ?? ''
-      ).trim()
-      const basePromptSection =
-        isBaseModel && baseModelSpecialPrompt.length > 0
-          ? `${baseModelSpecialPrompt}\n\n`
-          : ''
       const contextWithMask = `${before}${MASK_TAG}${after}`
-      const userContent = isBaseModel
-        ? `${basePromptSection}${systemPrompt}\n\n${titleSection}${contextWithMask}`
-        : `${basePromptSection}${titleSection}${contextWithMask}`
 
       const requestMessages: RequestMessage[] = [
-        ...(isBaseModel
-          ? []
-          : [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]),
+        {
+          role: 'system' as const,
+          content: systemPrompt,
+        },
         {
           role: 'user' as const,
-          content: userContent,
+          content: `${titleSection}${contextWithMask}`,
         },
       ]
 

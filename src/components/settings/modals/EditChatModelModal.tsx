@@ -41,7 +41,6 @@ type EditableChatModel = ChatModel & {
     budget_tokens?: number // Anthropic
   }
   toolType?: 'none' | 'gemini'
-  isBaseModel?: boolean
   customParameters?: CustomParameter[]
 }
 
@@ -94,13 +93,12 @@ function EditChatModelModalComponent({
 
   const normalizeReasoningType = (
     value: string,
-  ): 'none' | 'openai' | 'gemini' | 'anthropic' | 'generic' | 'base' => {
+  ): 'none' | 'openai' | 'gemini' | 'anthropic' | 'generic' => {
     if (
       value === 'openai' ||
       value === 'gemini' ||
       value === 'anthropic' ||
-      value === 'generic' ||
-      value === 'base'
+      value === 'generic'
     ) {
       return value
     }
@@ -130,9 +128,7 @@ function EditChatModelModalComponent({
     | 'openai'
     | 'gemini'
     | 'anthropic'
-    | 'generic'
-    | 'base' = (() => {
-    if (editableModel.isBaseModel) return 'base'
+    | 'generic' = (() => {
     if (editableModel.reasoningType && editableModel.reasoningType !== 'none') {
       return editableModel.reasoningType
     }
@@ -147,12 +143,10 @@ function EditChatModelModalComponent({
 
   // Reasoning UI states
   const [reasoningType, setReasoningType] = useState<
-    'none' | 'openai' | 'gemini' | 'anthropic' | 'generic' | 'base'
+    'none' | 'openai' | 'gemini' | 'anthropic' | 'generic'
   >(() => initialReasoningType)
   // If user changes dropdown manually, disable auto detection
-  const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(
-    initialReasoningType !== 'base',
-  )
+  const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
 
   // Tool type state
   const [toolType, setToolType] = useState<'none' | 'gemini'>(
@@ -262,16 +256,10 @@ function EditChatModelModalComponent({
         }
 
         // Apply according to selected reasoningType only (not limited by providerType)
-        if (reasoningType === 'base') {
-          delete updatedModel.reasoning
-          delete updatedModel.thinking
-          updatedModel.isBaseModel = true
-          delete updatedModel.reasoningType
-        } else if (reasoningType === 'openai') {
+        if (reasoningType === 'openai') {
           updatedModel.reasoningType = 'openai'
           delete updatedModel.reasoning
           delete updatedModel.thinking
-          delete updatedModel.isBaseModel
         } else if (
           reasoningType === 'gemini' ||
           reasoningType === 'anthropic'
@@ -279,16 +267,13 @@ function EditChatModelModalComponent({
           updatedModel.reasoningType = reasoningType
           delete updatedModel.reasoning
           delete updatedModel.thinking
-          delete updatedModel.isBaseModel
         } else if (reasoningType === 'generic') {
           updatedModel.reasoningType = 'generic'
           delete updatedModel.reasoning
           delete updatedModel.thinking
-          delete updatedModel.isBaseModel
         } else {
           delete updatedModel.reasoning
           delete updatedModel.thinking
-          delete updatedModel.isBaseModel
           updatedModel.reasoningType = 'none'
         }
 
@@ -371,7 +356,6 @@ function EditChatModelModalComponent({
             gemini: t('settings.models.reasoningTypeGemini'),
             anthropic: t('settings.models.reasoningTypeAnthropic'),
             generic: t('settings.models.reasoningTypeGeneric'),
-            base: t('settings.models.reasoningTypeBase'),
           }}
           onChange={(v: string) => {
             setReasoningType(normalizeReasoningType(v))
@@ -379,12 +363,6 @@ function EditChatModelModalComponent({
           }}
         />
       </ObsidianSetting>
-
-      {reasoningType === 'base' && (
-        <div className="smtcmp-settings-desc">
-          {t('settings.models.baseModelWarning')}
-        </div>
-      )}
 
       {/* Reasoning strength is controlled in the chat sidebar */}
       {/* Tool type */}

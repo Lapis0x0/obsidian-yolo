@@ -42,7 +42,6 @@ const REASONING_TYPES = [
   'gemini',
   'anthropic',
   'generic',
-  'base',
 ] as const
 type ReasoningType = (typeof REASONING_TYPES)[number]
 
@@ -191,7 +190,7 @@ function AddChatModelModalComponent({
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState<boolean>(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // Reasoning type selection: none | openai | gemini | anthropic | generic | base
+  // Reasoning type selection: none | openai | gemini | anthropic | generic
   const [reasoningType, setReasoningType] = useState<ReasoningType>('none')
   // When user manually changes reasoning type, stop auto-detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
@@ -437,37 +436,24 @@ function AddChatModelModalComponent({
         : {}),
     }
 
-    if (reasoningType === 'base') {
-      modelDataWithPrefix = {
-        ...modelDataWithPrefix,
-        isBaseModel: true,
-        reasoningType: undefined,
-      }
-    } else {
-      const withoutBaseFlag = Object.fromEntries(
-        Object.entries(modelDataWithPrefix as Record<string, unknown>).filter(
-          ([key]) => key !== 'isBaseModel',
-        ),
-      ) as ChatModel
-      modelDataWithPrefix = {
-        ...withoutBaseFlag,
-        reasoningType: reasoningType === 'none' ? 'none' : reasoningType,
-      }
+    modelDataWithPrefix = {
+      ...modelDataWithPrefix,
+      reasoningType: reasoningType === 'none' ? 'none' : reasoningType,
+    }
 
-      if (
-        reasoningType === 'openai' &&
-        !isReasoningConfigurable(modelDataWithPrefix)
-      ) {
-        new Notice(t('common.error'))
-        return
-      }
-      if (
-        (reasoningType === 'gemini' || reasoningType === 'anthropic') &&
-        !isThinkingConfigurable(modelDataWithPrefix)
-      ) {
-        new Notice(t('common.error'))
-        return
-      }
+    if (
+      reasoningType === 'openai' &&
+      !isReasoningConfigurable(modelDataWithPrefix)
+    ) {
+      new Notice(t('common.error'))
+      return
+    }
+    if (
+      (reasoningType === 'gemini' || reasoningType === 'anthropic') &&
+      !isThinkingConfigurable(modelDataWithPrefix)
+    ) {
+      new Notice(t('common.error'))
+      return
     }
 
     // Allow duplicates of the same calling ID by uniquifying internal id; no blocking here
@@ -577,7 +563,6 @@ function AddChatModelModalComponent({
             gemini: t('settings.models.reasoningTypeGemini'),
             anthropic: t('settings.models.reasoningTypeAnthropic'),
             generic: t('settings.models.reasoningTypeGeneric'),
-            base: t('settings.models.reasoningTypeBase'),
           }}
           onChange={(value: string) => {
             setReasoningType(
@@ -587,12 +572,6 @@ function AddChatModelModalComponent({
           }}
         />
       </ObsidianSetting>
-
-      {reasoningType === 'base' && (
-        <div className="smtcmp-settings-desc">
-          {t('settings.models.baseModelWarning')}
-        </div>
-      )}
 
       {/* Reasoning strength is controlled in the chat sidebar */}
       {/* Tool type for Gemini provider */}

@@ -130,8 +130,6 @@ export const zh: TranslationKeys = {
         '用于续写功能的系统消息。留空将使用内置默认值。',
       chatTitlePrompt: '对话标题提示词',
       chatTitlePromptDesc: '用于根据首条用户消息自动生成对话标题的提示词。',
-      baseModelSpecialPrompt: 'base 模型特殊提示词',
-      baseModelSpecialPromptDesc: '用作 base model 的特殊提示词',
       tabCompletionSystemPrompt: 'Tab 补全系统提示词',
       tabCompletionSystemPromptDesc:
         '生成 Tab 补全建议时使用的系统提示词。留空则使用内置默认值。',
@@ -446,9 +444,6 @@ export const zh: TranslationKeys = {
       reasoningTypeGemini: 'Gemini 推理（3 Pro / Flash / Flash-Lite）',
       reasoningTypeAnthropic: 'Claude 扩展思考（Extended thinking）',
       reasoningTypeGeneric: '通用推理模型',
-      reasoningTypeBase: '特殊：base 模型',
-      baseModelWarning:
-        '启用后将不会为此模型注入任何 system prompt（包括助手提示词）。仅在你了解 base 模型含义时再勾选。',
       openaiReasoningEffort: '推理强度 (effort)',
       openaiReasoningEffortDesc:
         '选择推理强度：minimal（更快更省，仅 GPT-5）/ low / medium / high',

@@ -21,7 +21,6 @@ const baseChatModelSchema = z.object({
   // Optional display name for UI. When absent, UI should fallback to showing `model`.
   name: z.string().optional(),
   enable: z.boolean().default(true).optional(),
-  isBaseModel: z.boolean().default(false).optional(),
   reasoningType: z
     .enum(['none', 'openai', 'gemini', 'anthropic', 'generic'])
     .optional(),
