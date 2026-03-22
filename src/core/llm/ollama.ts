@@ -20,13 +20,11 @@ import { BaseLLMProvider } from './base'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class OllamaProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'ollama' }>
-> {
+export class OllamaProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private client: NoStainlessOpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'ollama' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -43,9 +41,6 @@ export class OllamaProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'ollama') {
-      throw new Error('Model is not an Ollama model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
@@ -57,9 +52,6 @@ export class OllamaProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'ollama') {
-      throw new Error('Model is not an Ollama model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 

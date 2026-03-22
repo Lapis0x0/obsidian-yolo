@@ -70,25 +70,26 @@ type ProviderSectionItemProps = {
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
 }
 
-const PROVIDER_DISPLAY_BASE_URLS: Partial<Record<LLMProvider['type'], string>> =
-  {
-    openai: 'https://api.openai.com',
-    'chatgpt-oauth': 'https://chatgpt.com/backend-api/codex',
-    anthropic: 'https://api.anthropic.com',
-    gemini: 'https://generativelanguage.googleapis.com',
-    deepseek: 'https://api.deepseek.com',
-    perplexity: 'https://api.perplexity.ai',
-    groq: 'https://api.groq.com/openai',
-    mistral: 'https://api.mistral.ai',
-    openrouter: 'https://openrouter.ai/api',
-    ollama: 'http://127.0.0.1:11434',
-    'lm-studio': 'http://127.0.0.1:1234',
-    morph: 'https://api.morphllm.com',
-  }
+const PROVIDER_DISPLAY_BASE_URLS: Partial<
+  Record<LLMProvider['presetType'], string>
+> = {
+  openai: 'https://api.openai.com',
+  'chatgpt-oauth': 'https://chatgpt.com/backend-api/codex',
+  anthropic: 'https://api.anthropic.com',
+  gemini: 'https://generativelanguage.googleapis.com',
+  deepseek: 'https://api.deepseek.com',
+  perplexity: 'https://api.perplexity.ai',
+  groq: 'https://api.groq.com/openai',
+  mistral: 'https://api.mistral.ai',
+  openrouter: 'https://openrouter.ai/api',
+  ollama: 'http://127.0.0.1:11434',
+  'lm-studio': 'http://127.0.0.1:1234',
+  morph: 'https://api.morphllm.com',
+}
 
 function getProviderDisplayBaseUrl(provider: LLMProvider): string {
   const rawBaseUrl =
-    provider.baseUrl?.trim() || PROVIDER_DISPLAY_BASE_URLS[provider.type]
+    provider.baseUrl?.trim() || PROVIDER_DISPLAY_BASE_URLS[provider.presetType]
 
   if (!rawBaseUrl) {
     return ''
@@ -102,7 +103,7 @@ function ChatGPTOAuthPanel({
   provider,
 }: {
   plugin: SmartComposerPlugin
-  provider: Extract<LLMProvider, { type: 'chatgpt-oauth' }>
+  provider: LLMProvider
 }) {
   const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
@@ -267,7 +268,7 @@ function ProviderSectionItem({
   handleChatModelDragEnd,
   handleEmbeddingModelDragEnd,
 }: ProviderSectionItemProps) {
-  const isChatGPTOAuth = provider.type === 'chatgpt-oauth'
+  const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
   const displayBaseUrl = getProviderDisplayBaseUrl(provider)
   const chatModelsLabel = `${chatModels.length} ${t('settings.providers.chatModels').replace(/^个/, '')}`
   const embeddingModelsLabel = `${embeddingModels.length} ${t('settings.providers.embeddingModels').replace(/^个/, '')}`
@@ -526,7 +527,7 @@ function EmbeddingModelsTable({
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
         <span>{t('settings.models.embeddingModels')}</span>
-        {PROVIDER_TYPES_INFO[provider.type].supportEmbedding && (
+        {PROVIDER_TYPES_INFO[provider.presetType].supportEmbedding && (
           <button
             type="button"
             className="smtcmp-add-model-btn"
@@ -582,7 +583,7 @@ function EmbeddingModelsTable({
         </DndContext>
       ) : (
         <div className="smtcmp-no-models">
-          {!PROVIDER_TYPES_INFO[provider.type].supportEmbedding
+          {!PROVIDER_TYPES_INFO[provider.presetType].supportEmbedding
             ? `${provider.id} provider does not support embeddings.`
             : t('settings.models.noEmbeddingModelsConfigured')}
         </div>
@@ -986,7 +987,7 @@ export function ProvidersAndModelsSection({
       }
 
       try {
-        if (provider.type === 'chatgpt-oauth') {
+        if (provider.presetType === 'chatgpt-oauth') {
           plugin
             .getChatGPTOAuthService(provider.id)
             .cancelPendingBrowserAuthorization()

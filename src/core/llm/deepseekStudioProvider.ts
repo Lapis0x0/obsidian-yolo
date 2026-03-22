@@ -19,13 +19,11 @@ import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
 import { LLMAPIKeyNotSetException } from './exception'
 
 // deepseek doesn't support image
-export class DeepSeekStudioProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'deepseek' }>
-> {
+export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: DeepSeekMessageAdapter
   private client: OpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'deepseek' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new DeepSeekMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -44,9 +42,6 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'deepseek') {
-      throw new Error('Model is not a DeepSeek model')
-    }
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -68,9 +63,6 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'deepseek') {
-      throw new Error('Model is not a DeepSeek model')
-    }
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,

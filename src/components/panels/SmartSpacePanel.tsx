@@ -470,13 +470,7 @@ function SmartSpacePanelBody({
         settings: plugin.settings,
         modelId: continuationModelId,
       })
-      if (
-        model.providerType === 'gemini' ||
-        model.providerType === 'openai-compatible'
-      ) {
-        return model.toolType === 'gemini'
-      }
-      return false
+      return model.toolType === 'gemini'
     } catch {
       return false
     }

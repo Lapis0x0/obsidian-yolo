@@ -16,21 +16,24 @@ import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { BaseLLMProvider } from './base'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class AzureOpenAIProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'azure-openai' }>
-> {
+export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private client: OpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'azure-openai' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
+    const additionalSettings =
+      (provider.additionalSettings as {
+        apiVersion?: string
+        deployment?: string
+      }) ?? {}
     this.client = new AzureOpenAI({
       apiKey: provider.apiKey ?? '',
       endpoint: provider.baseUrl ?? '',
-      apiVersion: provider.additionalSettings.apiVersion,
-      deployment: provider.additionalSettings.deployment,
+      apiVersion: additionalSettings.apiVersion,
+      deployment: additionalSettings.deployment,
       dangerouslyAllowBrowser: true,
       defaultHeaders,
     })
@@ -41,9 +44,6 @@ export class AzureOpenAIProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'azure-openai') {
-      throw new Error('Model is not an Azure OpenAI model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
@@ -55,9 +55,6 @@ export class AzureOpenAIProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'azure-openai') {
-      throw new Error('Model is not an Azure OpenAI model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 

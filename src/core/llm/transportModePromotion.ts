@@ -28,7 +28,10 @@ export const promoteProviderTransportModeToObsidian = async ({
   }
 
   const provider = settings.providers[providerIndex]
-  if (provider.type !== 'openai-compatible' && provider.type !== 'anthropic') {
+  if (
+    provider.apiType !== 'openai-compatible' &&
+    provider.apiType !== 'anthropic'
+  ) {
     return
   }
 

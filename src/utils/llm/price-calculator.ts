@@ -10,7 +10,9 @@ export const calculateLLMCost = ({
   model: ChatModel
   usage: ResponseUsage
 }): number | null => {
-  switch (model.providerType) {
+  const providerKey = model.providerId.split('/')[0] ?? model.providerId
+
+  switch (providerKey) {
     case 'openai': {
       const modelPricing = OPENAI_PRICES[model.model]
       if (!modelPricing) return null

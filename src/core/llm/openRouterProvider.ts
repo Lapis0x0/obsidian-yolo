@@ -18,13 +18,11 @@ import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class OpenRouterProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'openrouter' }>
-> {
+export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private client: OpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'openrouter' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -43,9 +41,6 @@ export class OpenRouterProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'openrouter') {
-      throw new Error('Model is not an OpenRouter model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(
       model,
@@ -60,9 +55,6 @@ export class OpenRouterProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'openrouter') {
-      throw new Error('Model is not an OpenRouter model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(
       model,

@@ -69,9 +69,7 @@ type GeminiReplayPart = GeminiPart & {
  * preventing its use in Obsidian. Consider switching to this endpoint in the future once these
  * issues are resolved.
  */
-export class GeminiProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'gemini' }>
-> {
+export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
   private static readonly SUPPORTED_IMAGE_TYPES = [
     'image/png',
     'image/jpeg',
@@ -83,7 +81,7 @@ export class GeminiProvider extends BaseLLMProvider<
   private client: GoogleGenAI
   private apiKey: string
 
-  constructor(provider: Extract<LLMProvider, { type: 'gemini' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
 
     const baseUrl = provider.baseUrl
@@ -110,9 +108,6 @@ export class GeminiProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'gemini') {
-      throw new Error('Model is not a Gemini model')
-    }
 
     if (!this.apiKey) {
       throw new LLMAPIKeyNotSetException(
@@ -202,9 +197,6 @@ export class GeminiProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'gemini') {
-      throw new Error('Model is not a Gemini model')
-    }
 
     if (!this.apiKey) {
       throw new LLMAPIKeyNotSetException(
@@ -893,7 +885,7 @@ export class GeminiProvider extends BaseLLMProvider<
     const tools: GeminiTool[] = []
 
     // Add Gemini native tools if enabled
-    if (model.providerType === 'gemini' && options?.geminiTools) {
+    if (options?.geminiTools) {
       const geminiTools = options.geminiTools
 
       // Add Google Search tool

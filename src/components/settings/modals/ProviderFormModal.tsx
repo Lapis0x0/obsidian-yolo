@@ -1,7 +1,7 @@
 import { App, Notice } from 'obsidian'
 import { useState } from 'react'
 
-import { PROVIDER_TYPES_INFO } from '../../../constants'
+import { PROVIDER_API_INFO, PROVIDER_PRESET_INFO } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
 import { chatModelSchema } from '../../../types/chat-model.types'
@@ -9,9 +9,12 @@ import { embeddingModelSchema } from '../../../types/embedding-model.types'
 import {
   LLMProvider,
   ProviderHeader,
+  getDefaultApiTypeForPresetType,
+  getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from '../../../types/provider.types'
 import { sanitizeProviderHeaders } from '../../../utils/llm/provider-headers'
+import { getRequestTransportModeValue } from '../../../utils/llm/provider-config'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -24,26 +27,7 @@ type ProviderFormComponentProps = {
   provider: LLMProvider | null // null for new provider
 }
 
-const CUSTOM_PROVIDER_TYPE_ENTRIES = Object.entries(PROVIDER_TYPES_INFO)
-
-const getRequestTransportModeValue = (
-  additionalSettings: Record<string, unknown> | undefined,
-): 'auto' | 'browser' | 'obsidian' => {
-  const mode = additionalSettings?.requestTransportMode
-  if (mode === 'auto' || mode === 'browser' || mode === 'obsidian') {
-    return mode
-  }
-
-  if (additionalSettings?.useObsidianRequestUrl === true) {
-    return 'obsidian'
-  }
-
-  if (additionalSettings?.useObsidianRequestUrl === false) {
-    return 'browser'
-  }
-
-  return 'auto'
-}
+const CUSTOM_PROVIDER_TYPE_ENTRIES = Object.entries(PROVIDER_PRESET_INFO)
 
 export class AddProviderModal extends ReactModal<ProviderFormComponentProps> {
   constructor(app: App, plugin: SmartComposerPlugin) {
@@ -89,7 +73,8 @@ function ProviderFormComponent({
             : undefined,
         } as LLMProvider)
       : {
-          type: 'openai-compatible',
+          presetType: 'openai-compatible',
+          apiType: getDefaultApiTypeForPresetType('openai-compatible'),
           id: '',
           apiKey: '',
           baseUrl: '',
@@ -138,36 +123,34 @@ function ProviderFormComponent({
 
         const validatedProvider = validationResult.data
         const providerIdChanged = provider.id !== validatedProvider.id
-        const providerTypeChanged = provider.type !== validatedProvider.type
+        const providerPresetChanged =
+          provider.presetType !== validatedProvider.presetType
+        const providerApiTypeChanged =
+          provider.apiType !== validatedProvider.apiType
 
         const updatedProviders = [...plugin.settings.providers]
         updatedProviders[providerIndex] = validatedProvider
 
-        const updatedChatModels =
-          providerIdChanged || providerTypeChanged
-            ? plugin.settings.chatModels.map((model) => {
-                if (model.providerId !== provider.id) {
-                  return model
-                }
-                const updatedModel = {
-                  ...model,
-                  ...(providerIdChanged
-                    ? { providerId: validatedProvider.id }
-                    : {}),
-                  ...(providerTypeChanged
-                    ? { providerType: validatedProvider.type }
-                    : {}),
-                }
-                return providerTypeChanged
-                  ? chatModelSchema.parse(updatedModel)
-                  : updatedModel
-              })
-            : plugin.settings.chatModels
+        const updatedChatModels = providerIdChanged
+          ? plugin.settings.chatModels.map((model) => {
+              if (model.providerId !== provider.id) {
+                return model
+              }
+              const updatedModel = {
+                ...model,
+                ...(providerIdChanged
+                  ? { providerId: validatedProvider.id }
+                  : {}),
+              }
+              return updatedModel
+            })
+          : plugin.settings.chatModels
 
         const updatedEmbeddingModels: typeof plugin.settings.embeddingModels =
-          providerIdChanged || providerTypeChanged
-            ? providerTypeChanged &&
-              !PROVIDER_TYPES_INFO[validatedProvider.type].supportEmbedding
+          providerIdChanged || providerPresetChanged
+            ? providerPresetChanged &&
+              !PROVIDER_PRESET_INFO[validatedProvider.presetType]
+                .supportEmbedding
               ? plugin.settings.embeddingModels
               : plugin.settings.embeddingModels.map((model) => {
                   if (model.providerId !== provider.id) {
@@ -178,13 +161,8 @@ function ProviderFormComponent({
                     ...(providerIdChanged
                       ? { providerId: validatedProvider.id }
                       : {}),
-                    ...(providerTypeChanged
-                      ? { providerType: validatedProvider.type }
-                      : {}),
                   }
-                  return providerTypeChanged
-                    ? embeddingModelSchema.parse(updatedModel)
-                    : (updatedModel as typeof model)
+                  return updatedModel as typeof model
                 })
             : plugin.settings.embeddingModels
 
@@ -230,7 +208,13 @@ function ProviderFormComponent({
     })
   }
 
-  const providerTypeInfo = PROVIDER_TYPES_INFO[formData.type]
+  const providerTypeInfo = PROVIDER_PRESET_INFO[formData.presetType]
+  const providerApiOptions = Object.fromEntries(
+    getSupportedApiTypesForPresetType(formData.presetType).map((apiType) => [
+      apiType,
+      PROVIDER_API_INFO[apiType].label,
+    ]),
+  )
 
   return (
     <div className="smtcmp-provider-form">
@@ -254,9 +238,9 @@ function ProviderFormComponent({
         />
       </ObsidianSetting>
 
-      <ObsidianSetting name="Provider type" required>
+      <ObsidianSetting name="Provider preset" required>
         <ObsidianDropdown
-          value={formData.type}
+          value={formData.presetType}
           options={Object.fromEntries(
             CUSTOM_PROVIDER_TYPE_ENTRIES.map(([key, info]) => [
               key,
@@ -268,10 +252,26 @@ function ProviderFormComponent({
               (prev) =>
                 ({
                   ...prev,
-                  type: value,
+                  presetType: value as LLMProvider['presetType'],
+                  apiType: getDefaultApiTypeForPresetType(
+                    value as LLMProvider['presetType'],
+                  ),
                   additionalSettings: {},
                 }) as LLMProvider,
             )
+          }
+        />
+      </ObsidianSetting>
+
+      <ObsidianSetting name="API type" required>
+        <ObsidianDropdown
+          value={formData.apiType}
+          options={providerApiOptions}
+          onChange={(value: string) =>
+            setFormData((prev) => ({
+              ...prev,
+              apiType: value as LLMProvider['apiType'],
+            }))
           }
         />
       </ObsidianSetting>

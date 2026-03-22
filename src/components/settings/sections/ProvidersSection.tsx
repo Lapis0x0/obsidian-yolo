@@ -131,18 +131,22 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
             {settings.providers.map((provider) => (
               <tr key={provider.id}>
                 <td>{provider.id}</td>
-                <td>{PROVIDER_TYPES_INFO[provider.type].label}</td>
-                <td
-                  className="smtcmp-settings-table-api-key"
-                  onClick={() => {
-                    new EditProviderModal(app, plugin, provider).open()
-                  }}
-                >
-                  {provider.apiKey ? '••••••••' : 'Set API key'}
+                <td>{PROVIDER_TYPES_INFO[provider.presetType].label}</td>
+                <td className="smtcmp-settings-table-api-key">
+                  <button
+                    type="button"
+                    className="clickable-icon"
+                    onClick={() => {
+                      new EditProviderModal(app, plugin, provider).open()
+                    }}
+                  >
+                    {provider.apiKey ? '••••••••' : 'Set API key'}
+                  </button>
                 </td>
                 <td>
                   <div className="smtcmp-settings-actions">
                     <button
+                      type="button"
                       onClick={() => {
                         new EditProviderModal(app, plugin, provider).open()
                       }}
@@ -152,6 +156,7 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
                     </button>
                     {!DEFAULT_PROVIDERS.some((v) => v.id === provider.id) && (
                       <button
+                        type="button"
                         onClick={() => handleDeleteProvider(provider)}
                         className="clickable-icon"
                       >
@@ -167,6 +172,7 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
             <tr>
               <td colSpan={4}>
                 <button
+                  type="button"
                   onClick={() => {
                     new AddProviderModal(app, plugin).open()
                   }}

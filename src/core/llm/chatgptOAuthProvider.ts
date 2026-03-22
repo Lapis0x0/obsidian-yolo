@@ -35,18 +35,16 @@ const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const OAUTH_PROVIDER_API_KEY = 'chatgpt-oauth'
 
-export class ChatGPTOAuthProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'chatgpt-oauth' }>
-> {
+export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
   private readonly chatAdapter = new OpenAIMessageAdapter()
   private readonly obsidianClient: OpenAI
   private readonly requestTransportMemoryKey: string
 
-  constructor(provider: Extract<LLMProvider, { type: 'chatgpt-oauth' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
-      providerType: provider.type,
+      providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: CODEX_BASE_URL,
     })
@@ -70,9 +68,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'chatgpt-oauth') {
-      throw new Error('Model is not a ChatGPT OAuth model')
-    }
 
     let formattedRequest = request
     if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
@@ -116,9 +111,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'chatgpt-oauth') {
-      throw new Error('Model is not a ChatGPT OAuth model')
-    }
 
     let formattedRequest = request
     if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {

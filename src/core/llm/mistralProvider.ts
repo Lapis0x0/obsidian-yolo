@@ -15,13 +15,11 @@ import { BaseLLMProvider } from './base'
 import { MistralMessageAdapter } from './mistralMessageAdapter'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 
-export class MistralProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'mistral' }>
-> {
+export class MistralProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: MistralMessageAdapter
   private client: NoStainlessOpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'mistral' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new MistralMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -40,9 +38,6 @@ export class MistralProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'mistral') {
-      throw new Error('Model is not a Mistral model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
@@ -54,9 +49,6 @@ export class MistralProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'mistral') {
-      throw new Error('Model is not a Mistral model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 

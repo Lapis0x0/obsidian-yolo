@@ -1,6 +1,11 @@
 import { ChatModel } from './types/chat-model.types'
 import { EmbeddingModel } from './types/embedding-model.types'
-import { LLMProvider, LLMProviderType } from './types/provider.types'
+import {
+  LLMProvider,
+  LLMProviderApiType,
+  LLMProviderPresetType,
+  getDefaultApiTypeForPresetType,
+} from './types/provider.types'
 
 export const CHAT_VIEW_TYPE = 'smtcmp-chat-view'
 
@@ -27,7 +32,7 @@ export const DEFAULT_CHAT_TITLE_PROMPT = {
   it: "Sei un generatore di titoli. Genera un titolo di conversazione conciso in base al primo messaggio dell'utente e alla prima risposta completa dell'assistente. Restituisci solo il titolo.",
 } as const
 
-export const PROVIDER_TYPES_INFO = {
+export const PROVIDER_PRESET_INFO = {
   openai: {
     label: 'OpenAI',
     defaultProviderId: 'openai',
@@ -192,7 +197,7 @@ export const PROVIDER_TYPES_INFO = {
     ],
   },
 } as const satisfies Record<
-  LLMProviderType,
+  LLMProviderPresetType,
   {
     label: string
     defaultProviderId: string | null
@@ -211,6 +216,28 @@ export const PROVIDER_TYPES_INFO = {
   }
 >
 
+export const PROVIDER_API_INFO: Record<
+  LLMProviderApiType,
+  {
+    label: string
+  }
+> = {
+  'openai-compatible': {
+    label: 'OpenAI Compatible',
+  },
+  'openai-responses': {
+    label: 'OpenAI Responses',
+  },
+  anthropic: {
+    label: 'Anthropic API',
+  },
+  gemini: {
+    label: 'Gemini API',
+  },
+}
+
+export const PROVIDER_TYPES_INFO = PROVIDER_PRESET_INFO
+
 /**
  * Important
  * 1. When adding new default provider, settings migration should be added
@@ -218,28 +245,34 @@ export const PROVIDER_TYPES_INFO = {
  */
 export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
   {
-    type: 'openai',
-    id: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    presetType: 'openai',
+    apiType: getDefaultApiTypeForPresetType('openai'),
+    id: PROVIDER_PRESET_INFO.openai.defaultProviderId,
   },
   {
-    type: 'chatgpt-oauth',
-    id: PROVIDER_TYPES_INFO['chatgpt-oauth'].defaultProviderId,
+    presetType: 'chatgpt-oauth',
+    apiType: getDefaultApiTypeForPresetType('chatgpt-oauth'),
+    id: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
   },
   {
-    type: 'anthropic',
-    id: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
+    presetType: 'anthropic',
+    apiType: getDefaultApiTypeForPresetType('anthropic'),
+    id: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
   },
   {
-    type: 'gemini',
-    id: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    presetType: 'gemini',
+    apiType: getDefaultApiTypeForPresetType('gemini'),
+    id: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
   },
   {
-    type: 'deepseek',
-    id: PROVIDER_TYPES_INFO.deepseek.defaultProviderId,
+    presetType: 'deepseek',
+    apiType: getDefaultApiTypeForPresetType('deepseek'),
+    id: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,
   },
   {
-    type: 'openrouter',
-    id: PROVIDER_TYPES_INFO.openrouter.defaultProviderId,
+    presetType: 'openrouter',
+    apiType: getDefaultApiTypeForPresetType('openrouter'),
+    id: PROVIDER_PRESET_INFO.openrouter.defaultProviderId,
   },
 ]
 
@@ -250,50 +283,43 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
  */
 export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
   {
-    providerType: 'anthropic',
-    providerId: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
     id: 'anthropic/claude-sonnet-4.0',
     model: 'claude-sonnet-4-0',
     enable: false,
   },
   {
-    providerType: 'anthropic',
-    providerId: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
     id: 'anthropic/claude-opus-4.1',
     model: 'claude-opus-4-1',
     enable: false,
   },
   {
-    providerType: 'anthropic',
-    providerId: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
     id: 'anthropic/claude-3.7-sonnet',
     model: 'claude-3-7-sonnet-latest',
     enable: false,
   },
   {
-    providerType: 'anthropic',
-    providerId: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
     id: 'anthropic/claude-3.5-sonnet',
     model: 'claude-3-5-sonnet-latest',
     enable: false,
   },
   {
-    providerType: 'anthropic',
-    providerId: PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
     id: 'anthropic/claude-3.5-haiku',
     model: 'claude-3-5-haiku-latest',
     enable: false,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-5',
     model: 'gpt-5',
     enable: true,
   },
   {
-    providerType: 'chatgpt-oauth',
-    providerId: PROVIDER_TYPES_INFO['chatgpt-oauth'].defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
     id: 'chatgpt-oauth/gpt-5.3-codex',
     model: 'gpt-5.3-codex',
     name: 'GPT-5.3 Codex',
@@ -304,8 +330,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'chatgpt-oauth',
-    providerId: PROVIDER_TYPES_INFO['chatgpt-oauth'].defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
     id: 'chatgpt-oauth/gpt-5.4',
     model: 'gpt-5.4',
     name: 'GPT-5.4',
@@ -316,57 +341,49 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-5-mini',
     model: 'gpt-5-mini',
     enable: false,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-5-nano',
     model: 'gpt-5-nano',
     enable: false,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-4.1',
     model: 'gpt-4.1',
     enable: true,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-4.1-mini',
     model: 'gpt-4.1-mini',
     enable: true,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-4.1-nano',
     model: 'gpt-4.1-nano',
     enable: true,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-4o',
     model: 'gpt-4o',
     enable: false,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/gpt-4o-mini',
     model: 'gpt-4o-mini',
     enable: false,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/o4-mini',
     model: 'o4-mini',
     enable: false,
@@ -376,8 +393,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/o3',
     model: 'o3',
     enable: false,
@@ -387,8 +403,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'gemini',
-    providerId: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
     id: 'gemini/gemini-2.5-pro',
     model: 'gemini-2.5-pro',
     enable: false,
@@ -398,8 +413,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'gemini',
-    providerId: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
     id: 'gemini/gemini-2.5-flash',
     model: 'gemini-2.5-flash',
     enable: false,
@@ -409,8 +423,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'gemini',
-    providerId: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
     id: 'gemini/gemini-2.5-flash-lite',
     model: 'gemini-2.5-flash-lite',
     enable: false,
@@ -420,8 +433,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'gemini',
-    providerId: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
     id: 'gemini/gemini-2.0-flash',
     model: 'gemini-2.0-flash',
     enable: false,
@@ -431,8 +443,7 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'gemini',
-    providerId: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
     id: 'gemini/gemini-2.0-flash-lite',
     model: 'gemini-2.0-flash-lite',
     enable: false,
@@ -442,15 +453,13 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     },
   },
   {
-    providerType: 'deepseek',
-    providerId: PROVIDER_TYPES_INFO.deepseek.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,
     id: 'deepseek/deepseek-chat',
     model: 'deepseek-chat',
     enable: false,
   },
   {
-    providerType: 'deepseek',
-    providerId: PROVIDER_TYPES_INFO.deepseek.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,
     id: 'deepseek/deepseek-reasoner',
     model: 'deepseek-reasoner',
     enable: false,
@@ -464,22 +473,19 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
  */
 export const DEFAULT_EMBEDDING_MODELS: readonly EmbeddingModel[] = [
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/text-embedding-3-small',
     model: 'text-embedding-3-small',
     dimension: 1536,
   },
   {
-    providerType: 'openai',
-    providerId: PROVIDER_TYPES_INFO.openai.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
     id: 'openai/text-embedding-3-large',
     model: 'text-embedding-3-large',
     dimension: 3072,
   },
   {
-    providerType: 'gemini',
-    providerId: PROVIDER_TYPES_INFO.gemini.defaultProviderId,
+    providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
     id: 'gemini/text-embedding-004',
     model: 'text-embedding-004',
     dimension: 768,

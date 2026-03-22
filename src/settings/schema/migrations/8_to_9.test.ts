@@ -1,10 +1,8 @@
-import { ChatModel } from '../../../types/chat-model.types'
-
 import { migrateFrom8To9 } from './8_to_9'
 
 type SettingsData = {
   version: number
-  chatModels?: ChatModel[]
+  chatModels?: Array<Record<string, unknown> & { id: string; model: string }>
   [key: string]: unknown
 }
 
@@ -112,6 +110,8 @@ describe('migrateFrom8To9', () => {
     )
     expect(customModel).toBeDefined()
     expect(customModel?.model).toBe('custom-model-name')
-    expect(customModel?.providerType).toBe('openai-compatible')
+    expect(
+      (customModel as { providerType?: string } | undefined)?.providerType,
+    ).toBe('openai-compatible')
   })
 })

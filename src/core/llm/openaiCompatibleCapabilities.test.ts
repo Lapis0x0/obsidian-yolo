@@ -5,8 +5,7 @@ import {
   resolveOpenAICompatibleHostCapabilities,
 } from './openaiCompatibleCapabilities'
 
-const baseModel: Extract<ChatModel, { providerType: 'openai-compatible' }> = {
-  providerType: 'openai-compatible',
+const baseModel: ChatModel = {
   providerId: 'provider-1',
   id: 'model-1',
   model: 'test-model',

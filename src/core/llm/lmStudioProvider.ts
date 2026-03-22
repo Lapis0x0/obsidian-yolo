@@ -17,13 +17,11 @@ import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class LmStudioProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'lm-studio' }>
-> {
+export class LmStudioProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private client: OpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'lm-studio' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -40,9 +38,6 @@ export class LmStudioProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'lm-studio') {
-      throw new Error('Model is not an LM Studio model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
@@ -54,9 +49,6 @@ export class LmStudioProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'lm-studio') {
-      throw new Error('Model is not an LM Studio model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 

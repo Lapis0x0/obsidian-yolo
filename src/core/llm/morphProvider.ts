@@ -15,13 +15,11 @@ import { BaseLLMProvider } from './base'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class MorphProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'morph' }>
-> {
+export class MorphProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private client: NoStainlessOpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'morph' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -38,9 +36,6 @@ export class MorphProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'morph') {
-      throw new Error('Model is not an morph model')
-    }
 
     let formattedRequest = {
       ...request,
@@ -57,9 +52,6 @@ export class MorphProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'morph') {
-      throw new Error('Model is not an morph model')
-    }
 
     let formattedRequest = {
       ...request,

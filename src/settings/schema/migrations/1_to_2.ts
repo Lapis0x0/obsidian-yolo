@@ -1,9 +1,32 @@
 import { z } from 'zod'
 
-import { ChatModel } from '../../../types/chat-model.types'
-import { EmbeddingModel } from '../../../types/embedding-model.types'
-import { LLMProvider } from '../../../types/provider.types'
 import { SettingMigration } from '../setting.types'
+
+type LegacyProvider = {
+  id: string
+  type: string
+  presetType?: string
+  apiType?: string
+  baseUrl?: string
+  apiKey?: string
+}
+
+type LegacyChatModel = {
+  providerType: string
+  providerId: string
+  id: string
+  model: string
+  [key: string]: unknown
+}
+
+type LegacyEmbeddingModel = {
+  providerType: string
+  providerId: string
+  id: string
+  model: string
+  dimension: number
+  [key: string]: unknown
+}
 
 type NativeLLMModel = {
   provider: 'openai' | 'anthropic' | 'gemini' | 'groq'
@@ -427,34 +450,46 @@ export const V2_PROVIDER_TYPES_INFO = {
   },
 } as const
 
-export const V2_DEFAULT_PROVIDERS: readonly LLMProvider[] = [
+export const V2_DEFAULT_PROVIDERS: readonly LegacyProvider[] = [
   {
     type: 'openai',
+    presetType: 'openai',
+    apiType: 'openai-responses',
     id: V2_PROVIDER_TYPES_INFO.openai.defaultProviderId,
   },
   {
     type: 'anthropic',
+    presetType: 'anthropic',
+    apiType: 'anthropic',
     id: V2_PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
   },
   {
     type: 'gemini',
+    presetType: 'gemini',
+    apiType: 'gemini',
     id: V2_PROVIDER_TYPES_INFO.gemini.defaultProviderId,
   },
   {
     type: 'groq',
+    presetType: 'groq',
+    apiType: 'openai-compatible',
     id: V2_PROVIDER_TYPES_INFO.groq.defaultProviderId,
   },
   {
     type: 'openrouter',
+    presetType: 'openrouter',
+    apiType: 'openai-compatible',
     id: V2_PROVIDER_TYPES_INFO.openrouter.defaultProviderId,
   },
   {
     type: 'ollama',
+    presetType: 'ollama',
+    apiType: 'openai-compatible',
     id: V2_PROVIDER_TYPES_INFO.ollama.defaultProviderId,
   },
 ]
 
-export const V2_DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
+export const V2_DEFAULT_CHAT_MODELS: readonly LegacyChatModel[] = [
   {
     providerType: 'anthropic',
     providerId: V2_PROVIDER_TYPES_INFO.anthropic.defaultProviderId,
@@ -508,7 +543,6 @@ export const V2_DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     providerId: V2_PROVIDER_TYPES_INFO.openai.defaultProviderId,
     id: 'o1',
     model: 'o1',
-    // @ts-expect-error: streamingDisabled is deprecated
     streamingDisabled: true, // currently, o1 API doesn't support streaming
   },
   {
@@ -531,7 +565,7 @@ export const V2_DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
   },
 ]
 
-export const V2_DEFAULT_EMBEDDING_MODELS: readonly EmbeddingModel[] = [
+export const V2_DEFAULT_EMBEDDING_MODELS: readonly LegacyEmbeddingModel[] = [
   {
     providerType: 'openai',
     providerId: V2_PROVIDER_TYPES_INFO.openai.defaultProviderId,
@@ -580,8 +614,8 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
   rawData: SmartComposerSettingsV1,
 ) => {
   const data = smartComposerSettingsSchemaV1.parse(rawData)
-  const providers: LLMProvider[] = [...V2_DEFAULT_PROVIDERS]
-  const chatModels: ChatModel[] = [...V2_DEFAULT_CHAT_MODELS]
+  const providers: LegacyProvider[] = [...V2_DEFAULT_PROVIDERS]
+  const chatModels: LegacyChatModel[] = [...V2_DEFAULT_CHAT_MODELS]
   const ollamaChatModelData = data.ollamaChatModel ?? { baseUrl: '', model: '' }
   const ollamaApplyModelData = data.ollamaApplyModel ?? {
     baseUrl: '',
@@ -647,7 +681,7 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
     ollamaProvider.baseUrl = defaultOllamaBaseUrl
   }
 
-  let ollamaChatProviderId
+  let ollamaChatProviderId: string
   if (
     ollamaChatModelData.baseUrl &&
     ollamaChatModelData.baseUrl !== defaultOllamaBaseUrl
@@ -655,6 +689,8 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
     ollamaChatProviderId = `ollama-${ollamaCustomProviderCount + 1}`
     providers.push({
       type: 'ollama',
+      presetType: 'ollama',
+      apiType: 'openai-compatible',
       id: ollamaChatProviderId,
       baseUrl: ollamaChatModelData.baseUrl,
     })
@@ -679,7 +715,7 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
     (v) => v.type === 'ollama' && v.baseUrl === ollamaApplyModelData.baseUrl,
   )
 
-  let ollamaApplyProviderId
+  let ollamaApplyProviderId: string
   if (
     !existingSameOllamaProviderForApplyModel &&
     ollamaApplyModelData.baseUrl
@@ -687,6 +723,8 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
     ollamaApplyProviderId = `ollama-${ollamaCustomProviderCount + 1}`
     providers.push({
       type: 'ollama',
+      presetType: 'ollama',
+      apiType: 'openai-compatible',
       id: ollamaApplyProviderId,
       baseUrl: ollamaApplyModelData.baseUrl,
     })
@@ -704,7 +742,7 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
         v.model === ollamaApplyModelData.model,
     )
 
-    let ollamaApplyModelId
+    let ollamaApplyModelId: string
     if (existingSameChatModelForApplyModel) {
       ollamaApplyModelId = existingSameChatModelForApplyModel.id
     } else {
@@ -729,6 +767,8 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
     const customProviderId = `custom-${openAICompatibleCustomProviderCount + 1}`
     providers.push({
       type: 'openai-compatible',
+      presetType: 'openai-compatible',
+      apiType: 'openai-compatible',
       id: customProviderId,
       baseUrl: openAICompatibleChatModelData.baseUrl,
       apiKey: openAICompatibleChatModelData.apiKey,
@@ -755,7 +795,7 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
         v.apiKey === openAICompatibleApplyModelData.apiKey,
     )
 
-    let customProviderId
+    let customProviderId: string
     if (existingSameProvider) {
       // if the same provider is already exists, don't create a new one
       customProviderId = existingSameProvider.id
@@ -763,6 +803,8 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
       customProviderId = `custom-${openAICompatibleCustomProviderCount + 1}`
       providers.push({
         type: 'openai-compatible',
+        presetType: 'openai-compatible',
+        apiType: 'openai-compatible',
         id: customProviderId,
         baseUrl: openAICompatibleApplyModelData.baseUrl,
         apiKey: openAICompatibleApplyModelData.apiKey,
@@ -777,7 +819,7 @@ export const migrateFrom1To2: SettingMigration['migrate'] = (
           v.model === openAICompatibleApplyModelData.model,
       )
 
-      let customApplyModelId
+      let customApplyModelId: string
       if (existingSameChatModel) {
         customApplyModelId = existingSameChatModel.id
       } else {

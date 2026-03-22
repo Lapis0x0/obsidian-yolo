@@ -93,13 +93,9 @@ function AddEmbeddingModelModalComponent({
   const selectedProvider: LLMProvider | undefined =
     provider ?? plugin.settings.providers[0]
   const initialProviderId = selectedProvider?.id ?? ''
-  const initialProviderType =
-    selectedProvider?.type === 'chatgpt-oauth'
-      ? 'openai-compatible'
-      : (selectedProvider?.type ?? 'openai-compatible')
+  const initialProviderType = selectedProvider?.apiType ?? 'openai-compatible'
   const [formData, setFormData] = useState<Omit<EmbeddingModel, 'dimension'>>({
     providerId: initialProviderId,
-    providerType: initialProviderType,
     id: '',
     model: '',
     name: undefined,
@@ -134,22 +130,17 @@ function AddEmbeddingModelModalComponent({
           selectedProvider.customHeaders,
         )
         const isOpenAIStyle =
-          selectedProvider.type === 'openai' ||
-          selectedProvider.type === 'openai-compatible' ||
-          selectedProvider.type === 'openrouter' ||
-          selectedProvider.type === 'groq' ||
-          selectedProvider.type === 'mistral' ||
-          selectedProvider.type === 'perplexity' ||
-          selectedProvider.type === 'deepseek'
+          selectedProvider.apiType === 'openai-compatible' ||
+          selectedProvider.apiType === 'openai-responses'
 
         if (isOpenAIStyle) {
           const base = ((): string => {
             // default OpenAI base when not provided
             const cleaned = selectedProvider.baseUrl?.replace(/\/+$/, '')
             if (cleaned && cleaned.length > 0) return cleaned
-            if (selectedProvider.type === 'openai')
+            if (selectedProvider.presetType === 'openai')
               return 'https://api.openai.com/v1'
-            if (selectedProvider.type === 'openrouter')
+            if (selectedProvider.presetType === 'openrouter')
               return 'https://openrouter.ai/api/v1'
             return '' // no base => skip
           })()
@@ -224,7 +215,7 @@ function AddEmbeddingModelModalComponent({
           }
         }
 
-        if (selectedProvider.type === 'gemini') {
+        if (selectedProvider.apiType === 'gemini') {
           const ai = new GoogleGenAI({
             apiKey: selectedProvider.apiKey ?? '',
             httpOptions: providerHeaders
