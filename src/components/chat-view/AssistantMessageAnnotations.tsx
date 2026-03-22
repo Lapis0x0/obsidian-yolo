@@ -8,7 +8,7 @@ const AssistantMessageAnnotations = memo(function AssistantMessageAnnotations({
 }: {
   annotations: Annotation[]
 }) {
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
   const hasUserInteracted = useRef(false)
 
   const handleToggle = () => {
