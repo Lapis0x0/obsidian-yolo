@@ -19,7 +19,6 @@ import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import type { McpManager } from '../mcp/mcpManager'
 
-
 jest.mock('../mcp/mcpManager', () => {
   class MockedMcpManager {
     static TOOL_NAME_DELIMITER = '__'
@@ -48,7 +47,8 @@ class MockProvider extends BaseLLMProvider<LLMProvider> {
 
   constructor() {
     super({
-      type: 'openai',
+      presetType: 'openai',
+      apiType: 'openai-responses',
       id: 'provider-1',
     })
   }
@@ -75,7 +75,6 @@ class MockProvider extends BaseLLMProvider<LLMProvider> {
 }
 
 const TEST_MODEL: ChatModel = {
-  providerType: 'openai',
   providerId: 'provider-1',
   id: 'model-1',
   model: 'gpt-4.1',

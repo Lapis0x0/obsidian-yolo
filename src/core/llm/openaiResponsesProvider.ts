@@ -1,5 +1,9 @@
 import OpenAI from 'openai'
-import { ReasoningEffort } from 'openai/resources/shared'
+import type {
+  Response,
+  ResponseCreateParamsStreaming,
+  ResponseStreamEvent,
+} from 'openai/resources/responses/responses'
 
 import { ChatModel } from '../../types/chat-model.types'
 import {
@@ -15,17 +19,46 @@ import { LLMProvider } from '../../types/provider.types'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
+import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 import { extractEmbeddingVector } from './embedding-utils'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
   LLMRateLimitExceededException,
 } from './exception'
-import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
-  private adapter: OpenAIMessageAdapter
-  private client: OpenAI
+export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
+  private readonly adapter = new ChatGPTOAuthResponsesAdapter()
+  private readonly client: OpenAI
+
+  private applyReasoningEffort(
+    model: ChatModel,
+    request: LLMRequestNonStreaming,
+  ): LLMRequestNonStreaming
+  private applyReasoningEffort(
+    model: ChatModel,
+    request: LLMRequestStreaming,
+  ): LLMRequestStreaming
+  private applyReasoningEffort(
+    model: ChatModel,
+    request: LLMRequestNonStreaming | LLMRequestStreaming,
+  ): LLMRequestNonStreaming | LLMRequestStreaming {
+    const reasoningEffort = model.reasoning?.reasoning_effort
+    if (
+      !model.reasoning?.enabled ||
+      request.reasoning_effort ||
+      !reasoningEffort
+    ) {
+      return request
+    }
+
+    return {
+      ...request,
+      reasoning_effort: reasoningEffort as
+        | LLMRequestNonStreaming['reasoning_effort']
+        | LLMRequestStreaming['reasoning_effort'],
+    }
+  }
 
   constructor(provider: LLMProvider) {
     super(provider)
@@ -34,11 +67,10 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
       apiKey: provider.apiKey ?? '',
       baseURL: provider.baseUrl
         ? provider.baseUrl.replace(/\/+$/, '')
-        : undefined, // use default
+        : undefined,
       dangerouslyAllowBrowser: true,
       defaultHeaders,
     })
-    this.adapter = new OpenAIMessageAdapter()
   }
 
   async generateResponse(
@@ -46,56 +78,25 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
     }
+
     try {
-      let formattedRequest = {
-        ...request,
-        reasoning_effort: model.reasoning?.enabled
-          ? (model.reasoning.reasoning_effort as ReasoningEffort)
-          : undefined,
-      }
+      const body = this.adapter.buildRequest(
+        this.applyCustomModelParameters(model, {
+          ...this.applyReasoningEffort(model, request),
+          stream: false,
+        }),
+      ) as ResponseCreateParamsStreaming
 
-      formattedRequest = this.applyCustomModelParameters(
-        model,
-        formattedRequest,
-      )
-
-      const response = await this.adapter.generateResponse(
-        this.client,
-        formattedRequest,
-        options,
-      )
-
-      // Ensure choices exist and have at least one choice
-      if (!response.choices || response.choices.length === 0) {
-        console.error('No response choices available')
-        throw new Error('No response choices available')
-      }
-
-      // Ensure the first choice has a message with content
-      const firstChoice = response.choices[0]
-      if (
-        !firstChoice.message ||
-        firstChoice.message.content === null ||
-        firstChoice.message.content === undefined
-      ) {
-        console.error('No content in the first response choice')
-        throw new Error('No content in the first response choice')
-      }
-
-      const finalResponse = {
-        ...response,
-        content: firstChoice.message.content,
-      }
-
-      return finalResponse
+      const response = (await this.client.responses.create(body as never, {
+        signal: options?.signal,
+      })) as Response
+      return this.adapter.parseResponse(response)
     } catch (error) {
-      console.error('Error in generateResponse:', error)
       if (error instanceof OpenAI.AuthenticationError) {
         throw new LLMAPIKeyInvalidException(
           'OpenAI API key is invalid. Please update it in settings menu.',
@@ -111,39 +112,31 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
     }
-    try {
-      let formattedRequest = {
-        ...request,
-        reasoning_effort: model.reasoning?.enabled
-          ? (model.reasoning.reasoning_effort as ReasoningEffort)
-          : undefined,
-      }
 
-      formattedRequest = this.applyCustomModelParameters(
+    const body = this.adapter.buildRequest(
+      this.applyCustomModelParameters(
         model,
-        formattedRequest,
-      )
+        this.applyReasoningEffort(model, request),
+      ),
+    ) as ResponseCreateParamsStreaming
 
-      return await this.adapter.streamResponse(
-        this.client,
-        formattedRequest,
-        options,
-      )
-    } catch (error) {
-      console.error('Error in streamResponse:', error)
-      if (error instanceof OpenAI.AuthenticationError) {
-        throw new LLMAPIKeyInvalidException(
-          'OpenAI API key is invalid. Please update it in settings menu.',
-          error,
-        )
-      }
-      throw error
+    const stream = (await this.client.responses.create(body, {
+      signal: options?.signal,
+    })) as AsyncIterable<ResponseStreamEvent>
+    const adapter = this.adapter
+
+    return {
+      async *[Symbol.asyncIterator]() {
+        const state = adapter.createStreamState()
+        for await (const event of stream) {
+          yield* adapter.parseStreamEvent(event, state)
+        }
+      },
     }
   }
 
@@ -156,12 +149,12 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
 
     try {
       const embedding = await this.client.embeddings.create({
-        model: model,
+        model,
         input: text,
       })
       return extractEmbeddingVector(embedding)
     } catch (error) {
-      if (error.status === 429) {
+      if ((error as { status?: number }).status === 429) {
         throw new LLMRateLimitExceededException(
           'OpenAI API rate limit exceeded. Please try again later.',
         )

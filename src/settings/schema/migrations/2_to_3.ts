@@ -1,24 +1,44 @@
 import { PROVIDER_TYPES_INFO } from '../../../constants'
-import { ChatModel } from '../../../types/chat-model.types'
-import { LLMProvider } from '../../../types/provider.types'
 import { SettingMigration } from '../setting.types'
 
-export const NEW_DEFAULT_PROVIDERS: LLMProvider[] = [
+type LegacyProvider = {
+  id: string
+  type: string
+  presetType?: string
+  apiType?: string
+  [key: string]: unknown
+}
+
+type LegacyChatModel = {
+  providerType: string
+  providerId: string
+  id: string
+  model: string
+  [key: string]: unknown
+}
+
+export const NEW_DEFAULT_PROVIDERS: LegacyProvider[] = [
   {
     type: 'lm-studio',
+    presetType: 'lm-studio',
+    apiType: 'openai-compatible',
     id: PROVIDER_TYPES_INFO['lm-studio'].defaultProviderId,
   },
   {
     type: 'deepseek',
+    presetType: 'deepseek',
+    apiType: 'openai-compatible',
     id: PROVIDER_TYPES_INFO.deepseek.defaultProviderId,
   },
   {
     type: 'morph',
+    presetType: 'morph',
+    apiType: 'openai-compatible',
     id: PROVIDER_TYPES_INFO.morph.defaultProviderId,
   },
 ]
 
-export const NEW_DEFAULT_CHAT_MODELS: ChatModel[] = [
+export const NEW_DEFAULT_CHAT_MODELS: LegacyChatModel[] = [
   {
     providerType: 'deepseek',
     providerId: PROVIDER_TYPES_INFO.deepseek.defaultProviderId,

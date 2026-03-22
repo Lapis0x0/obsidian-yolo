@@ -50,18 +50,17 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
    * @see https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
    */
   {
-    check: (model) => model.providerType === 'anthropic',
+    check: (model) => typeof model.thinking?.budget_tokens === 'number',
     SettingsComponent: (props) => {
       const DEFAULT_THINKING_BUDGET_TOKENS = 8192
 
       const { model, plugin, onClose } = props
-      const typedModel = model as ChatModel & { providerType: 'anthropic' }
       const [thinkingEnabled, setThinkingEnabled] = useState<boolean>(
-        typedModel.thinking?.enabled ?? false,
+        model.thinking?.enabled ?? false,
       )
       const [budgetTokens, setBudgetTokens] = useState(
         (
-          typedModel.thinking?.budget_tokens ?? DEFAULT_THINKING_BUDGET_TOKENS
+          model.thinking?.budget_tokens ?? DEFAULT_THINKING_BUDGET_TOKENS
         ).toString(),
       )
 
@@ -78,7 +77,7 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
         }
 
         const updatedModel = {
-          ...typedModel,
+          ...model,
           thinking: {
             enabled: thinkingEnabled,
             budget_tokens: parsedTokens,
@@ -152,7 +151,6 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
   // Perplexity settings
   {
     check: (model) =>
-      model.providerType === 'perplexity' &&
       [
         'sonar',
         'sonar-pro',
@@ -163,9 +161,8 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
 
     SettingsComponent: (props) => {
       const { model, plugin, onClose } = props
-      const typedModel = model as ChatModel & { providerType: 'perplexity' }
       const [searchContextSize, setSearchContextSize] = useState(
-        typedModel.web_search_options?.search_context_size ?? 'low',
+        model.web_search_options?.search_context_size ?? 'low',
       )
 
       const handleSubmit = async () => {
@@ -177,9 +174,9 @@ const MODEL_SETTINGS_REGISTRY: ModelSettingsRegistry[] = [
         }
 
         const updatedModel = {
-          ...typedModel,
+          ...model,
           web_search_options: {
-            ...typedModel.web_search_options,
+            ...model.web_search_options,
             search_context_size: searchContextSize,
           },
         }

@@ -17,13 +17,11 @@ import { LLMAPIKeyNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { PerplexityMessageAdapter } from './perplexityMessageAdapter'
 
-export class PerplexityProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'perplexity' }>
-> {
+export class PerplexityProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: PerplexityMessageAdapter
   private client: NoStainlessOpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'perplexity' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new PerplexityMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -42,9 +40,6 @@ export class PerplexityProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'perplexity') {
-      throw new Error('Model is not a Perplexity model')
-    }
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -68,9 +63,6 @@ export class PerplexityProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'perplexity') {
-      throw new Error('Model is not a Perplexity model')
-    }
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,

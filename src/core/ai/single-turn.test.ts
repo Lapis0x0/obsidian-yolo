@@ -27,7 +27,8 @@ class MockProvider extends BaseLLMProvider<LLMProvider> {
 
   constructor() {
     super({
-      type: 'openai',
+      presetType: 'openai',
+      apiType: 'openai-responses',
       id: 'provider-1',
     })
   }
@@ -54,7 +55,6 @@ class MockProvider extends BaseLLMProvider<LLMProvider> {
 }
 
 const TEST_MODEL: ChatModel = {
-  providerType: 'openai',
   providerId: 'provider-1',
   id: 'model-1',
   model: 'gpt-4.1',

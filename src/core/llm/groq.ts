@@ -16,13 +16,11 @@ import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { BaseLLMProvider } from './base'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
-export class GroqProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'groq' }>
-> {
+export class GroqProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private client: OpenAI
 
-  constructor(provider: Extract<LLMProvider, { type: 'groq' }>) {
+  constructor(provider: LLMProvider) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
@@ -41,9 +39,6 @@ export class GroqProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'groq') {
-      throw new Error('Model is not a Groq model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
@@ -55,9 +50,6 @@ export class GroqProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'groq') {
-      throw new Error('Model is not a Groq model')
-    }
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 

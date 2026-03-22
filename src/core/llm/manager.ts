@@ -14,8 +14,8 @@ import { LmStudioProvider } from './lmStudioProvider'
 import { MistralProvider } from './mistralProvider'
 import { MorphProvider } from './morphProvider'
 import { OllamaProvider } from './ollama'
-import { OpenAIAuthenticatedProvider } from './openai'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
+import { OpenAIResponsesProvider } from './openaiResponsesProvider'
 import { OpenRouterProvider } from './openRouterProvider'
 import { PerplexityProvider } from './perplexityProvider'
 
@@ -39,52 +39,47 @@ export function getProviderClient({
     throw new Error(`Provider ${providerId} not found`)
   }
 
-  switch (provider.type) {
-    case 'openai': {
-      return new OpenAIAuthenticatedProvider(provider)
-    }
-    case 'chatgpt-oauth': {
-      return new ChatGPTOAuthProvider(provider)
+  switch (provider.apiType) {
+    case 'openai-responses': {
+      if (provider.presetType === 'chatgpt-oauth') {
+        return new ChatGPTOAuthProvider(provider as never)
+      }
+      return new OpenAIResponsesProvider(provider)
     }
     case 'anthropic': {
-      return new AnthropicProvider(provider, {
+      return new AnthropicProvider(provider as never, {
         onAutoPromoteToObsidian: () => onAutoPromoteToObsidian?.(provider.id),
       })
     }
     case 'gemini': {
-      return new GeminiProvider(provider)
-    }
-    case 'groq': {
-      return new GroqProvider(provider)
-    }
-    case 'openrouter': {
-      return new OpenRouterProvider(provider)
-    }
-    case 'ollama': {
-      return new OllamaProvider(provider)
-    }
-    case 'lm-studio': {
-      return new LmStudioProvider(provider)
-    }
-    case 'deepseek': {
-      return new DeepSeekStudioProvider(provider)
-    }
-    case 'perplexity': {
-      return new PerplexityProvider(provider)
-    }
-    case 'mistral': {
-      return new MistralProvider(provider)
-    }
-    case 'morph': {
-      return new MorphProvider(provider)
-    }
-    case 'azure-openai': {
-      return new AzureOpenAIProvider(provider)
+      return new GeminiProvider(provider as never)
     }
     case 'openai-compatible': {
-      return new OpenAICompatibleProvider(provider, {
-        onAutoPromoteToObsidian: () => onAutoPromoteToObsidian?.(provider.id),
-      })
+      switch (provider.presetType) {
+        case 'openrouter':
+          return new OpenRouterProvider(provider as never)
+        case 'perplexity':
+          return new PerplexityProvider(provider as never)
+        case 'groq':
+          return new GroqProvider(provider as never)
+        case 'mistral':
+          return new MistralProvider(provider as never)
+        case 'ollama':
+          return new OllamaProvider(provider as never)
+        case 'lm-studio':
+          return new LmStudioProvider(provider as never)
+        case 'deepseek':
+          return new DeepSeekStudioProvider(provider as never)
+        case 'morph':
+          return new MorphProvider(provider as never)
+        case 'azure-openai':
+          return new AzureOpenAIProvider(provider as never)
+        default:
+          return new OpenAICompatibleProvider(provider as never, {
+            onAutoPromoteToObsidian: () =>
+              onAutoPromoteToObsidian?.(provider.id),
+          })
+      }
     }
   }
 }

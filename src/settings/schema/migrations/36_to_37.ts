@@ -1,21 +1,19 @@
 import { DEFAULT_CHAT_MODELS, DEFAULT_PROVIDERS } from '../../../constants'
-import type { ChatModel } from '../../../types/chat-model.types'
-import type { LLMProvider } from '../../../types/provider.types'
 import type { SettingMigration } from '../setting.types'
 
 const DEFAULT_CHATGPT_OAUTH_PROVIDER = DEFAULT_PROVIDERS.find(
-  (provider) => provider.type === 'chatgpt-oauth',
+  (provider) => provider.presetType === 'chatgpt-oauth',
 )
 
-const DEFAULT_CHATGPT_OAUTH_MODELS = DEFAULT_CHAT_MODELS.filter(
-  (model) => model.providerType === 'chatgpt-oauth',
+const DEFAULT_CHATGPT_OAUTH_MODELS = DEFAULT_CHAT_MODELS.filter((model) =>
+  model.providerId.startsWith('chatgpt-oauth'),
 )
 
 export const migrateFrom36To37: SettingMigration['migrate'] = (data) => {
   const next: Record<string, unknown> = { ...data, version: 37 }
 
   if (DEFAULT_CHATGPT_OAUTH_PROVIDER && Array.isArray(next.providers)) {
-    const providers = next.providers as LLMProvider[]
+    const providers = next.providers as Array<{ id: string }>
     const exists = providers.some((provider) => provider.id === 'chatgpt-oauth')
     if (!exists) {
       next.providers = [...providers, DEFAULT_CHATGPT_OAUTH_PROVIDER]
@@ -26,7 +24,9 @@ export const migrateFrom36To37: SettingMigration['migrate'] = (data) => {
     DEFAULT_CHATGPT_OAUTH_MODELS.length > 0 &&
     Array.isArray(next.chatModels)
   ) {
-    const models = next.chatModels as ChatModel[]
+    const models = next.chatModels as Array<
+      { id: string } & Record<string, unknown>
+    >
     const existingIds = new Set(models.map((model) => model.id))
     next.chatModels = [
       ...models,

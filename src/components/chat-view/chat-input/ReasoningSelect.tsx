@@ -162,8 +162,8 @@ const resolveReasoningModelType = (
     return 'openai'
   }
   if ('thinking' in model && model.thinking?.enabled) {
-    if (model.providerType === 'anthropic') return 'anthropic'
-    if (model.providerType === 'gemini') return 'gemini'
+    if (typeof model.thinking.budget_tokens === 'number') return 'anthropic'
+    if (typeof model.thinking.thinking_budget === 'number') return 'gemini'
     return 'generic'
   }
   return null
@@ -189,11 +189,7 @@ export function getDefaultReasoningLevel(
   }
 
   if (modelType === 'gemini') {
-    const typedModel = model as Extract<
-      ChatModel,
-      { providerType: 'gemini' | 'openrouter' | 'openai-compatible' }
-    >
-    const budget = typedModel.thinking?.thinking_budget
+    const budget = model.thinking?.thinking_budget
     if (budget === -1) return 'auto'
     if (budget === 0) return 'off'
     if (typeof budget === 'number') {
@@ -268,10 +264,9 @@ export const ReasoningSelect = forwardRef<
     )
 
     const modelType = resolveReasoningModelType(model)
-    if (!modelType) {
-      return null
-    }
-    const availableOptions = REASONING_OPTIONS_MAP[modelType]
+    const availableOptions = modelType
+      ? REASONING_OPTIONS_MAP[modelType]
+      : REASONING_OPTIONS_MAP.generic
     const fallbackValue = getDefaultReasoningLevel(model)
     const safeValue = availableOptions.some((opt) => opt.value === value)
       ? value
@@ -317,6 +312,10 @@ export const ReasoningSelect = forwardRef<
     const handleOpenChange = (open: boolean) => {
       setIsOpen(open)
       onMenuOpenChange?.(open)
+    }
+
+    if (!modelType) {
+      return null
     }
 
     const handleTriggerKeyDown = (
@@ -490,15 +489,11 @@ export function reasoningLevelToConfig(
     if (level !== 'on') {
       return {}
     }
-    const typedModel = model as Extract<
-      ChatModel,
-      { providerType: 'anthropic' }
-    >
     return {
       thinking: {
         enabled: true,
         budget_tokens:
-          typedModel.thinking?.budget_tokens ??
+          model.thinking?.budget_tokens ??
           option.budgetTokens ??
           DEFAULT_ANTHROPIC_BUDGET_TOKENS,
       },
@@ -510,7 +505,7 @@ export function reasoningLevelToConfig(
   const thinkingBudget = option.thinkingBudget ?? option.budgetTokens
   const budgetTokens = option.budgetTokens ?? thinkingBudget
 
-  if (model.providerType === 'openai') {
+  if (model.reasoning?.enabled) {
     return {
       reasoning: {
         enabled: true,
@@ -519,7 +514,7 @@ export function reasoningLevelToConfig(
     }
   }
 
-  if (model.providerType === 'anthropic') {
+  if (typeof model.thinking?.budget_tokens === 'number') {
     return {
       thinking: {
         enabled: true,
@@ -528,7 +523,7 @@ export function reasoningLevelToConfig(
     }
   }
 
-  if (model.providerType === 'gemini') {
+  if (typeof model.thinking?.thinking_budget === 'number') {
     return {
       thinking: {
         enabled: true,

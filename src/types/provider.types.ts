@@ -15,11 +15,102 @@ export const requestTransportModeSchema = z.enum([
   'obsidian',
 ])
 
-export const baseLlmProviderSchema = z.object({
+export const providerPresetTypeSchema = z.enum([
+  'openai',
+  'chatgpt-oauth',
+  'anthropic',
+  'gemini',
+  'deepseek',
+  'perplexity',
+  'groq',
+  'mistral',
+  'openrouter',
+  'ollama',
+  'lm-studio',
+  'morph',
+  'azure-openai',
+  'openai-compatible',
+])
+
+export const providerApiTypeSchema = z.enum([
+  'openai-compatible',
+  'openai-responses',
+  'anthropic',
+  'gemini',
+])
+
+export type LLMProviderPresetType = z.infer<typeof providerPresetTypeSchema>
+export type LLMProviderApiType = z.infer<typeof providerApiTypeSchema>
+
+const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
+  LLMProviderPresetType,
+  LLMProviderApiType
+> = {
+  openai: 'openai-responses',
+  'chatgpt-oauth': 'openai-responses',
+  anthropic: 'anthropic',
+  gemini: 'gemini',
+  deepseek: 'openai-compatible',
+  perplexity: 'openai-compatible',
+  groq: 'openai-compatible',
+  mistral: 'openai-compatible',
+  openrouter: 'openai-compatible',
+  ollama: 'openai-compatible',
+  'lm-studio': 'openai-compatible',
+  morph: 'openai-compatible',
+  'azure-openai': 'openai-compatible',
+  'openai-compatible': 'openai-compatible',
+}
+
+export function getDefaultApiTypeForPresetType(
+  presetType: LLMProviderPresetType,
+): LLMProviderApiType {
+  return DEFAULT_PROVIDER_API_TYPE_BY_PRESET[presetType]
+}
+
+export function getSupportedApiTypesForPresetType(
+  presetType: LLMProviderPresetType,
+): readonly LLMProviderApiType[] {
+  const defaults = new Set<LLMProviderApiType>([
+    getDefaultApiTypeForPresetType(presetType),
+  ])
+
+  switch (presetType) {
+    case 'anthropic':
+      defaults.add('openai-compatible')
+      break
+    case 'gemini':
+      defaults.add('openai-compatible')
+      break
+    default:
+      defaults.add('openai-compatible')
+      defaults.add('openai-responses')
+      defaults.add('anthropic')
+      defaults.add('gemini')
+      break
+  }
+
+  return [...defaults]
+}
+
+const baseLlmProviderInputSchema = z.object({
   id: z.string().min(1, 'id is required'),
+  type: providerPresetTypeSchema.optional(),
+  presetType: providerPresetTypeSchema.optional(),
+  apiType: providerApiTypeSchema.optional(),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
-  additionalSettings: z.record(z.string(), z.string()).optional(),
+  additionalSettings: z.record(z.string(), z.unknown()).optional(),
+  customHeaders: z.array(providerHeaderSchema).optional(),
+})
+
+const normalizedLlmProviderSchema = z.object({
+  id: z.string().min(1, 'id is required'),
+  presetType: providerPresetTypeSchema,
+  apiType: providerApiTypeSchema,
+  baseUrl: z.string().optional(),
+  apiKey: z.string().optional(),
+  additionalSettings: z.record(z.string(), z.unknown()).optional(),
   customHeaders: z.array(providerHeaderSchema).optional(),
 })
 
@@ -30,96 +121,26 @@ export const baseLlmProviderSchema = z.object({
  * - src/types/embedding-model.types.ts
  * - src/core/llm/manager.ts
  */
-export const llmProviderSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('openai'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('chatgpt-oauth'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('anthropic'),
-    ...baseLlmProviderSchema.shape,
-    additionalSettings: z
-      .object({
-        requestTransportMode: requestTransportModeSchema.optional(),
-        useObsidianRequestUrl: z.boolean().optional(),
-      })
-      .optional(),
-  }),
-  z.object({
-    type: z.literal('gemini'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('deepseek'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('perplexity'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('groq'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('mistral'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('openrouter'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('ollama'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('lm-studio'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('morph'),
-    ...baseLlmProviderSchema.shape,
-  }),
-  z.object({
-    type: z.literal('azure-openai'),
-    ...baseLlmProviderSchema.shape,
-    additionalSettings: z.object({
-      deployment: z
-        .string({
-          required_error: 'deployment is required',
-        })
-        .min(1, 'deployment is required'),
-      apiVersion: z
-        .string({
-          required_error: 'apiVersion is required',
-        })
-        .min(1, 'apiVersion is required'),
-    }),
-  }),
-  z.object({
-    type: z.literal('openai-compatible'),
-    ...baseLlmProviderSchema.shape,
-    baseUrl: z
-      .string({
-        required_error: 'base URL is required',
-      })
-      .min(1, 'base URL is required'),
-    additionalSettings: z
-      .object({
-        noStainless: z.boolean().optional(),
-        requestTransportMode: requestTransportModeSchema.optional(),
-        useObsidianRequestUrl: z.boolean().optional(),
-      })
-      .optional(),
-  }),
-])
+export const llmProviderSchema = baseLlmProviderInputSchema
+  .transform((value) => {
+    const presetType = value.presetType ?? value.type ?? 'openai-compatible'
+
+    return {
+      id: value.id,
+      presetType,
+      apiType: value.apiType ?? getDefaultApiTypeForPresetType(presetType),
+      ...(value.baseUrl !== undefined ? { baseUrl: value.baseUrl } : {}),
+      ...(value.apiKey !== undefined ? { apiKey: value.apiKey } : {}),
+      ...(value.additionalSettings !== undefined
+        ? { additionalSettings: value.additionalSettings }
+        : {}),
+      ...(value.customHeaders !== undefined
+        ? { customHeaders: value.customHeaders }
+        : {}),
+    }
+  })
+  .pipe(normalizedLlmProviderSchema)
 
 export type LLMProvider = z.infer<typeof llmProviderSchema>
-export type LLMProviderType = LLMProvider['type']
 export type ProviderHeader = z.infer<typeof providerHeaderSchema>
 export type RequestTransportMode = z.infer<typeof requestTransportModeSchema>

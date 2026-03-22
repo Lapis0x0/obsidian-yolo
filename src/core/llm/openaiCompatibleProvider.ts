@@ -52,9 +52,7 @@ type OpenAICompatibleStreamingRequest = LLMRequestStreaming &
   Record<string, unknown> &
   OpenAICompatibleExtras
 
-export class OpenAICompatibleProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'openai-compatible' }>
-> {
+export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private browserClient: OpenAI
   private obsidianClient: OpenAI
@@ -80,7 +78,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
   }
 
   constructor(
-    provider: Extract<LLMProvider, { type: 'openai-compatible' }>,
+    provider: LLMProvider,
     options?: {
       onAutoPromoteToObsidian?: () => void
     },
@@ -90,7 +88,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
-      providerType: provider.type,
+      providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: provider.baseUrl,
     })
@@ -122,10 +120,6 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'openai-compatible') {
-      throw new Error('Model is not an OpenAI Compatible model')
-    }
-
     if (!this.provider.baseUrl) {
       throw new LLMBaseUrlNotSetException(
         `Provider ${this.provider.id} base URL is missing. Please set it in settings menu.`,
@@ -228,10 +222,6 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'openai-compatible') {
-      throw new Error('Model is not an OpenAI Compatible model')
-    }
-
     if (!this.provider.baseUrl) {
       throw new LLMBaseUrlNotSetException(
         `Provider ${this.provider.id} base URL is missing. Please set it in settings menu.`,

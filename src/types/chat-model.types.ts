@@ -1,8 +1,23 @@
 import { z } from 'zod'
 
 import { customParameterSchema } from './custom-parameter.types'
+export const reasoningConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    reasoning_effort: z.string().optional(),
+  })
+  .optional()
 
-const baseChatModelSchema = z.object({
+export const thinkingConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    budget_tokens: z.number().optional(),
+    // Google Gemini thinking tokens budget. 0=off (Flash/Flash-Lite), -1=dynamic.
+    thinking_budget: z.number().optional(),
+  })
+  .optional()
+
+export const chatModelSchema = z.object({
   providerId: z
     .string({
       required_error: 'provider ID is required',
@@ -28,124 +43,14 @@ const baseChatModelSchema = z.object({
   topP: z.number().min(0).max(1).optional(),
   maxOutputTokens: z.number().int().min(1).optional(),
   customParameters: z.array(customParameterSchema).optional(),
+  reasoning: reasoningConfigSchema,
+  thinking: thinkingConfigSchema,
+  toolType: z.enum(['none', 'gemini']).default('none').optional(),
+  web_search_options: z
+    .object({
+      search_context_size: z.string(),
+    })
+    .optional(),
 })
-
-export const chatModelSchema = z.discriminatedUnion('providerType', [
-  z.object({
-    providerType: z.literal('openai'),
-    ...baseChatModelSchema.shape,
-    reasoning: z
-      .object({
-        enabled: z.boolean(),
-        reasoning_effort: z.string().optional(),
-      })
-      .optional(),
-  }),
-  z.object({
-    providerType: z.literal('chatgpt-oauth'),
-    ...baseChatModelSchema.shape,
-    reasoning: z
-      .object({
-        enabled: z.boolean(),
-        reasoning_effort: z.string().optional(),
-      })
-      .optional(),
-  }),
-  z.object({
-    providerType: z.literal('anthropic'),
-    ...baseChatModelSchema.shape,
-    thinking: z
-      .object({
-        enabled: z.boolean(),
-        budget_tokens: z.number(),
-      })
-      .optional(),
-  }),
-  z.object({
-    providerType: z.literal('gemini'),
-    ...baseChatModelSchema.shape,
-    thinking: z
-      .object({
-        enabled: z.boolean(),
-        // Google Gemini thinking tokens budget. 0=off (Flash/Flash-Lite), -1=dynamic.
-        thinking_budget: z.number(),
-      })
-      .default({ enabled: true, thinking_budget: -1 })
-      .optional(),
-    toolType: z.enum(['none', 'gemini']).default('none').optional(),
-  }),
-  z.object({
-    providerType: z.literal('groq'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('openrouter'),
-    ...baseChatModelSchema.shape,
-    // Allow users to configure reasoning/thinking even via aggregators
-    reasoning: z
-      .object({
-        enabled: z.boolean(),
-        reasoning_effort: z.string().optional(),
-      })
-      .optional(),
-    thinking: z
-      .object({
-        enabled: z.boolean(),
-        thinking_budget: z.number(),
-      })
-      .optional(),
-  }),
-  z.object({
-    providerType: z.literal('ollama'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('lm-studio'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('deepseek'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('perplexity'),
-    ...baseChatModelSchema.shape,
-    web_search_options: z
-      .object({
-        search_context_size: z.string(),
-      })
-      .optional(),
-  }),
-  z.object({
-    providerType: z.literal('mistral'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('morph'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('azure-openai'),
-    ...baseChatModelSchema.shape,
-  }),
-  z.object({
-    providerType: z.literal('openai-compatible'),
-    ...baseChatModelSchema.shape,
-    // Same here: keep user freedom to configure across any provider
-    reasoning: z
-      .object({
-        enabled: z.boolean(),
-        reasoning_effort: z.string().optional(),
-      })
-      .optional(),
-    thinking: z
-      .object({
-        enabled: z.boolean(),
-        thinking_budget: z.number(),
-      })
-      .optional(),
-    toolType: z.enum(['none', 'gemini']).default('none').optional(),
-  }),
-])
 
 export type ChatModel = z.infer<typeof chatModelSchema>

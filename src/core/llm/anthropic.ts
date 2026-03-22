@@ -45,9 +45,7 @@ import {
   runWithRequestTransportForStream,
 } from './requestTransport'
 
-export class AnthropicProvider extends BaseLLMProvider<
-  Extract<LLMProvider, { type: 'anthropic' }>
-> {
+export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private browserClient: Anthropic
   private obsidianClient: Anthropic
   private requestTransportMode: RequestTransportMode
@@ -74,7 +72,7 @@ export class AnthropicProvider extends BaseLLMProvider<
   private static readonly DEFAULT_MAX_TOKENS = 8192
 
   constructor(
-    provider: Extract<LLMProvider, { type: 'anthropic' }>,
+    provider: LLMProvider,
     options?: {
       onAutoPromoteToObsidian?: () => void
     },
@@ -83,7 +81,7 @@ export class AnthropicProvider extends BaseLLMProvider<
     this.onAutoPromoteToObsidian = options?.onAutoPromoteToObsidian
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
-      providerType: provider.type,
+      providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: provider.baseUrl,
     })
@@ -113,10 +111,6 @@ export class AnthropicProvider extends BaseLLMProvider<
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (model.providerType !== 'anthropic') {
-      throw new Error('Model is not a Anthropic model')
-    }
-
     if (!this.provider.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -134,20 +128,23 @@ export class AnthropicProvider extends BaseLLMProvider<
           .map((m) => AnthropicProvider.parseRequestMessage(m))
           .filter((m): m is MessageParam => m !== null),
         system: systemMessage,
-        thinking: model.thinking?.enabled
-          ? {
-              type: 'enabled',
-              budget_tokens: model.thinking.budget_tokens,
-            }
-          : undefined,
+        thinking:
+          model.thinking?.enabled &&
+          typeof model.thinking.budget_tokens === 'number'
+            ? {
+                type: 'enabled',
+                budget_tokens: model.thinking.budget_tokens,
+              }
+            : undefined,
         tools: request.tools?.map((t) => AnthropicProvider.parseRequestTool(t)),
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
         max_tokens:
           request.max_tokens ??
-          (model.thinking?.enabled
-            ? model.thinking?.budget_tokens +
+          (model.thinking?.enabled &&
+          typeof model.thinking.budget_tokens === 'number'
+            ? model.thinking.budget_tokens +
               AnthropicProvider.DEFAULT_MAX_TOKENS
             : AnthropicProvider.DEFAULT_MAX_TOKENS),
         temperature: request.temperature,
@@ -220,10 +217,6 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (model.providerType !== 'anthropic') {
-      throw new Error('Model is not a Anthropic model')
-    }
-
     if (!this.provider.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -241,20 +234,23 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
           .map((m) => AnthropicProvider.parseRequestMessage(m))
           .filter((m): m is MessageParam => m !== null),
         system: systemMessage,
-        thinking: model.thinking?.enabled
-          ? {
-              type: 'enabled',
-              budget_tokens: model.thinking.budget_tokens,
-            }
-          : undefined,
+        thinking:
+          model.thinking?.enabled &&
+          typeof model.thinking.budget_tokens === 'number'
+            ? {
+                type: 'enabled',
+                budget_tokens: model.thinking.budget_tokens,
+              }
+            : undefined,
         tools: request.tools?.map((t) => AnthropicProvider.parseRequestTool(t)),
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
         max_tokens:
           request.max_tokens ??
-          (model.thinking?.enabled
-            ? model.thinking?.budget_tokens +
+          (model.thinking?.enabled &&
+          typeof model.thinking.budget_tokens === 'number'
+            ? model.thinking.budget_tokens +
               AnthropicProvider.DEFAULT_MAX_TOKENS
             : AnthropicProvider.DEFAULT_MAX_TOKENS),
         temperature: request.temperature,

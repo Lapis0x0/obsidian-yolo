@@ -134,8 +134,10 @@ function EditChatModelModalComponent({
     }
     if (editableModel.reasoning?.enabled) return 'openai'
     if (editableModel.thinking?.enabled) {
-      if (editableModel.providerType === 'anthropic') return 'anthropic'
-      if (editableModel.providerType === 'gemini') return 'gemini'
+      if (typeof editableModel.thinking.budget_tokens === 'number')
+        return 'anthropic'
+      if (typeof editableModel.thinking.thinking_budget === 'number')
+        return 'gemini'
       return 'generic'
     }
     return 'none'

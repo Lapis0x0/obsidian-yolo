@@ -1,9 +1,6 @@
 import { ChatModel } from '../../types/chat-model.types'
 
-type OpenAICompatibleModel = Extract<
-  ChatModel,
-  { providerType: 'openai-compatible' }
->
+type OpenAICompatibleModel = ChatModel
 
 type OpenAICompatibleHostCapabilities = {
   host: string | null

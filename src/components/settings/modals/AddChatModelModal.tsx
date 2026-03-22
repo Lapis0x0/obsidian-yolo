@@ -72,19 +72,6 @@ const clampTopP = (value: number): number => Math.min(1, Math.max(0, value))
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
 
-const REASONING_CONFIG_PROVIDER_TYPES = [
-  'chatgpt-oauth',
-  'openai',
-  'openrouter',
-  'openai-compatible',
-] as const
-const THINKING_CONFIG_PROVIDER_TYPES = [
-  'anthropic',
-  'gemini',
-  'openrouter',
-  'openai-compatible',
-] as const
-
 const extractModelIdentifier = (value: unknown): string | null => {
   if (typeof value === 'string') {
     return value
@@ -122,8 +109,8 @@ const normalizeGeminiBaseUrl = (raw?: string): string | undefined => {
 
 const CHATGPT_OAUTH_DEFAULT_MODELS = Array.from(
   new Set([
-    ...DEFAULT_CHAT_MODELS.filter(
-      (model) => model.providerType === 'chatgpt-oauth',
+    ...DEFAULT_CHAT_MODELS.filter((model) =>
+      model.providerId.startsWith('chatgpt-oauth'),
     ).map((model) => model.model),
     'gpt-5.1-codex',
     'gpt-5.1-codex-max',
@@ -144,33 +131,32 @@ const isGeminiToolType = (
 type ReasoningConfigurableModel = Extract<
   ChatModel,
   {
-    providerType:
-      | 'chatgpt-oauth'
-      | 'openai'
-      | 'openrouter'
-      | 'openai-compatible'
+    reasoning?: { enabled: boolean; reasoning_effort?: string }
   }
 >
 type ThinkingConfigurableModel = Extract<
   ChatModel,
   {
-    providerType: 'anthropic' | 'gemini' | 'openrouter' | 'openai-compatible'
+    thinking?: {
+      enabled: boolean
+      budget_tokens?: number
+      thinking_budget?: number
+    }
   }
 >
 
 const isReasoningConfigurable = (
-  model: ChatModel,
-): model is ReasoningConfigurableModel =>
-  (REASONING_CONFIG_PROVIDER_TYPES as readonly string[]).includes(
-    model.providerType,
-  )
+  provider: LLMProvider | undefined,
+): provider is LLMProvider =>
+  provider?.apiType === 'openai-compatible' ||
+  provider?.apiType === 'openai-responses'
 
 const isThinkingConfigurable = (
-  model: ChatModel,
-): model is ThinkingConfigurableModel =>
-  (THINKING_CONFIG_PROVIDER_TYPES as readonly string[]).includes(
-    model.providerType,
-  )
+  provider: LLMProvider | undefined,
+): provider is LLMProvider =>
+  provider?.apiType === 'anthropic' ||
+  provider?.apiType === 'gemini' ||
+  provider?.apiType === 'openai-compatible'
 
 export class AddChatModelModal extends ReactModal<AddChatModelModalComponentProps> {
   constructor(app: App, plugin: SmartComposerPlugin, provider?: LLMProvider) {
@@ -195,10 +181,9 @@ function AddChatModelModalComponent({
   const selectedProvider: LLMProvider | undefined =
     provider ?? plugin.settings.providers[0]
   const initialProviderId = selectedProvider?.id ?? ''
-  const initialProviderType = selectedProvider?.type ?? 'openai-compatible'
+  const initialProviderType = selectedProvider?.apiType ?? 'openai-compatible'
   const [formData, setFormData] = useState<ChatModel>({
     providerId: initialProviderId,
-    providerType: initialProviderType,
     id: '',
     model: '',
     name: undefined,
@@ -259,15 +244,10 @@ function AddChatModelModalComponent({
           selectedProvider.customHeaders,
         )
         const isOpenAIStyle =
-          selectedProvider.type === 'openai' ||
-          selectedProvider.type === 'openai-compatible' ||
-          selectedProvider.type === 'openrouter' ||
-          selectedProvider.type === 'groq' ||
-          selectedProvider.type === 'mistral' ||
-          selectedProvider.type === 'perplexity' ||
-          selectedProvider.type === 'deepseek'
+          selectedProvider.apiType === 'openai-compatible' ||
+          selectedProvider.apiType === 'openai-responses'
 
-        if (selectedProvider.type === 'chatgpt-oauth') {
+        if (selectedProvider.presetType === 'chatgpt-oauth') {
           const service = plugin.getChatGPTOAuthService(selectedProvider.id)
           const credential = await service.getUsableCredential()
 
@@ -361,9 +341,9 @@ function AddChatModelModalComponent({
             // default OpenAI base when not provided
             const cleaned = selectedProvider.baseUrl?.replace(/\/+$/, '')
             if (cleaned && cleaned.length > 0) return cleaned
-            if (selectedProvider.type === 'openai')
+            if (selectedProvider.presetType === 'openai')
               return 'https://api.openai.com/v1'
-            if (selectedProvider.type === 'openrouter')
+            if (selectedProvider.presetType === 'openrouter')
               return 'https://openrouter.ai/api/v1'
             return '' // no base => skip
           })()
@@ -437,7 +417,7 @@ function AddChatModelModalComponent({
           }
         }
 
-        if (selectedProvider.type === 'gemini') {
+        if (selectedProvider.apiType === 'gemini') {
           const baseUrl = normalizeGeminiBaseUrl(selectedProvider.baseUrl)
           const ai = new GoogleGenAI({
             apiKey: selectedProvider.apiKey ?? '',
@@ -540,7 +520,10 @@ function AddChatModelModalComponent({
           ? formData.name
           : formData.model,
       // Persist tool type when provider is Gemini; keep optional otherwise
-      ...(selectedProvider?.type === 'gemini' ? { toolType } : {}),
+      ...(selectedProvider?.apiType === 'gemini' ||
+      selectedProvider?.apiType === 'openai-compatible'
+        ? { toolType }
+        : {}),
       ...(sanitizedCustomParameters.length > 0
         ? { customParameters: sanitizedCustomParameters }
         : {}),
@@ -553,14 +536,14 @@ function AddChatModelModalComponent({
 
     if (
       reasoningType === 'openai' &&
-      !isReasoningConfigurable(modelDataWithPrefix)
+      !isReasoningConfigurable(selectedProvider)
     ) {
       new Notice(t('common.error'))
       return
     }
     if (
       (reasoningType === 'gemini' || reasoningType === 'anthropic') &&
-      !isThinkingConfigurable(modelDataWithPrefix)
+      !isThinkingConfigurable(selectedProvider)
     ) {
       new Notice(t('common.error'))
       return
@@ -685,7 +668,8 @@ function AddChatModelModalComponent({
 
       {/* Reasoning strength is controlled in the chat sidebar */}
       {/* Tool type for Gemini provider */}
-      {selectedProvider?.type === 'gemini' && (
+      {(selectedProvider?.apiType === 'gemini' ||
+        selectedProvider?.apiType === 'openai-compatible') && (
         <ObsidianSetting
           name={t('settings.models.toolType')}
           desc={t('settings.models.toolTypeDesc')}
