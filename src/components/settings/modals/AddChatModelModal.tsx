@@ -3,6 +3,7 @@ import { App, Notice, requestUrl } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { DEFAULT_CHAT_MODELS } from '../../../constants'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel, chatModelSchema } from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
@@ -118,6 +119,19 @@ const normalizeGeminiBaseUrl = (raw?: string): string | undefined => {
     return trimmed.replace(/\/?(v1beta|v1alpha1|v1)(\/)?$/, '')
   }
 }
+
+const CHATGPT_OAUTH_DEFAULT_MODELS = Array.from(
+  new Set([
+    ...DEFAULT_CHAT_MODELS.filter(
+      (model) => model.providerType === 'chatgpt-oauth',
+    ).map((model) => model.model),
+    'gpt-5.1-codex',
+    'gpt-5.1-codex-max',
+    'gpt-5.1-codex-mini',
+    'gpt-5.2',
+    'gpt-5.2-codex',
+  ]),
+)
 
 const isReasoningType = (value: string): value is ReasoningType =>
   REASONING_TYPES.includes(value as ReasoningType)
@@ -252,6 +266,95 @@ function AddChatModelModalComponent({
           selectedProvider.type === 'mistral' ||
           selectedProvider.type === 'perplexity' ||
           selectedProvider.type === 'deepseek'
+
+        if (selectedProvider.type === 'chatgpt-oauth') {
+          const service = plugin.getChatGPTOAuthService(selectedProvider.id)
+          const credential = await service.getUsableCredential()
+
+          if (!credential) {
+            const fallback = Array.from(
+              new Set(CHATGPT_OAUTH_DEFAULT_MODELS),
+            ).sort()
+            setAvailableModels(fallback)
+            plugin.setCachedModelList(selectedProvider.id, fallback)
+            return
+          }
+
+          const base = (
+            selectedProvider.baseUrl?.trim() ||
+            'https://chatgpt.com/backend-api/codex'
+          ).replace(/\/+$/, '')
+          const baseWithoutVersion = base.replace(/\/v\d+$/, '')
+          const urlCandidates = Array.from(
+            new Set([
+              `${base}/models`,
+              `${baseWithoutVersion}/models`,
+              `${base}/responses/models`,
+              `${baseWithoutVersion}/responses/models`,
+            ]),
+          )
+
+          let lastErr: unknown = null
+          for (const url of urlCandidates) {
+            try {
+              const response = await requestUrl({
+                url,
+                method: 'GET',
+                headers: {
+                  Accept: 'application/json',
+                  Authorization: `Bearer ${credential.accessToken}`,
+                  originator: 'opencode',
+                  ...(credential.accountId
+                    ? { 'ChatGPT-Account-Id': credential.accountId }
+                    : {}),
+                  ...(providerHeaders ?? {}),
+                },
+              })
+              if (response.status < 200 || response.status >= 300) {
+                lastErr = new Error(
+                  `Failed to fetch models: ${response.status}`,
+                )
+                continue
+              }
+              const json = response.json ?? JSON.parse(response.text)
+              const buckets: string[] = []
+              if (Array.isArray(json?.data)) {
+                buckets.push(...collectModelIdentifiers(json.data))
+              }
+              if (Array.isArray(json?.models)) {
+                buckets.push(...collectModelIdentifiers(json.models))
+              }
+              if (Array.isArray(json)) {
+                buckets.push(...collectModelIdentifiers(json))
+              }
+
+              const unique = Array.from(
+                new Set([...buckets, ...CHATGPT_OAUTH_DEFAULT_MODELS]),
+              ).sort()
+              if (unique.length === 0) {
+                lastErr = new Error('Empty models list in response')
+                continue
+              }
+
+              setAvailableModels(unique)
+              plugin.setCachedModelList(selectedProvider.id, unique)
+              return
+            } catch (error) {
+              lastErr = error
+            }
+          }
+
+          console.warn(
+            '[Smart Composer] Failed to fetch ChatGPT OAuth models, fallback to defaults.',
+            lastErr,
+          )
+          const fallback = Array.from(
+            new Set(CHATGPT_OAUTH_DEFAULT_MODELS),
+          ).sort()
+          setAvailableModels(fallback)
+          plugin.setCachedModelList(selectedProvider.id, fallback)
+          return
+        }
 
         if (isOpenAIStyle) {
           const base = ((): string => {
