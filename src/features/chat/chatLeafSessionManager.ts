@@ -114,6 +114,10 @@ export class ChatLeafSessionManager {
     return this.records.get(leaf)?.placement
   }
 
+  inferLeafPlacement(leaf: WorkspaceLeaf): ChatLeafPlacement {
+    return this.inferPlacement(leaf)
+  }
+
   resolveTargetLeaf(
     options: ResolveTargetLeafOptions = {},
   ): WorkspaceLeaf | null {

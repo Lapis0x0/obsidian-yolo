@@ -5,6 +5,7 @@ export type TranslationKeys = {
   commands: {
     openChat: string
     openChatSidebar: string
+    openYoloNewChat: string
     openNewChatTab: string
     openNewChatSplit: string
     openNewChatWindow: string
@@ -877,6 +878,7 @@ export type TranslationKeys = {
     rebuildingIndex: string
     rebuildComplete: string
     rebuildFailed: string
+    openYoloNewChatFailed: string
     pgliteUnavailable: string
     downloadingPglite: string
     updatingIndex: string

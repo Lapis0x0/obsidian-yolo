@@ -33,6 +33,7 @@ import {
   ChatLeafPlacement,
   ChatLeafSessionManager,
 } from './features/chat/chatLeafSessionManager'
+import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
@@ -80,6 +81,7 @@ export default class SmartComposerPlugin extends Plugin {
   private selectionChatController: SelectionChatController | null = null
   private chatViewNavigator: ChatViewNavigator | null = null
   private chatLeafSessionManager: ChatLeafSessionManager | null = null
+  private newTabEmptyStateEnhancer: NewTabEmptyStateEnhancer | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
   private mcpCoordinator: McpCoordinator | null = null
@@ -726,6 +728,9 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
 
+    this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
+    this.newTabEmptyStateEnhancer.enable()
+
     this.registerEditorExtension(selectionHighlightController.createExtension())
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
@@ -1028,6 +1033,7 @@ export default class SmartComposerPlugin extends Plugin {
     this.selectionChatController?.destroy()
     this.selectionChatController = null
     this.chatViewNavigator = null
+    this.newTabEmptyStateEnhancer = null
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null

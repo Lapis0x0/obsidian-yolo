@@ -4,6 +4,7 @@ export const zh: TranslationKeys = {
   commands: {
     openChat: '打开聊天',
     openChatSidebar: '打开聊天（侧栏）',
+    openYoloNewChat: 'YOLO:打开聊天窗口',
     openNewChatTab: '在新标签页打开新对话',
     openNewChatSplit: '在右侧分屏打开新对话',
     openNewChatWindow: '在新窗口打开新对话',
@@ -946,6 +947,7 @@ export const zh: TranslationKeys = {
     rebuildingIndex: '正在重建库索引...',
     rebuildComplete: '重建库索引完成',
     rebuildFailed: '重建库索引失败',
+    openYoloNewChatFailed: '打开 YOLO 聊天窗口失败，请先用命令面板尝试',
     pgliteUnavailable: 'PGlite 资源不可用，请重新安装插件',
     downloadingPglite:
       '正在从 CDN 下载 PGlite 依赖 (~20MB)，首次使用需要一点时间...',
