@@ -453,6 +453,18 @@ export const it: TranslationKeys = {
       customHeadersAdd: 'Aggiungi header',
       customHeadersKeyPlaceholder: 'Nome header',
       customHeadersValuePlaceholder: 'Valore header',
+      chatgptOAuthTitle: 'ChatGPT OAuth',
+      chatgptOAuthConnect: 'Connetti',
+      chatgptOAuthDisconnect: 'Disconnetti',
+      chatgptOAuthConnecting: 'Connessione in corso...',
+      chatgptOAuthLoadingStatus: 'Caricamento stato ChatGPT OAuth...',
+      chatgptOAuthConnected: 'Connesso',
+      chatgptOAuthExpires: 'scade',
+      chatgptOAuthDisconnectedHelp:
+        'Non connesso. Connettiti per usare i modelli del tuo account ChatGPT Plus / Pro.',
+      chatgptOAuthStreamingNotice:
+        'A causa delle limitazioni dell ambiente Obsidian, ChatGPT OAuth al momento non supporta le risposte in streaming.',
+      chatgptOAuthPendingCode: 'Codice dispositivo corrente:',
     },
     models: {
       title: 'Modelli',

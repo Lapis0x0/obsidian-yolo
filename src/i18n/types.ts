@@ -336,6 +336,16 @@ export type TranslationKeys = {
       customHeadersAdd: string
       customHeadersKeyPlaceholder: string
       customHeadersValuePlaceholder: string
+      chatgptOAuthTitle: string
+      chatgptOAuthConnect: string
+      chatgptOAuthDisconnect: string
+      chatgptOAuthConnecting: string
+      chatgptOAuthLoadingStatus: string
+      chatgptOAuthConnected: string
+      chatgptOAuthExpires: string
+      chatgptOAuthDisconnectedHelp: string
+      chatgptOAuthStreamingNotice: string
+      chatgptOAuthPendingCode?: string
     }
     models: {
       title: string
