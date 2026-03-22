@@ -83,6 +83,22 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
     expect(request.instructions).toBe('You are helpful.')
   })
 
+  it('maps hosted web search tools to responses web search preview tools', () => {
+    const request = adapter.buildRequest({
+      model: 'gpt-5.4',
+      stream: false,
+      tools: [{ type: 'web_search' } as never],
+      messages: [
+        {
+          role: 'user',
+          content: 'What happened today?',
+        },
+      ],
+    })
+
+    expect(request.tools).toEqual([{ type: 'web_search_preview' }])
+  })
+
   it('parses non-streaming responses into chat completion shape', () => {
     const response = {
       id: 'resp_1',

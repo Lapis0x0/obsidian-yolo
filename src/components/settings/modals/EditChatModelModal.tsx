@@ -40,10 +40,12 @@ type EditableChatModel = ChatModel & {
     thinking_budget?: number // Gemini, OpenRouter
     budget_tokens?: number // Anthropic
   }
-  toolType?: 'none' | 'gemini'
+  toolType?: 'none' | 'gemini' | 'gpt'
   customParameters?: CustomParameter[]
 }
 
+const TOOL_TYPES = ['none', 'gemini', 'gpt'] as const
+type ToolType = (typeof TOOL_TYPES)[number]
 const CUSTOM_PARAMETER_TYPES = ['text', 'number', 'boolean', 'json'] as const
 const RESERVED_CUSTOM_PARAMETER_KEYS = new Set([
   'temperature',
@@ -90,6 +92,9 @@ function EditChatModelModalComponent({
 }: EditChatModelModalComponentProps & { onClose: () => void }) {
   const { t } = useLanguage()
   const editableModel: EditableChatModel = model
+  const selectedProvider = plugin.settings.providers.find(
+    (provider) => provider.id === model.providerId,
+  )
 
   const normalizeReasoningType = (
     value: string,
@@ -105,8 +110,15 @@ function EditChatModelModalComponent({
     return 'none'
   }
 
-  const normalizeToolType = (value: string): 'none' | 'gemini' =>
-    value === 'gemini' ? 'gemini' : 'none'
+  const normalizeToolType = (value: string): ToolType =>
+    TOOL_TYPES.includes(value as ToolType) ? (value as ToolType) : 'none'
+
+  const supportsGeminiTools =
+    selectedProvider?.apiType === 'gemini' ||
+    selectedProvider?.apiType === 'openai-compatible'
+  const supportsGptTools =
+    selectedProvider?.apiType === 'openai-compatible' ||
+    selectedProvider?.apiType === 'openai-responses'
 
   // Update modal title
   React.useEffect(() => {
@@ -151,8 +163,11 @@ function EditChatModelModalComponent({
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
 
   // Tool type state
-  const [toolType, setToolType] = useState<'none' | 'gemini'>(
+  const [toolType, setToolType] = useState<ToolType>(
     normalizeToolType(editableModel.toolType ?? 'none'),
+  )
+  const [gptWebSearchEnabled, setGptWebSearchEnabled] = useState<boolean>(
+    editableModel.gptTools?.webSearch?.enabled === true,
   )
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
@@ -281,6 +296,11 @@ function EditChatModelModalComponent({
 
         // Apply tool type
         updatedModel.toolType = toolType
+        updatedModel.gptTools = {
+          webSearch: {
+            enabled: gptWebSearchEnabled,
+          },
+        }
 
         const sanitizedCustomParameters = sanitizeCustomParameters(
           customParameters,
@@ -367,20 +387,59 @@ function EditChatModelModalComponent({
       </ObsidianSetting>
 
       {/* Reasoning strength is controlled in the chat sidebar */}
-      {/* Tool type */}
-      <ObsidianSetting
-        name={t('settings.models.toolType')}
-        desc={t('settings.models.toolTypeDesc')}
-      >
-        <ObsidianDropdown
-          value={toolType}
-          options={{
-            none: t('settings.models.toolTypeNone'),
-            gemini: t('settings.models.toolTypeGemini'),
-          }}
-          onChange={(v: string) => setToolType(normalizeToolType(v))}
-        />
-      </ObsidianSetting>
+      {(supportsGeminiTools || supportsGptTools) && (
+        <ObsidianSetting
+          name={t('settings.models.toolType')}
+          desc={t('settings.models.toolTypeDesc')}
+        >
+          <ObsidianDropdown
+            value={toolType}
+            options={Object.fromEntries(
+              [
+                ['none', t('settings.models.toolTypeNone')],
+                supportsGeminiTools
+                  ? ['gemini', t('settings.models.toolTypeGemini')]
+                  : null,
+                supportsGptTools
+                  ? ['gpt', t('settings.models.toolTypeGpt')]
+                  : null,
+              ].filter((entry): entry is [string, string] => entry !== null),
+            )}
+            onChange={(v: string) => setToolType(normalizeToolType(v))}
+          />
+        </ObsidianSetting>
+      )}
+
+      {toolType === 'gpt' && supportsGptTools && (
+        <div className="smtcmp-agent-tools-panel smtcmp-agent-model-panel">
+          <div className="smtcmp-agent-tools-panel-head smtcmp-agent-model-panel-head">
+            <div className="smtcmp-agent-tools-panel-title">
+              {t('settings.models.gptTools')}
+            </div>
+          </div>
+
+          <div className="smtcmp-agent-model-controls">
+            <div className="smtcmp-agent-model-control">
+              <div className="smtcmp-agent-model-control-top">
+                <div className="smtcmp-agent-model-control-meta">
+                  <div className="smtcmp-agent-model-control-label">
+                    {t('settings.models.gptToolWebSearch')}
+                  </div>
+                  <div className="smtcmp-agent-model-control-desc">
+                    {t('settings.models.gptToolWebSearchDesc')}
+                  </div>
+                </div>
+                <div className="smtcmp-agent-model-control-actions">
+                  <ObsidianToggle
+                    value={gptWebSearchEnabled}
+                    onChange={setGptWebSearchEnabled}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="smtcmp-agent-tools-panel smtcmp-agent-model-panel">
         <div className="smtcmp-agent-tools-panel-head smtcmp-agent-model-panel-head">

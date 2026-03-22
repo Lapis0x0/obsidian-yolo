@@ -389,6 +389,11 @@ export type TranslationKeys = {
       toolTypeDesc?: string
       toolTypeNone?: string
       toolTypeGemini?: string
+      toolTypeGpt?: string
+      gptTools?: string
+      gptToolsDesc?: string
+      gptToolWebSearch?: string
+      gptToolWebSearchDesc?: string
       sampling?: string
       restoreDefaults?: string
       maxOutputTokens?: string

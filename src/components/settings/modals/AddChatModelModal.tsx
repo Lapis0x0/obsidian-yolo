@@ -47,7 +47,8 @@ const REASONING_TYPES = [
 ] as const
 type ReasoningType = (typeof REASONING_TYPES)[number]
 
-const GEMINI_TOOL_TYPES = ['none', 'gemini'] as const
+const TOOL_TYPES = ['none', 'gemini', 'gpt'] as const
+type ToolType = (typeof TOOL_TYPES)[number]
 const CUSTOM_PARAMETER_TYPES = ['text', 'number', 'boolean', 'json'] as const
 const RESERVED_CUSTOM_PARAMETER_KEYS = new Set([
   'temperature',
@@ -124,10 +125,8 @@ const CHATGPT_OAUTH_DEFAULT_MODELS = Array.from(
 const isReasoningType = (value: string): value is ReasoningType =>
   REASONING_TYPES.includes(value as ReasoningType)
 
-const isGeminiToolType = (
-  value: string,
-): value is (typeof GEMINI_TOOL_TYPES)[number] =>
-  GEMINI_TOOL_TYPES.includes(value as (typeof GEMINI_TOOL_TYPES)[number])
+const isToolType = (value: string): value is ToolType =>
+  TOOL_TYPES.includes(value as ToolType)
 
 type ReasoningConfigurableModel = Extract<
   ChatModel,
@@ -158,6 +157,13 @@ const isThinkingConfigurable = (
   provider?.apiType === 'anthropic' ||
   provider?.apiType === 'gemini' ||
   provider?.apiType === 'openai-compatible'
+
+const supportsGeminiTools = (provider: LLMProvider | undefined): boolean =>
+  provider?.apiType === 'gemini' || provider?.apiType === 'openai-compatible'
+
+const supportsGptTools = (provider: LLMProvider | undefined): boolean =>
+  provider?.apiType === 'openai-compatible' ||
+  provider?.apiType === 'openai-responses'
 
 export class AddChatModelModal extends ReactModal<AddChatModelModalComponentProps> {
   constructor(app: App, plugin: SmartComposerPlugin, provider?: LLMProvider) {
@@ -201,9 +207,8 @@ function AddChatModelModalComponent({
   const [reasoningType, setReasoningType] = useState<ReasoningType>('none')
   // When user manually changes reasoning type, stop auto-detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
-  // Tool type (only meaningful for Gemini provider)
-  const [toolType, setToolType] =
-    useState<(typeof GEMINI_TOOL_TYPES)[number]>('none')
+  const [toolType, setToolType] = useState<ToolType>('none')
+  const [gptWebSearchEnabled, setGptWebSearchEnabled] = useState<boolean>(false)
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
     topP: number
@@ -511,11 +516,15 @@ function AddChatModelModalComponent({
         formData.name && formData.name.trim().length > 0
           ? formData.name
           : formData.model,
-      // Persist tool type when provider is Gemini; keep optional otherwise
-      ...(selectedProvider?.apiType === 'gemini' ||
-      selectedProvider?.apiType === 'openai-compatible'
+      ...(supportsGeminiTools(selectedProvider) ||
+      supportsGptTools(selectedProvider)
         ? { toolType }
         : {}),
+      gptTools: {
+        webSearch: {
+          enabled: gptWebSearchEnabled,
+        },
+      },
       ...(sanitizedCustomParameters.length > 0
         ? { customParameters: sanitizedCustomParameters }
         : {}),
@@ -660,25 +669,61 @@ function AddChatModelModalComponent({
 
       {/* Reasoning strength is controlled in the chat sidebar */}
       {/* Tool type for Gemini provider */}
-      {(selectedProvider?.apiType === 'gemini' ||
-        selectedProvider?.apiType === 'openai-compatible') && (
+      {(supportsGeminiTools(selectedProvider) ||
+        supportsGptTools(selectedProvider)) && (
         <ObsidianSetting
           name={t('settings.models.toolType')}
           desc={t('settings.models.toolTypeDesc')}
         >
           <ObsidianDropdown
             value={toolType}
-            options={{
-              none: t('settings.models.toolTypeNone'),
-              gemini: t('settings.models.toolTypeGemini'),
-            }}
+            options={Object.fromEntries(
+              [
+                ['none', t('settings.models.toolTypeNone')],
+                supportsGeminiTools(selectedProvider)
+                  ? ['gemini', t('settings.models.toolTypeGemini')]
+                  : null,
+                supportsGptTools(selectedProvider)
+                  ? ['gpt', t('settings.models.toolTypeGpt')]
+                  : null,
+              ].filter((entry): entry is [string, string] => entry !== null),
+            )}
             onChange={(value: string) =>
-              setToolType(
-                isGeminiToolType(value) ? value : GEMINI_TOOL_TYPES[0],
-              )
+              setToolType(isToolType(value) ? value : TOOL_TYPES[0])
             }
           />
         </ObsidianSetting>
+      )}
+
+      {toolType === 'gpt' && supportsGptTools(selectedProvider) && (
+        <div className="smtcmp-agent-tools-panel smtcmp-agent-model-panel">
+          <div className="smtcmp-agent-tools-panel-head smtcmp-agent-model-panel-head">
+            <div className="smtcmp-agent-tools-panel-title">
+              {t('settings.models.gptTools')}
+            </div>
+          </div>
+
+          <div className="smtcmp-agent-model-controls">
+            <div className="smtcmp-agent-model-control">
+              <div className="smtcmp-agent-model-control-top">
+                <div className="smtcmp-agent-model-control-meta">
+                  <div className="smtcmp-agent-model-control-label">
+                    {t('settings.models.gptToolWebSearch')}
+                  </div>
+                  <div className="smtcmp-agent-model-control-desc">
+                    {t('settings.models.gptToolWebSearchDesc')}
+                  </div>
+                </div>
+                <div className="smtcmp-agent-model-control-actions">
+                  <ObsidianToggle
+                    value={gptWebSearchEnabled}
+                    onChange={setGptWebSearchEnabled}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Provider is derived from the current group context; field removed intentionally */}

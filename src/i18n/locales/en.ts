@@ -515,6 +515,12 @@ export const en: TranslationKeys = {
       toolTypeDesc: 'Select the tool type supported by the model',
       toolTypeNone: 'No tools',
       toolTypeGemini: 'Gemini tools',
+      toolTypeGpt: 'GPT tools',
+      gptTools: 'GPT tools',
+      gptToolsDesc: 'Choose the built-in GPT tools available to this model',
+      gptToolWebSearch: 'Web Search',
+      gptToolWebSearchDesc:
+        'Allow the model to search the web and return cited sources.',
       sampling: 'Sampling parameters',
       restoreDefaults: 'Restore defaults',
       maxOutputTokens: 'Max output tokens',

@@ -18,6 +18,7 @@ import {
 import { LLMProvider } from '../../types/provider.types'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
+import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 
 import { BaseLLMProvider } from './base'
 import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
@@ -72,6 +73,24 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
+  private mergeHostedTools(
+    model: ChatModel,
+    body: ResponseCreateParamsStreaming,
+  ): ResponseCreateParamsStreaming {
+    const hostedTools = getHostedToolsForModel(model)
+    if (hostedTools.length === 0) {
+      return body
+    }
+
+    return {
+      ...body,
+      tools: [
+        ...(body.tools ?? []),
+        ...hostedTools.map(() => ({ type: 'web_search_preview' as const })),
+      ],
+    }
+  }
+
   async generateResponse(
     model: ChatModel,
     request: LLMRequestNonStreaming,
@@ -84,12 +103,15 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     }
 
     try {
-      const body = this.adapter.buildRequest(
-        this.applyCustomModelParameters(model, {
-          ...this.applyReasoningEffort(model, request),
-          stream: false,
-        }),
-      ) as ResponseCreateParamsStreaming
+      const body = this.mergeHostedTools(
+        model,
+        this.adapter.buildRequest(
+          this.applyCustomModelParameters(model, {
+            ...this.applyReasoningEffort(model, request),
+            stream: false,
+          }),
+        ) as ResponseCreateParamsStreaming,
+      )
 
       const response = (await this.client.responses.create(body as never, {
         signal: options?.signal,
@@ -117,12 +139,15 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
 
-    const body = this.adapter.buildRequest(
-      this.applyCustomModelParameters(
-        model,
-        this.applyReasoningEffort(model, request),
-      ),
-    ) as ResponseCreateParamsStreaming
+    const body = this.mergeHostedTools(
+      model,
+      this.adapter.buildRequest(
+        this.applyCustomModelParameters(
+          model,
+          this.applyReasoningEffort(model, request),
+        ),
+      ) as ResponseCreateParamsStreaming,
+    )
 
     const stream = (await this.client.responses.create(body, {
       signal: options?.signal,
