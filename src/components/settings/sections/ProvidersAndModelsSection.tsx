@@ -104,6 +104,7 @@ function ChatGPTOAuthPanel({
   plugin: SmartComposerPlugin
   provider: Extract<LLMProvider, { type: 'chatgpt-oauth' }>
 }) {
+  const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
   const [accountId, setAccountId] = useState<string | null>(null)
@@ -198,35 +199,51 @@ function ChatGPTOAuthPanel({
   return (
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
-        <span>ChatGPT OAuth</span>
-      </div>
-      <div className="smtcmp-no-models">
-        {loading
-          ? 'Loading ChatGPT OAuth status...'
-          : connected
-            ? `已连接${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · expires ${new Date(expiresAt).toLocaleString()}` : ''}`
-            : '未连接。连接后即可使用 ChatGPT Plus / Pro 账号模型。'}
-        {pendingCode ? ` 当前设备码：${pendingCode}` : ''}
-      </div>
-      <div className="smtcmp-provider-actions" style={{ marginTop: '8px' }}>
+        <span>
+          {t('settings.providers.chatgptOAuthTitle', 'ChatGPT OAuth')}
+        </span>
         {!connected ? (
           <button
             type="button"
             onClick={handleConnect}
-            className="clickable-icon"
+            className="smtcmp-add-model-btn"
             disabled={isConnecting}
           >
-            {isConnecting ? 'Connecting...' : 'Connect'}
+            {isConnecting
+              ? t('settings.providers.chatgptOAuthConnecting', 'Connecting...')
+              : t('settings.providers.chatgptOAuthConnect', 'Connect')}
           </button>
         ) : (
           <button
             type="button"
             onClick={handleDisconnect}
-            className="clickable-icon"
+            className="smtcmp-add-model-btn smtcmp-chatgpt-oauth-disconnect-btn"
             disabled={isConnecting}
           >
-            Disconnect
+            {t('settings.providers.chatgptOAuthDisconnect', 'Disconnect')}
           </button>
+        )}
+      </div>
+      <div className="smtcmp-no-models">
+        {loading
+          ? t(
+              'settings.providers.chatgptOAuthLoadingStatus',
+              'Loading ChatGPT OAuth status...',
+            )
+          : connected
+            ? `${t('settings.providers.chatgptOAuthConnected', 'Connected')}${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · ${t('settings.providers.chatgptOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
+            : t(
+                'settings.providers.chatgptOAuthDisconnectedHelp',
+                'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
+              )}
+        {pendingCode
+          ? ` ${t('settings.providers.chatgptOAuthPendingCode', 'Current device code:')} ${pendingCode}`
+          : ''}
+      </div>
+      <div className="smtcmp-chatgpt-oauth-note">
+        {t(
+          'settings.providers.chatgptOAuthStreamingNotice',
+          'Due to Obsidian environment limitations, ChatGPT OAuth currently does not support streaming responses.',
         )}
       </div>
     </div>

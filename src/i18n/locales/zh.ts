@@ -415,6 +415,17 @@ export const zh: TranslationKeys = {
       customHeadersAdd: '添加请求头',
       customHeadersKeyPlaceholder: '请求头名称',
       customHeadersValuePlaceholder: '请求头值',
+      chatgptOAuthTitle: 'ChatGPT OAuth',
+      chatgptOAuthConnect: '连接',
+      chatgptOAuthDisconnect: '断开连接',
+      chatgptOAuthConnecting: '连接中...',
+      chatgptOAuthLoadingStatus: '正在加载 ChatGPT OAuth 状态...',
+      chatgptOAuthConnected: '已连接',
+      chatgptOAuthExpires: '过期时间',
+      chatgptOAuthDisconnectedHelp:
+        '未连接。连接后即可使用你的 ChatGPT Plus / Pro 账号模型。',
+      chatgptOAuthStreamingNotice:
+        '受 Obsidian 环境限制，ChatGPT OAuth 渠道当前不支持流式传输。',
     },
     models: {
       title: '模型',

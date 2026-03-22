@@ -406,6 +406,25 @@
   background-color: var(--interactive-accent-hover);
 }
 
+.smtcmp-chatgpt-oauth-disconnect-btn {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.smtcmp-chatgpt-oauth-disconnect-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.smtcmp-chatgpt-oauth-note {
+  margin-top: calc(var(--size-4-1) * -1);
+  padding: 0 var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  text-align: center;
+}
+
 .smtcmp-models-table {
   width: 100%;
   border-collapse: collapse;
