@@ -10,19 +10,35 @@ export type ChatGPTOAuthCredential = {
   updatedAt: number
 }
 
-const CREDENTIAL_FILE_NAME = 'chatgpt-oauth.json'
+const CREDENTIAL_DIR_NAME = 'chatgpt-oauth'
+const LEGACY_CREDENTIAL_FILE_NAME = 'chatgpt-oauth.json'
+const DEFAULT_PROVIDER_ID = 'chatgpt-oauth'
 const EXPIRY_BUFFER_MS = 30_000
+
+const encodeProviderId = (providerId: string): string =>
+  encodeURIComponent(providerId)
 
 export class ChatGPTOAuthStore {
   private readonly dir: string
   private readonly file: string
+  private readonly legacyFile: string
 
   constructor(
     private readonly app: App,
     pluginId: string,
+    private readonly providerId = DEFAULT_PROVIDER_ID,
   ) {
     this.dir = normalizePath(`${this.app.vault.configDir}/plugins/${pluginId}`)
-    this.file = normalizePath(path.posix.join(this.dir, CREDENTIAL_FILE_NAME))
+    this.file = normalizePath(
+      path.posix.join(
+        this.dir,
+        CREDENTIAL_DIR_NAME,
+        `${encodeProviderId(this.providerId)}.json`,
+      ),
+    )
+    this.legacyFile = normalizePath(
+      path.posix.join(this.dir, LEGACY_CREDENTIAL_FILE_NAME),
+    )
   }
 
   getFilePath(): string {
@@ -30,6 +46,7 @@ export class ChatGPTOAuthStore {
   }
 
   async get(): Promise<ChatGPTOAuthCredential | null> {
+    await this.migrateLegacyCredentialIfNeeded()
     const exists = await this.app.vault.adapter.exists(this.file)
     if (!exists) {
       return null
@@ -85,10 +102,34 @@ export class ChatGPTOAuthStore {
   }
 
   private async ensureDir(): Promise<void> {
-    const exists = await this.app.vault.adapter.exists(this.dir)
+    const credentialDir = normalizePath(
+      path.posix.join(this.dir, CREDENTIAL_DIR_NAME),
+    )
+    const exists = await this.app.vault.adapter.exists(credentialDir)
     if (exists) {
       return
     }
-    await this.app.vault.adapter.mkdir(this.dir)
+    await this.app.vault.adapter.mkdir(credentialDir)
+  }
+
+  private async migrateLegacyCredentialIfNeeded(): Promise<void> {
+    if (this.providerId !== DEFAULT_PROVIDER_ID) {
+      return
+    }
+
+    const currentExists = await this.app.vault.adapter.exists(this.file)
+    if (currentExists) {
+      return
+    }
+
+    const legacyExists = await this.app.vault.adapter.exists(this.legacyFile)
+    if (!legacyExists) {
+      return
+    }
+
+    await this.ensureDir()
+    const raw = await this.app.vault.adapter.read(this.legacyFile)
+    await this.app.vault.adapter.write(this.file, raw)
+    await this.app.vault.adapter.remove(this.legacyFile)
   }
 }

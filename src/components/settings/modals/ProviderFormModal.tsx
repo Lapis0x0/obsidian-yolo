@@ -24,9 +24,7 @@ type ProviderFormComponentProps = {
   provider: LLMProvider | null // null for new provider
 }
 
-const CUSTOM_PROVIDER_TYPE_ENTRIES = Object.entries(PROVIDER_TYPES_INFO).filter(
-  ([key]) => key !== 'chatgpt-oauth',
-)
+const CUSTOM_PROVIDER_TYPE_ENTRIES = Object.entries(PROVIDER_TYPES_INFO)
 
 const getRequestTransportModeValue = (
   additionalSettings: Record<string, unknown> | undefined,

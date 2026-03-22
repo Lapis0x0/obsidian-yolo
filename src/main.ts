@@ -15,6 +15,7 @@ import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CHAT_VIEW_TYPE } from './constants'
 import {
+  clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
 } from './core/auth/chatgptOAuthRuntime'
@@ -130,19 +131,20 @@ export default class SmartComposerPlugin extends Plugin {
     this.modelListCache.clear()
   }
 
-  getChatGPTOAuthService() {
+  getChatGPTOAuthService(providerId = 'chatgpt-oauth') {
     return (
-      getChatGPTOAuthServiceRuntime() ??
-      initializeChatGPTOAuthRuntime(this.app, this.manifest.id)
+      getChatGPTOAuthServiceRuntime(providerId) ??
+      initializeChatGPTOAuthRuntime(this.app, this.manifest.id, providerId)
     )
   }
 
-  async getChatGPTOAuthStatus(): Promise<{
+  async getChatGPTOAuthStatus(providerId = 'chatgpt-oauth'): Promise<{
     connected: boolean
     accountId?: string
     expiresAt?: number
   }> {
-    const credential = await this.getChatGPTOAuthService().getUsableCredential()
+    const credential =
+      await this.getChatGPTOAuthService(providerId).getUsableCredential()
     if (!credential) {
       return { connected: false }
     }
@@ -154,8 +156,14 @@ export default class SmartComposerPlugin extends Plugin {
     }
   }
 
-  async disconnectChatGPTOAuthAccount(): Promise<void> {
-    await this.getChatGPTOAuthService().clearCredential()
+  async disconnectChatGPTOAuthAccount(
+    providerId = 'chatgpt-oauth',
+  ): Promise<void> {
+    await this.getChatGPTOAuthService(providerId).clearCredential()
+  }
+
+  clearChatGPTOAuthRuntime(providerId: string): void {
+    clearChatGPTOAuthService(providerId)
   }
 
   private resolvePgliteResourcePath(): string {

@@ -27,6 +27,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_EMBEDDING_MODELS,
+  PROVIDER_TYPES_INFO,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -96,7 +97,13 @@ function getProviderDisplayBaseUrl(provider: LLMProvider): string {
   return rawBaseUrl.replace(/\/+$/, '').replace(/\/v1$/i, '')
 }
 
-function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
+function ChatGPTOAuthPanel({
+  plugin,
+  provider,
+}: {
+  plugin: SmartComposerPlugin
+  provider: Extract<LLMProvider, { type: 'chatgpt-oauth' }>
+}) {
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
   const [accountId, setAccountId] = useState<string | null>(null)
@@ -108,7 +115,7 @@ function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
   const refreshStatus = useCallback(async () => {
     setLoading(true)
     try {
-      const status = await plugin.getChatGPTOAuthStatus()
+      const status = await plugin.getChatGPTOAuthStatus(provider.id)
       setConnected(status.connected)
       setAccountId(status.accountId ?? null)
       setExpiresAt(status.expiresAt ?? null)
@@ -123,7 +130,7 @@ function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
     } finally {
       setLoading(false)
     }
-  }, [plugin])
+  }, [plugin, provider.id])
 
   useEffect(() => {
     void refreshStatus()
@@ -135,7 +142,7 @@ function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
   const handleConnect = () => {
     const execute = async () => {
       setIsConnecting(true)
-      const service = plugin.getChatGPTOAuthService()
+      const service = plugin.getChatGPTOAuthService(provider.id)
       const authorization = await service.beginBrowserAuthorization()
       setPendingCode(null)
       window.open(
@@ -170,8 +177,10 @@ function ChatGPTOAuthPanel({ plugin }: { plugin: SmartComposerPlugin }) {
     const execute = async () => {
       abortRef.current?.abort()
       abortRef.current = null
-      plugin.getChatGPTOAuthService().cancelPendingBrowserAuthorization()
-      await plugin.disconnectChatGPTOAuthAccount()
+      plugin
+        .getChatGPTOAuthService(provider.id)
+        .cancelPendingBrowserAuthorization()
+      await plugin.disconnectChatGPTOAuthAccount(provider.id)
       setPendingCode(null)
       new Notice('ChatGPT OAuth 已断开')
       await refreshStatus()
@@ -299,12 +308,9 @@ function ProviderSectionItem({
 
         <button
           type="button"
-          className={`smtcmp-provider-type smtcmp-provider-base-url-btn${isChatGPTOAuth ? ' is-disabled' : ''}`}
+          className="smtcmp-provider-type smtcmp-provider-base-url-btn"
           onClick={(e) => {
             e.stopPropagation()
-            if (isChatGPTOAuth) {
-              return
-            }
             new EditProviderModal(app, plugin, provider).open()
           }}
         >
@@ -349,7 +355,14 @@ function ProviderSectionItem({
 
       {isExpanded && (
         <div className="smtcmp-provider-models">
-          {isChatGPTOAuth && <ChatGPTOAuthPanel plugin={plugin} />}
+          {isChatGPTOAuth && (
+            <ChatGPTOAuthPanel
+              plugin={plugin}
+              provider={
+                provider as Extract<LLMProvider, { type: 'chatgpt-oauth' }>
+              }
+            />
+          )}
           <ChatModelsTable
             provider={provider}
             app={app}
@@ -407,18 +420,16 @@ function ChatModelsTable({
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
         <span>{t('settings.models.chatModels')}</span>
-        {provider.type !== 'chatgpt-oauth' && (
-          <button
-            type="button"
-            className="smtcmp-add-model-btn"
-            onClick={() => {
-              const modal = new AddChatModelModal(app, plugin, provider)
-              modal.open()
-            }}
-          >
-            + {t('settings.models.addChatModel')}
-          </button>
-        )}
+        <button
+          type="button"
+          className="smtcmp-add-model-btn"
+          onClick={() => {
+            const modal = new AddChatModelModal(app, plugin, provider)
+            modal.open()
+          }}
+        >
+          + {t('settings.models.addChatModel')}
+        </button>
       </div>
 
       {models.length > 0 ? (
@@ -498,7 +509,7 @@ function EmbeddingModelsTable({
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
         <span>{t('settings.models.embeddingModels')}</span>
-        {provider.type !== 'chatgpt-oauth' && (
+        {PROVIDER_TYPES_INFO[provider.type].supportEmbedding && (
           <button
             type="button"
             className="smtcmp-add-model-btn"
@@ -554,8 +565,8 @@ function EmbeddingModelsTable({
         </DndContext>
       ) : (
         <div className="smtcmp-no-models">
-          {provider.type === 'chatgpt-oauth'
-            ? 'ChatGPT OAuth provider does not support embeddings.'
+          {!PROVIDER_TYPES_INFO[provider.type].supportEmbedding
+            ? `${provider.id} provider does not support embeddings.`
             : t('settings.models.noEmbeddingModelsConfigured')}
         </div>
       )}
@@ -914,11 +925,6 @@ export function ProvidersAndModelsSection({
   }
 
   const handleDeleteProvider = (provider: LLMProvider) => {
-    if (provider.type === 'chatgpt-oauth') {
-      new Notice('ChatGPT OAuth 是内置 provider，不能删除。')
-      return
-    }
-
     void (async () => {
       const associatedChatModels = settings.chatModels.filter(
         (m) => m.providerId === provider.id,
@@ -963,6 +969,14 @@ export function ProvidersAndModelsSection({
       }
 
       try {
+        if (provider.type === 'chatgpt-oauth') {
+          plugin
+            .getChatGPTOAuthService(provider.id)
+            .cancelPendingBrowserAuthorization()
+          await plugin.disconnectChatGPTOAuthAccount(provider.id)
+          plugin.clearChatGPTOAuthRuntime(provider.id)
+        }
+
         if (associatedEmbeddingModels.length > 0) {
           const vectorManager = await plugin.tryGetVectorManager()
 
