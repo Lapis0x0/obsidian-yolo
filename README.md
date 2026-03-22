@@ -39,12 +39,17 @@ YOLO's Agent mode lets LLMs go beyond just "Q&A machines" — they can actually 
 | ![Agent Tools](./assets/agenttools.gif) | ![Agent Skills](./assets/agentskills.gif) |
 | Freely configure toolchains so Agents can read, write, edit, and organize your files directly | Encapsulate experience and SOPs into reusable skills, invoke with a single sentence — let the Agent work your way |
 
-### 🧠 Knowledge Base Q&A + ✍️ Smart Space & Quick Ask
+| Multi-Window Chat | Quick Ask |
+|:--:|:--:|
+| ![Chat Window](./assets/chatwindow.gif) | ![Quick Ask](./assets/Quickask.gif) |
+| Handle different tasks and contexts in parallel across multiple chat windows, making multitasking feel more natural | Trigger with a character (default `@`) to open an inline assistant for Q&A, editing, and continuation, making document editing seamless |
 
-| Knowledge Base Q&A | Smart Space | Quick Ask |
-|:--:|:--:|:--:|
-| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) | ![Quick Ask](./assets/Quickask.gif) |
-| Turn your entire Vault into the AI's knowledge base, powered by RAG to answer with context from your notes instead of generic output | Summon anywhere to freely continue your creative flow with smooth content generation | Trigger with a character (default `@`) to open an inline assistant for Q&A, editing, and continuation, making document editing seamless |
+### 🧠 Knowledge Base Q&A + ✍️ Smart Space
+
+| Knowledge Base Q&A | Smart Space |
+|:--:|:--:|
+| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) |
+| Turn your entire Vault into the AI's knowledge base, powered by RAG to answer with context from your notes instead of generic output | Summon anywhere to freely continue your creative flow with smooth content generation |
 
 ## Features
 

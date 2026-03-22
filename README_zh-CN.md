@@ -40,15 +40,20 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 
 | 工具调用 + MCP | 自定义 Skills |
 |:-:|:-:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Agent Tools](./assets/agentskills.gif) |
+| ![Agent Tools](./assets/agenttools.gif) | ![Agent Skills](./assets/agentskills.gif) |
 | 自由配置工具链，让 Agent 直接读写、编辑、整理你的文件 | 将经验与 SOP 封装为可复用技能，一句话调用，让 Agent 按你的方式工作 |
 
-### 🧠 知识库问答 + ✍️ Smart Space & Quick Ask
+| 独立 Chat 窗口 | Quick Ask |
+|:-:|:-:|
+| ![Chat Window](./assets/chatwindow.gif) | ![Quick Ask](./assets/Quickask.gif) |
+| 多窗口并行处理不同任务与上下文，让多线程协作更自然 | 通过触发字符（默认 `@`）唤起内联助手，支持问答、编辑、续写三种模式，让文档编辑无缝高效 |
 
-| 知识库问答 | Smart Space | Quick Ask |
-|:-:|:-:|:-:|
-| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) | ![Quick Ask](./assets/Quickask.gif) |
-| 将整个 Vault 变成 AI 知识库，基于 RAG 检索增强生成，回答更贴合你的笔记上下文与知识体系 | 随时随地召唤，自由接力你的创意，享受流畅的内容生成体验 | 通过触发字符（默认 `@`）唤起内联助手，支持问答、编辑、续写三种模式，让文档编辑无缝高效 |
+### 🧠 知识库问答 + ✍️ Smart Space
+
+| 知识库问答 | Smart Space |
+|:-:|:-:|
+| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) |
+| 将整个 Vault 变成 AI 知识库，基于 RAG 检索增强生成，回答更贴合你的笔记上下文与知识体系 | 随时随地召唤，自由接力你的创意，享受流畅的内容生成体验 |
 
 ## Features
 
