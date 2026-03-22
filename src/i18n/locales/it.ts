@@ -4,9 +4,8 @@ export const it: TranslationKeys = {
   commands: {
     openChat: 'Apri chat',
     openChatSidebar: 'Apri chat (barra laterale)',
-    openChatTab: 'Apri chat (nuova scheda)',
-    openChatWindow: 'Apri chat (nuova finestra)',
     openNewChatTab: 'Apri nuova chat (nuova scheda)',
+    openNewChatSplit: 'Apri nuova chat (divisione destra)',
     openNewChatWindow: 'Apri nuova chat (nuova finestra)',
     addSelectionToChat: 'Aggiungi selezione alla chat',
     addFileToChat: 'Aggiungi file alla chat',

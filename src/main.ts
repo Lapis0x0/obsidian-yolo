@@ -748,22 +748,6 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-chat-tab',
-      name: this.t('commands.openChatTab'),
-      callback: () => {
-        void this.openChatView({ placement: 'tab' })
-      },
-    })
-
-    this.addCommand({
-      id: 'open-chat-window',
-      name: this.t('commands.openChatWindow'),
-      callback: () => {
-        void this.openChatView({ placement: 'window' })
-      },
-    })
-
-    this.addCommand({
-      id: 'open-new-chat-tab',
       name: this.t('commands.openNewChatTab'),
       callback: () => {
         void this.openChatView({
@@ -775,7 +759,19 @@ export default class SmartComposerPlugin extends Plugin {
     })
 
     this.addCommand({
-      id: 'open-new-chat-window',
+      id: 'open-chat-split',
+      name: this.t('commands.openNewChatSplit'),
+      callback: () => {
+        void this.openChatView({
+          placement: 'split',
+          openNewChat: true,
+          forceNewLeaf: true,
+        })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-chat-window',
       name: this.t('commands.openNewChatWindow'),
       callback: () => {
         void this.openChatView({
