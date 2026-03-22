@@ -162,7 +162,7 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<
 
   private createAuthorizedFetch(baseFetch: typeof fetch): typeof fetch {
     return async (input, init) => {
-      const service = getChatGPTOAuthService()
+      const service = getChatGPTOAuthService(this.provider.id)
       if (!service) {
         throw new LLMProviderNotConfiguredException(
           'ChatGPT OAuth service is not initialized.',

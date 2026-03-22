@@ -72,6 +72,7 @@ const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
 
 const REASONING_CONFIG_PROVIDER_TYPES = [
+  'chatgpt-oauth',
   'openai',
   'openrouter',
   'openai-compatible',
@@ -128,7 +129,13 @@ const isGeminiToolType = (
 
 type ReasoningConfigurableModel = Extract<
   ChatModel,
-  { providerType: 'openai' | 'openrouter' | 'openai-compatible' }
+  {
+    providerType:
+      | 'chatgpt-oauth'
+      | 'openai'
+      | 'openrouter'
+      | 'openai-compatible'
+  }
 >
 type ThinkingConfigurableModel = Extract<
   ChatModel,
