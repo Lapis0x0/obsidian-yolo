@@ -17,6 +17,16 @@ export const thinkingConfigSchema = z
   })
   .optional()
 
+export const gptToolsConfigSchema = z
+  .object({
+    webSearch: z
+      .object({
+        enabled: z.boolean(),
+      })
+      .optional(),
+  })
+  .optional()
+
 export const chatModelSchema = z.object({
   providerId: z
     .string({
@@ -45,7 +55,8 @@ export const chatModelSchema = z.object({
   customParameters: z.array(customParameterSchema).optional(),
   reasoning: reasoningConfigSchema,
   thinking: thinkingConfigSchema,
-  toolType: z.enum(['none', 'gemini']).default('none').optional(),
+  toolType: z.enum(['none', 'gemini', 'gpt']).default('none').optional(),
+  gptTools: gptToolsConfigSchema,
   web_search_options: z
     .object({
       search_context_size: z.string(),

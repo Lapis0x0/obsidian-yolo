@@ -445,11 +445,16 @@ export class OpenAIMessageAdapter {
       typeof request.extra_body === 'object'
     ) {
       const { tools, ...otherExtraBody } = request.extra_body as {
-        tools?: ChatCompletionTool[]
+        tools?: Array<ChatCompletionTool | Record<string, unknown>>
         [key: string]: unknown
       }
       if (Array.isArray(tools)) {
-        mutable.tools = tools
+        const existingTools = Array.isArray(mutable.tools)
+          ? (mutable.tools as Array<
+              ChatCompletionTool | Record<string, unknown>
+            >)
+          : []
+        mutable.tools = [...existingTools, ...tools]
         if (hasObjectProperty(mutable, 'tool_choice')) {
           delete (mutable as { tool_choice?: unknown }).tool_choice
         }

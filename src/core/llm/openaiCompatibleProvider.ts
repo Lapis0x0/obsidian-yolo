@@ -16,6 +16,7 @@ import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
+import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 import { formatMessages } from '../../utils/llm/request'
 
 import { BaseLLMProvider } from './base'
@@ -183,6 +184,14 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       }
     }
 
+    const hostedTools = getHostedToolsForModel(model)
+    if (hostedTools.length > 0) {
+      formattedRequest.extra_body = {
+        ...(formattedRequest.extra_body ?? {}),
+        tools: hostedTools,
+      }
+    }
+
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
       model,
@@ -282,6 +291,14 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
           ...(formattedRequest.tools ?? []),
           ...openaiTools,
         ]
+      }
+    }
+
+    const hostedTools = getHostedToolsForModel(model)
+    if (hostedTools.length > 0) {
+      formattedRequest.extra_body = {
+        ...(formattedRequest.extra_body ?? {}),
+        tools: hostedTools,
       }
     }
 

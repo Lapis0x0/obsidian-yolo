@@ -511,6 +511,13 @@ export const it: TranslationKeys = {
         'Tipo di chiamata di strumento supportato da questo modello.',
       toolTypeNone: 'Nessuno',
       toolTypeGemini: 'Gemini',
+      toolTypeGpt: 'Strumenti GPT',
+      gptTools: 'Strumenti GPT',
+      gptToolsDesc:
+        'Scegli gli strumenti GPT integrati disponibili per questo modello.',
+      gptToolWebSearch: 'Web Search',
+      gptToolWebSearchDesc:
+        'Consenti al modello di cercare sul web e restituire fonti citate.',
       sampling: 'Parametri di campionamento',
       restoreDefaults: 'Ripristina predefiniti',
       maxOutputTokens: 'Token massimi in output',
