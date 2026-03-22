@@ -426,8 +426,8 @@ export const it: TranslationKeys = {
       deleteConfirmImpact:
         'Questa azione rimuove anche {chatCount} modelli chat, {embeddingCount} modelli embedding e i relativi dati vettoriali.',
       confirmDeleteAction: 'Conferma eliminazione',
-      chatModels: 'Modelli chat',
-      embeddingModels: 'Modelli embedding',
+      chatModels: 'chat',
+      embeddingModels: 'embedding',
       embeddingsWillBeDeleted:
         'Tutti gli embeddings esistenti saranno eliminati quando cambi il modello embedding.',
       providerId: 'ID provider',
