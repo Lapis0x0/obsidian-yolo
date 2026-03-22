@@ -17,8 +17,13 @@ const AssistantMessageAnnotations = memo(function AssistantMessageAnnotations({
   }
 
   return (
-    <div className="smtcmp-assistant-message-metadata">
-      <div
+    <div
+      className={`smtcmp-assistant-message-metadata${
+        isExpanded ? ' is-expanded' : ''
+      }`}
+    >
+      <button
+        type="button"
         className="smtcmp-assistant-message-metadata-toggle"
         onClick={handleToggle}
       >
@@ -28,7 +33,7 @@ const AssistantMessageAnnotations = memo(function AssistantMessageAnnotations({
         ) : (
           <ChevronDown className="smtcmp-assistant-message-metadata-toggle-icon" />
         )}
-      </div>
+      </button>
       {isExpanded && (
         <div className="smtcmp-assistant-message-metadata-content">
           <div className="smtcmp-assistant-message-metadata-annotations">
