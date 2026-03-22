@@ -4,6 +4,7 @@ export const it: TranslationKeys = {
   commands: {
     openChat: 'Apri chat',
     openChatSidebar: 'Apri chat (barra laterale)',
+    openYoloNewChat: 'YOLO: Apri finestra chat',
     openNewChatTab: 'Apri nuova chat (nuova scheda)',
     openNewChatSplit: 'Apri nuova chat (divisione destra)',
     openNewChatWindow: 'Apri nuova chat (nuova finestra)',
@@ -1005,6 +1006,8 @@ export const it: TranslationKeys = {
     rebuildingIndex: 'Ricostruzione indice vault in corso…',
     rebuildComplete: 'Ricostruzione indice vault completata.',
     rebuildFailed: 'Ricostruzione indice vault fallita.',
+    openYoloNewChatFailed:
+      'Impossibile aprire la finestra chat YOLO; prova prima dal palette comandi.',
     pgliteUnavailable: 'Risorse PGlite non disponibili; reinstalla il plugin.',
     downloadingPglite:
       'Download dipendenze PGlite da CDN (~20MB); potrebbe richiedere un momento…',
