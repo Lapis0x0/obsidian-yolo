@@ -17,6 +17,7 @@ import {
   generateModelId,
 } from '../../../utils/model-id-utils'
 import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
+import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -134,16 +135,7 @@ function AddEmbeddingModelModalComponent({
           selectedProvider.apiType === 'openai-responses'
 
         if (isOpenAIStyle) {
-          const base = ((): string => {
-            // default OpenAI base when not provided
-            const cleaned = selectedProvider.baseUrl?.replace(/\/+$/, '')
-            if (cleaned && cleaned.length > 0) return cleaned
-            if (selectedProvider.presetType === 'openai')
-              return 'https://api.openai.com/v1'
-            if (selectedProvider.presetType === 'openrouter')
-              return 'https://openrouter.ai/api/v1'
-            return '' // no base => skip
-          })()
+          const base = resolveProviderBaseUrl(selectedProvider) ?? ''
 
           if (base) {
             const baseNorm = base.replace(/\/+$/, '')

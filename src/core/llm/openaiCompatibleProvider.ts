@@ -14,6 +14,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
 
@@ -103,7 +104,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     // Prefer standard OpenAI SDK; allow opting into NoStainless to bypass headers/validation when needed
     const clientOptions = {
       apiKey: provider.apiKey ?? '',
-      baseURL: provider.baseUrl ? provider.baseUrl?.replace(/\/+$/, '') : '',
+      baseURL: resolveProviderBaseUrl(provider) ?? '',
       dangerouslyAllowBrowser: true,
       maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
       defaultHeaders,

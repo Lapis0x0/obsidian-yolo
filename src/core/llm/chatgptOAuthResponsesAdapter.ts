@@ -1,5 +1,7 @@
 import type {
+  ComputerTool,
   EasyInputMessage,
+  FileSearchTool,
   FunctionTool,
   Response,
   ResponseCreateParams,
@@ -10,6 +12,7 @@ import type {
   ResponseOutputText,
   ResponseStreamEvent,
   ResponseTextAnnotationDeltaEvent,
+  WebSearchTool,
 } from 'openai/resources/responses/responses'
 
 import {
@@ -17,6 +20,7 @@ import {
   LLMRequestNonStreaming,
   LLMRequestStreaming,
   RequestMessage,
+  RequestTool,
   RequestToolChoice,
 } from '../../types/llm/request'
 import {
@@ -48,6 +52,40 @@ type ReasoningSummaryTextDeltaEvent = {
   delta: string
   item_id: string
   summary_index: number
+}
+
+type ResponsesHostedTool = WebSearchTool | FileSearchTool | ComputerTool
+
+type ResponsesTool = FunctionTool | ResponsesHostedTool
+
+type RawResponsesHostedTool =
+  | { type: 'web_search' }
+  | ({
+      type: 'web_search_preview' | 'web_search_preview_2025_03_11'
+    } & Partial<WebSearchTool>)
+  | ({ type: 'file_search' } & Partial<FileSearchTool>)
+  | ({ type: 'computer-preview' } & Partial<ComputerTool>)
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const isFunctionRequestTool = (value: unknown): value is RequestTool => {
+  if (!isRecord(value) || value.type !== 'function') {
+    return false
+  }
+
+  const fn = value.function
+  return isRecord(fn) && typeof fn.name === 'string' && isRecord(fn.parameters)
+}
+
+const toHostedTool = (tool: RawResponsesHostedTool): ResponsesHostedTool => {
+  if (tool.type === 'web_search') {
+    return {
+      type: 'web_search_preview',
+    }
+  }
+
+  return tool as ResponsesHostedTool
 }
 
 const toInputContent = (
@@ -141,18 +179,45 @@ const toInstructions = (messages: RequestMessage[]): string => {
     .join('\n\n')
 }
 
-const toTools = (tools?: LLMRequest['tools']): FunctionTool[] | undefined => {
-  if (!tools || tools.length === 0) {
+const toTools = (
+  tools?: unknown,
+): ResponseCreateParams['tools'] | undefined => {
+  if (!Array.isArray(tools)) {
     return undefined
   }
 
-  return tools.map((tool) => ({
-    type: 'function',
-    name: tool.function.name,
-    description: tool.function.description,
-    parameters: tool.function.parameters,
-    strict: false,
-  }))
+  if (tools.length === 0) {
+    return undefined
+  }
+
+  const mappedTools: ResponsesTool[] = []
+
+  for (const tool of tools) {
+    if (isFunctionRequestTool(tool)) {
+      mappedTools.push({
+        type: 'function',
+        name: tool.function.name,
+        description: tool.function.description,
+        parameters: tool.function.parameters,
+        strict: false,
+      })
+      continue
+    }
+
+    if (isRecord(tool) && typeof tool.type === 'string') {
+      switch (tool.type) {
+        case 'web_search':
+        case 'web_search_preview':
+        case 'web_search_preview_2025_03_11':
+        case 'file_search':
+        case 'computer-preview':
+          mappedTools.push(toHostedTool(tool as RawResponsesHostedTool))
+          continue
+      }
+    }
+  }
+
+  return mappedTools.length > 0 ? mappedTools : undefined
 }
 
 const toToolChoice = (

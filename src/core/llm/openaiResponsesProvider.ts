@@ -16,6 +16,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -65,9 +66,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.client = new OpenAI({
       apiKey: provider.apiKey ?? '',
-      baseURL: provider.baseUrl
-        ? provider.baseUrl.replace(/\/+$/, '')
-        : undefined,
+      baseURL: resolveProviderBaseUrl(provider),
       dangerouslyAllowBrowser: true,
       defaultHeaders,
     })

@@ -12,6 +12,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -28,9 +29,7 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.client = new OpenAI({
       apiKey: provider.apiKey ?? '',
-      baseURL: provider.baseUrl
-        ? provider.baseUrl?.replace(/\/+$/, '')
-        : 'https://openrouter.ai/api/v1',
+      baseURL: resolveProviderBaseUrl(provider),
       dangerouslyAllowBrowser: true,
       defaultHeaders,
     })
@@ -41,7 +40,6 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-
     const mergedRequest = this.applyCustomModelParameters(
       model,
       this.applyReasoningConfig(model, request),
@@ -55,7 +53,6 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-
     const mergedRequest = this.applyCustomModelParameters(
       model,
       this.applyReasoningConfig(model, request),
