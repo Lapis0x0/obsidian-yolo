@@ -4,7 +4,7 @@ import { CHAT_VIEW_TYPE } from '../../constants'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type { MentionableBlockData } from '../../types/mentionable'
 
-export type ChatLeafPlacement = 'sidebar' | 'tab' | 'window'
+export type ChatLeafPlacement = 'sidebar' | 'split' | 'tab' | 'window'
 
 export type PendingChatOpenPayload = {
   selectedBlock?: MentionableBlockData

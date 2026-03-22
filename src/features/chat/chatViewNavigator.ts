@@ -103,6 +103,14 @@ export class ChatViewNavigator {
     })
   }
 
+  async openChatInSplit(openNewChat = false) {
+    await this.openChatView({
+      placement: 'split',
+      openNewChat,
+      forceNewLeaf: openNewChat,
+    })
+  }
+
   async openChatInTab(openNewChat = false) {
     await this.openChatView({
       placement: 'tab',
@@ -279,6 +287,15 @@ export class ChatViewNavigator {
     switch (placement) {
       case 'sidebar':
         return this.plugin.app.workspace.getRightLeaf(false)
+      case 'split': {
+        const workspace = this.plugin.app.workspace
+        const baseLeaf =
+          workspace.getMostRecentLeaf(workspace.rootSplit) ??
+          workspace.activeLeaf ??
+          workspace.getLeaf(false)
+
+        return workspace.createLeafBySplit(baseLeaf, 'vertical')
+      }
       case 'tab':
         return this.plugin.app.workspace.getLeaf('tab')
       case 'window':
