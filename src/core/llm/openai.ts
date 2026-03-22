@@ -12,6 +12,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -32,9 +33,7 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.client = new OpenAI({
       apiKey: provider.apiKey ?? '',
-      baseURL: provider.baseUrl
-        ? provider.baseUrl.replace(/\/+$/, '')
-        : undefined, // use default
+      baseURL: resolveProviderBaseUrl(provider),
       dangerouslyAllowBrowser: true,
       defaultHeaders,
     })
@@ -46,7 +45,6 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -111,7 +109,6 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
