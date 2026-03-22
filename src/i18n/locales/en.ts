@@ -424,6 +424,11 @@ export const en: TranslationKeys = {
       deleteProvider: 'Delete provider',
       deleteConfirm: 'Are you sure you want to delete provider',
       deleteWarning: 'This will also delete',
+      requestDelete: 'Delete provider',
+      deleteConfirmTitle: 'Delete provider "{provider}"?',
+      deleteConfirmImpact:
+        'This also removes {chatCount} chat models, {embeddingCount} embedding models, and related vector data.',
+      confirmDeleteAction: 'Confirm delete',
       chatModels: 'Chat models',
       embeddingModels: 'Embedding models',
       embeddingsWillBeDeleted:

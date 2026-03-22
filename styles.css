@@ -1713,6 +1713,94 @@
   flex-shrink: 0;
 }
 
+.smtcmp-provider-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-1);
+  padding: 10px var(--size-4-3);
+  border-top: 1px solid color-mix(in srgb, var(--text-error) 18%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--text-error) 8%,
+    var(--background-primary)
+  );
+}
+
+.smtcmp-provider-delete-confirm-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-right: var(--size-4-2);
+}
+
+.smtcmp-provider-delete-confirm-title {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  line-height: 1.2;
+}
+
+.smtcmp-provider-delete-confirm-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.smtcmp-provider-delete-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  flex-shrink: 0;
+}
+
+.smtcmp-provider-delete-cancel,
+.smtcmp-provider-delete-confirm-btn {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 4px 10px;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.smtcmp-provider-delete-cancel {
+  background: var(--background-primary);
+  color: var(--text-muted);
+}
+
+.smtcmp-provider-delete-cancel:hover,
+.smtcmp-provider-delete-cancel:focus-visible {
+  color: var(--text-normal);
+  border-color: color-mix(
+    in srgb,
+    var(--background-modifier-border-hover) 72%,
+    transparent
+  );
+}
+
+.smtcmp-provider-delete-confirm-btn {
+  border-color: color-mix(in srgb, var(--text-error) 32%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--text-error) 14%,
+    var(--background-primary)
+  );
+  color: var(--text-error);
+}
+
+.smtcmp-provider-delete-confirm-btn:hover,
+.smtcmp-provider-delete-confirm-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--text-error) 46%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--text-error) 18%,
+    var(--background-primary)
+  );
+}
+
 .smtcmp-provider-actions .clickable-icon {
   width: 28px;
   height: 28px;
@@ -1867,6 +1955,21 @@
 
   .smtcmp-provider-header {
     padding-inline: var(--size-4-2);
+  }
+
+  .smtcmp-provider-delete-confirm {
+    flex-wrap: wrap;
+    padding-inline: var(--size-4-2);
+  }
+
+  .smtcmp-provider-delete-confirm-copy {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .smtcmp-provider-delete-confirm-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
