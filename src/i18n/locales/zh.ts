@@ -384,6 +384,11 @@ export const zh: TranslationKeys = {
       deleteProvider: '删除提供商',
       deleteConfirm: '确定要删除提供商',
       deleteWarning: '这也会删除',
+      requestDelete: '删除提供商',
+      deleteConfirmTitle: '删除提供商「{provider}」？',
+      deleteConfirmImpact:
+        '这会同时删除 {chatCount} 个聊天模型、{embeddingCount} 个嵌入模型，并清理相关向量数据。',
+      confirmDeleteAction: '确认删除',
       chatModels: '个聊天模型',
       embeddingModels: '个嵌入模型',
       embeddingsWillBeDeleted: '使用相关嵌入模型生成的所有嵌入也将被删除。',

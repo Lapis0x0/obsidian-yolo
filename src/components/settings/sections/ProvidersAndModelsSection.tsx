@@ -62,7 +62,10 @@ type ProviderSectionItemProps = {
   chatModels: ChatModel[]
   embeddingModels: EmbeddingModel[]
   modelSensors: ReturnType<typeof useSensors>
-  handleDeleteProvider: (provider: LLMProvider) => void
+  isDeleteConfirming: boolean
+  onRequestDeleteProvider: (providerId: string) => void
+  onCancelDeleteProvider: () => void
+  onConfirmDeleteProvider: (provider: LLMProvider) => void
   handleDeleteChatModel: (modelId: string) => void
   handleDeleteEmbeddingModel: (modelId: string) => void
   handleToggleEnableChatModel: (modelId: string, value: boolean) => void
@@ -261,7 +264,10 @@ function ProviderSectionItem({
   chatModels,
   embeddingModels,
   modelSensors,
-  handleDeleteProvider,
+  isDeleteConfirming,
+  onRequestDeleteProvider,
+  onCancelDeleteProvider,
+  onConfirmDeleteProvider,
   handleDeleteChatModel,
   handleDeleteEmbeddingModel,
   handleToggleEnableChatModel,
@@ -362,14 +368,56 @@ function ProviderSectionItem({
             type="button"
             onClick={(e) => {
               e.stopPropagation()
-              handleDeleteProvider(provider)
+              onRequestDeleteProvider(provider.id)
             }}
             className="clickable-icon"
+            aria-label={t('settings.providers.requestDelete', '删除提供商')}
           >
             <Trash2 />
           </button>
         </div>
       </div>
+
+      {isDeleteConfirming && (
+        <div
+          className="smtcmp-provider-delete-confirm"
+          data-provider-delete-confirm-id={provider.id}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="smtcmp-provider-delete-confirm-copy">
+            <span className="smtcmp-provider-delete-confirm-title">
+              {t(
+                'settings.providers.deleteConfirmTitle',
+                '删除提供商「{provider}」？',
+              ).replace('{provider}', provider.id)}
+            </span>
+            <span className="smtcmp-provider-delete-confirm-meta">
+              {t(
+                'settings.providers.deleteConfirmImpact',
+                '这会同时删除 {chatCount} 个聊天模型、{embeddingCount} 个嵌入模型，并清理相关向量数据。',
+              )
+                .replace('{chatCount}', String(chatModels.length))
+                .replace('{embeddingCount}', String(embeddingModels.length))}
+            </span>
+          </div>
+          <div className="smtcmp-provider-delete-confirm-actions">
+            <button
+              type="button"
+              className="smtcmp-provider-delete-cancel"
+              onClick={() => onCancelDeleteProvider()}
+            >
+              {t('common.cancel', '取消')}
+            </button>
+            <button
+              type="button"
+              className="smtcmp-provider-delete-confirm-btn"
+              onClick={() => onConfirmDeleteProvider(provider)}
+            >
+              {t('settings.providers.confirmDeleteAction', '确认删除')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {isExpanded && (
         <div className="smtcmp-provider-models">
@@ -782,6 +830,10 @@ export function ProvidersAndModelsSection({
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(
     new Set(),
   )
+  const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<
+    string | null
+  >(null)
+  const deleteConfirmTimeoutRef = useRef<number | null>(null)
   const providerSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -800,6 +852,76 @@ export function ProvidersAndModelsSection({
     'settings.providers.providersCount',
     '已添加 {count} 个提供商',
   ).replace('{count}', String(settings.providers.length))
+
+  const clearDeleteConfirmTimeout = useCallback(() => {
+    if (deleteConfirmTimeoutRef.current !== null) {
+      window.clearTimeout(deleteConfirmTimeoutRef.current)
+      deleteConfirmTimeoutRef.current = null
+    }
+  }, [])
+
+  const cancelPendingDeleteProvider = useCallback(() => {
+    clearDeleteConfirmTimeout()
+    setPendingDeleteProviderId(null)
+  }, [clearDeleteConfirmTimeout])
+
+  const armDeleteProviderConfirmation = useCallback(
+    (providerId: string) => {
+      clearDeleteConfirmTimeout()
+      setPendingDeleteProviderId(providerId)
+      deleteConfirmTimeoutRef.current = window.setTimeout(() => {
+        setPendingDeleteProviderId((currentId) =>
+          currentId === providerId ? null : currentId,
+        )
+        deleteConfirmTimeoutRef.current = null
+      }, 5000)
+    },
+    [clearDeleteConfirmTimeout],
+  )
+
+  useEffect(() => {
+    return () => {
+      clearDeleteConfirmTimeout()
+    }
+  }, [clearDeleteConfirmTimeout])
+
+  useEffect(() => {
+    if (!pendingDeleteProviderId) {
+      return
+    }
+
+    const escapedProviderId = window.CSS?.escape
+      ? window.CSS.escape(pendingDeleteProviderId)
+      : pendingDeleteProviderId.replace(/"/g, '\\"')
+    const confirmSelector = `[data-provider-delete-confirm-id="${escapedProviderId}"]`
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      if (target.closest(confirmSelector)) {
+        return
+      }
+
+      cancelPendingDeleteProvider()
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        cancelPendingDeleteProvider()
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [cancelPendingDeleteProvider, pendingDeleteProviderId])
 
   // Robustly highlight the moved row after DOM re-render
   const triggerProviderDropSuccess = (providerId: string, movedId: string) => {
@@ -1041,6 +1163,11 @@ export function ProvidersAndModelsSection({
     })()
   }
 
+  const handleConfirmDeleteProvider = (provider: LLMProvider) => {
+    cancelPendingDeleteProvider()
+    handleDeleteProvider(provider)
+  }
+
   const handleDeleteChatModel = (modelId: string) => {
     if (modelId === settings.chatModelId || modelId === settings.applyModelId) {
       new Notice(
@@ -1211,7 +1338,10 @@ export function ProvidersAndModelsSection({
                     chatModels={chatModels}
                     embeddingModels={embeddingModels}
                     modelSensors={modelSensors}
-                    handleDeleteProvider={handleDeleteProvider}
+                    isDeleteConfirming={pendingDeleteProviderId === provider.id}
+                    onRequestDeleteProvider={armDeleteProviderConfirmation}
+                    onCancelDeleteProvider={cancelPendingDeleteProvider}
+                    onConfirmDeleteProvider={handleConfirmDeleteProvider}
                     handleDeleteChatModel={handleDeleteChatModel}
                     handleDeleteEmbeddingModel={handleDeleteEmbeddingModel}
                     handleToggleEnableChatModel={handleToggleEnableChatModel}

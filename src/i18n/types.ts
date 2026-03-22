@@ -310,6 +310,10 @@ export type TranslationKeys = {
       deleteProvider: string
       deleteConfirm: string
       deleteWarning: string
+      requestDelete?: string
+      deleteConfirmTitle?: string
+      deleteConfirmImpact?: string
+      confirmDeleteAction?: string
       chatModels: string
       embeddingModels: string
       embeddingsWillBeDeleted: string
