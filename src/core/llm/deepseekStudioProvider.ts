@@ -10,30 +10,80 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
 
 import { BaseLLMProvider } from './base'
 import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
 import { LLMAPIKeyNotSetException } from './exception'
+import {
+  AutoPromotedTransportMode,
+  createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
+  runWithRequestTransport,
+  runWithRequestTransportForStream,
+} from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 // deepseek doesn't support image
 export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: DeepSeekMessageAdapter
-  private client: OpenAI
+  private browserClient: OpenAI
+  private obsidianClient: OpenAI
+  private nodeClient: OpenAI
+  private requestTransportMode: RequestTransportMode
+  private requestTransportMemoryKey: string
+  private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 
-  constructor(provider: LLMProvider) {
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) return
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: mode,
+    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
+  }
+
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+    },
+  ) {
     super(provider)
     this.adapter = new DeepSeekMessageAdapter()
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
-    this.client = new OpenAI({
+    this.requestTransportMemoryKey = createRequestTransportMemoryKey({
+      providerType: provider.presetType,
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+    })
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: !!provider.baseUrl,
+      memoryKey: this.requestTransportMemoryKey,
+    })
+    const clientOptions = {
       apiKey: provider.apiKey ?? '',
       baseURL: provider.baseUrl
         ? provider.baseUrl.replace(/\/+$/, '')
         : 'https://api.deepseek.com',
       dangerouslyAllowBrowser: true,
       defaultHeaders,
+      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+    }
+    this.browserClient = new OpenAI(clientOptions)
+    this.obsidianClient = new OpenAI({
+      ...clientOptions,
+      fetch: createObsidianFetch(),
+    })
+    this.nodeClient = new OpenAI({
+      ...clientOptions,
+      fetch: createDesktopNodeFetch(),
     })
   }
 
@@ -42,7 +92,7 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (!this.client.apiKey) {
+    if (!this.browserClient.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
@@ -55,7 +105,25 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
 
-    return this.adapter.generateResponse(this.client, formattedRequest, options)
+    return runWithRequestTransport({
+      mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
+      runBrowser: () =>
+        this.adapter.generateResponse(
+          this.browserClient,
+          formattedRequest,
+          options,
+        ),
+      runObsidian: () =>
+        this.adapter.generateResponse(
+          this.obsidianClient,
+          formattedRequest,
+          options,
+        ),
+      runNode: () =>
+        this.adapter.generateResponse(this.nodeClient, formattedRequest, options),
+    })
   }
 
   async streamResponse(
@@ -63,7 +131,7 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (!this.client.apiKey) {
+    if (!this.browserClient.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
@@ -76,7 +144,21 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
 
-    return this.adapter.streamResponse(this.client, formattedRequest, options)
+    return runWithRequestTransportForStream({
+      mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
+      createBrowserStream: () =>
+        this.adapter.streamResponse(this.browserClient, formattedRequest, options),
+      createObsidianStream: () =>
+        this.adapter.streamResponse(
+          this.obsidianClient,
+          formattedRequest,
+          options,
+        ),
+      createNodeStream: () =>
+        this.adapter.streamResponse(this.nodeClient, formattedRequest, options),
+    })
   }
 
   getEmbedding(_model: string, _text: string): Promise<number[]> {

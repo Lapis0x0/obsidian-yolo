@@ -26,11 +26,13 @@ import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { applyOpenAICompatibleCapabilities } from './openaiCompatibleCapabilities'
 import {
+  AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
   resolveRequestTransportMode,
   runWithRequestTransportForStream,
   runWithRequestTransport,
 } from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 type GeminiThinkingConfig = {
   thinking_budget: number
@@ -58,35 +60,32 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
   private browserClient: OpenAI
   private obsidianClient: OpenAI
+  private nodeClient: OpenAI
   private requestTransportMode: RequestTransportMode
   private requestTransportMemoryKey: string
-  private onAutoPromoteToObsidian?: () => void
-  private hasAutoPromoted = false
+  private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 
-  private promoteTransportModeToObsidian = () => {
-    if (this.requestTransportMode === 'obsidian') {
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) {
       return
     }
 
     this.provider.additionalSettings = {
       ...(this.provider.additionalSettings ?? {}),
-      requestTransportMode: 'obsidian',
+      requestTransportMode: mode,
     }
-    this.requestTransportMode = 'obsidian'
-    if (!this.hasAutoPromoted) {
-      this.hasAutoPromoted = true
-      this.onAutoPromoteToObsidian?.()
-    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
   }
 
   constructor(
     provider: LLMProvider,
     options?: {
-      onAutoPromoteToObsidian?: () => void
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
     },
   ) {
     super(provider)
-    this.onAutoPromoteToObsidian = options?.onAutoPromoteToObsidian
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     this.adapter = new OpenAIMessageAdapter()
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
@@ -114,6 +113,10 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     this.obsidianClient = new ClientCtor({
       ...clientOptions,
       fetch: createObsidianFetch(),
+    })
+    this.nodeClient = new ClientCtor({
+      ...clientOptions,
+      fetch: createDesktopNodeFetch(),
     })
   }
 
@@ -211,7 +214,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: () =>
         this.adapter.generateResponse(
           this.browserClient,
@@ -224,6 +227,8 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
           formattedRequest,
           options,
         ),
+      runNode: () =>
+        this.adapter.generateResponse(this.nodeClient, formattedRequest, options),
     })
   }
 
@@ -320,7 +325,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransportForStream({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       createBrowserStream: () =>
         this.adapter.streamResponse(
           this.browserClient,
@@ -333,6 +338,8 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
           formattedRequest,
           options,
         ),
+      createNodeStream: () =>
+        this.adapter.streamResponse(this.nodeClient, formattedRequest, options),
     })
   }
 
@@ -340,7 +347,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     const embedding = await runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: () =>
         this.browserClient.embeddings.create({
           model: model,

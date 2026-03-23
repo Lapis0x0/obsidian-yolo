@@ -15,7 +15,8 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { getHostedToolsForModel } from '../../utils/llm/model-tools'
@@ -28,10 +29,36 @@ import {
   LLMAPIKeyNotSetException,
   LLMRateLimitExceededException,
 } from './exception'
+import {
+  AutoPromotedTransportMode,
+  createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
+  runWithRequestTransport,
+  runWithRequestTransportForStream,
+} from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
-  private readonly client: OpenAI
+  private readonly browserClient: OpenAI
+  private readonly obsidianClient: OpenAI
+  private readonly nodeClient: OpenAI
+  private requestTransportMode: RequestTransportMode
+  private readonly requestTransportMemoryKey: string
+  private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) {
+      return
+    }
+
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: mode,
+    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
+  }
 
   private applyReasoningEffort(
     model: ChatModel,
@@ -62,14 +89,40 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  constructor(provider: LLMProvider) {
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+    },
+  ) {
     super(provider)
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
-    this.client = new OpenAI({
+    this.requestTransportMemoryKey = createRequestTransportMemoryKey({
+      providerType: provider.presetType,
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+    })
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: !!provider.baseUrl,
+      memoryKey: this.requestTransportMemoryKey,
+    })
+    const clientOptions = {
       apiKey: provider.apiKey ?? '',
       baseURL: resolveProviderBaseUrl(provider),
       dangerouslyAllowBrowser: true,
       defaultHeaders,
+      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+    }
+    this.browserClient = new OpenAI(clientOptions)
+    this.obsidianClient = new OpenAI({
+      ...clientOptions,
+      fetch: createObsidianFetch(),
+    })
+    this.nodeClient = new OpenAI({
+      ...clientOptions,
+      fetch: createDesktopNodeFetch(),
     })
   }
 
@@ -96,7 +149,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (!this.client.apiKey) {
+    if (!this.browserClient.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
@@ -113,8 +166,22 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
         ) as ResponseCreateParamsStreaming,
       )
 
-      const response = (await this.client.responses.create(body as never, {
-        signal: options?.signal,
+      const response = (await runWithRequestTransport({
+        mode: this.requestTransportMode,
+        memoryKey: this.requestTransportMemoryKey,
+        onAutoPromoteTransportMode: this.promoteTransportMode,
+        runBrowser: () =>
+          this.browserClient.responses.create(body as never, {
+            signal: options?.signal,
+          }) as Promise<Response>,
+        runObsidian: () =>
+          this.obsidianClient.responses.create(body as never, {
+            signal: options?.signal,
+          }) as Promise<Response>,
+        runNode: () =>
+          this.nodeClient.responses.create(body as never, {
+            signal: options?.signal,
+          }) as Promise<Response>,
       })) as Response
       return this.adapter.parseResponse(response)
     } catch (error) {
@@ -133,7 +200,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (!this.client.apiKey) {
+    if (!this.browserClient.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
@@ -149,8 +216,22 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       ) as ResponseCreateParamsStreaming,
     )
 
-    const stream = (await this.client.responses.create(body, {
-      signal: options?.signal,
+    const stream = (await runWithRequestTransportForStream({
+      mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
+      createBrowserStream: () =>
+        this.browserClient.responses.create(body, {
+          signal: options?.signal,
+        }) as Promise<AsyncIterable<ResponseStreamEvent>>,
+      createObsidianStream: () =>
+        this.obsidianClient.responses.create(body, {
+          signal: options?.signal,
+        }) as Promise<AsyncIterable<ResponseStreamEvent>>,
+      createNodeStream: () =>
+        this.nodeClient.responses.create(body, {
+          signal: options?.signal,
+        }) as Promise<AsyncIterable<ResponseStreamEvent>>,
     })) as AsyncIterable<ResponseStreamEvent>
     const adapter = this.adapter
 
@@ -165,16 +246,32 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
   }
 
   async getEmbedding(model: string, text: string): Promise<number[]> {
-    if (!this.client.apiKey) {
+    if (!this.browserClient.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
     }
 
     try {
-      const embedding = await this.client.embeddings.create({
-        model,
-        input: text,
+      const embedding = await runWithRequestTransport({
+        mode: this.requestTransportMode,
+        memoryKey: this.requestTransportMemoryKey,
+        onAutoPromoteTransportMode: this.promoteTransportMode,
+        runBrowser: () =>
+          this.browserClient.embeddings.create({
+            model,
+            input: text,
+          }),
+        runObsidian: () =>
+          this.obsidianClient.embeddings.create({
+            model,
+            input: text,
+          }),
+        runNode: () =>
+          this.nodeClient.embeddings.create({
+            model,
+            input: text,
+          }),
       })
       return extractEmbeddingVector(embedding)
     } catch (error) {

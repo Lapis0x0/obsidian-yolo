@@ -449,10 +449,11 @@ export const it: TranslationKeys = {
         'Usa requestUrl di Obsidian per aggirare le restrizioni CORS. Le risposte in streaming verranno bufferizzate.',
       requestTransportMode: 'Modalita trasporto richieste',
       requestTransportModeDesc:
-        'Auto prova prima il fetch del browser e passa a requestUrl di Obsidian in caso di errori CORS/rete. In modalita Obsidian lo streaming viene bufferizzato.',
+        'Auto prova prima il fetch del browser, poi il fetch Node desktop e infine passa a requestUrl di Obsidian in caso di errori CORS/rete. In modalita Obsidian lo streaming viene bufferizzato; la modalita Node usa il fetch Node desktop per uno streaming reale.',
       requestTransportModeAuto: 'Auto (consigliato)',
       requestTransportModeBrowser: 'Solo fetch browser',
       requestTransportModeObsidian: 'Solo requestUrl Obsidian',
+      requestTransportModeNode: 'Solo fetch Node desktop',
       customHeaders: 'Header personalizzati',
       customHeadersDesc:
         'Aggiungi header HTTP extra a tutte le richieste inviate tramite questo provider.',
@@ -1078,7 +1079,7 @@ export const it: TranslationKeys = {
     reloadingPlugin: 'Ricaricamento "next-composer" a causa della migrazione',
     settingsInvalid: 'Impostazioni non valide',
     transportModeAutoPromoted:
-      'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su Obsidian requestUrl.',
+      'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su {mode}.',
   },
 
   errors: {

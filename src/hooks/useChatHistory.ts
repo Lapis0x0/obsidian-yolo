@@ -119,12 +119,13 @@ export function useChatHistory(): UseChatHistory {
     settingsRef.current = settings
   }, [settings])
 
-  const handleAutoPromoteToObsidian = useCallback(
-    (providerId: string) => {
+  const handleAutoPromoteTransportMode = useCallback(
+    (providerId: string, mode: 'node' | 'obsidian') => {
       void promoteProviderTransportModeToObsidian({
         getSettings: () => settingsRef.current,
         setSettings,
         providerId,
+        mode,
       })
     },
     [setSettings],
@@ -513,7 +514,7 @@ export function useChatHistory(): UseChatHistory {
             const { providerClient, model } = getChatModelClient({
               settings,
               modelId: settings.applyModelId,
-              onAutoPromoteToObsidian: handleAutoPromoteToObsidian,
+              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
             })
 
             const defaultTitlePrompt =
@@ -608,7 +609,7 @@ export function useChatHistory(): UseChatHistory {
     [
       chatManager,
       fetchChatList,
-      handleAutoPromoteToObsidian,
+      handleAutoPromoteTransportMode,
       language,
       settings,
       emitChatHistoryUpdated,

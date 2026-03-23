@@ -28,7 +28,12 @@ export function getRequestTransportModeValue(
   additionalSettings: Record<string, unknown> | undefined,
 ): RequestTransportMode {
   const mode = additionalSettings?.requestTransportMode
-  if (mode === 'auto' || mode === 'browser' || mode === 'obsidian') {
+  if (
+    mode === 'auto' ||
+    mode === 'browser' ||
+    mode === 'obsidian' ||
+    mode === 'node'
+  ) {
     return mode
   }
 

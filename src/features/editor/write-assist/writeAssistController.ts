@@ -124,11 +124,12 @@ export class WriteAssistController {
       const { providerClient, model } = getChatModelClient({
         settings,
         modelId: rewriteModelId,
-        onAutoPromoteToObsidian: (providerId) => {
+        onAutoPromoteTransportMode: (providerId, mode) => {
           void promoteProviderTransportModeToObsidian({
             getSettings: this.deps.getSettings,
             setSettings: this.deps.setSettings,
             providerId,
+            mode,
           })
         },
       })

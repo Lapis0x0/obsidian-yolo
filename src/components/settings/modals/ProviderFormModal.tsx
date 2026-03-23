@@ -1,4 +1,4 @@
-import { App, Notice } from 'obsidian'
+import { App, Notice, Platform } from 'obsidian'
 import { useState } from 'react'
 
 import { PROVIDER_API_INFO, PROVIDER_PRESET_INFO } from '../../../constants'
@@ -215,6 +215,16 @@ function ProviderFormComponent({
       PROVIDER_API_INFO[apiType].label,
     ]),
   )
+  const requestTransportOptions = {
+    auto: t('settings.providers.requestTransportModeAuto'),
+    browser: t('settings.providers.requestTransportModeBrowser'),
+    obsidian: t('settings.providers.requestTransportModeObsidian'),
+    ...(Platform.isDesktop
+      ? {
+          node: t('settings.providers.requestTransportModeNode'),
+        }
+      : {}),
+  }
 
   return (
     <div className="smtcmp-provider-form">
@@ -352,13 +362,7 @@ function ProviderFormComponent({
                     | Record<string, unknown>
                     | undefined,
                 )}
-                options={{
-                  auto: t('settings.providers.requestTransportModeAuto'),
-                  browser: t('settings.providers.requestTransportModeBrowser'),
-                  obsidian: t(
-                    'settings.providers.requestTransportModeObsidian',
-                  ),
-                }}
+                options={requestTransportOptions}
                 onChange={(value: string) =>
                   setFormData(
                     (prev) =>

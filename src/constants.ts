@@ -32,6 +32,21 @@ export const DEFAULT_CHAT_TITLE_PROMPT = {
   it: "Sei un generatore di titoli. Genera un titolo di conversazione conciso in base al primo messaggio dell'utente e alla prima risposta completa dell'assistente. Restituisci solo il titolo.",
 } as const
 
+const REQUEST_TRANSPORT_MODE_SETTING = {
+  label: 'Request transport mode',
+  key: 'requestTransportMode',
+  type: 'select' as const,
+  required: false,
+  options: {
+    auto: 'Auto',
+    browser: 'Browser fetch',
+    obsidian: 'Obsidian requestUrl',
+    node: 'Desktop Node fetch',
+  },
+  description:
+    'Auto: try browser fetch first, then desktop Node fetch, and finally Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses. Node mode uses desktop-only Node fetch for real streaming.',
+}
+
 export const PROVIDER_PRESET_INFO = {
   openai: {
     label: 'OpenAI',
@@ -39,7 +54,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: true,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   'chatgpt-oauth': {
     label: 'ChatGPT OAuth',
@@ -55,21 +70,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [
-      {
-        label: 'Request transport mode',
-        key: 'requestTransportMode',
-        type: 'select',
-        required: false,
-        options: {
-          auto: 'Auto',
-          browser: 'Browser fetch',
-          obsidian: 'Obsidian requestUrl',
-        },
-        description:
-          'Auto: try browser fetch first and fallback to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses.',
-      },
-    ],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   gemini: {
     label: 'Gemini',
@@ -85,7 +86,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   openrouter: {
     label: 'OpenRouter',
@@ -93,7 +94,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: true,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   ollama: {
     label: 'Ollama',
@@ -101,7 +102,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: false,
     requireBaseUrl: false,
     supportEmbedding: true,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   'lm-studio': {
     label: 'LM Studio',
@@ -109,7 +110,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: false,
     requireBaseUrl: false,
     supportEmbedding: true,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   deepseek: {
     label: 'DeepSeek',
@@ -117,7 +118,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   perplexity: {
     label: 'Perplexity',
@@ -125,7 +126,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   mistral: {
     label: 'Mistral',
@@ -133,7 +134,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   morph: {
     label: 'Morph',
@@ -141,7 +142,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   'azure-openai': {
     label: 'Azure OpenAI',
@@ -164,6 +165,7 @@ export const PROVIDER_PRESET_INFO = {
         type: 'text',
         required: true,
       },
+      REQUEST_TRANSPORT_MODE_SETTING,
     ],
   },
   'openai-compatible': {
@@ -181,19 +183,7 @@ export const PROVIDER_PRESET_INFO = {
         description:
           'Enable this if you encounter CORS errors related to Stainless headers (x-stainless-os, etc.)',
       },
-      {
-        label: 'Request transport mode',
-        key: 'requestTransportMode',
-        type: 'select',
-        required: false,
-        options: {
-          auto: 'Auto',
-          browser: 'Browser fetch',
-          obsidian: 'Obsidian requestUrl',
-        },
-        description:
-          'Auto: try browser fetch first and fallback to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses.',
-      },
+      REQUEST_TRANSPORT_MODE_SETTING,
     ],
   },
 } as const satisfies Record<
