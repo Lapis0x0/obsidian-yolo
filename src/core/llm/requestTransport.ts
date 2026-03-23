@@ -11,6 +11,7 @@ type RequestTransportSettings = {
 }
 
 const AUTO_OBSIDIAN_MEMORY_TTL_MS = 24 * 60 * 60 * 1000
+const AUTO_STREAM_ATTEMPT_FIRST_CHUNK_TIMEOUT_MS = 3000
 
 type RequestTransportMemoryEntry = {
   preferredMode: AutoPromotedTransportMode
@@ -151,6 +152,83 @@ export const shouldRetryWithObsidianTransport = (error: unknown): boolean => {
   )
 }
 
+class RequestTransportAttemptTimeoutError extends Error {
+  constructor(transportMode: 'browser' | 'node') {
+    super(`Timed out waiting for first chunk from ${transportMode} transport.`)
+    this.name = 'RequestTransportAttemptTimeoutError'
+  }
+}
+
+const shouldRetryWithNextTransport = (error: unknown): boolean => {
+  return (
+    error instanceof RequestTransportAttemptTimeoutError ||
+    shouldRetryWithObsidianTransport(error)
+  )
+}
+
+const createLinkedAbortController = (
+  signal?: AbortSignal,
+): {
+  controller: AbortController
+  cleanup: () => void
+} => {
+  const controller = new AbortController()
+
+  if (!signal) {
+    return {
+      controller,
+      cleanup: () => {},
+    }
+  }
+
+  if (signal.aborted) {
+    controller.abort()
+    return {
+      controller,
+      cleanup: () => {},
+    }
+  }
+
+  const handleAbort = () => {
+    controller.abort()
+  }
+
+  signal.addEventListener('abort', handleAbort, { once: true })
+
+  return {
+    controller,
+    cleanup: () => signal.removeEventListener('abort', handleAbort),
+  }
+}
+
+const withTimeout = async <T>({
+  run,
+  timeoutMs,
+  onTimeout,
+}: {
+  run: () => Promise<T>
+  timeoutMs: number
+  onTimeout: () => void
+}): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          onTimeout()
+          reject(new Error('timeout'))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
 const tryNodeThenObsidian = async <T>({
   runNode,
   runObsidian,
@@ -227,44 +305,130 @@ export const runWithRequestTransport = async <T>({
 }
 
 const createAutoFallbackStream = <T>({
-  browserStream,
+  createBrowserStream,
   createNodeStream,
   createObsidianStream,
   memoryKey,
   onAutoPromoteTransportMode,
+  signal,
+  firstChunkTimeoutMs = AUTO_STREAM_ATTEMPT_FIRST_CHUNK_TIMEOUT_MS,
 }: {
-  browserStream: AsyncIterable<T>
-  createNodeStream?: () => Promise<AsyncIterable<T>>
-  createObsidianStream: () => Promise<AsyncIterable<T>>
+  createBrowserStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
+  createNodeStream?: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
+  createObsidianStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
   memoryKey?: string
   onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+  signal?: AbortSignal
+  firstChunkTimeoutMs?: number
 }): AsyncIterable<T> => {
+  const startTimedStreamAttempt = async ({
+    transportMode,
+    createStream,
+  }: {
+    transportMode: 'browser' | 'node'
+    createStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
+  }): Promise<AsyncIterable<T>> => {
+    const { controller, cleanup } = createLinkedAbortController(signal)
+
+    try {
+      const stream = await withTimeout({
+        run: () => createStream(controller.signal),
+        timeoutMs: firstChunkTimeoutMs,
+        onTimeout: () => controller.abort(),
+      }).catch((error) => {
+        if (error instanceof Error && error.message === 'timeout') {
+          throw new RequestTransportAttemptTimeoutError(transportMode)
+        }
+        throw error
+      })
+
+      const iterator = stream[Symbol.asyncIterator]()
+      const firstResult = await withTimeout({
+        run: () => iterator.next(),
+        timeoutMs: firstChunkTimeoutMs,
+        onTimeout: () => controller.abort(),
+      }).catch((error) => {
+        if (error instanceof Error && error.message === 'timeout') {
+          throw new RequestTransportAttemptTimeoutError(transportMode)
+        }
+        throw error
+      })
+
+      return {
+        async *[Symbol.asyncIterator]() {
+          try {
+            if (!firstResult.done) {
+              yield firstResult.value
+            }
+            if (firstResult.done) {
+              return
+            }
+            while (true) {
+              const nextResult = await iterator.next()
+              if (nextResult.done) {
+                return
+              }
+              yield nextResult.value
+            }
+          } finally {
+            cleanup()
+          }
+        },
+      }
+    } catch (error) {
+      cleanup()
+      throw error
+    }
+  }
+
   return {
     async *[Symbol.asyncIterator]() {
       let yieldedAnyChunk = false
       try {
+        const browserStream = await startTimedStreamAttempt({
+          transportMode: 'browser',
+          createStream: createBrowserStream,
+        })
         for await (const chunk of browserStream) {
           yieldedAnyChunk = true
           yield chunk
         }
         return
       } catch (error) {
-        if (yieldedAnyChunk || !shouldRetryWithObsidianTransport(error)) {
+        if (yieldedAnyChunk || !shouldRetryWithNextTransport(error)) {
           throw error
         }
       }
 
       const streamFactories = [
         ...(createNodeStream
-          ? [{ mode: 'node' as const, createStream: createNodeStream }]
+          ? [
+              {
+                mode: 'node' as const,
+                createStream: (attemptSignal?: AbortSignal) =>
+                  createNodeStream(attemptSignal),
+                timed: true as const,
+              },
+            ]
           : []),
-        { mode: 'obsidian' as const, createStream: createObsidianStream },
+        {
+          mode: 'obsidian' as const,
+          createStream: (attemptSignal?: AbortSignal) =>
+            createObsidianStream(attemptSignal ?? signal),
+          timed: false as const,
+        },
       ]
 
       let lastError: unknown
-      for (const { mode: fallbackMode, createStream } of streamFactories) {
+      for (const { mode: fallbackMode, createStream, timed } of streamFactories) {
         try {
-          const fallbackStream = await createStream()
+          const fallbackStream =
+            timed && fallbackMode === 'node'
+              ? await startTimedStreamAttempt({
+                  transportMode: 'node',
+                  createStream,
+                })
+              : await createStream(signal)
           let remembered = false
           for await (const chunk of fallbackStream) {
             if (!remembered) {
@@ -283,7 +447,7 @@ const createAutoFallbackStream = <T>({
           lastError = fallbackError
           if (
             fallbackMode === 'node' &&
-            shouldRetryWithObsidianTransport(fallbackError)
+            shouldRetryWithNextTransport(fallbackError)
           ) {
             continue
           }
@@ -305,54 +469,42 @@ export const runWithRequestTransportForStream = async <T>({
   createNodeStream,
   memoryKey,
   onAutoPromoteTransportMode,
+  signal,
+  firstChunkTimeoutMs,
 }: {
   mode: RequestTransportMode
-  createBrowserStream: () => Promise<AsyncIterable<T>>
-  createObsidianStream: () => Promise<AsyncIterable<T>>
-  createNodeStream?: () => Promise<AsyncIterable<T>>
+  createBrowserStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
+  createObsidianStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
+  createNodeStream?: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
   memoryKey?: string
   onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+  signal?: AbortSignal
+  firstChunkTimeoutMs?: number
 }): Promise<AsyncIterable<T>> => {
   if (mode === 'browser') {
-    return createBrowserStream()
+    return createBrowserStream(signal)
   }
 
   if (mode === 'obsidian') {
-    return createObsidianStream()
+    return createObsidianStream(signal)
   }
 
   if (mode === 'node') {
     if (!createNodeStream) {
       throw new Error('Node request transport is not configured.')
     }
-    return createNodeStream()
+    return createNodeStream(signal)
   }
 
-  try {
-    const browserStream = await createBrowserStream()
-    return createAutoFallbackStream({
-      browserStream,
-      createNodeStream,
-      createObsidianStream,
-      memoryKey,
-      onAutoPromoteTransportMode,
-    })
-  } catch (error) {
-    if (!shouldRetryWithObsidianTransport(error)) {
-      throw error
-    }
-    return createAutoFallbackStream({
-      browserStream: {
-        async *[Symbol.asyncIterator]() {
-          throw error
-        },
-      },
-      createNodeStream,
-      createObsidianStream,
-      memoryKey,
-      onAutoPromoteTransportMode,
-    })
-  }
+  return createAutoFallbackStream({
+    createBrowserStream,
+    createNodeStream,
+    createObsidianStream,
+    memoryKey,
+    onAutoPromoteTransportMode,
+    signal,
+    firstChunkTimeoutMs,
+  })
 }
 
 export const clearRequestTransportMemoryForTests = (): void => {

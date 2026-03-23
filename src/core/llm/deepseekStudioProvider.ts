@@ -148,16 +148,23 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
-      createBrowserStream: () =>
-        this.adapter.streamResponse(this.browserClient, formattedRequest, options),
-      createObsidianStream: () =>
+      signal: options?.signal,
+      createBrowserStream: (signal) =>
+        this.adapter.streamResponse(this.browserClient, formattedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
+      createObsidianStream: (signal) =>
         this.adapter.streamResponse(
           this.obsidianClient,
           formattedRequest,
-          options,
+          { ...options, signal: signal ?? options?.signal },
         ),
-      createNodeStream: () =>
-        this.adapter.streamResponse(this.nodeClient, formattedRequest, options),
+      createNodeStream: (signal) =>
+        this.adapter.streamResponse(this.nodeClient, formattedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
     })
   }
 

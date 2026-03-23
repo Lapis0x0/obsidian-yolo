@@ -279,19 +279,20 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         mode: this.requestTransportMode,
         memoryKey: this.requestTransportMemoryKey,
         onAutoPromoteTransportMode: this.promoteTransportMode,
-        createBrowserStream: () =>
+        signal: options?.signal,
+        createBrowserStream: (signal) =>
           this.browserClient.messages.create(payload, {
-            signal: options?.signal,
+            signal: signal ?? options?.signal,
             stream: true,
           }),
-        createObsidianStream: () =>
+        createObsidianStream: (signal) =>
           this.obsidianClient.messages.create(payload, {
-            signal: options?.signal,
+            signal: signal ?? options?.signal,
             stream: true,
           }),
-        createNodeStream: () =>
+        createNodeStream: (signal) =>
           this.nodeClient.messages.create(payload, {
-            signal: options?.signal,
+            signal: signal ?? options?.signal,
             stream: true,
           }),
       })) as unknown as AsyncIterable<MessageStreamEvent>

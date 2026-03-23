@@ -248,6 +248,58 @@ describe('requestTransport', () => {
       expect(obsidian).not.toHaveBeenCalled()
     })
 
+    it('falls back to node stream when browser stream creation times out', async () => {
+      const stream = await runWithRequestTransportForStream({
+        mode: 'auto',
+        firstChunkTimeoutMs: 10,
+        createBrowserStream: async () =>
+          await new Promise<AsyncIterable<string>>(() => {}),
+        createNodeStream: async () => ({
+          async *[Symbol.asyncIterator]() {
+            yield 'node-timeout-fallback'
+          },
+        }),
+        createObsidianStream: async () => ({
+          async *[Symbol.asyncIterator]() {
+            yield 'obsidian-should-not-run'
+          },
+        }),
+      })
+
+      await expect(collectStream(stream)).resolves.toEqual([
+        'node-timeout-fallback',
+      ])
+    })
+
+    it('falls back to node stream when browser first chunk times out', async () => {
+      const stream = await runWithRequestTransportForStream({
+        mode: 'auto',
+        firstChunkTimeoutMs: 10,
+        createBrowserStream: async () => ({
+          [Symbol.asyncIterator]() {
+            return {
+              next: async () =>
+                await new Promise<IteratorResult<string>>(() => {}),
+            }
+          },
+        }),
+        createNodeStream: async () => ({
+          async *[Symbol.asyncIterator]() {
+            yield 'node-first-chunk-fallback'
+          },
+        }),
+        createObsidianStream: async () => ({
+          async *[Symbol.asyncIterator]() {
+            yield 'obsidian-should-not-run'
+          },
+        }),
+      })
+
+      await expect(collectStream(stream)).resolves.toEqual([
+        'node-first-chunk-fallback',
+      ])
+    })
+
     it('uses node stream in node mode', async () => {
       const stream = await runWithRequestTransportForStream({
         mode: 'node',
