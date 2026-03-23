@@ -127,6 +127,21 @@ export class ChatViewNavigator {
     })
   }
 
+  async openCurrentOrSidebarNewChat() {
+    const activeLeaf = this.plugin.app.workspace.activeLeaf
+    if (activeLeaf?.view instanceof ChatView) {
+      await this.activateChatLeaf(activeLeaf)
+      activeLeaf.view.openNewChat()
+      activeLeaf.view.focusMessage()
+      return
+    }
+
+    await this.openChatView({
+      placement: 'sidebar',
+      openNewChat: true,
+    })
+  }
+
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
     const data = getMentionableBlockData(editor, view)
     if (!data) return

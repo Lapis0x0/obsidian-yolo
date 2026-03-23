@@ -5,6 +5,7 @@ export type TranslationKeys = {
   commands: {
     openChat: string
     openChatSidebar: string
+    newChatCurrentView: string
     openYoloNewChat: string
     openNewChatTab: string
     openNewChatSplit: string
