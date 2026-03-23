@@ -569,7 +569,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
       toolCallsRaw && toolCallsRaw.length > 0 ? toolCallsRaw : undefined
 
     if (toolCalls && toolCalls.length > 0) {
-      console.debug('[Smart Composer] Gemini non-stream tool calls detected:', {
+      console.debug('[YOLO] Gemini non-stream tool calls detected:', {
         finishReason: response.candidates?.[0]?.finishReason ?? null,
         count: toolCalls.length,
         firstTool: toolCalls[0]?.function.name,
@@ -714,7 +714,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
       toolCallDeltaRaw.length > 0 ? toolCallDeltaRaw : undefined
 
     if (toolCallDeltas && toolCallDeltas.length > 0) {
-      console.debug('[Smart Composer] Gemini stream tool call deltas:', {
+      console.debug('[YOLO] Gemini stream tool call deltas:', {
         finishReason: chunk.candidates?.[0]?.finishReason ?? null,
         count: toolCallDeltas.length,
         firstTool: toolCallDeltas[0]?.function?.name,

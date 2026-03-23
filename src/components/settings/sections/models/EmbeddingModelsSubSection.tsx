@@ -55,7 +55,7 @@ export function EmbeddingModelsSubSection({
             }
           } else {
             console.warn(
-              '[Smart Composer] Skip clearing embeddings because vector manager is unavailable.',
+              '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
             )
           }
 

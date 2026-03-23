@@ -203,7 +203,7 @@ function ProviderFormComponent({
     }
 
     void execute().catch((error) => {
-      console.error('[Smart Composer] Failed to save provider:', error)
+      console.error('[YOLO] Failed to save provider:', error)
       new Notice('Failed to save provider settings.')
     })
   }

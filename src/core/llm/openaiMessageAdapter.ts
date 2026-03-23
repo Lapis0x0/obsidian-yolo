@@ -551,7 +551,7 @@ export class OpenAIMessageAdapter {
 
           if (!toolCallsFromStandardField && toolCallsFromLegacyField) {
             console.warn(
-              '[Smart Composer] Parsed legacy function_call response format (non-stream).',
+              '[YOLO] Parsed legacy function_call response format (non-stream).',
             )
           }
 
@@ -592,7 +592,7 @@ export class OpenAIMessageAdapter {
 
           if (!toolCallsFromStandardField && toolCallsFromLegacyField) {
             console.warn(
-              '[Smart Composer] Parsed legacy function_call response format (stream).',
+              '[YOLO] Parsed legacy function_call response format (stream).',
             )
           }
 

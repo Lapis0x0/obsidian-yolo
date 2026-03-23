@@ -405,7 +405,7 @@ export function useChatHistory(): UseChatHistory {
           | 'assistant_not_completed'
           | 'llm_generation_failed',
       ): void => {
-        console.debug('[Smart Composer] Auto title skipped', {
+        console.debug('[YOLO] Auto title skipped', {
           conversationId: id,
           reason,
           force,
@@ -570,7 +570,7 @@ export function useChatHistory(): UseChatHistory {
                   ? JSON.stringify(lastGenerationError)
                   : 'unknown_error'
           console.error(
-            '[Smart Composer] Failed to generate conversation title',
+            '[YOLO] Failed to generate conversation title',
             {
               conversationId: id,
               error: errorMessage,

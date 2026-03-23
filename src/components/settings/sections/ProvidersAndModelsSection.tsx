@@ -126,7 +126,7 @@ function ChatGPTOAuthPanel({
       setExpiresAt(status.expiresAt ?? null)
     } catch (error) {
       console.error(
-        '[Smart Composer] Failed to load ChatGPT OAuth status:',
+        '[YOLO] Failed to load ChatGPT OAuth status:',
         error,
       )
       setConnected(false)
@@ -164,7 +164,7 @@ function ChatGPTOAuthPanel({
     void execute()
       .catch((error: unknown) => {
         console.error(
-          '[Smart Composer] Failed to connect ChatGPT OAuth:',
+          '[YOLO] Failed to connect ChatGPT OAuth:',
           error,
         )
         const message =
@@ -193,7 +193,7 @@ function ChatGPTOAuthPanel({
 
     void execute().catch((error: unknown) => {
       console.error(
-        '[Smart Composer] Failed to disconnect ChatGPT OAuth:',
+        '[YOLO] Failed to disconnect ChatGPT OAuth:',
         error,
       )
       new Notice('Failed to disconnect ChatGPT OAuth.')
@@ -962,7 +962,7 @@ export function ProvidersAndModelsSection({
       })
       triggerProviderDropSuccessFeedback(String(active.id))
     } catch (error) {
-      console.error('[Smart Composer] Failed to reorder providers:', error)
+      console.error('[YOLO] Failed to reorder providers:', error)
       new Notice('Failed to reorder providers.')
     }
   }
@@ -1004,7 +1004,7 @@ export function ProvidersAndModelsSection({
       })
       triggerProviderDropSuccess(providerId, String(active.id))
     } catch (error) {
-      console.error('[Smart Composer] Failed to reorder chat models:', error)
+      console.error('[YOLO] Failed to reorder chat models:', error)
       new Notice('Failed to reorder chat models.')
     }
   }
@@ -1047,7 +1047,7 @@ export function ProvidersAndModelsSection({
       triggerProviderDropSuccess(providerId, String(active.id))
     } catch (error) {
       console.error(
-        '[Smart Composer] Failed to reorder embedding models:',
+        '[YOLO] Failed to reorder embedding models:',
         error,
       )
       new Notice('Failed to reorder embedding models.')
@@ -1138,7 +1138,7 @@ export function ProvidersAndModelsSection({
             }
           } else {
             console.warn(
-              '[Smart Composer] Skip clearing embeddings because vector manager is unavailable.',
+              '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
             )
           }
         }
@@ -1157,7 +1157,7 @@ export function ProvidersAndModelsSection({
 
         new Notice(`Provider "${provider.id}" deleted successfully.`)
       } catch (error) {
-        console.error('[Smart Composer] Failed to delete provider:', error)
+        console.error('[YOLO] Failed to delete provider:', error)
         new Notice('Failed to delete provider.')
       }
     })()
@@ -1183,7 +1183,7 @@ export function ProvidersAndModelsSection({
           chatModels: settings.chatModels.filter((v) => v.id !== modelId),
         })
       } catch (error: unknown) {
-        console.error('[Smart Composer] Failed to delete chat model:', error)
+        console.error('[YOLO] Failed to delete chat model:', error)
         new Notice('Failed to delete chat model.')
       }
     })()
@@ -1214,7 +1214,7 @@ export function ProvidersAndModelsSection({
           }
         } else {
           console.warn(
-            '[Smart Composer] Skip clearing embeddings because vector manager is unavailable.',
+            '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
           )
         }
         await setSettings({
@@ -1225,7 +1225,7 @@ export function ProvidersAndModelsSection({
         })
       } catch (error) {
         console.error(
-          '[Smart Composer] Failed to delete embedding model:',
+          '[YOLO] Failed to delete embedding model:',
           error,
         )
         new Notice('Failed to delete embedding model.')
@@ -1261,7 +1261,7 @@ export function ProvidersAndModelsSection({
         })
       } catch (error: unknown) {
         console.error(
-          '[Smart Composer] Failed to update chat model state:',
+          '[YOLO] Failed to update chat model state:',
           error,
         )
         new Notice('Failed to update chat model.')

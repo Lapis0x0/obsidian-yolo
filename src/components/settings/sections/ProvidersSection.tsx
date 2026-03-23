@@ -68,7 +68,7 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
               }
             } else {
               console.warn(
-                '[Smart Composer] Skip clearing embeddings because vector manager is unavailable.',
+                '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
               )
             }
 
@@ -85,7 +85,7 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
               ),
             })
           } catch (error) {
-            console.error('[Smart Composer] Failed to delete provider:', error)
+            console.error('[YOLO] Failed to delete provider:', error)
             new Notice('Failed to delete provider.')
           }
         })()

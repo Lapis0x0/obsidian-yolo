@@ -173,7 +173,7 @@ export class ChatManager extends AbstractJsonRepository<
       const parsed = JSON.parse(content) as ChatConversationMetadata[]
       return Array.isArray(parsed) ? parsed : null
     } catch (error) {
-      console.error('[Smart Composer] Failed to read chat index', error)
+      console.error('[YOLO] Failed to read chat index', error)
       return null
     }
   }
