@@ -86,7 +86,7 @@ const readSnapshotStore = async (
       entries: parsed.entries,
     }
   } catch (error) {
-    console.error('[Smart Composer] Failed to read prompt snapshots', error)
+    console.error('[YOLO] Failed to read prompt snapshots', error)
     return EMPTY_STORE
   }
 }

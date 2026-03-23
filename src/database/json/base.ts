@@ -12,7 +12,7 @@ export abstract class AbstractJsonRepository<T, M> {
     this.dataDir = normalizePath(dataDir)
     void this.ensureRepositoryDir().catch((error) => {
       console.error(
-        `[Smart Composer] Failed to ensure data directory "${this.dataDir}":`,
+        `[YOLO] Failed to ensure data directory "${this.dataDir}":`,
         error,
       )
     })

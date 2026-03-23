@@ -331,7 +331,7 @@ function AddChatModelModalComponent({
           }
 
           console.warn(
-            '[Smart Composer] Failed to fetch ChatGPT OAuth models, fallback to defaults.',
+            '[YOLO] Failed to fetch ChatGPT OAuth models, fallback to defaults.',
             lastErr,
           )
           const fallback = Array.from(

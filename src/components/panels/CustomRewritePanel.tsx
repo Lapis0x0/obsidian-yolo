@@ -36,7 +36,7 @@ function CustomRewritePanelBody({
       )
       .catch((error) => {
         console.error(
-          '[Smart Composer] Failed to trigger custom rewrite:',
+          '[YOLO] Failed to trigger custom rewrite:',
           error,
         )
       })

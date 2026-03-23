@@ -1187,7 +1187,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       return dbManager.getVectorManager()
     } catch (error) {
       console.warn(
-        '[Smart Composer] Failed to initialize vector manager, skip vector-dependent operations.',
+        '[YOLO] Failed to initialize vector manager, skip vector-dependent operations.',
         error,
       )
       return null

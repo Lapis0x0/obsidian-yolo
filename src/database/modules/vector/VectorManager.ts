@@ -318,7 +318,7 @@ export class VectorManager {
         )
       }
       console.warn(
-        '[Smart Composer] Vector indexing skipped because all pending files failed. Using existing embeddings.',
+        '[YOLO] Vector indexing skipped because all pending files failed. Using existing embeddings.',
       )
       return
     }

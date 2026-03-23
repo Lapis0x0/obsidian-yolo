@@ -123,7 +123,7 @@ export class McpManager {
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
         console.error(
-          '[Smart Composer] Failed to handle MCP settings update:',
+          '[YOLO] Failed to handle MCP settings update:',
           error,
         )
       })
@@ -275,7 +275,7 @@ export class McpManager {
       validateServerName(name)
     } catch (error) {
       console.error(
-        `[Smart Composer] Invalid MCP server name "${name}":`,
+        `[YOLO] Invalid MCP server name "${name}":`,
         error,
       )
       return {
@@ -294,7 +294,7 @@ export class McpManager {
       await client.connect(transport)
     } catch (error) {
       console.error(
-        `[Smart Composer] Failed to connect to MCP server "${name}":`,
+        `[YOLO] Failed to connect to MCP server "${name}":`,
         error,
       )
       return {
@@ -318,7 +318,7 @@ export class McpManager {
       }
     } catch (error) {
       console.error(
-        `[Smart Composer] Failed to list tools for MCP server "${name}":`,
+        `[YOLO] Failed to list tools for MCP server "${name}":`,
         error,
       )
       return {

@@ -583,7 +583,7 @@ ${similaritySearchResults
                 return { file, content }
               } catch (error) {
                 console.warn(
-                  '[Smart Composer] Failed to read mentioned file',
+                  '[YOLO] Failed to read mentioned file',
                   file.path,
                   error,
                 )

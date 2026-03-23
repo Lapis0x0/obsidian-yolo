@@ -119,7 +119,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         try {
           await setSettings(nextSettings)
         } catch (error: unknown) {
-          console.error('[Smart Composer] ' + errorMessage, error)
+          console.error('[YOLO] ' + errorMessage, error)
           new Notice(errorMessage)
         }
       })()
