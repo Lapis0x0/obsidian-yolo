@@ -124,12 +124,22 @@ export class OllamaProvider extends BaseLLMProvider<LLMProvider> {
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
-      createBrowserStream: () =>
-        this.adapter.streamResponse(this.browserClient, mergedRequest, options),
-      createObsidianStream: () =>
-        this.adapter.streamResponse(this.obsidianClient, mergedRequest, options),
-      createNodeStream: () =>
-        this.adapter.streamResponse(this.nodeClient, mergedRequest, options),
+      signal: options?.signal,
+      createBrowserStream: (signal) =>
+        this.adapter.streamResponse(this.browserClient, mergedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
+      createObsidianStream: (signal) =>
+        this.adapter.streamResponse(this.obsidianClient, mergedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
+      createNodeStream: (signal) =>
+        this.adapter.streamResponse(this.nodeClient, mergedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
     })
   }
 

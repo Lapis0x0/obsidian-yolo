@@ -220,17 +220,18 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
-      createBrowserStream: () =>
+      signal: options?.signal,
+      createBrowserStream: (signal) =>
         this.browserClient.responses.create(body, {
-          signal: options?.signal,
+          signal: signal ?? options?.signal,
         }) as Promise<AsyncIterable<ResponseStreamEvent>>,
-      createObsidianStream: () =>
+      createObsidianStream: (signal) =>
         this.obsidianClient.responses.create(body, {
-          signal: options?.signal,
+          signal: signal ?? options?.signal,
         }) as Promise<AsyncIterable<ResponseStreamEvent>>,
-      createNodeStream: () =>
+      createNodeStream: (signal) =>
         this.nodeClient.responses.create(body, {
-          signal: options?.signal,
+          signal: signal ?? options?.signal,
         }) as Promise<AsyncIterable<ResponseStreamEvent>>,
     })) as AsyncIterable<ResponseStreamEvent>
     const adapter = this.adapter

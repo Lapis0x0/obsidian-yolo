@@ -129,19 +129,20 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransportForStream({
       mode: 'obsidian',
       memoryKey: this.requestTransportMemoryKey,
-      createBrowserStream: async () =>
+      signal: options?.signal,
+      createBrowserStream: async (signal) =>
         this.streamResponseWithFallback(
           this.obsidianClient,
           body,
           formattedRequest,
-          options,
+          { ...options, signal: signal ?? options?.signal },
         ),
-      createObsidianStream: async () =>
+      createObsidianStream: async (signal) =>
         this.streamResponseWithFallback(
           this.obsidianClient,
           body,
           formattedRequest,
-          options,
+          { ...options, signal: signal ?? options?.signal },
         ),
     })
   }
