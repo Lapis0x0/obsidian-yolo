@@ -151,7 +151,7 @@ export const it: TranslationKeys = {
         'Seleziona il modello usato globalmente come modello strumento (per la denominazione automatica delle conversazioni, operazioni di applicazione, ecc.).',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
-        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat.",
+        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",
       continuationSystemPrompt:
         'Prompt di sistema di continuazione predefinito',
       continuationSystemPromptDesc:
@@ -279,7 +279,7 @@ export const it: TranslationKeys = {
       descriptionPlaceholder: 'Ad esempio, Aiuta con domande di programmazione',
       systemPrompt: 'Prompt di sistema',
       systemPromptDesc:
-        "Istruzioni che definiscono il comportamento dell'assistente",
+        "Questo prompt viene aggiunto all'inizio di ogni chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",
       systemPromptPlaceholder: 'Ad esempio, Sei un esperto programmatore...',
       defaultAssistantName: 'Nuovo assistente',
       actions: 'Azioni',
@@ -387,7 +387,7 @@ export const it: TranslationKeys = {
       editorChooseIcon: 'Scegli icona',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
-        'Istruzione comportamentale principale per questo agent',
+        'Istruzione comportamentale principale per questo agent. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.',
       editorEnableTools: 'Abilita strumenti',
       editorEnableToolsDesc: 'Consenti a questo agent di chiamare strumenti',
       editorIncludeBuiltinTools: 'Includi strumenti integrati',

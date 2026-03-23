@@ -1068,7 +1068,7 @@ export function AgentsSectionContent({
                   'settings.agent.editorSystemPromptDesc',
                   'Primary behavior instruction for this agent',
                 )}
-                className="smtcmp-settings-textarea-header"
+                className="smtcmp-settings-textarea-header smtcmp-settings-desc-copyable"
               />
               <ObsidianSetting className="smtcmp-settings-textarea">
                 <ObsidianTextArea

@@ -125,7 +125,8 @@ export const zh: TranslationKeys = {
       toolModelDesc:
         '选择将作为插件全局工具模型调用的模型（用于自动对话命名、应用操作等）。',
       globalSystemPrompt: '全局系统提示词',
-      globalSystemPromptDesc: '该提示将追加到每次聊天的最前面。',
+      globalSystemPromptDesc:
+        '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',
       continuationSystemPrompt: '默认续写系统提示词',
       continuationSystemPromptDesc:
         '用于续写功能的系统消息。留空将使用内置默认值。',
@@ -236,7 +237,8 @@ export const zh: TranslationKeys = {
       descriptionDesc: '简要描述此助手的用途',
       descriptionPlaceholder: '输入描述',
       systemPrompt: '系统提示词',
-      systemPromptDesc: '该提示将添加到每次聊天的开头。',
+      systemPromptDesc:
+        '该提示将添加到每次聊天的开头。支持 {{current_date}}、{{current_hour}} 和 {{current_minute}}。',
       systemPromptPlaceholder: '输入系统提示词，用于定义助手的行为与能力',
       namePlaceholder: '输入助手名称',
       defaultAssistantName: '新建助手',
@@ -337,7 +339,8 @@ export const zh: TranslationKeys = {
       editorIconDesc: '为该 Agent 选择图标',
       editorChooseIcon: '选择图标',
       editorSystemPrompt: 'System prompt',
-      editorSystemPromptDesc: '该 Agent 的主行为指令',
+      editorSystemPromptDesc:
+        '该 Agent 的主行为指令。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',
       editorEnableTools: '启用工具',
       editorEnableToolsDesc: '允许该 Agent 调用工具',
       editorIncludeBuiltinTools: '包含内置工具',

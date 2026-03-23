@@ -151,7 +151,7 @@ export const en: TranslationKeys = {
         'Select the model used globally as the tool model (for auto conversation naming, apply operations, etc.).',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
-        'This prompt is added to the beginning of every chat conversation.',
+        'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
       continuationSystemPrompt: 'Default continuation system prompt',
       continuationSystemPromptDesc:
         'Used as the system message when generating continuation text; leave empty to fall back to the built-in default.',
@@ -271,7 +271,7 @@ export const en: TranslationKeys = {
       description: 'Description',
       systemPrompt: 'System prompt',
       systemPromptDesc:
-        'This prompt will be added to the beginning of every chat.',
+        'This prompt will be added to the beginning of every chat. Supports {{current_date}}, {{current_hour}}, and {{current_minute}}.',
       systemPromptPlaceholder:
         "Enter system prompt to define assistant's behavior and capabilities",
       namePlaceholder: 'Enter assistant name',
@@ -376,7 +376,8 @@ export const en: TranslationKeys = {
       editorIconDesc: 'Pick an icon for this agent',
       editorChooseIcon: 'Choose icon',
       editorSystemPrompt: 'System prompt',
-      editorSystemPromptDesc: 'Primary behavior instruction for this agent',
+      editorSystemPromptDesc:
+        'Primary behavior instruction for this agent. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
       editorEnableTools: 'Enable tools',
       editorEnableToolsDesc: 'Allow this agent to call tools',
       editorIncludeBuiltinTools: 'Include built-in tools',

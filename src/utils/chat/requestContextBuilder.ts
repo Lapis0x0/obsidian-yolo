@@ -44,6 +44,7 @@ import { getNestedFiles, readTFileContent } from '../obsidian'
 
 import { filterRequestMessagesByToolBoundary } from './tool-boundary'
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
+import { resolvePromptVariables } from '../prompt/promptVariables'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
@@ -707,7 +708,9 @@ ${await this.getWebsiteContent(url)}
     hasMemoryTools: boolean,
   ): Promise<string | null> {
     // Get custom system prompt
-    const customInstruction = this.settings.systemPrompt.trim()
+    const customInstruction = resolvePromptVariables(
+      this.settings.systemPrompt,
+    ).trim()
 
     // Get currently selected assistant
     const currentAssistantId = this.settings.currentAssistantId
@@ -722,9 +725,14 @@ ${await this.getWebsiteContent(url)}
 
     // Add assistant's system prompt (if available) - this is the primary instruction
     if (currentAssistant?.systemPrompt) {
-      parts.push(`<assistant_instructions name="${currentAssistant.name}">
-${currentAssistant.systemPrompt}
+      const resolvedAssistantSystemPrompt = resolvePromptVariables(
+        currentAssistant.systemPrompt,
+      ).trim()
+      if (resolvedAssistantSystemPrompt) {
+        parts.push(`<assistant_instructions name="${currentAssistant.name}">
+${resolvedAssistantSystemPrompt}
 </assistant_instructions>`)
+      }
     }
 
     const memoryContext = await getMemoryPromptContext({
