@@ -782,6 +782,10 @@ export const zh: TranslationKeys = {
       notificationChannelSound: '仅音效',
       notificationChannelSystem: '仅系统通知',
       notificationChannelBoth: '音效 + 系统通知',
+      notificationTiming: '提醒时机',
+      notificationTimingDesc: '选择始终提醒，或仅在 Obsidian 失焦时提醒。',
+      notificationTimingAlways: '始终提醒',
+      notificationTimingWhenUnfocused: '仅失焦时提醒',
       notificationApprovalRequired: '需要审批时提醒',
       notificationApprovalRequiredDesc:
         '当 YOLO 暂停并等待你审批工具调用时发出提醒。',

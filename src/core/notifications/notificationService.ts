@@ -1,8 +1,12 @@
-import type { NotificationChannel } from '../../settings/schema/setting.types'
+import type {
+  NotificationChannel,
+  NotificationTiming,
+} from '../../settings/schema/setting.types'
 
 export type NotificationOptionsLike = {
   enabled?: boolean
   channel?: NotificationChannel
+  timing?: NotificationTiming
   notifyOnApprovalRequired?: boolean
   notifyOnTaskCompleted?: boolean
 }
@@ -27,8 +31,22 @@ type NotificationChannelNotifier = {
 
 type NotificationServiceOptions = {
   getOptions: () => NotificationOptionsLike
+  getIsWindowFocused?: () => boolean
   soundNotifier?: NotificationChannelNotifier
   systemNotifier?: NotificationChannelNotifier
+}
+
+const getBrowserFocusState = (): boolean => {
+  if (typeof document === 'undefined') {
+    return true
+  }
+  if (document.visibilityState === 'hidden') {
+    return false
+  }
+  if (typeof document.hasFocus === 'function') {
+    return document.hasFocus()
+  }
+  return true
 }
 
 const createBrowserSoundNotifier = (): NotificationChannelNotifier => {
@@ -141,11 +159,13 @@ export class NotificationService {
 
   constructor(options: NotificationServiceOptions) {
     this.getOptions = options.getOptions
+    this.getIsWindowFocused = options.getIsWindowFocused ?? getBrowserFocusState
     this.soundNotifier = options.soundNotifier ?? createBrowserSoundNotifier()
     this.systemNotifier = options.systemNotifier ?? createBrowserSystemNotifier()
   }
 
   private readonly getOptions: () => NotificationOptionsLike
+  private readonly getIsWindowFocused: () => boolean
 
   markApprovalKeysAsSeen(keys: Iterable<string>): void {
     for (const key of keys) {
@@ -180,6 +200,9 @@ export class NotificationService {
   private shouldNotifyEvent(type: NotificationEvent['type']): boolean {
     const options = this.getOptions()
     if (!options.enabled) {
+      return false
+    }
+    if (options.timing === 'when-unfocused' && this.getIsWindowFocused()) {
       return false
     }
 

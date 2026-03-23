@@ -836,6 +836,11 @@ export const it: TranslationKeys = {
       notificationChannelSound: 'Solo suono',
       notificationChannelSystem: 'Solo sistema',
       notificationChannelBoth: 'Suono + sistema',
+      notificationTiming: 'Quando notificare',
+      notificationTimingDesc:
+        "Scegli se notificare sempre o solo quando Obsidian non è in focus.",
+      notificationTimingAlways: 'Notifica sempre',
+      notificationTimingWhenUnfocused: 'Solo quando non è in focus',
       notificationApprovalRequired: "Notifica quando serve l'approvazione",
       notificationApprovalRequiredDesc:
         "Avvisa quando YOLO si ferma e richiede l'approvazione per una chiamata strumento.",
