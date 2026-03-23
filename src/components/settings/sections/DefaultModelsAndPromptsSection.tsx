@@ -145,7 +145,7 @@ export function DefaultModelsAndPromptsSection() {
             <ObsidianSetting
               name={t('settings.defaults.globalSystemPrompt')}
               desc={t('settings.defaults.globalSystemPromptDesc')}
-              className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
+              className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header smtcmp-settings-desc-copyable"
             />
 
             <ObsidianSetting className="smtcmp-settings-textarea smtcmp-models-textarea-card-body">

@@ -350,7 +350,7 @@ export const AssistantsSectionContent: FC<AssistantsSectionProps> = ({
               'settings.assistants.systemPromptDesc',
               'This prompt will be added to the beginning of every chat.',
             )}
-            className="smtcmp-settings-textarea-header"
+            className="smtcmp-settings-textarea-header smtcmp-settings-desc-copyable"
           />
           <ObsidianSetting className="smtcmp-settings-textarea">
             <ObsidianTextArea
@@ -593,7 +593,7 @@ const AssistantListItem: FC<AssistantListItemProps> = ({
               'settings.assistants.systemPromptDesc',
               'This prompt will be added to the beginning of every chat.',
             )}
-            className="smtcmp-settings-textarea-header"
+            className="smtcmp-settings-textarea-header smtcmp-settings-desc-copyable"
           />
           <ObsidianSetting className="smtcmp-settings-textarea">
             <ObsidianTextArea

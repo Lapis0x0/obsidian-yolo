@@ -836,6 +836,13 @@
   }
 }
 
+.smtcmp-settings-desc-copyable {
+  .setting-item-description {
+    user-select: text;
+    cursor: text;
+  }
+}
+
 .smtcmp-obsidian-code-block {
   pre {
     margin: 0;
