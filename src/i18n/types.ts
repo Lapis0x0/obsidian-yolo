@@ -646,6 +646,19 @@ export type TranslationKeys = {
       chatApplyModeDirectApply?: string
       persistSelectionHighlight?: string
       persistSelectionHighlightDesc?: string
+      notifications?: string
+      notificationsDesc?: string
+      notificationsEnabled?: string
+      notificationsEnabledDesc?: string
+      notificationChannel?: string
+      notificationChannelDesc?: string
+      notificationChannelSound?: string
+      notificationChannelSystem?: string
+      notificationChannelBoth?: string
+      notificationApprovalRequired?: string
+      notificationApprovalRequiredDesc?: string
+      notificationTaskCompleted?: string
+      notificationTaskCompletedDesc?: string
     }
     smartSpace?: {
       quickActionsTitle: string
@@ -890,6 +903,13 @@ export type TranslationKeys = {
       geminiTools?: string
       webSearch?: string
       urlContext?: string
+    }
+    notification?: {
+      approvalTitle?: string
+      approvalBody?: string
+      completedTitle?: string
+      completedBody?: string
+      completedErrorBody?: string
     }
   }
 

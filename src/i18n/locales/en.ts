@@ -841,6 +841,24 @@ export const en: TranslationKeys = {
       persistSelectionHighlight: 'Keep selection block highlight',
       persistSelectionHighlightDesc:
         'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',
+      notifications: 'Notifications',
+      notificationsDesc:
+        'Configure alerts for Agent runs. System notifications automatically degrade when the environment does not support them.',
+      notificationsEnabled: 'Enable notifications',
+      notificationsEnabledDesc:
+        'Turn task alerts on or off for Agent runs.',
+      notificationChannel: 'Notification method',
+      notificationChannelDesc:
+        'Choose whether reminders use sound, system notifications, or both.',
+      notificationChannelSound: 'Sound only',
+      notificationChannelSystem: 'System only',
+      notificationChannelBoth: 'Sound + system',
+      notificationApprovalRequired: 'Notify when approval is required',
+      notificationApprovalRequiredDesc:
+        'Alert you when YOLO pauses and needs you to approve a tool call.',
+      notificationTaskCompleted: 'Notify when a task finishes',
+      notificationTaskCompletedDesc:
+        'Alert you after the current Agent run finishes without waiting for more approvals.',
     },
   },
 
@@ -1025,6 +1043,16 @@ export const en: TranslationKeys = {
       geminiTools: 'Gemini tools',
       webSearch: 'Web search',
       urlContext: 'URL context',
+    },
+    notification: {
+      approvalTitle: 'YOLO needs your confirmation',
+      approvalBody:
+        'The current task is paused and waiting for you to approve a tool call.',
+      completedTitle: 'YOLO task finished',
+      completedBody:
+        'The current Agent run has finished. You can come back to review the result.',
+      completedErrorBody:
+        'The current Agent run has ended. Please return to the window to inspect the result.',
     },
   },
 

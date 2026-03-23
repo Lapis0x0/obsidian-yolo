@@ -824,6 +824,24 @@ export const it: TranslationKeys = {
       persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
       persistSelectionHighlightDesc:
         "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",
+      notifications: 'Notifiche',
+      notificationsDesc:
+        "Configura gli avvisi per Agent. Le notifiche di sistema degradano automaticamente se l'ambiente non le supporta.",
+      notificationsEnabled: 'Abilita notifiche',
+      notificationsEnabledDesc:
+        'Attiva o disattiva gli avvisi per le esecuzioni Agent.',
+      notificationChannel: 'Metodo di notifica',
+      notificationChannelDesc:
+        'Scegli se usare suono, notifiche di sistema o entrambe.',
+      notificationChannelSound: 'Solo suono',
+      notificationChannelSystem: 'Solo sistema',
+      notificationChannelBoth: 'Suono + sistema',
+      notificationApprovalRequired: "Notifica quando serve l'approvazione",
+      notificationApprovalRequiredDesc:
+        "Avvisa quando YOLO si ferma e richiede l'approvazione per una chiamata strumento.",
+      notificationTaskCompleted: 'Notifica al termine del task',
+      notificationTaskCompletedDesc:
+        "Avvisa quando l'esecuzione corrente di Agent termina senza attendere ulteriori approvazioni.",
     },
   },
 
@@ -1024,6 +1042,16 @@ export const it: TranslationKeys = {
       geminiTools: 'Strumenti Gemini',
       webSearch: 'Ricerca web',
       urlContext: 'Contesto URL',
+    },
+    notification: {
+      approvalTitle: 'YOLO richiede la tua conferma',
+      approvalBody:
+        "Il task corrente è in pausa e attende la tua approvazione per una chiamata strumento.",
+      completedTitle: 'Task YOLO terminato',
+      completedBody:
+        "L'esecuzione corrente di Agent è terminata. Puoi tornare a controllare il risultato.",
+      completedErrorBody:
+        "L'esecuzione corrente di Agent è terminata. Torna alla finestra per controllare il risultato.",
     },
   },
 
