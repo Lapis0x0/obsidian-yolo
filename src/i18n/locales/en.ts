@@ -853,6 +853,11 @@ export const en: TranslationKeys = {
       notificationChannelSound: 'Sound only',
       notificationChannelSystem: 'System only',
       notificationChannelBoth: 'Sound + system',
+      notificationTiming: 'Notification timing',
+      notificationTimingDesc:
+        'Choose whether reminders always fire or only when Obsidian is unfocused.',
+      notificationTimingAlways: 'Always notify',
+      notificationTimingWhenUnfocused: 'Only when unfocused',
       notificationApprovalRequired: 'Notify when approval is required',
       notificationApprovalRequiredDesc:
         'Alert you when YOLO pauses and needs you to approve a tool call.',

@@ -28,6 +28,42 @@ describe('NotificationService', () => {
     expect(soundNotify).not.toHaveBeenCalled()
   })
 
+  it('does not notify when timing is unfocused-only and window is focused', async () => {
+    const soundNotify = jest.fn<Promise<void>, [NotificationEvent]>()
+    const service = new NotificationService({
+      getOptions: () => ({
+        enabled: true,
+        channel: 'sound',
+        timing: 'when-unfocused',
+        notifyOnApprovalRequired: true,
+      }),
+      getIsWindowFocused: () => true,
+      soundNotifier: { notify: soundNotify },
+    })
+
+    await service.notify(createEvent())
+
+    expect(soundNotify).not.toHaveBeenCalled()
+  })
+
+  it('notifies when timing is unfocused-only and window is unfocused', async () => {
+    const soundNotify = jest.fn<Promise<void>, [NotificationEvent]>()
+    const service = new NotificationService({
+      getOptions: () => ({
+        enabled: true,
+        channel: 'sound',
+        timing: 'when-unfocused',
+        notifyOnApprovalRequired: true,
+      }),
+      getIsWindowFocused: () => false,
+      soundNotifier: { notify: soundNotify },
+    })
+
+    await service.notify(createEvent())
+
+    expect(soundNotify).toHaveBeenCalledTimes(1)
+  })
+
   it('deduplicates approval notifications by key', async () => {
     const soundNotify = jest.fn<Promise<void>, [NotificationEvent]>()
     const service = new NotificationService({

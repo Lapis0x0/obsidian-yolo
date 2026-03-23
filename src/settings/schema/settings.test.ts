@@ -50,6 +50,7 @@ describe('parseSmartComposerSettings', () => {
     expect(result.notificationOptions).toMatchObject({
       enabled: false,
       channel: 'sound',
+      timing: 'when-unfocused',
       notifyOnApprovalRequired: true,
       notifyOnTaskCompleted: true,
     })

@@ -161,6 +161,25 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
     })()
   }
 
+  const handleNotificationTimingChange = (value: string) => {
+    if (value !== 'always' && value !== 'when-unfocused') {
+      return
+    }
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          notificationOptions: {
+            ...settings.notificationOptions,
+            timing: value,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update notification timing setting', error)
+      }
+    })()
+  }
+
   const handleNotifyOnTaskCompletedChange = (value: boolean) => {
     void (async () => {
       try {
@@ -310,6 +329,29 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
                       ),
                     }}
                     onChange={handleNotificationChannelChange}
+                  />
+                </ObsidianSetting>
+                <ObsidianSetting
+                  name={t('settings.etc.notificationTiming', '提醒时机')}
+                  desc={t(
+                    'settings.etc.notificationTimingDesc',
+                    '选择始终提醒，或仅在 Obsidian 失焦时提醒。',
+                  )}
+                  className="smtcmp-models-select-card"
+                >
+                  <ObsidianDropdown
+                    value={settings.notificationOptions.timing ?? 'always'}
+                    options={{
+                      always: t(
+                        'settings.etc.notificationTimingAlways',
+                        '始终提醒',
+                      ),
+                      'when-unfocused': t(
+                        'settings.etc.notificationTimingWhenUnfocused',
+                        '仅失焦时提醒',
+                      ),
+                    }}
+                    onChange={handleNotificationTimingChange}
                   />
                 </ObsidianSetting>
                 <ObsidianSetting

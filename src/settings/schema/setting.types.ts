@@ -68,6 +68,8 @@ export const DEFAULT_TAB_COMPLETION_LENGTH_PRESET: TabCompletionLengthPreset =
 
 export const notificationChannelSchema = z.enum(['sound', 'system', 'both'])
 export type NotificationChannel = z.infer<typeof notificationChannelSchema>
+export const notificationTimingSchema = z.enum(['always', 'when-unfocused'])
+export type NotificationTiming = z.infer<typeof notificationTimingSchema>
 
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   idleTriggerEnabled: false,
@@ -85,12 +87,14 @@ const notificationOptionsSchema = z
   .object({
     enabled: z.boolean().optional(),
     channel: notificationChannelSchema.optional(),
+    timing: notificationTimingSchema.optional(),
     notifyOnApprovalRequired: z.boolean().optional(),
     notifyOnTaskCompleted: z.boolean().optional(),
   })
   .catch({
     enabled: false,
     channel: 'sound',
+    timing: 'when-unfocused',
     notifyOnApprovalRequired: true,
     notifyOnTaskCompleted: true,
   })

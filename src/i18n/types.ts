@@ -655,6 +655,10 @@ export type TranslationKeys = {
       notificationChannelSound?: string
       notificationChannelSystem?: string
       notificationChannelBoth?: string
+      notificationTiming?: string
+      notificationTimingDesc?: string
+      notificationTimingAlways?: string
+      notificationTimingWhenUnfocused?: string
       notificationApprovalRequired?: string
       notificationApprovalRequiredDesc?: string
       notificationTaskCompleted?: string
