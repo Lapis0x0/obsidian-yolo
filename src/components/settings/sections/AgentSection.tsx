@@ -23,6 +23,7 @@ import { ConfirmModal } from '../../modals/ConfirmModal'
 import { AgentSkillsModal } from '../modals/AgentSkillsModal'
 import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
+import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
   app: App
@@ -545,6 +546,16 @@ export function AgentSection({ app }: AgentSectionProps) {
             </div>
           </article>
         </div>
+      </section>
+
+      <section className="smtcmp-agent-block">
+        <div className="smtcmp-agent-block-head">
+          <div className="smtcmp-settings-sub-header">
+            {t('settings.etc.notifications', '通知提醒')}
+          </div>
+        </div>
+
+        <NotificationSettingsSection />
       </section>
     </div>
   )
