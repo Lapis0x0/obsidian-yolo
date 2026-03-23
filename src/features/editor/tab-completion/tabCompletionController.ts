@@ -373,11 +373,12 @@ export class TabCompletionController {
       const { providerClient, model } = getChatModelClient({
         settings,
         modelId,
-        onAutoPromoteToObsidian: (providerId) => {
+        onAutoPromoteTransportMode: (providerId, mode) => {
           void promoteProviderTransportModeToObsidian({
             getSettings: this.deps.getSettings,
             setSettings: this.deps.setSettings,
             providerId,
+            mode,
           })
         },
       })

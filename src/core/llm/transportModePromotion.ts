@@ -2,6 +2,7 @@ import { Notice, getLanguage } from 'obsidian'
 
 import { createTranslationFunction, type Language } from '../../i18n'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
+import type { AutoPromotedTransportMode } from './requestTransport'
 
 const resolveObsidianLanguage = (): Language => {
   const rawLanguage = String(getLanguage() ?? '')
@@ -16,10 +17,12 @@ export const promoteProviderTransportModeToObsidian = async ({
   getSettings,
   setSettings,
   providerId,
+  mode,
 }: {
   getSettings: () => SmartComposerSettings
   setSettings: (newSettings: SmartComposerSettings) => void | Promise<void>
   providerId: string
+  mode: AutoPromotedTransportMode
 }): Promise<void> => {
   const settings = getSettings()
   const providerIndex = settings.providers.findIndex((p) => p.id === providerId)
@@ -35,7 +38,7 @@ export const promoteProviderTransportModeToObsidian = async ({
     return
   }
 
-  if (provider.additionalSettings?.requestTransportMode === 'obsidian') {
+  if (provider.additionalSettings?.requestTransportMode === mode) {
     return
   }
 
@@ -43,7 +46,7 @@ export const promoteProviderTransportModeToObsidian = async ({
     ...provider,
     additionalSettings: {
       ...(provider.additionalSettings ?? {}),
-      requestTransportMode: 'obsidian' as const,
+      requestTransportMode: mode,
     },
   }
 
@@ -56,5 +59,12 @@ export const promoteProviderTransportModeToObsidian = async ({
   })
 
   const t = createTranslationFunction(resolveObsidianLanguage())
-  new Notice(t('notices.transportModeAutoPromoted'), 6000)
+  const modeLabel =
+    mode === 'node'
+      ? t('settings.providers.requestTransportModeNode')
+      : t('settings.providers.requestTransportModeObsidian')
+  new Notice(
+    t('notices.transportModeAutoPromoted').replace('{mode}', modeLabel),
+    6000,
+  )
 }

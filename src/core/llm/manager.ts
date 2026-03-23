@@ -1,6 +1,7 @@
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMProvider } from '../../types/provider.types'
+import { AutoPromotedTransportMode } from './requestTransport'
 
 import { AnthropicProvider } from './anthropic'
 import { AzureOpenAIProvider } from './azureOpenaiProvider'
@@ -28,11 +29,14 @@ import { PerplexityProvider } from './perplexityProvider'
 export function getProviderClient({
   settings,
   providerId,
-  onAutoPromoteToObsidian,
+  onAutoPromoteTransportMode,
 }: {
   settings: SmartComposerSettings
   providerId: string
-  onAutoPromoteToObsidian?: (providerId: string) => void
+  onAutoPromoteTransportMode?: (
+    providerId: string,
+    mode: AutoPromotedTransportMode,
+  ) => void
 }): BaseLLMProvider<LLMProvider> {
   const provider = settings.providers.find((p) => p.id === providerId)
   if (!provider) {
@@ -44,11 +48,15 @@ export function getProviderClient({
       if (provider.presetType === 'chatgpt-oauth') {
         return new ChatGPTOAuthProvider(provider as never)
       }
-      return new OpenAIResponsesProvider(provider)
+      return new OpenAIResponsesProvider(provider, {
+        onAutoPromoteTransportMode: (mode) =>
+          onAutoPromoteTransportMode?.(provider.id, mode),
+      })
     }
     case 'anthropic': {
       return new AnthropicProvider(provider as never, {
-        onAutoPromoteToObsidian: () => onAutoPromoteToObsidian?.(provider.id),
+        onAutoPromoteTransportMode: (mode) =>
+          onAutoPromoteTransportMode?.(provider.id, mode),
       })
     }
     case 'gemini': {
@@ -57,27 +65,54 @@ export function getProviderClient({
     case 'openai-compatible': {
       switch (provider.presetType) {
         case 'openrouter':
-          return new OpenRouterProvider(provider as never)
+          return new OpenRouterProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'perplexity':
-          return new PerplexityProvider(provider as never)
+          return new PerplexityProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'groq':
-          return new GroqProvider(provider as never)
+          return new GroqProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'mistral':
-          return new MistralProvider(provider as never)
+          return new MistralProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'ollama':
-          return new OllamaProvider(provider as never)
+          return new OllamaProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'lm-studio':
-          return new LmStudioProvider(provider as never)
+          return new LmStudioProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'deepseek':
-          return new DeepSeekStudioProvider(provider as never)
+          return new DeepSeekStudioProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'morph':
-          return new MorphProvider(provider as never)
+          return new MorphProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         case 'azure-openai':
-          return new AzureOpenAIProvider(provider as never)
+          return new AzureOpenAIProvider(provider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
         default:
           return new OpenAICompatibleProvider(provider as never, {
-            onAutoPromoteToObsidian: () =>
-              onAutoPromoteToObsidian?.(provider.id),
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
           })
       }
     }
@@ -87,11 +122,14 @@ export function getProviderClient({
 export function getChatModelClient({
   settings,
   modelId,
-  onAutoPromoteToObsidian,
+  onAutoPromoteTransportMode,
 }: {
   settings: SmartComposerSettings
   modelId: string
-  onAutoPromoteToObsidian?: (providerId: string) => void
+  onAutoPromoteTransportMode?: (
+    providerId: string,
+    mode: AutoPromotedTransportMode,
+  ) => void
 }): {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
@@ -104,7 +142,7 @@ export function getChatModelClient({
   const providerClient = getProviderClient({
     settings,
     providerId: chatModel.providerId,
-    onAutoPromoteToObsidian,
+    onAutoPromoteTransportMode,
   })
 
   return {

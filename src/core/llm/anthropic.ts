@@ -39,34 +39,35 @@ import {
   LLMAPIKeyNotSetException,
 } from './exception'
 import {
+  AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
   resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private browserClient: Anthropic
   private obsidianClient: Anthropic
+  private nodeClient: Anthropic
   private requestTransportMode: RequestTransportMode
   private requestTransportMemoryKey: string
-  private onAutoPromoteToObsidian?: () => void
-  private hasAutoPromoted = false
+  private onAutoPromoteTransportMode?: (
+    mode: AutoPromotedTransportMode,
+  ) => void
 
-  private promoteTransportModeToObsidian = () => {
-    if (this.requestTransportMode === 'obsidian') {
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) {
       return
     }
 
     this.provider.additionalSettings = {
       ...(this.provider.additionalSettings ?? {}),
-      requestTransportMode: 'obsidian',
+      requestTransportMode: mode,
     }
-    this.requestTransportMode = 'obsidian'
-    if (!this.hasAutoPromoted) {
-      this.hasAutoPromoted = true
-      this.onAutoPromoteToObsidian?.()
-    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
   }
 
   private static readonly DEFAULT_MAX_TOKENS = 8192
@@ -74,11 +75,13 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   constructor(
     provider: LLMProvider,
     options?: {
-      onAutoPromoteToObsidian?: () => void
+      onAutoPromoteTransportMode?: (
+        mode: AutoPromotedTransportMode,
+      ) => void
     },
   ) {
     super(provider)
-    this.onAutoPromoteToObsidian = options?.onAutoPromoteToObsidian
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
@@ -103,6 +106,10 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     this.obsidianClient = new Anthropic({
       ...clientOptions,
       fetch: createObsidianFetch(),
+    })
+    this.nodeClient = new Anthropic({
+      ...clientOptions,
+      fetch: createDesktopNodeFetch(),
     })
   }
 
@@ -160,13 +167,17 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
       const response = await runWithRequestTransport({
         mode: this.requestTransportMode,
         memoryKey: this.requestTransportMemoryKey,
-        onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
+        onAutoPromoteTransportMode: this.promoteTransportMode,
         runBrowser: () =>
           this.browserClient.messages.create(payload, {
             signal: options?.signal,
           }),
         runObsidian: () =>
           this.obsidianClient.messages.create(payload, {
+            signal: options?.signal,
+          }),
+        runNode: () =>
+          this.nodeClient.messages.create(payload, {
             signal: options?.signal,
           }),
       })
@@ -267,7 +278,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       const stream = (await runWithRequestTransportForStream({
         mode: this.requestTransportMode,
         memoryKey: this.requestTransportMemoryKey,
-        onAutoPromoteToObsidian: this.promoteTransportModeToObsidian,
+        onAutoPromoteTransportMode: this.promoteTransportMode,
         createBrowserStream: () =>
           this.browserClient.messages.create(payload, {
             signal: options?.signal,
@@ -275,6 +286,11 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
           }),
         createObsidianStream: () =>
           this.obsidianClient.messages.create(payload, {
+            signal: options?.signal,
+            stream: true,
+          }),
+        createNodeStream: () =>
+          this.nodeClient.messages.create(payload, {
             signal: options?.signal,
             stream: true,
           }),

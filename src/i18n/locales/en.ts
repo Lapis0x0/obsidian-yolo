@@ -455,10 +455,11 @@ export const en: TranslationKeys = {
         'Use Obsidian requestUrl to bypass cross-origin restrictions. Streaming responses are buffered.',
       requestTransportMode: 'Request transport mode',
       requestTransportModeDesc:
-        'Auto tries browser fetch first and falls back to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses.',
+        'Auto tries browser fetch first, then desktop Node fetch, and finally falls back to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses, while Node mode uses desktop Node fetch for real streaming.',
       requestTransportModeAuto: 'Auto (recommended)',
       requestTransportModeBrowser: 'Browser fetch only',
       requestTransportModeObsidian: 'Obsidian requestUrl only',
+      requestTransportModeNode: 'Desktop Node fetch only',
       customHeaders: 'Custom headers',
       customHeadersDesc:
         'Attach extra HTTP headers to all requests sent through this provider.',
@@ -1080,7 +1081,7 @@ export const en: TranslationKeys = {
     reloadingPlugin: 'Reloading "next-composer" due to migration',
     settingsInvalid: 'Invalid settings',
     transportModeAutoPromoted:
-      'Detected network/CORS issue. Automatically switched this provider to Obsidian requestUrl.',
+      'Detected network/CORS issue. Automatically switched this provider to {mode}.',
   },
 
   errors: {

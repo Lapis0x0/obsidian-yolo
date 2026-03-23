@@ -10,32 +10,85 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import {
+  LLMProvider,
+  RequestTransportMode,
+} from '../../types/provider.types'
+import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import {
+  AutoPromotedTransportMode,
+  createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
+  runWithRequestTransport,
+  runWithRequestTransportForStream,
+} from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
-  private client: OpenAI
+  private browserClient: OpenAI
+  private obsidianClient: OpenAI
+  private nodeClient: OpenAI
+  private requestTransportMode: RequestTransportMode
+  private requestTransportMemoryKey: string
+  private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 
-  constructor(provider: LLMProvider) {
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) return
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: mode,
+    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
+  }
+
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+    },
+  ) {
     super(provider)
     this.adapter = new OpenAIMessageAdapter()
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const additionalSettings =
       (provider.additionalSettings as {
         apiVersion?: string
         deployment?: string
       }) ?? {}
-    this.client = new AzureOpenAI({
+    this.requestTransportMemoryKey = createRequestTransportMemoryKey({
+      providerType: provider.presetType,
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+    })
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: !!provider.baseUrl,
+      memoryKey: this.requestTransportMemoryKey,
+    })
+    const clientOptions = {
       apiKey: provider.apiKey ?? '',
       endpoint: provider.baseUrl ?? '',
       apiVersion: additionalSettings.apiVersion,
       deployment: additionalSettings.deployment,
       dangerouslyAllowBrowser: true,
       defaultHeaders,
+      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+    }
+    this.browserClient = new AzureOpenAI(clientOptions)
+    this.obsidianClient = new AzureOpenAI({
+      ...clientOptions,
+      fetch: createObsidianFetch(),
+    })
+    this.nodeClient = new AzureOpenAI({
+      ...clientOptions,
+      fetch: createDesktopNodeFetch(),
     })
   }
 
@@ -47,7 +100,21 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
-    return this.adapter.generateResponse(this.client, mergedRequest, options)
+    return runWithRequestTransport({
+      mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
+      runBrowser: () =>
+        this.adapter.generateResponse(this.browserClient, mergedRequest, options),
+      runObsidian: () =>
+        this.adapter.generateResponse(
+          this.obsidianClient,
+          mergedRequest,
+          options,
+        ),
+      runNode: () =>
+        this.adapter.generateResponse(this.nodeClient, mergedRequest, options),
+    })
   }
 
   async streamResponse(
@@ -58,7 +125,17 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
 
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
-    return this.adapter.streamResponse(this.client, mergedRequest, options)
+    return runWithRequestTransportForStream({
+      mode: this.requestTransportMode,
+      memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
+      createBrowserStream: () =>
+        this.adapter.streamResponse(this.browserClient, mergedRequest, options),
+      createObsidianStream: () =>
+        this.adapter.streamResponse(this.obsidianClient, mergedRequest, options),
+      createNodeStream: () =>
+        this.adapter.streamResponse(this.nodeClient, mergedRequest, options),
+    })
   }
 
   getEmbedding(_model: string, _text: string): Promise<number[]> {

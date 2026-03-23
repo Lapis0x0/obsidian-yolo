@@ -1,5 +1,10 @@
 import { RequestTransportMode } from '../../types/provider.types'
 
+export type AutoPromotedTransportMode = Extract<
+  RequestTransportMode,
+  'node' | 'obsidian'
+>
+
 type RequestTransportSettings = {
   requestTransportMode?: RequestTransportMode
   useObsidianRequestUrl?: boolean
@@ -8,7 +13,7 @@ type RequestTransportSettings = {
 const AUTO_OBSIDIAN_MEMORY_TTL_MS = 24 * 60 * 60 * 1000
 
 type RequestTransportMemoryEntry = {
-  preferredMode: Extract<RequestTransportMode, 'obsidian'>
+  preferredMode: AutoPromotedTransportMode
   expiresAt: number
 }
 
@@ -77,13 +82,16 @@ const getRememberedMode = (memoryKey?: string): RequestTransportMode | null => {
   return memory.preferredMode
 }
 
-const rememberObsidianMode = (memoryKey?: string): void => {
+const rememberTransportMode = (
+  preferredMode: AutoPromotedTransportMode,
+  memoryKey?: string,
+): void => {
   if (!memoryKey) {
     return
   }
 
   requestTransportMemory.set(memoryKey, {
-    preferredMode: 'obsidian',
+    preferredMode,
     expiresAt: Date.now() + AUTO_OBSIDIAN_MEMORY_TTL_MS,
   })
 }
@@ -114,7 +122,11 @@ export const resolveRequestTransportMode = ({
   memoryKey?: string
 }): RequestTransportMode => {
   const configuredMode = additionalSettings?.requestTransportMode
-  if (configuredMode === 'browser' || configuredMode === 'obsidian') {
+  if (
+    configuredMode === 'browser' ||
+    configuredMode === 'obsidian' ||
+    configuredMode === 'node'
+  ) {
     return configuredMode
   }
 
@@ -139,18 +151,50 @@ export const shouldRetryWithObsidianTransport = (error: unknown): boolean => {
   )
 }
 
+const tryNodeThenObsidian = async <T>({
+  runNode,
+  runObsidian,
+  memoryKey,
+  onAutoPromoteTransportMode,
+}: {
+  runNode?: () => Promise<T>
+  runObsidian: () => Promise<T>
+  memoryKey?: string
+  onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+}): Promise<T> => {
+  if (runNode) {
+    try {
+      const nodeResponse = await runNode()
+      rememberTransportMode('node', memoryKey)
+      onAutoPromoteTransportMode?.('node')
+      return nodeResponse
+    } catch (nodeError) {
+      if (!shouldRetryWithObsidianTransport(nodeError)) {
+        throw nodeError
+      }
+    }
+  }
+
+  const obsidianResponse = await runObsidian()
+  rememberTransportMode('obsidian', memoryKey)
+  onAutoPromoteTransportMode?.('obsidian')
+  return obsidianResponse
+}
+
 export const runWithRequestTransport = async <T>({
   mode,
   runBrowser,
   runObsidian,
+  runNode,
   memoryKey,
-  onAutoPromoteToObsidian,
+  onAutoPromoteTransportMode,
 }: {
   mode: RequestTransportMode
   runBrowser: () => Promise<T>
   runObsidian: () => Promise<T>
+  runNode?: () => Promise<T>
   memoryKey?: string
-  onAutoPromoteToObsidian?: () => void
+  onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 }): Promise<T> => {
   if (mode === 'browser') {
     return runBrowser()
@@ -160,29 +204,40 @@ export const runWithRequestTransport = async <T>({
     return runObsidian()
   }
 
+  if (mode === 'node') {
+    if (!runNode) {
+      throw new Error('Node request transport is not configured.')
+    }
+    return runNode()
+  }
+
   try {
     return await runBrowser()
   } catch (error) {
     if (!shouldRetryWithObsidianTransport(error)) {
       throw error
     }
-    const response = await runObsidian()
-    rememberObsidianMode(memoryKey)
-    onAutoPromoteToObsidian?.()
-    return response
+    return tryNodeThenObsidian({
+      runNode,
+      runObsidian,
+      memoryKey,
+      onAutoPromoteTransportMode,
+    })
   }
 }
 
 const createAutoFallbackStream = <T>({
   browserStream,
+  createNodeStream,
   createObsidianStream,
   memoryKey,
-  onAutoPromoteToObsidian,
+  onAutoPromoteTransportMode,
 }: {
   browserStream: AsyncIterable<T>
+  createNodeStream?: () => Promise<AsyncIterable<T>>
   createObsidianStream: () => Promise<AsyncIterable<T>>
   memoryKey?: string
-  onAutoPromoteToObsidian?: () => void
+  onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 }): AsyncIterable<T> => {
   return {
     async *[Symbol.asyncIterator]() {
@@ -199,19 +254,45 @@ const createAutoFallbackStream = <T>({
         }
       }
 
-      const obsidianStream = await createObsidianStream()
-      let remembered = false
-      for await (const chunk of obsidianStream) {
-        if (!remembered) {
-          rememberObsidianMode(memoryKey)
-          onAutoPromoteToObsidian?.()
-          remembered = true
+      const streamFactories = [
+        ...(createNodeStream
+          ? [{ mode: 'node' as const, createStream: createNodeStream }]
+          : []),
+        { mode: 'obsidian' as const, createStream: createObsidianStream },
+      ]
+
+      let lastError: unknown
+      for (const { mode: fallbackMode, createStream } of streamFactories) {
+        try {
+          const fallbackStream = await createStream()
+          let remembered = false
+          for await (const chunk of fallbackStream) {
+            if (!remembered) {
+              rememberTransportMode(fallbackMode, memoryKey)
+              onAutoPromoteTransportMode?.(fallbackMode)
+              remembered = true
+            }
+            yield chunk
+          }
+          if (!remembered) {
+            rememberTransportMode(fallbackMode, memoryKey)
+            onAutoPromoteTransportMode?.(fallbackMode)
+          }
+          return
+        } catch (fallbackError) {
+          lastError = fallbackError
+          if (
+            fallbackMode === 'node' &&
+            shouldRetryWithObsidianTransport(fallbackError)
+          ) {
+            continue
+          }
+          throw fallbackError
         }
-        yield chunk
       }
-      if (!remembered) {
-        rememberObsidianMode(memoryKey)
-        onAutoPromoteToObsidian?.()
+
+      if (lastError) {
+        throw lastError
       }
     },
   }
@@ -221,14 +302,16 @@ export const runWithRequestTransportForStream = async <T>({
   mode,
   createBrowserStream,
   createObsidianStream,
+  createNodeStream,
   memoryKey,
-  onAutoPromoteToObsidian,
+  onAutoPromoteTransportMode,
 }: {
   mode: RequestTransportMode
   createBrowserStream: () => Promise<AsyncIterable<T>>
   createObsidianStream: () => Promise<AsyncIterable<T>>
+  createNodeStream?: () => Promise<AsyncIterable<T>>
   memoryKey?: string
-  onAutoPromoteToObsidian?: () => void
+  onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 }): Promise<AsyncIterable<T>> => {
   if (mode === 'browser') {
     return createBrowserStream()
@@ -238,22 +321,37 @@ export const runWithRequestTransportForStream = async <T>({
     return createObsidianStream()
   }
 
+  if (mode === 'node') {
+    if (!createNodeStream) {
+      throw new Error('Node request transport is not configured.')
+    }
+    return createNodeStream()
+  }
+
   try {
     const browserStream = await createBrowserStream()
     return createAutoFallbackStream({
       browserStream,
+      createNodeStream,
       createObsidianStream,
       memoryKey,
-      onAutoPromoteToObsidian,
+      onAutoPromoteTransportMode,
     })
   } catch (error) {
     if (!shouldRetryWithObsidianTransport(error)) {
       throw error
     }
-    const obsidianStream = await createObsidianStream()
-    rememberObsidianMode(memoryKey)
-    onAutoPromoteToObsidian?.()
-    return obsidianStream
+    return createAutoFallbackStream({
+      browserStream: {
+        async *[Symbol.asyncIterator]() {
+          throw error
+        },
+      },
+      createNodeStream,
+      createObsidianStream,
+      memoryKey,
+      onAutoPromoteTransportMode,
+    })
   }
 }
 

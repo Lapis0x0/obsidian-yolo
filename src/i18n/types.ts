@@ -336,6 +336,7 @@ export type TranslationKeys = {
       requestTransportModeAuto: string
       requestTransportModeBrowser: string
       requestTransportModeObsidian: string
+      requestTransportModeNode: string
       customHeaders: string
       customHeadersDesc: string
       customHeadersAdd: string

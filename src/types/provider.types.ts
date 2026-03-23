@@ -13,6 +13,7 @@ export const requestTransportModeSchema = z.enum([
   'auto',
   'browser',
   'obsidian',
+  'node',
 ])
 
 export const providerPresetTypeSchema = z.enum([

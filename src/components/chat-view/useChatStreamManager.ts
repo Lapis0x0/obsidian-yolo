@@ -97,12 +97,13 @@ export function useChatStreamManager({
     autoScrollToBottom,
   })
 
-  const handleAutoPromoteToObsidian = useCallback(
-    (providerId: string) => {
+  const handleAutoPromoteTransportMode = useCallback(
+    (providerId: string, mode: 'node' | 'obsidian') => {
       void promoteProviderTransportModeToObsidian({
         getSettings: () => plugin.settings,
         setSettings,
         providerId,
+        mode,
       })
     },
     [plugin, setSettings],
@@ -158,11 +159,11 @@ export function useChatStreamManager({
 
         let resolvedClient: ReturnType<typeof getChatModelClient>
         try {
-          resolvedClient = getChatModelClient({
-            settings,
-            modelId: requestedModelId,
-            onAutoPromoteToObsidian: handleAutoPromoteToObsidian,
-          })
+            resolvedClient = getChatModelClient({
+              settings,
+              modelId: requestedModelId,
+              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+            })
         } catch (error) {
           if (
             error instanceof LLMModelNotFoundException &&
@@ -171,7 +172,7 @@ export function useChatStreamManager({
             resolvedClient = getChatModelClient({
               settings,
               modelId: settings.chatModels[0].id,
-              onAutoPromoteToObsidian: handleAutoPromoteToObsidian,
+              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
             })
           } else {
             throw error
