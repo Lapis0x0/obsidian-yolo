@@ -167,9 +167,19 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => t('common.characters', 'chars'),
       [t],
     )
-    const { settings } = useSettings()
+    const { settings, setSettings } = useSettings()
     const mentionDisplayMode =
       settings.chatOptions.mentionDisplayMode ?? 'inline'
+    const rememberedInputHeight = useMemo(() => {
+      const chatInputHeight = settings.chatOptions.chatInputHeight
+      if (typeof chatInputHeight !== 'number') {
+        return null
+      }
+      return Math.max(
+        MIN_INPUT_HEIGHT,
+        Math.min(MAX_INPUT_HEIGHT, chatInputHeight),
+      )
+    }, [settings.chatOptions.chatInputHeight])
 
     // Get current model for reasoning support check
     const currentModel: ChatModel | null = useMemo(() => {
@@ -184,7 +194,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const suppressedDestroyedMentionableKeysRef = useRef<Set<string>>(new Set())
     const suppressedDestroyedSkillIdsRef = useRef<Set<string>>(new Set())
     const [inputText, setInputText] = useState('')
-    const [resizedHeight, setResizedHeight] = useState<number | null>(null)
+    const [resizedHeight, setResizedHeight] = useState<number | null>(
+      rememberedInputHeight,
+    )
+    const resizedHeightRef = useRef<number | null>(rememberedInputHeight)
     const dragStartYRef = useRef(0)
     const dragStartHeightRef = useRef(DEFAULT_INPUT_HEIGHT)
 
@@ -277,6 +290,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         activeElement.blur()
       }
     }, [compact])
+
+    useEffect(() => {
+      setResizedHeight(rememberedInputHeight)
+    }, [rememberedInputHeight])
+
+    useEffect(() => {
+      resizedHeightRef.current = resizedHeight
+    }, [resizedHeight])
 
     useEffect(() => {
       return () => {
@@ -864,6 +885,31 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       })
     }, [])
 
+    const persistResizedHeight = useCallback(
+      async (height: number | null) => {
+        const nextStoredHeight =
+          height === null
+            ? undefined
+            : Math.max(
+                MIN_INPUT_HEIGHT,
+                Math.min(MAX_INPUT_HEIGHT, Math.round(height)),
+              )
+
+        if (settings.chatOptions.chatInputHeight === nextStoredHeight) {
+          return
+        }
+
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            chatInputHeight: nextStoredHeight,
+          },
+        })
+      },
+      [setSettings, settings],
+    )
+
     const startResize = useCallback(
       (clientY: number) => {
         dragStartYRef.current = clientY
@@ -890,12 +936,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           window.removeEventListener('mousemove', handleMouseMove)
           window.removeEventListener('mouseup', handleMouseUp)
           clearResizeBodyStyles()
+          void persistResizedHeight(resizedHeightRef.current)
         }
 
         window.addEventListener('mousemove', handleMouseMove)
         window.addEventListener('mouseup', handleMouseUp)
       },
-      [clearResizeBodyStyles, resizedHeight],
+      [clearResizeBodyStyles, persistResizedHeight, resizedHeight],
     )
 
     const handleResizeHitboxMouseDown = useCallback(
@@ -920,8 +967,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         event.preventDefault()
         event.stopPropagation()
         setResizedHeight(null)
+        void persistResizedHeight(null)
       },
-      [compact, enableResize],
+      [compact, enableResize, persistResizedHeight],
     )
 
     const handleContainerMouseDown = useCallback(
