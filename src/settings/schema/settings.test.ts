@@ -47,6 +47,13 @@ describe('parseSmartComposerSettings', () => {
       reasoningLevelByModelId: {},
     })
 
+    expect(result.notificationOptions).toMatchObject({
+      enabled: false,
+      channel: 'sound',
+      notifyOnApprovalRequired: true,
+      notifyOnTaskCompleted: true,
+    })
+
     expect(result.continuationOptions).toMatchObject({
       enableTabCompletion: false,
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,

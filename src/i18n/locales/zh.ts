@@ -772,6 +772,22 @@ export const zh: TranslationKeys = {
       persistSelectionHighlight: '保留选区块高亮',
       persistSelectionHighlightDesc:
         '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
+      notifications: '通知提醒',
+      notificationsDesc:
+        '配置 Agent 的提醒方式。若当前环境不支持系统通知，会自动降级，不影响主流程。',
+      notificationsEnabled: '启用通知',
+      notificationsEnabledDesc: '为 Agent 任务开启或关闭提醒。',
+      notificationChannel: '通知方式',
+      notificationChannelDesc: '选择使用音效、系统通知，或同时使用两者。',
+      notificationChannelSound: '仅音效',
+      notificationChannelSystem: '仅系统通知',
+      notificationChannelBoth: '音效 + 系统通知',
+      notificationApprovalRequired: '需要审批时提醒',
+      notificationApprovalRequiredDesc:
+        '当 YOLO 暂停并等待你审批工具调用时发出提醒。',
+      notificationTaskCompleted: '任务结束时提醒',
+      notificationTaskCompletedDesc:
+        '当当前 Agent 任务结束且不再等待审批时发出提醒。',
     },
   },
 
@@ -965,6 +981,13 @@ export const zh: TranslationKeys = {
       geminiTools: 'Gemini 工具',
       webSearch: '联网搜索',
       urlContext: 'URL 上下文',
+    },
+    notification: {
+      approvalTitle: 'YOLO 需要你的确认',
+      approvalBody: '当前任务暂停中，正在等待你审批一个工具调用。',
+      completedTitle: 'YOLO 任务已结束',
+      completedBody: '当前 Agent 任务已完成，可以回来看结果了。',
+      completedErrorBody: '当前 Agent 任务已结束，请回到窗口查看结果。',
     },
   },
 

@@ -38,6 +38,11 @@ type UseChatStreamManagerParams = {
   chatMode: ChatMode
   currentFileOverride?: TFile | null
   assistantIdOverride?: string
+  onRunSettled?: (result: {
+    taskKey?: string
+    aborted: boolean
+    failed: boolean
+  }) => void
 }
 
 const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
@@ -53,12 +58,13 @@ const CHAT_READONLY_TOOL_NAMES = [
 export type UseChatStreamManager = {
   abortActiveStreams: () => void
   submitChatMutation: UseMutationResult<
-    void,
+    { taskKey?: string; aborted: boolean },
     Error,
     {
       chatMessages: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
+      taskKey?: string
     }
   >
 }
@@ -72,6 +78,7 @@ export function useChatStreamManager({
   chatMode,
   currentFileOverride,
   assistantIdOverride,
+  onRunSettled,
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
   const plugin = usePlugin()
@@ -114,15 +121,20 @@ export function useChatStreamManager({
       chatMessages,
       conversationId,
       reasoningLevel,
+      taskKey,
     }: {
       chatMessages: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
+      taskKey?: string
     }) => {
       const lastMessage = chatMessages.at(-1)
       if (!lastMessage) {
         // chatMessages is empty
-        return
+        return {
+          taskKey,
+          aborted: false,
+        }
       }
 
       abortActiveStreams()
@@ -273,10 +285,20 @@ export function useChatStreamManager({
             },
           },
         })
+
+        if (abortController.signal.aborted) {
+          return {
+            taskKey,
+            aborted: true,
+          }
+        }
       } catch (error) {
         // Ignore AbortError
         if (error instanceof Error && error.name === 'AbortError') {
-          return
+          return {
+            taskKey,
+            aborted: true,
+          }
         }
         throw error
       } finally {
@@ -289,8 +311,25 @@ export function useChatStreamManager({
             (controller) => controller !== abortController,
           )
       }
+
+      return {
+        taskKey,
+        aborted: false,
+      }
     },
-    onError: (error) => {
+    onSuccess: (data) => {
+      onRunSettled?.({
+        taskKey: data.taskKey,
+        aborted: data.aborted,
+        failed: false,
+      })
+    },
+    onError: (error, variables) => {
+      onRunSettled?.({
+        taskKey: variables.taskKey,
+        aborted: false,
+        failed: true,
+      })
       if (
         error instanceof LLMAPIKeyNotSetException ||
         error instanceof LLMAPIKeyInvalidException ||

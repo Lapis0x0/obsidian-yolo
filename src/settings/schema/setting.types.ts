@@ -66,6 +66,9 @@ export const DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT =
 export const DEFAULT_TAB_COMPLETION_LENGTH_PRESET: TabCompletionLengthPreset =
   'medium'
 
+export const notificationChannelSchema = z.enum(['sound', 'system', 'both'])
+export type NotificationChannel = z.infer<typeof notificationChannelSchema>
+
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   idleTriggerEnabled: false,
   autoTriggerDelayMs: 3000,
@@ -77,6 +80,20 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   temperature: 0.5,
   requestTimeoutMs: 12000,
 }
+
+const notificationOptionsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    channel: notificationChannelSchema.optional(),
+    notifyOnApprovalRequired: z.boolean().optional(),
+    notifyOnTaskCompleted: z.boolean().optional(),
+  })
+  .catch({
+    enabled: false,
+    channel: 'sound',
+    notifyOnApprovalRequired: true,
+    notifyOnTaskCompleted: true,
+  })
 
 export const DEFAULT_TAB_COMPLETION_TRIGGERS: TabCompletionTrigger[] = [
   {
@@ -300,6 +317,8 @@ export const smartComposerSettingsSchema = z.object({
       historyArchiveEnabled: true,
       historyArchiveThreshold: 50,
     }),
+
+  notificationOptions: notificationOptionsSchema,
 
   // Continuation (续写) options
   continuationOptions: z
