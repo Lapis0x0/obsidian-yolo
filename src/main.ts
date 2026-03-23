@@ -760,6 +760,14 @@ export default class SmartComposerPlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'new-chat-current-view',
+      name: this.t('commands.newChatCurrentView'),
+      callback: () => {
+        void this.openCurrentOrSidebarNewChat()
+      },
+    })
+
+    this.addCommand({
       id: 'open-chat-tab',
       name: this.t('commands.openNewChatTab'),
       callback: () => {
@@ -1133,6 +1141,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     forceNewLeaf?: boolean
   }) {
     await this.getChatViewNavigator().openChatView(options)
+  }
+
+  async openCurrentOrSidebarNewChat() {
+    await this.getChatViewNavigator().openCurrentOrSidebarNewChat()
   }
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
