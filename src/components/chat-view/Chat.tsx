@@ -1499,6 +1499,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
       )
+      void generateConversationTitle(currentConversationId, compiledMessages)
       const requestReasoningLevel =
         resolveReasoningLevelForMessages(compiledMessages)
       submitChatMutation.mutate({
@@ -1516,6 +1517,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       abortConversationRun,
       forceScrollToBottom,
       createOrUpdateConversation,
+      generateConversationTitle,
       chatMode,
       messageModelMap,
       reasoningLevel,
@@ -1764,19 +1766,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (submitMutationPendingRef.current) {
       submitMutationPendingRef.current = false
       void (async () => {
-        const saved = await persistConversationImmediately(chatMessages)
-        if (!saved) {
-          return
-        }
-        await generateConversationTitle(currentConversationId, chatMessages)
+        await persistConversationImmediately(chatMessages)
       })().catch((error) => {
-        console.error('Failed to generate conversation title', error)
+        console.error('Failed to persist conversation after run', error)
       })
     }
   }, [
     chatMessages,
     currentConversationId,
-    generateConversationTitle,
     isCurrentConversationRunActive,
     persistConversationImmediately,
   ])

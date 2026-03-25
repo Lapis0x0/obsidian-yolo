@@ -13,7 +13,6 @@ import { promoteProviderTransportModeToObsidian } from '../core/llm/transportMod
 import { ChatConversationMetadata } from '../database/json/chat/types'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import {
-  ChatAssistantMessage,
   ChatSelectedSkill,
   ChatMessage,
   SerializedChatMessage,
@@ -212,7 +211,7 @@ export function useChatHistory(): UseChatHistory {
           reasoningLevel,
         })
       } else {
-        // 默认标题统一为"新对话"，待第一轮模型回答完成后由对话命名模型自动改名
+        // 默认标题统一为"新对话"，待首条用户消息保存后由对话命名模型自动改名
         const defaultTitle = DEFAULT_UNTITLED_CONVERSATION_TITLE
 
         await chatManager.createChat({
@@ -403,7 +402,6 @@ export function useChatHistory(): UseChatHistory {
           | 'conversation_missing'
           | 'already_titled'
           | 'no_user_signal'
-          | 'assistant_not_completed'
           | 'llm_generation_failed',
       ): void => {
         console.debug('[YOLO] Auto title skipped', {
@@ -471,20 +469,6 @@ export function useChatHistory(): UseChatHistory {
           return
         }
 
-        // 首轮助手回复完成后再触发命名
-        const firstCompletedAssistantMessage = messages.find(
-          (message): message is ChatAssistantMessage =>
-            message.role === 'assistant' &&
-            (message.metadata?.generationState ?? 'completed') ===
-              'completed' &&
-            message.content.trim().length > 0,
-        )
-
-        if (!firstCompletedAssistantMessage) {
-          logTitleEvent('assistant_not_completed')
-          return
-        }
-
         const userContext =
           normalizedUserText.length > 0
             ? truncateForTitleInput(normalizedUserText)
@@ -492,12 +476,7 @@ export function useChatHistory(): UseChatHistory {
               ? formatSelectedSkillsForTitleInput(userSelectedSkills)
               : '[User shared only attachments/mentions without text.]'
 
-        const titleInput = [
-          `User first message:\n${userContext}`,
-          `Assistant first response:\n${truncateForTitleInput(
-            firstCompletedAssistantMessage.content,
-          )}`,
-        ].join('\n\n')
+        const titleInput = `User first message:\n${userContext}`
 
         let lastGenerationError: unknown = null
 
