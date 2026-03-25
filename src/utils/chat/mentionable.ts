@@ -47,6 +47,17 @@ export const serializeMentionable = (
         contentCount: mentionable.contentCount,
         contentUnit: mentionable.contentUnit,
       }
+    case 'assistant-quote':
+      return {
+        type: 'assistant-quote',
+        conversationId: mentionable.conversationId,
+        messageId: mentionable.messageId,
+        content: mentionable.content,
+        contentHash:
+          mentionable.contentHash ?? getBlockContentHash(mentionable.content),
+        contentCount: mentionable.contentCount,
+        contentUnit: mentionable.contentUnit,
+      }
     case 'url':
       return {
         type: 'url',
@@ -143,6 +154,21 @@ export const deserializeMentionable = (
           contentUnit: mentionable.contentUnit,
         }
       }
+      case 'assistant-quote': {
+        if (typeof mentionable.content !== 'string') {
+          return null
+        }
+        return {
+          type: 'assistant-quote',
+          conversationId: mentionable.conversationId,
+          messageId: mentionable.messageId,
+          content: mentionable.content,
+          contentHash:
+            mentionable.contentHash ?? getBlockContentHash(mentionable.content),
+          contentCount: mentionable.contentCount,
+          contentUnit: mentionable.contentUnit,
+        }
+      }
       case 'url': {
         return {
           type: 'url',
@@ -176,6 +202,8 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `current-file:${mentionable.file ?? 'current'}`
     case 'block':
       return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+    case 'assistant-quote':
+      return `assistant-quote:${mentionable.conversationId}:${mentionable.messageId}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
     case 'url':
       return `url:${mentionable.url}`
     case 'image':
@@ -268,6 +296,13 @@ export function getMentionableName(
         getBlockMentionableCountInfo(mentionable.content).count
       const unitLabel = options?.unitLabel ?? 'chars'
       return `${mentionable.file.name} (${count} ${unitLabel})`
+    }
+    case 'assistant-quote': {
+      const count =
+        mentionable.contentCount ??
+        getBlockMentionableCountInfo(mentionable.content).count
+      const unitLabel = options?.unitLabel ?? 'chars'
+      return `Assistant quote (${count} ${unitLabel})`
     }
     case 'url':
       return mentionable.url

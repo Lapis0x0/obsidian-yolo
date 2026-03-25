@@ -2030,6 +2030,8 @@ export function QuickAskPanel({
                   onEditSave={noop}
                   onDeleteGroup={handleDeleteGroup}
                   onBranchGroup={noop}
+                  onQuoteAssistantSelection={noop}
+                  showQuoteAction={false}
                 />
               )
             }

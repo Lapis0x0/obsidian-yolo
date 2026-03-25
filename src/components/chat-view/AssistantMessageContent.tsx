@@ -9,6 +9,7 @@ import {
 } from '../../utils/chat/parse-tag-content'
 
 import AssistantMessageReasoning from './AssistantMessageReasoning'
+import AssistantSelectionQuoteButton from './AssistantSelectionQuoteButton'
 import MarkdownCodeComponent from './MarkdownCodeComponent'
 import MarkdownReferenceBlock from './MarkdownReferenceBlock'
 import { ObsidianMarkdown } from './ObsidianMarkdown'
@@ -32,6 +33,10 @@ export default function AssistantMessageContent({
   activeApplyRequestKey,
   generationState,
   toolCallRequests,
+  messageId,
+  conversationId,
+  onQuote,
+  enableSelectionQuote = true,
 }: {
   content: ChatAssistantMessage['content']
   handleApply: (
@@ -43,6 +48,14 @@ export default function AssistantMessageContent({
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
+  messageId: string
+  conversationId: string
+  onQuote: (payload: {
+    messageId: string
+    conversationId: string
+    content: string
+  }) => void
+  enableSelectionQuote?: boolean
 }) {
   const onApply = useCallback(
     (
@@ -62,6 +75,10 @@ export default function AssistantMessageContent({
       activeApplyRequestKey={activeApplyRequestKey}
       generationState={generationState}
       toolCallRequests={toolCallRequests}
+      messageId={messageId}
+      conversationId={conversationId}
+      onQuote={onQuote}
+      enableSelectionQuote={enableSelectionQuote}
     >
       {content}
     </AssistantTextRenderer>
@@ -74,6 +91,10 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   activeApplyRequestKey,
   generationState,
   toolCallRequests,
+  messageId,
+  conversationId,
+  onQuote,
+  enableSelectionQuote,
   children,
 }: {
   onApply: (
@@ -86,6 +107,14 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
+  messageId: string
+  conversationId: string
+  onQuote: (payload: {
+    messageId: string
+    conversationId: string
+    content: string
+  }) => void
+  enableSelectionQuote: boolean
 }) {
   const { t } = useLanguage()
 
@@ -114,7 +143,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
     return `${t('chat.toolCall.status.running', 'Running')}: ${toolNames.join(', ')}`
   }, [generationState, t, toolCallRequests])
 
-  return (
+  const renderedContent = (
     <>
       {blocks.map((block) => {
         const MarkdownRenderer =
@@ -176,5 +205,20 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
         </div>
       )}
     </>
+  )
+
+  if (!enableSelectionQuote) {
+    return renderedContent
+  }
+
+  return (
+    <AssistantSelectionQuoteButton
+      messageId={messageId}
+      conversationId={conversationId}
+      disabled={generationState === 'streaming'}
+      onQuote={onQuote}
+    >
+      {renderedContent}
+    </AssistantSelectionQuoteButton>
   )
 })

@@ -28,6 +28,15 @@ export type MentionableBlockData = {
 export type MentionableBlock = MentionableBlockData & {
   type: 'block'
 }
+export type MentionableAssistantQuote = {
+  type: 'assistant-quote'
+  conversationId: string
+  messageId: string
+  content: string
+  contentHash?: string
+  contentCount?: number
+  contentUnit?: 'characters' | 'words' | 'wordsCharacters'
+}
 export type MentionableUrl = {
   type: 'url'
   url: string
@@ -44,6 +53,7 @@ export type Mentionable =
   | MentionableVault
   | MentionableCurrentFile
   | MentionableBlock
+  | MentionableAssistantQuote
   | MentionableUrl
   | MentionableImage
 export type SerializedMentionableFile = {
@@ -70,6 +80,15 @@ export type SerializedMentionableBlock = {
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
 }
+export type SerializedMentionableAssistantQuote = {
+  type: 'assistant-quote'
+  conversationId: string
+  messageId: string
+  content?: string
+  contentHash?: string
+  contentCount?: number
+  contentUnit?: 'characters' | 'words' | 'wordsCharacters'
+}
 export type SerializedMentionableUrl = MentionableUrl
 export type SerializedMentionableImage = MentionableImage
 export type SerializedMentionable =
@@ -78,5 +97,6 @@ export type SerializedMentionable =
   | SerializedMentionableVault
   | SerializedMentionableCurrentFile
   | SerializedMentionableBlock
+  | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl
   | SerializedMentionableImage

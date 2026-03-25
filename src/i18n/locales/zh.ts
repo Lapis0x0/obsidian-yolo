@@ -838,6 +838,10 @@ export const zh: TranslationKeys = {
     regenerate: '重新生成',
     reasoning: '推理过程',
     annotations: '注释',
+    assistantQuote: {
+      add: '引用',
+      badge: '回复引用',
+    },
     mentionMenu: {
       back: '返回上一级',
       entryCurrentFile: '当前文件',

@@ -26,6 +26,7 @@ import type {
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
+  MentionableAssistantQuote,
   MentionableBlock,
   MentionableCurrentFile,
   MentionableFile,
@@ -277,11 +278,16 @@ export class RequestContextBuilder {
     const blocks = message.mentionables.filter(
       (m): m is MentionableBlock => m.type === 'block',
     )
+    const assistantQuotes = message.mentionables.filter(
+      (m): m is MentionableAssistantQuote => m.type === 'assistant-quote',
+    )
     const blockPrompt = blocks
       .map(({ file, content }) => {
         return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
       })
       .join('')
+    const assistantQuotePrompt =
+      this.buildAssistantQuotePrompt(assistantQuotes)
 
     const ragPrompt = message.similaritySearchResults
       ? `## Potentially Relevant Snippets from the current vault
@@ -299,7 +305,7 @@ ${message.similaritySearchResults
     const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
       message.selectedSkills,
     )
-    const textContent = `${ragPrompt}${blockPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`
+    const textContent = `${ragPrompt}${blockPrompt}${assistantQuotePrompt}${selectedSkillsPrompt}\n\n${query}\n\n`
     if (imageParts.length === 0) {
       return textContent
     }
@@ -321,6 +327,7 @@ ${message.similaritySearchResults
           mentionable.type === 'file' ||
           mentionable.type === 'folder' ||
           mentionable.type === 'url' ||
+          mentionable.type === 'assistant-quote' ||
           mentionable.type === 'current-file' ||
           mentionable.type === 'vault',
       )
@@ -610,11 +617,16 @@ ${similaritySearchResults
       const blocks = message.mentionables.filter(
         (m): m is MentionableBlock => m.type === 'block',
       )
+      const assistantQuotes = message.mentionables.filter(
+        (m): m is MentionableAssistantQuote => m.type === 'assistant-quote',
+      )
       const blockPrompt = blocks
         .map(({ file, content }) => {
           return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
         })
         .join('')
+      const assistantQuotePrompt =
+        this.buildAssistantQuotePrompt(assistantQuotes)
 
       const urls = message.mentionables.filter(
         (m): m is MentionableUrl => m.type === 'url',
@@ -661,7 +673,7 @@ ${await this.getWebsiteContent(url)}
           ),
           {
             type: 'text',
-            text: `${filePrompt}${blockPrompt}${urlPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`,
+            text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${urlPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`,
           },
         ],
         shouldUseRAG,
@@ -674,6 +686,22 @@ ${await this.getWebsiteContent(url)}
       })
       throw error
     }
+  }
+
+  private buildAssistantQuotePrompt(
+    quotes: MentionableAssistantQuote[],
+  ): string {
+    if (quotes.length === 0) {
+      return ''
+    }
+
+    return `## Referenced assistant reply snippets
+${quotes
+  .map(
+    ({ conversationId, messageId, content }) =>
+      `<assistant_quote conversationId="${conversationId}" messageId="${messageId}">\n${content}\n</assistant_quote>`,
+  )
+  .join('\n\n')}\n\n`
   }
 
   private async getSystemMessage(

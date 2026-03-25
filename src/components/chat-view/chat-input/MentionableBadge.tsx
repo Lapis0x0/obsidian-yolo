@@ -6,6 +6,7 @@ import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import {
   Mentionable,
+  MentionableAssistantQuote,
   MentionableBlock,
   MentionableCurrentFile,
   MentionableFile,
@@ -23,6 +24,7 @@ function BadgeBase({
   onDelete,
   onClick,
   isFocused,
+  title,
   isExpanded,
   onToggleExpand,
   showExpandButton = false,
@@ -31,6 +33,7 @@ function BadgeBase({
   onDelete: () => void
   onClick: () => void
   isFocused: boolean
+  title?: string
   isExpanded?: boolean
   onToggleExpand?: () => void
   showExpandButton?: boolean
@@ -40,6 +43,7 @@ function BadgeBase({
     <div
       className={`smtcmp-chat-user-input-file-badge ${isFocused ? 'smtcmp-chat-user-input-file-badge-focused' : ''}`}
       onClick={onClick}
+      title={title}
     >
       {showExpandButton && (
         <div
@@ -314,6 +318,50 @@ function UrlBadge({
   )
 }
 
+function AssistantQuoteBadge({
+  mentionable,
+  onDelete,
+  onClick,
+  isFocused,
+  showDeleteButton,
+}: {
+  mentionable: MentionableAssistantQuote
+  onDelete: () => void
+  onClick: () => void
+  isFocused: boolean
+  showDeleteButton?: boolean
+}) {
+  const Icon = getMentionableIcon(mentionable)
+  const { t } = useLanguage()
+  const { count } = getBlockMentionableCountInfo(mentionable.content)
+  const unitLabel = t('common.characters', 'chars')
+  const quoteLabel = t('chat.assistantQuote.badge', '回复引用')
+
+  return (
+    <BadgeBase
+      onDelete={onDelete}
+      onClick={onClick}
+      isFocused={isFocused}
+      showExpandButton={false}
+      showDeleteButton={showDeleteButton}
+      title={mentionable.content}
+    >
+      <div className="smtcmp-chat-user-input-file-badge-name">
+        {Icon && (
+          <Icon
+            size={12}
+            className="smtcmp-chat-user-input-file-badge-name-icon"
+          />
+        )}
+        <span>{quoteLabel}</span>
+      </div>
+      <div className="smtcmp-chat-user-input-file-badge-name-suffix">
+        {` (${count} ${unitLabel})`}
+      </div>
+    </BadgeBase>
+  )
+}
+
 function ImageBadge({
   mentionable,
   onDelete,
@@ -426,6 +474,16 @@ export default function MentionableBadge({
           isFocused={isFocused}
           isExpanded={isExpanded}
           onToggleExpand={onToggleExpand}
+          showDeleteButton={showDeleteButton}
+        />
+      )
+    case 'assistant-quote':
+      return (
+        <AssistantQuoteBadge
+          mentionable={mentionable}
+          onDelete={onDelete}
+          onClick={onClick}
+          isFocused={isFocused}
           showDeleteButton={showDeleteButton}
         />
       )
