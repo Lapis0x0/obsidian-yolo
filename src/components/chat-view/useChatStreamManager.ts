@@ -1,12 +1,15 @@
 import { UseMutationResult, useMutation } from '@tanstack/react-query'
 import { Notice, TFile } from 'obsidian'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type {
+  AgentConversationRunSummary,
+  AgentConversationState,
+} from '../../core/agent/service'
 import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
-import { useBufferedRunnerMessages } from '../../hooks/useBufferedRunnerMessages'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -20,6 +23,7 @@ import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { ChatMessage } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
@@ -33,6 +37,7 @@ type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
+  currentConversationId: string
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
@@ -55,8 +60,31 @@ const CHAT_READONLY_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'open_skill'),
 ]
 
+const buildRunSummary = ({
+  conversationId,
+  status,
+  messages,
+}: AgentConversationState): AgentConversationRunSummary => {
+  const isWaitingApproval = messages.some(
+    (message) =>
+      message.role === 'tool' &&
+      message.toolCalls.some(
+        (toolCall) =>
+          toolCall.response.status === ToolCallResponseStatus.PendingApproval,
+      ),
+  )
+
+  return {
+    conversationId,
+    status,
+    isRunning: status === 'running' && !isWaitingApproval,
+    isWaitingApproval,
+  }
+}
+
 export type UseChatStreamManager = {
-  abortActiveStreams: () => void
+  abortConversationRun: (conversationId: string) => void
+  currentConversationRunSummary: AgentConversationRunSummary
   submitChatMutation: UseMutationResult<
     { taskKey?: string; aborted: boolean },
     Error,
@@ -73,6 +101,7 @@ export function useChatStreamManager({
   setChatMessages,
   autoScrollToBottom,
   requestContextBuilder,
+  currentConversationId,
   conversationOverrides,
   modelId,
   chatMode,
@@ -85,17 +114,14 @@ export function useChatStreamManager({
   const { settings, setSettings } = useSettings()
   const { getMcpManager } = useMcp()
 
-  const activeStreamAbortControllersRef = useRef<AbortController[]>([])
-
-  const {
-    beginBufferedRunnerSession,
-    queueBufferedRunnerMessages,
-    flushBufferedRunnerMessages,
-    abortBufferedRunnerSession,
-  } = useBufferedRunnerMessages({
-    setChatMessages,
-    autoScrollToBottom,
-  })
+  const currentConversationIdRef = useRef(currentConversationId)
+  const activeStreamAbortControllersRef = useRef<Map<string, AbortController>>(
+    new Map(),
+  )
+  const [currentConversationRunSummary, setCurrentConversationRunSummary] =
+    useState<AgentConversationRunSummary>(() =>
+      plugin.getAgentService().getConversationRunSummary(currentConversationId),
+    )
 
   const handleAutoPromoteTransportMode = useCallback(
     (providerId: string, mode: 'node' | 'obsidian') => {
@@ -109,13 +135,67 @@ export function useChatStreamManager({
     [plugin, setSettings],
   )
 
-  const abortActiveStreams = useCallback(() => {
-    for (const abortController of activeStreamAbortControllersRef.current) {
-      abortController.abort()
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId
+  }, [currentConversationId])
+
+  useEffect(() => {
+    const agentService = plugin.getAgentService()
+
+    const syncConversationState = (state: AgentConversationState) => {
+      const runSummary = buildRunSummary(state)
+      setCurrentConversationRunSummary(runSummary)
+      const hasTrackedState =
+        state.messages.length > 0 || state.status !== 'idle'
+      if (!hasTrackedState) {
+        return
+      }
+
+      setChatMessages(state.messages)
+      if (!(state.status === 'running' || runSummary.isWaitingApproval)) {
+        return
+      }
+
+      if (
+        state.messages.length > 0 &&
+        !state.messages.some(
+          (message) =>
+            message.role === 'assistant' &&
+            message.metadata?.generationState === 'streaming',
+        )
+      ) {
+        requestAnimationFrame(() => {
+          autoScrollToBottom()
+        })
+      }
     }
-    abortBufferedRunnerSession()
-    activeStreamAbortControllersRef.current = []
-  }, [abortBufferedRunnerSession])
+
+    syncConversationState(agentService.getState(currentConversationId))
+
+    const unsubscribe = agentService.subscribe(
+      currentConversationId,
+      syncConversationState,
+      { emitCurrent: false },
+    )
+
+    return () => {
+      unsubscribe()
+    }
+  }, [
+    autoScrollToBottom,
+    currentConversationId,
+    plugin,
+    setChatMessages,
+  ])
+
+  const abortConversationRun = useCallback(
+    (conversationId: string) => {
+      activeStreamAbortControllersRef.current.get(conversationId)?.abort()
+      activeStreamAbortControllersRef.current.delete(conversationId)
+      plugin.getAgentService().abortConversation(conversationId)
+    },
+    [plugin],
+  )
 
   const submitChatMutation = useMutation({
     mutationFn: async ({
@@ -131,19 +211,16 @@ export function useChatStreamManager({
     }) => {
       const lastMessage = chatMessages.at(-1)
       if (!lastMessage) {
-        // chatMessages is empty
         return {
           taskKey,
           aborted: false,
         }
       }
 
-      abortActiveStreams()
-      beginBufferedRunnerSession(chatMessages)
-      const abortController = new AbortController()
-      activeStreamAbortControllersRef.current.push(abortController)
+      abortConversationRun(conversationId)
 
-      let unsubscribeRunner: (() => void) | undefined
+      const abortController = new AbortController()
+      activeStreamAbortControllersRef.current.set(conversationId, abortController)
 
       try {
         const effectiveAssistantId =
@@ -159,11 +236,11 @@ export function useChatStreamManager({
 
         let resolvedClient: ReturnType<typeof getChatModelClient>
         try {
-            resolvedClient = getChatModelClient({
-              settings,
-              modelId: requestedModelId,
-              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-            })
+          resolvedClient = getChatModelClient({
+            settings,
+            modelId: requestedModelId,
+            onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+          })
         } catch (error) {
           if (
             error instanceof LLMModelNotFoundException &&
@@ -230,19 +307,7 @@ export function useChatStreamManager({
 
         const mcpManager = await getMcpManager()
 
-        const agentService = plugin.getAgentService()
-        unsubscribeRunner = agentService.subscribe(
-          conversationId,
-          (state) => {
-            queueBufferedRunnerMessages({
-              responseMessages: state.messages,
-              anchorMessageId: lastMessage.id,
-              abortController,
-            })
-          },
-          { emitCurrent: false },
-        )
-        await agentService.run({
+        await plugin.getAgentService().run({
           conversationId,
           loopConfig: {
             enableTools: effectiveEnableTools,
@@ -294,7 +359,6 @@ export function useChatStreamManager({
           }
         }
       } catch (error) {
-        // Ignore AbortError
         if (error instanceof Error && error.name === 'AbortError') {
           return {
             taskKey,
@@ -303,14 +367,12 @@ export function useChatStreamManager({
         }
         throw error
       } finally {
-        flushBufferedRunnerMessages()
-        if (unsubscribeRunner) {
-          unsubscribeRunner()
+        if (
+          activeStreamAbortControllersRef.current.get(conversationId) ===
+          abortController
+        ) {
+          activeStreamAbortControllersRef.current.delete(conversationId)
         }
-        activeStreamAbortControllersRef.current =
-          activeStreamAbortControllersRef.current.filter(
-            (controller) => controller !== abortController,
-          )
       }
 
       return {
@@ -347,7 +409,8 @@ export function useChatStreamManager({
   })
 
   return {
-    abortActiveStreams,
+    abortConversationRun,
+    currentConversationRunSummary,
     submitChatMutation,
   }
 }

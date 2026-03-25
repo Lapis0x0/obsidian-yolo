@@ -7826,6 +7826,9 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .smtcmp-chat-list-dropdown-item-title-text {
@@ -7860,6 +7863,34 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   transition: opacity 140ms ease;
 }
 
+.smtcmp-chat-list-dropdown-item-status {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  opacity: 0.92;
+}
+
+.smtcmp-chat-list-dropdown-item-status.is-running {
+  border: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  border-top-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 82%,
+    white 8%
+  );
+  animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
+}
+
+.smtcmp-chat-list-dropdown-item-status.is-waiting {
+  width: 9px;
+  height: 9px;
+  background: color-mix(in srgb, var(--color-orange) 72%, white 10%);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--color-orange) 24%, transparent);
+}
+
 .smtcmp-chat-list-dropdown-item-title.is-retrying
   .smtcmp-chat-list-dropdown-item-title-text {
   opacity: 0;
@@ -7878,6 +7909,15 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   }
   to {
     background-position: -20% 50%;
+  }
+}
+
+@keyframes smtcmp-chat-list-run-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -22,6 +22,7 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
+import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { isAssistantToolEnabled } from '../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
@@ -883,10 +884,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     isStreaming: hasStreamingMessages,
   })
 
-  const { abortActiveStreams, submitChatMutation } = useChatStreamManager({
+  const {
+    abortConversationRun,
+    currentConversationRunSummary,
+    submitChatMutation,
+  } = useChatStreamManager({
     setChatMessages,
     autoScrollToBottom,
     requestContextBuilder,
+    currentConversationId,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
@@ -902,6 +908,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settledNotificationRunsRef.current.push({ taskKey, aborted, failed })
     },
   })
+  const [runSummariesByConversationId, setRunSummariesByConversationId] =
+    useState<Map<string, AgentConversationRunSummary>>(new Map())
+  const isCurrentConversationRunActive =
+    currentConversationRunSummary.isRunning ||
+    currentConversationRunSummary.isWaitingApproval
 
   const createNotificationTaskKey = useCallback(() => {
     if (chatMode !== 'agent') {
@@ -910,6 +921,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     notificationTaskCounterRef.current += 1
     return `${currentConversationId}:${notificationTaskCounterRef.current}`
   }, [chatMode, currentConversationId])
+
+  useEffect(() => {
+    const unsubscribe = plugin
+      .getAgentService()
+      .subscribeToRunSummaries((summaries) => {
+        setRunSummariesByConversationId(summaries)
+      })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [plugin])
 
   useEffect(() => {
     settledNotificationRunsRef.current = []
@@ -943,7 +966,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (chatMode !== 'agent') {
       return
     }
-    if (submitChatMutation.isPending) {
+    if (isCurrentConversationRunActive) {
       return
     }
     if (settledNotificationRunsRef.current.length === 0) {
@@ -952,7 +975,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (hasIncompleteToolCalls(chatMessages)) {
       return
     }
-    if (shouldShowContinueResponse(chatMessages, submitChatMutation.isPending)) {
+    if (shouldShowContinueResponse(chatMessages, isCurrentConversationRunActive)) {
       return
     }
 
@@ -972,7 +995,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ? t('chat.notification.completedErrorBody', '当前 Agent 任务已结束，请回到窗口查看结果。')
         : t('chat.notification.completedBody', '当前 Agent 任务已完成，可以回来看结果了。'),
     })
-  }, [chatMessages, chatMode, notificationService, submitChatMutation.isPending, t])
+  }, [
+    chatMessages,
+    chatMode,
+    isCurrentConversationRunActive,
+    notificationService,
+    t,
+  ])
 
   const serializeMessageModelMap = useCallback(
     (
@@ -1075,7 +1104,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleLoadConversation = useCallback(
     async (conversationId: string) => {
       try {
-        abortActiveStreams()
         const conversation = await getConversationById(conversationId)
         if (!conversation) {
           throw new Error('Conversation not found')
@@ -1163,7 +1191,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
     },
     [
-      abortActiveStreams,
       getConversationById,
       settings.chatModelId,
       settings.currentAssistantId,
@@ -1244,7 +1271,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setQueryProgress({
       type: 'idle',
     })
-    abortActiveStreams()
   }
 
   const handleAssistantMessageEditSave = useCallback(
@@ -1362,7 +1388,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ),
       )
 
-      abortActiveStreams()
       setCurrentConversationId(newConversationId)
       setChatMessages(nextMessages)
       setEditingAssistantMessageId(null)
@@ -1428,7 +1453,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       })
     },
     [
-      abortActiveStreams,
       chatList,
       chatMode,
       conversationAssistantId,
@@ -1530,7 +1554,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       useVaultSearch?: boolean
       persistedMessageModelMap?: Map<string, string>
     }) => {
-      abortActiveStreams()
+      abortConversationRun(currentConversationId)
       setQueryProgress({
         type: 'idle',
       })
@@ -1624,7 +1648,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversationOverrides,
       createNotificationTaskKey,
       requestContextBuilder,
-      abortActiveStreams,
+      abortConversationRun,
       forceScrollToBottom,
       createOrUpdateConversation,
       chatMode,
@@ -1809,6 +1833,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         message.id === toolMessage.id ? toolMessage : message,
       )
       setChatMessages(updatedMessages)
+      plugin
+        .getAgentService()
+        .replaceConversationMessages(currentConversationId, updatedMessages)
 
       // Resume the chat automatically if this tool message is the last message
       // and all tool calls have completed.
@@ -1846,8 +1873,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const showContinueResponseButton = useMemo(() => {
-    return shouldShowContinueResponse(chatMessages, submitChatMutation.isPending)
-  }, [submitChatMutation.isPending, chatMessages])
+    return shouldShowContinueResponse(chatMessages, isCurrentConversationRunActive)
+  }, [chatMessages, isCurrentConversationRunActive])
 
   const handleContinueResponse = useCallback(() => {
     submitChatMutation.mutate({
@@ -1869,7 +1896,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [inputMessage.id])
 
   useEffect(() => {
-    if (submitChatMutation.isPending) {
+    if (isCurrentConversationRunActive) {
       submitMutationPendingRef.current = true
       return
     }
@@ -1889,8 +1916,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessages,
     currentConversationId,
     generateConversationTitle,
+    isCurrentConversationRunActive,
     persistConversationImmediately,
-    submitChatMutation.isPending,
   ])
 
   const handleActiveLeafChange = useCallback(() => {
@@ -2478,6 +2505,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             <ChatListDropdown
               chatList={chatList}
               currentConversationId={currentConversationId}
+              runSummariesByConversationId={runSummariesByConversationId}
               archiveEnabled={
                 settings.chatOptions.historyArchiveEnabled ?? true
               }
@@ -2553,7 +2581,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }
 
   const showEmptyState =
-    groupedChatMessages.length === 0 && !submitChatMutation.isPending
+    groupedChatMessages.length === 0 && !isCurrentConversationRunActive
 
   return (
     <div
@@ -2604,7 +2632,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 messages={messageOrGroup}
                 conversationId={currentConversationId}
                 suppressFooter={
-                  submitChatMutation.isPending &&
+                  isCurrentConversationRunActive &&
                   index === latestAssistantToolGroupIndex
                 }
                 isApplying={applyMutation.isPending}
@@ -2829,13 +2857,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       </div>
       <div
         className={`smtcmp-chat-footer${
-          submitChatMutation.isPending ? ' is-generating' : ''
+          isCurrentConversationRunActive ? ' is-generating' : ''
         }`}
       >
-        {submitChatMutation.isPending && (
+        {isCurrentConversationRunActive && (
           <button
             type="button"
-            onClick={abortActiveStreams}
+            onClick={() => abortConversationRun(currentConversationId)}
             className="smtcmp-stop-gen-btn"
           >
             <CircleStop size={16} />

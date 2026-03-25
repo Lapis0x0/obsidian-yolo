@@ -2,6 +2,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { Pencil, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { useLanguage } from '../../contexts/language-context'
 import { ChatConversationMetadata } from '../../database/json/chat/types'
 import { useChatManager } from '../../hooks/useJsonManagers'
@@ -53,6 +54,7 @@ function TitleInput({
 
 function ChatListItem({
   title,
+  runSummary,
   isFocused,
   isEditing,
   isUpdatingTitle,
@@ -67,6 +69,7 @@ function ChatListItem({
   onFinishEdit,
 }: {
   title: string
+  runSummary?: AgentConversationRunSummary
   isFocused: boolean
   isEditing: boolean
   isUpdatingTitle: boolean
@@ -119,6 +122,19 @@ function ChatListItem({
           <span className="smtcmp-chat-list-dropdown-item-title-text">
             {title}
           </span>
+          {runSummary && (runSummary.isRunning || runSummary.isWaitingApproval) ? (
+            <span
+              className={`smtcmp-chat-list-dropdown-item-status${
+                runSummary.isRunning ? ' is-running' : ' is-waiting'
+              }`}
+              aria-label={
+                runSummary.isRunning ? 'Conversation running' : 'Waiting approval'
+              }
+              title={
+                runSummary.isRunning ? 'Conversation running' : 'Waiting approval'
+              }
+            />
+          ) : null}
           {isRetrying && (
             <span
               className="smtcmp-chat-list-dropdown-item-title-skeleton"
@@ -217,6 +233,7 @@ function extractConversationText(messages: SerializedChatMessage[]): string {
 export function ChatListDropdown({
   chatList,
   currentConversationId,
+  runSummariesByConversationId,
   archiveEnabled,
   archiveThreshold,
   onSelect,
@@ -228,6 +245,7 @@ export function ChatListDropdown({
 }: {
   chatList: ChatConversationMetadata[]
   currentConversationId: string
+  runSummariesByConversationId: Map<string, AgentConversationRunSummary>
   archiveEnabled: boolean
   archiveThreshold: number
   onSelect: (conversationId: string) => void | Promise<void>
@@ -637,6 +655,7 @@ export function ChatListDropdown({
                   <ChatListItem
                     key={chat.id}
                     title={chat.title}
+                    runSummary={runSummariesByConversationId.get(chat.id)}
                     isFocused={
                       focusedConversationId === chat.id && !isHoveringArchiveRow
                     }
