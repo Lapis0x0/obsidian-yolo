@@ -20,7 +20,10 @@ import {
   initializeChatGPTOAuthRuntime,
 } from './core/auth/chatgptOAuthRuntime'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
-import { AgentService } from './core/agent/service'
+import {
+  AgentConversationRunSummary,
+  AgentService,
+} from './core/agent/service'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
@@ -94,6 +97,9 @@ export default class SmartComposerPlugin extends Plugin {
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
   private agentService: AgentService | null = null
+  private agentStatusBarItem: HTMLElement | null = null
+  private agentStatusBarRing: HTMLElement | null = null
+  private agentStatusBarLabel: HTMLElement | null = null
 
   getSmartSpaceDraftState(): SmartSpaceDraftState {
     return this.smartSpaceDraftState
@@ -529,6 +535,104 @@ export default class SmartComposerPlugin extends Plugin {
     return this.agentService
   }
 
+  private setupAgentStatusBar(): void {
+    const statusBarItem = this.addStatusBarItem()
+    statusBarItem.addClass('mod-clickable')
+    statusBarItem.addClass('smtcmp-agent-status-bar')
+    statusBarItem.hide()
+    statusBarItem.setAttribute('aria-label', 'Agent status')
+
+    const ring = document.createElement('span')
+    ring.className = 'smtcmp-agent-status-bar-ring'
+
+    const label = document.createElement('span')
+    label.className = 'smtcmp-agent-status-bar-label'
+
+    statusBarItem.append(label, ring)
+
+    this.agentStatusBarItem = statusBarItem
+    this.agentStatusBarRing = ring
+    this.agentStatusBarLabel = label
+
+    this.registerDomEvent(statusBarItem, 'click', () => {
+      void this.openChatView({ placement: 'sidebar' })
+    })
+
+    const unsubscribe = this.getAgentService().subscribeToRunSummaries(
+      (summaries) => {
+        this.updateAgentStatusBar(summaries)
+      },
+    )
+
+    this.register(() => {
+      unsubscribe()
+      this.agentStatusBarItem = null
+      this.agentStatusBarRing = null
+      this.agentStatusBarLabel = null
+    })
+  }
+
+  private updateAgentStatusBar(
+    summaries: Map<string, AgentConversationRunSummary>,
+  ): void {
+    if (
+      !this.agentStatusBarItem ||
+      !this.agentStatusBarRing ||
+      !this.agentStatusBarLabel
+    ) {
+      return
+    }
+
+    let runningCount = 0
+    let waitingApprovalCount = 0
+
+    for (const summary of summaries.values()) {
+      if (summary.isRunning) {
+        runningCount += 1
+      }
+      if (summary.isWaitingApproval) {
+        waitingApprovalCount += 1
+      }
+    }
+
+    if (runningCount === 0 && waitingApprovalCount === 0) {
+      this.agentStatusBarItem.hide()
+      this.agentStatusBarLabel.setText('')
+      this.agentStatusBarItem.removeAttribute('title')
+      return
+    }
+
+    const label =
+      waitingApprovalCount > 0
+        ? this.t(
+            'statusBar.agentRunningWithApproval',
+            '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',
+          )
+            .replace('{count}', String(runningCount))
+            .replace('{approvalCount}', String(waitingApprovalCount))
+        : this.t(
+            'statusBar.agentRunning',
+            '当前有 {count} 个 agent 正在运行',
+          ).replace('{count}', String(runningCount))
+
+    this.agentStatusBarLabel.setText(label)
+    this.agentStatusBarItem.setAttribute(
+      'aria-label',
+      this.t(
+        'statusBar.agentStatusAriaLabel',
+        'Agent 运行状态，点击打开 Yolo chat',
+      ),
+    )
+    this.agentStatusBarItem.setAttribute(
+      'title',
+      this.t(
+        'statusBar.agentStatusTitle',
+        '点击打开 Yolo chat，查看后台 Agent 任务',
+      ),
+    )
+    this.agentStatusBarItem.show()
+  }
+
   private getEditorView(editor: Editor | null | undefined): EditorView | null {
     if (!editor) return null
     if (this.isEditorWithCodeMirror(editor)) {
@@ -755,6 +859,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
       void this.openChatView({ placement: 'sidebar' })
     })
+
+    this.setupAgentStatusBar()
 
     this.addCommand({
       id: 'open-new-chat',

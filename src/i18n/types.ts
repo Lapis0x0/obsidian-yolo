@@ -940,6 +940,13 @@ export type TranslationKeys = {
     transportModeAutoPromoted: string
   }
 
+  statusBar?: {
+    agentRunningWithApproval?: string
+    agentRunning?: string
+    agentStatusAriaLabel?: string
+    agentStatusTitle?: string
+  }
+
   // Errors
   errors: {
     providerNotFound: string

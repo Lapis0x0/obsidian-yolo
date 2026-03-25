@@ -1019,6 +1019,13 @@ export const zh: TranslationKeys = {
       '检测到网络/CORS 问题，已自动将该 Provider 切换为 {mode}。',
   },
 
+  statusBar: {
+    agentRunningWithApproval: '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',
+    agentRunning: '当前有 {count} 个 agent 正在运行',
+    agentStatusAriaLabel: 'Agent 运行状态，点击打开 Yolo chat',
+    agentStatusTitle: '点击打开 Yolo chat，查看后台 Agent 任务',
+  },
+
   errors: {
     providerNotFound: '未找到提供商',
     modelNotFound: '未找到模型',
