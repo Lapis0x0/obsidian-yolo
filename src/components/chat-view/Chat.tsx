@@ -29,7 +29,6 @@ import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../core/llm/manager'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
-import { NotificationService } from '../../core/notifications/notificationService'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
@@ -84,33 +83,6 @@ import ViewToggle from './ViewToggle'
 const LOCAL_FILE_TOOL_SERVER = getLocalFileToolServerName()
 const LOCAL_FS_READ_TOOL = getToolName(LOCAL_FILE_TOOL_SERVER, 'fs_read')
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
-
-const hasIncompleteToolCalls = (messages: ChatMessage[]): boolean => {
-  return messages.some(
-    (message) =>
-      message.role === 'tool' &&
-      message.toolCalls.some((toolCall) =>
-        [
-          ToolCallResponseStatus.PendingApproval,
-          ToolCallResponseStatus.Running,
-        ].includes(toolCall.response.status),
-      ),
-  )
-}
-
-const getPendingApprovalToolCallIds = (messages: ChatMessage[]): string[] => {
-  return messages.flatMap((message) => {
-    if (message.role !== 'tool') {
-      return []
-    }
-    return message.toolCalls
-      .filter(
-        (toolCall) =>
-          toolCall.response.status === ToolCallResponseStatus.PendingApproval,
-      )
-      .map((toolCall) => toolCall.request.id)
-  })
-}
 
 const shouldShowContinueResponse = (
   messages: ChatMessage[],
@@ -849,25 +821,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const bottomAnchorRef = useRef<HTMLDivElement>(null)
-  const notificationOptionsRef = useRef(settings.notificationOptions)
-  const notificationServiceRef = useRef<NotificationService | null>(null)
-  const initializedNotificationConversationsRef = useRef<Set<string>>(new Set())
-  const settledNotificationRunsRef = useRef<
-    { taskKey: string; aborted: boolean; failed: boolean }[]
-  >([])
-  const notificationTaskCounterRef = useRef(0)
-
-  if (!notificationServiceRef.current) {
-    notificationServiceRef.current = new NotificationService({
-      getOptions: () => notificationOptionsRef.current,
-    })
-  }
-
-  const notificationService = notificationServiceRef.current
-
-  useEffect(() => {
-    notificationOptionsRef.current = settings.notificationOptions
-  }, [settings.notificationOptions])
   const hasStreamingMessages = useMemo(
     () =>
       chatMessages.some(
@@ -898,29 +851,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMode,
     currentFileOverride,
     assistantIdOverride: conversationAssistantId,
-    onRunSettled: ({ taskKey, aborted, failed }) => {
-      if (chatMode !== 'agent') {
-        return
-      }
-      if (!taskKey) {
-        return
-      }
-      settledNotificationRunsRef.current.push({ taskKey, aborted, failed })
-    },
   })
   const [runSummariesByConversationId, setRunSummariesByConversationId] =
     useState<Map<string, AgentConversationRunSummary>>(new Map())
   const isCurrentConversationRunActive =
     currentConversationRunSummary.isRunning ||
     currentConversationRunSummary.isWaitingApproval
-
-  const createNotificationTaskKey = useCallback(() => {
-    if (chatMode !== 'agent') {
-      return undefined
-    }
-    notificationTaskCounterRef.current += 1
-    return `${currentConversationId}:${notificationTaskCounterRef.current}`
-  }, [chatMode, currentConversationId])
 
   useEffect(() => {
     const unsubscribe = plugin
@@ -933,75 +869,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       unsubscribe()
     }
   }, [plugin])
-
-  useEffect(() => {
-    settledNotificationRunsRef.current = []
-  }, [currentConversationId])
-
-  useEffect(() => {
-    if (chatMode !== 'agent') {
-      return
-    }
-    const pendingApprovalIds = getPendingApprovalToolCallIds(chatMessages)
-
-    if (
-      !initializedNotificationConversationsRef.current.has(currentConversationId)
-    ) {
-      notificationService.markApprovalKeysAsSeen(pendingApprovalIds)
-      initializedNotificationConversationsRef.current.add(currentConversationId)
-      return
-    }
-
-    pendingApprovalIds.forEach((toolCallId) => {
-      void notificationService.notify({
-        type: 'approval_required',
-        dedupeKey: toolCallId,
-        title: t('chat.notification.approvalTitle', 'YOLO 需要你的确认'),
-        body: t('chat.notification.approvalBody', '当前任务暂停中，正在等待你审批一个工具调用。'),
-      })
-    })
-  }, [chatMessages, chatMode, currentConversationId, notificationService, t])
-
-  useEffect(() => {
-    if (chatMode !== 'agent') {
-      return
-    }
-    if (isCurrentConversationRunActive) {
-      return
-    }
-    if (settledNotificationRunsRef.current.length === 0) {
-      return
-    }
-    if (hasIncompleteToolCalls(chatMessages)) {
-      return
-    }
-    if (shouldShowContinueResponse(chatMessages, isCurrentConversationRunActive)) {
-      return
-    }
-
-    const settledRuns = settledNotificationRunsRef.current.splice(
-      0,
-      settledNotificationRunsRef.current.length,
-    )
-    const latestRun = settledRuns.at(-1)
-    if (!latestRun || latestRun.aborted) {
-      return
-    }
-    void notificationService.notify({
-      type: 'task_completed',
-      dedupeKey: latestRun.taskKey,
-      title: t('chat.notification.completedTitle', 'YOLO 任务已结束'),
-      body: latestRun.failed
-        ? t('chat.notification.completedErrorBody', '当前 Agent 任务已结束，请回到窗口查看结果。')
-        : t('chat.notification.completedBody', '当前 Agent 任务已完成，可以回来看结果了。'),
-    })
-  }, [
-    chatMessages,
-    chatMode,
-    isCurrentConversationRunActive,
-    notificationService,
-    t,
-  ])
 
   const serializeMessageModelMap = useCallback(
     (
@@ -1638,7 +1505,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         chatMessages: compiledMessages,
         conversationId: currentConversationId,
         reasoningLevel: requestReasoningLevel,
-        taskKey: createNotificationTaskKey(),
       })
     },
     [
@@ -1646,7 +1512,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       currentConversationId,
       conversationModelId,
       conversationOverrides,
-      createNotificationTaskKey,
       requestContextBuilder,
       abortConversationRun,
       forceScrollToBottom,
@@ -1854,7 +1719,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           chatMessages: updatedMessages,
           conversationId: currentConversationId,
           reasoningLevel: resolveReasoningLevelForMessages(updatedMessages),
-          taskKey: createNotificationTaskKey(),
         })
         requestAnimationFrame(() => {
           forceScrollToBottom()
@@ -1865,7 +1729,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatMessages,
       currentConversationId,
       submitChatMutation,
-      createNotificationTaskKey,
       getMcpManager,
       forceScrollToBottom,
       resolveReasoningLevelForMessages,
@@ -1881,10 +1744,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatMessages: chatMessages,
       conversationId: currentConversationId,
       reasoningLevel: resolveReasoningLevelForMessages(chatMessages),
-      taskKey: createNotificationTaskKey(),
     })
   }, [
-    createNotificationTaskKey,
     submitChatMutation,
     chatMessages,
     currentConversationId,
