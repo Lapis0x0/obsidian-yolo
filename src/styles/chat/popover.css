@@ -320,11 +320,9 @@
 }
 
 .smtcmp-chat-list-dropdown-item-status.is-waiting {
-  width: 9px;
-  height: 9px;
-  background: color-mix(in srgb, var(--color-orange) 72%, white 10%);
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--color-orange) 24%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-orange) 20%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
+  animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
 }
 
 .smtcmp-chat-list-dropdown-item-title.is-retrying
