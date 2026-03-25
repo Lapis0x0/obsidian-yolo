@@ -44,7 +44,6 @@ type UseChatStreamManagerParams = {
   currentFileOverride?: TFile | null
   assistantIdOverride?: string
   onRunSettled?: (result: {
-    taskKey?: string
     aborted: boolean
     failed: boolean
   }) => void
@@ -86,13 +85,12 @@ export type UseChatStreamManager = {
   abortConversationRun: (conversationId: string) => void
   currentConversationRunSummary: AgentConversationRunSummary
   submitChatMutation: UseMutationResult<
-    { taskKey?: string; aborted: boolean },
+    { aborted: boolean },
     Error,
     {
       chatMessages: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
-      taskKey?: string
     }
   >
 }
@@ -114,7 +112,6 @@ export function useChatStreamManager({
   const { settings, setSettings } = useSettings()
   const { getMcpManager } = useMcp()
 
-  const currentConversationIdRef = useRef(currentConversationId)
   const activeStreamAbortControllersRef = useRef<Map<string, AbortController>>(
     new Map(),
   )
@@ -134,10 +131,6 @@ export function useChatStreamManager({
     },
     [plugin, setSettings],
   )
-
-  useEffect(() => {
-    currentConversationIdRef.current = currentConversationId
-  }, [currentConversationId])
 
   useEffect(() => {
     const agentService = plugin.getAgentService()
@@ -202,17 +195,14 @@ export function useChatStreamManager({
       chatMessages,
       conversationId,
       reasoningLevel,
-      taskKey,
     }: {
       chatMessages: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
-      taskKey?: string
     }) => {
       const lastMessage = chatMessages.at(-1)
       if (!lastMessage) {
         return {
-          taskKey,
           aborted: false,
         }
       }
@@ -354,14 +344,12 @@ export function useChatStreamManager({
 
         if (abortController.signal.aborted) {
           return {
-            taskKey,
             aborted: true,
           }
         }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           return {
-            taskKey,
             aborted: true,
           }
         }
@@ -376,20 +364,17 @@ export function useChatStreamManager({
       }
 
       return {
-        taskKey,
         aborted: false,
       }
     },
     onSuccess: (data) => {
       onRunSettled?.({
-        taskKey: data.taskKey,
         aborted: data.aborted,
         failed: false,
       })
     },
     onError: (error, variables) => {
       onRunSettled?.({
-        taskKey: variables.taskKey,
         aborted: false,
         failed: true,
       })

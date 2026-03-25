@@ -25,6 +25,8 @@ import {
   AgentService,
 } from './core/agent/service'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
+import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
+import { NotificationService } from './core/notifications/notificationService'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
@@ -97,6 +99,7 @@ export default class SmartComposerPlugin extends Plugin {
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
   private agentService: AgentService | null = null
+  private agentNotificationCoordinator: AgentNotificationCoordinator | null = null
   private agentStatusBarItem: HTMLElement | null = null
   private agentStatusBarRing: HTMLElement | null = null
   private agentStatusBarLabel: HTMLElement | null = null
@@ -535,6 +538,20 @@ export default class SmartComposerPlugin extends Plugin {
     return this.agentService
   }
 
+  private getAgentNotificationCoordinator(): AgentNotificationCoordinator {
+    if (!this.agentNotificationCoordinator) {
+      const notificationService = new NotificationService({
+        getOptions: () => this.settings.notificationOptions,
+      })
+      this.agentNotificationCoordinator = new AgentNotificationCoordinator({
+        agentService: this.getAgentService(),
+        notificationService,
+        translate: (key, fallback) => this.t(key, fallback),
+      })
+    }
+    return this.agentNotificationCoordinator
+  }
+
   private setupAgentStatusBar(): void {
     const statusBarItem = this.addStatusBarItem()
     statusBarItem.addClass('mod-clickable')
@@ -861,6 +878,11 @@ export default class SmartComposerPlugin extends Plugin {
     })
 
     this.setupAgentStatusBar()
+    this.getAgentNotificationCoordinator().start()
+    this.register(() => {
+      this.agentNotificationCoordinator?.stop()
+      this.agentNotificationCoordinator = null
+    })
 
     this.addCommand({
       id: 'open-new-chat',

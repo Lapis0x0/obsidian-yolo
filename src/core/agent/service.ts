@@ -19,12 +19,17 @@ export type AgentRunStatus =
 export type AgentConversationState = {
   conversationId: string
   status: AgentRunStatus
+  runId?: number
   messages: ChatMessage[]
   anchorMessageId?: string
   errorMessage?: string
 }
 
 export type AgentConversationStateSubscriber = (
+  state: AgentConversationState,
+) => void
+
+export type AgentConversationStateFeedSubscriber = (
   state: AgentConversationState,
 ) => void
 
@@ -42,6 +47,7 @@ export type AgentConversationRunSummarySubscriber = (
 type AgentRunEntry = {
   runtime: NativeAgentRuntime | null
   state: AgentConversationState
+  nextRunId: number
   runToken: symbol | null
   subscribers: Set<AgentConversationStateSubscriber>
   lastRunInput: AgentRuntimeRunInput | null
@@ -127,6 +133,7 @@ export class AgentService {
   private runsByConversation = new Map<string, AgentRunEntry>()
   private summarySubscribers =
     new Set<AgentConversationRunSummarySubscriber>()
+  private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(private readonly options: AgentServiceOptions = {}) {}
@@ -179,6 +186,23 @@ export class AgentService {
 
     return () => {
       this.summarySubscribers.delete(callback)
+    }
+  }
+
+  subscribeToConversationStates(
+    callback: AgentConversationStateFeedSubscriber,
+    options?: { emitCurrent?: boolean },
+  ): () => void {
+    this.stateFeedSubscribers.add(callback)
+
+    if (options?.emitCurrent ?? true) {
+      for (const entry of this.runsByConversation.values()) {
+        callback(this.cloneState(entry.state))
+      }
+    }
+
+    return () => {
+      this.stateFeedSubscribers.delete(callback)
     }
   }
 
@@ -333,6 +357,8 @@ export class AgentService {
 
     const runtime = new NativeAgentRuntime(loopConfig)
     const runToken = Symbol(`agent-run-${conversationId}`)
+    const runId = entry.nextRunId
+    entry.nextRunId += 1
     entry.runtime = runtime
     entry.runToken = runToken
     entry.lastRunInput = input
@@ -340,6 +366,7 @@ export class AgentService {
     entry.state = {
       conversationId,
       status: 'running',
+      runId,
       messages: [...input.messages],
       anchorMessageId: input.messages.at(-1)?.id,
     }
@@ -434,6 +461,7 @@ export class AgentService {
 
     const created: AgentRunEntry = {
       runtime: null,
+      nextRunId: 1,
       runToken: null,
       subscribers: new Set(),
       lastRunInput: null,
@@ -453,6 +481,9 @@ export class AgentService {
     for (const subscriber of entry.subscribers) {
       subscriber(state)
     }
+    for (const subscriber of this.stateFeedSubscribers) {
+      subscriber(state)
+    }
     this.schedulePersistence(state)
     this.notifyRunSummarySubscribers()
   }
@@ -461,6 +492,7 @@ export class AgentService {
     return {
       conversationId: state.conversationId,
       status: state.status,
+      runId: state.runId,
       messages: [...state.messages],
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
