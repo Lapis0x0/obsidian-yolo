@@ -57,6 +57,7 @@ function ChatListItem({
   title,
   runSummary,
   isFocused,
+  shouldScrollIntoView,
   isEditing,
   isUpdatingTitle,
   isPinned,
@@ -72,6 +73,7 @@ function ChatListItem({
   title: string
   runSummary?: AgentConversationRunSummary
   isFocused: boolean
+  shouldScrollIntoView: boolean
   isEditing: boolean
   isUpdatingTitle: boolean
   isPinned: boolean
@@ -89,12 +91,12 @@ function ChatListItem({
   const [editingTitle, setEditingTitle] = useState(title)
 
   useEffect(() => {
-    if (isFocused && itemRef.current) {
+    if (isFocused && shouldScrollIntoView && itemRef.current) {
       itemRef.current.scrollIntoView({
         block: 'nearest',
       })
     }
-  }, [isFocused])
+  }, [isFocused, shouldScrollIntoView])
 
   useEffect(() => {
     if (isEditing) {
@@ -291,6 +293,8 @@ export function ChatListDropdown({
   const [focusedConversationId, setFocusedConversationId] = useState<
     string | null
   >(null)
+  const [scrollIntoViewConversationId, setScrollIntoViewConversationId] =
+    useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
@@ -442,6 +446,7 @@ export function ChatListDropdown({
           pinnedSortedChatList[0]?.id ??
           null
         setFocusedConversationId(nextFocusedConversationId)
+        setScrollIntoViewConversationId(null)
         setEditingId(null)
         setSearchQuery('')
         setShowArchived(false)
@@ -450,6 +455,7 @@ export function ChatListDropdown({
       } else {
         setEditingId(null)
         setFocusedConversationId(null)
+        setScrollIntoViewConversationId(null)
         setIsHoveringArchiveRow(false)
       }
       setOpen(nextOpen)
@@ -491,10 +497,12 @@ export function ChatListDropdown({
           ? currentConversationId
           : (renderedChatList[0]?.id ?? null),
       )
+      setScrollIntoViewConversationId(null)
       return
     }
 
     setFocusedConversationId(renderedChatList[0]?.id ?? null)
+    setScrollIntoViewConversationId(null)
   }, [
     currentConversationId,
     displayChatIndexById,
@@ -603,12 +611,16 @@ export function ChatListDropdown({
         if (activeList.length === 0) return
         const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
         const nextIndex = Math.max(0, currentIndex - 1)
-        setFocusedConversationId(activeList[nextIndex]?.id ?? null)
+        const nextConversationId = activeList[nextIndex]?.id ?? null
+        setFocusedConversationId(nextConversationId)
+        setScrollIntoViewConversationId(nextConversationId)
       } else if (e.key === 'ArrowDown') {
         if (activeList.length === 0) return
         const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
         const nextIndex = Math.min(activeList.length - 1, currentIndex + 1)
-        setFocusedConversationId(activeList[nextIndex]?.id ?? null)
+        const nextConversationId = activeList[nextIndex]?.id ?? null
+        setFocusedConversationId(nextConversationId)
+        setScrollIntoViewConversationId(nextConversationId)
       } else if (e.key === 'Enter') {
         const conversationId =
           focusedConversationId ??
@@ -686,12 +698,14 @@ export function ChatListDropdown({
                     isFocused={
                       focusedConversationId === chat.id && !isHoveringArchiveRow
                     }
+                    shouldScrollIntoView={scrollIntoViewConversationId === chat.id}
                     isEditing={editingId === chat.id}
                     isUpdatingTitle={updatingTitleIds.has(chat.id)}
                     isPinned={Boolean(chat.isPinned)}
                     isRetrying={retryingConversationIds.has(chat.id)}
                     onMouseEnter={() => {
                       setFocusedConversationId(chat.id)
+                      setScrollIntoViewConversationId(null)
                     }}
                     onSelect={() => {
                       void Promise.resolve(onSelect(chat.id))
