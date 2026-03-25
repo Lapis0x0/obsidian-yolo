@@ -1022,8 +1022,13 @@ export const zh: TranslationKeys = {
   statusBar: {
     agentRunningWithApproval: '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',
     agentRunning: '当前有 {count} 个 agent 正在运行',
-    agentStatusAriaLabel: 'Agent 运行状态，点击打开 Yolo chat',
-    agentStatusTitle: '点击打开 Yolo chat，查看后台 Agent 任务',
+    agentStatusAriaLabel: 'Agent 运行状态，点击查看运行中的对话',
+    agentStatusTitle: '点击查看运行中的对话，并在新聊天标签页中打开',
+    agentStatusPanelTitle: '正在进行的 Agent 对话',
+    agentStatusPanelEmpty: '当前没有可切换的运行中对话',
+    agentStatusRunning: '运行中',
+    agentStatusWaitingApproval: '待审批',
+    agentStatusFallbackConversationTitle: '运行中的对话',
   },
 
   errors: {

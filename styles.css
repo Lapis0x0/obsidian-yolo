@@ -7922,6 +7922,7 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 }
 
 .smtcmp-agent-status-bar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -7946,6 +7947,119 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 
 .smtcmp-agent-status-bar-label {
   min-width: 0;
+}
+
+.smtcmp-agent-status-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(360px, 60vh);
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--background-primary) 94%, black 6%);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transform-origin: bottom right;
+  transition:
+    opacity 160ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.smtcmp-agent-status-panel.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.smtcmp-agent-status-panel-header {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.smtcmp-agent-status-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.smtcmp-agent-status-panel-empty {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.smtcmp-agent-status-panel-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.smtcmp-agent-status-panel-item:hover,
+.smtcmp-agent-status-panel-item:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  background: var(--background-modifier-hover);
+}
+
+.smtcmp-agent-status-panel-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.smtcmp-agent-status-panel-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+  font-weight: 400;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-agent-status-panel-item-meta {
+  flex-shrink: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.smtcmp-agent-status-panel-item-indicator {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  border-top-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 82%,
+    white 8%
+  );
+  box-sizing: border-box;
+  opacity: 0.92;
+  animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
+}
+
+.smtcmp-agent-status-panel-item-indicator.is-waiting-approval {
+  border-color: color-mix(in srgb, var(--color-orange) 20%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
 }
 
 input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
