@@ -1086,6 +1086,15 @@ export const it: TranslationKeys = {
       'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su {mode}.',
   },
 
+  statusBar: {
+    agentRunningWithApproval:
+      'Al momento ci sono {count} agent in esecuzione ({approvalCount} in attesa di approvazione)',
+    agentRunning: 'Al momento ci sono {count} agent in esecuzione',
+    agentStatusAriaLabel: 'Stato Agent, clicca per aprire Yolo chat',
+    agentStatusTitle:
+      'Clicca per aprire Yolo chat e controllare le attivita Agent in background',
+  },
+
   errors: {
     providerNotFound: 'Provider non trovato',
     modelNotFound: 'Modello non trovato',

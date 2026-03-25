@@ -1088,6 +1088,14 @@ export const en: TranslationKeys = {
       'Detected network/CORS issue. Automatically switched this provider to {mode}.',
   },
 
+  statusBar: {
+    agentRunningWithApproval:
+      'There are currently {count} running agents ({approvalCount} awaiting approval)',
+    agentRunning: 'There are currently {count} running agents',
+    agentStatusAriaLabel: 'Agent status, click to open Yolo chat',
+    agentStatusTitle: 'Click to open Yolo chat and review background Agent tasks',
+  },
+
   errors: {
     providerNotFound: 'Provider not found',
     modelNotFound: 'Model not found',
