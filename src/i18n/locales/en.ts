@@ -1092,8 +1092,14 @@ export const en: TranslationKeys = {
     agentRunningWithApproval:
       'There are currently {count} running agents ({approvalCount} awaiting approval)',
     agentRunning: 'There are currently {count} running agents',
-    agentStatusAriaLabel: 'Agent status, click to open Yolo chat',
-    agentStatusTitle: 'Click to open Yolo chat and review background Agent tasks',
+    agentStatusAriaLabel: 'Agent status, click to view running conversations',
+    agentStatusTitle:
+      'Click to view running conversations and open one in a new chat tab',
+    agentStatusPanelTitle: 'Active Agent conversations',
+    agentStatusPanelEmpty: 'There are no running conversations to switch to',
+    agentStatusRunning: 'Running',
+    agentStatusWaitingApproval: 'Awaiting approval',
+    agentStatusFallbackConversationTitle: 'Running conversation',
   },
 
   errors: {

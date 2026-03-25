@@ -945,6 +945,11 @@ export type TranslationKeys = {
     agentRunning?: string
     agentStatusAriaLabel?: string
     agentStatusTitle?: string
+    agentStatusPanelTitle?: string
+    agentStatusPanelEmpty?: string
+    agentStatusRunning?: string
+    agentStatusWaitingApproval?: string
+    agentStatusFallbackConversationTitle?: string
   }
 
   // Errors

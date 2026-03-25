@@ -33,6 +33,7 @@ import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
 import { DatabaseManager } from './database/DatabaseManager'
+import { ChatManager } from './database/json/chat/ChatManager'
 import { PGLiteAbortedException } from './database/exception'
 import type { VectorManager } from './database/modules/vector/VectorManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
@@ -103,6 +104,19 @@ export default class SmartComposerPlugin extends Plugin {
   private agentStatusBarItem: HTMLElement | null = null
   private agentStatusBarRing: HTMLElement | null = null
   private agentStatusBarLabel: HTMLElement | null = null
+  private agentStatusPanel: HTMLElement | null = null
+  private agentStatusPanelList: HTMLElement | null = null
+  private agentStatusPanelEmpty: HTMLElement | null = null
+  private latestAgentRunSummaries = new Map<string, AgentConversationRunSummary>()
+  private agentStatusPanelRenderVersion = 0
+  private agentStatusPanelItems = new Map<
+    string,
+    {
+      item: HTMLElement
+      title: HTMLElement
+      indicator: HTMLElement
+    }
+  >()
 
   getSmartSpaceDraftState(): SmartSpaceDraftState {
     return this.smartSpaceDraftState
@@ -557,7 +571,6 @@ export default class SmartComposerPlugin extends Plugin {
     statusBarItem.addClass('mod-clickable')
     statusBarItem.addClass('smtcmp-agent-status-bar')
     statusBarItem.hide()
-    statusBarItem.setAttribute('aria-label', 'Agent status')
 
     const ring = document.createElement('span')
     ring.className = 'smtcmp-agent-status-bar-ring'
@@ -565,14 +578,71 @@ export default class SmartComposerPlugin extends Plugin {
     const label = document.createElement('span')
     label.className = 'smtcmp-agent-status-bar-label'
 
-    statusBarItem.append(label, ring)
+    const panel = document.createElement('div')
+    panel.className = 'smtcmp-agent-status-panel'
+    panel.setAttribute('aria-hidden', 'true')
+    panel.hidden = true
+
+    const panelHeader = document.createElement('div')
+    panelHeader.className = 'smtcmp-agent-status-panel-header'
+    panelHeader.setText(
+      this.t(
+        'statusBar.agentStatusPanelTitle',
+        '正在进行的 Agent 对话',
+      ),
+    )
+
+    const panelList = document.createElement('div')
+    panelList.className = 'smtcmp-agent-status-panel-list'
+
+    const panelEmpty = document.createElement('div')
+    panelEmpty.className = 'smtcmp-agent-status-panel-empty'
+    panelEmpty.setText(
+      this.t(
+        'statusBar.agentStatusPanelEmpty',
+        '当前没有可切换的运行中对话',
+      ),
+    )
+
+    panel.append(panelHeader, panelList, panelEmpty)
+    statusBarItem.append(label, ring, panel)
 
     this.agentStatusBarItem = statusBarItem
     this.agentStatusBarRing = ring
     this.agentStatusBarLabel = label
+    this.agentStatusPanel = panel
+    this.agentStatusPanelList = panelList
+    this.agentStatusPanelEmpty = panelEmpty
 
-    this.registerDomEvent(statusBarItem, 'click', () => {
-      void this.openChatView({ placement: 'sidebar' })
+    this.registerDomEvent(statusBarItem, 'click', (event) => {
+      if (
+        this.agentStatusPanel &&
+        event.target instanceof Node &&
+        this.agentStatusPanel.contains(event.target)
+      ) {
+        return
+      }
+      void this.toggleAgentStatusPanel()
+    })
+
+    this.registerDomEvent(document, 'click', (event) => {
+      if (
+        !this.isAgentStatusPanelOpen() ||
+        !this.agentStatusBarItem ||
+        !(event.target instanceof Node)
+      ) {
+        return
+      }
+
+      if (!this.agentStatusBarItem.contains(event.target)) {
+        this.closeAgentStatusPanel()
+      }
+    })
+
+    this.registerDomEvent(document, 'keydown', (event) => {
+      if (event.key === 'Escape') {
+        this.closeAgentStatusPanel()
+      }
     })
 
     const unsubscribe = this.getAgentService().subscribeToRunSummaries(
@@ -586,6 +656,11 @@ export default class SmartComposerPlugin extends Plugin {
       this.agentStatusBarItem = null
       this.agentStatusBarRing = null
       this.agentStatusBarLabel = null
+      this.agentStatusPanel = null
+      this.agentStatusPanelList = null
+      this.agentStatusPanelEmpty = null
+      this.agentStatusPanelRenderVersion += 1
+      this.agentStatusPanelItems.clear()
     })
   }
 
@@ -600,6 +675,8 @@ export default class SmartComposerPlugin extends Plugin {
       return
     }
 
+    this.latestAgentRunSummaries = new Map(summaries)
+
     let runningCount = 0
     let waitingApprovalCount = 0
 
@@ -613,8 +690,11 @@ export default class SmartComposerPlugin extends Plugin {
     }
 
     if (runningCount === 0 && waitingApprovalCount === 0) {
+      this.clearAgentStatusPanelItems()
+      this.closeAgentStatusPanel()
       this.agentStatusBarItem.hide()
       this.agentStatusBarLabel.setText('')
+      this.agentStatusBarItem.removeAttribute('aria-label')
       this.agentStatusBarItem.removeAttribute('title')
       return
     }
@@ -633,21 +713,204 @@ export default class SmartComposerPlugin extends Plugin {
           ).replace('{count}', String(runningCount))
 
     this.agentStatusBarLabel.setText(label)
-    this.agentStatusBarItem.setAttribute(
-      'aria-label',
-      this.t(
-        'statusBar.agentStatusAriaLabel',
-        'Agent 运行状态，点击打开 Yolo chat',
-      ),
-    )
-    this.agentStatusBarItem.setAttribute(
-      'title',
-      this.t(
-        'statusBar.agentStatusTitle',
-        '点击打开 Yolo chat，查看后台 Agent 任务',
-      ),
-    )
+    this.agentStatusBarItem.removeAttribute('aria-label')
+    this.agentStatusBarItem.removeAttribute('title')
     this.agentStatusBarItem.show()
+
+    if (this.isAgentStatusPanelOpen()) {
+      void this.renderAgentStatusPanel()
+    }
+  }
+
+  private isAgentStatusPanelOpen(): boolean {
+    return this.agentStatusPanel?.hidden === false
+  }
+
+  private openAgentStatusPanel(): void {
+    if (!this.agentStatusPanel || this.isAgentStatusPanelOpen()) {
+      return
+    }
+
+    this.agentStatusPanel.hidden = false
+    this.agentStatusPanel.setAttribute('aria-hidden', 'false')
+
+    window.requestAnimationFrame(() => {
+      this.agentStatusPanel?.addClass('is-open')
+    })
+  }
+
+  private closeAgentStatusPanel(): void {
+    if (!this.agentStatusPanel || !this.isAgentStatusPanelOpen()) {
+      return
+    }
+
+    this.agentStatusPanel.removeClass('is-open')
+    this.agentStatusPanel.setAttribute('aria-hidden', 'true')
+    window.setTimeout(() => {
+      if (this.agentStatusPanel?.hasClass('is-open')) {
+        return
+      }
+      if (this.agentStatusPanel) {
+        this.agentStatusPanel.hidden = true
+      }
+    }, 180)
+  }
+
+  private async toggleAgentStatusPanel(): Promise<void> {
+    if (this.isAgentStatusPanelOpen()) {
+      this.closeAgentStatusPanel()
+      return
+    }
+
+    const hasEntries = await this.renderAgentStatusPanel()
+    if (!hasEntries) {
+      await this.openChatView({ placement: 'sidebar' })
+      return
+    }
+
+    this.openAgentStatusPanel()
+  }
+
+  private async renderAgentStatusPanel(): Promise<boolean> {
+    if (!this.agentStatusPanelList || !this.agentStatusPanelEmpty) {
+      return false
+    }
+
+    const renderVersion = ++this.agentStatusPanelRenderVersion
+    const summaries = Array.from(this.latestAgentRunSummaries.values()).sort(
+      (left, right) => {
+        const leftPriority = left.isWaitingApproval ? 0 : 1
+        const rightPriority = right.isWaitingApproval ? 0 : 1
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority
+        }
+        return left.conversationId.localeCompare(right.conversationId)
+      },
+    )
+
+    if (summaries.length === 0) {
+      this.clearAgentStatusPanelItems()
+      this.agentStatusPanelEmpty.hidden = false
+      return false
+    }
+
+    const chatManager = new ChatManager(this.app)
+    const metadataList = await chatManager.listChats()
+    if (
+      renderVersion !== this.agentStatusPanelRenderVersion ||
+      !this.agentStatusPanelList ||
+      !this.agentStatusPanelEmpty
+    ) {
+      return this.latestAgentRunSummaries.size > 0
+    }
+    const metadataById = new Map(metadataList.map((item) => [item.id, item]))
+    const nextConversationIds = new Set<string>()
+    let insertBeforeNode = this.agentStatusPanelList.firstChild
+
+    for (const summary of summaries) {
+      nextConversationIds.add(summary.conversationId)
+      const metadata = metadataById.get(summary.conversationId)
+      const title = this.resolveAgentConversationTitle(metadata?.title)
+      const itemRecord =
+        this.agentStatusPanelItems.get(summary.conversationId) ??
+        this.createAgentStatusPanelItem(summary.conversationId)
+
+      if (itemRecord.title.getText() !== title) {
+        itemRecord.title.setText(title)
+      }
+      if (itemRecord.title.getAttribute('title') !== title) {
+        itemRecord.title.setAttribute('title', title)
+      }
+      itemRecord.indicator.toggleClass(
+        'is-waiting-approval',
+        summary.isWaitingApproval,
+      )
+
+      if (itemRecord.item !== insertBeforeNode) {
+        this.agentStatusPanelList.insertBefore(itemRecord.item, insertBeforeNode)
+      }
+      insertBeforeNode = itemRecord.item.nextSibling
+    }
+
+    for (const [conversationId, itemRecord] of this.agentStatusPanelItems) {
+      if (nextConversationIds.has(conversationId)) {
+        continue
+      }
+      itemRecord.item.remove()
+      this.agentStatusPanelItems.delete(conversationId)
+    }
+
+    this.agentStatusPanelEmpty.hidden = true
+    return true
+  }
+
+  private createAgentStatusPanelItem(conversationId: string): {
+    item: HTMLElement
+    title: HTMLElement
+    indicator: HTMLElement
+  } {
+    const item = createDiv({
+      cls: 'smtcmp-agent-status-panel-item',
+    })
+    item.setAttribute('role', 'button')
+    item.setAttribute('tabindex', '0')
+
+    const row = item.createDiv({
+      cls: 'smtcmp-agent-status-panel-item-row',
+    })
+    const title = row.createDiv({
+      cls: 'smtcmp-agent-status-panel-item-title',
+    })
+    const indicator = row.createDiv({
+      cls: 'smtcmp-agent-status-panel-item-indicator',
+    })
+
+    const openConversation = () => {
+      this.closeAgentStatusPanel()
+      void this.openChatView({
+        placement: 'split',
+        initialConversationId: conversationId,
+        forceNewLeaf: true,
+      })
+    }
+
+    this.registerDomEvent(item, 'click', (event) => {
+      event.stopPropagation()
+      openConversation()
+    })
+
+    this.registerDomEvent(item, 'keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        event.stopPropagation()
+        openConversation()
+      }
+    })
+
+    const record = {
+      item,
+      title,
+      indicator,
+    }
+    this.agentStatusPanelItems.set(conversationId, record)
+    return record
+  }
+
+  private clearAgentStatusPanelItems(): void {
+    this.agentStatusPanelList?.empty()
+    this.agentStatusPanelItems.clear()
+  }
+
+  private resolveAgentConversationTitle(title: string | undefined): string {
+    const normalizedTitle = title?.trim()
+    if (normalizedTitle) {
+      return normalizedTitle
+    }
+
+    return this.t(
+      'statusBar.agentStatusFallbackConversationTitle',
+      '运行中的对话',
+    )
   }
 
   private getEditorView(editor: Editor | null | undefined): EditorView | null {
