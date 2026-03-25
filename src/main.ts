@@ -21,6 +21,7 @@ import {
 } from './core/auth/chatgptOAuthRuntime'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentService } from './core/agent/service'
+import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
@@ -519,7 +520,11 @@ export default class SmartComposerPlugin extends Plugin {
 
   getAgentService(): AgentService {
     if (!this.agentService) {
-      this.agentService = new AgentService()
+      const { persistConversationMessages } =
+        createAgentConversationPersistence(this.app)
+      this.agentService = new AgentService({
+        persistConversationMessages,
+      })
     }
     return this.agentService
   }

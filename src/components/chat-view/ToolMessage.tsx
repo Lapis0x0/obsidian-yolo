@@ -1,9 +1,10 @@
 import cx from 'clsx'
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
+import { Notice } from 'obsidian'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { useMcp } from '../../contexts/mcp-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -608,7 +609,6 @@ function ToolCallItem({
                   {
                     label: toolLabels.allowForThisChat,
                     onClick: () => {
-                      void handleToolCall()
                       void handleAllowForConversation()
                       setIsOpen(false)
                     },
@@ -649,43 +649,55 @@ function useToolCall(
   conversationId: string,
   onResponseUpdate: (response: ToolCallResponse) => void,
 ) {
-  const { getMcpManager } = useMcp()
+  const plugin = usePlugin()
+  const showReloadNotice = useCallback(() => {
+    new Notice('该工具调用来自已结束或已重载的会话，无法继续执行，请重新发起请求。')
+  }, [])
 
   const handleToolCall = useCallback(async () => {
-    const mcpManager = await getMcpManager()
-    onResponseUpdate({
-      status: ToolCallResponseStatus.Running,
+    const approved = await plugin.getAgentService().approveToolCall({
+      conversationId,
+      toolCallId: request.id,
     })
-    const toolCallResponse: ToolCallResponse = await mcpManager.callTool({
-      name: request.name,
-      args: getToolCallArgumentsObject(request.arguments),
-      id: request.id,
-    })
-    onResponseUpdate(toolCallResponse)
-  }, [request, onResponseUpdate, getMcpManager])
+    if (!approved) {
+      showReloadNotice()
+    }
+  }, [conversationId, plugin, request.id, showReloadNotice])
 
   const handleAllowForConversation = useCallback(async () => {
-    const mcpManager = await getMcpManager()
-    mcpManager.allowToolForConversation(
-      request.name,
+    const approved = await plugin.getAgentService().approveToolCall({
       conversationId,
-      getToolCallArgumentsObject(request.arguments),
-    )
-  }, [request, conversationId, getMcpManager])
+      toolCallId: request.id,
+      allowForConversation: true,
+    })
+    if (!approved) {
+      showReloadNotice()
+    }
+  }, [conversationId, plugin, request.id, showReloadNotice])
 
   const handleReject = useCallback(() => {
-    onResponseUpdate({
-      status: ToolCallResponseStatus.Rejected,
+    const rejected = plugin.getAgentService().rejectToolCall({
+      conversationId,
+      toolCallId: request.id,
     })
-  }, [onResponseUpdate])
+    if (!rejected) {
+      onResponseUpdate({
+        status: ToolCallResponseStatus.Rejected,
+      })
+    }
+  }, [conversationId, onResponseUpdate, plugin, request.id])
 
   const handleAbort = useCallback(async () => {
-    const mcpManager = await getMcpManager()
-    mcpManager.abortToolCall(request.id)
-    onResponseUpdate({
-      status: ToolCallResponseStatus.Aborted,
+    const aborted = plugin.getAgentService().abortToolCall({
+      conversationId,
+      toolCallId: request.id,
     })
-  }, [request, onResponseUpdate, getMcpManager])
+    if (!aborted) {
+      onResponseUpdate({
+        status: ToolCallResponseStatus.Aborted,
+      })
+    }
+  }, [conversationId, onResponseUpdate, plugin, request.id])
 
   return {
     handleToolCall,
