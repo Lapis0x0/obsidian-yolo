@@ -271,7 +271,7 @@ export default function AssistantSelectionQuoteButton({
           onMouseDown={handleMouseDown}
           onClick={handleClick}
         >
-          <Quote size={14} />
+          <Quote size={12} />
           <span>{buttonLabel}</span>
         </button>
       )}

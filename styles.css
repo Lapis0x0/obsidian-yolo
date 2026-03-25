@@ -5725,6 +5725,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-size: var(--font-ui-small);
   padding: 6px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 999px;
