@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
-import { DEFAULT_APPLY_MODEL_ID, DEFAULT_CHAT_MODELS } from '../../constants'
+import {
+  DEFAULT_CHAT_TITLE_MODEL_ID,
+  DEFAULT_CHAT_MODELS,
+} from '../../constants'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
 import { embeddingModelSchema } from '../../types/embedding-model.types'
@@ -236,7 +239,7 @@ export const smartComposerSettingsSchema = z.object({
   embeddingModels: z.array(embeddingModelSchema).catch([]),
 
   chatModelId: z.string().catch(''), // model for default chat feature
-  applyModelId: z.string().catch(''), // model for apply feature
+  chatTitleModelId: z.string().catch(''), // model for automatic conversation naming
   embeddingModelId: z.string().catch(''), // model for embedding
 
   // System Prompt
@@ -420,7 +423,8 @@ export const smartComposerSettingsSchema = z.object({
     })
     .catch({
       continuationModelId:
-        DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_APPLY_MODEL_ID)?.id ??
+        DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID)
+          ?.id ??
         '',
       enableSmartSpace: true,
       enableSelectionChat: true,
@@ -434,7 +438,8 @@ export const smartComposerSettingsSchema = z.object({
       maxContinuationChars: 8000,
       enableTabCompletion: false,
       tabCompletionModelId:
-        DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_APPLY_MODEL_ID)?.id ??
+        DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID)
+          ?.id ??
         '',
       tabCompletionOptions: { ...DEFAULT_TAB_COMPLETION_OPTIONS },
       tabCompletionTriggers: [...DEFAULT_TAB_COMPLETION_TRIGGERS],

@@ -212,7 +212,7 @@ export function useChatHistory(): UseChatHistory {
           reasoningLevel,
         })
       } else {
-        // 默认标题统一为"新对话"，待第一轮模型回答完成后由工具模型自动改名
+        // 默认标题统一为"新对话"，待第一轮模型回答完成后由对话命名模型自动改名
         const defaultTitle = DEFAULT_UNTITLED_CONVERSATION_TITLE
 
         await chatManager.createChat({
@@ -513,7 +513,7 @@ export function useChatHistory(): UseChatHistory {
           try {
             const { providerClient, model } = getChatModelClient({
               settings,
-              modelId: settings.applyModelId,
+              modelId: settings.chatTitleModelId,
               onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
             })
 

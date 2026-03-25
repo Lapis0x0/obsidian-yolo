@@ -131,8 +131,8 @@ export type TranslationKeys = {
       title: string
       defaultChatModel: string
       defaultChatModelDesc: string
-      toolModel: string
-      toolModelDesc: string
+      chatTitleModel: string
+      chatTitleModelDesc: string
       globalSystemPrompt: string
       globalSystemPromptDesc: string
       continuationSystemPrompt: string

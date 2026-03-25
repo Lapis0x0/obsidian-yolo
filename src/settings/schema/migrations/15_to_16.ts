@@ -1,9 +1,12 @@
-import { DEFAULT_APPLY_MODEL_ID, DEFAULT_CHAT_MODELS } from '../../../constants'
+import {
+  DEFAULT_CHAT_MODELS,
+  DEFAULT_CHAT_TITLE_MODEL_ID,
+} from '../../../constants'
 import { SettingMigration } from '../setting.types'
 
 const getDefaultContinuationModelId = () => {
   const defaultModel = DEFAULT_CHAT_MODELS.find(
-    (model) => model.id === DEFAULT_APPLY_MODEL_ID,
+    (model) => model.id === DEFAULT_CHAT_TITLE_MODEL_ID,
   )
   if (defaultModel) return defaultModel.id
   return DEFAULT_CHAT_MODELS[0]?.id

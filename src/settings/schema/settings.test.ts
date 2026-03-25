@@ -16,7 +16,7 @@ describe('parseSmartComposerSettings', () => {
 
     expect(result.chatModels).toEqual([])
     expect(result.chatModelId).toBe('')
-    expect(result.applyModelId).toBe('')
+    expect(result.chatTitleModelId).toBe('')
 
     expect(result.embeddingModels).toEqual([])
     expect(result.embeddingModelId).toBe('')
@@ -71,5 +71,16 @@ describe('parseSmartComposerSettings', () => {
     expect(result.continuationOptions.smartSpaceQuickActions).toBeUndefined()
 
     expect(result.assistants).toEqual([])
+  })
+
+  it('migrates applyModelId to chatTitleModelId for legacy settings', () => {
+    const result = parseSmartComposerSettings({
+      version: 38,
+      chatModelId: 'openai/gpt-5',
+      applyModelId: 'openai/gpt-4.1-mini',
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.chatTitleModelId).toBe('openai/gpt-4.1-mini')
   })
 })
