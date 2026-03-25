@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Pencil, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
+import { Check, Pencil, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { AgentConversationRunSummary } from '../../core/agent/service'
@@ -13,15 +13,16 @@ import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
 function TitleInput({
-  title,
+  value,
   disabled,
+  onChange,
   onSubmit,
 }: {
-  title: string
+  value: string
   disabled?: boolean
+  onChange: (value: string) => void
   onSubmit: (title: string) => void
 }) {
-  const [value, setValue] = useState(title)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -40,7 +41,7 @@ function TitleInput({
       className="smtcmp-chat-list-dropdown-item-title-input"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
         e.stopPropagation()
         if (e.key === 'Enter' && !disabled) {
@@ -85,6 +86,7 @@ function ChatListItem({
 }) {
   const { t } = useLanguage()
   const itemRef = useRef<HTMLLIElement>(null)
+  const [editingTitle, setEditingTitle] = useState(title)
 
   useEffect(() => {
     if (isFocused && itemRef.current) {
@@ -93,6 +95,12 @@ function ChatListItem({
       })
     }
   }, [isFocused])
+
+  useEffect(() => {
+    if (isEditing) {
+      setEditingTitle(title)
+    }
+  }, [isEditing, title])
 
   return (
     <li
@@ -109,8 +117,9 @@ function ChatListItem({
     >
       {isEditing ? (
         <TitleInput
-          title={title}
+          value={editingTitle}
           disabled={isUpdatingTitle}
+          onChange={setEditingTitle}
           onSubmit={onFinishEdit}
         />
       ) : (
@@ -148,11 +157,29 @@ function ChatListItem({
           type="button"
           onClick={(e) => {
             e.stopPropagation()
+            if (isEditing) {
+              if (isUpdatingTitle) {
+                return
+              }
+              onFinishEdit(editingTitle)
+              return
+            }
             onStartEdit()
           }}
           className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
+          disabled={isUpdatingTitle}
+          aria-label={
+            isEditing
+              ? t('common.save', 'Save')
+              : t('common.edit', 'Edit')
+          }
+          title={
+            isEditing
+              ? t('common.save', 'Save')
+              : t('common.edit', 'Edit')
+          }
         >
-          <Pencil />
+          {isEditing ? <Check /> : <Pencil />}
         </button>
         <button
           type="button"
