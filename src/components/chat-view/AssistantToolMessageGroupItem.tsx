@@ -22,6 +22,7 @@ export type AssistantToolMessageGroupItemProps = {
   showBranchAction?: boolean
   showEditAction?: boolean
   showDeleteAction?: boolean
+  showQuoteAction?: boolean
   isApplying: boolean // TODO: isApplying should be a boolean for each assistant message
   activeApplyRequestKey: string | null
   onApply: (
@@ -36,6 +37,11 @@ export type AssistantToolMessageGroupItemProps = {
   onEditSave: (messageId: string, content: string) => void
   onDeleteGroup: (messageIds: string[]) => void
   onBranchGroup: (messageIds: string[]) => void
+  onQuoteAssistantSelection: (payload: {
+    messageId: string
+    conversationId: string
+    content: string
+  }) => void
 }
 
 export default function AssistantToolMessageGroupItem({
@@ -48,6 +54,7 @@ export default function AssistantToolMessageGroupItem({
   showBranchAction = true,
   showEditAction = true,
   showDeleteAction = true,
+  showQuoteAction = true,
   isApplying,
   activeApplyRequestKey,
   onApply,
@@ -58,6 +65,7 @@ export default function AssistantToolMessageGroupItem({
   onEditSave,
   onDeleteGroup,
   onBranchGroup,
+  onQuoteAssistantSelection,
 }: AssistantToolMessageGroupItemProps) {
   const assistantMessages = messages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
@@ -124,12 +132,16 @@ export default function AssistantToolMessageGroupItem({
                 />
               ) : (
                 <AssistantMessageContent
+                  messageId={message.id}
+                  conversationId={conversationId}
                   content={message.content}
                   handleApply={onApply}
                   isApplying={isApplying}
                   activeApplyRequestKey={activeApplyRequestKey}
                   generationState={message.metadata?.generationState}
                   toolCallRequests={message.toolCallRequests}
+                  onQuote={onQuoteAssistantSelection}
+                  enableSelectionQuote={showQuoteAction}
                 />
               )}
             </div>

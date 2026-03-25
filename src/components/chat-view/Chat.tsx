@@ -41,6 +41,8 @@ import type {
 } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
+  Mentionable,
+  MentionableAssistantQuote,
   MentionableBlock,
   MentionableBlockData,
   MentionableCurrentFile,
@@ -231,6 +233,28 @@ const createSelectionBlockMentionable = (
   }
 }
 
+const createAssistantQuoteMentionable = ({
+  conversationId,
+  messageId,
+  content,
+}: {
+  conversationId: string
+  messageId: string
+  content: string
+}): MentionableAssistantQuote => {
+  const trimmedContent = content.trim()
+  const { count, unit } = getBlockMentionableCountInfo(trimmedContent)
+  return {
+    type: 'assistant-quote',
+    conversationId,
+    messageId,
+    content: trimmedContent,
+    contentHash: getBlockContentHash(trimmedContent),
+    contentCount: count,
+    contentUnit: unit,
+  }
+}
+
 const normalizeSelectionSource = (
   source: MentionableBlockData['source'],
 ): 'selection-sync' | 'selection-pinned' => {
@@ -403,6 +427,86 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [queryProgress, setQueryProgress] = useState<QueryProgressState>({
     type: 'idle',
   })
+
+  const addMentionableToFocusedMessage = useCallback(
+    (mentionable: Mentionable) => {
+      setAddedBlockKey(null)
+
+      if (focusedMessageId === inputMessage.id) {
+        setInputMessage((prevInputMessage) => {
+          const mentionableKey = getMentionableKey(
+            serializeMentionable(mentionable),
+          )
+          if (
+            prevInputMessage.mentionables.some(
+              (m) =>
+                getMentionableKey(serializeMentionable(m)) === mentionableKey,
+            )
+          ) {
+            return prevInputMessage
+          }
+          return {
+            ...prevInputMessage,
+            mentionables: [...prevInputMessage.mentionables, mentionable],
+            promptContent: null,
+          }
+        })
+        return
+      }
+
+      setChatMessages((prevChatHistory) =>
+        prevChatHistory.map((message) => {
+          if (message.id !== focusedMessageId || message.role !== 'user') {
+            return message
+          }
+
+          const mentionableKey = getMentionableKey(
+            serializeMentionable(mentionable),
+          )
+          if (
+            message.mentionables.some(
+              (m) =>
+                getMentionableKey(serializeMentionable(m)) === mentionableKey,
+            )
+          ) {
+            return message
+          }
+
+          return {
+            ...message,
+            mentionables: [...message.mentionables, mentionable],
+            promptContent: null,
+          }
+        }),
+      )
+    },
+    [focusedMessageId, inputMessage.id],
+  )
+
+  const handleQuoteAssistantSelection = useCallback(
+    ({
+      conversationId,
+      messageId,
+      content,
+    }: {
+      messageId: string
+      conversationId: string
+      content: string
+    }) => {
+      const targetMessageId = focusedMessageId || inputMessage.id
+      addMentionableToFocusedMessage(
+        createAssistantQuoteMentionable({
+          conversationId,
+          messageId,
+          content,
+        }),
+      )
+      window.requestAnimationFrame(() => {
+        chatUserInputRefs.current.get(targetMessageId)?.focus()
+      })
+    },
+    [addMentionableToFocusedMessage, focusedMessageId, inputMessage.id],
+  )
 
   const isSidebarPlacement = props.placement === 'sidebar'
   const activeView = isSidebarPlacement ? (props.activeView ?? 'chat') : 'chat'
@@ -2515,6 +2619,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 onEditSave={handleAssistantMessageEditSave}
                 onDeleteGroup={handleAssistantMessageGroupDelete}
                 onBranchGroup={handleAssistantMessageGroupBranch}
+                onQuoteAssistantSelection={handleQuoteAssistantSelection}
               />
             )
           }

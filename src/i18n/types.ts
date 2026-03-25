@@ -781,6 +781,10 @@ export type TranslationKeys = {
     regenerate: string
     reasoning: string
     annotations: string
+    assistantQuote?: {
+      add?: string
+      badge?: string
+    }
     mentionMenu?: {
       back?: string
       entryCurrentFile?: string

@@ -872,6 +872,10 @@ export const it: TranslationKeys = {
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
     annotations: 'Annotazioni',
+    assistantQuote: {
+      add: 'Cita',
+      badge: 'Citazione risposta',
+    },
     mentionMenu: {
       back: 'Torna indietro',
       entryCurrentFile: 'File corrente',

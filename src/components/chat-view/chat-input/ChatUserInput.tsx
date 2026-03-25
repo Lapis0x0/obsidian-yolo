@@ -120,7 +120,13 @@ type ChatSubmitOptions = {
   useVaultSearch?: boolean
 }
 
-const INLINE_MENTIONABLE_TYPES = ['file', 'folder', 'current-file', 'block']
+const INLINE_MENTIONABLE_TYPES = [
+  'file',
+  'folder',
+  'current-file',
+  'block',
+  'assistant-quote',
+]
 const DEFAULT_INPUT_HEIGHT = 80
 const MIN_INPUT_HEIGHT = 80
 const MAX_INPUT_HEIGHT = 520

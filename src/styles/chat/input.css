@@ -1018,6 +1018,50 @@
   pointer-events: none;
 }
 
+.smtcmp-assistant-message-selectable {
+  position: relative;
+}
+
+.smtcmp-assistant-selection-quote-button {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  color: var(--text-normal);
+  box-shadow: 0 10px 24px
+    color-mix(in srgb, var(--background-modifier-box-shadow) 16%, transparent);
+  backdrop-filter: blur(8px);
+  z-index: 8;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.96);
+  transition:
+    opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.smtcmp-assistant-selection-quote-button.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.smtcmp-assistant-selection-quote-button:hover,
+.smtcmp-assistant-selection-quote-button:focus,
+.smtcmp-assistant-selection-quote-button:focus-visible {
+  border-color: var(--background-modifier-border-hover);
+  background: color-mix(
+    in srgb,
+    var(--background-primary-alt) 94%,
+    transparent
+  );
+  transform: translateY(0) scale(1.03);
+}
+
 .smtcmp-chat-empty-state {
   margin: auto;
   width: min(560px, calc(100% - var(--size-4-4)));
