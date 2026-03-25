@@ -1092,9 +1092,11 @@ export function ProvidersAndModelsSection({
           otherChatModels.length > 0 ? otherChatModels[0].id : ''
       }
 
-      // Check if current apply model is from this provider and reassign
-      if (associatedChatModels.some((m) => m.id === settings.applyModelId)) {
-        newSettings.applyModelId =
+      // Check if current conversation title model is from this provider and reassign
+      if (
+        associatedChatModels.some((m) => m.id === settings.chatTitleModelId)
+      ) {
+        newSettings.chatTitleModelId =
           otherChatModels.length > 0 ? otherChatModels[0].id : ''
       }
 
@@ -1169,9 +1171,12 @@ export function ProvidersAndModelsSection({
   }
 
   const handleDeleteChatModel = (modelId: string) => {
-    if (modelId === settings.chatModelId || modelId === settings.applyModelId) {
+    if (
+      modelId === settings.chatModelId ||
+      modelId === settings.chatTitleModelId
+    ) {
       new Notice(
-        'Cannot remove model that is currently selected as chat model or tool model',
+        'Cannot remove model that is currently selected as chat model or conversation title model',
       )
       return
     }
@@ -1239,10 +1244,10 @@ export function ProvidersAndModelsSection({
         if (
           !value &&
           (modelId === settings.chatModelId ||
-            modelId === settings.applyModelId)
+            modelId === settings.chatTitleModelId)
         ) {
           new Notice(
-            'Cannot disable model that is currently selected as chat model or tool model',
+            'Cannot disable model that is currently selected as chat model or conversation title model',
           )
           await setSettings({
             ...settings,

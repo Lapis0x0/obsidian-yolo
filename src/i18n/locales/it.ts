@@ -146,9 +146,9 @@ export const it: TranslationKeys = {
       defaultChatModel: 'Modello chat predefinito',
       defaultChatModelDesc:
         'Scegli il modello che vuoi usare per la chat nella barra laterale.',
-      toolModel: 'Modello strumento',
-      toolModelDesc:
-        'Seleziona il modello usato globalmente come modello strumento (per la denominazione automatica delle conversazioni, operazioni di applicazione, ecc.).',
+      chatTitleModel: 'Modello titolo conversazione',
+      chatTitleModelDesc:
+        'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",

@@ -146,9 +146,9 @@ export const en: TranslationKeys = {
       defaultChatModel: 'Default chat model',
       defaultChatModelDesc:
         'Choose the model you want to use for sidebar chat.',
-      toolModel: 'Tool model',
-      toolModelDesc:
-        'Select the model used globally as the tool model (for auto conversation naming, apply operations, etc.).',
+      chatTitleModel: 'Conversation title model',
+      chatTitleModelDesc:
+        'Choose the model used for automatic conversation naming.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',

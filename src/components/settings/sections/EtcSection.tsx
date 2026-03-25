@@ -1,9 +1,9 @@
 import { App, Notice } from 'obsidian'
 
 import {
-  DEFAULT_APPLY_MODEL_ID,
   DEFAULT_CHAT_MODELS,
   DEFAULT_CHAT_MODEL_ID,
+  DEFAULT_CHAT_TITLE_MODEL_ID,
   DEFAULT_EMBEDDING_MODELS,
   DEFAULT_PROVIDERS,
 } from '../../../constants'
@@ -77,8 +77,9 @@ export function EtcSection({ app }: EtcSectionProps) {
           const defaultChatModelId =
             DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_MODEL_ID)
               ?.id ?? DEFAULT_CHAT_MODELS[0].id
-          const defaultApplyModelId =
-            DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_APPLY_MODEL_ID)
+          const defaultChatTitleModelId = DEFAULT_CHAT_MODELS.find(
+            (v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID,
+          )
               ?.id ?? DEFAULT_CHAT_MODELS[0].id
           const defaultEmbeddingModelId = DEFAULT_EMBEDDING_MODELS[0].id
 
@@ -88,7 +89,7 @@ export function EtcSection({ app }: EtcSectionProps) {
             chatModels: [...DEFAULT_CHAT_MODELS],
             embeddingModels: [...DEFAULT_EMBEDDING_MODELS],
             chatModelId: defaultChatModelId,
-            applyModelId: defaultApplyModelId,
+            chatTitleModelId: defaultChatTitleModelId,
             embeddingModelId: defaultEmbeddingModelId,
           })
           new Notice(t('settings.etc.resetProvidersSuccess'))

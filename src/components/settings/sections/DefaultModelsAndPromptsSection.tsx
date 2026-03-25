@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 
 import {
   DEFAULT_CHAT_TITLE_PROMPT,
-  RECOMMENDED_MODELS_FOR_APPLY,
+  RECOMMENDED_MODELS_FOR_CHAT_TITLE,
   RECOMMENDED_MODELS_FOR_CHAT,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
@@ -83,8 +83,8 @@ export function DefaultModelsAndPromptsSection() {
     [enabledChatModels, orderedProviderIds, t],
   )
 
-  const applyModelGroupedOptions = useMemo(
-    () => buildGroupedChatOptions(RECOMMENDED_MODELS_FOR_APPLY),
+  const chatTitleModelGroupedOptions = useMemo(
+    () => buildGroupedChatOptions(RECOMMENDED_MODELS_FOR_CHAT_TITLE),
     [buildGroupedChatOptions],
   )
 
@@ -128,15 +128,18 @@ export function DefaultModelsAndPromptsSection() {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.defaults.toolModel')}
-            desc={t('settings.defaults.toolModelDesc')}
+            name={t('settings.defaults.chatTitleModel')}
+            desc={t('settings.defaults.chatTitleModelDesc')}
             className="smtcmp-models-select-card"
           >
             <ObsidianDropdown
-              value={settings.applyModelId}
-              groupedOptions={applyModelGroupedOptions}
+              value={settings.chatTitleModelId}
+              groupedOptions={chatTitleModelGroupedOptions}
               onChange={(value) => {
-                commitSettingsUpdate({ applyModelId: value }, 'applyModelId')
+                commitSettingsUpdate(
+                  { chatTitleModelId: value },
+                  'chatTitleModelId',
+                )
               }}
             />
           </ObsidianSetting>

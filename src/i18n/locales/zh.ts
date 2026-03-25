@@ -121,9 +121,8 @@ export const zh: TranslationKeys = {
       title: '默认模型与提示词',
       defaultChatModel: '默认聊天模型',
       defaultChatModelDesc: '选择你想用于侧边栏聊天的模型。',
-      toolModel: '工具模型',
-      toolModelDesc:
-        '选择将作为插件全局工具模型调用的模型（用于自动对话命名、应用操作等）。',
+      chatTitleModel: '对话命名模型',
+      chatTitleModelDesc: '选择用于自动对话命名的模型。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc:
         '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',

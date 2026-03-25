@@ -320,8 +320,8 @@ function EditChatModelModalComponent({
         if (nextSettings.chatModelId === model.id) {
           nextSettings.chatModelId = newInternalId
         }
-        if (nextSettings.applyModelId === model.id) {
-          nextSettings.applyModelId = newInternalId
+        if (nextSettings.chatTitleModelId === model.id) {
+          nextSettings.chatTitleModelId = newInternalId
         }
 
         await plugin.setSettings(nextSettings)

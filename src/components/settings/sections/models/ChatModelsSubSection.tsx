@@ -43,9 +43,12 @@ export function ChatModelsSubSection({
   }
 
   const handleDeleteChatModel = (modelId: string) => {
-    if (modelId === settings.chatModelId || modelId === settings.applyModelId) {
+    if (
+      modelId === settings.chatModelId ||
+      modelId === settings.chatTitleModelId
+    ) {
       new Notice(
-        'Cannot remove model that is currently selected as chat model or tool model',
+        'Cannot remove model that is currently selected as chat model or conversation title model',
       )
       return
     }
@@ -79,10 +82,10 @@ export function ChatModelsSubSection({
         if (
           !value &&
           (modelId === settings.chatModelId ||
-            modelId === settings.applyModelId)
+            modelId === settings.chatTitleModelId)
         ) {
           new Notice(
-            'Cannot disable model that is currently selected as chat model or tool model',
+            'Cannot disable model that is currently selected as chat model or conversation title model',
           )
 
           await setSettings({
