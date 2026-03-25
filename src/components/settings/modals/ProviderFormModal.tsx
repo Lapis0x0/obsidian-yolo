@@ -215,6 +215,7 @@ function ProviderFormComponent({
       PROVIDER_API_INFO[apiType].label,
     ]),
   )
+  const shouldHideCredentialFields = formData.presetType === 'chatgpt-oauth'
   const requestTransportOptions = {
     auto: t('settings.providers.requestTransportModeAuto'),
     browser: t('settings.providers.requestTransportModeBrowser'),
@@ -286,33 +287,37 @@ function ProviderFormComponent({
         />
       </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.providers.apiKey')}
-        desc={t('settings.providers.apiKeyDesc')}
-        required={providerTypeInfo.requireApiKey}
-      >
-        <ObsidianTextInput
-          value={formData.apiKey ?? ''}
-          placeholder={t('settings.providers.apiKeyPlaceholder')}
-          onChange={(value: string) =>
-            setFormData((prev) => ({ ...prev, apiKey: value }))
-          }
-        />
-      </ObsidianSetting>
+      {!shouldHideCredentialFields && (
+        <>
+          <ObsidianSetting
+            name={t('settings.providers.apiKey')}
+            desc={t('settings.providers.apiKeyDesc')}
+            required={providerTypeInfo.requireApiKey}
+          >
+            <ObsidianTextInput
+              value={formData.apiKey ?? ''}
+              placeholder={t('settings.providers.apiKeyPlaceholder')}
+              onChange={(value: string) =>
+                setFormData((prev) => ({ ...prev, apiKey: value }))
+              }
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.providers.baseUrl')}
-        desc={t('settings.providers.baseUrlDesc')}
-        required={providerTypeInfo.requireBaseUrl}
-      >
-        <ObsidianTextInput
-          value={formData.baseUrl ?? ''}
-          placeholder={t('settings.providers.baseUrlPlaceholder')}
-          onChange={(value: string) =>
-            setFormData((prev) => ({ ...prev, baseUrl: value }))
-          }
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.providers.baseUrl')}
+            desc={t('settings.providers.baseUrlDesc')}
+            required={providerTypeInfo.requireBaseUrl}
+          >
+            <ObsidianTextInput
+              value={formData.baseUrl ?? ''}
+              placeholder={t('settings.providers.baseUrlPlaceholder')}
+              onChange={(value: string) =>
+                setFormData((prev) => ({ ...prev, baseUrl: value }))
+              }
+            />
+          </ObsidianSetting>
+        </>
+      )}
 
       {providerTypeInfo.additionalSettings.map((setting) => {
         const label =
