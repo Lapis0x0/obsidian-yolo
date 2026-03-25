@@ -1018,6 +1018,23 @@ export function QuickAskPanel({
       ]
       setChatMessages(newMessages)
       beginBufferedRunnerSession(newMessages)
+      void (async () => {
+        try {
+          await createOrUpdateConversationImmediately(conversationId, newMessages)
+        } catch (error) {
+          console.error('Failed to save quick ask conversation', error)
+          return
+        }
+
+        try {
+          await generateConversationTitle(conversationId, newMessages)
+        } catch (error) {
+          console.error(
+            'Failed to generate quick ask conversation title',
+            error,
+          )
+        }
+      })()
 
       // Create abort controller
       const abortController = new AbortController()
@@ -1114,16 +1131,6 @@ export function QuickAskPanel({
             )
           } catch (error) {
             console.error('Failed to save quick ask conversation', error)
-            return
-          }
-
-          try {
-            await generateConversationTitle(conversationId, persistedMessages)
-          } catch (error) {
-            console.error(
-              'Failed to generate quick ask conversation title',
-              error,
-            )
           }
         })()
       } catch (error) {
