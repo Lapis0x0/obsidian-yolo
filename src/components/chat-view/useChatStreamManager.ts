@@ -17,6 +17,7 @@ import {
   LLMModelNotFoundException,
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
+import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
@@ -246,6 +247,14 @@ export function useChatStreamManager({
           }
         }
 
+        const currentProvider = settings.providers.find(
+          (provider) => provider.id === resolvedClient.model.providerId,
+        )
+        const shouldStreamResponse = shouldUseStreamingForProvider({
+          requestedStream: conversationOverrides?.stream ?? true,
+          provider: currentProvider,
+        })
+
         const modelTemperature = resolvedClient.model.temperature
         const modelTopP = resolvedClient.model.topP
         const modelMaxTokens = resolvedClient.model.maxOutputTokens
@@ -321,7 +330,7 @@ export function useChatStreamManager({
             allowedSkillIds,
             allowedSkillNames,
             requestParams: {
-              stream: conversationOverrides?.stream ?? true,
+              stream: shouldStreamResponse,
               temperature:
                 conversationOverrides?.temperature ??
                 assistantTemperature ??
