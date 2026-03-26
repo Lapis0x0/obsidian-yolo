@@ -45,6 +45,7 @@ describe('parseSmartComposerSettings', () => {
       chatMode: 'chat',
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},
+      tabTitleFollowsConversation: true,
     })
 
     expect(result.notificationOptions).toMatchObject({
@@ -82,5 +83,16 @@ describe('parseSmartComposerSettings', () => {
 
     expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
     expect(result.chatTitleModelId).toBe('openai/gpt-4.1-mini')
+  })
+
+  it('defaults tabTitleFollowsConversation to true for legacy chat options', () => {
+    const result = parseSmartComposerSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      chatOptions: {
+        includeCurrentFileContent: true,
+      },
+    })
+
+    expect(result.chatOptions.tabTitleFollowsConversation).toBe(true)
   })
 })

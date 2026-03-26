@@ -312,7 +312,7 @@ export const smartComposerSettingsSchema = z.object({
       // Maximum number of recent non-pinned conversations shown before archive
       historyArchiveThreshold: z.number().int().min(20).max(500).optional(),
       // Whether the tab title should follow the current conversation title
-      tabTitleFollowsConversation: z.boolean().optional(),
+      tabTitleFollowsConversation: z.boolean().default(true).catch(true),
     })
     .catch({
       includeCurrentFileContent: true,
