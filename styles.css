@@ -5013,15 +5013,26 @@
   position: relative;
 }
 
-.smtcmp-chat-footer.is-generating {
-  padding-top: 50px;
+.smtcmp-chat-floating-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.smtcmp-stop-gen-btn,
+.smtcmp-chat-scroll-to-bottom-button {
+  pointer-events: auto;
 }
 
 .smtcmp-stop-gen-btn {
   position: absolute;
   left: 50%;
   top: 0;
-  transform: translateX(-50%);
+  transform: translate(-50%, calc(-100% - 12px));
   z-index: 2;
   width: max-content;
   max-width: calc(100% - var(--size-4-6));
@@ -5714,6 +5725,40 @@
   margin-top: 1px;
   margin-bottom: 8px;
   pointer-events: none;
+}
+
+.smtcmp-chat-scroll-to-bottom-button {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  transform: translateY(calc(-100% - 12px));
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid
+    color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 90%, transparent);
+  color: var(--text-normal);
+  box-shadow: 0 10px 24px
+    color-mix(in srgb, var(--background-modifier-box-shadow) 18%, transparent);
+  backdrop-filter: blur(10px);
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.smtcmp-chat-scroll-to-bottom-button:hover {
+  transform: translateY(calc(-100% - 13px));
+  border-color: color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+}
+
+.smtcmp-chat-scroll-to-bottom-button svg {
+  color: var(--interactive-accent);
 }
 
 .smtcmp-assistant-message-selectable {

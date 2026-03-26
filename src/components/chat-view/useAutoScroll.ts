@@ -20,7 +20,6 @@ export function useAutoScroll({
   const autoFollowRef = useRef(true)
   const [autoFollowState, setAutoFollowState] = useState(true)
   const programmaticScrollLockUntilRef = useRef<number>(0)
-  const stickyScrollFrameRef = useRef<number | null>(null)
   const lastUserScrollIntentRef = useRef<number>(0)
   const lastObservedScrollTopRef = useRef<number>(0)
   const followFrameRef = useRef<number | null>(null)
@@ -162,7 +161,7 @@ export function useAutoScroll({
       }
 
       const nearBottom = isNearBottom()
-      if (scrolledUp && !nearBottom) {
+      if (scrolledUp) {
         updateAutoFollow(false)
         return
       }
@@ -190,32 +189,11 @@ export function useAutoScroll({
 
   useEffect(() => {
     if (!isStreaming || !autoFollowState) {
-      if (stickyScrollFrameRef.current !== null) {
-        cancelAnimationFrame(stickyScrollFrameRef.current)
-        stickyScrollFrameRef.current = null
-      }
       return
     }
 
-    const syncScrollToBottom = () => {
-      if (!autoFollowRef.current) {
-        stickyScrollFrameRef.current = null
-        return
-      }
-
-      scrollToBottom()
-      stickyScrollFrameRef.current = requestAnimationFrame(syncScrollToBottom)
-    }
-
-    stickyScrollFrameRef.current = requestAnimationFrame(syncScrollToBottom)
-
-    return () => {
-      if (stickyScrollFrameRef.current !== null) {
-        cancelAnimationFrame(stickyScrollFrameRef.current)
-        stickyScrollFrameRef.current = null
-      }
-    }
-  }, [autoFollowState, isStreaming, scrollToBottom])
+    requestFollow()
+  }, [autoFollowState, isStreaming, requestFollow])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -327,5 +305,6 @@ export function useAutoScroll({
   return {
     autoScrollToBottom,
     forceScrollToBottom,
+    isAutoFollowEnabled: autoFollowState,
   }
 }
