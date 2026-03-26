@@ -37,6 +37,12 @@ import {
   parseToolName,
   validateServerName,
 } from './tool-name-utils'
+import {
+  createMcpRemoteTransportError,
+  createMcpRemoteTransportFactory,
+  getMcpRemoteTransportContext,
+  getMcpRemoteTransportDiagnostics,
+} from './remoteTransport'
 
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
   'Tool arguments must be valid JSON. Please escape quotes/newlines inside string values and retry.'
@@ -51,6 +57,9 @@ export class McpManager {
   private settings: SmartComposerSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
+  private remoteTransportFactory: ReturnType<
+    typeof createMcpRemoteTransportFactory
+  > | null = null
 
   private servers: McpServerState[] = [] // IMPORTANT: Always use this.updateServers() to update this array
   private activeToolCalls: Map<string, AbortController> = new Map()
@@ -122,10 +131,7 @@ export class McpManager {
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
-        console.error(
-          '[YOLO] Failed to handle MCP settings update:',
-          error,
-        )
+        console.error('[YOLO] Failed to handle MCP settings update:', error)
       })
     })
   }
@@ -138,6 +144,9 @@ export class McpManager {
     // Get default environment variables
     const { shellEnvSync } = await import('shell-env')
     this.defaultEnv = shellEnvSync()
+    this.remoteTransportFactory = createMcpRemoteTransportFactory({
+      env: this.defaultEnv,
+    })
 
     // Create MCP servers
     const servers = await Promise.all(
@@ -161,6 +170,7 @@ export class McpManager {
     }
 
     this.servers = []
+    this.remoteTransportFactory = null
     this.subscribers.clear()
     this.activeToolCalls.clear()
   }
@@ -274,10 +284,7 @@ export class McpManager {
     try {
       validateServerName(name)
     } catch (error) {
-      console.error(
-        `[YOLO] Invalid MCP server name "${name}":`,
-        error,
-      )
+      console.error(`[YOLO] Invalid MCP server name "${name}":`, error)
       return {
         name,
         config: serverConfig,
@@ -293,17 +300,28 @@ export class McpManager {
       const transport = await this.createClientTransport(serverParams)
       await client.connect(transport)
     } catch (error) {
+      const remoteTransportContext = getMcpRemoteTransportContext(serverParams)
       console.error(
         `[YOLO] Failed to connect to MCP server "${name}":`,
+        remoteTransportContext
+          ? getMcpRemoteTransportDiagnostics(remoteTransportContext)
+          : { transport: serverParams.transport },
         error,
       )
       return {
         name,
         config: serverConfig,
         status: McpServerStatus.Error,
-        error: new Error(
-          `Failed to connect to MCP server ${name}: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+        error: remoteTransportContext
+          ? createMcpRemoteTransportError({
+              serverName: name,
+              action: 'connect',
+              context: remoteTransportContext,
+              error,
+            })
+          : new Error(
+              `Failed to connect to MCP server ${name}: ${error instanceof Error ? error.message : String(error)}`,
+            ),
       }
     }
 
@@ -317,17 +335,28 @@ export class McpManager {
         tools: toolList.tools,
       }
     } catch (error) {
+      const remoteTransportContext = getMcpRemoteTransportContext(serverParams)
       console.error(
         `[YOLO] Failed to list tools for MCP server "${name}":`,
+        remoteTransportContext
+          ? getMcpRemoteTransportDiagnostics(remoteTransportContext)
+          : { transport: serverParams.transport },
         error,
       )
       return {
         name,
         config: serverConfig,
         status: McpServerStatus.Error,
-        error: new Error(
-          `Failed to list tools for MCP server ${name}: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+        error: remoteTransportContext
+          ? createMcpRemoteTransportError({
+              serverName: name,
+              action: 'list tools',
+              context: remoteTransportContext,
+              error,
+            })
+          : new Error(
+              `Failed to list tools for MCP server ${name}: ${error instanceof Error ? error.message : String(error)}`,
+            ),
       }
     }
   }
@@ -354,23 +383,26 @@ export class McpManager {
         const { StreamableHTTPClientTransport } = await import(
           '@modelcontextprotocol/sdk/client/streamableHttp.js'
         )
+        const remoteTransportFactory =
+          this.remoteTransportFactory ??
+          createMcpRemoteTransportFactory({
+            env: this.defaultEnv ?? {},
+          })
         return new StreamableHTTPClientTransport(new URL(serverParams.url), {
-          requestInit: serverParams.headers
-            ? { headers: serverParams.headers }
-            : undefined,
+          ...remoteTransportFactory.createHttpOptions(serverParams),
         })
       }
       case 'sse': {
         const { SSEClientTransport } = await import(
           '@modelcontextprotocol/sdk/client/sse.js'
         )
+        const remoteTransportFactory =
+          this.remoteTransportFactory ??
+          createMcpRemoteTransportFactory({
+            env: this.defaultEnv ?? {},
+          })
         return new SSEClientTransport(new URL(serverParams.url), {
-          eventSourceInit: serverParams.headers
-            ? ({ headers: serverParams.headers } as never)
-            : undefined,
-          requestInit: serverParams.headers
-            ? { headers: serverParams.headers }
-            : undefined,
+          ...remoteTransportFactory.createSseOptions(serverParams),
         })
       }
       case 'ws': {
