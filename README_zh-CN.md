@@ -1,6 +1,4 @@
 <h1 align="center">YOLO</h1>
-<p align="center"><b>You Orchestrate, LLM Operates.</b></p>
-
 <p align="center">
   Agent-native AI assistant for Obsidian — 对话、写作、知识库、编排，一站式搞定。
 </p>
