@@ -92,6 +92,7 @@
     "openai": "^4.91.1",
     "parse5": "^7.1.2",
     "path-browserify": "^1.0.1",
+    "proxy-agent": "^6.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
