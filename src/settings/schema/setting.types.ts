@@ -311,6 +311,8 @@ export const smartComposerSettingsSchema = z.object({
       historyArchiveEnabled: z.boolean().optional(),
       // Maximum number of recent non-pinned conversations shown before archive
       historyArchiveThreshold: z.number().int().min(20).max(500).optional(),
+      // Whether the tab title should follow the current conversation title
+      tabTitleFollowsConversation: z.boolean().optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -323,6 +325,7 @@ export const smartComposerSettingsSchema = z.object({
       reasoningLevelByModelId: {},
       historyArchiveEnabled: true,
       historyArchiveThreshold: 50,
+      tabTitleFollowsConversation: true,
     }),
 
   notificationOptions: notificationOptionsSchema,
@@ -424,8 +427,7 @@ export const smartComposerSettingsSchema = z.object({
     .catch({
       continuationModelId:
         DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID)
-          ?.id ??
-        '',
+          ?.id ?? '',
       enableSmartSpace: true,
       enableSelectionChat: true,
       persistSelectionHighlight: true,
@@ -439,8 +441,7 @@ export const smartComposerSettingsSchema = z.object({
       enableTabCompletion: false,
       tabCompletionModelId:
         DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID)
-          ?.id ??
-        '',
+          ?.id ?? '',
       tabCompletionOptions: { ...DEFAULT_TAB_COMPLETION_OPTIONS },
       tabCompletionTriggers: [...DEFAULT_TAB_COMPLETION_TRIGGERS],
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,

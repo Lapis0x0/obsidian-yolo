@@ -4,7 +4,10 @@ import { App } from 'obsidian'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { editorStateToPlainText } from '../components/chat-view/chat-input/utils/editor-state-to-plain-text'
-import { DEFAULT_CHAT_TITLE_PROMPT } from '../constants'
+import {
+  DEFAULT_CHAT_TITLE_PROMPT,
+  DEFAULT_UNTITLED_CONVERSATION_TITLE,
+} from '../constants'
 import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
 import { useSettings } from '../contexts/settings-context'
@@ -26,7 +29,6 @@ import {
 
 import { useChatManager } from './useJsonManagers'
 
-const DEFAULT_UNTITLED_CONVERSATION_TITLE = '新对话'
 const LEGACY_UNTITLED_CONVERSATION_TITLES = new Set([
   '新消息',
   DEFAULT_UNTITLED_CONVERSATION_TITLE,
@@ -549,14 +551,11 @@ export function useChatHistory(): UseChatHistory {
                 : lastGenerationError
                   ? JSON.stringify(lastGenerationError)
                   : 'unknown_error'
-          console.error(
-            '[YOLO] Failed to generate conversation title',
-            {
-              conversationId: id,
-              error: errorMessage,
-              force,
-            },
-          )
+          console.error('[YOLO] Failed to generate conversation title', {
+            conversationId: id,
+            error: errorMessage,
+            force,
+          })
           titleGenerationCooldownUntilRef.current.set(
             id,
             Date.now() + AUTO_TITLE_FAILURE_COOLDOWN_MS,

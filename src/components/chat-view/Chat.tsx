@@ -22,6 +22,7 @@ import {
 import type { CSSProperties } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
+import { DEFAULT_UNTITLED_CONVERSATION_TITLE } from '../../constants'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
@@ -283,6 +284,7 @@ export type ChatProps = {
   initialConversationId?: string
   onConversationContextChange?: (context: {
     currentConversationId?: string
+    currentConversationTitle?: string
     currentModelId?: string
     currentOverrides?: ConversationOverrideSettings
   }) => void
@@ -371,6 +373,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
   const [currentConversationId, setCurrentConversationId] =
     useState<string>(uuidv4())
+  const currentConversationTitle = useMemo(() => {
+    if (!currentConversationId) {
+      return DEFAULT_UNTITLED_CONVERSATION_TITLE
+    }
+
+    return (
+      chatList.find((conversation) => conversation.id === currentConversationId)
+        ?.title ?? DEFAULT_UNTITLED_CONVERSATION_TITLE
+    )
+  }, [chatList, currentConversationId])
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
     initialReasoningLevel,
   )
@@ -1085,6 +1097,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   useEffect(() => {
     props.onConversationContextChange?.({
       currentConversationId,
+      currentConversationTitle,
       currentModelId:
         conversationModelId ??
         (currentConversationId
@@ -1099,6 +1112,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               : undefined)),
     })
   }, [
+    currentConversationTitle,
     conversationModelId,
     conversationOverrides,
     currentConversationId,

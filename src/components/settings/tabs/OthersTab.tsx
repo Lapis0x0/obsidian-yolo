@@ -107,6 +107,25 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
     })()
   }
 
+  const handleTabTitleFollowsConversationChange = (value: boolean) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            tabTitleFollowsConversation: value,
+          },
+        })
+      } catch (error: unknown) {
+        console.error(
+          'Failed to update chat tab title follow conversation setting',
+          error,
+        )
+      }
+    })()
+  }
+
   return (
     <>
       <div className="smtcmp-settings-section">
@@ -122,6 +141,15 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
               window.open('https://afdian.com/a/lapis0x0', '_blank')
             }
             cta
+          />
+        </ObsidianSetting>
+        <ObsidianSetting
+          name={t('settings.etc.tabTitleFollowsConversation')}
+          desc={t('settings.etc.tabTitleFollowsConversationDesc')}
+        >
+          <ObsidianToggle
+            value={settings.chatOptions.tabTitleFollowsConversation ?? true}
+            onChange={handleTabTitleFollowsConversationChange}
           />
         </ObsidianSetting>
         <ObsidianSetting

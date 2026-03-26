@@ -846,8 +846,7 @@ export const en: TranslationKeys = {
       notificationsDesc:
         'Configure alerts for Agent runs. System notifications automatically degrade when the environment does not support them.',
       notificationsEnabled: 'Enable notifications',
-      notificationsEnabledDesc:
-        'Turn task alerts on or off for Agent runs.',
+      notificationsEnabledDesc: 'Turn task alerts on or off for Agent runs.',
       notificationChannel: 'Notification method',
       notificationChannelDesc:
         'Choose whether reminders use sound, system notifications, or both.',
@@ -865,6 +864,9 @@ export const en: TranslationKeys = {
       notificationTaskCompleted: 'Notify when a task finishes',
       notificationTaskCompletedDesc:
         'Alert you after the current Agent run finishes without waiting for more approvals.',
+      tabTitleFollowsConversation: 'Follow conversation title in tab',
+      tabTitleFollowsConversationDesc:
+        'When enabled, the Chat tab title shows the current conversation title. When disabled, it stays as Yolo chat.',
     },
   },
 

@@ -839,7 +839,7 @@ export const it: TranslationKeys = {
       notificationChannelBoth: 'Suono + sistema',
       notificationTiming: 'Quando notificare',
       notificationTimingDesc:
-        "Scegli se notificare sempre o solo quando Obsidian non è in focus.",
+        'Scegli se notificare sempre o solo quando Obsidian non è in focus.',
       notificationTimingAlways: 'Notifica sempre',
       notificationTimingWhenUnfocused: 'Solo quando non è in focus',
       notificationApprovalRequired: "Notifica quando serve l'approvazione",
@@ -848,6 +848,10 @@ export const it: TranslationKeys = {
       notificationTaskCompleted: 'Notifica al termine del task',
       notificationTaskCompletedDesc:
         "Avvisa quando l'esecuzione corrente di Agent termina senza attendere ulteriori approvazioni.",
+      tabTitleFollowsConversation:
+        'Usa il titolo della conversazione nella scheda',
+      tabTitleFollowsConversationDesc:
+        'Quando attivo, il titolo della scheda Chat mostra il titolo della conversazione corrente. Quando disattivo, resta Yolo chat.',
     },
   },
 
@@ -1056,7 +1060,7 @@ export const it: TranslationKeys = {
     notification: {
       approvalTitle: 'YOLO richiede la tua conferma',
       approvalBody:
-        "Il task corrente è in pausa e attende la tua approvazione per una chiamata strumento.",
+        'Il task corrente è in pausa e attende la tua approvazione per una chiamata strumento.',
       completedTitle: 'Task YOLO terminato',
       completedBody:
         "L'esecuzione corrente di Agent è terminata. Puoi tornare a controllare il risultato.",
@@ -1095,8 +1099,7 @@ export const it: TranslationKeys = {
     agentStatusTitle:
       'Clicca per vedere le conversazioni in esecuzione e aprirne una in una nuova scheda chat',
     agentStatusPanelTitle: 'Conversazioni Agent attive',
-    agentStatusPanelEmpty:
-      'Non ci sono conversazioni in esecuzione da aprire',
+    agentStatusPanelEmpty: 'Non ci sono conversazioni in esecuzione da aprire',
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
