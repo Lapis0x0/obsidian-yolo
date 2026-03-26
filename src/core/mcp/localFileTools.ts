@@ -369,7 +369,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_edit',
       description:
-        'Apply text edit operations within a single existing file. Supports replace, insert_after, and append.',
+        'Apply text edit operations within a single existing file. Prefer this tool when modifying content in an existing file. Supports replace, insert_after, and append.',
       inputSchema: {
         type: 'object',
         properties: {
