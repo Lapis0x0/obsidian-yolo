@@ -77,10 +77,10 @@ export function EtcSection({ app }: EtcSectionProps) {
           const defaultChatModelId =
             DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_MODEL_ID)
               ?.id ?? DEFAULT_CHAT_MODELS[0].id
-          const defaultChatTitleModelId = DEFAULT_CHAT_MODELS.find(
-            (v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID,
-          )
-              ?.id ?? DEFAULT_CHAT_MODELS[0].id
+          const defaultChatTitleModelId =
+            DEFAULT_CHAT_MODELS.find(
+              (v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID,
+            )?.id ?? DEFAULT_CHAT_MODELS[0].id
           const defaultEmbeddingModelId = DEFAULT_EMBEDDING_MODELS[0].id
 
           await setSettings({

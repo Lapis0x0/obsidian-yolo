@@ -8,6 +8,7 @@ import {
 } from './types/provider.types'
 
 export const CHAT_VIEW_TYPE = 'smtcmp-chat-view'
+export const DEFAULT_UNTITLED_CONVERSATION_TITLE = '新对话'
 
 export const PGLITE_DB_PATH = '.smtcmp_vector_db.tar.gz'
 export const PLUGIN_ID = 'obsidian-smart-composer'

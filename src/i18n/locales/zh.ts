@@ -792,6 +792,9 @@ export const zh: TranslationKeys = {
       notificationTaskCompleted: '任务结束时提醒',
       notificationTaskCompletedDesc:
         '当当前 Agent 任务结束且不再等待审批时发出提醒。',
+      tabTitleFollowsConversation: '标签页标题跟随当前对话',
+      tabTitleFollowsConversationDesc:
+        '开启后，Chat 标签页标题会显示当前对话标题；关闭后固定显示 Yolo chat。',
     },
   },
 
@@ -1019,7 +1022,8 @@ export const zh: TranslationKeys = {
   },
 
   statusBar: {
-    agentRunningWithApproval: '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',
+    agentRunningWithApproval:
+      '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',
     agentRunning: '当前有 {count} 个 agent 正在运行',
     agentStatusAriaLabel: 'Agent 运行状态，点击查看运行中的对话',
     agentStatusTitle: '点击查看运行中的对话，并在新聊天标签页中打开',

@@ -5,7 +5,10 @@ import { Root, createRoot } from 'react-dom/client'
 
 import type { ChatProps, ChatRef } from './components/chat-view/Chat'
 import ChatSidebarTabs from './components/chat-view/ChatSidebarTabs'
-import { CHAT_VIEW_TYPE } from './constants'
+import {
+  CHAT_VIEW_TYPE,
+  DEFAULT_UNTITLED_CONVERSATION_TITLE,
+} from './constants'
 import { AppProvider } from './contexts/app-context'
 import { ChatViewProvider } from './contexts/chat-view-context'
 import { DarkModeProvider } from './contexts/dark-mode-context'
@@ -22,9 +25,11 @@ import { ConversationOverrideSettings } from './types/conversation-settings.type
 import { MentionableBlockData } from './types/mentionable'
 
 export class ChatView extends ItemView {
+  private displayTitle = 'Yolo chat'
   private root: Root | null = null
   private initialChatProps?: ChatProps
   private chatRef: React.RefObject<ChatRef> = React.createRef()
+  private removeSettingsChangeListener?: () => void
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -42,7 +47,7 @@ export class ChatView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Yolo chat'
+    return this.displayTitle
   }
 
   async onOpen(): Promise<void> {
@@ -51,6 +56,17 @@ export class ChatView extends ItemView {
     const placement =
       pendingPayload?.placement ?? manager.getLeafPlacement(this.leaf)
     manager.registerLeaf(this.leaf, placement)
+    this.updateDisplayTitle(
+      manager.getLeafSummary(this.leaf)?.currentConversationTitle,
+    )
+    this.removeSettingsChangeListener = this.plugin.addSettingsChangeListener(
+      () => {
+        this.updateDisplayTitle(
+          this.plugin.getChatLeafSessionManager().getLeafSummary(this.leaf)
+            ?.currentConversationTitle,
+        )
+      },
+    )
     this.initialChatProps = this.getInitialChatProps(pendingPayload)
 
     await this.render()
@@ -60,6 +76,8 @@ export class ChatView extends ItemView {
   }
 
   onClose(): Promise<void> {
+    this.removeSettingsChangeListener?.()
+    this.removeSettingsChangeListener = undefined
     this.plugin.getChatLeafSessionManager().unregisterLeaf(this.leaf)
     this.root?.unmount()
     return Promise.resolve()
@@ -121,9 +139,12 @@ export class ChatView extends ItemView {
                                 placement={placement}
                                 initialChatProps={this.initialChatProps}
                                 onConversationContextChange={(context) => {
-                                  this.plugin
-                                    .getChatLeafSessionManager()
-                                    .updateLeafSummary(this.leaf, context)
+                                  const manager =
+                                    this.plugin.getChatLeafSessionManager()
+                                  manager.updateLeafSummary(this.leaf, context)
+                                  this.updateDisplayTitle(
+                                    context.currentConversationTitle,
+                                  )
                                 }}
                               />
                             </DialogContainerProvider>
@@ -249,5 +270,21 @@ export class ChatView extends ItemView {
     }
 
     return null
+  }
+
+  private updateDisplayTitle(conversationTitle?: string): void {
+    const nextTitle = this.plugin.settings.chatOptions
+      .tabTitleFollowsConversation
+      ? conversationTitle?.trim() || DEFAULT_UNTITLED_CONVERSATION_TITLE
+      : 'Yolo chat'
+
+    if (this.displayTitle === nextTitle) {
+      return
+    }
+
+    this.displayTitle = nextTitle
+    ;(
+      this.leaf as WorkspaceLeaf & { updateHeader?: () => void }
+    ).updateHeader?.()
   }
 }

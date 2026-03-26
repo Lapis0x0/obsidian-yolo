@@ -664,6 +664,8 @@ export type TranslationKeys = {
       notificationApprovalRequiredDesc?: string
       notificationTaskCompleted?: string
       notificationTaskCompletedDesc?: string
+      tabTitleFollowsConversation?: string
+      tabTitleFollowsConversationDesc?: string
     }
     smartSpace?: {
       quickActionsTitle: string
