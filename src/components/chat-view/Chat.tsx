@@ -1,6 +1,13 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
-import { Bot, CircleStop, History, MessageCircle, Plus } from 'lucide-react'
+import {
+  ArrowDown,
+  Bot,
+  CircleStop,
+  History,
+  MessageCircle,
+  Plus,
+} from 'lucide-react'
 import { MarkdownView, Notice, Platform } from 'obsidian'
 import type { TFile, TFolder } from 'obsidian'
 import {
@@ -831,11 +838,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [chatMessages],
   )
 
-  const { autoScrollToBottom, forceScrollToBottom } = useAutoScroll({
-    scrollContainerRef: chatMessagesRef,
-    bottomAnchorRef,
-    isStreaming: hasStreamingMessages,
-  })
+  const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
+    useAutoScroll({
+      scrollContainerRef: chatMessagesRef,
+      bottomAnchorRef,
+      isStreaming: hasStreamingMessages,
+    })
 
   const {
     abortConversationRun,
@@ -1738,7 +1746,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const showContinueResponseButton = useMemo(() => {
-    return shouldShowContinueResponse(chatMessages, isCurrentConversationRunActive)
+    return shouldShowContinueResponse(
+      chatMessages,
+      isCurrentConversationRunActive,
+    )
   }, [chatMessages, isCurrentConversationRunActive])
 
   const handleContinueResponse = useCallback(() => {
@@ -2440,6 +2451,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const showEmptyState =
     groupedChatMessages.length === 0 && !isCurrentConversationRunActive
+  const showScrollToBottomButton =
+    !showEmptyState && groupedChatMessages.length > 0 && !isAutoFollowEnabled
 
   return (
     <div
@@ -2718,15 +2731,38 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           isCurrentConversationRunActive ? ' is-generating' : ''
         }`}
       >
-        {isCurrentConversationRunActive && (
-          <button
-            type="button"
-            onClick={() => abortConversationRun(currentConversationId)}
-            className="smtcmp-stop-gen-btn"
-          >
-            <CircleStop size={16} />
-            <div>Stop generation</div>
-          </button>
+        {(isCurrentConversationRunActive || showScrollToBottomButton) && (
+          <div className="smtcmp-chat-floating-actions" aria-hidden="true">
+            {isCurrentConversationRunActive && (
+              <button
+                type="button"
+                onClick={() => abortConversationRun(currentConversationId)}
+                className="smtcmp-stop-gen-btn"
+              >
+                <CircleStop size={16} />
+                <div>Stop generation</div>
+              </button>
+            )}
+            {showScrollToBottomButton && (
+              <button
+                type="button"
+                className="smtcmp-chat-scroll-to-bottom-button"
+                onClick={forceScrollToBottom}
+                aria-label={
+                  hasStreamingMessages
+                    ? t('chat.scrollToBottomWhileStreaming', '回到底部继续跟随')
+                    : t('chat.scrollToBottom', '回到底部')
+                }
+                title={
+                  hasStreamingMessages
+                    ? t('chat.scrollToBottomWhileStreaming', '回到底部继续跟随')
+                    : t('chat.scrollToBottom', '回到底部')
+                }
+              >
+                <ArrowDown size={14} strokeWidth={2.25} />
+              </button>
+            )}
+          </div>
         )}
         {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
           displayMentionablesForInput.length > 0 && (
