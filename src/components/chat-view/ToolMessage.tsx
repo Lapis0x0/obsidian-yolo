@@ -22,6 +22,11 @@ import {
 import { SplitButton } from '../common/SplitButton'
 
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
+import {
+  getToolHeadlineParts,
+  getToolHeadlineText,
+  type ToolDisplayInfo,
+} from './toolHeadline'
 
 export type TranslateFn = (keyPath: string, fallback?: string) => string
 
@@ -52,11 +57,6 @@ const DEFAULT_STATUS_LABELS: Record<ToolCallResponseStatus, string> = {
   [ToolCallResponseStatus.Success]: '',
   [ToolCallResponseStatus.Error]: 'Failed',
   [ToolCallResponseStatus.Aborted]: 'Aborted',
-}
-
-type ToolDisplayInfo = {
-  displayName: string
-  summaryText?: string
 }
 
 type ToolRequestLike = {
@@ -330,26 +330,6 @@ export const getToolDisplayInfo = (
   }
 }
 
-const getToolHeadlineText = ({
-  status,
-  displayInfo,
-  labels,
-}: {
-  status: ToolCallResponseStatus
-  displayInfo: ToolDisplayInfo
-  labels: ToolLabels
-}): string => {
-  const detailSuffix = displayInfo.summaryText
-    ? `: ${displayInfo.summaryText}`
-    : ''
-  if (status === ToolCallResponseStatus.Success) {
-    return `${displayInfo.displayName}${detailSuffix}`
-  }
-  const statusLabels = labels.statusLabels
-  const statusLabel = statusLabels[status] || labels.unknownStatus
-  return `${statusLabel} ${displayInfo.displayName}${detailSuffix}`
-}
-
 export const getToolMessageContent = (
   message: ChatToolMessage,
   t?: TranslateFn,
@@ -363,6 +343,10 @@ export const getToolMessageContent = (
           status: toolCall.response.status,
           displayInfo,
           labels,
+          editSummary:
+            toolCall.response.status === ToolCallResponseStatus.Success
+              ? toolCall.response.data.metadata?.editSummary
+              : undefined,
         }),
         ...(toolCall.request.arguments
           ? [
@@ -438,6 +422,20 @@ function ToolCallItem({
   const displayInfo = useMemo(
     () => getToolDisplayInfo(request, toolLabels),
     [request, toolLabels],
+  )
+  const editSummary =
+    response.status === ToolCallResponseStatus.Success
+      ? response.data.metadata?.editSummary
+      : undefined
+  const headlineParts = useMemo(
+    () =>
+      getToolHeadlineParts({
+        status: response.status,
+        displayInfo,
+        labels: toolLabels,
+        editSummary,
+      }),
+    [displayInfo, editSummary, response.status, toolLabels],
   )
   const parameters = useMemo(() => {
     if (!request.arguments) {
@@ -554,11 +552,31 @@ function ToolCallItem({
               isStatusTransitioning && 'smtcmp-toolcall-status-transition',
             )}
           >
-            {getToolHeadlineText({
-              status: response.status,
-              displayInfo,
-              labels: toolLabels,
-            })}
+            <span className="smtcmp-toolcall-header-title">
+              {headlineParts.titleText}
+            </span>
+            {headlineParts.summaryText && (
+              <>
+                <span className="smtcmp-toolcall-header-separator">: </span>
+                <span
+                  className="smtcmp-toolcall-header-summary"
+                  title={headlineParts.summaryText}
+                >
+                  {headlineParts.summaryText}
+                </span>
+              </>
+            )}
+            {typeof headlineParts.addedLines === 'number' &&
+              typeof headlineParts.removedLines === 'number' && (
+                <span className="smtcmp-toolcall-header-edit-deltas">
+                  <span className="smtcmp-toolcall-header-edit-added">
+                    +{headlineParts.addedLines}
+                  </span>
+                  <span className="smtcmp-toolcall-header-edit-removed">
+                    -{headlineParts.removedLines}
+                  </span>
+                </span>
+              )}
           </span>
         </div>
         <div className="smtcmp-toolcall-header-icon smtcmp-toolcall-header-icon--expand">

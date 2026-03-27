@@ -1227,14 +1227,46 @@
   }
 
   .smtcmp-toolcall-header-tool-name {
-    display: block;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    min-width: 0;
     font-family: var(--font-ui);
     font-weight: var(--font-normal);
     font-size: var(--font-ui-smaller);
     line-height: 1.35;
+  }
+
+  .smtcmp-toolcall-header-title,
+  .smtcmp-toolcall-header-separator {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .smtcmp-toolcall-header-summary {
+    min-width: 0;
+    flex: 0 1 auto;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .smtcmp-toolcall-header-edit-deltas {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-left: 6px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .smtcmp-toolcall-header-edit-added {
+    color: var(--text-success);
+  }
+
+  .smtcmp-toolcall-header-edit-removed {
+    color: var(--text-error);
   }
 }
 
