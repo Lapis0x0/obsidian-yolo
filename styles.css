@@ -4685,6 +4685,13 @@
   overflow-y: auto;
 }
 
+.smtcmp-agent-system-prompt-textarea {
+  min-height: 200px !important;
+  max-height: 360px;
+  height: var(--smtcmp-textarea-auto-height, 200px);
+  overflow-y: var(--smtcmp-textarea-auto-overflow-y, auto);
+}
+
 .smtcmp-chat-header {
   display: flex;
   justify-content: space-between;

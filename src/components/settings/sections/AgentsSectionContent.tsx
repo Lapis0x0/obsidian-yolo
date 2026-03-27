@@ -1076,6 +1076,9 @@ export function AgentsSectionContent({
                   onChange={(value) =>
                     setDraftAgent({ ...draftAgent, systemPrompt: value })
                   }
+                  autoResize
+                  maxAutoResizeHeight={360}
+                  inputClassName="smtcmp-agent-system-prompt-textarea"
                 />
               </ObsidianSetting>
             </div>
