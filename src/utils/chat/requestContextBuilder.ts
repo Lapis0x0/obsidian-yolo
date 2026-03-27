@@ -406,6 +406,7 @@ ${message.annotations
           ...(citationContent ? [citationContent] : []),
         ].join('\n'),
         reasoning: message.reasoning,
+        providerMetadata: message.metadata?.providerMetadata,
         tool_calls:
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))

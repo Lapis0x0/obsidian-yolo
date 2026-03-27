@@ -6,6 +6,106 @@ const args = (value: Record<string, unknown>, rawText?: string) =>
   createCompleteToolCallArguments({ value, rawText })
 
 describe('GeminiProvider response parsing', () => {
+  it('replays preserved Gemini parts without flattening them', () => {
+    const contents = GeminiProvider.buildRequestContents([
+      {
+        role: 'assistant',
+        content: '这段内容应被忽略',
+        providerMetadata: {
+          gemini: {
+            parts: [
+              {
+                type: 'text',
+                text: '',
+                thought: true,
+                thoughtSignature: 'sig-think',
+              },
+              {
+                type: 'functionCall',
+                id: 'call-native-1',
+                name: 'yolo_local__fs_edit',
+                args: {
+                  path: 'note.md',
+                  operation: { type: 'append', content: 'hello' },
+                },
+              },
+            ],
+          },
+        },
+        tool_calls: [
+          {
+            id: 'call-ignored',
+            name: 'yolo_local__fs_read',
+            arguments: args({ path: 'ignored.md' }),
+          },
+        ],
+      },
+    ])
+
+    expect(contents).toEqual([
+      {
+        role: 'model',
+        parts: [
+          {
+            text: '',
+            thought: true,
+            thoughtSignature: 'sig-think',
+          },
+          {
+            functionCall: {
+              id: 'call-native-1',
+              name: 'yolo_local__fs_edit',
+              args: {
+                path: 'note.md',
+                operation: { type: 'append', content: 'hello' },
+              },
+            },
+          },
+        ],
+      },
+    ])
+  })
+
+  it('drops empty Gemini text parts during replay', () => {
+    const contents = GeminiProvider.buildRequestContents([
+      {
+        role: 'assistant',
+        content: '',
+        providerMetadata: {
+          gemini: {
+            parts: [
+              {
+                type: 'text',
+                text: '',
+              },
+              {
+                type: 'functionCall',
+                id: 'call-native-2',
+                name: 'yolo_local__fs_read',
+                args: { path: 'note.md' },
+              },
+            ],
+          },
+        },
+      },
+    ])
+
+    expect(contents).toEqual([
+      {
+        role: 'model',
+        parts: [
+          {
+            functionCall: {
+              id: 'call-native-2',
+              name: 'yolo_local__fs_read',
+              args: { path: 'note.md' },
+            },
+          },
+        ],
+      },
+    ])
+  })
+
   it('replays assistant tool calls and tool responses as Gemini turns', () => {
     const contents = GeminiProvider.buildRequestContents([
       { role: 'user', content: '帮我读一下 README' },
@@ -218,6 +318,18 @@ describe('GeminiProvider response parsing', () => {
     expect(parsed.choices[0]?.message.tool_calls?.[0]?.function.name).toBe(
       'yolo_local__fs_read',
     )
+    expect(parsed.choices[0]?.message.providerMetadata).toEqual({
+      gemini: {
+        parts: [
+          {
+            type: 'functionCall',
+            id: 'fc-1',
+            name: 'yolo_local__fs_read',
+            args: { path: 'note.md' },
+          },
+        ],
+      },
+    })
   })
 
   it('extracts stream tool calls from parts fallback when functionCalls is absent', () => {

@@ -241,6 +241,12 @@ export class AgentLlmTurnExecutor {
               usage: chunk.usage,
             }
           }
+          if (chunk.choices?.[0]?.delta?.providerMetadata) {
+            assistantMessage.metadata = {
+              ...assistantMessage.metadata,
+              providerMetadata: chunk.choices[0].delta.providerMetadata,
+            }
+          }
           this.input.onAssistantMessage(assistantMessage)
         },
       })
@@ -273,6 +279,7 @@ export class AgentLlmTurnExecutor {
       generationState: this.input.abortSignal?.aborted
         ? 'aborted'
         : 'completed',
+      providerMetadata: turnResult.providerMetadata,
     }
 
     const toolCallRequests = turnResult.toolCalls.map((toolCall) => ({

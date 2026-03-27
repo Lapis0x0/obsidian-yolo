@@ -4,6 +4,7 @@
 import { ChatCompletionCreateParams, ReasoningEffort } from 'openai/resources'
 
 import { ToolCallRequest } from '../tool-call.types'
+import { ProviderMetadata } from './response'
 
 export type LLMRequestBase = {
   messages: RequestMessage[]
@@ -73,6 +74,7 @@ type RequestAssistantMessage = {
   content: string
   reasoning?: string
   tool_calls?: ToolCallRequest[]
+  providerMetadata?: ProviderMetadata
 }
 type RequestToolMessage = {
   role: 'tool'

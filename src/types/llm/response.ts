@@ -27,6 +27,27 @@ export type ResponseUsage = {
   total_tokens: number
 }
 
+export type GeminiAssistantPart =
+  | {
+      type: 'text'
+      text: string
+      thought?: boolean
+      thoughtSignature?: string
+    }
+  | {
+      type: 'functionCall'
+      id?: string
+      name: string
+      args?: Record<string, unknown>
+      thoughtSignature?: string
+    }
+
+export type ProviderMetadata = {
+  gemini?: {
+    parts: GeminiAssistantPart[]
+  }
+}
+
 type NonStreamingChoice = {
   finish_reason: string | null // Depends on the model. Ex: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'function_call'
   message: {
@@ -35,6 +56,7 @@ type NonStreamingChoice = {
     role: string
     annotations?: Annotation[]
     tool_calls?: ToolCall[]
+    providerMetadata?: ProviderMetadata
   }
   error?: Error
 }
@@ -47,6 +69,7 @@ type StreamingChoice = {
     role?: string
     annotations?: Annotation[]
     tool_calls?: ToolCallDelta[]
+    providerMetadata?: ProviderMetadata
   }
   error?: Error
 }

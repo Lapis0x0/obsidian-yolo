@@ -19,8 +19,10 @@ import {
   RequestTool,
 } from '../../types/llm/request'
 import {
+  GeminiAssistantPart,
   LLMResponseNonStreaming,
   LLMResponseStreaming,
+  ProviderMetadata,
   ToolCall,
   ToolCallDelta,
 } from '../../types/llm/response'
@@ -461,6 +463,20 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
   private static parseAssistantMessage(
     message: Extract<RequestMessage, { role: 'assistant' }>,
   ): GeminiContent | null {
+    const nativeParts = message.providerMetadata?.gemini?.parts
+    if (Array.isArray(nativeParts) && nativeParts.length > 0) {
+      const replayParts = nativeParts
+        .map((part) => GeminiProvider.deserializeAssistantPart(part))
+        .filter((part): part is GeminiReplayPart => Boolean(part))
+
+      if (replayParts.length > 0) {
+        return {
+          role: 'model',
+          parts: replayParts,
+        }
+      }
+    }
+
     const contentParts: GeminiReplayPart[] = []
 
     if (typeof message.content === 'string' && message.content !== '') {
@@ -586,6 +602,10 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
             reasoning: reasoningText ?? null,
             role: 'assistant',
             tool_calls: toolCalls,
+            providerMetadata: GeminiProvider.serializeProviderMetadata({
+              parts,
+              functionCalls,
+            }),
           },
         },
       ],
@@ -730,6 +750,10 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
             content: contentPiece,
             reasoning: reasoningPiece || undefined,
             tool_calls: toolCallDeltas,
+            providerMetadata: GeminiProvider.serializeProviderMetadata({
+              parts,
+              functionCalls,
+            }),
           },
         },
       ],
@@ -827,6 +851,133 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     }
 
     return extracted.length > 0 ? extracted : undefined
+  }
+
+  private static serializeProviderMetadata({
+    parts,
+    functionCalls,
+  }: {
+    parts: GeminiPart[] | undefined
+    functionCalls: GeminiFunctionCallWithMetadata[] | undefined
+  },
+  ): ProviderMetadata | undefined {
+    const serializedParts = GeminiProvider.serializeAssistantParts(
+      parts,
+      functionCalls,
+    )
+    if (serializedParts.length === 0) {
+      return undefined
+    }
+
+    return {
+      gemini: {
+        parts: serializedParts,
+      },
+    }
+  }
+
+  private static serializeAssistantParts(
+    parts: GeminiPart[] | undefined,
+    functionCalls?: GeminiFunctionCallWithMetadata[] | undefined,
+  ): GeminiAssistantPart[] {
+    const serialized: GeminiAssistantPart[] = []
+
+    if (Array.isArray(parts) && parts.length > 0) {
+      for (const part of parts) {
+        if (!part || typeof part !== 'object') {
+          continue
+        }
+
+        const record = part as Record<string, unknown>
+        const thoughtSignature =
+          typeof record.thoughtSignature === 'string'
+            ? record.thoughtSignature
+            : undefined
+
+        if (typeof part.text === 'string') {
+          serialized.push({
+            type: 'text',
+            text: part.text,
+            ...(part.thought ? { thought: true } : {}),
+            ...(thoughtSignature ? { thoughtSignature } : {}),
+          })
+        }
+
+        const functionCall = record.functionCall
+        if (
+          functionCall &&
+          typeof functionCall === 'object' &&
+          typeof (functionCall as { name?: unknown }).name === 'string'
+        ) {
+          const call = functionCall as GeminiFunctionCall
+          if (typeof call.name !== 'string') {
+            continue
+          }
+          serialized.push({
+            type: 'functionCall',
+            name: call.name,
+            ...(typeof call.id === 'string' ? { id: call.id } : {}),
+            ...(call.args &&
+            typeof call.args === 'object' &&
+            !Array.isArray(call.args)
+              ? { args: call.args as Record<string, unknown> }
+              : {}),
+            ...(thoughtSignature ? { thoughtSignature } : {}),
+          })
+        }
+      }
+
+      return serialized
+    }
+
+    if (Array.isArray(functionCalls)) {
+      for (const call of functionCalls) {
+        if (!call?.name) {
+          continue
+        }
+        serialized.push({
+          type: 'functionCall',
+          name: call.name,
+          ...(typeof call.id === 'string' ? { id: call.id } : {}),
+          ...(call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+            ? { args: call.args as Record<string, unknown> }
+            : {}),
+          ...(typeof call.thoughtSignature === 'string'
+            ? { thoughtSignature: call.thoughtSignature }
+            : {}),
+        })
+      }
+    }
+
+    return serialized
+  }
+
+  private static deserializeAssistantPart(
+    part: GeminiAssistantPart,
+  ): GeminiReplayPart | null {
+    if (part.type === 'text') {
+      if (part.text.length === 0 && !part.thoughtSignature) {
+        return null
+      }
+      return {
+        text: part.text,
+        ...(part.thought ? { thought: true } : {}),
+        ...(part.thoughtSignature
+          ? { thoughtSignature: part.thoughtSignature }
+          : {}),
+      }
+    }
+
+    return {
+      functionCall: {
+        name: part.name,
+        ...(part.id ? { id: part.id } : {}),
+        args: part.args ?? {},
+      },
+      ...(part.thoughtSignature
+        ? { thoughtSignature: part.thoughtSignature }
+        : {}),
+    }
   }
 
   private static validateImageType(mimeType: string) {

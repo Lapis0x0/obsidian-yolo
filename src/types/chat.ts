@@ -4,7 +4,7 @@ import { SelectEmbedding } from '../database/schema'
 
 import { ChatModel } from './chat-model.types'
 import { ContentPart } from './llm/request'
-import { Annotation, ResponseUsage } from './llm/response'
+import { Annotation, ProviderMetadata, ResponseUsage } from './llm/response'
 import { Mentionable, SerializedMentionable } from './mentionable'
 import { ToolCallRequest, ToolCallResponse } from './tool-call.types'
 
@@ -44,6 +44,7 @@ export type ChatAssistantMessage = {
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+    providerMetadata?: ProviderMetadata
   }
 }
 export type ChatToolMessage = {
@@ -90,6 +91,7 @@ export type SerializedChatAssistantMessage = {
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+    providerMetadata?: ProviderMetadata
   }
 }
 export type SerializedChatToolMessage = {

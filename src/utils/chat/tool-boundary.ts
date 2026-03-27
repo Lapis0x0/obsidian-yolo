@@ -67,9 +67,11 @@ export const filterRequestMessagesByToolBoundary = (
       matchedToolMessages.push(nextMessage)
     }
 
-    const completeMatch = matchedToolCallIds.size === requiredToolCallIds.size
+    const matchedToolCalls = normalizedToolCalls.filter((toolCall) =>
+      matchedToolCallIds.has(toolCall.id),
+    )
 
-    if (!completeMatch) {
+    if (matchedToolCalls.length === 0) {
       filteredRequestMessages.push({
         ...message,
         tool_calls: undefined,
@@ -80,7 +82,7 @@ export const filterRequestMessagesByToolBoundary = (
 
     filteredRequestMessages.push({
       ...message,
-      tool_calls: normalizedToolCalls,
+      tool_calls: matchedToolCalls,
     })
     filteredRequestMessages.push(...matchedToolMessages)
     index = cursor - 1

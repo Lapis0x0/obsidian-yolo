@@ -3,6 +3,7 @@ import { LLMRequestBase, RequestTool } from '../../types/llm/request'
 import {
   Annotation,
   LLMResponseStreaming,
+  ProviderMetadata,
   ResponseUsage,
   ToolCallDelta,
 } from '../../types/llm/response'
@@ -24,6 +25,7 @@ export type SingleTurnExecutionResult = {
   annotations?: Annotation[]
   usage?: ResponseUsage
   finishReason?: string | null
+  providerMetadata?: ProviderMetadata
   toolCalls: {
     id?: string
     name: string
@@ -238,6 +240,7 @@ export async function executeSingleTurn({
       annotations: response.choices?.[0]?.message?.annotations,
       usage: response.usage,
       finishReason: response.choices?.[0]?.finish_reason,
+      providerMetadata: response.choices?.[0]?.message?.providerMetadata,
       toolCalls:
         response.choices?.[0]?.message?.tool_calls
           ?.map((toolCall) => {
@@ -274,6 +277,7 @@ export async function executeSingleTurn({
   let annotations: Annotation[] | undefined
   let usage: ResponseUsage | undefined
   let finishReason: string | null = null
+  let providerMetadata: ProviderMetadata | undefined
   let streamedToolCalls: Record<number, StreamedToolCall> = {}
 
   const clearTimeoutId = () => {
@@ -330,6 +334,12 @@ export async function executeSingleTurn({
       if (chunk.usage) {
         usage = chunk.usage
       }
+      if (delta?.providerMetadata) {
+        providerMetadata = mergeProviderMetadata(
+          providerMetadata,
+          delta.providerMetadata,
+        )
+      }
       if (delta?.annotations) {
         annotations = mergeAnnotations(annotations, delta.annotations)
       }
@@ -377,22 +387,20 @@ export async function executeSingleTurn({
       streamedToolCallList
     let finalFinishReason: SingleTurnExecutionResult['finishReason'] =
       finishReason ?? undefined
+    let finalProviderMetadata: ProviderMetadata | undefined = providerMetadata
 
     if (hasInvalidWriteToolArguments(streamedToolCallList)) {
-      const streamedNonWriteToolCalls = streamedToolCallList.filter(
-        (toolCall) => !isLocalFsWriteToolName(toolCall.name),
-      )
       try {
         const nonStreamingResult = await runNonStreaming()
-        if (!hasInvalidWriteToolArguments(nonStreamingResult.toolCalls)) {
+        if (nonStreamingResult.toolCalls.length > 0) {
           finalToolCalls = nonStreamingResult.toolCalls
           finalFinishReason = nonStreamingResult.finishReason
-        } else {
-          finalToolCalls = streamedNonWriteToolCalls
+          finalProviderMetadata =
+            nonStreamingResult.providerMetadata ?? finalProviderMetadata
         }
       } catch {
-        // Never execute invalid streamed write tool arguments.
-        finalToolCalls = streamedNonWriteToolCalls
+        // Preserve invalid tool calls so they can surface as explicit errors
+        // instead of silently disappearing from the conversation.
       }
     }
 
@@ -402,6 +410,7 @@ export async function executeSingleTurn({
       annotations,
       usage,
       finishReason: finalFinishReason,
+      providerMetadata: finalProviderMetadata,
       toolCalls: finalToolCalls,
     }
   } catch (error) {
@@ -417,6 +426,23 @@ export async function executeSingleTurn({
   } finally {
     clearTimeoutId()
     signal?.removeEventListener('abort', handleAbort)
+  }
+}
+
+function mergeProviderMetadata(
+  prev: ProviderMetadata | undefined,
+  next: ProviderMetadata,
+): ProviderMetadata {
+  return {
+    gemini:
+      prev?.gemini || next.gemini
+        ? {
+            parts: [
+              ...(prev?.gemini?.parts ?? []),
+              ...(next.gemini?.parts ?? []),
+            ],
+          }
+        : undefined,
   }
 }
 

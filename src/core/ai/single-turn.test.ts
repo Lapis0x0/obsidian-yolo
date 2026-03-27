@@ -467,7 +467,7 @@ describe('executeSingleTurn', () => {
     ])
   })
 
-  it('drops invalid streamed write calls when non-stream recovery fails', async () => {
+  it('preserves invalid streamed write calls when non-stream recovery fails', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(
       toAsyncIterable([
@@ -518,7 +518,20 @@ describe('executeSingleTurn', () => {
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
-    expect(result.toolCalls).toEqual([])
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-invalid-2',
+        name: 'yolo_local__fs_edit',
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operation: { type: 'append' },
+          },
+          '{"path":"note.md","operation":{"type":"append"}}',
+        ),
+        metadata: undefined,
+      },
+    ])
   })
 
   it('falls back when fs_edit replace oldText is empty', async () => {

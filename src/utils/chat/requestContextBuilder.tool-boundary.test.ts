@@ -59,7 +59,7 @@ describe('filterRequestMessagesByToolBoundary', () => {
     }
   })
 
-  it('drops incomplete tool groups when only partial tool responses exist', () => {
+  it('keeps matched tool groups when only partial tool responses exist', () => {
     const input: RequestMessage[] = [
       assistantWithTools(['call-1', 'call-2']),
       toolMessage('call-2'),
@@ -68,8 +68,47 @@ describe('filterRequestMessagesByToolBoundary', () => {
 
     const output = filterRequestMessagesByToolBoundary(input)
 
-    expect(output).toHaveLength(2)
-    expect(output.filter((message) => message.role === 'tool')).toHaveLength(0)
+    expect(output).toHaveLength(3)
+    expect(output[0]).toEqual({
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call-2',
+          name: 'tool_1',
+          arguments: emptyArgs,
+        },
+      ],
+    })
+    expect(output[1]).toEqual(toolMessage('call-2'))
+    expect(output[2]).toEqual({ role: 'user', content: 'interrupt' })
+  })
+
+  it('keeps matched tool groups before a non-tool boundary break', () => {
+    const input: RequestMessage[] = [
+      assistantWithTools(['call-1', 'call-2']),
+      toolMessage('call-1'),
+      { role: 'assistant', content: '继续处理' },
+      toolMessage('call-2'),
+    ]
+
+    const output = filterRequestMessagesByToolBoundary(input)
+
+    expect(output).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-1',
+            name: 'tool_0',
+            arguments: emptyArgs,
+          },
+        ],
+      },
+      toolMessage('call-1'),
+      { role: 'assistant', content: '继续处理', tool_calls: undefined },
+    ])
   })
 
   it('keeps complete tool groups with multiple tool responses', () => {
