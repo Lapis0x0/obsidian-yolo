@@ -349,7 +349,7 @@ export const it: TranslationKeys = {
         'Legge intervalli di righe da uno o più file del vault.',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
-        'Applica operazioni di modifica del testo in un singolo file esistente, incluse replace, insert_after e append.',
+        'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, insert_after e append.',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',

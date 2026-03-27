@@ -124,7 +124,7 @@ const BUILTIN_TOOL_LABEL_KEYS: Record<
     descKey: 'settings.agent.builtinFsEditDesc',
     fallback: 'Text Editing',
     descFallback:
-      'Apply text edit operations within a single existing file, including replace, insert_after, and append.',
+      'Apply exactly one text edit operation within a single existing file, including replace, insert_after, and append.',
   },
   fs_file_ops: {
     key: 'settings.agent.builtinFsFileOpsLabel',

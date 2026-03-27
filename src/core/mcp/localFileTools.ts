@@ -369,7 +369,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_edit',
       description:
-        'Apply text edit operations within a single existing file. Prefer this tool when modifying content in an existing file. Supports replace, insert_after, and append.',
+        'Apply exactly one text edit operation within a single existing file. Prefer this tool when modifying content in an existing file. Supports replace, insert_after, and append.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -377,44 +377,41 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Vault-relative file path.',
           },
-          operations: {
-            type: 'array',
+          operation: {
+            type: 'object',
             description:
-              'Ordered text edit operations to apply. Supports replace, insert_after, and append.',
-            items: {
-              type: 'object',
-              properties: {
-                type: {
-                  type: 'string',
-                  enum: ['replace', 'insert_after', 'append'],
-                },
-                oldText: {
-                  type: 'string',
-                  description: 'Required for replace.',
-                },
-                newText: {
-                  type: 'string',
-                  description: 'Required for replace.',
-                },
-                anchor: {
-                  type: 'string',
-                  description: 'Required for insert_after.',
-                },
-                content: {
-                  type: 'string',
-                  description: 'Required for insert_after and append.',
-                },
-                expectedOccurrences: {
-                  type: 'integer',
-                  description:
-                    'Optional positive integer match count for replace and insert_after. Defaults to 1.',
-                },
+              'A single text edit operation to apply. Supports replace, insert_after, and append.',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['replace', 'insert_after', 'append'],
               },
-              required: ['type'],
+              oldText: {
+                type: 'string',
+                description: 'Required for replace.',
+              },
+              newText: {
+                type: 'string',
+                description: 'Required for replace.',
+              },
+              anchor: {
+                type: 'string',
+                description: 'Required for insert_after.',
+              },
+              content: {
+                type: 'string',
+                description: 'Required for insert_after and append.',
+              },
+              expectedOccurrences: {
+                type: 'integer',
+                description:
+                  'Optional positive integer match count for replace and insert_after. Defaults to 1.',
+              },
             },
+            required: ['type'],
           },
         },
-        required: ['path', 'operations'],
+        required: ['path', 'operation'],
       },
     },
     {
@@ -858,14 +855,13 @@ const asPositiveInteger = (value: unknown): number | undefined => {
 
 const parseTextEditOperation = (
   operation: Record<string, unknown>,
-  index: number,
 ): TextEditOperation => {
   const type = asOptionalString(operation.type).trim().toLowerCase()
 
   if (type === 'replace') {
     const oldText = getTextArg(operation, 'oldText')
     if (oldText.length === 0) {
-      throw new Error(`operations[${index}].oldText must not be empty.`)
+      throw new Error(`operation.oldText must not be empty.`)
     }
 
     return {
@@ -879,7 +875,7 @@ const parseTextEditOperation = (
   if (type === 'insert_after') {
     const anchor = getTextArg(operation, 'anchor')
     if (anchor.length === 0) {
-      throw new Error(`operations[${index}].anchor must not be empty.`)
+      throw new Error(`operation.anchor must not be empty.`)
     }
 
     return {
@@ -898,22 +894,19 @@ const parseTextEditOperation = (
   }
 
   throw new Error(
-    `operations[${index}].type must be one of: replace, insert_after, append.`,
+    `operation.type must be one of: replace, insert_after, append.`,
   )
 }
 
 const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
-  const operations = getRecordArrayArg(args, 'operations').map(
-    (operation, index) => {
-      return parseTextEditOperation(operation, index)
-    },
-  )
-
-  if (operations.length === 0) {
-    throw new Error('operations cannot be empty.')
+  const operation = args.operation
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+    throw new Error('operation must be an object.')
   }
 
-  return { operations }
+  return {
+    operations: [parseTextEditOperation(operation as Record<string, unknown>)],
+  }
 }
 
 const ensureParentFolderExists = (app: App, path: string): void => {

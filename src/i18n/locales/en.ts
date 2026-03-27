@@ -340,7 +340,7 @@ export const en: TranslationKeys = {
       builtinFsReadDesc: 'Read line ranges from multiple vault files by path.',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc:
-        'Apply text edit operations within a single existing file, including replace, insert_after, and append.',
+        'Apply exactly one text edit operation within a single existing file, including replace, insert_after, and append.',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',

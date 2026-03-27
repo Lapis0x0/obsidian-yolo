@@ -214,7 +214,7 @@ describe('executeSingleTurn', () => {
                     function: {
                       name: 'yolo_local__fs_edit',
                       arguments:
-                        '{"path":"note.md","operations":[type":"append"]}',
+                        '{"path":"note.md","operation":{"type":"append"}}',
                     },
                   },
                 ],
@@ -252,7 +252,7 @@ describe('executeSingleTurn', () => {
                 function: {
                   name: 'yolo_local__fs_edit',
                   arguments:
-                    '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+                    '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
                 },
               },
             ],
@@ -276,9 +276,9 @@ describe('executeSingleTurn', () => {
         arguments: completeArgs(
           {
             path: 'note.md',
-            operations: [{ type: 'append', content: 'ok' }],
+            operation: { type: 'append', content: 'ok' },
           },
-          '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+          '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
         ),
         metadata: undefined,
       },
@@ -305,7 +305,7 @@ describe('executeSingleTurn', () => {
                     function: {
                       name: 'yolo_local__fs_edit',
                       arguments:
-                        '{"type":"append","content":"should be wrapped in operations"}',
+                        '{"type":"append","content":"should be wrapped in operation"}',
                     },
                   },
                 ],
@@ -343,7 +343,7 @@ describe('executeSingleTurn', () => {
                 function: {
                   name: 'yolo_local__fs_edit',
                   arguments:
-                    '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+                    '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
                 },
               },
             ],
@@ -367,9 +367,100 @@ describe('executeSingleTurn', () => {
         arguments: completeArgs(
           {
             path: 'note.md',
-            operations: [{ type: 'append', content: 'ok' }],
+            operation: { type: 'append', content: 'ok' },
           },
-          '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+          '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
+        ),
+        metadata: undefined,
+      },
+    ])
+  })
+
+  it('falls back when fs_edit uses the removed operations array shape', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-legacy-shape',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-invalid-legacy-shape',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_edit',
+                      arguments:
+                        '{"path":"note.md","operations":[{"type":"append","content":"legacy"}]}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-legacy-shape',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+    provider.generateResponseMock.mockResolvedValue({
+      id: 'non-stream-legacy-shape',
+      model: TEST_MODEL.model,
+      object: 'chat.completion',
+      choices: [
+        {
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'tool-valid-legacy-retry',
+                type: 'function',
+                function: {
+                  name: 'yolo_local__fs_edit',
+                  arguments:
+                    '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+    })
+
+    expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-valid-legacy-retry',
+        name: 'yolo_local__fs_edit',
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operation: { type: 'append', content: 'ok' },
+          },
+          '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
         ),
         metadata: undefined,
       },
@@ -396,7 +487,7 @@ describe('executeSingleTurn', () => {
                     function: {
                       name: 'yolo_local__fs_edit',
                       arguments:
-                        '{"path":"note.md","operations":[type":"append"]}',
+                        '{"path":"note.md","operation":{"type":"append"}}',
                     },
                   },
                 ],
@@ -450,7 +541,7 @@ describe('executeSingleTurn', () => {
                     function: {
                       name: 'yolo_local__fs_edit',
                       arguments:
-                        '{"path":"note.md","operations":[{"type":"replace","oldText":"","newText":"x"}]}',
+                        '{"path":"note.md","operation":{"type":"replace","oldText":"","newText":"x"}}',
                     },
                   },
                 ],
@@ -488,7 +579,7 @@ describe('executeSingleTurn', () => {
                 function: {
                   name: 'yolo_local__fs_edit',
                   arguments:
-                    '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+                    '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
                 },
               },
             ],
@@ -512,9 +603,9 @@ describe('executeSingleTurn', () => {
         arguments: completeArgs(
           {
             path: 'note.md',
-            operations: [{ type: 'append', content: 'ok' }],
+            operation: { type: 'append', content: 'ok' },
           },
-          '{"path":"note.md","operations":[{"type":"append","content":"ok"}]}',
+          '{"path":"note.md","operation":{"type":"append","content":"ok"}}',
         ),
         metadata: undefined,
       },

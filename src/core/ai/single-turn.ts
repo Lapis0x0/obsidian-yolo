@@ -135,12 +135,7 @@ const isValidWriteToolArguments = ({
     if (!isStringField(args, 'path')) {
       return false
     }
-    const operations = args.operations
-    return (
-      Array.isArray(operations) &&
-      operations.length > 0 &&
-      operations.every((operation) => isValidFsEditOperation(operation))
-    )
+    return isValidFsEditOperation(args.operation)
   }
 
   if (normalizedToolName === 'fs_create_file') {

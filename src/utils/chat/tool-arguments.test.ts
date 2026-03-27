@@ -49,15 +49,15 @@ describe('tool-arguments utilities', () => {
   it('keeps committed object when a later chunk adds noisy tail', () => {
     const merged = mergeStreamingToolArguments({
       existingArgs: createToolCallArguments(
-        '{"path":"a.md","operations":[{"type":"append"}]}',
+        '{"path":"a.md","operation":{"type":"append"}}',
       ),
       newArgs:
-        '{"path":"a.md","operations":[{"type":"append"}]}\nTool arguments must be valid JSON',
+        '{"path":"a.md","operation":{"type":"append"}}\nTool arguments must be valid JSON',
     })
 
     expect(getToolCallArgumentsObject(merged)).toEqual({
       path: 'a.md',
-      operations: [{ type: 'append' }],
+      operation: { type: 'append' },
     })
   })
 
@@ -68,12 +68,12 @@ describe('tool-arguments utilities', () => {
         { allowPartial: true },
       ),
       newArgs:
-        'Args: {"path":"a.md","operations":[{"type":"append","content":"ok"}]} Error: ...',
+        'Args: {"path":"a.md","operation":{"type":"append","content":"ok"}} Error: ...',
     })
 
     expect(getToolCallArgumentsObject(merged)).toEqual({
       path: 'a.md',
-      operations: [{ type: 'append', content: 'ok' }],
+      operation: { type: 'append', content: 'ok' },
     })
   })
 })

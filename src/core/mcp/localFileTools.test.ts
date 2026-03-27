@@ -72,13 +72,11 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_edit',
       args: {
         path: 'note.md',
-        operations: [
-          {
-            type: 'replace',
-            oldText: 'world',
-            newText: 'changed',
-          },
-        ],
+        operation: {
+          type: 'replace',
+          oldText: 'world',
+          newText: 'changed',
+        },
       },
       requireReview: true,
     })
@@ -112,6 +110,39 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_edit',
       args: {
         path: 'note.md',
+        operation: {
+          type: 'replace',
+          oldText: 'world',
+          newText: 'changed',
+        },
+      },
+      requireReview: true,
+    })
+
+    expect(openApplyReview).toHaveBeenCalledTimes(1)
+    expect(modify).not.toHaveBeenCalled()
+    expect(result.status).toBe('aborted')
+  })
+
+  it('rejects the removed fs_edit operations array shape', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const modify = jest.fn()
+    const read = jest.fn().mockResolvedValue('hello world')
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
         operations: [
           {
             type: 'replace',
@@ -120,12 +151,13 @@ describe('local fs tool action helpers', () => {
           },
         ],
       },
-      requireReview: true,
     })
 
-    expect(openApplyReview).toHaveBeenCalledTimes(1)
     expect(modify).not.toHaveBeenCalled()
-    expect(result.status).toBe('aborted')
+    expect(result.status).toBe('error')
+    if (result.status === 'error') {
+      expect(result.error).toContain('operation must be an object')
+    }
   })
 
   it('handles memory tools through local tool dispatcher', async () => {

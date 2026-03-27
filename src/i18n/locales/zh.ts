@@ -305,7 +305,7 @@ export const zh: TranslationKeys = {
       builtinFsReadDesc: '按行读取一个或多个库内文件内容。',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc:
-        '在单个现有文件中执行文本编辑操作，支持替换、锚点后插入和追加。',
+        '在单个现有文件中精确执行一次文本编辑操作，支持替换、锚点后插入和追加。',
       safetyControls: '安全控制',
       safetyControlsDesc: '配置 Agent 执行高风险文件操作前的额外审阅行为。',
       fsEditReviewToggle: '编辑文件是否需要审批',

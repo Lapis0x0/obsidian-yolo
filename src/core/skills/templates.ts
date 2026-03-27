@@ -101,7 +101,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for existing-file content changes, and \`fs_create_file\` / \`fs_delete_file\` / \`fs_create_dir\` / \`fs_delete_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a single targeted content change in an existing file, and \`fs_create_file\` / \`fs_delete_file\` / \`fs_create_dir\` / \`fs_delete_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
 
 ## Anatomy of a Skill
 
@@ -192,7 +192,7 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 | \`fs_list\` | Inspect folder contents and vault structure |
 | \`fs_search\` | Find files by keyword or pattern |
 | \`fs_read\` | Read file contents |
-| \`fs_edit\` | Apply targeted text edits to an existing file (\`replace\`, \`insert_after\`, \`append\`) |
+| \`fs_edit\` | Apply exactly one targeted text edit to an existing file (\`replace\`, \`insert_after\`, \`append\`) |
 | \`fs_create_file\` | Create a file with provided content (supports \`dryRun\`) |
 | \`fs_delete_file\` | Delete a file path (supports \`dryRun\`) |
 | \`fs_create_dir\` | Create a directory path (supports \`dryRun\`) |
