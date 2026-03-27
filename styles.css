@@ -6933,6 +6933,139 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   margin-top: var(--size-4-2);
 }
 
+.smtcmp-agent-edit-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: color-mix(
+    in srgb,
+    var(--background-secondary) 82%,
+    var(--background-primary)
+  );
+}
+
+.smtcmp-agent-edit-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 0;
+}
+
+.smtcmp-agent-edit-summary-totals,
+.smtcmp-agent-edit-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: calc(var(--font-ui-small) * 0.92);
+  line-height: 1.15;
+}
+
+.smtcmp-agent-edit-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.smtcmp-agent-edit-summary-item {
+  padding-top: 6px;
+  padding-bottom: 2px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+}
+
+.smtcmp-agent-edit-summary-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-normal);
+}
+
+.smtcmp-agent-edit-summary-added {
+  color: var(--color-green);
+}
+
+.smtcmp-agent-edit-summary-removed {
+  color: var(--color-red);
+}
+
+.smtcmp-agent-edit-summary-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  padding: 3px 7px !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: var(--radius-m) !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  appearance: none !important;
+  color: var(--text-muted);
+  font-size: calc(var(--font-ui-small) * 0.92);
+  line-height: 1.1;
+  font-weight: var(--font-normal);
+  text-decoration: none;
+}
+
+.smtcmp-agent-edit-summary-undo:hover:not(:disabled) {
+  color: var(--text-normal);
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 72%,
+    transparent
+  ) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+.smtcmp-agent-edit-summary-undo:focus,
+.smtcmp-agent-edit-summary-undo:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 72%,
+    transparent
+  ) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  outline: none !important;
+}
+
+.smtcmp-agent-edit-summary-undo:disabled {
+  opacity: 0.7;
+}
+
+.smtcmp-agent-edit-summary-undo-icon {
+  flex: 0 0 auto;
+  margin-left: 4px !important;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.smtcmp-agent-edit-summary-item:hover
+  .smtcmp-agent-edit-summary-undo-icon:not(:disabled),
+.smtcmp-agent-edit-summary-item:focus-within
+  .smtcmp-agent-edit-summary-undo-icon:not(:disabled),
+.smtcmp-agent-edit-summary-undo-icon.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .smtcmp-assistant-tool-running-preview {
   margin-top: 2px;
 }

@@ -997,6 +997,18 @@ export const en: TranslationKeys = {
         title: 'Custom',
       },
     },
+    editSummary: {
+      filesChanged: '{count} file(s) changed',
+      undo: 'Undo',
+      undoFile: 'Undo file change',
+      undone: 'Undone',
+      undoSuccess: "Undid this assistant turn's file changes.",
+      undoPartial:
+        'Some files were reverted, while others were skipped because they changed afterward.',
+      undoUnavailable:
+        'File contents have changed, so this turn cannot be safely undone.',
+      undoFailed: 'Undo failed. Please try again.',
+    },
     customRewritePromptPlaceholder:
       'Describe how to rewrite the selected text, for example: "make it concise and active voice; keep markdown structure"; press Shift+Enter to confirm, Enter for a new line, and Escape to close.',
     toolCall: {

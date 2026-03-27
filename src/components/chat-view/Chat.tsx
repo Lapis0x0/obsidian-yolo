@@ -8,8 +8,8 @@ import {
   MessageCircle,
   Plus,
 } from 'lucide-react'
-import { MarkdownView, Notice, Platform } from 'obsidian'
-import type { TFile, TFolder } from 'obsidian'
+import { MarkdownView, Notice, Platform, TFile } from 'obsidian'
+import type { TFolder } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -62,6 +62,12 @@ import {
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
+import {
+  type GroupEditSummary,
+  deriveToolEditUndoStatus,
+  updateToolMessageEditSummary,
+} from '../../utils/chat/editSummary'
+import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { readTFileContent } from '../../utils/obsidian'
@@ -397,6 +403,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     string | null
   >(null)
   const [activeApplyRequestKey, setActiveApplyRequestKey] = useState<
+    string | null
+  >(null)
+  const [undoingEditSummaryTarget, setUndoingEditSummaryTarget] = useState<
     string | null
   >(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
@@ -1763,6 +1772,180 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [activeApplyRequestKey, applyMutation],
   )
 
+  const handleUndoEditSummary = useCallback(
+    async (summary: GroupEditSummary) => {
+      const summaryKey = summary.entries
+        .map((entry) => entry.toolCallId)
+        .join(':')
+      const targetKey =
+        summary.files.length === 1
+          ? `${summaryKey}::${summary.files[0]?.path ?? 'all'}`
+          : `${summaryKey}::all`
+      setUndoingEditSummaryTarget(targetKey)
+
+      try {
+        const undoStateByPath = new Map<
+          string,
+          Map<string, 'applied' | 'unavailable'>
+        >()
+
+        for (const fileGroup of summary.files) {
+          const relatedEntries = summary.entries
+            .flatMap((entry) =>
+              entry.summary.files
+                .filter((file) => file.path === fileGroup.path)
+                .map((file, index) => ({
+                  entry,
+                  fileIndex: index,
+                  file,
+                })),
+            )
+            .reverse()
+
+          if (relatedEntries.length === 0) {
+            continue
+          }
+
+          const targetFile = app.vault.getAbstractFileByPath(fileGroup.path)
+          if (!(targetFile instanceof TFile)) {
+            undoStateByPath.set(
+              fileGroup.path,
+              new Map(
+                relatedEntries.map((entry) => [
+                  `${entry.entry.toolCallId}:${entry.fileIndex}`,
+                  'unavailable',
+                ]),
+              ),
+            )
+            continue
+          }
+
+          const currentContent = await app.vault.read(targetFile)
+          let nextContent = currentContent
+          const entryStates = new Map<string, 'applied' | 'unavailable'>()
+
+          for (const entry of relatedEntries) {
+            const entryKey = `${entry.entry.toolCallId}:${entry.fileIndex}`
+            const snapshot = editUndoSnapshotStore.get(
+              entry.entry.toolCallId,
+              entry.file.path,
+            )
+            if (!snapshot || nextContent !== snapshot.afterContent) {
+              relatedEntries.forEach((remainingEntry) => {
+                const remainingKey = `${remainingEntry.entry.toolCallId}:${remainingEntry.fileIndex}`
+                if (!entryStates.has(remainingKey)) {
+                  entryStates.set(remainingKey, 'unavailable')
+                }
+              })
+              break
+            }
+
+            nextContent = snapshot.beforeContent
+            entryStates.set(entryKey, 'applied')
+            editUndoSnapshotStore.delete(
+              entry.entry.toolCallId,
+              entry.file.path,
+            )
+          }
+
+          undoStateByPath.set(fileGroup.path, entryStates)
+
+          if (nextContent !== currentContent) {
+            await app.vault.modify(targetFile, nextContent)
+          }
+        }
+
+        let appliedCount = 0
+        let unavailableCount = 0
+
+        const updatedMessages = chatMessages.map((message) => {
+          if (message.role !== 'tool') {
+            return message
+          }
+
+          let nextToolMessage = message
+          summary.entries.forEach((entry) => {
+            if (entry.toolMessageId !== message.id) {
+              return
+            }
+
+            const nextFiles = entry.summary.files.map((file, index) => {
+              const nextStatus =
+                undoStateByPath
+                  .get(file.path)
+                  ?.get(`${entry.toolCallId}:${index}`) ?? file.undoStatus
+
+              if (nextStatus === 'applied') {
+                appliedCount += 1
+              } else if (nextStatus === 'unavailable') {
+                unavailableCount += 1
+              }
+
+              return {
+                ...file,
+                undoStatus: nextStatus,
+              }
+            })
+
+            nextToolMessage = updateToolMessageEditSummary({
+              toolMessage: nextToolMessage,
+              toolCallId: entry.toolCallId,
+              editSummary: {
+                ...entry.summary,
+                files: nextFiles,
+                undoStatus: deriveToolEditUndoStatus(nextFiles),
+              },
+            })
+          })
+
+          return nextToolMessage
+        })
+
+        setChatMessages(updatedMessages)
+        plugin
+          .getAgentService()
+          .replaceConversationMessages(currentConversationId, updatedMessages)
+        await persistConversationImmediately(updatedMessages)
+
+        if (appliedCount > 0 && unavailableCount === 0) {
+          new Notice(
+            t(
+              'chat.editSummary.undoSuccess',
+              '已撤销本轮 assistant 的文件修改。',
+            ),
+          )
+        } else if (appliedCount > 0) {
+          new Notice(
+            t(
+              'chat.editSummary.undoPartial',
+              '部分文件已撤销，另一些文件因后续变更未覆盖。',
+            ),
+          )
+        } else {
+          new Notice(
+            t(
+              'chat.editSummary.undoUnavailable',
+              '文件内容已变化，无法安全撤销本轮修改。',
+            ),
+          )
+        }
+      } catch (error) {
+        new Notice(t('chat.editSummary.undoFailed', '撤销失败，请稍后重试。'))
+        console.error('Failed to undo assistant edit summary', error)
+      } finally {
+        setUndoingEditSummaryTarget(null)
+      }
+    },
+    [
+      app.vault,
+      chatMessages,
+      currentConversationId,
+      persistConversationImmediately,
+      plugin,
+      t,
+    ],
+  )
+
   const handleToolMessageUpdate = useCallback(
     (toolMessage: ChatToolMessage) => {
       const toolMessageIndex = chatMessages.findIndex(
@@ -2596,6 +2779,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 onDeleteGroup={handleAssistantMessageGroupDelete}
                 onBranchGroup={handleAssistantMessageGroupBranch}
                 onQuoteAssistantSelection={handleQuoteAssistantSelection}
+                onUndoEditSummary={handleUndoEditSummary}
+                undoingEditSummaryTarget={undoingEditSummaryTarget}
               />
             )
           }

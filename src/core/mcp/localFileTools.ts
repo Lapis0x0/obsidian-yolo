@@ -9,7 +9,12 @@ import {
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import { McpTool } from '../../types/mcp.types'
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import {
+  ToolCallResponseStatus,
+  type ToolEditSummary,
+} from '../../types/tool-call.types'
+import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import { createToolEditSummary } from '../../utils/chat/editSummary'
 import {
   getLiteSkillDocument,
   listLiteSkillEntries,
@@ -60,6 +65,10 @@ type LocalToolCallResult =
   | {
       status: ToolCallResponseStatus.Success
       text: string
+      metadata?: {
+        editSummary?: ToolEditSummary
+        appliedAt?: number
+      }
     }
   | {
       status: ToolCallResponseStatus.Rejected
@@ -396,11 +405,13 @@ export function getLocalFileTools(): McpTool[] {
               },
               startLine: {
                 type: 'integer',
-                description: 'Required for replace_lines. 1-based inclusive start line.',
+                description:
+                  'Required for replace_lines. 1-based inclusive start line.',
               },
               endLine: {
                 type: 'integer',
-                description: 'Required for replace_lines. 1-based inclusive end line.',
+                description:
+                  'Required for replace_lines. 1-based inclusive end line.',
               },
               anchor: {
                 type: 'string',
@@ -1171,6 +1182,7 @@ export async function callLocalFileTool({
   app,
   settings,
   openApplyReview,
+  toolCallId,
   toolName,
   args,
   requireReview = false,
@@ -1179,6 +1191,7 @@ export async function callLocalFileTool({
   app: App
   settings?: SmartComposerSettings
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
+  toolCallId?: string
   toolName: string
   args: Record<string, unknown>
   requireReview?: boolean
@@ -1474,6 +1487,22 @@ export async function callLocalFileTool({
           await app.vault.modify(file, nextContent)
         }
 
+        const editSummary = createToolEditSummary({
+          path,
+          beforeContent: content,
+          afterContent: appliedContent,
+        })
+        const appliedAt = Date.now()
+        if (toolCallId && editSummary) {
+          editUndoSnapshotStore.set({
+            toolCallId,
+            path,
+            beforeContent: content,
+            afterContent: appliedContent,
+            appliedAt,
+          })
+        }
+
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
@@ -1491,6 +1520,10 @@ export async function callLocalFileTool({
             changed: content !== appliedContent,
             message: requireReview ? 'Applied reviewed edit.' : 'Applied edit.',
           }),
+          metadata: {
+            editSummary,
+            appliedAt,
+          },
         }
       }
 

@@ -58,6 +58,27 @@ export const createPartialToolCallArguments = (
   }
 }
 
+export type ToolEditUndoStatus =
+  | 'available'
+  | 'applied'
+  | 'partial'
+  | 'unavailable'
+
+export type ToolEditSummaryFile = {
+  path: string
+  addedLines: number
+  removedLines: number
+  undoStatus: Exclude<ToolEditUndoStatus, 'partial'>
+}
+
+export type ToolEditSummary = {
+  files: ToolEditSummaryFile[]
+  totalFiles: number
+  totalAddedLines: number
+  totalRemovedLines: number
+  undoStatus: ToolEditUndoStatus
+}
+
 export type ToolCallRequest = {
   id: string
   name: string
@@ -79,6 +100,10 @@ export type ToolCallResponse =
       data: {
         type: 'text'
         text: string
+        metadata?: {
+          editSummary?: ToolEditSummary
+          appliedAt?: number
+        }
       }
     }
   | {

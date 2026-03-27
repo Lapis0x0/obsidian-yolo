@@ -589,6 +589,7 @@ export class McpManager {
           app: this.app,
           settings: this.settings,
           openApplyReview: this.openApplyReview,
+          toolCallId: id,
           toolName,
           args: parsedArgs ?? {},
           requireReview,
@@ -600,6 +601,7 @@ export class McpManager {
             data: {
               type: 'text',
               text: localResult.text,
+              metadata: localResult.metadata,
             },
           }
         }

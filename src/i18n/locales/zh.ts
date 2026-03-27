@@ -934,6 +934,16 @@ export const zh: TranslationKeys = {
         title: '自定义',
       },
     },
+    editSummary: {
+      filesChanged: '{count} 个文件已更改',
+      undo: '撤销',
+      undoFile: '撤销该文件修改',
+      undone: '已撤销',
+      undoSuccess: '已撤销本轮 assistant 的文件修改。',
+      undoPartial: '部分文件已撤销，另一些文件因后续变更未覆盖。',
+      undoUnavailable: '文件内容已变化，无法安全撤销本轮修改。',
+      undoFailed: '撤销失败，请稍后重试。',
+    },
     customRewritePromptPlaceholder:
       '输入你的改写指令，例如：“语气更简洁、采用主动语态，保留 Markdown 结构”。按 Shift+回车 确认，回车换行，Esc 关闭。',
     toolCall: {

@@ -1,9 +1,14 @@
+import { useMemo } from 'react'
+
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatToolMessage,
 } from '../../types/chat'
+import type { GroupEditSummary } from '../../utils/chat/editSummary'
+import { collectGroupEditSummary } from '../../utils/chat/editSummary'
 
+import AssistantEditSummary from './AssistantEditSummary'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
 import AssistantMessageContent from './AssistantMessageContent'
 import AssistantMessageEditor from './AssistantMessageEditor'
@@ -42,6 +47,8 @@ export type AssistantToolMessageGroupItemProps = {
     conversationId: string
     content: string
   }) => void
+  onUndoEditSummary?: (summary: GroupEditSummary) => void
+  undoingEditSummaryTarget?: string | null
 }
 
 export default function AssistantToolMessageGroupItem({
@@ -66,6 +73,8 @@ export default function AssistantToolMessageGroupItem({
   onDeleteGroup,
   onBranchGroup,
   onQuoteAssistantSelection,
+  onUndoEditSummary,
+  undoingEditSummaryTarget,
 }: AssistantToolMessageGroupItemProps) {
   const assistantMessages = messages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
@@ -93,6 +102,18 @@ export default function AssistantToolMessageGroupItem({
       !message.annotations &&
       !message.toolCallRequests?.length,
   )
+  const groupEditSummary = useMemo(
+    () => collectGroupEditSummary(messages),
+    [messages],
+  )
+  const groupEditSummaryKey = useMemo(
+    () =>
+      groupEditSummary
+        ? groupEditSummary.entries.map((entry) => entry.toolCallId).join(':')
+        : null,
+    [groupEditSummary],
+  )
+  const effectiveGroupEditSummaryKey = groupEditSummaryKey ?? ''
 
   return (
     <div className="smtcmp-assistant-tool-message-group">
@@ -156,6 +177,32 @@ export default function AssistantToolMessageGroupItem({
           </div>
         ),
       )}
+      {groupEditSummary &&
+        !suppressFooter &&
+        !hasPendingAssistantShell &&
+        !isStreaming && (
+          <AssistantEditSummary
+            summary={groupEditSummary}
+            undoingTargetKey={
+              undoingEditSummaryTarget?.startsWith(
+                `${effectiveGroupEditSummaryKey}::`,
+              )
+                ? undoingEditSummaryTarget.slice(
+                    effectiveGroupEditSummaryKey.length + 2,
+                  )
+                : null
+            }
+            onUndo={() => onUndoEditSummary?.(groupEditSummary)}
+            onUndoFile={(path) =>
+              onUndoEditSummary?.({
+                ...groupEditSummary,
+                files: groupEditSummary.files.filter(
+                  (file) => file.path === path,
+                ),
+              })
+            }
+          />
+        )}
       {messages.length > 0 &&
         !hasPendingAssistantShell &&
         !isStreaming &&

@@ -855,6 +855,16 @@ export type TranslationKeys = {
         title: string
       }
     }
+    editSummary?: {
+      filesChanged?: string
+      undo?: string
+      undoFile?: string
+      undone?: string
+      undoSuccess?: string
+      undoPartial?: string
+      undoUnavailable?: string
+      undoFailed?: string
+    }
     showMore?: string
     showLess?: string
     toolCall?: {

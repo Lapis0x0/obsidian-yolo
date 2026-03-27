@@ -997,6 +997,19 @@ export const it: TranslationKeys = {
         title: 'Personalizzato',
       },
     },
+    editSummary: {
+      filesChanged: '{count} file modificati',
+      undo: 'Annulla',
+      undoFile: 'Annulla modifica file',
+      undone: 'Annullato',
+      undoSuccess:
+        "Le modifiche ai file di questo turno dell'assistente sono state annullate.",
+      undoPartial:
+        'Alcuni file sono stati ripristinati, mentre altri sono stati saltati per modifiche successive.',
+      undoUnavailable:
+        'Il contenuto dei file e cambiato e questo turno non puo essere annullato in sicurezza.',
+      undoFailed: 'Annullamento non riuscito. Riprova.',
+    },
     showMore: 'Mostra altro',
     showLess: 'Mostra meno',
     toolCall: {

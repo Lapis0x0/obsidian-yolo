@@ -8,6 +8,11 @@ import {
   parseLocalFsActionFromToolArgs,
   recoverLikelyEscapedBackslashSequences,
 } from './localFileTools'
+import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+
+afterEach(() => {
+  editUndoSnapshotStore.clear()
+})
 
 describe('recoverLikelyEscapedBackslashSequences', () => {
   it('recovers latex commands decoded as control characters', () => {
@@ -69,6 +74,7 @@ describe('local fs tool action helpers', () => {
         },
       } as unknown as App,
       openApplyReview,
+      toolCallId: 'tool-call-1',
       toolName: 'fs_edit',
       args: {
         path: 'note.md',
@@ -84,6 +90,19 @@ describe('local fs tool action helpers', () => {
     expect(openApplyReview).toHaveBeenCalledTimes(1)
     expect(modify).not.toHaveBeenCalled()
     expect(result.status).toBe('success')
+    if (result.status !== 'success') {
+      throw new Error('expected success')
+    }
+    expect(editUndoSnapshotStore.get('tool-call-1', 'note.md')).toMatchObject({
+      beforeContent: 'hello world',
+      afterContent: 'hello changed',
+    })
+    expect(result.metadata?.editSummary).toMatchObject({
+      totalFiles: 1,
+      totalAddedLines: 1,
+      totalRemovedLines: 1,
+      undoStatus: 'available',
+    })
   })
 
   it('treats fs_edit review close as abort without persisting', async () => {
@@ -190,6 +209,14 @@ describe('local fs tool action helpers', () => {
 
     expect(result.status).toBe('success')
     expect(modify).toHaveBeenCalledWith(file, ['one', 'dos', 'tres'].join('\n'))
+    if (result.status !== 'success') {
+      throw new Error('expected success')
+    }
+    expect(result.metadata?.editSummary).toMatchObject({
+      totalFiles: 1,
+      totalAddedLines: 2,
+      totalRemovedLines: 2,
+    })
   })
 
   it('handles memory tools through local tool dispatcher', async () => {
