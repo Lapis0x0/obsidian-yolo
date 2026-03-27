@@ -82,21 +82,31 @@ export const reconcileAssistantGenerationState = (
   })
 }
 
-function mergeRunnerMessages(
+export function mergeRunnerMessagesFromAnchor(
   baseMessages: ChatMessage[],
   anchorMessageId: string,
   responseMessages: ChatMessage[],
 ): ChatMessage[] | null {
-  const lastMessageIndex = baseMessages.findIndex(
+  const anchorIndex = baseMessages.findIndex(
     (message) => message.id === anchorMessageId,
   )
-  if (lastMessageIndex === -1) {
+  if (anchorIndex === -1) {
     return null
   }
 
+  const responseAnchorIndex = responseMessages.findIndex(
+    (message) => message.id === anchorMessageId,
+  )
+  const mergedMessages =
+    responseAnchorIndex === -1
+      ? [...baseMessages.slice(0, anchorIndex + 1), ...responseMessages]
+      : [
+          ...baseMessages.slice(0, anchorIndex),
+          ...responseMessages.slice(responseAnchorIndex),
+        ]
+
   return reconcileAssistantGenerationState(baseMessages, [
-    ...baseMessages.slice(0, lastMessageIndex + 1),
-    ...responseMessages,
+    ...mergedMessages,
   ])
 }
 
@@ -160,7 +170,7 @@ export function useBufferedRunnerMessages({
     pendingAbortControllerRef.current = null
     lastFlushAtRef.current = getNowMs()
 
-    const nextMessages = mergeRunnerMessages(
+    const nextMessages = mergeRunnerMessagesFromAnchor(
       latestMessagesRef.current,
       anchorMessageId,
       responseMessages,
