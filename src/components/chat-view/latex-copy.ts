@@ -1,3 +1,5 @@
+import { htmlToMarkdown } from 'obsidian'
+
 const LATEX_SOURCE_ATTR = 'data-smtcmp-latex-source'
 const LATEX_SELECTED_CLASS = 'smtcmp-latex-selected'
 
@@ -266,6 +268,39 @@ function serializeSelectionRange(
     .join('')
 }
 
+function getLatexReplacementTargets(containerEl: ParentNode): HTMLElement[] {
+  return Array.from(
+    containerEl.querySelectorAll<HTMLElement>(`[${LATEX_SOURCE_ATTR}]`),
+  ).filter(
+    (element) => !element.parentElement?.closest(`[${LATEX_SOURCE_ATTR}]`),
+  )
+}
+
+function replaceLatexSourcesForMarkdown(containerEl: HTMLElement): void {
+  getLatexReplacementTargets(containerEl).forEach((element) => {
+    const latexSource = element.getAttribute(LATEX_SOURCE_ATTR)
+    if (!latexSource) {
+      return
+    }
+
+    const replacementNode = element.classList.contains('math-block')
+      ? document.createElement('p')
+      : document.createElement('span')
+    replacementNode.textContent = latexSource
+    element.replaceWith(replacementNode)
+  })
+}
+
+function serializeSelectionAsMarkdown(range: Range): string {
+  const fragment = range.cloneContents()
+  const container = document.createElement('div')
+  container.append(fragment)
+
+  replaceLatexSourcesForMarkdown(container)
+
+  return normalizeSerializedSelection(htmlToMarkdown(container.innerHTML))
+}
+
 function serializeFragmentNode(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent ?? ''
@@ -507,9 +542,9 @@ export function copySelectedLatex(
     return false
   }
 
-  const serializedSelection = normalizeSerializedSelection(
-    serializeSelectionRange(containerEl, range),
-  )
+  const serializedSelection =
+    serializeSelectionAsMarkdown(range) ||
+    normalizeSerializedSelection(serializeSelectionRange(containerEl, range))
 
   if (!serializedSelection || !event.clipboardData) {
     return false
