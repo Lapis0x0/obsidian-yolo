@@ -23,6 +23,7 @@ import {
   ToolCallDelta,
 } from '../../types/llm/response'
 import { getToolCallArgumentsText } from '../../types/tool-call.types'
+import { filterEmptyAssistantMessages } from '../../utils/chat/tool-boundary'
 
 function hasObjectProperty<T extends object, K extends PropertyKey>(
   value: T,
@@ -358,6 +359,8 @@ export class OpenAIMessageAdapter {
   }):
     | ChatCompletionCreateParamsStreaming
     | ChatCompletionCreateParamsNonStreaming {
+    const sanitizedMessages = filterEmptyAssistantMessages(request.messages)
+
     if (stream) {
       const streamOptions = hasObjectProperty(request, 'stream_options')
         ? ((request as Record<string, unknown>).stream_options as
@@ -372,7 +375,7 @@ export class OpenAIMessageAdapter {
         tool_choice: request.tool_choice,
         reasoning_effort: request.reasoning_effort,
         web_search_options: request.web_search_options,
-        messages: request.messages.map((m) => this.parseRequestMessage(m)),
+        messages: sanitizedMessages.map((m) => this.parseRequestMessage(m)),
         max_tokens: request.max_tokens,
         temperature: request.temperature,
         top_p: request.top_p,
@@ -393,7 +396,7 @@ export class OpenAIMessageAdapter {
       tool_choice: request.tool_choice,
       reasoning_effort: request.reasoning_effort,
       web_search_options: request.web_search_options,
-      messages: request.messages.map((m) => this.parseRequestMessage(m)),
+      messages: sanitizedMessages.map((m) => this.parseRequestMessage(m)),
       max_tokens: request.max_tokens,
       temperature: request.temperature,
       top_p: request.top_p,

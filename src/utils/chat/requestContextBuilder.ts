@@ -43,7 +43,10 @@ import {
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 
-import { filterRequestMessagesByToolBoundary } from './tool-boundary'
+import {
+  filterEmptyAssistantMessages,
+  filterRequestMessagesByToolBoundary,
+} from './tool-boundary'
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
@@ -242,7 +245,9 @@ export class RequestContextBuilder {
       requestMessages.push(...this.parseToolMessage({ message }))
     }
 
-    return filterRequestMessagesByToolBoundary(requestMessages)
+    return filterRequestMessagesByToolBoundary(
+      filterEmptyAssistantMessages(requestMessages),
+    )
   }
 
   private async getUserMessageContent({

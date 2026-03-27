@@ -70,4 +70,38 @@ describe('OpenAIMessageAdapter', () => {
     ])
     expect('tool_choice' in params).toBe(false)
   })
+
+  it('drops empty assistant shell messages before building chat params', () => {
+    const params = adapter.buildParams({
+      model: 'moonshot-v1-8k',
+      stream: false,
+      messages: [
+        {
+          role: 'user',
+          content: 'hello',
+        },
+        {
+          role: 'assistant',
+          content: '',
+        },
+        {
+          role: 'assistant',
+          content: 'world',
+        },
+      ],
+    }) as unknown as {
+      messages: Array<{ role: string; content: string }>
+    }
+
+    expect(params.messages).toEqual([
+      {
+        role: 'user',
+        content: 'hello',
+      },
+      {
+        role: 'assistant',
+        content: 'world',
+      },
+    ])
+  })
 })

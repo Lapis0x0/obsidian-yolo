@@ -1,7 +1,10 @@
 import type { RequestMessage } from '../../types/llm/request'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
-import { filterRequestMessagesByToolBoundary } from './tool-boundary'
+import {
+  filterEmptyAssistantMessages,
+  filterRequestMessagesByToolBoundary,
+} from './tool-boundary'
 
 const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
@@ -80,5 +83,29 @@ describe('filterRequestMessagesByToolBoundary', () => {
 
     expect(output).toHaveLength(3)
     expect(output.filter((message) => message.role === 'tool')).toHaveLength(2)
+  })
+})
+
+describe('filterEmptyAssistantMessages', () => {
+  it('drops assistant messages that have neither content nor tool calls', () => {
+    const input: RequestMessage[] = [
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: '' },
+      { role: 'assistant', content: 'answer' },
+    ]
+
+    expect(filterEmptyAssistantMessages(input)).toEqual([
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'answer' },
+    ])
+  })
+
+  it('keeps assistant messages with tool calls even when content is empty', () => {
+    const assistantMessage = assistantWithTools(['call-1'])
+    const input: RequestMessage[] = [
+      assistantMessage,
+    ]
+
+    expect(filterEmptyAssistantMessages(input)).toEqual(input)
   })
 })

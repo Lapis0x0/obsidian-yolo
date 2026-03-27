@@ -1,5 +1,24 @@
 import type { RequestMessage } from '../../types/llm/request'
 
+export const filterEmptyAssistantMessages = (
+  requestMessages: RequestMessage[],
+): RequestMessage[] => {
+  return requestMessages.filter((message) => {
+    if (message.role !== 'assistant') {
+      return true
+    }
+
+    const hasContent = message.content.trim().length > 0
+    const hasToolCalls =
+      (message.tool_calls ?? []).filter(
+        (toolCall) =>
+          typeof toolCall.id === 'string' && toolCall.id.trim().length > 0,
+      ).length > 0
+
+    return hasContent || hasToolCalls
+  })
+}
+
 export const filterRequestMessagesByToolBoundary = (
   requestMessages: RequestMessage[],
 ): RequestMessage[] => {
