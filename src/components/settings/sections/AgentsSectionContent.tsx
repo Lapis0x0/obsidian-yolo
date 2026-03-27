@@ -1,5 +1,5 @@
 import { BookOpen, Cpu, User, Wrench } from 'lucide-react'
-import { App } from 'obsidian'
+import { App, TFile } from 'obsidian'
 import {
   useCallback,
   useEffect,
@@ -27,6 +27,7 @@ import {
 import { parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
+  getLiteSkillDocument,
   LiteSkillEntry,
   listLiteSkillEntries,
 } from '../../../core/skills/liteSkills'
@@ -42,10 +43,16 @@ import {
   AssistantToolPreference,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
+import { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
+import {
+  estimateJsonTokens,
+  estimateTextTokens,
+  formatTokenCount,
+} from '../../../utils/llm/contextTokenEstimate'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -69,6 +76,12 @@ type AgentToolView = {
   toggleTargets: string[]
   displayName: string
   description: string
+}
+
+type SkillRowView = LiteSkillEntry & {
+  globallyDisabled: boolean
+  enabled: boolean
+  loadMode: AssistantSkillLoadMode
 }
 
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
@@ -182,6 +195,7 @@ const AGENT_MAX_CONTEXT_MESSAGES_RANGE = {
 const DEFAULT_MAX_CONTEXT_MESSAGES = 32
 
 const CUSTOM_PARAMETER_TYPES = ['text', 'number', 'boolean', 'json'] as const
+const skillDefaultContextTokenCache = new Map<string, number>()
 
 function clampTemperature(value: number): number {
   return Math.min(2, Math.max(0, value))
@@ -200,6 +214,72 @@ function clampMaxContextMessages(value: number): number {
     AGENT_MAX_CONTEXT_MESSAGES_RANGE.max,
     Math.max(AGENT_MAX_CONTEXT_MESSAGES_RANGE.min, Math.floor(value)),
   )
+}
+
+function buildToolTokenPayload(tool: McpTool): Record<string, unknown> {
+  return {
+    name: tool.name,
+    description: tool.description ?? '',
+    inputSchema: tool.inputSchema ?? {},
+  }
+}
+
+function buildSkillMetadataPrompt(skill: LiteSkillEntry): string {
+  return `- id: ${skill.id} | name: ${skill.name} | description: ${skill.description}`
+}
+
+function buildAlwaysOnSkillPrompt({
+  entry,
+  content,
+}: {
+  entry: LiteSkillEntry
+  content: string
+}): string {
+  return `<skill id="${entry.id}" name="${entry.name}" path="${entry.path}">
+${content}
+</skill>`
+}
+
+async function estimateSkillDefaultContextTokens({
+  app,
+  settings,
+  skill,
+}: {
+  app: App
+  settings: SmartComposerSettings
+  skill: SkillRowView
+}): Promise<number> {
+  if (skill.loadMode === 'lazy') {
+    return estimateTextTokens(buildSkillMetadataPrompt(skill))
+  }
+
+  const abstractFile = app.vault.getAbstractFileByPath(skill.path)
+  const cacheKey =
+    abstractFile instanceof TFile
+      ? `${skill.path}:${abstractFile.stat.mtime}:${skill.loadMode}`
+      : `${skill.path}:${skill.loadMode}`
+  const cached = skillDefaultContextTokenCache.get(cacheKey)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const document = await getLiteSkillDocument({
+    app,
+    id: skill.id,
+    settings,
+  })
+  if (!document) {
+    return 0
+  }
+
+  const count = estimateTextTokens(
+    buildAlwaysOnSkillPrompt({
+      entry: document.entry,
+      content: document.content,
+    }),
+  )
+  skillDefaultContextTokenCache.set(cacheKey, count)
+  return count
 }
 
 function createNewAgent(defaultModelId: string): Assistant {
@@ -804,6 +884,39 @@ export function AgentsSectionContent({
     )
   }, [draftAgent, visibleToolGroups])
 
+  const estimatedToolContextTokens = useMemo(() => {
+    if (!draftAgent?.enableTools) {
+      return 0
+    }
+
+    return availableTools.reduce((sum, tool) => {
+      let serverName = localFsServerName
+      try {
+        serverName = parseToolName(tool.name).serverName
+      } catch {
+        serverName = localFsServerName
+      }
+
+      if (
+        serverName === localFsServerName &&
+        draftAgent.includeBuiltinTools === false
+      ) {
+        return sum
+      }
+      if (!isAssistantToolEnabled(draftAgent, tool.name)) {
+        return sum
+      }
+
+      return sum + estimateJsonTokens(buildToolTokenPayload(tool))
+    }, 0)
+  }, [
+    availableTools,
+    draftAgent,
+    draftAgent?.enableTools,
+    draftAgent?.includeBuiltinTools,
+    localFsServerName,
+  ])
+
   const skillEntries = useMemo<LiteSkillEntry[]>(
     () => listLiteSkillEntries(app, { settings }),
     [app, settings],
@@ -834,6 +947,9 @@ export function AgentsSectionContent({
     })
   }, [disabledSkillIdSet, draftAgent, skillEntries])
 
+  const [estimatedSkillContextTokens, setEstimatedSkillContextTokens] =
+    useState<number | null>(null)
+
   const alwaysSkillRows = useMemo(
     () =>
       skillRows.filter((skill) => skill.enabled && skill.loadMode === 'always'),
@@ -844,6 +960,46 @@ export function AgentsSectionContent({
       skillRows.filter((skill) => skill.enabled && skill.loadMode === 'lazy'),
     [skillRows],
   )
+
+  useEffect(() => {
+    let cancelled = false
+
+    const run = async () => {
+      const enabledSkillRows = skillRows.filter((skill) => skill.enabled)
+      if (enabledSkillRows.length === 0) {
+        if (!cancelled) {
+          setEstimatedSkillContextTokens(0)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setEstimatedSkillContextTokens(null)
+      }
+
+      const counts = await Promise.all(
+        enabledSkillRows.map((skill) =>
+          estimateSkillDefaultContextTokens({
+            app,
+            settings,
+            skill,
+          }),
+        ),
+      )
+
+      if (!cancelled) {
+        setEstimatedSkillContextTokens(
+          counts.reduce((sum, count) => sum + count, 0),
+        )
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [app, settings, skillRows])
   const toolApprovalOptions = useMemo(
     () => [
       {
@@ -1166,8 +1322,19 @@ export function AgentsSectionContent({
                 }`}
               >
                 <div className="smtcmp-agent-tools-panel-head">
-                  <div className="smtcmp-agent-tools-panel-title">
-                    {t('settings.agent.tools', 'Tools')}
+                  <div className="smtcmp-agent-tools-panel-title-row">
+                    <div className="smtcmp-agent-tools-panel-title">
+                      {t('settings.agent.tools', 'Tools')}
+                    </div>
+                    <div className="smtcmp-agent-tools-panel-estimate">
+                      {t(
+                        'settings.agent.editorEstimatedContextTokens',
+                        '~{count} tokens',
+                      ).replace(
+                        '{count}',
+                        formatTokenCount(estimatedToolContextTokens),
+                      )}
+                    </div>
                   </div>
                   <div className="smtcmp-agent-tools-panel-count">
                     {`${enabledVisibleToolsCount} / ${visibleToolsCount} ${t(
@@ -1252,8 +1419,21 @@ export function AgentsSectionContent({
             <div className="smtcmp-agent-editor-body">
               <div className="smtcmp-agent-tools-panel">
                 <div className="smtcmp-agent-tools-panel-head">
-                  <div className="smtcmp-agent-tools-panel-title">
-                    {t('settings.agent.skills', 'Skills')}
+                  <div className="smtcmp-agent-tools-panel-title-row">
+                    <div className="smtcmp-agent-tools-panel-title">
+                      {t('settings.agent.skills', 'Skills')}
+                    </div>
+                    {estimatedSkillContextTokens !== null && (
+                      <div className="smtcmp-agent-tools-panel-estimate">
+                        {t(
+                          'settings.agent.editorEstimatedContextTokens',
+                          '~{count} tokens',
+                        ).replace(
+                          '{count}',
+                          formatTokenCount(estimatedSkillContextTokens),
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="smtcmp-agent-tools-panel-count">
                     {t(

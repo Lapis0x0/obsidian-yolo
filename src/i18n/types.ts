@@ -294,6 +294,7 @@ export type TranslationKeys = {
       editorCustomParametersKeyPlaceholder?: string
       editorCustomParametersValuePlaceholder?: string
       editorToolsCount?: string
+      editorEstimatedContextTokens?: string
       editorSkillsCount?: string
       editorSkillsCountWithEnabled?: string
       skillLoadAlways?: string

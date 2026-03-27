@@ -410,6 +410,7 @@ export const en: TranslationKeys = {
       editorCustomParametersKeyPlaceholder: 'Key',
       editorCustomParametersValuePlaceholder: 'Value',
       editorToolsCount: '{count} tools',
+      editorEstimatedContextTokens: '~{count} tokens',
       editorSkillsCount: '{count} skills',
       editorSkillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillLoadAlways: 'Full inject',

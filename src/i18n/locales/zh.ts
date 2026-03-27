@@ -371,6 +371,7 @@ export const zh: TranslationKeys = {
       editorCustomParametersKeyPlaceholder: '参数名',
       editorCustomParametersValuePlaceholder: '参数值',
       editorToolsCount: '{count} 个工具',
+      editorEstimatedContextTokens: '约 {count} tokens',
       editorSkillsCount: '{count} 个技能',
       editorSkillsCountWithEnabled: '{count} 个技能（已启用 {enabled} 个）',
       skillLoadAlways: '全量注入',

@@ -3922,6 +3922,19 @@
   font-weight: var(--font-medium);
 }
 
+.smtcmp-agent-tools-panel-title-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+  min-width: 0;
+}
+
+.smtcmp-agent-tools-panel-estimate {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
 .smtcmp-agent-tools-panel-count {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
