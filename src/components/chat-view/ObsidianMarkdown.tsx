@@ -146,27 +146,6 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
     }
   }, [])
 
-  useEffect(() => {
-    const containerEl = containerRef.current
-    if (!containerEl) {
-      return
-    }
-
-    const handleSelectionChange = () => {
-      syncRenderedLatexSelection(containerEl)
-    }
-
-    document.addEventListener('selectionchange', handleSelectionChange)
-    document.addEventListener('mouseup', handleSelectionChange)
-    document.addEventListener('keyup', handleSelectionChange)
-
-    return () => {
-      document.removeEventListener('selectionchange', handleSelectionChange)
-      document.removeEventListener('mouseup', handleSelectionChange)
-      document.removeEventListener('keyup', handleSelectionChange)
-    }
-  }, [])
-
   return (
     <div
       ref={containerRef}

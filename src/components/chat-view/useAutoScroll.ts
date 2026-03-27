@@ -196,6 +196,10 @@ export function useAutoScroll({
   }, [autoFollowState, isStreaming, requestFollow])
 
   useEffect(() => {
+    if (!isStreaming && !autoFollowState) {
+      return
+    }
+
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer || typeof MutationObserver === 'undefined') {
       return
@@ -234,7 +238,7 @@ export function useAutoScroll({
         handleAnimatedLayoutChange,
       )
     }
-  }, [requestFollow, scrollContainerRef])
+  }, [autoFollowState, isStreaming, requestFollow, scrollContainerRef])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current

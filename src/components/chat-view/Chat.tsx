@@ -83,6 +83,7 @@ import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
+import { syncRenderedLatexSelection } from './latex-copy'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
@@ -840,6 +841,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const bottomAnchorRef = useRef<HTMLDivElement>(null)
+  const latexSelectionSyncFrameRef = useRef<number | null>(null)
   const hasStreamingMessages = useMemo(
     () =>
       chatMessages.some(
@@ -877,6 +879,67 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const isCurrentConversationRunActive =
     currentConversationRunSummary.isRunning ||
     currentConversationRunSummary.isWaitingApproval
+
+  useEffect(() => {
+    const chatMessagesElement = chatMessagesRef.current
+    if (!chatMessagesElement) {
+      return
+    }
+
+    let didSelectionTouchChat = false
+
+    const syncLatexSelectionInView = () => {
+      latexSelectionSyncFrameRef.current = null
+
+      const selection = window.getSelection()
+      const selectionRoot =
+        selection?.rangeCount && !selection.isCollapsed
+          ? selection.getRangeAt(0).commonAncestorContainer
+          : null
+      const selectionTouchesChat = selectionRoot
+        ? chatMessagesElement.contains(selectionRoot)
+        : false
+
+      if (!selectionTouchesChat && !didSelectionTouchChat) {
+        return
+      }
+
+      didSelectionTouchChat = selectionTouchesChat
+
+      chatMessagesElement
+        .querySelectorAll<HTMLElement>('.smtcmp-markdown-rendered')
+        .forEach((containerEl) => {
+          syncRenderedLatexSelection(containerEl)
+        })
+    }
+
+    const scheduleLatexSelectionSync = () => {
+      if (latexSelectionSyncFrameRef.current !== null) {
+        return
+      }
+
+      latexSelectionSyncFrameRef.current = requestAnimationFrame(() => {
+        syncLatexSelectionInView()
+      })
+    }
+
+    document.addEventListener('selectionchange', scheduleLatexSelectionSync)
+    document.addEventListener('mouseup', scheduleLatexSelectionSync)
+    document.addEventListener('keyup', scheduleLatexSelectionSync)
+
+    return () => {
+      document.removeEventListener(
+        'selectionchange',
+        scheduleLatexSelectionSync,
+      )
+      document.removeEventListener('mouseup', scheduleLatexSelectionSync)
+      document.removeEventListener('keyup', scheduleLatexSelectionSync)
+      if (latexSelectionSyncFrameRef.current !== null) {
+        cancelAnimationFrame(latexSelectionSyncFrameRef.current)
+        latexSelectionSyncFrameRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const unsubscribe = plugin
