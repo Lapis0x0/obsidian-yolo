@@ -197,7 +197,10 @@ const findPreviewStartIndex = (content: string): number => {
 export const getTextEditPlanPreviewContent = (plan: TextEditPlan): string => {
   return plan.operations
     .map((operation) => {
-      if (operation.type === 'replace') {
+      if (
+        operation.type === 'replace' ||
+        operation.type === 'replace_lines'
+      ) {
         return operation.newText
       }
       return operation.content

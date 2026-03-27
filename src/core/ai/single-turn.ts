@@ -101,6 +101,14 @@ const isOptionalBooleanField = (
   return value === undefined || typeof value === 'boolean'
 }
 
+const isPositiveIntegerField = (
+  args: Record<string, unknown>,
+  key: string,
+): boolean => {
+  const value = args[key]
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+}
+
 const isValidFsEditOperation = (value: unknown): boolean => {
   if (!isObjectRecord(value)) {
     return false
@@ -114,6 +122,13 @@ const isValidFsEditOperation = (value: unknown): boolean => {
   if (operationType === 'insert_after') {
     return (
       isNonEmptyStringField(value, 'anchor') && isStringField(value, 'content')
+    )
+  }
+  if (operationType === 'replace_lines') {
+    return (
+      isPositiveIntegerField(value, 'startLine') &&
+      isPositiveIntegerField(value, 'endLine') &&
+      isStringField(value, 'newText')
     )
   }
   if (operationType === 'append') {

@@ -160,6 +160,38 @@ describe('local fs tool action helpers', () => {
     }
   })
 
+  it('supports fs_edit replace_lines operations', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const modify = jest.fn()
+    const read = jest.fn().mockResolvedValue(['one', 'two', 'three'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        operation: {
+          type: 'replace_lines',
+          startLine: 2,
+          endLine: 3,
+          newText: ['dos', 'tres'].join('\n'),
+        },
+      },
+    })
+
+    expect(result.status).toBe('success')
+    expect(modify).toHaveBeenCalledWith(file, ['one', 'dos', 'tres'].join('\n'))
+  })
+
   it('handles memory tools through local tool dispatcher', async () => {
     const entries = new Map<string, unknown>()
     const contents = new Map<string, string>()

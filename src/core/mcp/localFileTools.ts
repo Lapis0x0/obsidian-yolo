@@ -369,7 +369,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_edit',
       description:
-        'Apply exactly one text edit operation within a single existing file. Prefer this tool when modifying content in an existing file. Supports replace, insert_after, and append.',
+        'Apply exactly one text edit operation within a single existing file. Prefer this tool when modifying content in an existing file. Supports replace, replace_lines, insert_after, and append.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -380,11 +380,11 @@ export function getLocalFileTools(): McpTool[] {
           operation: {
             type: 'object',
             description:
-              'A single text edit operation to apply. Supports replace, insert_after, and append.',
+              'A single text edit operation to apply. Supports replace, replace_lines, insert_after, and append.',
             properties: {
               type: {
                 type: 'string',
-                enum: ['replace', 'insert_after', 'append'],
+                enum: ['replace', 'replace_lines', 'insert_after', 'append'],
               },
               oldText: {
                 type: 'string',
@@ -392,7 +392,15 @@ export function getLocalFileTools(): McpTool[] {
               },
               newText: {
                 type: 'string',
-                description: 'Required for replace.',
+                description: 'Required for replace and replace_lines.',
+              },
+              startLine: {
+                type: 'integer',
+                description: 'Required for replace_lines. 1-based inclusive start line.',
+              },
+              endLine: {
+                type: 'integer',
+                description: 'Required for replace_lines. 1-based inclusive end line.',
               },
               anchor: {
                 type: 'string',
@@ -872,6 +880,24 @@ const parseTextEditOperation = (
     }
   }
 
+  if (type === 'replace_lines') {
+    const startLine = asPositiveInteger(operation.startLine)
+    if (!startLine) {
+      throw new Error('operation.startLine must be a positive integer.')
+    }
+    const endLine = asPositiveInteger(operation.endLine)
+    if (!endLine) {
+      throw new Error('operation.endLine must be a positive integer.')
+    }
+
+    return {
+      type: 'replace_lines',
+      startLine,
+      endLine,
+      newText: getTextArg(operation, 'newText'),
+    }
+  }
+
   if (type === 'insert_after') {
     const anchor = getTextArg(operation, 'anchor')
     if (anchor.length === 0) {
@@ -894,7 +920,7 @@ const parseTextEditOperation = (
   }
 
   throw new Error(
-    `operation.type must be one of: replace, insert_after, append.`,
+    `operation.type must be one of: replace, replace_lines, insert_after, append.`,
   )
 }
 

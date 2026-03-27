@@ -611,4 +611,75 @@ describe('executeSingleTurn', () => {
       },
     ])
   })
+
+  it('accepts streamed fs_edit replace_lines arguments without fallback', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-replace-lines',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-replace-lines',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_edit',
+                      arguments:
+                        '{"path":"note.md","operation":{"type":"replace_lines","startLine":2,"endLine":4,"newText":"x\\ny"}}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-replace-lines',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+    })
+
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-replace-lines',
+        name: 'yolo_local__fs_edit',
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operation: {
+              type: 'replace_lines',
+              startLine: 2,
+              endLine: 4,
+              newText: 'x\ny',
+            },
+          },
+          '{"path":"note.md","operation":{"type":"replace_lines","startLine":2,"endLine":4,"newText":"x\\ny"}}',
+        ),
+        metadata: undefined,
+      },
+    ])
+  })
 })

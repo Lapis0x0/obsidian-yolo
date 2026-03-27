@@ -4,6 +4,7 @@ export type TextEditMatchMode =
   | 'escapedControlRecovery'
   | 'escapedControlRecoveryLineEndingAndTrimLineEnd'
   | 'fuzzyUniqueParagraph'
+  | 'lineRange'
   | 'append'
 
 export type ReplaceTextOperation = {
@@ -20,6 +21,13 @@ export type InsertAfterTextOperation = {
   expectedOccurrences?: number
 }
 
+export type ReplaceLinesTextOperation = {
+  type: 'replace_lines'
+  startLine: number
+  endLine: number
+  newText: string
+}
+
 export type AppendTextOperation = {
   type: 'append'
   content: string
@@ -28,6 +36,7 @@ export type AppendTextOperation = {
 export type TextEditOperation =
   | ReplaceTextOperation
   | InsertAfterTextOperation
+  | ReplaceLinesTextOperation
   | AppendTextOperation
 
 export type TextEditPlan = {
@@ -82,6 +91,26 @@ type ReplacementFailure = {
 
 type ReplacementResult = ReplacementAttempt | ReplacementFailure
 
+type LineRangeReplacementResult =
+  | {
+      ok: true
+      nextContent: string
+      matchMode: 'lineRange'
+      changed: boolean
+      matchedRange: {
+        start: number
+        end: number
+      }
+      newRange: {
+        start: number
+        end: number
+      }
+    }
+  | {
+      ok: false
+      error: string
+    }
+
 const FUZZY_REPLACE_SIMILARITY_THRESHOLD = 0.95
 const FUZZY_REPLACE_MIN_NORMALIZED_LENGTH = 30
 const FUZZY_REPLACE_LENGTH_RATIO_MIN = 0.7
@@ -92,6 +121,88 @@ const normalizeExpectedOccurrences = (value: number | undefined): number => {
     return 1
   }
   return Math.max(1, Math.floor(value))
+}
+
+const getLineStartOffsets = (content: string): number[] => {
+  const offsets = [0]
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === '\n') {
+      offsets.push(index + 1)
+    }
+  }
+  return offsets
+}
+
+const applyReplaceLinesOperation = ({
+  content,
+  startLine,
+  endLine,
+  newText,
+}: ReplaceLinesTextOperation & { content: string }): LineRangeReplacementResult => {
+  if (!Number.isInteger(startLine) || startLine < 1) {
+    return {
+      ok: false,
+      error: 'startLine must be a positive integer.',
+    }
+  }
+  if (!Number.isInteger(endLine) || endLine < 1) {
+    return {
+      ok: false,
+      error: 'endLine must be a positive integer.',
+    }
+  }
+  if (endLine < startLine) {
+    return {
+      ok: false,
+      error: 'endLine must be greater than or equal to startLine.',
+    }
+  }
+
+  const currentLines = content.split('\n')
+  const totalLines = currentLines.length
+  if (startLine > totalLines || endLine > totalLines) {
+    return {
+      ok: false,
+      error: `line range ${startLine}-${endLine} is out of bounds for ${totalLines} line(s).`,
+    }
+  }
+
+  const lineOffsets = getLineStartOffsets(content)
+  const matchedRangeStart = lineOffsets[startLine - 1] ?? 0
+  const matchedRangeEnd =
+    endLine < totalLines ? (lineOffsets[endLine] ?? content.length) : content.length
+
+  const replacementLines = newText.length === 0 ? [] : newText.split('\n')
+  const nextLines = [...currentLines]
+  nextLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines)
+  const nextContent = nextLines.join('\n')
+  const nextLineOffsets = getLineStartOffsets(nextContent)
+  const insertedEndLine = startLine + replacementLines.length - 1
+  const newRangeStart =
+    replacementLines.length === 0
+      ? Math.min(matchedRangeStart, nextContent.length)
+      : (nextLineOffsets[startLine - 1] ?? nextContent.length)
+  const newRangeEnd =
+    replacementLines.length === 0
+      ? newRangeStart
+      : insertedEndLine + 1 < nextLineOffsets.length
+        ? (nextLineOffsets[insertedEndLine] ?? nextContent.length)
+        : nextContent.length
+
+  return {
+    ok: true,
+    nextContent,
+    matchMode: 'lineRange',
+    changed: nextContent !== content,
+    matchedRange: {
+      start: matchedRangeStart,
+      end: matchedRangeEnd,
+    },
+    newRange: {
+      start: newRangeStart,
+      end: newRangeEnd,
+    },
+  }
 }
 
 const countOccurrences = (content: string, target: string): number => {
@@ -673,6 +784,34 @@ export const materializeTextEditPlan = ({
 
   for (let index = 0; index < plan.operations.length; index += 1) {
     const operation = plan.operations[index]
+
+    if (operation.type === 'replace_lines') {
+      const result = applyReplaceLinesOperation({
+        content: nextContent,
+        startLine: operation.startLine,
+        endLine: operation.endLine,
+        newText: operation.newText,
+        type: 'replace_lines',
+      })
+
+      if (!result.ok) {
+        errors.push(`Operation ${index + 1}: ${result.error}`)
+        continue
+      }
+
+      nextContent = result.nextContent
+      appliedCount += result.changed ? 1 : 0
+      operationResults.push({
+        operation,
+        actualOccurrences: 1,
+        expectedOccurrences: null,
+        matchMode: result.matchMode,
+        changed: result.changed,
+        matchedRange: result.matchedRange,
+        newRange: result.newRange,
+      })
+      continue
+    }
 
     if (operation.type === 'append') {
       const appendContent = operation.content

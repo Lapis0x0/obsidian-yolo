@@ -92,6 +92,76 @@ describe('materializeTextEditPlan', () => {
     })
   })
 
+  it('applies replace_lines operations by 1-based inclusive range', () => {
+    const result = materializeTextEditPlan({
+      content: ['# Title', 'alpha', 'beta', 'gamma'].join('\n'),
+      plan: {
+        operations: [
+          {
+            type: 'replace_lines',
+            startLine: 2,
+            endLine: 3,
+            newText: ['delta', 'epsilon'].join('\n'),
+          },
+        ],
+      },
+    })
+
+    expect(result.newContent).toBe(
+      ['# Title', 'delta', 'epsilon', 'gamma'].join('\n'),
+    )
+    expect(result.appliedCount).toBe(1)
+    expect(result.errors).toEqual([])
+    expect(result.operationResults[0]?.matchMode).toBe('lineRange')
+    expect(result.operationResults[0]?.matchedRange).toEqual({
+      start: 8,
+      end: 19,
+    })
+  })
+
+  it('deletes the requested line range when replace_lines newText is empty', () => {
+    const result = materializeTextEditPlan({
+      content: ['one', 'two', 'three'].join('\n'),
+      plan: {
+        operations: [
+          {
+            type: 'replace_lines',
+            startLine: 2,
+            endLine: 3,
+            newText: '',
+          },
+        ],
+      },
+    })
+
+    expect(result.newContent).toBe('one')
+    expect(result.appliedCount).toBe(1)
+    expect(result.errors).toEqual([])
+    expect(result.operationResults[0]?.newRange).toEqual({
+      start: 3,
+      end: 3,
+    })
+  })
+
+  it('rejects replace_lines operations when the requested lines are out of bounds', () => {
+    const result = materializeTextEditPlan({
+      content: ['a', 'b'].join('\n'),
+      plan: {
+        operations: [
+          {
+            type: 'replace_lines',
+            startLine: 2,
+            endLine: 3,
+            newText: 'x',
+          },
+        ],
+      },
+    })
+
+    expect(result.appliedCount).toBe(0)
+    expect(result.errors[0]).toContain('out of bounds')
+  })
+
   it('uses loose matching for smart quotes and line endings', () => {
     const result = materializeTextEditPlan({
       content: 'He said “hello”.\r\n',

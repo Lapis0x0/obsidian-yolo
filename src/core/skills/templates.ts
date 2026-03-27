@@ -192,7 +192,7 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 | \`fs_list\` | Inspect folder contents and vault structure |
 | \`fs_search\` | Find files by keyword or pattern |
 | \`fs_read\` | Read file contents |
-| \`fs_edit\` | Apply exactly one targeted text edit to an existing file (\`replace\`, \`insert_after\`, \`append\`) |
+| \`fs_edit\` | Apply exactly one targeted text edit to an existing file (\`replace\`, \`replace_lines\`, \`insert_after\`, \`append\`) |
 | \`fs_create_file\` | Create a file with provided content (supports \`dryRun\`) |
 | \`fs_delete_file\` | Delete a file path (supports \`dryRun\`) |
 | \`fs_create_dir\` | Create a directory path (supports \`dryRun\`) |
