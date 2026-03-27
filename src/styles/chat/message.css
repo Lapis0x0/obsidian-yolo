@@ -389,7 +389,7 @@
   flex-direction: column;
   gap: 2px;
   margin-top: 2px;
-  padding: 8px 12px;
+  padding: 8px 12px 6px;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l);
   background: color-mix(
@@ -430,13 +430,44 @@
     color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
 }
 
+.smtcmp-agent-edit-summary-item:last-child {
+  padding-bottom: 0;
+}
+
 .smtcmp-agent-edit-summary-path {
+  all: unset;
+  display: block;
   flex: 1 1 auto;
   min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  appearance: none !important;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
   color: var(--text-normal);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.smtcmp-agent-edit-summary-path:hover,
+.smtcmp-agent-edit-summary-path:focus-visible {
+  color: var(--interactive-accent);
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  outline: none;
 }
 
 .smtcmp-agent-edit-summary-added {

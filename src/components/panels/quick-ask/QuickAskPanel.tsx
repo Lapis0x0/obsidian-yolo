@@ -16,7 +16,7 @@ import {
   Square,
   X,
 } from 'lucide-react'
-import { Editor, Notice } from 'obsidian'
+import { Editor, Notice, TFile } from 'obsidian'
 import React, {
   useCallback,
   useEffect,
@@ -496,6 +496,19 @@ export function QuickAskPanel({
       !hasStreamingAssistantPlaceholder)
 
   const noop = useCallback(() => {}, [])
+  const handleOpenEditSummaryFile = useCallback(
+    (path: string) => {
+      const targetFile = app.vault.getAbstractFileByPath(path)
+      if (!(targetFile instanceof TFile)) {
+        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+        return
+      }
+
+      const leaf = app.workspace.getLeaf(false)
+      void leaf.openFile(targetFile)
+    },
+    [app.vault, app.workspace, t],
+  )
   const noopSetMentionables = useCallback((_items: Mentionable[]) => {}, [])
 
   const updateMentionMenuPlacement = useCallback(() => {
@@ -2038,6 +2051,7 @@ export function QuickAskPanel({
                   onDeleteGroup={handleDeleteGroup}
                   onBranchGroup={noop}
                   onQuoteAssistantSelection={noop}
+                  onOpenEditSummaryFile={handleOpenEditSummaryFile}
                   showQuoteAction={false}
                 />
               )

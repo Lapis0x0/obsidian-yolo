@@ -864,6 +864,7 @@ export type TranslationKeys = {
       undoPartial?: string
       undoUnavailable?: string
       undoFailed?: string
+      fileMissing?: string
     }
     showMore?: string
     showLess?: string

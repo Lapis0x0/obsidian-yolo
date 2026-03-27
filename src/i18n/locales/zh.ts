@@ -943,6 +943,7 @@ export const zh: TranslationKeys = {
       undoPartial: '部分文件已撤销，另一些文件因后续变更未覆盖。',
       undoUnavailable: '文件内容已变化，无法安全撤销本轮修改。',
       undoFailed: '撤销失败，请稍后重试。',
+      fileMissing: '文件不存在或已被移动。',
     },
     customRewritePromptPlaceholder:
       '输入你的改写指令，例如：“语气更简洁、采用主动语态，保留 Markdown 结构”。按 Shift+回车 确认，回车换行，Esc 关闭。',

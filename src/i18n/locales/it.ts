@@ -1009,6 +1009,7 @@ export const it: TranslationKeys = {
       undoUnavailable:
         'Il contenuto dei file e cambiato e questo turno non puo essere annullato in sicurezza.',
       undoFailed: 'Annullamento non riuscito. Riprova.',
+      fileMissing: 'Il file non esiste piu o e stato spostato.',
     },
     showMore: 'Mostra altro',
     showLess: 'Mostra meno',

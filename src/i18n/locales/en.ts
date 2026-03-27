@@ -1008,6 +1008,7 @@ export const en: TranslationKeys = {
       undoUnavailable:
         'File contents have changed, so this turn cannot be safely undone.',
       undoFailed: 'Undo failed. Please try again.',
+      fileMissing: 'The file no longer exists or has been moved.',
     },
     customRewritePromptPlaceholder:
       'Describe how to rewrite the selected text, for example: "make it concise and active voice; keep markdown structure"; press Shift+Enter to confirm, Enter for a new line, and Escape to close.',

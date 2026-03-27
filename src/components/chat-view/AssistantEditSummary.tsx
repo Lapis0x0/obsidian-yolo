@@ -13,11 +13,13 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
   undoingTargetKey,
   onUndo,
   onUndoFile,
+  onOpenFile,
 }: {
   summary: GroupEditSummary
   undoingTargetKey: string | null
   onUndo: () => void
   onUndoFile: (path: string) => void
+  onOpenFile: (path: string) => void
 }) {
   const { t } = useLanguage()
   const undoDisabled =
@@ -64,7 +66,14 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
       <div className="smtcmp-agent-edit-summary-list">
         {summary.files.map((file) => (
           <div key={file.path} className="smtcmp-agent-edit-summary-item">
-            <span className="smtcmp-agent-edit-summary-path">{file.path}</span>
+            <button
+              type="button"
+              className="smtcmp-agent-edit-summary-path"
+              onClick={() => onOpenFile(file.path)}
+              title={file.path}
+            >
+              {file.path}
+            </button>
             <span className="smtcmp-agent-edit-summary-added">
               {formatDelta(file.addedLines, '+')}
             </span>

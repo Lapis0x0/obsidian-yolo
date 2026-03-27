@@ -1946,6 +1946,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleOpenEditSummaryFile = useCallback(
+    (path: string) => {
+      const targetFile = app.vault.getAbstractFileByPath(path)
+      if (!(targetFile instanceof TFile)) {
+        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+        return
+      }
+
+      const leaf = app.workspace.getLeaf(false)
+      void leaf.openFile(targetFile)
+    },
+    [app.vault, app.workspace, t],
+  )
+
   const handleToolMessageUpdate = useCallback(
     (toolMessage: ChatToolMessage) => {
       const toolMessageIndex = chatMessages.findIndex(
@@ -2779,6 +2793,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 onDeleteGroup={handleAssistantMessageGroupDelete}
                 onBranchGroup={handleAssistantMessageGroupBranch}
                 onQuoteAssistantSelection={handleQuoteAssistantSelection}
+                onOpenEditSummaryFile={handleOpenEditSummaryFile}
                 onUndoEditSummary={handleUndoEditSummary}
                 undoingEditSummaryTarget={undoingEditSummaryTarget}
               />

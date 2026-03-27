@@ -47,6 +47,7 @@ export type AssistantToolMessageGroupItemProps = {
     conversationId: string
     content: string
   }) => void
+  onOpenEditSummaryFile: (path: string) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
 }
@@ -73,6 +74,7 @@ export default function AssistantToolMessageGroupItem({
   onDeleteGroup,
   onBranchGroup,
   onQuoteAssistantSelection,
+  onOpenEditSummaryFile,
   onUndoEditSummary,
   undoingEditSummaryTarget,
 }: AssistantToolMessageGroupItemProps) {
@@ -193,6 +195,7 @@ export default function AssistantToolMessageGroupItem({
                 : null
             }
             onUndo={() => onUndoEditSummary?.(groupEditSummary)}
+            onOpenFile={onOpenEditSummaryFile}
             onUndoFile={(path) =>
               onUndoEditSummary?.({
                 ...groupEditSummary,
