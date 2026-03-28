@@ -14,40 +14,40 @@ import { getLanguage } from 'obsidian'
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CHAT_VIEW_TYPE } from './constants'
+import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
+import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
+import { AgentConversationRunSummary, AgentService } from './core/agent/service'
 import {
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
 } from './core/auth/chatgptOAuthRuntime'
-import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
-import { AgentConversationRunSummary, AgentService } from './core/agent/service'
-import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
-import { relocateYoloManagedData } from './core/paths/yoloManagedData'
-import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
-import { NotificationService } from './core/notifications/notificationService'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
+import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
+import { NotificationService } from './core/notifications/notificationService'
+import { relocateYoloManagedData } from './core/paths/yoloManagedData'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
 import { DatabaseManager } from './database/DatabaseManager'
-import { ChatManager } from './database/json/chat/ChatManager'
 import { PGLiteAbortedException } from './database/exception'
+import { ChatManager } from './database/json/chat/ChatManager'
 import type { VectorManager } from './database/modules/vector/VectorManager'
-import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import {
   ChatLeafPlacement,
   ChatLeafSessionManager,
 } from './features/chat/chatLeafSessionManager'
+import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
+import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
+import type { QuickAskLaunchMode } from './features/editor/quick-ask/quickAsk.types'
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
-import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
-import type { QuickAskLaunchMode } from './features/editor/quick-ask/quickAsk.types'
 import {
   SmartSpaceController,
   SmartSpaceDraftState,

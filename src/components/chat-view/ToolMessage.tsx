@@ -23,9 +23,9 @@ import { SplitButton } from '../common/SplitButton'
 
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
 import {
+  type ToolDisplayInfo,
   getToolHeadlineParts,
   getToolHeadlineText,
-  type ToolDisplayInfo,
 } from './toolHeadline'
 
 export type TranslateFn = (keyPath: string, fallback?: string) => string

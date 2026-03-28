@@ -1,13 +1,14 @@
 import { App, TFile } from 'obsidian'
 
 import {
-  getBuiltinLiteSkillByIdOrName,
-  listBuiltinLiteSkills,
-} from './builtinSkills'
-import {
   YOLO_SKILLS_INDEX_FILE_NAME,
   getYoloSkillsDirPrefix,
 } from '../paths/yoloPaths'
+
+import {
+  getBuiltinLiteSkillByIdOrName,
+  listBuiltinLiteSkills,
+} from './builtinSkills'
 
 export type LiteSkillMode = 'lazy' | 'always'
 

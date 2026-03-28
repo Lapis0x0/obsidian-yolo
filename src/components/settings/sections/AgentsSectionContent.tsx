@@ -13,28 +13,29 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
-  getDefaultApprovalModeForTool,
   getAssistantToolApprovalMode,
   getAssistantToolPreferences,
+  getDefaultApprovalModeForTool,
   getEnabledAssistantToolNames,
   isAssistantToolEnabled,
 } from '../../../core/agent/tool-preferences'
 import {
-  getLocalFileToolServerName,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+  getLocalFileToolServerName,
 } from '../../../core/mcp/localFileTools'
 import { parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
-  getLiteSkillDocument,
   LiteSkillEntry,
+  getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../../../core/skills/liteSkills'
 import {
   getDisabledSkillIdSet,
   resolveAssistantSkillPolicy,
 } from '../../../core/skills/skillPolicy'
+import { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import {
   AgentPersona,
   Assistant,
@@ -43,7 +44,6 @@ import {
   AssistantToolPreference,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
-import { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,

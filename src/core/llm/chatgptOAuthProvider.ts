@@ -1,11 +1,9 @@
 import OpenAI from 'openai'
 import type {
-  Response,
   ResponseCreateParamsStreaming,
   ResponseStreamEvent,
 } from 'openai/resources/responses/responses'
 
-import { getChatGPTOAuthService } from '../auth/chatgptOAuthRuntime'
 import { ChatModel } from '../../types/chat-model.types'
 import {
   LLMOptions,
@@ -19,17 +17,18 @@ import {
 import { LLMProvider } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
+import { getChatGPTOAuthService } from '../auth/chatgptOAuthRuntime'
 
 import { BaseLLMProvider } from './base'
+import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
+import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import {
   createRequestTransportMemoryKey,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { OpenAIMessageAdapter } from './openaiMessageAdapter'
-import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
@@ -276,11 +275,11 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   ): Promise<LLMResponseNonStreaming> {
     for await (const event of stream) {
       if (event.type === 'response.completed') {
-        return this.adapter.parseResponse(event.response as Response)
+        return this.adapter.parseResponse(event.response)
       }
 
       if (event.type === 'response.incomplete') {
-        return this.adapter.parseResponse(event.response as Response)
+        return this.adapter.parseResponse(event.response)
       }
 
       if (event.type === 'response.failed') {

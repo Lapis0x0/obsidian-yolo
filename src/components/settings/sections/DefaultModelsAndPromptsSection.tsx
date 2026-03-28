@@ -2,8 +2,8 @@ import { useCallback, useMemo } from 'react'
 
 import {
   DEFAULT_CHAT_TITLE_PROMPT,
-  RECOMMENDED_MODELS_FOR_CHAT_TITLE,
   RECOMMENDED_MODELS_FOR_CHAT,
+  RECOMMENDED_MODELS_FOR_CHAT_TITLE,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'

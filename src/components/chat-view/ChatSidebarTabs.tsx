@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
+
 import Chat, { ChatProps, ChatRef } from './Chat'
 
 type ChatSidebarTabsProps = {

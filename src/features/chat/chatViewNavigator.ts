@@ -12,6 +12,7 @@ import { CHAT_VIEW_TYPE } from '../../constants'
 import type SmartComposerPlugin from '../../main'
 import type { MentionableBlockData } from '../../types/mentionable'
 import { getMentionableBlockData } from '../../utils/obsidian'
+
 import {
   ChatLeafPlacement,
   PendingChatOpenPayload,
@@ -128,7 +129,8 @@ export class ChatViewNavigator {
   }
 
   async openCurrentOrSidebarNewChat() {
-    const activeLeaf = this.plugin.app.workspace.activeLeaf
+    const activeLeaf =
+      this.plugin.app.workspace.getActiveViewOfType(ChatView)?.leaf ?? null
     if (activeLeaf?.view instanceof ChatView) {
       await this.activateChatLeaf(activeLeaf)
       activeLeaf.view.openNewChat()
@@ -306,7 +308,7 @@ export class ChatViewNavigator {
         const workspace = this.plugin.app.workspace
         const baseLeaf =
           workspace.getMostRecentLeaf(workspace.rootSplit) ??
-          workspace.activeLeaf ??
+          workspace.getActiveViewOfType(MarkdownView)?.leaf ??
           workspace.getLeaf(false)
 
         return workspace.createLeafBySplit(baseLeaf, 'vertical')

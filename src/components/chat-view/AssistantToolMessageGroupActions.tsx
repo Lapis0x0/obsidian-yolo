@@ -1,6 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { Check, CopyIcon, GitFork, Import, Pencil, Trash2 } from 'lucide-react'
-import { htmlToMarkdown, MarkdownView, Notice } from 'obsidian'
+import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
 import { useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'

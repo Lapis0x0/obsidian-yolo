@@ -1,5 +1,3 @@
-/* eslint-disable jsx-a11y/no-static-element-interactions -- Chat input uses wrapper divs for Lexical focus forwarding and pointer-only resize interactions */
-
 import {
   $createParagraphNode,
   $createTextNode,
@@ -48,8 +46,8 @@ import {
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 
-import LexicalContentEditable from './LexicalContentEditable'
 import ChatSkillBadge from './ChatSkillBadge'
+import LexicalContentEditable from './LexicalContentEditable'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
 import {

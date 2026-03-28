@@ -11,10 +11,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
-import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
+import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
 
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'

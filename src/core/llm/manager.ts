@@ -1,7 +1,6 @@
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMProvider } from '../../types/provider.types'
-import { AutoPromotedTransportMode } from './requestTransport'
 
 import { AnthropicProvider } from './anthropic'
 import { AzureOpenAIProvider } from './azureOpenaiProvider'
@@ -19,6 +18,7 @@ import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 import { OpenAIResponsesProvider } from './openaiResponsesProvider'
 import { OpenRouterProvider } from './openRouterProvider'
 import { PerplexityProvider } from './perplexityProvider'
+import { AutoPromotedTransportMode } from './requestTransport'
 
 /*
  * OpenAI, OpenAI-compatible, and Anthropic providers include token usage statistics

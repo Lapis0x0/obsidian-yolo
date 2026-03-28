@@ -124,7 +124,9 @@ describe('ChatGPTOAuthService', () => {
 
     expect(credential.refreshToken).toBe('refresh-2')
     expect(credential.accountId).toBe('acc-3')
-    expect(store.set).toHaveBeenCalledWith(credential)
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const setMock = store.set
+    expect(setMock).toHaveBeenCalledWith(credential)
   })
 
   it('returns stored credential when still valid', async () => {

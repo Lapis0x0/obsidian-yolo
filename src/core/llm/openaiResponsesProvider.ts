@@ -16,10 +16,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
-import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 
 import { BaseLLMProvider } from './base'
 import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
@@ -83,9 +83,8 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
 
     return {
       ...request,
-      reasoning_effort: reasoningEffort as
-        | LLMRequestNonStreaming['reasoning_effort']
-        | LLMRequestStreaming['reasoning_effort'],
+      reasoning_effort:
+        reasoningEffort as LLMRequestNonStreaming['reasoning_effort'],
     }
   }
 
@@ -166,7 +165,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
         ) as ResponseCreateParamsStreaming,
       )
 
-      const response = (await runWithRequestTransport({
+      const response = await runWithRequestTransport({
         mode: this.requestTransportMode,
         memoryKey: this.requestTransportMemoryKey,
         onAutoPromoteTransportMode: this.promoteTransportMode,
@@ -182,7 +181,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
           this.nodeClient.responses.create(body as never, {
             signal: options?.signal,
           }) as Promise<Response>,
-      })) as Response
+      })
       return this.adapter.parseResponse(response)
     } catch (error) {
       if (error instanceof OpenAI.AuthenticationError) {
@@ -216,7 +215,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       ) as ResponseCreateParamsStreaming,
     )
 
-    const stream = (await runWithRequestTransportForStream({
+    const stream = await runWithRequestTransportForStream({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
@@ -233,7 +232,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
         this.nodeClient.responses.create(body, {
           signal: signal ?? options?.signal,
         }) as Promise<AsyncIterable<ResponseStreamEvent>>,
-    })) as AsyncIterable<ResponseStreamEvent>
+    })
     const adapter = this.adapter
 
     return {

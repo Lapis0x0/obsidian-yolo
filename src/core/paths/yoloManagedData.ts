@@ -1,9 +1,9 @@
 import { App, normalizePath } from 'obsidian'
 
 import {
-  getYoloBaseDir,
   getLegacyJsonDbRootDir,
   getLegacyVectorDbPath,
+  getYoloBaseDir,
   getYoloJsonDbRootDir,
   getYoloVectorDbPath,
 } from './yoloPaths'

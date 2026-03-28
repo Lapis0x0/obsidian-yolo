@@ -25,7 +25,7 @@ function BadgeBase({
   onClick,
   isFocused,
   title,
-  isExpanded,
+  isExpanded: _isExpanded,
   onToggleExpand,
   showExpandButton = false,
   showDeleteButton = true,

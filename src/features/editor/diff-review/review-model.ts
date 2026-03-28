@@ -1,10 +1,10 @@
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import {
-  createDiffBlocks,
-  createLineDiffBlocks,
   type DiffBlock,
   type InlineDiffLine,
   type InlineDiffToken,
+  createDiffBlocks,
+  createLineDiffBlocks,
 } from '../../../utils/chat/diff'
 
 export type ReviewDecision = 'pending' | 'incoming' | 'current'

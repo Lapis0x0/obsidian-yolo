@@ -12,12 +12,12 @@ import {
   embeddingModelSchema,
 } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
+import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
+import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
 import {
   ensureUniqueModelId,
   generateModelId,
 } from '../../../utils/model-id-utils'
-import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
-import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -94,7 +94,6 @@ function AddEmbeddingModelModalComponent({
   const selectedProvider: LLMProvider | undefined =
     provider ?? plugin.settings.providers[0]
   const initialProviderId = selectedProvider?.id ?? ''
-  const initialProviderType = selectedProvider?.apiType ?? 'openai-compatible'
   const [formData, setFormData] = useState<Omit<EmbeddingModel, 'dimension'>>({
     providerId: initialProviderId,
     id: '',

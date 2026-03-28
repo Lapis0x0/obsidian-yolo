@@ -149,7 +149,8 @@ export class SelectionChatController {
   }
 
   initialize() {
-    const activeLeaf = this.app.workspace.activeLeaf ?? null
+    const activeLeaf =
+      this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? null
     this.lastActiveLeafWasMarkdown = !!(
       activeLeaf?.view instanceof MarkdownView
     )
@@ -559,7 +560,8 @@ export class SelectionChatController {
           selection.empty ||
           view.hasFocus ||
           !targetLeaf ||
-          this.app.workspace.activeLeaf !== targetLeaf
+          this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf !==
+            targetLeaf
         ) {
           return
         }

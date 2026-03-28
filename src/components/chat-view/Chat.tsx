@@ -34,7 +34,6 @@ import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { isAssistantToolEnabled } from '../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
-import { getChatModelClient } from '../../core/llm/manager'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
@@ -57,17 +56,17 @@ import type {
 } from '../../types/mentionable'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import {
-  getBlockContentHash,
-  getBlockMentionableCountInfo,
-  getMentionableKey,
-  serializeMentionable,
-} from '../../utils/chat/mentionable'
-import {
   type GroupEditSummary,
   deriveToolEditUndoStatus,
   updateToolMessageEditSummary,
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import {
+  getBlockContentHash,
+  getBlockMentionableCountInfo,
+  getMentionableKey,
+  serializeMentionable,
+} from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { readTFileContent } from '../../utils/obsidian'
@@ -87,9 +86,9 @@ import type { ReasoningLevel } from './chat-input/ReasoningSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
+import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
-import { syncRenderedLatexSelection } from './latex-copy'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'

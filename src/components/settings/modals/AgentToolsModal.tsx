@@ -7,9 +7,9 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import {
-  getLocalFileTools,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+  getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'

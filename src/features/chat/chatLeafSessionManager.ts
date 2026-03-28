@@ -126,7 +126,7 @@ export class ChatLeafSessionManager {
     const candidates = this.getRegisteredLeaves(options.placement)
 
     if (preferActiveChatLeaf) {
-      const activeLeaf = this.app.workspace.activeLeaf
+      const activeLeaf = this.app.workspace.getMostRecentLeaf()
       if (activeLeaf && candidates.includes(activeLeaf)) {
         return activeLeaf
       }

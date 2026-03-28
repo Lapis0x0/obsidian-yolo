@@ -34,7 +34,9 @@ describe('AgentToolGateway', () => {
     expect(message.toolCalls[0]?.response.status).toBe(
       ToolCallResponseStatus.Running,
     )
-    expect(mcpManager.isToolExecutionAllowed).toHaveBeenCalledWith({
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
       requestToolName: 'server__tool_a',
       conversationId: 'conv-1',
       requestArgs: {},
@@ -67,7 +69,9 @@ describe('AgentToolGateway', () => {
     expect(message.toolCalls[0]?.response.status).toBe(
       ToolCallResponseStatus.PendingApproval,
     )
-    expect(mcpManager.isToolExecutionAllowed).toHaveBeenCalledWith({
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
       requestToolName: 'server__tool_a',
       conversationId: 'conv-1',
       requestArgs: {},
@@ -134,7 +138,9 @@ describe('AgentToolGateway', () => {
 
     await gateway.executeAutoToolCalls({ toolMessage: message })
 
-    expect(mcpManager.callTool).toHaveBeenCalledWith({
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const callToolMock = mcpManager.callTool
+    expect(callToolMock).toHaveBeenCalledWith({
       name: 'yolo_local__fs_edit',
       args: {},
       id: 'tool-1',

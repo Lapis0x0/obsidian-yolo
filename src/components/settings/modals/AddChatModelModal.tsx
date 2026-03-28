@@ -2,8 +2,8 @@ import { GoogleGenAI } from '@google/genai'
 import { App, Notice, requestUrl } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
-import { useLanguage } from '../../../contexts/language-context'
 import { DEFAULT_CHAT_MODELS } from '../../../constants'
+import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel, chatModelSchema } from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
@@ -12,13 +12,13 @@ import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
+import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
+import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
 import {
   detectReasoningTypeFromModelId,
   ensureUniqueModelId,
   generateModelId,
 } from '../../../utils/model-id-utils'
-import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
-import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -128,23 +128,6 @@ const isReasoningType = (value: string): value is ReasoningType =>
 const isToolType = (value: string): value is ToolType =>
   TOOL_TYPES.includes(value as ToolType)
 
-type ReasoningConfigurableModel = Extract<
-  ChatModel,
-  {
-    reasoning?: { enabled: boolean; reasoning_effort?: string }
-  }
->
-type ThinkingConfigurableModel = Extract<
-  ChatModel,
-  {
-    thinking?: {
-      enabled: boolean
-      budget_tokens?: number
-      thinking_budget?: number
-    }
-  }
->
-
 const isReasoningConfigurable = (
   provider: LLMProvider | undefined,
 ): provider is LLMProvider =>
@@ -188,7 +171,6 @@ function AddChatModelModalComponent({
   const selectedProvider: LLMProvider | undefined =
     provider ?? plugin.settings.providers[0]
   const initialProviderId = selectedProvider?.id ?? ''
-  const initialProviderType = selectedProvider?.apiType ?? 'openai-compatible'
   const [formData, setFormData] = useState<ChatModel>({
     providerId: initialProviderId,
     id: '',

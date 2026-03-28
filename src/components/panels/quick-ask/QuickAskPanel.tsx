@@ -33,18 +33,20 @@ import { useMcp } from '../../../contexts/mcp-context'
 import { useRAG } from '../../../contexts/rag-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
+import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
+import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
+import type {
+  QuickAskLaunchMode,
+  QuickAskSelectionScope,
+} from '../../../features/editor/quick-ask/quickAsk.types'
 import { useBufferedRunnerMessages } from '../../../hooks/useBufferedRunnerMessages'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
-import type {
-  QuickAskLaunchMode,
-  QuickAskSelectionScope,
-} from '../../../features/editor/quick-ask/quickAsk.types'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
@@ -58,8 +60,6 @@ import {
   SerializedMentionable,
 } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
-import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
-import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
@@ -509,8 +509,6 @@ export function QuickAskPanel({
     },
     [app.vault, app.workspace, t],
   )
-  const noopSetMentionables = useCallback((_items: Mentionable[]) => {}, [])
-
   const updateMentionMenuPlacement = useCallback(() => {
     const container = inputRowRef.current
     if (!container) return
@@ -1424,14 +1422,8 @@ export function QuickAskPanel({
 
         const { materialized, currentContent, selectionFrom, selectedContext } =
           editResult
-        const {
-          newContent,
-          errors,
-          appliedCount,
-          operationResults,
-          totalOperations,
-          finalContent,
-        } = materialized
+        const { errors, appliedCount, totalOperations, finalContent } =
+          materialized
 
         if (appliedCount === 0) {
           console.error('[QuickAsk Edit] Edit plan did not produce changes.', {
@@ -1543,13 +1535,8 @@ export function QuickAskPanel({
         }
 
         const { materialized } = editResult
-        const {
-          errors,
-          appliedCount,
-          operationResults,
-          totalOperations,
-          finalContent,
-        } = materialized
+        const { errors, appliedCount, totalOperations, finalContent } =
+          materialized
 
         if (appliedCount === 0) {
           console.error(

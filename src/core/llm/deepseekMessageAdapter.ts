@@ -4,11 +4,11 @@ import {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
 
+import { RequestMessage } from '../../types/llm/request'
 import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { RequestMessage } from '../../types/llm/request'
 
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 

@@ -1,6 +1,5 @@
-import type { SettingMigration } from '../setting.types'
-
 import { getDefaultApprovalModeForTool } from '../../../core/agent/tool-preferences'
+import type { SettingMigration } from '../setting.types'
 
 const migrateProviderAdditionalSettings = (
   provider: Record<string, unknown>,

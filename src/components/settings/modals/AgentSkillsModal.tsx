@@ -6,11 +6,11 @@ import {
   SettingsProvider,
   useSettings,
 } from '../../../contexts/settings-context'
-import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import {
   getYoloSkillsDir,
   getYoloSkillsIndexPath,
 } from '../../../core/paths/yoloPaths'
+import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { YOLO_SKILLS_INDEX_TEMPLATE } from '../../../core/skills/templates'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'

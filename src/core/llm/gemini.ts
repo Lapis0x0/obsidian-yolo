@@ -875,7 +875,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
 
   private static serializeAssistantParts(
     parts: GeminiPart[] | undefined,
-    functionCalls?: GeminiFunctionCallWithMetadata[] | undefined,
+    functionCalls?: GeminiFunctionCallWithMetadata[],
   ): GeminiAssistantPart[] {
     const serialized: GeminiAssistantPart[] = []
 
@@ -917,7 +917,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
             ...(call.args &&
             typeof call.args === 'object' &&
             !Array.isArray(call.args)
-              ? { args: call.args as Record<string, unknown> }
+              ? { args: call.args }
               : {}),
             ...(thoughtSignature ? { thoughtSignature } : {}),
           })
@@ -939,7 +939,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
           ...(call.args &&
           typeof call.args === 'object' &&
           !Array.isArray(call.args)
-            ? { args: call.args as Record<string, unknown> }
+            ? { args: call.args }
             : {}),
           ...(typeof call.thoughtSignature === 'string'
             ? { thoughtSignature: call.thoughtSignature }

@@ -10,6 +10,7 @@ import type {
   ApplyViewCallbacks,
   ApplyViewState,
 } from '../../../types/apply-view.types'
+
 import { buildInlineReviewBlocks, countModifiedBlocks } from './review-model'
 
 const INLINE_DIFF_REVIEW_THRESHOLD = 3

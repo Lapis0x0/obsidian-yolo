@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 import {
-  DEFAULT_CHAT_TITLE_MODEL_ID,
   DEFAULT_CHAT_MODELS,
+  DEFAULT_CHAT_TITLE_MODEL_ID,
 } from '../../constants'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'

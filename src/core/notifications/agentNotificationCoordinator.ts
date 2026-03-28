@@ -1,5 +1,5 @@
-import type { AgentConversationState, AgentService } from '../agent/service'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import type { AgentConversationState, AgentService } from '../agent/service'
 
 import type { NotificationService } from './notificationService'
 

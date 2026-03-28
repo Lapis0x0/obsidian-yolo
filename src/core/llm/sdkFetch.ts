@@ -1,5 +1,7 @@
-import { Platform } from 'obsidian'
+// eslint-disable-next-line import/no-nodejs-modules -- Desktop transport needs RequestOptions agent typing from Node HTTP
 import type { RequestOptions } from 'node:http'
+
+import { Platform } from 'obsidian'
 
 import type { RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
@@ -16,6 +18,7 @@ export type DesktopNodeFetchOptions = {
 
 const loadNodeFetch = async (): Promise<typeof fetch> => {
   if (!nodeFetchPromise) {
+    // eslint-disable-next-line import/no-extraneous-dependencies -- Desktop transport loads node-fetch explicitly at runtime
     nodeFetchPromise = import('node-fetch/lib/index.js').then(
       (module) =>
         ((module as unknown as { default?: typeof fetch }).default ??

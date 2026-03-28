@@ -1,6 +1,7 @@
 import type { SSEClientTransportOptions } from '@modelcontextprotocol/sdk/client/sse.js'
 import type { StreamableHTTPClientTransportOptions } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { ProxyAgent } from 'proxy-agent'
+// eslint-disable-next-line import/no-extraneous-dependencies -- Desktop MCP transport honors proxy environment variables when present
 import { getProxyForUrl } from 'proxy-from-env'
 
 import type { McpServerParameters } from '../../types/mcp.types'

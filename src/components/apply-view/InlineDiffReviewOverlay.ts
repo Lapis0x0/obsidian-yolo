@@ -11,13 +11,13 @@ import {
   WidgetType,
 } from '@codemirror/view'
 
-import type SmartComposerPlugin from '../../main'
 import {
+  type ReviewDecision,
   buildInlineReviewBlocks,
   countOriginalLines,
-  type ReviewDecision,
 } from '../../features/editor/diff-review/review-model'
 import { ReviewSession } from '../../features/editor/diff-review/review-session'
+import type SmartComposerPlugin from '../../main'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import { type DiffBlock, type InlineDiffToken } from '../../utils/chat/diff'
 
@@ -274,7 +274,6 @@ export class InlineDiffReviewOverlay {
   private onKeydown: ((event: KeyboardEvent) => void) | null = null
   private onEditorMouseDownCapture: ((event: MouseEvent) => void) | null = null
   private previousActiveElement: HTMLElement | null = null
-  private previousCaretColor = ''
   private onAbort: (() => void) | null = null
 
   constructor(private readonly options: InlineDiffReviewOverlayOptions) {
@@ -368,30 +367,14 @@ export class InlineDiffReviewOverlay {
     root.className = 'smtcmp-inline-review-floating-root'
     root.tabIndex = -1
     root.setAttribute('aria-label', 'Inline review controls')
-    root.style.position = 'absolute'
-    root.style.inset = '0'
-    root.style.pointerEvents = 'none'
-    root.style.overflow = 'visible'
-    root.style.zIndex = '8'
 
     const rail = document.createElement('div')
     rail.className = 'smtcmp-inline-review-floating-rail'
-    rail.style.position = 'absolute'
-    rail.style.width = '2px'
-    rail.style.borderRadius = '999px'
-    rail.style.background =
-      'color-mix(in srgb, var(--interactive-accent) 65%, transparent)'
-    rail.style.opacity = '0.95'
     rail.style.transition = FLOATING_RAIL_POSITION_TRANSITION
     root.appendChild(rail)
 
     const actions = document.createElement('div')
     actions.className = 'smtcmp-inline-review-floating-actions'
-    actions.style.position = 'absolute'
-    actions.style.display = 'flex'
-    actions.style.flexDirection = 'column'
-    actions.style.gap = '10px'
-    actions.style.pointerEvents = 'auto'
     actions.style.transition = FLOATING_ACTIONS_POSITION_TRANSITION
     actions.appendChild(
       createActionButton('×', 'Accept current', () =>
@@ -415,8 +398,6 @@ export class InlineDiffReviewOverlay {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null
-    this.previousCaretColor = this.options.view.contentDOM.style.caretColor
-    this.options.view.contentDOM.style.caretColor = 'transparent'
     this.options.view.contentDOM.blur()
     root.focus({ preventScroll: true })
 
@@ -507,7 +488,6 @@ export class InlineDiffReviewOverlay {
     this.floatingRail = null
     this.floatingActions = null
     this.options.view.dom.classList.remove('smtcmp-inline-review-host')
-    this.options.view.contentDOM.style.caretColor = this.previousCaretColor
 
     if (this.previousActiveElement?.isConnected) {
       this.previousActiveElement.focus({ preventScroll: true })

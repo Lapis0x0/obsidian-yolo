@@ -1,11 +1,5 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
-import {
-  materializeTextEditPlan,
-  recoverLikelyEscapedBackslashSequences,
-  type TextEditOperation,
-  type TextEditPlan,
-} from '../edits/textEditEngine'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import { McpTool } from '../../types/mcp.types'
@@ -13,18 +7,21 @@ import {
   ToolCallResponseStatus,
   type ToolEditSummary,
 } from '../../types/tool-call.types'
-import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { createToolEditSummary } from '../../utils/chat/editSummary'
+import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import {
-  getLiteSkillDocument,
-  listLiteSkillEntries,
-} from '../skills/liteSkills'
+  type TextEditOperation,
+  type TextEditPlan,
+  materializeTextEditPlan,
+  recoverLikelyEscapedBackslashSequences,
+} from '../edits/textEditEngine'
 import {
+  type MemoryScope,
   memoryAdd,
   memoryDelete,
   memoryUpdate,
-  type MemoryScope,
 } from '../memory/memoryManager'
+import { getLiteSkillDocument } from '../skills/liteSkills'
 
 export { recoverLikelyEscapedBackslashSequences }
 

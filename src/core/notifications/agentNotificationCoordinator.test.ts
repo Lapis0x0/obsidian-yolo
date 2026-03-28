@@ -1,8 +1,8 @@
-import type { AgentConversationState } from '../agent/service'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import type { NotificationEvent } from './notificationService'
+import type { AgentConversationState } from '../agent/service'
 
 import { AgentNotificationCoordinator } from './agentNotificationCoordinator'
+import type { NotificationEvent } from './notificationService'
 
 const createState = (
   overrides: Partial<AgentConversationState> = {},
@@ -40,7 +40,7 @@ const createPendingApprovalState = (
 describe('AgentNotificationCoordinator', () => {
   it('does not notify for initial pending approvals and marks them as seen', () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
-    const markApprovalKeysAsSeen = jest.fn<void, [Iterable<string>]>()
+    const markApprovalKeysAsSeen = jest.fn((_keys: Iterable<string>) => {})
     const notify = jest
       .fn<Promise<void>, [NotificationEvent]>()
       .mockResolvedValue()

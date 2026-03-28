@@ -4,8 +4,6 @@ import { useState } from 'react'
 import { PROVIDER_API_INFO, PROVIDER_PRESET_INFO } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
-import { chatModelSchema } from '../../../types/chat-model.types'
-import { embeddingModelSchema } from '../../../types/embedding-model.types'
 import {
   LLMProvider,
   ProviderHeader,
@@ -13,8 +11,8 @@ import {
   getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from '../../../types/provider.types'
-import { sanitizeProviderHeaders } from '../../../utils/llm/provider-headers'
 import { getRequestTransportModeValue } from '../../../utils/llm/provider-config'
+import { sanitizeProviderHeaders } from '../../../utils/llm/provider-headers'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -125,9 +123,6 @@ function ProviderFormComponent({
         const providerIdChanged = provider.id !== validatedProvider.id
         const providerPresetChanged =
           provider.presetType !== validatedProvider.presetType
-        const providerApiTypeChanged =
-          provider.apiType !== validatedProvider.apiType
-
         const updatedProviders = [...plugin.settings.providers]
         updatedProviders[providerIndex] = validatedProvider
 
@@ -363,9 +358,7 @@ function ProviderFormComponent({
             ) : setting.type === 'select' ? (
               <ObsidianDropdown
                 value={getRequestTransportModeValue(
-                  formData.additionalSettings as
-                    | Record<string, unknown>
-                    | undefined,
+                  formData.additionalSettings,
                 )}
                 options={requestTransportOptions}
                 onChange={(value: string) =>

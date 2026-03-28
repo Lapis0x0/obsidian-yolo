@@ -9,8 +9,8 @@ import {
   isDefaultAssistantId,
 } from '../../core/agent/default-assistant'
 import { Assistant } from '../../types/assistant.types'
-import { getNodeBody } from '../../utils/dom/window-context'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
+import { getNodeBody } from '../../utils/dom/window-context'
 
 type AssistantSelectorProps = {
   currentAssistantId?: string

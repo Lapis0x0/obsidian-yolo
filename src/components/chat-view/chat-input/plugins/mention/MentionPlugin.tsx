@@ -31,8 +31,8 @@ import {
 import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
-import { useLanguage } from '../../../../../contexts/language-context'
 import { useApp } from '../../../../../contexts/app-context'
+import { useLanguage } from '../../../../../contexts/language-context'
 import { Assistant } from '../../../../../types/assistant.types'
 import {
   Mentionable,

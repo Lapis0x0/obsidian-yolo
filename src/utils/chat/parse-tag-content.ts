@@ -36,23 +36,6 @@ const ATTRIBUTE_PATTERN = /([A-Za-z0-9_-]+)="([^"]*)"/g
 const SMTCMP_CLOSE_TAG = '</smtcmp_block>'
 const THINK_CLOSE_TAG = '</think>'
 
-const isStandaloneTag = ({
-  input,
-  start,
-  end,
-}: {
-  input: string
-  start: number
-  end: number
-}): boolean => {
-  const lineStart = input.lastIndexOf('\n', start - 1) + 1
-  const lineEndIndex = input.indexOf('\n', end)
-  const lineEnd = lineEndIndex === -1 ? input.length : lineEndIndex
-  const before = input.slice(lineStart, start)
-  const after = input.slice(end, lineEnd)
-  return /^[ \t]*$/.test(before) && /^[ \t]*$/.test(after)
-}
-
 const isStandaloneSmtcmpOpenTag = ({
   input,
   start,

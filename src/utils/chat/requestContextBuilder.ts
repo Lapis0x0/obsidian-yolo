@@ -42,13 +42,13 @@ import {
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { getNestedFiles, readTFileContent } from '../obsidian'
+import { resolvePromptVariables } from '../prompt/promptVariables'
 
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
 } from './tool-boundary'
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
-import { resolvePromptVariables } from '../prompt/promptVariables'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
@@ -80,7 +80,7 @@ export class RequestContextBuilder {
     hasTools = false,
     hasMemoryTools = false,
     maxContextOverride,
-    model,
+    model: _model,
     conversationId,
     currentFileContextMode = 'full',
     currentFileOverride,

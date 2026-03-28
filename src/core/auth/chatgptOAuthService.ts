@@ -1,10 +1,13 @@
+// eslint-disable-next-line import/no-nodejs-modules -- Local OAuth callback server requires Node's HTTP server on desktop
 import {
-  createServer,
+  type IncomingMessage,
   type Server,
   type ServerResponse,
-  type IncomingMessage,
+  createServer,
 } from 'node:http'
+// eslint-disable-next-line import/no-nodejs-modules -- AddressInfo is used with the local desktop OAuth callback server
 import type { AddressInfo } from 'node:net'
+
 import { requestUrl } from 'obsidian'
 
 import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
@@ -16,7 +19,7 @@ const DEVICE_CODE_POLL_MARGIN_MS = 3000
 const BROWSER_OAUTH_PORTS = [1455, 1456, 1457]
 const OAUTH_CALLBACK_HOST = 'localhost'
 
-interface PkceCodes {
+type PkceCodes = {
   verifier: string
   challenge: string
 }
@@ -63,7 +66,7 @@ export type ChatGPTOAuthBrowserAuthorization = {
   complete: Promise<ChatGPTOAuthCredential>
 }
 
-export interface IdTokenClaims {
+export type IdTokenClaims = {
   chatgpt_account_id?: string
   organizations?: Array<{ id: string }>
   'https://api.openai.com/auth'?: {

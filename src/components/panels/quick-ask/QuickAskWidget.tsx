@@ -3,6 +3,7 @@ import { Editor } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
+import { ChatView } from '../../../ChatView'
 import { AppProvider } from '../../../contexts/app-context'
 import { ChatViewProvider } from '../../../contexts/chat-view-context'
 import { LanguageProvider } from '../../../contexts/language-context'
@@ -10,12 +11,11 @@ import { McpProvider } from '../../../contexts/mcp-context'
 import { PluginProvider } from '../../../contexts/plugin-context'
 import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
-import { ChatView } from '../../../ChatView'
-import SmartComposerPlugin from '../../../main'
 import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
+import SmartComposerPlugin from '../../../main'
 import type { Mentionable } from '../../../types/mentionable'
 import {
   clearDynamicStyleClass,

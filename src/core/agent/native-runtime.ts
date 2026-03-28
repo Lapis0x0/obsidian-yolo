@@ -188,7 +188,9 @@ export class NativeAgentRuntime implements AgentRuntime {
             reject(
               error instanceof Error
                 ? error
-                : new Error(String(error ?? 'Unknown runtime error')),
+                : new Error(
+                    typeof error === 'string' ? error : 'Unknown runtime error',
+                  ),
             )
           })
       }

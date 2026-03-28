@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian'
 
-import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { TextEditPlan } from '../../core/edits/textEditEngine'
+import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { BaseLLMProvider } from '../../core/llm/base'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage } from '../../types/llm/request'

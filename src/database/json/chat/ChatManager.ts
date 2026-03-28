@@ -8,12 +8,12 @@ import { AbstractJsonRepository } from '../base'
 import { CHAT_DIR } from '../constants'
 import { EmptyChatTitleException } from '../exception'
 
+import { deletePromptSnapshotStore } from './promptSnapshotStore'
 import {
   CHAT_SCHEMA_VERSION,
   ChatConversation,
   ChatConversationMetadata,
 } from './types'
-import { deletePromptSnapshotStore } from './promptSnapshotStore'
 
 export class ChatManager extends AbstractJsonRepository<
   ChatConversation,

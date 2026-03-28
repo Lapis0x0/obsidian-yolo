@@ -2,13 +2,15 @@ jest.mock('obsidian')
 
 import { App, TFile, TFolder } from 'obsidian'
 
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+
 import {
   callLocalFileTool,
   isLocalFsWriteToolName,
   parseLocalFsActionFromToolArgs,
   recoverLikelyEscapedBackslashSequences,
 } from './localFileTools'
-import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 
 afterEach(() => {
   editUndoSnapshotStore.clear()
@@ -89,8 +91,8 @@ describe('local fs tool action helpers', () => {
 
     expect(openApplyReview).toHaveBeenCalledTimes(1)
     expect(modify).not.toHaveBeenCalled()
-    expect(result.status).toBe('success')
-    if (result.status !== 'success') {
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
       throw new Error('expected success')
     }
     expect(editUndoSnapshotStore.get('tool-call-1', 'note.md')).toMatchObject({
@@ -173,8 +175,8 @@ describe('local fs tool action helpers', () => {
     })
 
     expect(modify).not.toHaveBeenCalled()
-    expect(result.status).toBe('error')
-    if (result.status === 'error') {
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
       expect(result.error).toContain('operation must be an object')
     }
   })
@@ -207,9 +209,9 @@ describe('local fs tool action helpers', () => {
       },
     })
 
-    expect(result.status).toBe('success')
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
     expect(modify).toHaveBeenCalledWith(file, ['one', 'dos', 'tres'].join('\n'))
-    if (result.status !== 'success') {
+    if (result.status !== ToolCallResponseStatus.Success) {
       throw new Error('expected success')
     }
     expect(result.metadata?.editSummary).toMatchObject({
@@ -286,7 +288,7 @@ describe('local fs tool action helpers', () => {
     })
     expect(addResult.status).toBe('success')
     const assistantMemoryPath = 'YOLO/memory/Helper Agent.md'
-    expect(contents.get(assistantMemoryPath!) ?? '').toContain(
+    expect(contents.get(assistantMemoryPath) ?? '').toContain(
       'Preference_1: 用户希望回答保持简洁',
     )
 
@@ -310,7 +312,7 @@ describe('local fs tool action helpers', () => {
       },
     })
     expect(deleteResult.status).toBe('success')
-    expect(contents.get(assistantMemoryPath!) ?? '').not.toContain(
+    expect(contents.get(assistantMemoryPath) ?? '').not.toContain(
       'Preference_1',
     )
   })
@@ -392,8 +394,8 @@ describe('local fs tool action helpers', () => {
         ],
       },
     })
-    expect(batchAddResult.status).toBe('success')
-    if (batchAddResult.status !== 'success') {
+    expect(batchAddResult.status).toBe(ToolCallResponseStatus.Success)
+    if (batchAddResult.status !== ToolCallResponseStatus.Success) {
       throw new Error('expected success')
     }
     const batchAddPayload = JSON.parse(batchAddResult.text) as {
@@ -420,8 +422,8 @@ describe('local fs tool action helpers', () => {
         ids: ['Memory_1', 'NotExist_404', 'Memory_2'],
       },
     })
-    expect(batchDeleteResult.status).toBe('success')
-    if (batchDeleteResult.status !== 'success') {
+    expect(batchDeleteResult.status).toBe(ToolCallResponseStatus.Success)
+    if (batchDeleteResult.status !== ToolCallResponseStatus.Success) {
       throw new Error('expected success')
     }
     const batchDeletePayload = JSON.parse(batchDeleteResult.text) as {
@@ -437,7 +439,7 @@ describe('local fs tool action helpers', () => {
       batchDeletePayload.results.filter((result) => !result.ok)[0]?.id,
     ).toBe('NotExist_404')
 
-    expect(contents.get(assistantMemoryPath!) ?? '').not.toContain('Memory_1')
-    expect(contents.get(assistantMemoryPath!) ?? '').not.toContain('Memory_2')
+    expect(contents.get(assistantMemoryPath) ?? '').not.toContain('Memory_1')
+    expect(contents.get(assistantMemoryPath) ?? '').not.toContain('Memory_2')
   })
 })

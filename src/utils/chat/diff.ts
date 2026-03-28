@@ -1246,10 +1246,11 @@ function getInlineTokenSimilarity(
 }
 
 function tokenizeInlineComparableText(text: string): string[] {
-  return normalizeInlineComparisonText(text)
-    .split(/\s+|(?<=[^\p{L}\p{N}\s])|(?=[^\p{L}\p{N}\s])/u)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0)
+  return (
+    normalizeInlineComparisonText(text).match(
+      /\p{L}[\p{L}\p{N}_-]*|\p{N}+|[^\p{L}\p{N}\s]/gu,
+    ) ?? []
+  )
 }
 
 function normalizeInlineComparisonText(text: string): string {

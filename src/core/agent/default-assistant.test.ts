@@ -1,8 +1,9 @@
+import { parseSmartComposerSettings } from '../../settings/schema/settings'
+
 import {
   DEFAULT_ASSISTANT_ID,
   ensureDefaultAssistantInSettings,
 } from './default-assistant'
-import { parseSmartComposerSettings } from '../../settings/schema/settings'
 
 const createBaseSettings = () =>
   parseSmartComposerSettings({

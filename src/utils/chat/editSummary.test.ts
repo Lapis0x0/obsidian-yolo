@@ -1,12 +1,12 @@
 import type { AssistantToolMessageGroup } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { editUndoSnapshotStore } from './editUndoSnapshotStore'
 
 import {
   collectGroupEditSummary,
   createToolEditSummary,
   deriveToolEditUndoStatus,
 } from './editSummary'
+import { editUndoSnapshotStore } from './editUndoSnapshotStore'
 
 afterEach(() => {
   editUndoSnapshotStore.clear()

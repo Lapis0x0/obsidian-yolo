@@ -8,9 +8,9 @@ import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import {
-  getLocalFileTools,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+  getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
@@ -23,6 +23,7 @@ import { ConfirmModal } from '../../modals/ConfirmModal'
 import { AgentSkillsModal } from '../modals/AgentSkillsModal'
 import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
+
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {

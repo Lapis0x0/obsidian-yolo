@@ -43,10 +43,6 @@ function isEscaped(text: string, index: number): boolean {
   return backslashCount % 2 === 1
 }
 
-function isLineStart(text: string, index: number): boolean {
-  return index === 0 || text[index - 1] === '\n'
-}
-
 function getLineStart(text: string, index: number): number {
   let lineStart = index
   while (lineStart > 0 && text[lineStart - 1] !== '\n') {
@@ -299,40 +295,6 @@ function serializeSelectionAsMarkdown(range: Range): string {
   replaceLatexSourcesForMarkdown(container)
 
   return normalizeSerializedSelection(htmlToMarkdown(container.innerHTML))
-}
-
-function serializeFragmentNode(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return node.textContent ?? ''
-  }
-
-  if (node.nodeType !== Node.ELEMENT_NODE) {
-    return ''
-  }
-
-  const element = node as HTMLElement
-  const latexSource = element.getAttribute(LATEX_SOURCE_ATTR)
-  if (latexSource) {
-    return latexSource
-  }
-
-  if (element.tagName === 'BR') {
-    return '\n'
-  }
-
-  const childText = Array.from(element.childNodes)
-    .map((childNode) => serializeFragmentNode(childNode))
-    .join('')
-
-  if (!BLOCK_TAG_NAMES.has(element.tagName)) {
-    return childText
-  }
-
-  if (!childText) {
-    return ''
-  }
-
-  return `${childText}\n`
 }
 
 function getRenderedMathRoots(containerEl: HTMLElement): HTMLElement[] {

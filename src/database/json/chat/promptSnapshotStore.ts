@@ -218,11 +218,10 @@ export const compactConversationMessagesForStorage = async ({
     }
   })
 
-  for (const hash of Object.keys(nextEntries)) {
-    if (usedHashes.has(hash)) {
-      continue
-    }
-    delete nextEntries[hash]
+  const filteredEntries = Object.fromEntries(
+    Object.entries(nextEntries).filter(([hash]) => usedHashes.has(hash)),
+  )
+  if (Object.keys(filteredEntries).length !== Object.keys(nextEntries).length) {
     changed = true
   }
 
@@ -232,7 +231,7 @@ export const compactConversationMessagesForStorage = async ({
       conversationId,
       {
         schemaVersion: 1,
-        entries: nextEntries,
+        entries: filteredEntries,
       },
       settings,
     )

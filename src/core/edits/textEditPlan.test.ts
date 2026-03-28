@@ -1,6 +1,6 @@
 import {
-  getTextEditPlanPreviewContent,
   getStreamingTextEditPlanPreviewContent,
+  getTextEditPlanPreviewContent,
   isTextEditPlanStreamingCandidate,
   parseTextEditPlan,
 } from './textEditPlan'

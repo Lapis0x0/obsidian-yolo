@@ -8,11 +8,12 @@ import { createPortal } from 'react-dom'
 import { useLanguage } from '../../../../../contexts/language-context'
 import { LiteSkillEntry } from '../../../../../core/skills/liteSkills'
 import { MenuOption } from '../shared/LexicalMenu'
-import { $createSkillNode } from './SkillNode'
 import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '../typeahead-menu/LexicalTypeaheadMenuPlugin'
+
+import { $createSkillNode } from './SkillNode'
 
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
 

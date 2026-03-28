@@ -1,7 +1,7 @@
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
-import type { ToolLabels } from './ToolMessage'
 import { getToolHeadlineParts, getToolHeadlineText } from './toolHeadline'
+import type { ToolLabels } from './ToolMessage'
 
 describe('ToolMessage headline helpers', () => {
   const labels: ToolLabels = {

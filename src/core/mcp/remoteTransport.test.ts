@@ -72,9 +72,7 @@ describe('remoteTransport', () => {
         },
       })
 
-      const { ProxyAgent } = jest.requireMock('proxy-agent') as {
-        ProxyAgent: jest.Mock
-      }
+      const { ProxyAgent } = jest.requireMock('proxy-agent')
       const proxyAgentOptions = ProxyAgent.mock.calls[0][0] as {
         getProxyForUrl: (url: string) => string | Promise<string>
       }

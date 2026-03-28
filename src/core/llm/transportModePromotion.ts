@@ -1,7 +1,8 @@
 import { Notice, getLanguage } from 'obsidian'
 
-import { createTranslationFunction, type Language } from '../../i18n'
+import { type Language, createTranslationFunction } from '../../i18n'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
+
 import type { AutoPromotedTransportMode } from './requestTransport'
 
 const resolveObsidianLanguage = (): Language => {

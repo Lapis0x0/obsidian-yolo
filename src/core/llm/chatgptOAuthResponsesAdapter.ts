@@ -16,7 +16,6 @@ import type {
 } from 'openai/resources/responses/responses'
 
 import {
-  LLMRequest,
   LLMRequestNonStreaming,
   LLMRequestStreaming,
   RequestMessage,
@@ -303,9 +302,9 @@ const getFinishReason = (
 }
 
 export class ChatGPTOAuthResponsesAdapter {
-  buildRequest(request: LLMRequestNonStreaming): ChatGPTOAuthRequest
-  buildRequest(request: LLMRequestStreaming): ChatGPTOAuthRequest
-  buildRequest(request: LLMRequest): ChatGPTOAuthRequest {
+  buildRequest(
+    request: LLMRequestNonStreaming | LLMRequestStreaming,
+  ): ChatGPTOAuthRequest {
     const instructions = toInstructions(request.messages)
     const body: ChatGPTOAuthRequest = {
       model: request.model,

@@ -4,10 +4,10 @@ import {
   AssistantToolPreference,
 } from '../../types/assistant.types'
 import {
-  getLocalFileToolServerName,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  getLocalFileToolServerName,
 } from '../mcp/localFileTools'
-import { getToolName, parseToolName } from '../mcp/tool-name-utils'
+import { parseToolName } from '../mcp/tool-name-utils'
 
 export const DEFAULT_ASSISTANT_TOOL_APPROVAL_MODE: AssistantToolApprovalMode =
   'require_approval'

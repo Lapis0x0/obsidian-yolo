@@ -2,14 +2,15 @@ import { UseMutationResult, useMutation } from '@tanstack/react-query'
 import { Notice, TFile } from 'obsidian'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type {
-  AgentConversationRunSummary,
-  AgentConversationState,
-} from '../../core/agent/service'
 import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import type {
+  AgentConversationRunSummary,
+  AgentConversationState,
+} from '../../core/agent/service'
+import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -18,8 +19,9 @@ import {
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
 import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
-import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { ChatMessage } from '../../types/chat'
@@ -28,8 +30,6 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
-import { getToolName } from '../../core/mcp/tool-name-utils'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
@@ -377,7 +377,7 @@ export function useChatStreamManager({
         failed: false,
       })
     },
-    onError: (error, variables) => {
+    onError: (error) => {
       onRunSettled?.({
         aborted: false,
         failed: true,

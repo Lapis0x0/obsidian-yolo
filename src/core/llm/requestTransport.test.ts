@@ -2,8 +2,8 @@ import {
   clearRequestTransportMemoryForTests,
   createRequestTransportMemoryKey,
   resolveRequestTransportMode,
-  runWithRequestTransportForStream,
   runWithRequestTransport,
+  runWithRequestTransportForStream,
   shouldRetryWithObsidianTransport,
 } from './requestTransport'
 

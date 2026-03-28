@@ -13,6 +13,8 @@ import type {
   ToolEditSummaryFile,
   ToolEditUndoStatus,
 } from '../../types/tool-call.types'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
+
 import { editUndoSnapshotStore } from './editUndoSnapshotStore'
 
 export type GroupEditSummaryEntry = {
@@ -122,7 +124,7 @@ export const createToolEditSummary = ({
 export const getToolCallEditSummary = (
   response: ToolCallResponse,
 ): ToolEditSummary | undefined => {
-  if (response.status !== 'success') {
+  if (response.status !== ToolCallResponseStatus.Success) {
     return undefined
   }
 
@@ -259,7 +261,7 @@ export const updateToolMessageEditSummary = ({
     toolCalls: toolMessage.toolCalls.map((toolCall) => {
       if (
         toolCall.request.id !== toolCallId ||
-        toolCall.response.status !== 'success'
+        toolCall.response.status !== ToolCallResponseStatus.Success
       ) {
         return toolCall
       }

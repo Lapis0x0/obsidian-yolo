@@ -3,8 +3,8 @@ import { Assistant } from '../../types/assistant.types'
 
 import {
   buildAssistantToolPreferencesFromEnabledToolNames,
-  getEnabledAssistantToolNames,
   getAssistantToolPreferences,
+  getEnabledAssistantToolNames,
 } from './tool-preferences'
 
 export const DEFAULT_ASSISTANT_ID = '__default_agent__'

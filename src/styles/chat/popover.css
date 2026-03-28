@@ -1027,6 +1027,30 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   border-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
 }
 
+.smtcmp-inline-review-floating-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 8;
+}
+
+.smtcmp-inline-review-floating-rail {
+  position: absolute;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+  opacity: 0.95;
+}
+
+.smtcmp-inline-review-floating-actions {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action-accept {
   color: rgb(var(--smtcmp-incoming-color-rgb, 4, 120, 87));
 }

@@ -432,7 +432,10 @@ describe('AgentLlmTurnExecutor', () => {
 
     await executor.run()
 
-    expect(requestContextBuilder.generateRequestMessages).toHaveBeenCalledWith(
+    const generateRequestMessagesMock =
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+      requestContextBuilder.generateRequestMessages
+    expect(generateRequestMessagesMock).toHaveBeenCalledWith(
       expect.objectContaining({
         hasTools: true,
         hasMemoryTools: true,
@@ -486,7 +489,10 @@ describe('AgentLlmTurnExecutor', () => {
 
     await executor.run()
 
-    expect(requestContextBuilder.generateRequestMessages).toHaveBeenCalledWith(
+    const generateRequestMessagesMock =
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+      requestContextBuilder.generateRequestMessages
+    expect(generateRequestMessagesMock).toHaveBeenCalledWith(
       expect.objectContaining({
         hasTools: true,
         hasMemoryTools: false,

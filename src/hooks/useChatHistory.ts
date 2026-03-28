@@ -13,11 +13,11 @@ import { useLanguage } from '../contexts/language-context'
 import { useSettings } from '../contexts/settings-context'
 import { getChatModelClient } from '../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
-import { ChatConversationMetadata } from '../database/json/chat/types'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
+import { ChatConversationMetadata } from '../database/json/chat/types'
 import {
-  ChatSelectedSkill,
   ChatMessage,
+  ChatSelectedSkill,
   SerializedChatMessage,
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'

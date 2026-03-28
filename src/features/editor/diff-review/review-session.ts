@@ -1,10 +1,11 @@
 import type { TFile, Vault } from 'obsidian'
 
 import type { DiffBlock } from '../../../utils/chat/diff'
+
 import {
+  type ReviewDecision,
   countModifiedBlocks,
   generateReviewContent,
-  type ReviewDecision,
 } from './review-model'
 
 type ReviewSessionOptions = {

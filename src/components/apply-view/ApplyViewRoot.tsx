@@ -12,10 +12,10 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import {
-  buildFullReviewBlocks,
-  findSelectionTargetBlockIndex,
   type ApplyParagraph,
   type ReviewDecision,
+  buildFullReviewBlocks,
+  findSelectionTargetBlockIndex,
   splitInlineLinesIntoParagraphs,
 } from '../../features/editor/diff-review/review-model'
 import { ReviewSession } from '../../features/editor/diff-review/review-session'
@@ -25,6 +25,7 @@ import {
   InlineDiffLine,
   InlineDiffToken,
 } from '../../utils/chat/diff'
+
 import type { ApplyViewActions } from './types'
 
 export default function ApplyViewRoot({
@@ -959,8 +960,4 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
 }

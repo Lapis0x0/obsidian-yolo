@@ -1,11 +1,11 @@
 import { Keymap } from 'obsidian'
 import {
+  type MouseEvent,
   memo,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type MouseEvent,
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'

@@ -1,5 +1,5 @@
-import { AgentWorkerInbound, AgentWorkerOutbound } from './types'
 import { decideAfterLlmResult, decideAfterToolResult } from './loop-decision'
+import { AgentWorkerInbound, AgentWorkerOutbound } from './types'
 
 type WorkerSubscriber = (message: AgentWorkerOutbound) => void
 

@@ -8,7 +8,6 @@ import {
   useState,
 } from 'react'
 
-import DotLoader from '../common/DotLoader'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
@@ -18,6 +17,7 @@ import {
   parseTextEditPlan,
 } from '../../core/edits/textEditPlan'
 import { openMarkdownFile } from '../../utils/obsidian'
+import DotLoader from '../common/DotLoader'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 

@@ -460,7 +460,13 @@ const createAutoFallbackStream = <T>({
       }
 
       if (lastError) {
-        throw lastError
+        throw lastError instanceof Error
+          ? lastError
+          : new Error(
+              typeof lastError === 'string'
+                ? lastError
+                : 'Unknown request transport error',
+            )
       }
     },
   }
