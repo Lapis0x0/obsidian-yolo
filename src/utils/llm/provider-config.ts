@@ -51,6 +51,7 @@ export function getRequestTransportModeValue(
 export function providerSupportsEmbedding(provider: LLMProvider): boolean {
   switch (provider.apiType) {
     case 'anthropic':
+    case 'amazon-bedrock':
       return false
     case 'gemini':
       return true

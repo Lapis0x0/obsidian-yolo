@@ -30,6 +30,7 @@ export const providerPresetTypeSchema = z.enum([
   'lm-studio',
   'morph',
   'azure-openai',
+  'amazon-bedrock',
   'openai-compatible',
 ])
 
@@ -38,6 +39,7 @@ export const providerApiTypeSchema = z.enum([
   'openai-responses',
   'anthropic',
   'gemini',
+  'amazon-bedrock',
 ])
 
 export type LLMProviderPresetType = z.infer<typeof providerPresetTypeSchema>
@@ -60,6 +62,7 @@ const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
   'lm-studio': 'openai-compatible',
   morph: 'openai-compatible',
   'azure-openai': 'openai-compatible',
+  'amazon-bedrock': 'amazon-bedrock',
   'openai-compatible': 'openai-compatible',
 }
 
@@ -81,6 +84,9 @@ export function getSupportedApiTypesForPresetType(
       defaults.add('openai-compatible')
       break
     case 'gemini':
+      defaults.add('openai-compatible')
+      break
+    case 'amazon-bedrock':
       defaults.add('openai-compatible')
       break
     default:

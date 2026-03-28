@@ -5,6 +5,7 @@ import { LLMProvider } from '../../types/provider.types'
 import { AnthropicProvider } from './anthropic'
 import { AzureOpenAIProvider } from './azureOpenaiProvider'
 import { BaseLLMProvider } from './base'
+import { BedrockProvider } from './bedrockProvider'
 import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
 import { DeepSeekStudioProvider } from './deepseekStudioProvider'
 import { LLMModelNotFoundException } from './exception'
@@ -62,6 +63,11 @@ export function getProviderClient({
     case 'gemini': {
       return new GeminiProvider(provider as never)
     }
+    case 'amazon-bedrock': {
+      // Base URL is constructed internally by the AWS SDK as
+      // https://bedrock-runtime.{region}.amazonaws.com from the region config.
+      return new BedrockProvider(provider)
+    }
     case 'openai-compatible': {
       switch (provider.presetType) {
         case 'openrouter':
@@ -109,6 +115,19 @@ export function getProviderClient({
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
+        case 'amazon-bedrock': {
+          const awsRegion =
+            (provider.additionalSettings as { awsRegion?: string })
+              ?.awsRegion || 'us-east-1'
+          const bedrockProvider = {
+            ...provider,
+            baseUrl: `https://bedrock-mantle.${awsRegion}.api.aws`,
+          }
+          return new OpenAICompatibleProvider(bedrockProvider as never, {
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
+        }
         default:
           return new OpenAICompatibleProvider(provider as never, {
             onAutoPromoteTransportMode: (mode) =>

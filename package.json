@@ -1,6 +1,6 @@
 {
   "name": "obsidian-yolo",
-  "version": "1.5.3.3",
+  "version": "1.5.4.0",
   "description": "AI chat with note context, smart writing assistance, and one-click edits for your vault.",
   "main": "main.js",
   "scripts": {
@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1019.0",
     "@codemirror/state": "^6.5.1",
     "@codemirror/view": "^6.36.2",
     "@dnd-kit/core": "^6.3.1",

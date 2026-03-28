@@ -139,7 +139,8 @@ const isThinkingConfigurable = (
 ): provider is LLMProvider =>
   provider?.apiType === 'anthropic' ||
   provider?.apiType === 'gemini' ||
-  provider?.apiType === 'openai-compatible'
+  provider?.apiType === 'openai-compatible' ||
+  provider?.apiType === 'amazon-bedrock'
 
 const supportsGeminiTools = (provider: LLMProvider | undefined): boolean =>
   provider?.apiType === 'gemini' || provider?.apiType === 'openai-compatible'
