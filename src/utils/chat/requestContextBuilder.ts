@@ -56,6 +56,66 @@ type RequestContextBuilderOptions = {
   includeSkills?: boolean
 }
 
+type MarkdownAtxHeading = {
+  level: number
+  line: number
+  text: string
+}
+
+type MentionedFileContextEntry = {
+  file: TFile
+  source: 'file' | 'current-file' | 'folder'
+}
+
+const MAX_MENTIONED_FILE_OUTLINES = 10
+
+export function extractMarkdownAtxHeadings(content: string): MarkdownAtxHeading[] {
+  const headings: MarkdownAtxHeading[] = []
+  const lines = content.split('\n')
+  let activeFenceMarker: '```' | '~~~' | null = null
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? ''
+    const trimmedLine = line.trim()
+
+    if (activeFenceMarker) {
+      if (trimmedLine.startsWith(activeFenceMarker)) {
+        activeFenceMarker = null
+      }
+      continue
+    }
+
+    if (trimmedLine.startsWith('```')) {
+      activeFenceMarker = '```'
+      continue
+    }
+
+    if (trimmedLine.startsWith('~~~')) {
+      activeFenceMarker = '~~~'
+      continue
+    }
+
+    const match = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(trimmedLine)
+    if (!match) {
+      continue
+    }
+
+    const marker = match[1]
+    const text = match[2]?.trim()
+    if (!marker || !text) {
+      continue
+    }
+
+    headings.push({
+      level: marker.length,
+      line: index + 1,
+      text,
+    })
+  }
+
+  return headings
+}
+
 export class RequestContextBuilder {
   private getRagEngine: () => Promise<RAGEngine>
   private app: App
@@ -576,7 +636,7 @@ ${similaritySearchResults
           .filter((file): file is TFile => Boolean(file))
 
         if (preferToolRead) {
-          filePrompt = this.buildMentionedPathsPrompt({
+          filePrompt = await this.buildMentionedPathsPrompt({
             files,
             folders,
             currentFiles,
@@ -923,7 +983,7 @@ ${customInstruction}
     return section
   }
 
-  private buildMentionedPathsPrompt({
+  private async buildMentionedPathsPrompt({
     files,
     folders,
     currentFiles,
@@ -931,36 +991,124 @@ ${customInstruction}
     files: TFile[]
     folders: TFolder[]
     currentFiles: TFile[]
-  }): string {
-    const filePathSet = new Set(files.map((file) => file.path))
+  }): Promise<string> {
     const folderPathSet = new Set(folders.map((folder) => folder.path))
-    const currentFilePathSet = new Set(
-      currentFiles
-        .map((file) => file.path)
-        .filter((path) => path.length > 0 && !filePathSet.has(path)),
-    )
+    const unifiedFiles = this.collectMentionedFiles({
+      files,
+      folders,
+      currentFiles,
+    })
 
-    if (
-      filePathSet.size === 0 &&
-      folderPathSet.size === 0 &&
-      currentFilePathSet.size === 0
-    ) {
+    if (unifiedFiles.length === 0 && folderPathSet.size === 0) {
       return ''
     }
 
-    const formatPaths = (paths: Set<string>): string => {
-      return paths.size > 0
-        ? [...paths].map((path) => `\`${path}\``).join(', ')
-        : '(none)'
+    const outlinedFilePaths = new Set(
+      unifiedFiles
+        .filter(({ file }) => file.extension === 'md')
+        .slice(0, MAX_MENTIONED_FILE_OUTLINES)
+        .map(({ file }) => file.path),
+    )
+    const fileLines = await Promise.all(
+      unifiedFiles.map(async ({ file }) => {
+        if (!outlinedFilePaths.has(file.path)) {
+          return `- \`${file.path}\``
+        }
+
+        try {
+          const content = await readTFileContent(file, this.app.vault)
+          const headings = extractMarkdownAtxHeadings(content)
+          if (headings.length === 0) {
+            return `- \`${file.path}\``
+          }
+
+          return [
+            `- \`${file.path}\``,
+            ...headings.map(
+              (heading) =>
+                `  - L${heading.line} ${'#'.repeat(heading.level)} ${heading.text}`,
+            ),
+          ].join('\n')
+        } catch (error) {
+          console.warn(
+            '[YOLO] Failed to read mentioned file outline',
+            file.path,
+            error,
+          )
+          return `- \`${file.path}\``
+        }
+      }),
+    )
+
+    const markdownFileCount = unifiedFiles.filter(
+      ({ file }) => file.extension === 'md',
+    ).length
+    const omittedOutlineCount = Math.max(
+      0,
+      markdownFileCount - outlinedFilePaths.size,
+    )
+
+    const sections = [
+      `## Mentioned Vault Files
+${fileLines.join('\n')}`,
+    ]
+
+    if (folderPathSet.size > 0) {
+      sections.push(`## Mentioned Vault Folders
+${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     }
 
-    return `## Mentioned Vault Paths
-- Files: ${formatPaths(filePathSet)}
-- Folders: ${formatPaths(folderPathSet)}
-- Current files: ${formatPaths(currentFilePathSet)}
+    if (omittedOutlineCount > 0) {
+      sections.push(
+        `Additional mentioned markdown files omitted from outline due to limit: ${omittedOutlineCount}`,
+      )
+    }
 
-Use file tools to read only the files and line ranges you actually need before making claims.
-`
+    sections.push(
+      'Use file tools to read only the files and line ranges you actually need before making claims.',
+    )
+
+    return `${sections.join('\n\n')}\n`
+  }
+
+  private collectMentionedFiles({
+    files,
+    folders,
+    currentFiles,
+  }: {
+    files: TFile[]
+    folders: TFolder[]
+    currentFiles: TFile[]
+  }): MentionedFileContextEntry[] {
+    const collected: MentionedFileContextEntry[] = []
+    const seenPaths = new Set<string>()
+
+    const pushFile = (
+      file: TFile,
+      source: MentionedFileContextEntry['source'],
+    ): void => {
+      if (!file.path || seenPaths.has(file.path)) {
+        return
+      }
+      seenPaths.add(file.path)
+      collected.push({ file, source })
+    }
+
+    for (const file of files) {
+      pushFile(file, 'file')
+    }
+
+    for (const file of currentFiles) {
+      pushFile(file, 'current-file')
+    }
+
+    for (const folder of folders) {
+      for (const file of getNestedFiles(folder, this.app.vault)) {
+        pushFile(file, 'folder')
+      }
+    }
+
+    return collected
   }
 
   private async getCurrentFileMessage(
