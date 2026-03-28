@@ -2,7 +2,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { PgliteDatabase, drizzle } from 'drizzle-orm/pglite'
 import { App, normalizePath } from 'obsidian'
 
-import { PGLITE_DB_PATH } from '../constants'
+import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
 import { PGLiteAbortedException } from './exception'
@@ -52,10 +52,16 @@ export class DatabaseManager {
   static async create(
     app: App,
     pgliteResourcePath: string,
+    settings?: {
+      yolo?: {
+        baseDir?: string
+      }
+    } | null,
   ): Promise<DatabaseManager> {
+    const dbPath = await ensureVectorDbPath(app, settings)
     const dbManager = new DatabaseManager(
       app,
-      normalizePath(PGLITE_DB_PATH),
+      dbPath,
       pgliteResourcePath,
     )
     dbManager.db = await dbManager.loadExistingDatabase()

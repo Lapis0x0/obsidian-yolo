@@ -1,12 +1,13 @@
 import { App, normalizePath } from 'obsidian'
 import path from 'path-browserify'
 
+import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import {
   SerializedChatMessage,
   SerializedChatUserMessage,
 } from '../../../types/chat'
 import { ContentPart } from '../../../types/llm/request'
-import { ROOT_DIR, CHAT_DIR } from '../constants'
+import { CHAT_DIR } from '../constants'
 
 type PromptSnapshotEntry = {
   hash: string
@@ -27,11 +28,28 @@ const EMPTY_STORE: PromptSnapshotStore = {
   entries: {},
 }
 
-const getSnapshotDirPath = (): string =>
-  normalizePath(path.join(ROOT_DIR, CHAT_DIR, SNAPSHOT_DIR))
+type YoloSettingsLike = {
+  yolo?: {
+    baseDir?: string
+  }
+}
 
-const getSnapshotFilePath = (conversationId: string): string =>
-  normalizePath(path.join(getSnapshotDirPath(), `${conversationId}.json`))
+const getSnapshotDirPath = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<string> => {
+  const rootDir = await ensureJsonDbRootDir(app, settings)
+  return normalizePath(path.join(rootDir, CHAT_DIR, SNAPSHOT_DIR))
+}
+
+const getSnapshotFilePath = async (
+  app: App,
+  conversationId: string,
+  settings?: YoloSettingsLike | null,
+): Promise<string> => {
+  const snapshotDir = await getSnapshotDirPath(app, settings)
+  return normalizePath(path.join(snapshotDir, `${conversationId}.json`))
+}
 
 const shouldStorePromptSnapshot = (
   message: SerializedChatUserMessage,
@@ -59,8 +77,11 @@ const fnv1aHash = (text: string): string => {
 const buildSnapshotHash = (content: string | ContentPart[]): string =>
   fnv1aHash(JSON.stringify(content))
 
-const ensureSnapshotDir = async (app: App): Promise<void> => {
-  const snapshotDir = getSnapshotDirPath()
+const ensureSnapshotDir = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<void> => {
+  const snapshotDir = await getSnapshotDirPath(app, settings)
   if (!(await app.vault.adapter.exists(snapshotDir))) {
     await app.vault.adapter.mkdir(snapshotDir)
   }
@@ -69,8 +90,9 @@ const ensureSnapshotDir = async (app: App): Promise<void> => {
 const readSnapshotStore = async (
   app: App,
   conversationId: string,
+  settings?: YoloSettingsLike | null,
 ): Promise<PromptSnapshotStore> => {
-  const filePath = getSnapshotFilePath(conversationId)
+  const filePath = await getSnapshotFilePath(app, conversationId, settings)
   if (!(await app.vault.adapter.exists(filePath))) {
     return EMPTY_STORE
   }
@@ -95,9 +117,10 @@ const writeSnapshotStore = async (
   app: App,
   conversationId: string,
   store: PromptSnapshotStore,
+  settings?: YoloSettingsLike | null,
 ): Promise<void> => {
-  await ensureSnapshotDir(app)
-  const filePath = getSnapshotFilePath(conversationId)
+  await ensureSnapshotDir(app, settings)
+  const filePath = await getSnapshotFilePath(app, conversationId, settings)
   await app.vault.adapter.write(filePath, JSON.stringify(store, null, 2))
 }
 
@@ -106,13 +129,15 @@ export const compactConversationMessagesForStorage = async ({
   conversationId,
   messages,
   previousMessages,
+  settings,
 }: {
   app: App
   conversationId: string
   messages: SerializedChatMessage[]
   previousMessages?: SerializedChatMessage[]
+  settings?: YoloSettingsLike | null
 }): Promise<SerializedChatMessage[]> => {
-  const store = await readSnapshotStore(app, conversationId)
+  const store = await readSnapshotStore(app, conversationId, settings)
   const nextEntries = { ...store.entries }
   const usedHashes = new Set<string>()
   let changed = false
@@ -205,7 +230,7 @@ export const compactConversationMessagesForStorage = async ({
     await writeSnapshotStore(app, conversationId, {
       schemaVersion: 1,
       entries: nextEntries,
-    })
+    }, settings)
   }
 
   return compactedMessages
@@ -215,23 +240,27 @@ export const readPromptSnapshotContent = async ({
   app,
   conversationId,
   hash,
+  settings,
 }: {
   app: App
   conversationId: string
   hash: string
+  settings?: YoloSettingsLike | null
 }): Promise<string | ContentPart[] | null> => {
-  const store = await readSnapshotStore(app, conversationId)
+  const store = await readSnapshotStore(app, conversationId, settings)
   return store.entries[hash]?.content ?? null
 }
 
 export const readPromptSnapshotEntries = async ({
   app,
   conversationId,
+  settings,
 }: {
   app: App
   conversationId: string
+  settings?: YoloSettingsLike | null
 }): Promise<Record<string, string | ContentPart[]>> => {
-  const store = await readSnapshotStore(app, conversationId)
+  const store = await readSnapshotStore(app, conversationId, settings)
   const entries: Record<string, string | ContentPart[]> = {}
   Object.keys(store.entries).forEach((hash) => {
     entries[hash] = store.entries[hash].content
@@ -242,15 +271,19 @@ export const readPromptSnapshotEntries = async ({
 export const deletePromptSnapshotStore = async (
   app: App,
   conversationId: string,
+  settings?: YoloSettingsLike | null,
 ): Promise<void> => {
-  const filePath = getSnapshotFilePath(conversationId)
+  const filePath = await getSnapshotFilePath(app, conversationId, settings)
   if (await app.vault.adapter.exists(filePath)) {
     await app.vault.adapter.remove(filePath)
   }
 }
 
-export const clearAllPromptSnapshotStores = async (app: App): Promise<void> => {
-  const snapshotDir = getSnapshotDirPath()
+export const clearAllPromptSnapshotStores = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<void> => {
+  const snapshotDir = await getSnapshotDirPath(app, settings)
   if (!(await app.vault.adapter.exists(snapshotDir))) {
     return
   }

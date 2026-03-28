@@ -51,7 +51,7 @@ export function EtcSection({ app }: EtcSectionProps) {
       ctaText: t('common.clear'),
       onConfirm: () => {
         void (async () => {
-          const manager = new ChatManager(app)
+          const manager = new ChatManager(app, settings)
           const list = await manager.listChats()
           for (const meta of list) {
             await manager.deleteChat(meta.id)
@@ -108,7 +108,7 @@ export function EtcSection({ app }: EtcSectionProps) {
       ctaText: t('common.clear'),
       onConfirm: () => {
         void (async () => {
-          await clearAllPromptSnapshotStores(app)
+          await clearAllPromptSnapshotStores(app, settings)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
         })().catch((error: unknown) => {
           console.error('Failed to clear chat snapshots', error)

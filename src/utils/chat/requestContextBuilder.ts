@@ -137,6 +137,7 @@ export class RequestContextBuilder {
     const snapshotEntries = await readPromptSnapshotEntries({
       app: this.app,
       conversationId,
+      settings: this.settings,
     })
 
     const maxContext = Math.max(

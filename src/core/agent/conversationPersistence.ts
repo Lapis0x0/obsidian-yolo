@@ -2,6 +2,7 @@ import { App } from 'obsidian'
 
 import { ChatManager } from '../../database/json/chat/ChatManager'
 import { compactConversationMessagesForStorage } from '../../database/json/chat/promptSnapshotStore'
+import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatMessage,
   SerializedChatMessage,
@@ -44,9 +45,10 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
   }
 }
 
-export const createAgentConversationPersistence = (app: App) => {
-  const chatManager = new ChatManager(app)
-
+export const createAgentConversationPersistence = (
+  app: App,
+  getSettings: () => SmartComposerSettings,
+) => {
   return {
     persistConversationMessages: async ({
       conversationId,
@@ -55,6 +57,8 @@ export const createAgentConversationPersistence = (app: App) => {
       conversationId: string
       messages: ChatMessage[]
     }): Promise<void> => {
+      const settings = getSettings()
+      const chatManager = new ChatManager(app, settings)
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(conversationId)
       const compactedMessages = await compactConversationMessagesForStorage({
@@ -62,6 +66,7 @@ export const createAgentConversationPersistence = (app: App) => {
         conversationId,
         messages: serializedMessages,
         previousMessages: existingConversation?.messages,
+        settings,
       })
 
       if (existingConversation) {

@@ -25,6 +25,7 @@ import {
   AgentService,
 } from './core/agent/service'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
+import { relocateYoloManagedData } from './core/paths/yoloManagedData'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
@@ -544,7 +545,7 @@ export default class SmartComposerPlugin extends Plugin {
   getAgentService(): AgentService {
     if (!this.agentService) {
       const { persistConversationMessages } =
-        createAgentConversationPersistence(this.app)
+        createAgentConversationPersistence(this.app, () => this.settings)
       this.agentService = new AgentService({
         persistConversationMessages,
       })
@@ -794,7 +795,7 @@ export default class SmartComposerPlugin extends Plugin {
       return false
     }
 
-    const chatManager = new ChatManager(this.app)
+    const chatManager = new ChatManager(this.app, this.settings)
     const metadataList = await chatManager.listChats()
     if (
       renderVersion !== this.agentStatusPanelRenderVersion ||
@@ -1493,6 +1494,15 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.settings = normalizedSettings
 
+    const migrated = await relocateYoloManagedData({
+      app: this.app,
+      fromSettings: parsedSettings,
+      toSettings: normalizedSettings,
+    })
+    if (!migrated) {
+      new Notice('Failed to migrate YOLO managed data during startup. Using existing data location.')
+    }
+
     if (JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)) {
       await this.saveData(normalizedSettings)
     }
@@ -1507,6 +1517,30 @@ export default class SmartComposerPlugin extends Plugin {
       new Notice(`Invalid settings:
 ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       return
+    }
+
+    const previousSettings = this.settings
+    const yoloBaseDirChanged =
+      previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+
+    if (yoloBaseDirChanged) {
+      if (this.dbManager) {
+        await this.dbManager.save()
+      }
+      const migrated = await relocateYoloManagedData({
+        app: this.app,
+        fromSettings: previousSettings,
+        toSettings: normalizedSettings,
+      })
+      if (!migrated) {
+        new Notice('Failed to move YOLO managed data. Keeping previous YOLO root folder.')
+        return
+      }
+      if (this.dbManager) {
+        await this.dbManager.cleanup()
+        this.dbManager = null
+        this.dbManagerInitPromise = null
+      }
     }
 
     this.settings = normalizedSettings
@@ -1573,6 +1607,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           this.dbManager = await DatabaseManager.create(
             this.app,
             this.resolvePgliteResourcePath(),
+            this.settings,
           )
           return this.dbManager
         } catch (error) {

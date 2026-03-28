@@ -1,24 +1,56 @@
 import { App, normalizePath } from 'obsidian'
 import path from 'path-browserify'
 
+type AbstractJsonRepositoryOptions = {
+  prepareDataDir?: () => Promise<string>
+}
+
 export abstract class AbstractJsonRepository<T, M> {
   protected dataDir: string
   protected app: App
   private writeQueue: Promise<void> = Promise.resolve()
   private ensureDirectoryPromise: Promise<void> | null = null
+  private prepareDataDir?: () => Promise<string>
+  private prepareDataDirPromise: Promise<void> | null = null
 
-  constructor(app: App, dataDir: string) {
+  constructor(
+    app: App,
+    dataDir: string,
+    options?: AbstractJsonRepositoryOptions,
+    ) {
     this.app = app
     this.dataDir = normalizePath(dataDir)
-    void this.ensureRepositoryDir().catch((error) => {
-      console.error(
-        `[YOLO] Failed to ensure data directory "${this.dataDir}":`,
-        error,
-      )
+    this.prepareDataDir = options?.prepareDataDir
+    queueMicrotask(() => {
+      void this.ensureRepositoryDir().catch((error) => {
+        console.error(
+          `[YOLO] Failed to ensure data directory "${this.dataDir}":`,
+          error,
+        )
+      })
     })
   }
 
-  private ensureRepositoryDir(): Promise<void> {
+  private async ensurePreparedDataDir(): Promise<void> {
+    if (!this.prepareDataDir) {
+      return
+    }
+
+    if (!this.prepareDataDirPromise) {
+      this.prepareDataDirPromise = this.prepareDataDir()
+        .then((nextDataDir) => {
+          this.dataDir = normalizePath(nextDataDir)
+        })
+        .finally(() => {
+          this.prepareDataDirPromise = null
+        })
+    }
+
+    await this.prepareDataDirPromise
+  }
+
+  private async ensureRepositoryDir(): Promise<void> {
+    await this.ensurePreparedDataDir()
     return this.app.vault.adapter.exists(this.dataDir).then((exists) => {
       if (exists) {
         return

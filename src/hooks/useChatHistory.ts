@@ -174,6 +174,7 @@ export function useChatHistory(): UseChatHistory {
         conversationId: id,
         messages: serializedMessages,
         previousMessages: existingConversation?.messages,
+        settings,
       })
 
       if (existingConversation) {
