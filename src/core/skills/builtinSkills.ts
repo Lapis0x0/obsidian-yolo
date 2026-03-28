@@ -1,6 +1,7 @@
 import {
   YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE,
   YOLO_SKILL_CREATOR_TEMPLATE,
+  getSkillsPathAwareTemplate,
 } from './templates'
 
 type BuiltinLiteSkill = {
@@ -35,16 +36,26 @@ const BUILTIN_SKILLS: BuiltinLiteSkill[] = [
 
 const normalize = (value?: string): string => value?.trim().toLowerCase() ?? ''
 
-export const listBuiltinLiteSkills = (): BuiltinLiteSkill[] => {
-  return BUILTIN_SKILLS.map((skill) => ({ ...skill }))
+export const listBuiltinLiteSkills = (options?: {
+  skillsDir?: string
+}): BuiltinLiteSkill[] => {
+  return BUILTIN_SKILLS.map((skill) => ({
+    ...skill,
+    content:
+      skill.id === 'skill-creator'
+        ? getSkillsPathAwareTemplate(skill.content, options?.skillsDir)
+        : skill.content,
+  }))
 }
 
 export const getBuiltinLiteSkillByIdOrName = ({
   id,
   name,
+  skillsDir,
 }: {
   id?: string
   name?: string
+  skillsDir?: string
 }): BuiltinLiteSkill | null => {
   const normalizedId = normalize(id)
   const normalizedName = normalize(name)
@@ -62,5 +73,15 @@ export const getBuiltinLiteSkillByIdOrName = ({
     return false
   })
 
-  return matched ? { ...matched } : null
+  if (!matched) {
+    return null
+  }
+
+  return {
+    ...matched,
+    content:
+      matched.id === 'skill-creator'
+        ? getSkillsPathAwareTemplate(matched.content, skillsDir)
+        : matched.content,
+  }
 }

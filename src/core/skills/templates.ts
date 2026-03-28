@@ -2,6 +2,13 @@ import { DEFAULT_YOLO_BASE_DIR, YOLO_SKILLS_SUBDIR } from '../paths/yoloPaths'
 
 export const YOLO_SKILLS_DIR = `${DEFAULT_YOLO_BASE_DIR}/${YOLO_SKILLS_SUBDIR}`
 
+export const getSkillsPathAwareTemplate = (
+  template: string,
+  skillsDir: string = YOLO_SKILLS_DIR,
+): string => {
+  return template.split(YOLO_SKILLS_DIR).join(skillsDir)
+}
+
 export const YOLO_SKILLS_INDEX_TEMPLATE = `# YOLO Skills
 
 Store your skill files here.

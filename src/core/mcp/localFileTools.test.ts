@@ -442,4 +442,101 @@ describe('local fs tool action helpers', () => {
     expect(contents.get(assistantMemoryPath) ?? '').not.toContain('Memory_1')
     expect(contents.get(assistantMemoryPath) ?? '').not.toContain('Memory_2')
   })
+
+  it('creates missing parent folders before creating a file', async () => {
+    const entries = new Map<string, unknown>()
+    const contents = new Map<string, string>()
+    const createFolder = jest
+      .fn()
+      .mockImplementation(async (path: string) => {
+        const folder = Object.assign(new TFolder(), {
+          path,
+          children: [],
+        })
+        entries.set(path, folder)
+        return folder
+      })
+    const create = jest
+      .fn()
+      .mockImplementation(async (path: string, content: string) => {
+        const file = Object.assign(new TFile(), {
+          path,
+          stat: { size: content.length },
+        })
+        entries.set(path, file)
+        contents.set(path, content)
+        return file
+      })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest
+            .fn()
+            .mockImplementation((path: string) => entries.get(path) ?? null),
+          createFolder,
+          create,
+        },
+      } as unknown as App,
+      toolName: 'fs_create_file',
+      args: {
+        path: '99-Assets/YOLO/skills/content-organization/SKILL.md',
+        content: '# test',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(createFolder).toHaveBeenNthCalledWith(1, '99-Assets')
+    expect(createFolder).toHaveBeenNthCalledWith(2, '99-Assets/YOLO')
+    expect(createFolder).toHaveBeenNthCalledWith(3, '99-Assets/YOLO/skills')
+    expect(createFolder).toHaveBeenNthCalledWith(
+      4,
+      '99-Assets/YOLO/skills/content-organization',
+    )
+    expect(create).toHaveBeenCalledWith(
+      '99-Assets/YOLO/skills/content-organization/SKILL.md',
+      '# test',
+    )
+    expect(
+      contents.get('99-Assets/YOLO/skills/content-organization/SKILL.md'),
+    ).toBe('# test')
+  })
+
+  it('creates missing parent folders before creating a directory', async () => {
+    const entries = new Map<string, unknown>()
+    const createFolder = jest
+      .fn()
+      .mockImplementation(async (path: string) => {
+        const folder = Object.assign(new TFolder(), {
+          path,
+          children: [],
+        })
+        entries.set(path, folder)
+        return folder
+      })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest
+            .fn()
+            .mockImplementation((path: string) => entries.get(path) ?? null),
+          createFolder,
+        },
+      } as unknown as App,
+      toolName: 'fs_create_dir',
+      args: {
+        path: '99-Assets/YOLO/skills/content-organization',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(createFolder).toHaveBeenNthCalledWith(1, '99-Assets')
+    expect(createFolder).toHaveBeenNthCalledWith(2, '99-Assets/YOLO')
+    expect(createFolder).toHaveBeenNthCalledWith(3, '99-Assets/YOLO/skills')
+    expect(createFolder).toHaveBeenNthCalledWith(
+      4,
+      '99-Assets/YOLO/skills/content-organization',
+    )
+  })
 })

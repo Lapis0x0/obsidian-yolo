@@ -819,6 +819,24 @@ const getParentFolderPath = (path: string): string => {
   return lastSlashIndex === -1 ? '' : path.slice(0, lastSlashIndex)
 }
 
+const ensureFolderPathExists = async (app: App, path: string): Promise<void> => {
+  const normalizedPath = validateVaultPath(path)
+  const existing = app.vault.getAbstractFileByPath(normalizedPath)
+  if (existing) {
+    if (!(existing instanceof TFolder)) {
+      throw new Error(`Path is not a folder: ${normalizedPath}`)
+    }
+    return
+  }
+
+  const parentFolderPath = getParentFolderPath(normalizedPath)
+  if (parentFolderPath) {
+    await ensureFolderPathExists(app, parentFolderPath)
+  }
+
+  await app.vault.createFolder(normalizedPath)
+}
+
 const makeContentSnippet = ({
   content,
   matchIndex,
@@ -943,15 +961,12 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
   }
 }
 
-const ensureParentFolderExists = (app: App, path: string): void => {
+const ensureParentFolderExists = async (app: App, path: string): Promise<void> => {
   const parentFolderPath = getParentFolderPath(path)
   if (!parentFolderPath) {
     return
   }
-  const parentFolder = app.vault.getAbstractFileByPath(parentFolderPath)
-  if (!parentFolder || !(parentFolder instanceof TFolder)) {
-    throw new Error(`Target parent folder not found: ${parentFolderPath}`)
-  }
+  await ensureFolderPathExists(app, parentFolderPath)
 }
 
 const formatJsonResult = (payload: unknown): string => {
@@ -1029,7 +1044,7 @@ const executeFsFileOps = async ({
         if (existing) {
           throw new Error(`Path already exists: ${path}`)
         }
-        ensureParentFolderExists(app, path)
+        await ensureParentFolderExists(app, path)
 
         if (!dryRun) {
           await app.vault.create(path, content)
@@ -1070,7 +1085,7 @@ const executeFsFileOps = async ({
         if (existing) {
           throw new Error(`Path already exists: ${path}`)
         }
-        ensureParentFolderExists(app, path)
+        await ensureParentFolderExists(app, path)
 
         if (!dryRun) {
           await app.vault.createFolder(path)

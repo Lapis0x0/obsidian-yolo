@@ -2,6 +2,7 @@ import { App, TFile } from 'obsidian'
 
 import {
   YOLO_SKILLS_INDEX_FILE_NAME,
+  getYoloSkillsDir,
   getYoloSkillsDirPrefix,
 } from '../paths/yoloPaths'
 
@@ -154,7 +155,9 @@ export function listLiteSkillEntries(
 
   const mergedById = new Map<string, LiteSkillEntry>()
 
-  listBuiltinLiteSkills().forEach((skill) => {
+  listBuiltinLiteSkills({
+    skillsDir: getYoloSkillsDir(options?.settings),
+  }).forEach((skill) => {
     mergedById.set(skill.id, {
       id: skill.id,
       name: skill.name,
@@ -274,6 +277,7 @@ export async function getLiteSkillDocument({
   const builtin = getBuiltinLiteSkillByIdOrName({
     id,
     name,
+    skillsDir: getYoloSkillsDir(settings),
   })
   if (!builtin) {
     return null

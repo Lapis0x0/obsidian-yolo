@@ -11,7 +11,10 @@ import {
   getYoloSkillsIndexPath,
 } from '../../../core/paths/yoloPaths'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
-import { YOLO_SKILLS_INDEX_TEMPLATE } from '../../../core/skills/templates'
+import {
+  YOLO_SKILLS_INDEX_TEMPLATE,
+  getSkillsPathAwareTemplate,
+} from '../../../core/skills/templates'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -107,7 +110,7 @@ function AgentSkillsModalContent({
       if (!app.vault.getAbstractFileByPath(indexPath)) {
         await app.vault.create(
           indexPath,
-          YOLO_SKILLS_INDEX_TEMPLATE.split('YOLO/skills').join(skillsDir),
+          getSkillsPathAwareTemplate(YOLO_SKILLS_INDEX_TEMPLATE, skillsDir),
         )
       }
 
