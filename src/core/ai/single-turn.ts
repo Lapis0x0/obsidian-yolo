@@ -210,6 +210,25 @@ const hasInvalidWriteToolArguments = (
   })
 }
 
+const logStreamingRecoverTriggered = ({
+  reason,
+  finishReason,
+  toolCalls,
+  error,
+}: {
+  reason: 'invalid_write_args' | 'stream_protocol_error'
+  finishReason?: string | null
+  toolCalls?: SingleTurnExecutionResult['toolCalls']
+  error?: string
+}): void => {
+  console.warn('[YOLO] Streaming tool-call recovery triggered.', {
+    reason,
+    finishReason: finishReason ?? null,
+    toolNames: (toolCalls ?? []).map((toolCall) => toolCall.name),
+    error,
+  })
+}
+
 export async function executeSingleTurn({
   providerClient,
   model,
@@ -410,6 +429,11 @@ export async function executeSingleTurn({
     let finalProviderMetadata: ProviderMetadata | undefined = providerMetadata
 
     if (hasInvalidWriteToolArguments(streamedToolCallList)) {
+      logStreamingRecoverTriggered({
+        reason: 'invalid_write_args',
+        finishReason,
+        toolCalls: streamedToolCallList,
+      })
       try {
         const nonStreamingResult = await runNonStreaming()
         if (nonStreamingResult.toolCalls.length > 0) {
@@ -442,6 +466,11 @@ export async function executeSingleTurn({
     if (!shouldFallback) {
       throw error
     }
+    logStreamingRecoverTriggered({
+      reason: 'stream_protocol_error',
+      finishReason,
+      error: message,
+    })
     return runNonStreaming()
   } finally {
     clearTimeoutId()

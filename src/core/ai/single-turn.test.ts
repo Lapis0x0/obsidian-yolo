@@ -77,6 +77,18 @@ async function* toAsyncIterable(
 }
 
 describe('executeSingleTurn', () => {
+  const consoleWarnSpy = jest
+    .spyOn(console, 'warn')
+    .mockImplementation(() => undefined)
+
+  afterEach(() => {
+    consoleWarnSpy.mockClear()
+  })
+
+  afterAll(() => {
+    consoleWarnSpy.mockRestore()
+  })
+
   it('uses streamed write tool calls without forcing non-stream refresh', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(
@@ -282,6 +294,13 @@ describe('executeSingleTurn', () => {
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
     expect(result.content).toBe('ok')
     expect(result.toolCalls).toEqual([])
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[YOLO] Streaming tool-call recovery triggered.',
+      expect.objectContaining({
+        reason: 'stream_protocol_error',
+        error: 'unexpected EOF',
+      }),
+    )
   })
 
   it('falls back to non-stream when streamed local write arguments are invalid', async () => {
@@ -373,6 +392,14 @@ describe('executeSingleTurn', () => {
         metadata: undefined,
       },
     ])
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[YOLO] Streaming tool-call recovery triggered.',
+      expect.objectContaining({
+        reason: 'invalid_write_args',
+        finishReason: 'tool_calls',
+        toolNames: ['yolo_local__fs_edit'],
+      }),
+    )
   })
 
   it('falls back to non-stream when streamed write arguments fail schema checks', async () => {
