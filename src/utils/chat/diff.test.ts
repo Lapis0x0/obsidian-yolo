@@ -224,4 +224,56 @@ describe('createInlineDiffLines', () => {
       ],
     })
   })
+
+  it('shows fine-grained inline replacements for chinese wording edits', () => {
+    const [line] = createInlineDiffLines(
+      ['今天去公园散步，然后买咖啡。'],
+      ['今天去公园慢跑，然后买热咖啡。'],
+    )
+
+    expect(line).toEqual({
+      type: 'modified',
+      tokens: [
+        { type: 'same', text: '今天去公园' },
+        { type: 'del', text: '散步' },
+        { type: 'add', text: '慢跑' },
+        { type: 'same', text: '，然后买' },
+        { type: 'add', text: '热' },
+        { type: 'same', text: '咖啡。' },
+      ],
+    })
+  })
+
+  it('uses segmenter-aware word diff for cjk lines with clear token boundaries', () => {
+    const [line] = createInlineDiffLines(
+      ['请先打开设置面板，然后保存当前草稿。'],
+      ['请先打开偏好设置面板，然后保存当前草稿。'],
+    )
+
+    expect(line).toEqual({
+      type: 'modified',
+      tokens: [
+        { type: 'same', text: '请先打开' },
+        { type: 'add', text: '偏好' },
+        { type: 'same', text: '设置面板，然后保存当前草稿。' },
+      ],
+    })
+  })
+
+  it('splits long chinese additions into smaller punctuation-based change tokens', () => {
+    const [line] = createInlineDiffLines(
+      ['原神获得成功。'],
+      ['原神获得成功。世界观让提瓦特大陆更加丰满。提瓦特大陆值得长期探索。'],
+    )
+
+    expect(line).toEqual({
+      type: 'modified',
+      tokens: [
+        { type: 'same', text: '原神获得成功' },
+        { type: 'add', text: '。世界观让提瓦特大陆更加丰满。' },
+        { type: 'add', text: '提瓦特大陆值得长期探索' },
+        { type: 'same', text: '。' },
+      ],
+    })
+  })
 })

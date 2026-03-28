@@ -47,6 +47,13 @@ type MarkdownBlockUnit = {
   presentation: 'inline' | 'block'
 }
 
+type SegmenterConstructor = new (
+  locale?: string | string[],
+  options?: { granularity?: 'grapheme' | 'word' | 'sentence' },
+) => {
+  segment(input: string): Iterable<{ segment: string }>
+}
+
 export function createDiffBlocks(
   currentMarkdown: string,
   incomingMarkdown: string,
@@ -902,15 +909,97 @@ function createInlineDiffTokens(
     return [{ type: 'same', text: originalLine }]
   }
 
+  const hasCjkContent = hasMeaningfulCjkContent(
+    `${originalLine}${modifiedLine}`,
+  )
   const sentencePriorityTokens = createSentencePriorityDiffTokens(
     originalLine,
     modifiedLine,
   )
-  if (sentencePriorityTokens) {
+  if (sentencePriorityTokens && !hasCjkContent) {
     return sentencePriorityTokens
   }
 
-  return createWordLevelInlineDiffTokens(originalLine, modifiedLine)
+  return createEditorPreferredInlineDiffTokens(originalLine, modifiedLine)
+}
+
+function createEditorPreferredInlineDiffTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] {
+  const hasCjkContent = hasMeaningfulCjkContent(
+    `${originalLine}${modifiedLine}`,
+  )
+
+  if (hasCjkContent && !isCrossScriptRewrite(originalLine, modifiedLine)) {
+    const originalSegmenterTokens = splitLineWithIntlSegmenter(originalLine)
+    const modifiedSegmenterTokens = splitLineWithIntlSegmenter(modifiedLine)
+    const hasUsableSegmenterTokens =
+      originalSegmenterTokens.length > 1 && modifiedSegmenterTokens.length > 1
+
+    if (hasUsableSegmenterTokens) {
+      const segmenterTokens = createInlineDiffTokensFromUnits(
+        originalSegmenterTokens,
+        modifiedSegmenterTokens,
+      )
+
+      if (
+        !shouldPreferWholeLineReplacement(
+          originalLine,
+          modifiedLine,
+          segmenterTokens,
+        )
+      ) {
+        return postProcessInlineDiffTokens(segmenterTokens, hasCjkContent)
+      }
+    }
+
+    const characterLevelTokens = createCharacterLevelInlineDiffTokens(
+      originalLine,
+      modifiedLine,
+    )
+
+    if (
+      !shouldPreferWholeLineReplacement(
+        originalLine,
+        modifiedLine,
+        characterLevelTokens,
+      )
+    ) {
+      return postProcessInlineDiffTokens(characterLevelTokens, hasCjkContent)
+    }
+  }
+
+  const wordLevelTokens = createWordLevelInlineDiffTokens(
+    originalLine,
+    modifiedLine,
+  )
+
+  if (shouldPreferWholeLineReplacement(originalLine, modifiedLine, wordLevelTokens)) {
+    return buildWholeLineReplacementTokens(originalLine, modifiedLine)
+  }
+
+  if (
+    !hasCjkContent &&
+    shouldPreferCharacterLevelInlineDiff(originalLine, modifiedLine)
+  ) {
+    const characterLevelTokens = createCharacterLevelInlineDiffTokens(
+      originalLine,
+      modifiedLine,
+    )
+
+    if (
+      !shouldPreferWholeLineReplacement(
+        originalLine,
+        modifiedLine,
+        characterLevelTokens,
+      )
+    ) {
+      return postProcessInlineDiffTokens(characterLevelTokens, hasCjkContent)
+    }
+  }
+
+  return postProcessInlineDiffTokens(wordLevelTokens, hasCjkContent)
 }
 
 function createSentencePriorityDiffTokens(
@@ -990,61 +1079,72 @@ function createWordLevelInlineDiffTokens(
     return [{ type: 'same', text: originalLine }]
   }
 
-  const originalTokens = splitLineTokens(originalLine)
-  const modifiedTokens = splitLineTokens(modifiedLine)
-
-  const dp: number[][] = Array.from({ length: originalTokens.length + 1 }, () =>
-    new Array(modifiedTokens.length + 1).fill(0),
+  return createInlineDiffTokensFromUnits(
+    splitLineTokens(originalLine),
+    splitLineTokens(modifiedLine),
   )
-
-  for (let i = 1; i <= originalTokens.length; i += 1) {
-    for (let j = 1; j <= modifiedTokens.length; j += 1) {
-      if (originalTokens[i - 1] === modifiedTokens[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
-      }
-    }
-  }
-
-  const reversed: InlineDiffToken[] = []
-  let i = originalTokens.length
-  let j = modifiedTokens.length
-
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && originalTokens[i - 1] === modifiedTokens[j - 1]) {
-      reversed.push({ type: 'same', text: originalTokens[i - 1] })
-      i -= 1
-      j -= 1
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      reversed.push({ type: 'add', text: modifiedTokens[j - 1] })
-      j -= 1
-    } else if (i > 0) {
-      reversed.push({ type: 'del', text: originalTokens[i - 1] })
-      i -= 1
-    }
-  }
-
-  const merged: InlineDiffToken[] = []
-  for (let k = reversed.length - 1; k >= 0; k -= 1) {
-    const token = reversed[k]
-    const last = merged[merged.length - 1]
-    if (last && last.type === token.type) {
-      last.text += token.text
-    } else {
-      merged.push({ ...token })
-    }
-  }
-
-  if (shouldPreferWholeLineReplacement(originalLine, modifiedLine, merged)) {
-    return buildWholeLineReplacementTokens(originalLine, modifiedLine)
-  }
-
-  return merged
 }
 
 function splitLineTokens(line: string): string[] {
+  if (hasMeaningfulCjkContent(line)) {
+    const segmenterTokens = splitLineWithIntlSegmenter(line)
+    if (segmenterTokens.length > 1) {
+      return segmenterTokens
+    }
+  }
+
   return line.split(/(\s+)/).filter((token) => token.length > 0)
+}
+
+function splitLineWithIntlSegmenter(line: string): string[] {
+  const segmenterApi = Intl as typeof Intl & {
+    Segmenter?: SegmenterConstructor
+  }
+  const Segmenter = segmenterApi.Segmenter
+  if (!Segmenter) {
+    return []
+  }
+
+  try {
+    const segmenter = new Segmenter('zh-CN', { granularity: 'word' })
+    return Array.from(segmenter.segment(line), (segment) => segment.segment)
+      .filter((token) => token.length > 0)
+  } catch {
+    return []
+  }
+}
+
+function createCharacterLevelInlineDiffTokens(
+  originalLine: string,
+  modifiedLine: string,
+): InlineDiffToken[] {
+  return createInlineDiffTokensFromUnits(
+    Array.from(originalLine),
+    Array.from(modifiedLine),
+  )
+}
+
+function createInlineDiffTokensFromUnits(
+  originalUnits: string[],
+  modifiedUnits: string[],
+): InlineDiffToken[] {
+  const operations = diffSequence(
+    originalUnits,
+    modifiedUnits,
+    (left, right) => left === right,
+  )
+
+  return mergeAdjacentInlineTokens(
+    operations.map((operation) => {
+      if (operation.type === 'same') {
+        return { type: 'same', text: operation.value }
+      }
+      if (operation.type === 'del') {
+        return { type: 'del', text: operation.value }
+      }
+      return { type: 'add', text: operation.value }
+    }),
+  )
 }
 
 function diffSequence<T>(
@@ -1148,6 +1248,145 @@ function mergeAdjacentInlineTokens(
   })
 
   return merged
+}
+
+function postProcessInlineDiffTokens(
+  tokens: InlineDiffToken[],
+  hasCjkContent: boolean,
+): InlineDiffToken[] {
+  const mergedTokens = mergeAdjacentInlineTokens(tokens)
+
+  if (!hasCjkContent) {
+    return mergedTokens
+  }
+
+  return normalizeStandalonePunctuationTokens(
+    mergedTokens.flatMap((token) => splitLongChangedTokenByCjkPunctuation(token)),
+  )
+}
+
+function splitLongChangedTokenByCjkPunctuation(
+  token: InlineDiffToken,
+): InlineDiffToken[] {
+  if (token.type === 'same') {
+    return [token]
+  }
+
+  const compactLength = token.text.replace(/\s+/g, '').length
+  if (compactLength < 18 || !hasMeaningfulCjkContent(token.text)) {
+    return [token]
+  }
+
+  const segments = splitCjkChangeSegments(token.text)
+  if (segments.length <= 1) {
+    return [token]
+  }
+
+  return segments.map((segment) => ({
+    type: token.type,
+    text: segment,
+  }))
+}
+
+function splitCjkChangeSegments(text: string): string[] {
+  const rawParts = text.split(/([，、；：。！？])/u)
+  const segments: string[] = []
+
+  for (let index = 0; index < rawParts.length; index += 1) {
+    const part = rawParts[index]
+    if (!part) continue
+
+    if (/^[，、；：。！？]$/u.test(part)) {
+      if (segments.length > 0) {
+        segments[segments.length - 1] += part
+      } else {
+        segments.push(part)
+      }
+      continue
+    }
+
+    const nextPart = rawParts[index + 1]
+    if (nextPart && /^[，、；：。！？]$/u.test(nextPart)) {
+      segments.push(`${part}${nextPart}`)
+      index += 1
+      continue
+    }
+
+    segments.push(part)
+  }
+
+  return segments.filter((segment) => segment.length > 0)
+}
+
+function normalizeStandalonePunctuationTokens(
+  tokens: InlineDiffToken[],
+): InlineDiffToken[] {
+  const normalized: InlineDiffToken[] = []
+
+  tokens.forEach((token) => {
+    if (!isStandaloneCjkPunctuationToken(token.text)) {
+      normalized.push({ ...token })
+      return
+    }
+
+    const last = normalized[normalized.length - 1]
+    if (last && last.type === token.type) {
+      last.text += token.text
+      return
+    }
+
+    normalized.push({ ...token })
+  })
+
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    const current = normalized[index]
+    const next = normalized[index + 1]
+    if (
+      current &&
+      next &&
+      isStandaloneCjkPunctuationToken(current.text) &&
+      current.type === next.type
+    ) {
+      next.text = `${current.text}${next.text}`
+      normalized.splice(index, 1)
+      index -= 1
+    }
+  }
+
+  return normalized
+}
+
+function isStandaloneCjkPunctuationToken(text: string): boolean {
+  return /^[，、；：。！？]+$/u.test(text)
+}
+
+function shouldPreferCharacterLevelInlineDiff(
+  originalLine: string,
+  modifiedLine: string,
+): boolean {
+  if (isCrossScriptRewrite(originalLine, modifiedLine)) {
+    return false
+  }
+
+  const combined = `${originalLine}${modifiedLine}`
+  if (!hasMeaningfulCjkContent(combined)) {
+    return false
+  }
+
+  const segmenterTokens = splitLineWithIntlSegmenter(originalLine)
+  const segmenterTokensModified = splitLineWithIntlSegmenter(modifiedLine)
+  const hasUsefulSegmentation =
+    segmenterTokens.length >= 3 && segmenterTokensModified.length >= 3
+
+  if (!hasUsefulSegmentation) {
+    return true
+  }
+
+  const compactOriginalLength = originalLine.replace(/\s+/g, '').length
+  const compactModifiedLength = modifiedLine.replace(/\s+/g, '').length
+  const maxCompactLength = Math.max(compactOriginalLength, compactModifiedLength)
+
+  return maxCompactLength <= 120
 }
 
 function shouldPreferWholeLineReplacement(
@@ -1255,6 +1494,10 @@ function tokenizeInlineComparableText(text: string): string[] {
 
 function normalizeInlineComparisonText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function hasMeaningfulCjkContent(text: string): boolean {
+  return countMatches(text, /\p{Script=Han}/gu) >= 2
 }
 
 function isCrossScriptRewrite(

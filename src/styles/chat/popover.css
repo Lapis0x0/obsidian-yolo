@@ -972,19 +972,40 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-inline-review-widget .smtcmp-inline-diff {
+  display: inline;
+  padding: 0 3px;
+  margin: 0 1px;
   border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .smtcmp-inline-review-widget .smtcmp-inline-diff-del {
   color: color-mix(in srgb, var(--text-faint) 80%, var(--text-muted) 20%);
-  text-decoration: line-through;
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-border) 60%,
+    transparent
+  );
+  text-decoration-line: underline line-through;
+  text-decoration-style: solid;
   text-decoration-thickness: 1px;
   text-decoration-color: color-mix(in srgb, var(--text-faint) 70%, transparent);
+  text-underline-offset: 2px;
 }
 
 .smtcmp-inline-review-widget .smtcmp-inline-diff-add {
   color: var(--text-accent);
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 60%,
+    transparent
+  );
+  text-underline-offset: 2px;
 }
 
 .smtcmp-inline-review-floating-actions .smtcmp-apply-action {
@@ -1495,29 +1516,45 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 :is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-diff {
-  padding: 0 1px;
-  border-radius: 2px;
+  display: inline;
+  padding: 0 3px;
+  margin: 0 1px;
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
   text-decoration-skip-ink: none;
 }
 
 :is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-diff-del {
   color: var(--smtcmp-inline-del-color);
-  text-decoration: line-through;
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-border) 60%,
+    transparent
+  );
+  text-decoration-line: underline line-through;
+  text-decoration-style: solid;
   text-decoration-thickness: 1px;
   text-decoration-color: color-mix(
     in srgb,
     var(--smtcmp-inline-del-color) 70%,
     transparent
   );
-  border-bottom: 1px dashed
-    color-mix(in srgb, var(--smtcmp-inline-del-color) 55%, transparent);
+  text-underline-offset: 2px;
 }
 
 :is(#smtcmp-apply-view, .smtcmp-apply-view-root) .smtcmp-inline-diff-add {
   color: var(--smtcmp-inline-add-color);
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 60%,
+    transparent
+  );
+  text-underline-offset: 2px;
 }
 
 .smtcmp-spinner {
