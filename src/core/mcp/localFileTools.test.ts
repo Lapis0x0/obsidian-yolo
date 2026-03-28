@@ -259,7 +259,7 @@ describe('local fs tool action helpers', () => {
     expect(payload.requestedOperation.type).toBe('full')
     expect(payload.results[0]).toMatchObject({
       ok: true,
-      content: ['one', 'two', 'three'].join('\n'),
+      content: ['1|one', '2|two', '3|three'].join('\n'),
       returnedRange: {
         startLine: 1,
         endLine: 3,

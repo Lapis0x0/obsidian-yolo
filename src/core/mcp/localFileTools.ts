@@ -1452,10 +1452,9 @@ export async function callLocalFileTool({
           let nextStartLine: number | null = null
 
           if (operation.type === 'full') {
-            outputContent = content
-            if (outputContent.length > maxCharsPerFile) {
-              outputContent = `${outputContent.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
-            }
+            outputContent = lines
+              .map((line, index) => `${index + 1}|${line}`)
+              .join('\n')
             returnedCount = totalLines
             returnedStartLine = totalLines > 0 ? 1 : null
             returnedEndLine = totalLines > 0 ? totalLines : null

@@ -1101,7 +1101,11 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
 
     return readableFileEntries
       .map(({ file, content }) => {
-        return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
+        const numberedContent = this.addLineNumbersToContent({
+          content,
+          startLine: 1,
+        })
+        return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
       })
       .join('')
   }

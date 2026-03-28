@@ -290,8 +290,8 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     const textContent = getTextContent(result.promptContent)
 
-    expect(textContent).toContain('```notes/explicit.md\n# Explicit\nBody\n```')
-    expect(textContent).toContain('```notes/current.md\n# Current\nMore\n```')
+    expect(textContent).toContain('```notes/explicit.md\n1|# Explicit\n2|Body\n```')
+    expect(textContent).toContain('```notes/current.md\n1|# Current\n2|More\n```')
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
     expect(textContent).toContain('- `docs/from-folder.md`\n  - L1 ## Folder Heading')
     expect(textContent).not.toContain('Folder body')
