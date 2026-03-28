@@ -41,7 +41,10 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
   try {
     await app.vault.adapter.remove(path)
   } catch (error) {
-    console.warn(`[YOLO] Failed to remove path "${path}" after migration`, error)
+    console.warn(
+      `[YOLO] Failed to remove path "${path}" after migration`,
+      error,
+    )
   }
 }
 
@@ -98,7 +101,10 @@ const mergeJsonDirectory = async (
   await removePathIfExists(app, sourceDir)
 }
 
-const cleanupJsonDirectory = async (app: App, rootDir: string): Promise<void> => {
+const cleanupJsonDirectory = async (
+  app: App,
+  rootDir: string,
+): Promise<void> => {
   if (!(await app.vault.adapter.exists(rootDir))) {
     return
   }

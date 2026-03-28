@@ -1,7 +1,4 @@
-import {
-  NotificationEvent,
-  NotificationService,
-} from './notificationService'
+import { NotificationEvent, NotificationService } from './notificationService'
 
 const createEvent = (
   overrides?: Partial<NotificationEvent>,

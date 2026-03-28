@@ -101,7 +101,11 @@ export class OllamaProvider extends BaseLLMProvider<LLMProvider> {
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: () =>
-        this.adapter.generateResponse(this.browserClient, mergedRequest, options),
+        this.adapter.generateResponse(
+          this.browserClient,
+          mergedRequest,
+          options,
+        ),
       runObsidian: () =>
         this.adapter.generateResponse(
           this.obsidianClient,

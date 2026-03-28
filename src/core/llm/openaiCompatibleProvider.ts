@@ -228,7 +228,11 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
           options,
         ),
       runNode: () =>
-        this.adapter.generateResponse(this.nodeClient, formattedRequest, options),
+        this.adapter.generateResponse(
+          this.nodeClient,
+          formattedRequest,
+          options,
+        ),
     })
   }
 
@@ -328,17 +332,15 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       onAutoPromoteTransportMode: this.promoteTransportMode,
       signal: options?.signal,
       createBrowserStream: (signal) =>
-        this.adapter.streamResponse(
-          this.browserClient,
-          formattedRequest,
-          { ...options, signal: signal ?? options?.signal },
-        ),
+        this.adapter.streamResponse(this.browserClient, formattedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
       createObsidianStream: (signal) =>
-        this.adapter.streamResponse(
-          this.obsidianClient,
-          formattedRequest,
-          { ...options, signal: signal ?? options?.signal },
-        ),
+        this.adapter.streamResponse(this.obsidianClient, formattedRequest, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
       createNodeStream: (signal) =>
         this.adapter.streamResponse(this.nodeClient, formattedRequest, {
           ...options,

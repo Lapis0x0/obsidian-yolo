@@ -59,11 +59,7 @@ export class DatabaseManager {
     } | null,
   ): Promise<DatabaseManager> {
     const dbPath = await ensureVectorDbPath(app, settings)
-    const dbManager = new DatabaseManager(
-      app,
-      dbPath,
-      pgliteResourcePath,
-    )
+    const dbManager = new DatabaseManager(app, dbPath, pgliteResourcePath)
     dbManager.db = await dbManager.loadExistingDatabase()
     if (!dbManager.db) {
       dbManager.db = await dbManager.createNewDatabase()

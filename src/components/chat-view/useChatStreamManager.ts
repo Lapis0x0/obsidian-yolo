@@ -44,10 +44,7 @@ type UseChatStreamManagerParams = {
   chatMode: ChatMode
   currentFileOverride?: TFile | null
   assistantIdOverride?: string
-  onRunSettled?: (result: {
-    aborted: boolean
-    failed: boolean
-  }) => void
+  onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
 }
 
 const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
@@ -175,12 +172,7 @@ export function useChatStreamManager({
     return () => {
       unsubscribe()
     }
-  }, [
-    autoScrollToBottom,
-    currentConversationId,
-    plugin,
-    setChatMessages,
-  ])
+  }, [autoScrollToBottom, currentConversationId, plugin, setChatMessages])
 
   const abortConversationRun = useCallback(
     (conversationId: string) => {
@@ -211,7 +203,10 @@ export function useChatStreamManager({
       abortConversationRun(conversationId)
 
       const abortController = new AbortController()
-      activeStreamAbortControllersRef.current.set(conversationId, abortController)
+      activeStreamAbortControllersRef.current.set(
+        conversationId,
+        abortController,
+      )
 
       try {
         const effectiveAssistantId =

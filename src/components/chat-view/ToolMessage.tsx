@@ -669,7 +669,9 @@ function useToolCall(
 ) {
   const plugin = usePlugin()
   const showReloadNotice = useCallback(() => {
-    new Notice('该工具调用来自已结束或已重载的会话，无法继续执行，请重新发起请求。')
+    new Notice(
+      '该工具调用来自已结束或已重载的会话，无法继续执行，请重新发起请求。',
+    )
   }, [])
 
   const handleToolCall = useCallback(async () => {

@@ -245,10 +245,7 @@ export default function AssistantSelectionQuoteButton({
     hideOverlay()
   }, [conversationId, hideOverlay, messageId, onQuote, overlay])
 
-  const buttonLabel = useMemo(
-    () => t('chat.assistantQuote.add', '引用'),
-    [t],
-  )
+  const buttonLabel = useMemo(() => t('chat.assistantQuote.add', '引用'), [t])
 
   return (
     <div

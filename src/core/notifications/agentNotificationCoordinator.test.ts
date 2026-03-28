@@ -41,7 +41,9 @@ describe('AgentNotificationCoordinator', () => {
   it('does not notify for initial pending approvals and marks them as seen', () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
     const markApprovalKeysAsSeen = jest.fn<void, [Iterable<string>]>()
-    const notify = jest.fn<Promise<void>, [NotificationEvent]>().mockResolvedValue()
+    const notify = jest
+      .fn<Promise<void>, [NotificationEvent]>()
+      .mockResolvedValue()
 
     const coordinator = new AgentNotificationCoordinator({
       agentService: {
@@ -62,13 +64,17 @@ describe('AgentNotificationCoordinator', () => {
 
     expect(subscriber).not.toBeNull()
     expect(markApprovalKeysAsSeen).toHaveBeenCalledTimes(1)
-    expect(Array.from(markApprovalKeysAsSeen.mock.calls[0][0])).toEqual(['tool-1'])
+    expect(Array.from(markApprovalKeysAsSeen.mock.calls[0][0])).toEqual([
+      'tool-1',
+    ])
     expect(notify).not.toHaveBeenCalled()
   })
 
   it('notifies when a new approval is required after initialization', async () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
-    const notify = jest.fn<Promise<void>, [NotificationEvent]>().mockResolvedValue()
+    const notify = jest
+      .fn<Promise<void>, [NotificationEvent]>()
+      .mockResolvedValue()
 
     const coordinator = new AgentNotificationCoordinator({
       agentService: {
@@ -119,7 +125,9 @@ describe('AgentNotificationCoordinator', () => {
 
   it('notifies when a run completes in the background', async () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
-    const notify = jest.fn<Promise<void>, [NotificationEvent]>().mockResolvedValue()
+    const notify = jest
+      .fn<Promise<void>, [NotificationEvent]>()
+      .mockResolvedValue()
 
     const coordinator = new AgentNotificationCoordinator({
       agentService: {
@@ -155,7 +163,9 @@ describe('AgentNotificationCoordinator', () => {
 
   it('notifies with error copy when a run fails', async () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
-    const notify = jest.fn<Promise<void>, [NotificationEvent]>().mockResolvedValue()
+    const notify = jest
+      .fn<Promise<void>, [NotificationEvent]>()
+      .mockResolvedValue()
 
     const coordinator = new AgentNotificationCoordinator({
       agentService: {
@@ -191,7 +201,9 @@ describe('AgentNotificationCoordinator', () => {
 
   it('does not notify task completion while approvals are still pending', () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
-    const notify = jest.fn<Promise<void>, [NotificationEvent]>().mockResolvedValue()
+    const notify = jest
+      .fn<Promise<void>, [NotificationEvent]>()
+      .mockResolvedValue()
 
     const coordinator = new AgentNotificationCoordinator({
       agentService: {
@@ -245,7 +257,9 @@ describe('AgentNotificationCoordinator', () => {
 
   it('does not notify when a run is aborted', async () => {
     let subscriber: ((state: AgentConversationState) => void) | null = null
-    const notify = jest.fn<Promise<void>, [NotificationEvent]>().mockResolvedValue()
+    const notify = jest
+      .fn<Promise<void>, [NotificationEvent]>()
+      .mockResolvedValue()
 
     const coordinator = new AgentNotificationCoordinator({
       agentService: {

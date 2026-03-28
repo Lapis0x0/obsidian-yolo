@@ -1033,7 +1033,10 @@ export function QuickAskPanel({
       beginBufferedRunnerSession(newMessages)
       void (async () => {
         try {
-          await createOrUpdateConversationImmediately(conversationId, newMessages)
+          await createOrUpdateConversationImmediately(
+            conversationId,
+            newMessages,
+          )
         } catch (error) {
           console.error('Failed to save quick ask conversation', error)
           return

@@ -17,7 +17,7 @@ export abstract class AbstractJsonRepository<T, M> {
     app: App,
     dataDir: string,
     options?: AbstractJsonRepositoryOptions,
-    ) {
+  ) {
     this.app = app
     this.dataDir = normalizePath(dataDir)
     this.prepareDataDir = options?.prepareDataDir

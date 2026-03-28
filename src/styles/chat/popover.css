@@ -311,11 +311,7 @@
 .smtcmp-chat-list-dropdown-item-status.is-running {
   border: 2px solid
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  border-top-color: color-mix(
-    in srgb,
-    var(--interactive-accent) 82%,
-    white 8%
-  );
+  border-top-color: color-mix(in srgb, var(--interactive-accent) 82%, white 8%);
   animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
 }
 
@@ -369,11 +365,7 @@
   border-radius: 999px;
   border: 2px solid
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  border-top-color: color-mix(
-    in srgb,
-    var(--interactive-accent) 82%,
-    white 8%
-  );
+  border-top-color: color-mix(in srgb, var(--interactive-accent) 82%, white 8%);
   box-sizing: border-box;
   opacity: 0.92;
   animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
@@ -481,11 +473,7 @@
   border-radius: 999px;
   border: 2px solid
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  border-top-color: color-mix(
-    in srgb,
-    var(--interactive-accent) 82%,
-    white 8%
-  );
+  border-top-color: color-mix(in srgb, var(--interactive-accent) 82%, white 8%);
   box-sizing: border-box;
   opacity: 0.92;
   animation: smtcmp-chat-list-run-spin 0.9s linear infinite;

@@ -206,10 +206,7 @@ export const collectGroupEditSummary = (
   })
 
   const files = [...pathMap.entries()].map(([path, value]) => {
-    const firstSnapshot = editUndoSnapshotStore.get(
-      value.firstToolCallId,
-      path,
-    )
+    const firstSnapshot = editUndoSnapshotStore.get(value.firstToolCallId, path)
     const latestSnapshot = editUndoSnapshotStore.get(
       value.latestToolCallId,
       path,

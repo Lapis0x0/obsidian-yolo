@@ -133,16 +133,21 @@ function ChatListItem({
           <span className="smtcmp-chat-list-dropdown-item-title-text">
             {title}
           </span>
-          {runSummary && (runSummary.isRunning || runSummary.isWaitingApproval) ? (
+          {runSummary &&
+          (runSummary.isRunning || runSummary.isWaitingApproval) ? (
             <span
               className={`smtcmp-chat-list-dropdown-item-status${
                 runSummary.isRunning ? ' is-running' : ' is-waiting'
               }`}
               aria-label={
-                runSummary.isRunning ? 'Conversation running' : 'Waiting approval'
+                runSummary.isRunning
+                  ? 'Conversation running'
+                  : 'Waiting approval'
               }
               title={
-                runSummary.isRunning ? 'Conversation running' : 'Waiting approval'
+                runSummary.isRunning
+                  ? 'Conversation running'
+                  : 'Waiting approval'
               }
             />
           ) : null}
@@ -171,14 +176,10 @@ function ChatListItem({
           className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
           disabled={isUpdatingTitle}
           aria-label={
-            isEditing
-              ? t('common.save', 'Save')
-              : t('common.edit', 'Edit')
+            isEditing ? t('common.save', 'Save') : t('common.edit', 'Edit')
           }
           title={
-            isEditing
-              ? t('common.save', 'Save')
-              : t('common.edit', 'Edit')
+            isEditing ? t('common.save', 'Save') : t('common.edit', 'Edit')
           }
         >
           {isEditing ? <Check /> : <Pencil />}
@@ -698,7 +699,9 @@ export function ChatListDropdown({
                     isFocused={
                       focusedConversationId === chat.id && !isHoveringArchiveRow
                     }
-                    shouldScrollIntoView={scrollIntoViewConversationId === chat.id}
+                    shouldScrollIntoView={
+                      scrollIntoViewConversationId === chat.id
+                    }
                     isEditing={editingId === chat.id}
                     isUpdatingTitle={updatingTitleIds.has(chat.id)}
                     isPinned={Boolean(chat.isPinned)}

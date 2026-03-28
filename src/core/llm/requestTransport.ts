@@ -420,7 +420,11 @@ const createAutoFallbackStream = <T>({
       ]
 
       let lastError: unknown
-      for (const { mode: fallbackMode, createStream, timed } of streamFactories) {
+      for (const {
+        mode: fallbackMode,
+        createStream,
+        timed,
+      } of streamFactories) {
         try {
           const fallbackStream =
             timed && fallbackMode === 'node'

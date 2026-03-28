@@ -141,9 +141,7 @@ describe('filterEmptyAssistantMessages', () => {
 
   it('keeps assistant messages with tool calls even when content is empty', () => {
     const assistantMessage = assistantWithTools(['call-1'])
-    const input: RequestMessage[] = [
-      assistantMessage,
-    ]
+    const input: RequestMessage[] = [assistantMessage]
 
     expect(filterEmptyAssistantMessages(input)).toEqual(input)
   })

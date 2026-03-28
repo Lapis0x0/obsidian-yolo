@@ -9,9 +9,7 @@ describe('resolvePromptVariables', () => {
         'Date={{current_date}}; Hour={{current_hour}}; Minute={{current_minute}}',
         { now },
       ),
-    ).toBe(
-      'Date=2026-03-23; Hour=2026-03-23 14; Minute=2026-03-23 14:37',
-    )
+    ).toBe('Date=2026-03-23; Hour=2026-03-23 14; Minute=2026-03-23 14:37')
   })
 
   it('supports current_time aliases with explicit granularity', () => {

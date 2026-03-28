@@ -3,10 +3,7 @@ import { App } from 'obsidian'
 import { ChatManager } from '../../database/json/chat/ChatManager'
 import { compactConversationMessagesForStorage } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
-import type {
-  ChatMessage,
-  SerializedChatMessage,
-} from '../../types/chat'
+import type { ChatMessage, SerializedChatMessage } from '../../types/chat'
 import { serializeMentionable } from '../../utils/chat/mentionable'
 
 const DEFAULT_UNTITLED_CONVERSATION_TITLE = '新对话'

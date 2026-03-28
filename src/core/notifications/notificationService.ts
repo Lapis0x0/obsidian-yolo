@@ -53,7 +53,10 @@ const createBrowserSoundNotifier = (): NotificationChannelNotifier => {
   let audioContext: AudioContext | null = null
 
   const getAudioContext = (): AudioContext | null => {
-    if (typeof window === 'undefined' || typeof window.AudioContext === 'undefined') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.AudioContext === 'undefined'
+    ) {
       return null
     }
     if (!audioContext) {
@@ -161,7 +164,8 @@ export class NotificationService {
     this.getOptions = options.getOptions
     this.getIsWindowFocused = options.getIsWindowFocused ?? getBrowserFocusState
     this.soundNotifier = options.soundNotifier ?? createBrowserSoundNotifier()
-    this.systemNotifier = options.systemNotifier ?? createBrowserSystemNotifier()
+    this.systemNotifier =
+      options.systemNotifier ?? createBrowserSystemNotifier()
   }
 
   private readonly getOptions: () => NotificationOptionsLike
@@ -194,7 +198,9 @@ export class NotificationService {
       notifiers.push(this.systemNotifier)
     }
 
-    await Promise.allSettled(notifiers.map((notifier) => notifier.notify(event)))
+    await Promise.allSettled(
+      notifiers.map((notifier) => notifier.notify(event)),
+    )
   }
 
   private shouldNotifyEvent(type: NotificationEvent['type']): boolean {

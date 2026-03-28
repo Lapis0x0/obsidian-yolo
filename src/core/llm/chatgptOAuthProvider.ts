@@ -68,7 +68,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-
     let formattedRequest = request
     if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
       formattedRequest = {
@@ -111,7 +110,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-
     let formattedRequest = request
     if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
       formattedRequest = {

@@ -53,9 +53,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private nodeClient: Anthropic
   private requestTransportMode: RequestTransportMode
   private requestTransportMemoryKey: string
-  private onAutoPromoteTransportMode?: (
-    mode: AutoPromotedTransportMode,
-  ) => void
+  private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
 
   private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
     if (this.requestTransportMode === mode) {
@@ -75,9 +73,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   constructor(
     provider: LLMProvider,
     options?: {
-      onAutoPromoteTransportMode?: (
-        mode: AutoPromotedTransportMode,
-      ) => void
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
     },
   ) {
     super(provider)

@@ -92,7 +92,10 @@ export function NotificationSettingsSection() {
           },
         })
       } catch (error: unknown) {
-        console.error('Failed to update task completed notification setting', error)
+        console.error(
+          'Failed to update task completed notification setting',
+          error,
+        )
       }
     })()
   }
@@ -101,7 +104,10 @@ export function NotificationSettingsSection() {
     <div className="smtcmp-models-block-content">
       <ObsidianSetting
         name={t('settings.etc.notificationsEnabled', '启用通知')}
-        desc={t('settings.etc.notificationsEnabledDesc', '为 Agent 任务开启或关闭提醒。')}
+        desc={t(
+          'settings.etc.notificationsEnabledDesc',
+          '为 Agent 任务开启或关闭提醒。',
+        )}
         className="smtcmp-models-select-card"
       >
         <ObsidianToggle
@@ -123,8 +129,14 @@ export function NotificationSettingsSection() {
               value={settings.notificationOptions.channel ?? 'sound'}
               options={{
                 sound: t('settings.etc.notificationChannelSound', '仅音效'),
-                system: t('settings.etc.notificationChannelSystem', '仅系统通知'),
-                both: t('settings.etc.notificationChannelBoth', '音效 + 系统通知'),
+                system: t(
+                  'settings.etc.notificationChannelSystem',
+                  '仅系统通知',
+                ),
+                both: t(
+                  'settings.etc.notificationChannelBoth',
+                  '音效 + 系统通知',
+                ),
               }}
               onChange={handleNotificationChannelChange}
             />
@@ -150,7 +162,10 @@ export function NotificationSettingsSection() {
             />
           </ObsidianSetting>
           <ObsidianSetting
-            name={t('settings.etc.notificationApprovalRequired', '需要审批时提醒')}
+            name={t(
+              'settings.etc.notificationApprovalRequired',
+              '需要审批时提醒',
+            )}
             desc={t(
               'settings.etc.notificationApprovalRequiredDesc',
               '当 YOLO 暂停并等待你审批工具调用时发出提醒。',
@@ -158,7 +173,9 @@ export function NotificationSettingsSection() {
             className="smtcmp-models-select-card"
           >
             <ObsidianToggle
-              value={settings.notificationOptions.notifyOnApprovalRequired ?? true}
+              value={
+                settings.notificationOptions.notifyOnApprovalRequired ?? true
+              }
               onChange={handleNotifyOnApprovalRequiredChange}
             />
           </ObsidianSetting>

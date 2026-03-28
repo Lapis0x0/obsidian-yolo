@@ -1,7 +1,4 @@
-import type {
-  AgentConversationState,
-  AgentService,
-} from '../agent/service'
+import type { AgentConversationState, AgentService } from '../agent/service'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import type { NotificationService } from './notificationService'
@@ -35,12 +32,17 @@ const getPendingApprovalToolCallIds = (
   })
 }
 
-const isTerminalStatus = (status: AgentConversationState['status']): boolean => {
+const isTerminalStatus = (
+  status: AgentConversationState['status'],
+): boolean => {
   return status === 'completed' || status === 'aborted' || status === 'error'
 }
 
 export class AgentNotificationCoordinator {
-  private readonly conversationSnapshots = new Map<string, ConversationSnapshot>()
+  private readonly conversationSnapshots = new Map<
+    string,
+    ConversationSnapshot
+  >()
   private unsubscribe: (() => void) | null = null
 
   constructor(private readonly options: AgentNotificationCoordinatorOptions) {}
@@ -64,12 +66,18 @@ export class AgentNotificationCoordinator {
     this.conversationSnapshots.clear()
   }
 
-  private async handleStateChange(state: AgentConversationState): Promise<void> {
+  private async handleStateChange(
+    state: AgentConversationState,
+  ): Promise<void> {
     const pendingApprovalIds = getPendingApprovalToolCallIds(state.messages)
-    const previousSnapshot = this.conversationSnapshots.get(state.conversationId)
+    const previousSnapshot = this.conversationSnapshots.get(
+      state.conversationId,
+    )
 
     if (!previousSnapshot) {
-      this.options.notificationService.markApprovalKeysAsSeen(pendingApprovalIds)
+      this.options.notificationService.markApprovalKeysAsSeen(
+        pendingApprovalIds,
+      )
       this.conversationSnapshots.set(state.conversationId, {
         status: state.status,
         runId: state.runId,

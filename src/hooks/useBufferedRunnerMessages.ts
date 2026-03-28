@@ -105,9 +105,7 @@ export function mergeRunnerMessagesFromAnchor(
           ...responseMessages.slice(responseAnchorIndex),
         ]
 
-  return reconcileAssistantGenerationState(baseMessages, [
-    ...mergedMessages,
-  ])
+  return reconcileAssistantGenerationState(baseMessages, [...mergedMessages])
 }
 
 type UseBufferedRunnerMessagesParams = {

@@ -20,10 +20,7 @@ import {
   initializeChatGPTOAuthRuntime,
 } from './core/auth/chatgptOAuthRuntime'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
-import {
-  AgentConversationRunSummary,
-  AgentService,
-} from './core/agent/service'
+import { AgentConversationRunSummary, AgentService } from './core/agent/service'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { relocateYoloManagedData } from './core/paths/yoloManagedData'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -101,14 +98,18 @@ export default class SmartComposerPlugin extends Plugin {
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
   private agentService: AgentService | null = null
-  private agentNotificationCoordinator: AgentNotificationCoordinator | null = null
+  private agentNotificationCoordinator: AgentNotificationCoordinator | null =
+    null
   private agentStatusBarItem: HTMLElement | null = null
   private agentStatusBarRing: HTMLElement | null = null
   private agentStatusBarLabel: HTMLElement | null = null
   private agentStatusPanel: HTMLElement | null = null
   private agentStatusPanelList: HTMLElement | null = null
   private agentStatusPanelEmpty: HTMLElement | null = null
-  private latestAgentRunSummaries = new Map<string, AgentConversationRunSummary>()
+  private latestAgentRunSummaries = new Map<
+    string,
+    AgentConversationRunSummary
+  >()
   private agentStatusPanelRenderVersion = 0
   private agentStatusPanelItems = new Map<
     string,
@@ -587,10 +588,7 @@ export default class SmartComposerPlugin extends Plugin {
     const panelHeader = document.createElement('div')
     panelHeader.className = 'smtcmp-agent-status-panel-header'
     panelHeader.setText(
-      this.t(
-        'statusBar.agentStatusPanelTitle',
-        '正在进行的 Agent 对话',
-      ),
+      this.t('statusBar.agentStatusPanelTitle', '正在进行的 Agent 对话'),
     )
 
     const panelList = document.createElement('div')
@@ -599,10 +597,7 @@ export default class SmartComposerPlugin extends Plugin {
     const panelEmpty = document.createElement('div')
     panelEmpty.className = 'smtcmp-agent-status-panel-empty'
     panelEmpty.setText(
-      this.t(
-        'statusBar.agentStatusPanelEmpty',
-        '当前没有可切换的运行中对话',
-      ),
+      this.t('statusBar.agentStatusPanelEmpty', '当前没有可切换的运行中对话'),
     )
 
     panel.append(panelHeader, panelList, panelEmpty)
@@ -828,7 +823,10 @@ export default class SmartComposerPlugin extends Plugin {
       )
 
       if (itemRecord.item !== insertBeforeNode) {
-        this.agentStatusPanelList.insertBefore(itemRecord.item, insertBeforeNode)
+        this.agentStatusPanelList.insertBefore(
+          itemRecord.item,
+          insertBeforeNode,
+        )
       }
       insertBeforeNode = itemRecord.item.nextSibling
     }
@@ -1500,7 +1498,9 @@ export default class SmartComposerPlugin extends Plugin {
       toSettings: normalizedSettings,
     })
     if (!migrated) {
-      new Notice('Failed to migrate YOLO managed data during startup. Using existing data location.')
+      new Notice(
+        'Failed to migrate YOLO managed data during startup. Using existing data location.',
+      )
     }
 
     if (JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)) {
@@ -1533,7 +1533,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         toSettings: normalizedSettings,
       })
       if (!migrated) {
-        new Notice('Failed to move YOLO managed data. Keeping previous YOLO root folder.')
+        new Notice(
+          'Failed to move YOLO managed data. Keeping previous YOLO root folder.',
+        )
         return
       }
       if (this.dbManager) {

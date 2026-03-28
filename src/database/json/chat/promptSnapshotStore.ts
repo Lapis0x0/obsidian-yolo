@@ -227,10 +227,15 @@ export const compactConversationMessagesForStorage = async ({
   }
 
   if (changed) {
-    await writeSnapshotStore(app, conversationId, {
-      schemaVersion: 1,
-      entries: nextEntries,
-    }, settings)
+    await writeSnapshotStore(
+      app,
+      conversationId,
+      {
+        schemaVersion: 1,
+        entries: nextEntries,
+      },
+      settings,
+    )
   }
 
   return compactedMessages

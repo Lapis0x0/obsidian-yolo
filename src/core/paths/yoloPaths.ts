@@ -69,7 +69,9 @@ export const getYoloJsonDbRootDir = (
 export const getYoloVectorDbPath = (
   settings?: YoloSettingsLike | null,
 ): string => {
-  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_VECTOR_DB_FILE_NAME}`)
+  return normalizePath(
+    `${getYoloBaseDir(settings)}/${YOLO_VECTOR_DB_FILE_NAME}`,
+  )
 }
 
 export const getLegacyJsonDbRootDir = (): string => {

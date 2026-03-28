@@ -141,8 +141,12 @@ describe('yoloManagedData', () => {
     })
 
     expect(rootDir).toBe('YOLO/.yolo_json_db')
-    await expect(adapter.exists('YOLO/.yolo_json_db/chats/v1_123.json')).resolves.toBe(true)
-    await expect(adapter.exists('YOLO/.yolo_json_db/chats/chat_snapshots/123.json')).resolves.toBe(true)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_123.json'),
+    ).resolves.toBe(true)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/chat_snapshots/123.json'),
+    ).resolves.toBe(true)
     await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
   })
 
@@ -157,8 +161,12 @@ describe('yoloManagedData', () => {
     })
 
     expect(targetPath).toBe('Config/YOLO/.yolo_vector_db.tar.gz')
-    await expect(adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(true)
-    await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(false)
+    await expect(
+      adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz'),
+    ).resolves.toBe(true)
+    await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(
+      false,
+    )
   })
 
   test('relocates managed data when YOLO base dir changes', async () => {
@@ -188,7 +196,9 @@ describe('yoloManagedData', () => {
       adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz'),
     ).resolves.toBe(true)
     await expect(adapter.exists('YOLO/.yolo_json_db')).resolves.toBe(false)
-    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(false)
+    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
+      false,
+    )
   })
 
   test('merges legacy chat storage into existing target dir', async () => {
@@ -218,7 +228,9 @@ describe('yoloManagedData', () => {
     await expect(
       adapter.exists('Config/YOLO/.yolo_json_db/chats/v1_old.json'),
     ).resolves.toBe(true)
-    await expect(adapter.exists('YOLO/.yolo_json_db/chats/v1_old.json')).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_old.json'),
+    ).resolves.toBe(false)
   })
 
   test('rolls back chat relocation when vector relocation fails', async () => {
@@ -242,12 +254,18 @@ describe('yoloManagedData', () => {
     })
 
     expect(migrated).toBe(false)
-    await expect(adapter.exists('YOLO/.yolo_json_db/chats/v1_abc.json')).resolves.toBe(true)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_abc.json'),
+    ).resolves.toBe(true)
     await expect(
       adapter.exists('Config/YOLO/.yolo_json_db/chats/v1_abc.json'),
     ).resolves.toBe(false)
-    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(true)
-    await expect(adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(false)
+    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
+      true,
+    )
+    await expect(
+      adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz'),
+    ).resolves.toBe(false)
   })
 
   test('merges legacy managed data into existing yolo target on startup', async () => {
@@ -281,8 +299,12 @@ describe('yoloManagedData', () => {
     await expect(
       adapter.exists('YOLO/.yolo_json_db/chats/v1_legacy.json'),
     ).resolves.toBe(true)
-    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(true)
+    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
+      true,
+    )
     await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
-    await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(false)
+    await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(
+      false,
+    )
   })
 })

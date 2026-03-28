@@ -110,7 +110,6 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-
     if (!this.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -199,7 +198,6 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-
     if (!this.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -859,8 +857,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
   }: {
     parts: GeminiPart[] | undefined
     functionCalls: GeminiFunctionCallWithMetadata[] | undefined
-  },
-  ): ProviderMetadata | undefined {
+  }): ProviderMetadata | undefined {
     const serializedParts = GeminiProvider.serializeAssistantParts(
       parts,
       functionCalls,
@@ -939,7 +936,9 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
           type: 'functionCall',
           name: call.name,
           ...(typeof call.id === 'string' ? { id: call.id } : {}),
-          ...(call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+          ...(call.args &&
+          typeof call.args === 'object' &&
+          !Array.isArray(call.args)
             ? { args: call.args as Record<string, unknown> }
             : {}),
           ...(typeof call.thoughtSignature === 'string'

@@ -131,8 +131,7 @@ const hasPendingApproval = (messages: ChatMessage[]): boolean => {
 
 export class AgentService {
   private runsByConversation = new Map<string, AgentRunEntry>()
-  private summarySubscribers =
-    new Set<AgentConversationRunSummarySubscriber>()
+  private summarySubscribers = new Set<AgentConversationRunSummarySubscriber>()
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -167,7 +166,10 @@ export class AgentService {
     return this.buildRunSummary(state)
   }
 
-  getActiveConversationRunSummaries(): Map<string, AgentConversationRunSummary> {
+  getActiveConversationRunSummaries(): Map<
+    string,
+    AgentConversationRunSummary
+  > {
     const summaries = new Map<string, AgentConversationRunSummary>()
     for (const [conversationId, entry] of this.runsByConversation.entries()) {
       const summary = this.buildRunSummary(entry.state)
@@ -283,10 +285,9 @@ export class AgentService {
       latestToolMessage?.role === 'tool' &&
       nextMessages.at(-1)?.id === latestToolMessage.id &&
       latestToolMessage.toolCalls.every((currentToolCall) =>
-        [
-          ToolCallResponseStatus.Success,
-          ToolCallResponseStatus.Error,
-        ].includes(currentToolCall.response.status),
+        [ToolCallResponseStatus.Success, ToolCallResponseStatus.Error].includes(
+          currentToolCall.response.status,
+        ),
       )
     ) {
       await this.run({
@@ -616,15 +617,13 @@ export class AgentService {
   private findToolCall(
     messages: ChatMessage[],
     toolCallId: string,
-  ):
-    | {
-        toolMessage: Extract<ChatMessage, { role: 'tool' }>
-        toolCall: {
-          request: ToolCallRequest
-          response: ToolCallResponse
-        }
-      }
-    | null {
+  ): {
+    toolMessage: Extract<ChatMessage, { role: 'tool' }>
+    toolCall: {
+      request: ToolCallRequest
+      response: ToolCallResponse
+    }
+  } | null {
     for (const message of messages) {
       if (message.role !== 'tool') {
         continue

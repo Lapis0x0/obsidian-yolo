@@ -35,10 +35,7 @@ function CustomRewritePanelBody({
         selectionFrom,
       )
       .catch((error) => {
-        console.error(
-          '[YOLO] Failed to trigger custom rewrite:',
-          error,
-        )
+        console.error('[YOLO] Failed to trigger custom rewrite:', error)
       })
   }
 

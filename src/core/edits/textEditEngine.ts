@@ -138,7 +138,9 @@ const applyReplaceLinesOperation = ({
   startLine,
   endLine,
   newText,
-}: ReplaceLinesTextOperation & { content: string }): LineRangeReplacementResult => {
+}: ReplaceLinesTextOperation & {
+  content: string
+}): LineRangeReplacementResult => {
   if (!Number.isInteger(startLine) || startLine < 1) {
     return {
       ok: false,
@@ -170,7 +172,9 @@ const applyReplaceLinesOperation = ({
   const lineOffsets = getLineStartOffsets(content)
   const matchedRangeStart = lineOffsets[startLine - 1] ?? 0
   const matchedRangeEnd =
-    endLine < totalLines ? (lineOffsets[endLine] ?? content.length) : content.length
+    endLine < totalLines
+      ? (lineOffsets[endLine] ?? content.length)
+      : content.length
 
   const replacementLines = newText.length === 0 ? [] : newText.split('\n')
   const nextLines = [...currentLines]

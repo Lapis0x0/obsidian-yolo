@@ -125,10 +125,7 @@ function ChatGPTOAuthPanel({
       setAccountId(status.accountId ?? null)
       setExpiresAt(status.expiresAt ?? null)
     } catch (error) {
-      console.error(
-        '[YOLO] Failed to load ChatGPT OAuth status:',
-        error,
-      )
+      console.error('[YOLO] Failed to load ChatGPT OAuth status:', error)
       setConnected(false)
       setAccountId(null)
       setExpiresAt(null)
@@ -163,10 +160,7 @@ function ChatGPTOAuthPanel({
 
     void execute()
       .catch((error: unknown) => {
-        console.error(
-          '[YOLO] Failed to connect ChatGPT OAuth:',
-          error,
-        )
+        console.error('[YOLO] Failed to connect ChatGPT OAuth:', error)
         const message =
           error instanceof Error
             ? error.message
@@ -192,10 +186,7 @@ function ChatGPTOAuthPanel({
     }
 
     void execute().catch((error: unknown) => {
-      console.error(
-        '[YOLO] Failed to disconnect ChatGPT OAuth:',
-        error,
-      )
+      console.error('[YOLO] Failed to disconnect ChatGPT OAuth:', error)
       new Notice('Failed to disconnect ChatGPT OAuth.')
     })
   }
@@ -1046,10 +1037,7 @@ export function ProvidersAndModelsSection({
       })
       triggerProviderDropSuccess(providerId, String(active.id))
     } catch (error) {
-      console.error(
-        '[YOLO] Failed to reorder embedding models:',
-        error,
-      )
+      console.error('[YOLO] Failed to reorder embedding models:', error)
       new Notice('Failed to reorder embedding models.')
     }
   }
@@ -1229,10 +1217,7 @@ export function ProvidersAndModelsSection({
           ),
         })
       } catch (error) {
-        console.error(
-          '[YOLO] Failed to delete embedding model:',
-          error,
-        )
+        console.error('[YOLO] Failed to delete embedding model:', error)
         new Notice('Failed to delete embedding model.')
       }
     })()
@@ -1265,10 +1250,7 @@ export function ProvidersAndModelsSection({
           ),
         })
       } catch (error: unknown) {
-        console.error(
-          '[YOLO] Failed to update chat model state:',
-          error,
-        )
+        console.error('[YOLO] Failed to update chat model state:', error)
         new Notice('Failed to update chat model.')
       }
     })()

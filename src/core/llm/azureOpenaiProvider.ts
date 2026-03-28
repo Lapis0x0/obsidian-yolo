@@ -10,10 +10,7 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import {
-  LLMProvider,
-  RequestTransportMode,
-} from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
@@ -97,7 +94,6 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
     return runWithRequestTransport({
@@ -105,7 +101,11 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: () =>
-        this.adapter.generateResponse(this.browserClient, mergedRequest, options),
+        this.adapter.generateResponse(
+          this.browserClient,
+          mergedRequest,
+          options,
+        ),
       runObsidian: () =>
         this.adapter.generateResponse(
           this.obsidianClient,
@@ -122,7 +122,6 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-
     const mergedRequest = this.applyCustomModelParameters(model, request)
 
     return runWithRequestTransportForStream({

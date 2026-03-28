@@ -2,9 +2,7 @@ import type { LLMProvider } from '../../types/provider.types'
 
 import { shouldUseStreamingForProvider } from './streamingPolicy'
 
-const createProvider = (
-  overrides: Partial<LLMProvider> = {},
-): LLMProvider => ({
+const createProvider = (overrides: Partial<LLMProvider> = {}): LLMProvider => ({
   id: 'provider-1',
   presetType: 'openai-compatible',
   apiType: 'openai-compatible',

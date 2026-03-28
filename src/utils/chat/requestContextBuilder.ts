@@ -292,8 +292,7 @@ export class RequestContextBuilder {
         return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
       })
       .join('')
-    const assistantQuotePrompt =
-      this.buildAssistantQuotePrompt(assistantQuotes)
+    const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
 
     const ragPrompt = message.similaritySearchResults
       ? `## Potentially Relevant Snippets from the current vault
