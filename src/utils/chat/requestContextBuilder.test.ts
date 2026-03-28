@@ -157,12 +157,15 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     const textContent = getTextContent(result.promptContent)
 
-    expect(textContent).toContain('## Mentioned Vault Files')
+    expect(textContent).toContain('## Mentioned Vault Files (outline only)')
     expect(textContent).toContain('- `notes/explicit.md`\n  - L1 # Explicit\n  - L2 ## Part A')
     expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
     expect(textContent).toContain('- `docs/from-folder.md`\n  - L1 ## Folder Heading')
     expect(textContent).toContain('- `docs/plain.txt`')
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
+    expect(textContent).toContain(
+      'This section provides only paths and outlines. Use file tools only if you need the full contents or a specific line range.',
+    )
   })
 
   it('caps markdown outlines and reports omitted files', async () => {
@@ -290,6 +293,12 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     const textContent = getTextContent(result.promptContent)
 
+    expect(textContent).toContain(
+      '## Mentioned Vault Files (full content already provided below)',
+    )
+    expect(textContent).toContain(
+      'Use this provided content first. Only call file tools if you need another file or want to verify the latest contents.',
+    )
     expect(textContent).toContain('```notes/explicit.md\n1|# Explicit\n2|Body\n```')
     expect(textContent).toContain('```notes/current.md\n1|# Current\n2|More\n```')
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')

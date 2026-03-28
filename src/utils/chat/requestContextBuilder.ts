@@ -919,7 +919,7 @@ ${customInstruction}
       section += `
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
-- When file paths are provided in context, read only necessary files/ranges with tools and avoid repeatedly reading the same window.
+- Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
 - If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
@@ -939,7 +939,7 @@ ${customInstruction}
       section += `
 - You can use tools, but consult the provided markdown first. Only call tools when the vault content cannot answer the question.
 - When using tools, briefly state why they are needed and focus on summarizing the results for the user.
-- When file paths are provided in context, read only necessary files/ranges with tools and avoid repeatedly reading the same window.
+- Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
 - If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
@@ -1013,7 +1013,7 @@ ${customInstruction}
     )
 
     const sections = [
-      `## Mentioned Vault Files
+      `## Mentioned Vault Files (outline only)
 ${fileLines.join('\n')}`,
     ]
 
@@ -1029,7 +1029,7 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     }
 
     sections.push(
-      'Use file tools to read only the files and line ranges you actually need before making claims.',
+      'This section provides only paths and outlines. Use file tools only if you need the full contents or a specific line range.',
     )
 
     return `${sections.join('\n\n')}\n`
@@ -1100,12 +1100,16 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     )
 
     return readableFileEntries
-      .map(({ file, content }) => {
+      .map(({ file, content }, index) => {
         const numberedContent = this.addLineNumbersToContent({
           content,
           startLine: 1,
         })
-        return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+        const prefix =
+          index === 0
+            ? '## Mentioned Vault Files (full content already provided below)\nUse this provided content first. Only call file tools if you need another file or want to verify the latest contents.\n\n'
+            : ''
+        return `${prefix}\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
       })
       .join('')
   }
