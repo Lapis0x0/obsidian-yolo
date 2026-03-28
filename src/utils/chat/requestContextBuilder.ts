@@ -69,6 +69,8 @@ type MentionedFileContextEntry = {
 
 const MAX_MENTIONED_FILE_OUTLINES = 10
 
+type MentionContextMode = 'light' | 'full'
+
 export function extractMarkdownAtxHeadings(content: string): MarkdownAtxHeading[] {
   const headings: MarkdownAtxHeading[] = []
   const lines = content.split('\n')
@@ -135,6 +137,10 @@ export class RequestContextBuilder {
     this.includeSkills = options?.includeSkills ?? true
   }
 
+  private getMentionContextMode(): MentionContextMode {
+    return this.settings.chatOptions?.mentionContextMode ?? 'light'
+  }
+
   public async generateRequestMessages({
     messages,
     hasTools = false,
@@ -181,7 +187,6 @@ export class RequestContextBuilder {
       const { promptContent, similaritySearchResults } =
         await this.compileUserMessagePrompt({
           message: lastUserMessage,
-          preferToolRead: hasTools,
         })
       compiledMessages[lastUserMessageIndex] = {
         ...lastUserMessage,
@@ -228,7 +233,6 @@ export class RequestContextBuilder {
       const { promptContent, similaritySearchResults } =
         await this.compileUserMessagePrompt({
           message,
-          preferToolRead: hasTools,
         })
       compiledMessages[i] = {
         ...message,
@@ -559,12 +563,10 @@ ${message.annotations
     message,
     useVaultSearch,
     onQueryProgressChange,
-    preferToolRead = false,
   }: {
     message: ChatUserMessage
     useVaultSearch?: boolean
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void
-    preferToolRead?: boolean
   }): Promise<{
     promptContent: ChatUserMessage['promptContent']
     shouldUseRAG: boolean
@@ -635,49 +637,11 @@ ${similaritySearchResults
           .map((m) => m.file)
           .filter((file): file is TFile => Boolean(file))
 
-        if (preferToolRead) {
-          filePrompt = await this.buildMentionedPathsPrompt({
-            files,
-            folders,
-            currentFiles,
-          })
-        } else {
-          const nestedFiles = folders.flatMap((folder) =>
-            getNestedFiles(folder, this.app.vault),
-          )
-          const allFiles = [...files, ...currentFiles, ...nestedFiles]
-          const uniqueFiles = allFiles.filter(
-            (file, index, arr) =>
-              arr.findIndex((item) => item.path === file.path) === index,
-          )
-          const fileEntries = await Promise.all(
-            uniqueFiles.map(async (file) => {
-              try {
-                const content = await readTFileContent(file, this.app.vault)
-                return { file, content }
-              } catch (error) {
-                console.warn(
-                  '[YOLO] Failed to read mentioned file',
-                  file.path,
-                  error,
-                )
-                return null
-              }
-            }),
-          )
-          const readableFileEntries = fileEntries.filter(
-            (entry): entry is { file: TFile; content: string } =>
-              entry !== null,
-          )
-          const readableFiles = readableFileEntries.map((entry) => entry.file)
-          const fileContents = readableFileEntries.map((entry) => entry.content)
-
-          filePrompt = readableFiles
-            .map((file, index) => {
-              return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`
-            })
-            .join('')
-        }
+        filePrompt = await this.buildMentionedFilePrompt({
+          files,
+          folders,
+          currentFiles,
+        })
       }
 
       const blocks = message.mentionables.filter(
@@ -1069,6 +1033,77 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     )
 
     return `${sections.join('\n\n')}\n`
+  }
+
+  private async buildMentionedFilePrompt({
+    files,
+    folders,
+    currentFiles,
+  }: {
+    files: TFile[]
+    folders: TFolder[]
+    currentFiles: TFile[]
+  }): Promise<string> {
+    const mentionContextMode = this.getMentionContextMode()
+
+    if (mentionContextMode === 'light') {
+      return this.buildMentionedPathsPrompt({
+        files,
+        folders,
+        currentFiles,
+      })
+    }
+
+    const folderPrompt = await this.buildMentionedPathsPrompt({
+      files: [],
+      folders,
+      currentFiles: [],
+    })
+    const fullFilePrompt = await this.buildFullMentionedFilesPrompt({
+      files,
+      currentFiles,
+    })
+
+    return `${folderPrompt}${fullFilePrompt}`
+  }
+
+  private async buildFullMentionedFilesPrompt({
+    files,
+    currentFiles,
+  }: {
+    files: TFile[]
+    currentFiles: TFile[]
+  }): Promise<string> {
+    const uniqueFiles = this.collectMentionedFiles({
+      files,
+      folders: [],
+      currentFiles,
+    }).map(({ file }) => file)
+
+    if (uniqueFiles.length === 0) {
+      return ''
+    }
+
+    const fileEntries = await Promise.all(
+      uniqueFiles.map(async (file) => {
+        try {
+          const content = await readTFileContent(file, this.app.vault)
+          return { file, content }
+        } catch (error) {
+          console.warn('[YOLO] Failed to read mentioned file', file.path, error)
+          return null
+        }
+      }),
+    )
+    const readableFileEntries = fileEntries.filter(
+      (entry): entry is { file: TFile; content: string } => entry !== null,
+    )
+
+    return readableFileEntries
+      .map(({ file, content }) => {
+        return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
+      })
+      .join('')
   }
 
   private collectMentionedFiles({

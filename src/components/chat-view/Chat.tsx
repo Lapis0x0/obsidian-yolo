@@ -31,11 +31,8 @@ import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import { isAssistantToolEnabled } from '../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
-import { getToolName } from '../../core/mcp/tool-name-utils'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
@@ -94,8 +91,6 @@ import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
-const LOCAL_FILE_TOOL_SERVER = getLocalFileToolServerName()
-const LOCAL_FS_READ_TOOL = getToolName(LOCAL_FILE_TOOL_SERVER, 'fs_read')
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 
 const shouldShowContinueResponse = (
@@ -604,27 +599,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ) ?? null
     )
   }, [conversationAssistantId, settings.assistants])
-
-  const shouldPreferToolReadMentions = useMemo(() => {
-    if (chatMode === 'chat') {
-      return true
-    }
-
-    const toolsEnabled = selectedAssistant?.enableTools ?? true
-    const includeBuiltinTools = selectedAssistant?.includeBuiltinTools ?? true
-    if (!toolsEnabled || !includeBuiltinTools) {
-      return false
-    }
-
-    if (
-      !selectedAssistant?.toolPreferences &&
-      !selectedAssistant?.enabledToolNames
-    ) {
-      return true
-    }
-
-    return isAssistantToolEnabled(selectedAssistant, LOCAL_FS_READ_TOOL)
-  }, [chatMode, selectedAssistant])
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -1538,7 +1512,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 message,
                 useVaultSearch,
                 onQueryProgressChange: setQueryProgress,
-                preferToolRead: shouldPreferToolReadMentions,
               })
             return {
               ...message,
@@ -1551,7 +1524,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             const { promptContent, similaritySearchResults } =
               await requestContextBuilder.compileUserMessagePrompt({
                 message,
-                preferToolRead: shouldPreferToolReadMentions,
               })
             return {
               ...message,
@@ -1616,7 +1588,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       reasoningLevel,
       resolveReasoningLevelForMessages,
       serializeMessageModelMap,
-      shouldPreferToolReadMentions,
     ],
   )
 

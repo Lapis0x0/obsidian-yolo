@@ -765,6 +765,11 @@ export const zh: TranslationKeys = {
         '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
+      mentionContextMode: '@ 文件上下文注入模式',
+      mentionContextModeDesc:
+        '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
+      mentionContextModeLight: '轻量模式',
+      mentionContextModeFull: '全量模式',
       chatApplyMode: 'Chat 应用修改方式',
       chatApplyModeDesc:
         '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',

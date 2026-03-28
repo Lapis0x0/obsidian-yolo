@@ -836,6 +836,11 @@ export const en: TranslationKeys = {
         'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
+      mentionContextMode: '@ file context injection mode',
+      mentionContextModeDesc:
+        'Control how @ files are injected into the model. In light mode, only the referenced file paths and Markdown structure are injected, encouraging the Agent to read only what is necessary.',
+      mentionContextModeLight: 'Light mode',
+      mentionContextModeFull: 'Full mode',
       chatApplyMode: 'Chat apply behavior',
       chatApplyModeDesc:
         'Only affects Apply in the sidebar Chat. Choose whether edits open inline review first or write directly to the file. Turning review off skips the second confirmation step.',

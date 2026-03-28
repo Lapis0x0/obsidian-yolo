@@ -822,6 +822,11 @@ export const it: TranslationKeys = {
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",
       mentionDisplayModeInline: 'Dentro la casella',
       mentionDisplayModeBadge: 'Badge in alto',
+      mentionContextMode: 'Modalita contesto file @',
+      mentionContextModeDesc:
+        'Controlla come i file con @ vengono iniettati nel modello. In modalita leggera vengono iniettati solo i percorsi dei file citati e la struttura Markdown, incoraggiando l agent a leggere solo il contenuto necessario.',
+      mentionContextModeLight: 'Modalita leggera',
+      mentionContextModeFull: 'Modalita completa',
       persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
       persistSelectionHighlightDesc:
         "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",

@@ -642,6 +642,10 @@ export type TranslationKeys = {
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
       mentionDisplayModeBadge?: string
+      mentionContextMode?: string
+      mentionContextModeDesc?: string
+      mentionContextModeLight?: string
+      mentionContextModeFull?: string
       chatApplyMode?: string
       chatApplyModeDesc?: string
       chatApplyModeReviewRequired?: string
@@ -894,6 +898,10 @@ export type TranslationKeys = {
         create_dir?: string
         delete_dir?: string
         move?: string
+      }
+      readMode?: {
+        full?: string
+        linesSuffix?: string
       }
       detail?: {
         target?: string

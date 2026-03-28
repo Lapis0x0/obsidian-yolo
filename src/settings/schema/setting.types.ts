@@ -293,6 +293,7 @@ export const smartComposerSettingsSchema = z.object({
     .object({
       includeCurrentFileContent: z.boolean(),
       mentionDisplayMode: z.enum(['inline', 'badge']).optional(),
+      mentionContextMode: z.enum(['light', 'full']).optional(),
       chatInputHeight: z.number().int().min(80).max(520).optional(),
       chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
@@ -317,6 +318,7 @@ export const smartComposerSettingsSchema = z.object({
     .catch({
       includeCurrentFileContent: true,
       mentionDisplayMode: 'inline',
+      mentionContextMode: 'light',
       chatInputHeight: undefined,
       chatApplyMode: 'review-required',
       chatTitlePrompt: '',

@@ -114,6 +114,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     assistants: [],
     chatOptions: {
       includeCurrentFileContent: true,
+      mentionContextMode: 'light',
     },
     skills: {},
   } as unknown as SmartComposerSettings
@@ -152,7 +153,6 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         { type: 'current-file', file: currentFile },
         { type: 'folder', folder },
       ]),
-      preferToolRead: true,
     })
 
     const textContent = getTextContent(result.promptContent)
@@ -199,7 +199,6 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         { type: 'file', file: explicitFile },
         { type: 'folder', folder },
       ]),
-      preferToolRead: true,
     })
 
     const textContent = getTextContent(result.promptContent)
@@ -210,5 +209,91 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).toContain(
       'Additional mentioned markdown files omitted from outline due to limit: 2',
     )
+  })
+
+  it('uses light mode by default for mentioned files even without tool-read preference', async () => {
+    const explicitFile = createMockFile('notes/explicit.md')
+    const currentFile = createMockFile('notes/current.md')
+
+    const fileContents = new Map<string, string>([
+      [explicitFile.path, '# Explicit\nBody'],
+      [currentFile.path, '# Current\nMore'],
+    ])
+
+    const app = createMockApp({
+      files: [explicitFile, currentFile],
+      fileContents,
+    })
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const result = await builder.compileUserMessagePrompt({
+      message: createUserMessage([
+        { type: 'file', file: explicitFile },
+        { type: 'current-file', file: currentFile },
+      ]),
+    })
+
+    const textContent = getTextContent(result.promptContent)
+
+    expect(textContent).toContain('- `notes/explicit.md`\n  - L1 # Explicit')
+    expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
+    expect(textContent).not.toContain('Body')
+    expect(textContent).not.toContain('More')
+  })
+
+  it('uses full content for files and current file in full mode while keeping folders light', async () => {
+    const explicitFile = createMockFile('notes/explicit.md')
+    const currentFile = createMockFile('notes/current.md')
+    const folderFile = createMockFile('docs/from-folder.md')
+    const folder = createMockFolder('docs', [folderFile])
+
+    const fileContents = new Map<string, string>([
+      [explicitFile.path, '# Explicit\nBody'],
+      [currentFile.path, '# Current\nMore'],
+      [folderFile.path, '## Folder Heading\nFolder body'],
+    ])
+
+    const app = createMockApp({
+      files: [explicitFile, currentFile, folderFile],
+      folders: [folder],
+      fileContents,
+    })
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      {
+        ...settings,
+        chatOptions: {
+          includeCurrentFileContent: true,
+          mentionContextMode: 'full',
+        },
+      } as unknown as SmartComposerSettings,
+    )
+
+    const result = await builder.compileUserMessagePrompt({
+      message: createUserMessage([
+        { type: 'file', file: explicitFile },
+        { type: 'current-file', file: currentFile },
+        { type: 'folder', folder },
+      ]),
+    })
+
+    const textContent = getTextContent(result.promptContent)
+
+    expect(textContent).toContain('```notes/explicit.md\n# Explicit\nBody\n```')
+    expect(textContent).toContain('```notes/current.md\n# Current\nMore\n```')
+    expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
+    expect(textContent).toContain('- `docs/from-folder.md`\n  - L1 ## Folder Heading')
+    expect(textContent).not.toContain('Folder body')
   })
 })

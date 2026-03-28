@@ -50,6 +50,23 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
     })()
   }
 
+  const handleMentionContextModeChange = (value: string) => {
+    if (value !== 'light' && value !== 'full') return
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            mentionContextMode: value,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update mention context mode', error)
+      }
+    })()
+  }
+
   const handleChatApplyModeChange = (value: string) => {
     if (value !== 'review-required' && value !== 'direct-apply') return
     void (async () => {
@@ -180,6 +197,25 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
               badge: t('settings.etc.mentionDisplayModeBadge', '顶部徽章'),
             }}
             onChange={handleMentionDisplayModeChange}
+          />
+        </ObsidianSetting>
+        <ObsidianSetting
+          name={t('settings.etc.mentionContextMode', '@ 文件上下文注入模式')}
+          desc={t(
+            'settings.etc.mentionContextModeDesc',
+            '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
+          )}
+        >
+          <ObsidianDropdown
+            value={settings.chatOptions.mentionContextMode ?? 'light'}
+            options={{
+              light: t(
+                'settings.etc.mentionContextModeLight',
+                '轻量模式',
+              ),
+              full: t('settings.etc.mentionContextModeFull', '全量模式'),
+            }}
+            onChange={handleMentionContextModeChange}
           />
         </ObsidianSetting>
         <ObsidianSetting
