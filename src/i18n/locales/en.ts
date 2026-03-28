@@ -336,7 +336,7 @@ export const en: TranslationKeys = {
       builtinFsSearchLabel: 'Search Vault',
       builtinFsSearchDesc:
         'Search files, folders, or markdown content in vault.',
-      builtinFsReadLabel: 'Read File',
+      builtinFsReadLabel: 'Read',
       builtinFsReadDesc:
         'Read vault files by path with either full-file or targeted line-range operations.',
       builtinFsEditLabel: 'Text Editing',
@@ -1039,6 +1039,10 @@ export const en: TranslationKeys = {
         create_dir: 'Create folder',
         delete_dir: 'Delete folder',
         move: 'Move path',
+      },
+      readMode: {
+        full: 'Full',
+        linesSuffix: ' lines',
       },
       detail: {
         target: 'Target',

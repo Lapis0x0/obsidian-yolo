@@ -1,7 +1,10 @@
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import {
+  ToolCallResponseStatus,
+  createCompleteToolCallArguments,
+} from '../../types/tool-call.types'
 
 import { getToolHeadlineParts, getToolHeadlineText } from './toolHeadline'
-import type { ToolLabels } from './ToolMessage'
+import { getHeadlineDisplayInfo, type ToolLabels } from './ToolMessage'
 
 describe('ToolMessage headline helpers', () => {
   const labels: ToolLabels = {
@@ -16,6 +19,9 @@ describe('ToolMessage headline helpers', () => {
     unknownStatus: 'Unknown',
     displayNames: {},
     writeActionLabels: {},
+    readFull: '全文',
+    readLineRange: (startLine: number, endLine: number) =>
+      `${startLine}-${endLine}行`,
     target: 'Target',
     scope: 'Scope',
     query: 'Query',
@@ -78,5 +84,76 @@ describe('ToolMessage headline helpers', () => {
       addedLines: 3,
       removedLines: 1,
     })
+  })
+
+  it('adds full-read mode to successful fs_read headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              paths: ['docs/plan.md'],
+              operation: {
+                type: 'full',
+              },
+            },
+          }),
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: JSON.stringify({
+              tool: 'fs_read',
+              requestedOperation: {
+                type: 'full',
+                startLine: null,
+                endLine: null,
+                maxLines: null,
+              },
+              results: [],
+            }),
+          },
+        },
+        labels,
+      }).summaryText,
+    ).toBe('docs/plan.md | 全文')
+  })
+
+  it('adds line-range mode to successful fs_read headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              paths: ['docs/plan.md'],
+              operation: {
+                type: 'lines',
+                startLine: 12,
+              },
+            },
+          }),
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: JSON.stringify({
+              tool: 'fs_read',
+              requestedOperation: {
+                type: 'lines',
+                startLine: 12,
+                endLine: null,
+                maxLines: 50,
+              },
+              results: [],
+            }),
+          },
+        },
+        labels,
+      }).summaryText,
+    ).toBe('docs/plan.md | 12-61行')
   })
 })

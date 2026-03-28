@@ -301,7 +301,7 @@ export const zh: TranslationKeys = {
       builtinFsListDesc: '列出库内目录结构，便于快速了解工作区。',
       builtinFsSearchLabel: '搜索',
       builtinFsSearchDesc: '搜索库中的文件、文件夹或 Markdown 内容。',
-      builtinFsReadLabel: '读取文件',
+      builtinFsReadLabel: '读取',
       builtinFsReadDesc: '按路径读取库内文件，支持全文或按行范围两种模式。',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc:
@@ -973,6 +973,10 @@ export const zh: TranslationKeys = {
         create_dir: '创建文件夹',
         delete_dir: '删除文件夹',
         move: '移动路径',
+      },
+      readMode: {
+        full: '全文',
+        linesSuffix: '行',
       },
       detail: {
         target: '目标',

@@ -35,6 +35,8 @@ export type ToolLabels = {
   unknownStatus: string
   displayNames: Record<string, string>
   writeActionLabels: Record<string, string>
+  readFull: string
+  readLineRange: (startLine: number, endLine: number) => string
   target: string
   scope: string
   query: string
@@ -64,10 +66,21 @@ type ToolRequestLike = {
   arguments?: ToolCallRequest['arguments']
 }
 
+type FsReadOperationSummary =
+  | {
+      type: 'full'
+    }
+  | {
+      type: 'lines'
+      startLine: number
+      endLine?: number
+      maxLines?: number
+    }
+
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
   fs_list: 'Read Vault',
   fs_search: 'Search Vault',
-  fs_read: 'Read File',
+  fs_read: 'Read',
   fs_edit: 'Text editing',
   fs_create_file: 'Create file',
   fs_delete_file: 'Delete file',
@@ -186,6 +199,9 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         DEFAULT_WRITE_ACTION_LABELS.move,
       ),
     },
+    readFull: translate('chat.toolCall.readMode.full', 'Full'),
+    readLineRange: (startLine: number, endLine: number) =>
+      `${startLine}-${endLine}${translate('chat.toolCall.readMode.linesSuffix', ' lines')}`,
     target: translate('chat.toolCall.detail.target', 'Target'),
     scope: translate('chat.toolCall.detail.scope', 'Scope'),
     query: translate('chat.toolCall.detail.query', 'Query'),
@@ -226,6 +242,137 @@ const asStringArray = (value: unknown): string[] | null => {
     return null
   }
   return value
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+const asInteger = (value: unknown): number | undefined => {
+  return Number.isInteger(value) ? (value as number) : undefined
+}
+
+const getFsReadOperationSummary = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): FsReadOperationSummary | undefined => {
+  const requestArguments = parseToolArguments(request.arguments)
+  const requestOperation = asRecord(requestArguments?.operation)
+
+  if (response?.status === ToolCallResponseStatus.Success) {
+    try {
+      const payload = JSON.parse(response.data.text) as unknown
+      const requestedOperation = asRecord(asRecord(payload)?.requestedOperation)
+      const type = requestedOperation?.type
+
+      if (type === 'full') {
+        return { type: 'full' }
+      }
+
+      if (type === 'lines') {
+        const startLine = asInteger(requestedOperation?.startLine)
+        if (typeof startLine !== 'number') {
+          return undefined
+        }
+        return {
+          type: 'lines',
+          startLine,
+          endLine: asInteger(requestedOperation?.endLine),
+          maxLines: asInteger(requestedOperation?.maxLines),
+        }
+      }
+    } catch {
+      // Fall back to request arguments when the response text is unavailable or malformed.
+    }
+  }
+
+  const requestType = requestOperation?.type
+  if (requestType === 'full') {
+    return { type: 'full' }
+  }
+
+  if (requestType === 'lines') {
+    const startLine = asInteger(requestOperation?.startLine) ?? 1
+    return {
+      type: 'lines',
+      startLine,
+      endLine: asInteger(requestOperation?.endLine),
+      maxLines: asInteger(requestOperation?.maxLines),
+    }
+  }
+
+  return undefined
+}
+
+const formatFsReadHeadlineMode = (
+  operation: FsReadOperationSummary | undefined,
+  labels: ToolLabels,
+): string | undefined => {
+  if (!operation) {
+    return undefined
+  }
+
+  if (operation.type === 'full') {
+    return labels.readFull
+  }
+
+  if (typeof operation.endLine === 'number') {
+    return labels.readLineRange(operation.startLine, operation.endLine)
+  }
+
+  if (typeof operation.maxLines === 'number') {
+    return labels.readLineRange(
+      operation.startLine,
+      operation.startLine + operation.maxLines - 1,
+    )
+  }
+
+  return labels.readLineRange(operation.startLine, operation.startLine)
+}
+
+export const getHeadlineDisplayInfo = ({
+  request,
+  response,
+  labels,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+  labels: ToolLabels
+}): ToolDisplayInfo => {
+  const displayInfo = getToolDisplayInfo(request, labels)
+
+  try {
+    const { serverName, toolName } = parseToolName(request.name)
+    if (serverName !== getLocalFileToolServerName() || toolName !== 'fs_read') {
+      return displayInfo
+    }
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+    return displayInfo
+  }
+
+  const modeText = formatFsReadHeadlineMode(
+    getFsReadOperationSummary({ request, response }),
+    labels,
+  )
+  if (!modeText) {
+    return displayInfo
+  }
+
+  return {
+    ...displayInfo,
+    summaryText: displayInfo.summaryText
+      ? `${displayInfo.summaryText} | ${modeText}`
+      : modeText,
+  }
 }
 
 const getLocalToolSummaryText = ({
@@ -337,7 +484,11 @@ export const getToolMessageContent = (
   const labels = getToolLabels(t)
   return message.toolCalls
     ?.map((toolCall) => {
-      const displayInfo = getToolDisplayInfo(toolCall.request, labels)
+      const displayInfo = getHeadlineDisplayInfo({
+        request: toolCall.request,
+        response: toolCall.response,
+        labels,
+      })
       return [
         getToolHeadlineText({
           status: toolCall.response.status,
@@ -420,8 +571,13 @@ function ToolCallItem({
   const { t } = useLanguage()
   const toolLabels = useMemo(() => getToolLabels(t), [t])
   const displayInfo = useMemo(
-    () => getToolDisplayInfo(request, toolLabels),
-    [request, toolLabels],
+    () =>
+      getHeadlineDisplayInfo({
+        request,
+        response,
+        labels: toolLabels,
+      }),
+    [request, response, toolLabels],
   )
   const editSummary =
     response.status === ToolCallResponseStatus.Success
