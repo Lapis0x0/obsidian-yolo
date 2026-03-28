@@ -221,6 +221,139 @@ describe('local fs tool action helpers', () => {
     })
   })
 
+  it('supports fs_read full operation', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const read = jest.fn().mockResolvedValue(['one', 'two', 'three'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        operation: {
+          type: 'full',
+        },
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      requestedOperation: { type: string }
+      results: Array<{
+        ok: boolean
+        content: string
+        returnedRange: { startLine: number | null; endLine: number | null }
+      }>
+    }
+    expect(payload.requestedOperation.type).toBe('full')
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      content: ['one', 'two', 'three'].join('\n'),
+      returnedRange: {
+        startLine: 1,
+        endLine: 3,
+      },
+    })
+  })
+
+  it('supports fs_read lines operation with numbered output', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 40 },
+    })
+    const read = jest
+      .fn()
+      .mockResolvedValue(['one', 'two', 'three', 'four'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        operation: {
+          type: 'lines',
+          startLine: 2,
+          maxLines: 2,
+        },
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      requestedOperation: {
+        type: string
+        startLine: number | null
+        maxLines: number | null
+      }
+      results: Array<{
+        ok: boolean
+        content: string
+        hasMoreAbove: boolean
+        hasMoreBelow: boolean
+        nextStartLine: number | null
+      }>
+    }
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'lines',
+      startLine: 2,
+      maxLines: 2,
+    })
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      content: ['2|two', '3|three'].join('\n'),
+      hasMoreAbove: true,
+      hasMoreBelow: true,
+      nextStartLine: 4,
+    })
+  })
+
+  it('rejects removed top-level fs_read line arguments', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const read = jest.fn().mockResolvedValue('one\ntwo')
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        startLine: 1,
+        maxLines: 2,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain('operation must be an object')
+    }
+  })
+
   it('handles memory tools through local tool dispatcher', async () => {
     const entries = new Map<string, unknown>()
     const contents = new Map<string, string>()

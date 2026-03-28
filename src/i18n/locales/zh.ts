@@ -302,7 +302,7 @@ export const zh: TranslationKeys = {
       builtinFsSearchLabel: '搜索',
       builtinFsSearchDesc: '搜索库中的文件、文件夹或 Markdown 内容。',
       builtinFsReadLabel: '读取文件',
-      builtinFsReadDesc: '按行读取一个或多个库内文件内容。',
+      builtinFsReadDesc: '按路径读取库内文件，支持全文或按行范围两种模式。',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc:
         '在单个现有文件中精确执行一次文本编辑操作，支持文本替换、按行替换、锚点后插入和追加。',

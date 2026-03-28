@@ -346,7 +346,7 @@ export const it: TranslationKeys = {
         'Cerca file, cartelle o contenuti Markdown nel vault.',
       builtinFsReadLabel: 'Leggi file',
       builtinFsReadDesc:
-        'Legge intervalli di righe da uno o più file del vault.',
+        'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
         'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, replace_lines, insert_after e append.',

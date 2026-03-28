@@ -198,7 +198,7 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 |------|---------|
 | \`fs_list\` | Inspect folder contents and vault structure |
 | \`fs_search\` | Find files by keyword or pattern |
-| \`fs_read\` | Read file contents |
+| \`fs_read\` | Read full files or targeted line ranges |
 | \`fs_edit\` | Apply exactly one targeted text edit to an existing file (\`replace\`, \`replace_lines\`, \`insert_after\`, \`append\`) |
 | \`fs_create_file\` | Create a file with provided content (supports \`dryRun\`) |
 | \`fs_delete_file\` | Delete a file path (supports \`dryRun\`) |
@@ -245,7 +245,7 @@ Before creating something new, check what already exists:
 ~~~
 fs_list YOLO/skills/          -> see current inventory
 fs_search <topic keywords>    -> find related skills
-fs_read <similar-skill.md>    -> study patterns that work
+fs_read <similar-skill.md>    -> study patterns that work (prefer line ranges when a section is known)
 ~~~
 
 This avoids duplication and helps maintain consistency across the vault's skill collection.
@@ -288,7 +288,7 @@ For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted cha
 
 After writing:
 
-1. \`fs_read\` the file to confirm it saved correctly
+1. \`fs_read\` the file to confirm it saved correctly, using line ranges unless the full file is needed
 2. Verify the description clearly communicates trigger conditions
 3. Walk through each workflow step mentally: is it executable with available tools?
 4. Test the skill on a real task when possible

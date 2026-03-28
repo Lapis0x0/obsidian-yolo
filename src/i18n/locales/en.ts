@@ -337,7 +337,8 @@ export const en: TranslationKeys = {
       builtinFsSearchDesc:
         'Search files, folders, or markdown content in vault.',
       builtinFsReadLabel: 'Read File',
-      builtinFsReadDesc: 'Read line ranges from multiple vault files by path.',
+      builtinFsReadDesc:
+        'Read vault files by path with either full-file or targeted line-range operations.',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc:
         'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',

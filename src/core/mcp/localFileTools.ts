@@ -51,6 +51,16 @@ type LocalFileToolName =
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsListScope = 'files' | 'dirs' | 'all'
+type FsReadOperation =
+  | {
+      type: 'full'
+    }
+  | {
+      type: 'lines'
+      startLine: number
+      endLine?: number
+      maxLines: number
+    }
 type FsFileOpAction =
   | 'create_file'
   | 'delete_file'
@@ -340,7 +350,8 @@ export function getLocalFileTools(): McpTool[] {
     },
     {
       name: 'fs_read',
-      description: `Read line ranges from multiple vault files by path. Defaults to the first ${DEFAULT_READ_MAX_LINES} lines.`,
+      description:
+        'Read vault files by path using either full-file or targeted line-range operations. Prefer lines when you already know the relevant section to reduce context usage.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -351,25 +362,37 @@ export function getLocalFileTools(): McpTool[] {
             },
             description: `Vault-relative file paths. Maximum ${MAX_BATCH_READ_FILES} items.`,
           },
-          startLine: {
-            type: 'integer',
-            description: `1-based start line. Defaults to ${DEFAULT_READ_START_LINE}.`,
-          },
-          maxLines: {
-            type: 'integer',
-            description: `Maximum lines to return when endLine is not set. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
-          },
-          endLine: {
-            type: 'integer',
+          operation: {
+            type: 'object',
             description:
-              'Optional 1-based inclusive end line. If set, maxLines is ignored.',
+              'Read strategy. Use type="full" to return the whole file. Use type="lines" to read a targeted range, and prefer lines for large files or when headings/line numbers are already known.',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['full', 'lines'],
+              },
+              startLine: {
+                type: 'integer',
+                description: `Required for lines. 1-based start line. Defaults to ${DEFAULT_READ_START_LINE} when omitted.`,
+              },
+              maxLines: {
+                type: 'integer',
+                description: `Optional for lines when endLine is not set. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
+              },
+              endLine: {
+                type: 'integer',
+                description:
+                  'Optional for lines. 1-based inclusive end line. If set, maxLines is ignored.',
+              },
+            },
+            required: ['type'],
           },
           maxCharsPerFile: {
             type: 'integer',
             description: `Safety cap for returned chars per file after line slicing. Defaults to ${DEFAULT_MAX_BATCH_CHARS_PER_FILE}, range 100-200000.`,
           },
         },
-        required: ['paths'],
+        required: ['paths', 'operation'],
       },
     },
     {
@@ -961,6 +984,69 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
   }
 }
 
+const getFsReadOperation = (
+  args: Record<string, unknown>,
+): FsReadOperation => {
+  const operation = args.operation
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+    throw new Error('operation must be an object.')
+  }
+
+  const parsedOperation = operation as Record<string, unknown>
+  const type = asOptionalString(parsedOperation.type).trim().toLowerCase()
+
+  if (type === 'full') {
+    return { type: 'full' }
+  }
+
+  if (type === 'lines') {
+    const startLine = getOptionalIntegerArg({
+      args: parsedOperation,
+      key: 'startLine',
+      defaultValue: DEFAULT_READ_START_LINE,
+      min: 1,
+      max: MAX_READ_LINE_INDEX,
+    })
+
+    const maxLines = getOptionalIntegerArg({
+      args: parsedOperation,
+      key: 'maxLines',
+      defaultValue: DEFAULT_READ_MAX_LINES,
+      min: 1,
+      max: MAX_READ_MAX_LINES,
+    })
+
+    const endLine = getOptionalBoundedIntegerArg({
+      args: parsedOperation,
+      key: 'endLine',
+      min: 1,
+      max: MAX_READ_LINE_INDEX,
+    })
+
+    if (endLine !== undefined && endLine < startLine) {
+      throw new Error('operation.endLine must be greater than or equal to operation.startLine.')
+    }
+
+    if (
+      endLine !== undefined &&
+      endLine - startLine + 1 > MAX_READ_MAX_LINES
+    ) {
+      throw new Error(
+        `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
+      )
+    }
+
+    return {
+      type: 'lines',
+      startLine,
+      endLine,
+      maxLines,
+    }
+  }
+
+  throw new Error('operation.type must be one of: full, lines.')
+}
+
 const ensureParentFolderExists = async (app: App, path: string): Promise<void> => {
   const parentFolderPath = getParentFolderPath(path)
   if (!parentFolderPath) {
@@ -1300,42 +1386,7 @@ export async function callLocalFileTool({
             `paths supports up to ${MAX_BATCH_READ_FILES} files per call.`,
           )
         }
-
-        const startLine = getOptionalIntegerArg({
-          args,
-          key: 'startLine',
-          defaultValue: DEFAULT_READ_START_LINE,
-          min: 1,
-          max: MAX_READ_LINE_INDEX,
-        })
-
-        const maxLines = getOptionalIntegerArg({
-          args,
-          key: 'maxLines',
-          defaultValue: DEFAULT_READ_MAX_LINES,
-          min: 1,
-          max: MAX_READ_MAX_LINES,
-        })
-
-        const endLine = getOptionalBoundedIntegerArg({
-          args,
-          key: 'endLine',
-          min: 1,
-          max: MAX_READ_LINE_INDEX,
-        })
-
-        if (endLine !== undefined && endLine < startLine) {
-          throw new Error('endLine must be greater than or equal to startLine.')
-        }
-
-        if (
-          endLine !== undefined &&
-          endLine - startLine + 1 > MAX_READ_MAX_LINES
-        ) {
-          throw new Error(
-            `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
-          )
-        }
+        const operation = getFsReadOperation(args)
 
         const maxCharsPerFile = getOptionalIntegerArg({
           args,
@@ -1391,26 +1442,50 @@ export async function callLocalFileTool({
           const content = await app.vault.read(file)
           const lines = content.length === 0 ? [] : content.split('\n')
           const totalLines = lines.length
-          const startIndex = Math.min(Math.max(startLine - 1, 0), totalLines)
-          const endExclusive = Math.min(
-            totalLines,
-            endLine ?? startIndex + maxLines,
-          )
-          const selectedLines = lines.slice(startIndex, endExclusive)
-          let lineWindowContent = selectedLines
-            .map((line, index) => `${startIndex + index + 1}|${line}`)
-            .join('\n')
-          const truncated = lineWindowContent.length > maxCharsPerFile
-          if (truncated) {
-            lineWindowContent = `${lineWindowContent.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
+
+          let outputContent = ''
+          let returnedStartLine: number | null = null
+          let returnedEndLine: number | null = null
+          let returnedCount = 0
+          let hasMoreAbove = false
+          let hasMoreBelow = false
+          let nextStartLine: number | null = null
+
+          if (operation.type === 'full') {
+            outputContent = content
+            if (outputContent.length > maxCharsPerFile) {
+              outputContent = `${outputContent.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
+            }
+            returnedCount = totalLines
+            returnedStartLine = totalLines > 0 ? 1 : null
+            returnedEndLine = totalLines > 0 ? totalLines : null
+          } else {
+            const startIndex = Math.min(
+              Math.max(operation.startLine - 1, 0),
+              totalLines,
+            )
+            const endExclusive = Math.min(
+              totalLines,
+              operation.endLine ?? startIndex + operation.maxLines,
+            )
+            const selectedLines = lines.slice(startIndex, endExclusive)
+            outputContent = selectedLines
+              .map((line, index) => `${startIndex + index + 1}|${line}`)
+              .join('\n')
+            returnedCount = selectedLines.length
+            returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
+            returnedEndLine =
+              returnedCount > 0 ? startIndex + returnedCount : null
+            hasMoreAbove = startIndex > 0
+            hasMoreBelow = endExclusive < totalLines
+            nextStartLine = hasMoreBelow ? endExclusive + 1 : null
           }
 
-          const returnedCount = selectedLines.length
-          const returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
-          const returnedEndLine =
-            returnedCount > 0 ? startIndex + returnedCount : null
-          const hasMoreAbove = startIndex > 0
-          const hasMoreBelow = endExclusive < totalLines
+          const truncated = outputContent.length > maxCharsPerFile
+          if (truncated) {
+            outputContent = `${outputContent.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
+          }
+
           results.push({
             path,
             ok: true,
@@ -1422,8 +1497,8 @@ export async function callLocalFileTool({
             },
             hasMoreAbove,
             hasMoreBelow,
-            nextStartLine: hasMoreBelow ? endExclusive + 1 : null,
-            content: lineWindowContent,
+            nextStartLine,
+            content: outputContent,
             truncated,
           })
         }
@@ -1432,10 +1507,15 @@ export async function callLocalFileTool({
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
             tool: 'fs_read',
-            requestedWindow: {
-              startLine,
-              endLine: endLine ?? null,
-              maxLines: endLine === undefined ? maxLines : null,
+            requestedOperation: {
+              type: operation.type,
+              startLine:
+                operation.type === 'lines' ? operation.startLine : null,
+              endLine: operation.type === 'lines' ? operation.endLine ?? null : null,
+              maxLines:
+                operation.type === 'lines' && operation.endLine === undefined
+                  ? operation.maxLines
+                  : null,
               maxCharsPerFile,
             },
             results,
