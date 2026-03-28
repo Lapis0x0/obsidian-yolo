@@ -164,6 +164,96 @@ describe('executeSingleTurn', () => {
     expect(result.finishReason).toBe('tool_calls')
   })
 
+  it('preserves streamed nested object chunks that begin with "{\\"', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-nested-object',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-read-1',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_read',
+                      arguments: '{"paths":["foo.md"],"operation":',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-nested-object',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: {
+                      arguments:
+                        '{"type":"lines","startLine":1,"endLine":80}}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-nested-object',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+    })
+
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-read-1',
+        name: 'yolo_local__fs_read',
+        arguments: completeArgs(
+          {
+            paths: ['foo.md'],
+            operation: {
+              type: 'lines',
+              startLine: 1,
+              endLine: 80,
+            },
+          },
+          '{"paths":["foo.md"],"operation":{"type":"lines","startLine":1,"endLine":80}}',
+        ),
+        metadata: undefined,
+      },
+    ])
+  })
+
   it('falls back to non-stream request on streaming protocol errors', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockRejectedValue(new Error('unexpected EOF'))
