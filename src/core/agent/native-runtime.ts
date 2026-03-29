@@ -154,6 +154,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                 const completedToolMessage =
                   await toolGateway.executeAutoToolCalls({
                     toolMessage: initialToolMessage,
+                    conversationMessages: [...input.messages, ...this.messages],
                     signal: abortSignal,
                   })
 

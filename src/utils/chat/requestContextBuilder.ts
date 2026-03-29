@@ -48,6 +48,11 @@ import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
 } from './tool-boundary'
+import {
+  collectContextPrunedToolCallIds,
+  filterContextPrunedAssistantToolCalls,
+  filterContextPrunedToolCalls,
+} from './tool-context-pruning'
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 
 export type CurrentFileContextMode = 'full' | 'summary'
@@ -71,7 +76,9 @@ const MAX_MENTIONED_FILE_OUTLINES = 10
 
 type MentionContextMode = 'light' | 'full'
 
-export function extractMarkdownAtxHeadings(content: string): MarkdownAtxHeading[] {
+export function extractMarkdownAtxHeadings(
+  content: string,
+): MarkdownAtxHeading[] {
   const headings: MarkdownAtxHeading[] = []
   const lines = content.split('\n')
   let activeFenceMarker: '```' | '~~~' | null = null
@@ -135,6 +142,10 @@ export class RequestContextBuilder {
     this.app = app
     this.settings = settings
     this.includeSkills = options?.includeSkills ?? true
+  }
+
+  public isModelRequestContextLoggingEnabled(): boolean {
+    return this.settings.debug?.logModelRequestContext ?? false
   }
 
   private getMentionContextMode(): MentionContextMode {
@@ -290,6 +301,8 @@ export class RequestContextBuilder {
     // Get the last N messages and parse them into request messages
     const requestMessages: RequestMessage[] = []
     const contextMessages = messages.slice(-maxContext)
+    const prunedToolCallIds = collectContextPrunedToolCallIds(messages)
+
     for (const message of contextMessages) {
       if (message.role === 'user') {
         requestMessages.push({
@@ -303,11 +316,15 @@ export class RequestContextBuilder {
       }
 
       if (message.role === 'assistant') {
-        requestMessages.push(...this.parseAssistantMessage({ message }))
+        requestMessages.push(
+          ...this.parseAssistantMessage({ message, prunedToolCallIds }),
+        )
         continue
       }
 
-      requestMessages.push(...this.parseToolMessage({ message }))
+      requestMessages.push(
+        ...this.parseToolMessage({ message, prunedToolCallIds }),
+      )
     }
 
     return filterRequestMessagesByToolBoundary(
@@ -447,8 +464,10 @@ ${message.similaritySearchResults
 
   private parseAssistantMessage({
     message,
+    prunedToolCallIds,
   }: {
     message: ChatAssistantMessage
+    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
     let citationContent: string | null = null
     if (message.annotations && message.annotations.length > 0) {
@@ -471,12 +490,14 @@ ${message.annotations
         ].join('\n'),
         reasoning: message.reasoning,
         providerMetadata: message.metadata?.providerMetadata,
-        tool_calls:
+        tool_calls: filterContextPrunedAssistantToolCalls(
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))
             .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
               Boolean(toolCall),
             ) ?? undefined,
+          prunedToolCallIds ?? new Set<string>(),
+        ),
       },
     ]
   }
@@ -512,10 +533,15 @@ ${message.annotations
 
   private parseToolMessage({
     message,
+    prunedToolCallIds,
   }: {
     message: ChatToolMessage
+    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
-    return message.toolCalls.flatMap((toolCall): RequestMessage[] => {
+    return filterContextPrunedToolCalls(
+      message.toolCalls,
+      prunedToolCallIds ?? new Set<string>(),
+    ).flatMap((toolCall): RequestMessage[] => {
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
         case ToolCallResponseStatus.Running:

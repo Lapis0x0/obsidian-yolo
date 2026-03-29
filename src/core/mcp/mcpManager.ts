@@ -3,6 +3,7 @@ import { App, Platform } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { ChatMessage } from '../../types/chat'
 import {
   McpServerConfig,
   McpServerState,
@@ -568,12 +569,14 @@ export class McpManager {
     name,
     args,
     id,
+    conversationMessages,
     signal,
     requireReview = false,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
     id?: string
+    conversationMessages?: ChatMessage[]
     signal?: AbortSignal
     requireReview?: boolean
   }): Promise<ToolCallResponse> {
@@ -606,6 +609,7 @@ export class McpManager {
           app: this.app,
           settings: this.settings,
           openApplyReview: this.openApplyReview,
+          conversationMessages,
           toolCallId: id,
           toolName,
           args: parsedArgs ?? {},

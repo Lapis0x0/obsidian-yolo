@@ -303,6 +303,9 @@ export const zh: TranslationKeys = {
       builtinFsSearchDesc: '搜索库中的文件、文件夹或 Markdown 内容。',
       builtinFsReadLabel: '读取',
       builtinFsReadDesc: '按路径读取库内文件，支持全文或按行范围两种模式。',
+      builtinContextPruneToolResultsLabel: '清理上下文',
+      builtinContextPruneToolResultsDesc:
+        '将指定历史 fs_read 工具结果从后续模型可见上下文中排除，但不删除聊天记录。',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc:
         '在单个现有文件中精确执行一次文本编辑操作，支持文本替换、按行替换、锚点后插入和追加。',
@@ -807,6 +810,9 @@ export const zh: TranslationKeys = {
       resetAgentsConfirm:
         '确定要重置 Agent 配置吗？此操作将删除自定义 Agent 并重置当前选择。',
       resetAgentsSuccess: 'Agent 配置已重置为默认',
+      logModelRequestContext: '记录模型请求上下文',
+      logModelRequestContextDesc:
+        '在开发者控制台输出每一轮 Agent 实际发送给模型的最终请求载荷。',
       yoloBaseDir: 'YOLO 根目录',
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',

@@ -1,3 +1,17 @@
+jest.mock('../../contexts/language-context', () => ({
+  useLanguage: () => ({
+    t: (_key: string, fallback?: string) => fallback ?? '',
+  }),
+}))
+
+jest.mock('../../contexts/plugin-context', () => ({
+  usePlugin: () => ({}),
+}))
+
+jest.mock('./ObsidianMarkdown', () => ({
+  ObsidianCodeBlock: () => null,
+}))
+
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,

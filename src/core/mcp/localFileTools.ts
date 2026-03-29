@@ -2,6 +2,7 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { ChatMessage } from '../../types/chat'
 import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallResponseStatus,
@@ -35,10 +36,48 @@ const MAX_READ_LINE_INDEX = 1_000_000
 const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
 const MAX_BATCH_WRITE_ITEMS = 50
 
+const getContextPrunableToolCallIds = (
+  messages: ChatMessage[] | undefined,
+  currentToolCallId?: string,
+): Set<string> => {
+  const acceptedToolCallIds = new Set<string>()
+
+  for (const message of messages ?? []) {
+    if (message.role !== 'tool') {
+      continue
+    }
+
+    if (
+      currentToolCallId &&
+      message.toolCalls.some(
+        (toolCall) => toolCall.request.id === currentToolCallId,
+      )
+    ) {
+      break
+    }
+
+    for (const toolCall of message.toolCalls) {
+      if (
+        ['fs_read', `${getLocalFileToolServerName()}__fs_read`].includes(
+          toolCall.request.name,
+        ) &&
+        toolCall.response.status === ToolCallResponseStatus.Success &&
+        toolCall.response.data.type === 'text' &&
+        toolCall.request.id.trim().length > 0
+      ) {
+        acceptedToolCallIds.add(toolCall.request.id)
+      }
+    }
+  }
+
+  return acceptedToolCallIds
+}
+
 type LocalFileToolName =
   | 'fs_list'
   | 'fs_search'
   | 'fs_read'
+  | 'context_prune_tool_results'
   | 'fs_edit'
   | 'fs_create_file'
   | 'fs_delete_file'
@@ -393,6 +432,30 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['paths', 'operation'],
+      },
+    },
+    {
+      name: 'context_prune_tool_results',
+      description:
+        'Exclude selected historical fs_read tool call results from future model-visible context without deleting chat history.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          toolCallIds: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+            description:
+              'Tool call ids to exclude from future prompt context. Only historical fs_read calls are affected.',
+          },
+          reason: {
+            type: 'string',
+            description:
+              'Optional short reason for pruning, such as superseded by newer reads.',
+          },
+        },
+        required: ['toolCallIds'],
       },
     },
     {
@@ -842,7 +905,10 @@ const getParentFolderPath = (path: string): string => {
   return lastSlashIndex === -1 ? '' : path.slice(0, lastSlashIndex)
 }
 
-const ensureFolderPathExists = async (app: App, path: string): Promise<void> => {
+const ensureFolderPathExists = async (
+  app: App,
+  path: string,
+): Promise<void> => {
   const normalizedPath = validateVaultPath(path)
   const existing = app.vault.getAbstractFileByPath(normalizedPath)
   if (existing) {
@@ -984,9 +1050,7 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
   }
 }
 
-const getFsReadOperation = (
-  args: Record<string, unknown>,
-): FsReadOperation => {
+const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
   const operation = args.operation
   if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
     throw new Error('operation must be an object.')
@@ -1024,13 +1088,12 @@ const getFsReadOperation = (
     })
 
     if (endLine !== undefined && endLine < startLine) {
-      throw new Error('operation.endLine must be greater than or equal to operation.startLine.')
+      throw new Error(
+        'operation.endLine must be greater than or equal to operation.startLine.',
+      )
     }
 
-    if (
-      endLine !== undefined &&
-      endLine - startLine + 1 > MAX_READ_MAX_LINES
-    ) {
+    if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
       throw new Error(
         `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
       )
@@ -1047,7 +1110,10 @@ const getFsReadOperation = (
   throw new Error('operation.type must be one of: full, lines.')
 }
 
-const ensureParentFolderExists = async (app: App, path: string): Promise<void> => {
+const ensureParentFolderExists = async (
+  app: App,
+  path: string,
+): Promise<void> => {
   const parentFolderPath = getParentFolderPath(path)
   if (!parentFolderPath) {
     return
@@ -1280,6 +1346,7 @@ export async function callLocalFileTool({
   app,
   settings,
   openApplyReview,
+  conversationMessages,
   toolCallId,
   toolName,
   args,
@@ -1289,6 +1356,7 @@ export async function callLocalFileTool({
   app: App
   settings?: SmartComposerSettings
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
+  conversationMessages?: ChatMessage[]
   toolCallId?: string
   toolName: string
   args: Record<string, unknown>
@@ -1506,11 +1574,13 @@ export async function callLocalFileTool({
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
             tool: 'fs_read',
+            toolCallId: toolCallId ?? null,
             requestedOperation: {
               type: operation.type,
               startLine:
                 operation.type === 'lines' ? operation.startLine : null,
-              endLine: operation.type === 'lines' ? operation.endLine ?? null : null,
+              endLine:
+                operation.type === 'lines' ? (operation.endLine ?? null) : null,
               maxLines:
                 operation.type === 'lines' && operation.endLine === undefined
                   ? operation.maxLines
@@ -1518,6 +1588,42 @@ export async function callLocalFileTool({
               maxCharsPerFile,
             },
             results,
+          }),
+        }
+      }
+
+      case 'context_prune_tool_results': {
+        const toolCallIds = getStringArrayArg(args, 'toolCallIds')
+          .map((value) => value.trim())
+          .filter(
+            (value, index, arr) =>
+              value.length > 0 && arr.indexOf(value) === index,
+          )
+
+        if (toolCallIds.length === 0) {
+          throw new Error('toolCallIds cannot be empty.')
+        }
+
+        const prunableToolCallIds = getContextPrunableToolCallIds(
+          conversationMessages,
+          toolCallId,
+        )
+        const acceptedToolCallIds = toolCallIds.filter((value) =>
+          prunableToolCallIds.has(value),
+        )
+        const ignoredToolCallIds = toolCallIds.filter(
+          (value) => !prunableToolCallIds.has(value),
+        )
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'context_prune_tool_results',
+            toolCallId: toolCallId ?? null,
+            operation: 'prune_selected',
+            acceptedToolCallIds,
+            ignoredToolCallIds,
+            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
           }),
         }
       }

@@ -231,6 +231,8 @@ export type TranslationKeys = {
       builtinFsSearchDesc?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string
+      builtinContextPruneToolResultsLabel?: string
+      builtinContextPruneToolResultsDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
       fsEditReviewToggle?: string
@@ -678,6 +680,8 @@ export type TranslationKeys = {
       resetAgentsDesc?: string
       resetAgentsConfirm?: string
       resetAgentsSuccess?: string
+      logModelRequestContext?: string
+      logModelRequestContextDesc?: string
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string

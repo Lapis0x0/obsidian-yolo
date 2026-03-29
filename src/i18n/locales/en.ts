@@ -339,6 +339,9 @@ export const en: TranslationKeys = {
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc:
         'Read vault files by path with either full-file or targeted line-range operations.',
+      builtinContextPruneToolResultsLabel: 'Prune Context',
+      builtinContextPruneToolResultsDesc:
+        'Exclude selected historical fs_read results from future model-visible context without deleting chat history.',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc:
         'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
@@ -884,6 +887,9 @@ export const en: TranslationKeys = {
       resetAgentsConfirm:
         'Are you sure you want to reset agent configuration? This will remove custom agents and reset the current selection.',
       resetAgentsSuccess: 'Agent configuration has been reset to defaults',
+      logModelRequestContext: 'Log model request context',
+      logModelRequestContextDesc:
+        'Print the final request payload actually sent to the model for each Agent turn in the developer console.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',

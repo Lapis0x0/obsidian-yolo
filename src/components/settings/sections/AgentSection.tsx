@@ -6,6 +6,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
+import {
+  FILE_OPS_GROUP_TOOL_NAME,
+  MEMORY_OPS_GROUP_TOOL_NAME,
+  getBuiltinToolUiMeta,
+} from '../../../core/agent/builtinToolUiMeta'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
@@ -30,58 +35,10 @@ type AgentSectionProps = {
   app: App
 }
 
-const BUILTIN_TOOL_LABEL_KEYS: Record<
-  string,
-  { key: string; fallback: string }
-> = {
-  fs_list: {
-    key: 'settings.agent.builtinFsListLabel',
-    fallback: 'Read Vault',
-  },
-  fs_search: {
-    key: 'settings.agent.builtinFsSearchLabel',
-    fallback: 'Search Vault',
-  },
-  fs_read: {
-    key: 'settings.agent.builtinFsReadLabel',
-    fallback: 'Read File',
-  },
-  fs_edit: {
-    key: 'settings.agent.builtinFsEditLabel',
-    fallback: 'Text Editing',
-  },
-  fs_file_ops: {
-    key: 'settings.agent.builtinFsFileOpsLabel',
-    fallback: 'File Operation Toolset',
-  },
-  memory_ops: {
-    key: 'settings.agent.builtinMemoryOpsLabel',
-    fallback: 'Memory Toolset',
-  },
-  memory_add: {
-    key: 'settings.agent.builtinMemoryAddLabel',
-    fallback: 'Add Memory',
-  },
-  memory_update: {
-    key: 'settings.agent.builtinMemoryUpdateLabel',
-    fallback: 'Update Memory',
-  },
-  memory_delete: {
-    key: 'settings.agent.builtinMemoryDeleteLabel',
-    fallback: 'Delete Memory',
-  },
-  open_skill: {
-    key: 'settings.agent.builtinOpenSkillLabel',
-    fallback: 'Open Skill',
-  },
-}
-
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
-const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
-const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
 
 export function AgentSection({ app }: AgentSectionProps) {
   const { settings, setSettings } = useSettings()
@@ -237,10 +194,10 @@ export function AgentSection({ app }: AgentSectionProps) {
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name),
       )
       .map((tool) => {
-        const meta = BUILTIN_TOOL_LABEL_KEYS[tool.name]
+        const meta = getBuiltinToolUiMeta(tool.name)
         return {
           id: tool.name,
-          label: meta ? t(meta.key, meta.fallback) : tool.name,
+          label: meta ? t(meta.labelKey, meta.labelFallback) : tool.name,
           enabled: !(toolOptions[tool.name]?.disabled ?? false),
         }
       })
@@ -250,10 +207,13 @@ export function AgentSection({ app }: AgentSectionProps) {
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
     )
-    const fileOpsMeta = BUILTIN_TOOL_LABEL_KEYS[FILE_OPS_GROUP_TOOL_NAME]
+    const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
+    if (!fileOpsMeta) {
+      throw new Error('Missing built-in tool UI metadata for fs_file_ops')
+    }
     const fileOpsTool = {
       id: FILE_OPS_GROUP_TOOL_NAME,
-      label: t(fileOpsMeta.key, fileOpsMeta.fallback),
+      label: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
       enabled: splitToolEnabled,
     }
 
@@ -262,10 +222,13 @@ export function AgentSection({ app }: AgentSectionProps) {
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[MEMORY_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
     )
-    const memoryOpsMeta = BUILTIN_TOOL_LABEL_KEYS[MEMORY_OPS_GROUP_TOOL_NAME]
+    const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
+    if (!memoryOpsMeta) {
+      throw new Error('Missing built-in tool UI metadata for memory_ops')
+    }
     const memoryOpsTool = {
       id: MEMORY_OPS_GROUP_TOOL_NAME,
-      label: t(memoryOpsMeta.key, memoryOpsMeta.fallback),
+      label: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
       enabled: memorySplitToolEnabled,
     }
 

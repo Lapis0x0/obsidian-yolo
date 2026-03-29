@@ -347,6 +347,9 @@ export const it: TranslationKeys = {
       builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc:
         'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
+      builtinContextPruneToolResultsLabel: 'Pulisci contesto',
+      builtinContextPruneToolResultsDesc:
+        'Esclude dai futuri contesti visibili al modello i risultati storici di fs_read selezionati, senza eliminare la cronologia chat.',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
         'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, replace_lines, insert_after e append.',
@@ -870,6 +873,9 @@ export const it: TranslationKeys = {
         'Sei sicuro di voler ripristinare la configurazione degli agent? Questa azione rimuoverà gli agent personalizzati e reimposterà la selezione corrente.',
       resetAgentsSuccess:
         'La configurazione degli agent è stata ripristinata ai valori predefiniti.',
+      logModelRequestContext: 'Registra il contesto della richiesta al modello',
+      logModelRequestContextDesc:
+        'Stampa nella console sviluppatore il payload finale realmente inviato al modello per ogni turno Agent.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',

@@ -288,6 +288,14 @@ export const smartComposerSettingsSchema = z.object({
       baseDir: 'YOLO',
     }),
 
+  debug: z
+    .object({
+      logModelRequestContext: z.boolean().optional(),
+    })
+    .catch({
+      logModelRequestContext: false,
+    }),
+
   // Chat options
   chatOptions: z
     .object({

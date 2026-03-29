@@ -1,6 +1,16 @@
 import { TFile, TFolder } from 'obsidian'
 
+jest.mock('../../database/json/chat/promptSnapshotStore', () => ({
+  readPromptSnapshotEntries: jest.fn(async () => ({})),
+}))
+
+jest.mock('../../core/memory/memoryManager', () => ({
+  getMemoryPromptContext: jest.fn(async () => ''),
+}))
+
 import type { ChatUserMessage } from '../../types/chat'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 
 import {
@@ -158,9 +168,13 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     const textContent = getTextContent(result.promptContent)
 
     expect(textContent).toContain('## Mentioned Vault Files (outline only)')
-    expect(textContent).toContain('- `notes/explicit.md`\n  - L1 # Explicit\n  - L2 ## Part A')
+    expect(textContent).toContain(
+      '- `notes/explicit.md`\n  - L1 # Explicit\n  - L2 ## Part A',
+    )
     expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
-    expect(textContent).toContain('- `docs/from-folder.md`\n  - L1 ## Folder Heading')
+    expect(textContent).toContain(
+      '- `docs/from-folder.md`\n  - L1 ## Folder Heading',
+    )
     expect(textContent).toContain('- `docs/plain.txt`')
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
     expect(textContent).toContain(
@@ -177,10 +191,9 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     const fileContents = new Map<string, string>([
       [explicitFile.path, '# Explicit'],
-      ...folderFiles.map((file, index) => [
-        file.path,
-        `# Folder ${index + 1}`,
-      ] as const),
+      ...folderFiles.map(
+        (file, index) => [file.path, `# Folder ${index + 1}`] as const,
+      ),
     ])
 
     const app = createMockApp({
@@ -206,9 +219,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     const textContent = getTextContent(result.promptContent)
 
-    expect(
-      textContent.match(/- L1 # /g)?.length,
-    ).toBe(10)
+    expect(textContent.match(/- L1 # /g)?.length).toBe(10)
     expect(textContent).toContain(
       'Additional mentioned markdown files omitted from outline due to limit: 2',
     )
@@ -299,10 +310,180 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).toContain(
       'Use this provided content first. Only call file tools if you need another file or want to verify the latest contents.',
     )
-    expect(textContent).toContain('```notes/explicit.md\n1|# Explicit\n2|Body\n```')
-    expect(textContent).toContain('```notes/current.md\n1|# Current\n2|More\n```')
+    expect(textContent).toContain(
+      '```notes/explicit.md\n1|# Explicit\n2|Body\n```',
+    )
+    expect(textContent).toContain(
+      '```notes/current.md\n1|# Current\n2|More\n```',
+    )
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
-    expect(textContent).toContain('- `docs/from-folder.md`\n  - L1 ## Folder Heading')
+    expect(textContent).toContain(
+      '- `docs/from-folder.md`\n  - L1 ## Folder Heading',
+    )
     expect(textContent).not.toContain('Folder body')
+  })
+})
+
+describe('RequestContextBuilder generateRequestMessages', () => {
+  const settings = {
+    systemPrompt: '',
+    currentAssistantId: undefined,
+    assistants: [],
+    yolo: { baseDir: 'YOLO' },
+    chatOptions: {
+      includeCurrentFileContent: false,
+      mentionContextMode: 'light',
+    },
+    skills: {},
+  } as unknown as SmartComposerSettings
+
+  const emptyArgs = createCompleteToolCallArguments({ value: {} })
+
+  it('hides pruned fs_read results from future request context', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'first prompt',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-read',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'read-1',
+              name: 'yolo_local__fs_read',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-read',
+          toolCalls: [
+            {
+              request: {
+                id: 'read-1',
+                name: 'yolo_local__fs_read',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    tool: 'fs_read',
+                    results: [
+                      {
+                        path: 'note.md',
+                        ok: true,
+                        content: '1|hello',
+                      },
+                    ],
+                  }),
+                },
+              },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-prune',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'prune-1',
+              name: 'yolo_local__context_prune_tool_results',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-prune',
+          toolCalls: [
+            {
+              request: {
+                id: 'prune-1',
+                name: 'yolo_local__context_prune_tool_results',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    tool: 'context_prune_tool_results',
+                    operation: 'prune_selected',
+                    acceptedToolCallIds: ['read-1'],
+                    ignoredToolCallIds: [],
+                  }),
+                },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'follow-up prompt',
+          mentionables: [],
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+    })
+
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'tool' && message.tool_call.id === 'read-1',
+      ),
+    ).toBe(false)
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          (message.tool_calls ?? []).some(
+            (toolCall) => toolCall.id === 'read-1',
+          ),
+      ),
+    ).toBe(false)
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'tool' && message.tool_call.id === 'prune-1',
+      ),
+    ).toBe(true)
   })
 })

@@ -15,6 +15,7 @@ import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 
 type EtcSectionProps = {
@@ -143,6 +144,24 @@ export function EtcSection({ app }: EtcSectionProps) {
   return (
     <div className="smtcmp-settings-section">
       <div className="smtcmp-settings-header">{t('settings.etc.title')}</div>
+
+      <ObsidianSetting
+        name={t('settings.etc.logModelRequestContext')}
+        desc={t('settings.etc.logModelRequestContextDesc')}
+      >
+        <ObsidianToggle
+          value={settings.debug?.logModelRequestContext ?? false}
+          onChange={(value) => {
+            void setSettings({
+              ...settings,
+              debug: {
+                ...settings.debug,
+                logModelRequestContext: value,
+              },
+            })
+          }}
+        />
+      </ObsidianSetting>
 
       <ObsidianSetting
         name={t('settings.etc.clearChatHistory')}

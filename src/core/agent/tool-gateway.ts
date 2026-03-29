@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 
 import { AssistantToolPreference } from '../../types/assistant.types'
-import { ChatToolMessage } from '../../types/chat'
+import { ChatMessage, ChatToolMessage } from '../../types/chat'
 import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallRequest,
@@ -75,9 +75,11 @@ export class AgentToolGateway {
 
   async executeAutoToolCalls({
     toolMessage,
+    conversationMessages,
     signal,
   }: {
     toolMessage: ChatToolMessage
+    conversationMessages?: ChatMessage[]
     signal?: AbortSignal
   }): Promise<ChatToolMessage> {
     const nextToolCalls = [...toolMessage.toolCalls]
@@ -94,6 +96,7 @@ export class AgentToolGateway {
           name: toolCall.request.name,
           args: getToolCallArgumentsObject(toolCall.request.arguments),
           id: toolCall.request.id,
+          conversationMessages,
           requireReview: this.shouldUseFsEditReview(toolCall.request.name),
           signal,
         }),

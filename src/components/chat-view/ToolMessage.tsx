@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
+import { getBuiltinToolUiMeta } from '../../core/agent/builtinToolUiMeta'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -78,18 +79,11 @@ type FsReadOperationSummary =
     }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  fs_list: 'Read Vault',
-  fs_search: 'Search Vault',
-  fs_read: 'Read',
-  fs_edit: 'Text editing',
   fs_create_file: 'Create file',
   fs_delete_file: 'Delete file',
   fs_create_dir: 'Create folder',
   fs_delete_dir: 'Delete folder',
   fs_move: 'Move path',
-  memory_add: 'Add memory',
-  memory_update: 'Update memory',
-  memory_delete: 'Delete memory',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
@@ -128,22 +122,14 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
     },
     unknownStatus: translate('chat.toolCall.status.unknown', 'Unknown'),
     displayNames: {
-      fs_list: translate(
-        'settings.agent.builtinFsListLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_list,
+      fs_list: translateBuiltinToolLabel('fs_list', translate),
+      fs_search: translateBuiltinToolLabel('fs_search', translate),
+      fs_read: translateBuiltinToolLabel('fs_read', translate),
+      context_prune_tool_results: translateBuiltinToolLabel(
+        'context_prune_tool_results',
+        translate,
       ),
-      fs_search: translate(
-        'settings.agent.builtinFsSearchLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_search,
-      ),
-      fs_read: translate(
-        'settings.agent.builtinFsReadLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_read,
-      ),
-      fs_edit: translate(
-        'settings.agent.builtinFsEditLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_edit,
-      ),
+      fs_edit: translateBuiltinToolLabel('fs_edit', translate),
       fs_create_file: translate(
         'chat.toolCall.writeAction.create_file',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_file,
@@ -164,18 +150,9 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.move',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
       ),
-      memory_add: translate(
-        'chat.toolCall.displayName.memory_add',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_add,
-      ),
-      memory_update: translate(
-        'chat.toolCall.displayName.memory_update',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_update,
-      ),
-      memory_delete: translate(
-        'chat.toolCall.displayName.memory_delete',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_delete,
-      ),
+      memory_add: translateBuiltinToolLabel('memory_add', translate),
+      memory_update: translateBuiltinToolLabel('memory_update', translate),
+      memory_delete: translateBuiltinToolLabel('memory_delete', translate),
     },
     writeActionLabels: {
       create_file: translate(
@@ -219,6 +196,18 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'Allow for this chat',
     ),
   }
+}
+
+const translateBuiltinToolLabel = (
+  toolName: string,
+  translate: TranslateFn,
+): string => {
+  const meta = getBuiltinToolUiMeta(toolName)
+  if (!meta) {
+    return toolName
+  }
+
+  return translate(meta.labelKey, meta.labelFallback)
 }
 
 const truncateText = (text: string, maxLength: number): string => {

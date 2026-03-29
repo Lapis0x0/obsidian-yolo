@@ -144,6 +144,7 @@ describe('AgentToolGateway', () => {
       name: 'yolo_local__fs_edit',
       args: {},
       id: 'tool-1',
+      conversationMessages: undefined,
       requireReview: true,
       signal: undefined,
     })
