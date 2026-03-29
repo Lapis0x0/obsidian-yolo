@@ -31,16 +31,12 @@ const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
 import {
-  createMcpRemoteTransportError,
-  createMcpRemoteTransportFactory,
-  getMcpRemoteTransportContext,
-  getMcpRemoteTransportDiagnostics,
-} from './remoteTransport'
-import {
   getToolName,
   parseToolName,
   validateServerName,
 } from './tool-name-utils'
+
+type RemoteTransportModule = typeof import('./remoteTransport')
 
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
   'Tool arguments must be valid JSON. Please escape quotes/newlines inside string values and retry.'
@@ -56,8 +52,10 @@ export class McpManager {
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
   private remoteTransportFactory: ReturnType<
-    typeof createMcpRemoteTransportFactory
+    RemoteTransportModule['createMcpRemoteTransportFactory']
   > | null = null
+  private remoteTransportModulePromise: Promise<RemoteTransportModule> | null =
+    null
 
   private servers: McpServerState[] = [] // IMPORTANT: Always use this.updateServers() to update this array
   private activeToolCalls: Map<string, AbortController> = new Map()
@@ -142,9 +140,11 @@ export class McpManager {
     // Get default environment variables
     const { shellEnvSync } = await import('shell-env')
     this.defaultEnv = shellEnvSync()
-    this.remoteTransportFactory = createMcpRemoteTransportFactory({
-      env: this.defaultEnv,
-    })
+    const remoteTransport = await this.loadRemoteTransportModule()
+    this.remoteTransportFactory =
+      remoteTransport.createMcpRemoteTransportFactory({
+        env: this.defaultEnv,
+      })
 
     // Create MCP servers
     const servers = await Promise.all(
@@ -169,8 +169,17 @@ export class McpManager {
 
     this.servers = []
     this.remoteTransportFactory = null
+    this.remoteTransportModulePromise = null
     this.subscribers.clear()
     this.activeToolCalls.clear()
+  }
+
+  private loadRemoteTransportModule(): Promise<RemoteTransportModule> {
+    if (!this.remoteTransportModulePromise) {
+      this.remoteTransportModulePromise = import('./remoteTransport')
+    }
+
+    return this.remoteTransportModulePromise
   }
 
   public getServers() {
@@ -298,11 +307,15 @@ export class McpManager {
       const transport = await this.createClientTransport(serverParams)
       await client.connect(transport)
     } catch (error) {
-      const remoteTransportContext = getMcpRemoteTransportContext(serverParams)
+      const remoteTransport = await this.loadRemoteTransportModule()
+      const remoteTransportContext =
+        remoteTransport.getMcpRemoteTransportContext(serverParams)
       console.error(
         `[YOLO] Failed to connect to MCP server "${name}":`,
         remoteTransportContext
-          ? getMcpRemoteTransportDiagnostics(remoteTransportContext)
+          ? remoteTransport.getMcpRemoteTransportDiagnostics(
+              remoteTransportContext,
+            )
           : { transport: serverParams.transport },
         error,
       )
@@ -311,7 +324,7 @@ export class McpManager {
         config: serverConfig,
         status: McpServerStatus.Error,
         error: remoteTransportContext
-          ? createMcpRemoteTransportError({
+          ? remoteTransport.createMcpRemoteTransportError({
               serverName: name,
               action: 'connect',
               context: remoteTransportContext,
@@ -333,11 +346,15 @@ export class McpManager {
         tools: toolList.tools,
       }
     } catch (error) {
-      const remoteTransportContext = getMcpRemoteTransportContext(serverParams)
+      const remoteTransport = await this.loadRemoteTransportModule()
+      const remoteTransportContext =
+        remoteTransport.getMcpRemoteTransportContext(serverParams)
       console.error(
         `[YOLO] Failed to list tools for MCP server "${name}":`,
         remoteTransportContext
-          ? getMcpRemoteTransportDiagnostics(remoteTransportContext)
+          ? remoteTransport.getMcpRemoteTransportDiagnostics(
+              remoteTransportContext,
+            )
           : { transport: serverParams.transport },
         error,
       )
@@ -346,7 +363,7 @@ export class McpManager {
         config: serverConfig,
         status: McpServerStatus.Error,
         error: remoteTransportContext
-          ? createMcpRemoteTransportError({
+          ? remoteTransport.createMcpRemoteTransportError({
               serverName: name,
               action: 'list tools',
               context: remoteTransportContext,
@@ -381,9 +398,10 @@ export class McpManager {
         const { StreamableHTTPClientTransport } = await import(
           '@modelcontextprotocol/sdk/client/streamableHttp.js'
         )
+        const remoteTransport = await this.loadRemoteTransportModule()
         const remoteTransportFactory =
           this.remoteTransportFactory ??
-          createMcpRemoteTransportFactory({
+          remoteTransport.createMcpRemoteTransportFactory({
             env: this.defaultEnv ?? {},
           })
         return new StreamableHTTPClientTransport(new URL(serverParams.url), {
@@ -394,9 +412,10 @@ export class McpManager {
         const { SSEClientTransport } = await import(
           '@modelcontextprotocol/sdk/client/sse.js'
         )
+        const remoteTransport = await this.loadRemoteTransportModule()
         const remoteTransportFactory =
           this.remoteTransportFactory ??
-          createMcpRemoteTransportFactory({
+          remoteTransport.createMcpRemoteTransportFactory({
             env: this.defaultEnv ?? {},
           })
         return new SSEClientTransport(new URL(serverParams.url), {
