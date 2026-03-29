@@ -641,6 +641,8 @@ export const en: TranslationKeys = {
         'The manual download entry point for remote PGlite resources will be wired here.',
       pgliteDeletePlaceholder:
         'The local PGlite resource deletion entry point will be wired here.',
+      pgliteDownloadingUnknownFile: 'runtime file',
+      pgliteInlineErrorTitle: 'Download failed',
       pgliteSummaryReadyRemote:
         'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
       pgliteSummaryReadyBundled:

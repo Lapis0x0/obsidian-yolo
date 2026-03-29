@@ -23,6 +23,8 @@ export type PGliteRuntimeStatus =
       expectedVersion: string
       dir: string
       checkedAt: number
+      totalFiles: number
+      currentFileIndex: number
       currentFile?: PGliteRuntimeFileName
     }
   | {
@@ -308,6 +310,8 @@ export class PGliteRuntimeManager {
       expectedVersion: this.runtimeVersion,
       dir: versionDir,
       checkedAt: Date.now(),
+      totalFiles: this.manifest.files.length,
+      currentFileIndex: 0,
     }
 
     await ensureDir(this.app, this.runtimeRootDir)
@@ -315,12 +319,14 @@ export class PGliteRuntimeManager {
     await ensureDir(this.app, tempDir)
 
     try {
-      for (const file of this.manifest.files) {
+      for (const [index, file] of this.manifest.files.entries()) {
         this.volatileStatus = {
           kind: 'downloading',
           expectedVersion: this.runtimeVersion,
           dir: versionDir,
           checkedAt: Date.now(),
+          totalFiles: this.manifest.files.length,
+          currentFileIndex: index + 1,
           currentFile: file.name,
         }
 

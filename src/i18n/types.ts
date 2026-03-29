@@ -487,6 +487,8 @@ export type TranslationKeys = {
       pgliteDeleteLocal?: string
       pgliteDownloadPlaceholder?: string
       pgliteDeletePlaceholder?: string
+      pgliteDownloadingUnknownFile?: string
+      pgliteInlineErrorTitle?: string
       pgliteSummaryReadyRemote?: string
       pgliteSummaryReadyBundled?: string
       pgliteSummaryUnavailable?: string

@@ -584,6 +584,8 @@ export const zh: TranslationKeys = {
       pgliteDeleteLocal: '删除本地资源',
       pgliteDownloadPlaceholder: 'PGlite 远程资源手动下载入口将接入到这里。',
       pgliteDeletePlaceholder: 'PGlite 本地资源删除入口将接入到这里。',
+      pgliteDownloadingUnknownFile: '运行时文件',
+      pgliteInlineErrorTitle: '下载失败',
       pgliteSummaryReadyRemote:
         '当前 PGlite 运行时资源已就绪，可用于知识库索引与嵌入数据库管理。',
       pgliteSummaryReadyBundled:

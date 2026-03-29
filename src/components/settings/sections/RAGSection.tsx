@@ -99,22 +99,6 @@ function RAGCard({
   )
 }
 
-function formatTimestamp(timestamp: number | null): string {
-  if (!timestamp) return ''
-
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(timestamp)
-  } catch {
-    return new Date(timestamp).toLocaleString()
-  }
-}
-
 export function RAGSection({ app, plugin }: RAGSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
@@ -202,6 +186,27 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   useEffect(() => {
     void refreshPgliteResourceStatus()
   }, [refreshPgliteResourceStatus])
+
+  useEffect(() => {
+    if (
+      pgliteResourceStatus?.kind !== 'downloading' &&
+      !isRunningPgliteAction
+    ) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshPgliteResourceStatus()
+    }, 500)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [
+    isRunningPgliteAction,
+    pgliteResourceStatus?.kind,
+    refreshPgliteResourceStatus,
+  ])
 
   const parseIntegerInput = (value: string) => {
     const trimmed = value.trim()
@@ -306,19 +311,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         ? 'is-warning'
         : 'is-danger'
 
-  const pgliteSourceLabel = t(
-    'settings.rag.pgliteSourceLocalCache',
-    'Local cache',
-  )
-
   const canUseIndexMaintenance = pgliteResourceStatus?.kind === 'ready'
   const pglitePrimaryActionLabel =
     pgliteResourceStatus?.kind === 'ready'
       ? t('settings.rag.pgliteRedownload', 'Download again')
       : t('settings.rag.pgliteDownload', 'Download resources')
-  const pgliteDeleteActionEnabled =
-    pgliteResourceStatus?.kind === 'ready' ||
-    pgliteResourceStatus?.kind === 'failed'
   const pgliteSummaryText =
     pgliteResourceStatus?.kind === 'ready'
       ? t(
@@ -339,35 +336,34 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               'settings.rag.pgliteSummaryMissing',
               'PGlite runtime resources have not been prepared yet. The plugin will auto-download them on first knowledge base use, and you can also prepare them here manually.',
             )
-  const pgliteStatusPath = pgliteResourceStatus?.dir
-    ? pgliteResourceStatus.dir
-    : plugin.getPGliteRuntimeManager().getRuntimeRootDir()
-  const pgliteStatusVersion =
-    pgliteResourceStatus?.kind === 'ready'
-      ? pgliteResourceStatus.version
-      : PGLITE_RUNTIME_VERSION
-  const pgliteStatusReason =
-    pgliteResourceStatus?.kind === 'failed'
-      ? pgliteResourceStatus.reason
-      : pgliteResourceStatus?.kind === 'downloading' &&
-          pgliteResourceStatus.currentFile
-        ? `${t('settings.rag.pgliteDownloadingFile', 'Downloading')}: ${
-            pgliteResourceStatus.currentFile
-          }`
-        : null
-  const pgliteReadyAt =
-    pgliteResourceStatus?.kind === 'ready' ? pgliteResourceStatus.readyAt : null
-
+  const pgliteDownloadProgress =
+    pgliteResourceStatus?.kind === 'downloading' &&
+    pgliteResourceStatus.totalFiles > 0
+      ? Math.round(
+          (Math.max(0, pgliteResourceStatus.currentFileIndex - 1) /
+            pgliteResourceStatus.totalFiles) *
+            100,
+        )
+      : null
+  const pgliteDownloadDetail =
+    pgliteResourceStatus?.kind === 'downloading'
+      ? `${t('settings.rag.pgliteDownloadingFile', 'Downloading')}: ${
+          pgliteResourceStatus.currentFile ??
+          t('settings.rag.pgliteDownloadingUnknownFile', 'runtime file')
+        } (${pgliteResourceStatus.currentFileIndex}/${
+          pgliteResourceStatus.totalFiles
+        })`
+      : null
+  const pgliteFailureReason =
+    pgliteResourceStatus?.kind === 'failed' ? pgliteResourceStatus.reason : null
   const runPgliteAction = useCallback(
-    (action: 'download' | 'delete') => {
+    (action: 'download') => {
       setIsRunningPgliteAction(true)
 
       void (async () => {
         try {
           const runtimeManager = plugin.getPGliteRuntimeManager()
-          if (action === 'delete') {
-            await runtimeManager.clearLocalRuntime()
-          } else if (pgliteResourceStatus?.kind === 'ready') {
+          if (pgliteResourceStatus?.kind === 'ready') {
             new Notice(
               t(
                 'notices.downloadingPglite',
@@ -376,6 +372,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             )
             await runtimeManager.redownload()
           } else {
+            await refreshPgliteResourceStatus()
             new Notice(
               t(
                 'notices.downloadingPglite',
@@ -532,23 +529,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       pgliteResourceStatus?.kind === 'downloading'
                     }
                   />
-                  <ObsidianButton
-                    text={t('settings.rag.pgliteRecheck', 'Check again')}
-                    onClick={() => {
-                      refreshPgliteResourceStatus()
-                    }}
-                    disabled={
-                      isCheckingPgliteResources || isRunningPgliteAction
-                    }
-                  />
-                  <ObsidianButton
-                    text={t(
-                      'settings.rag.pgliteDeleteLocal',
-                      'Delete local resources',
-                    )}
-                    disabled={!pgliteDeleteActionEnabled}
-                    onClick={() => runPgliteAction('delete')}
-                  />
                 </>
               }
             >
@@ -556,74 +536,38 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 <span className={`smtcmp-rag-status-pill ${pgliteStatusTone}`}>
                   {pgliteStatusLabel}
                 </span>
-                <span className="smtcmp-rag-status-pill">
-                  {pgliteSourceLabel}
-                </span>
-                <span className="smtcmp-rag-status-pill">
-                  {pgliteStatusVersion}
-                </span>
               </div>
 
-              <div className="smtcmp-rag-resource-grid">
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusCurrent', 'Current status')}
+              {pgliteDownloadDetail ? (
+                <div className="smtcmp-rag-inline-status">
+                  <div className="smtcmp-rag-inline-status-text">
+                    {pgliteDownloadDetail}
                   </div>
-                  <div className="smtcmp-rag-resource-value">
-                    {pgliteStatusLabel}
-                  </div>
-                </div>
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusSource', 'Resource source')}
-                  </div>
-                  <div className="smtcmp-rag-resource-value">
-                    {pgliteSourceLabel}
+                  <div
+                    className="smtcmp-rag-inline-progress"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="smtcmp-rag-inline-progress-bar"
+                      style={{ width: `${pgliteDownloadProgress ?? 0}%` }}
+                    />
                   </div>
                 </div>
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusPath', 'Resource path')}
+              ) : null}
+
+              {pgliteFailureReason ? (
+                <div className="smtcmp-rag-inline-status smtcmp-rag-inline-status--error">
+                  <div className="smtcmp-rag-inline-status-title">
+                    {t(
+                      'settings.rag.pgliteInlineErrorTitle',
+                      'Download failed',
+                    )}
                   </div>
-                  <div className="smtcmp-rag-resource-value smtcmp-rag-resource-value--mono">
-                    {pgliteStatusPath}
-                  </div>
-                </div>
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusCheckedAt', 'Last checked')}
-                  </div>
-                  <div className="smtcmp-rag-resource-value">
-                    {formatTimestamp(pgliteResourceStatus?.checkedAt ?? null) ||
-                      t('settings.rag.pgliteStateUnchecked', 'Not recorded')}
+                  <div className="smtcmp-rag-inline-status-text">
+                    {pgliteFailureReason}
                   </div>
                 </div>
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusVersion', 'Runtime version')}
-                  </div>
-                  <div className="smtcmp-rag-resource-value">
-                    {pgliteStatusVersion}
-                  </div>
-                </div>
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusReadyAt', 'Last prepared')}
-                  </div>
-                  <div className="smtcmp-rag-resource-value">
-                    {formatTimestamp(pgliteReadyAt) ||
-                      t('settings.rag.pgliteStateUnchecked', 'Not recorded')}
-                  </div>
-                </div>
-                <div className="smtcmp-rag-resource-item">
-                  <div className="smtcmp-rag-resource-label">
-                    {t('settings.rag.pgliteStatusReason', 'Details')}
-                  </div>
-                  <div className="smtcmp-rag-resource-value">
-                    {pgliteStatusReason ?? '-'}
-                  </div>
-                </div>
-              </div>
+              ) : null}
 
               <div className="smtcmp-muted-note">{pgliteSummaryText}</div>
             </RAGCard>

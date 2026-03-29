@@ -623,6 +623,8 @@ export const it: TranslationKeys = {
         'Qui verrà collegato il punto di download manuale delle risorse PGlite remote.',
       pgliteDeletePlaceholder:
         'Qui verrà collegato il punto di eliminazione delle risorse locali di PGlite.',
+      pgliteDownloadingUnknownFile: 'file runtime',
+      pgliteInlineErrorTitle: 'Download non riuscito',
       pgliteSummaryReadyRemote:
         "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
       pgliteSummaryReadyBundled:
