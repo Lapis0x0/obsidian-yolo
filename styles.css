@@ -5126,6 +5126,11 @@
   flex-direction: column;
 }
 
+.smtcmp-sidebar-pane--chat-sidebar {
+  box-sizing: border-box;
+  padding-inline: calc(var(--size-4-6) / 2);
+}
+
 .smtcmp-chat-composer-wrapper {
   flex: 1 1 auto;
   display: flex;
