@@ -583,6 +583,46 @@ export const it: TranslationKeys = {
       manualUpdateNowDesc:
         "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
       advanced: 'Impostazioni avanzate',
+      basicCardTitle: 'Base RAG',
+      basicCardDesc:
+        "Controlla l'accesso alla ricerca e il modello base per gli embedding.",
+      resourceCardTitle: 'Risorse PGlite',
+      resourceCardDesc:
+        'Gestisce le risorse runtime del database necessarie alla base di conoscenza.',
+      scopeCardTitle: 'Ambito di ricerca',
+      scopeCardDesc:
+        "Specifica quali cartelle includere o escludere dall'indicizzazione.",
+      maintenanceCardTitle: "Manutenzione dell'indice",
+      maintenanceCardDesc:
+        "Gestisce aggiornamenti automatici, aggiornamenti incrementali, ricostruzione e avanzamento dell'indice.",
+      maintenanceUnavailableHint:
+        "Prepara prima le risorse PGlite qui sopra per usare la manutenzione dell'indice o il database embedding.",
+      pgliteStatusCurrent: 'Stato attuale',
+      pgliteStatusSource: 'Origine risorsa',
+      pgliteStatusPath: 'Percorso risorsa',
+      pgliteStatusCheckedAt: 'Ultimo controllo',
+      pgliteStateUnchecked: 'Non registrato',
+      pgliteStateChecking: 'Controllo in corso',
+      pgliteStateMissing: 'Non scaricato',
+      pgliteStateUnavailable: 'Non disponibile',
+      pgliteStateReady: 'Pronto',
+      pgliteSourceRemote: 'Cache remota',
+      pgliteSourceBundled: 'Incluso nel plugin',
+      pgliteDeliveryManual: 'Download manuale',
+      pgliteDownload: 'Scarica risorse',
+      pgliteRedownload: 'Scarica di nuovo',
+      pgliteRecheck: 'Controlla di nuovo',
+      pgliteDeleteLocal: 'Elimina risorse locali',
+      pgliteDownloadPlaceholder:
+        'Qui verrà collegato il punto di download manuale delle risorse PGlite remote.',
+      pgliteDeletePlaceholder:
+        'Qui verrà collegato il punto di eliminazione delle risorse locali di PGlite.',
+      pgliteSummaryReadyRemote:
+        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
+      pgliteSummaryReadyBundled:
+        'Il plugin sta ancora usando risorse PGlite integrate. Dopo il passaggio alla distribuzione remota, questa scheda mostrerà lo stato della cache locale e ospiterà il download manuale.',
+      pgliteSummaryUnavailable:
+        'Le risorse runtime di PGlite non sono disponibili. La manutenzione dell’indice e la gestione del database embedding resteranno disabilitate finché le risorse non saranno pronte.',
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',

@@ -454,6 +454,36 @@ export type TranslationKeys = {
       manualUpdateNow?: string
       manualUpdateNowDesc?: string
       advanced?: string
+      basicCardTitle?: string
+      basicCardDesc?: string
+      resourceCardTitle?: string
+      resourceCardDesc?: string
+      scopeCardTitle?: string
+      scopeCardDesc?: string
+      maintenanceCardTitle?: string
+      maintenanceCardDesc?: string
+      maintenanceUnavailableHint?: string
+      pgliteStatusCurrent?: string
+      pgliteStatusSource?: string
+      pgliteStatusPath?: string
+      pgliteStatusCheckedAt?: string
+      pgliteStateUnchecked?: string
+      pgliteStateChecking?: string
+      pgliteStateMissing?: string
+      pgliteStateUnavailable?: string
+      pgliteStateReady?: string
+      pgliteSourceRemote?: string
+      pgliteSourceBundled?: string
+      pgliteDeliveryManual?: string
+      pgliteDownload?: string
+      pgliteRedownload?: string
+      pgliteRecheck?: string
+      pgliteDeleteLocal?: string
+      pgliteDownloadPlaceholder?: string
+      pgliteDeletePlaceholder?: string
+      pgliteSummaryReadyRemote?: string
+      pgliteSummaryReadyBundled?: string
+      pgliteSummaryUnavailable?: string
       // Index progress header/status
       indexProgressTitle?: string
       indexing?: string

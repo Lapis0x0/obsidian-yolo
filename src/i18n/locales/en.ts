@@ -601,6 +601,45 @@ export const en: TranslationKeys = {
       manualUpdateNowDesc:
         'Run an incremental update immediately and record the last updated time.',
       advanced: 'Advanced settings',
+      basicCardTitle: 'RAG Basics',
+      basicCardDesc: 'Control the retrieval entry point and base embedding model.',
+      resourceCardTitle: 'PGlite Resources',
+      resourceCardDesc:
+        'Manage the database runtime resources required by the knowledge base.',
+      scopeCardTitle: 'Retrieval Scope',
+      scopeCardDesc:
+        'Choose which folders should be included in or excluded from indexing.',
+      maintenanceCardTitle: 'Index Maintenance',
+      maintenanceCardDesc:
+        'Manage auto updates, incremental updates, rebuilds, and index progress.',
+      maintenanceUnavailableHint:
+        'Prepare PGlite resources above before running index maintenance or embedding database management.',
+      pgliteStatusCurrent: 'Current status',
+      pgliteStatusSource: 'Resource source',
+      pgliteStatusPath: 'Resource path',
+      pgliteStatusCheckedAt: 'Last checked',
+      pgliteStateUnchecked: 'Not recorded',
+      pgliteStateChecking: 'Checking',
+      pgliteStateMissing: 'Not downloaded',
+      pgliteStateUnavailable: 'Unavailable',
+      pgliteStateReady: 'Ready',
+      pgliteSourceRemote: 'Remote cache',
+      pgliteSourceBundled: 'Bundled with plugin',
+      pgliteDeliveryManual: 'Manual download',
+      pgliteDownload: 'Download resources',
+      pgliteRedownload: 'Download again',
+      pgliteRecheck: 'Check again',
+      pgliteDeleteLocal: 'Delete local resources',
+      pgliteDownloadPlaceholder:
+        'The manual download entry point for remote PGlite resources will be wired here.',
+      pgliteDeletePlaceholder:
+        'The local PGlite resource deletion entry point will be wired here.',
+      pgliteSummaryReadyRemote:
+        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
+      pgliteSummaryReadyBundled:
+        'The plugin is still using bundled PGlite resources. After remote distribution is introduced, this card will show local cache status and host the manual download entry.',
+      pgliteSummaryUnavailable:
+        'PGlite runtime resources are unavailable. Index maintenance and embedding database management will remain disabled until resources are ready.',
       // Index progress header/status
       indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',
