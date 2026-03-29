@@ -602,7 +602,8 @@ export const en: TranslationKeys = {
         'Run an incremental update immediately and record the last updated time.',
       advanced: 'Advanced settings',
       basicCardTitle: 'RAG Basics',
-      basicCardDesc: 'Control the retrieval entry point and base embedding model.',
+      basicCardDesc:
+        'Control the retrieval entry point and base embedding model.',
       resourceCardTitle: 'PGlite Resources',
       resourceCardDesc:
         'Manage the database runtime resources required by the knowledge base.',
@@ -618,13 +619,19 @@ export const en: TranslationKeys = {
       pgliteStatusSource: 'Resource source',
       pgliteStatusPath: 'Resource path',
       pgliteStatusCheckedAt: 'Last checked',
+      pgliteStatusVersion: 'Runtime version',
+      pgliteStatusReadyAt: 'Last prepared',
+      pgliteStatusReason: 'Details',
       pgliteStateUnchecked: 'Not recorded',
       pgliteStateChecking: 'Checking',
       pgliteStateMissing: 'Not downloaded',
+      pgliteStateDownloading: 'Downloading',
       pgliteStateUnavailable: 'Unavailable',
+      pgliteStateFailed: 'Failed',
       pgliteStateReady: 'Ready',
       pgliteSourceRemote: 'Remote cache',
       pgliteSourceBundled: 'Bundled with plugin',
+      pgliteSourceLocalCache: 'Local cache',
       pgliteDeliveryManual: 'Manual download',
       pgliteDownload: 'Download resources',
       pgliteRedownload: 'Download again',
@@ -640,6 +647,15 @@ export const en: TranslationKeys = {
         'The plugin is still using bundled PGlite resources. After remote distribution is introduced, this card will show local cache status and host the manual download entry.',
       pgliteSummaryUnavailable:
         'PGlite runtime resources are unavailable. Index maintenance and embedding database management will remain disabled until resources are ready.',
+      pgliteSummaryReady:
+        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
+      pgliteSummaryDownloading:
+        'PGlite runtime resources are being prepared. Once the download completes, index maintenance and embedding database management will become available automatically.',
+      pgliteSummaryFailed:
+        'PGlite runtime preparation failed. Retry downloading or clear the local cache before using knowledge base features again.',
+      pgliteSummaryMissing:
+        'PGlite runtime resources have not been prepared yet. They will be downloaded automatically on first knowledge base use, and you can also prepare them here manually.',
+      pgliteDownloadingFile: 'Downloading',
       // Index progress header/status
       indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',
@@ -1138,9 +1154,9 @@ export const en: TranslationKeys = {
     openYoloNewChatFailed:
       'Failed to open the YOLO chat window; try the command palette first.',
     pgliteUnavailable:
-      'PGlite resources unavailable; please reinstall the plugin.',
+      'PGlite runtime unavailable; retry downloading the runtime assets.',
     downloadingPglite:
-      'Downloading PGlite dependencies from the content delivery network (~20 megabytes); this may take a moment…',
+      'Downloading PGlite runtime assets; first-time knowledge base usage may take a moment…',
     updatingIndex: 'Updating vault index…',
     indexUpdated: 'Vault index updated.',
     indexUpdateFailed: 'Vault index update failed.',

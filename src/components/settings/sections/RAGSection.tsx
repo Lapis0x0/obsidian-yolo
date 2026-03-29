@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import type { PGliteRuntimeStatus } from '../../../database/runtime/PGliteRuntimeManager'
+import { PGLITE_RUNTIME_VERSION } from '../../../database/runtime/pgliteRuntimeMetadata'
 import SmartComposerPlugin from '../../../main'
 import { findFilesMatchingPatterns } from '../../../utils/glob-utils'
 import {
@@ -34,13 +36,6 @@ type RAGSectionProps = {
 type AppWithLocalStorage = App & {
   loadLocalStorage?: (key: string) => string | null | Promise<string | null>
   saveLocalStorage?: (key: string, value: string) => void | Promise<void>
-}
-
-type PgliteResourceStatus = {
-  available: boolean
-  needsDownload: boolean
-  fromCDN: boolean
-  checkedAt: number | null
 }
 
 const isPromiseLike = <T,>(value: T | Promise<T>): value is Promise<T> =>
@@ -95,7 +90,9 @@ function RAGCard({
             <div className="smtcmp-rag-card-description">{description}</div>
           ) : null}
         </div>
-        {actions ? <div className="smtcmp-rag-card-actions">{actions}</div> : null}
+        {actions ? (
+          <div className="smtcmp-rag-card-actions">{actions}</div>
+        ) : null}
       </div>
       <div className="smtcmp-rag-card-body">{children}</div>
     </section>
@@ -118,18 +115,6 @@ function formatTimestamp(timestamp: number | null): string {
   }
 }
 
-function resolvePgliteResourcePath(
-  app: App,
-  plugin: SmartComposerPlugin,
-): string {
-  const pluginDir = plugin.manifest.dir
-  if (pluginDir) {
-    return `${pluginDir}/vendor/pglite`
-  }
-
-  return `${app.vault.configDir}/plugins/${plugin.manifest.id}/vendor/pglite`
-}
-
 export function RAGSection({ app, plugin }: RAGSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
@@ -142,13 +127,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     useState<AbortController | null>(null)
   const [isCheckingPgliteResources, setIsCheckingPgliteResources] =
     useState(false)
+  const [isRunningPgliteAction, setIsRunningPgliteAction] = useState(false)
   const [pgliteResourceStatus, setPgliteResourceStatus] =
-    useState<PgliteResourceStatus>({
-      available: false,
-      needsDownload: false,
-      fromCDN: false,
-      checkedAt: null,
-    })
+    useState<PGliteRuntimeStatus | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
   const effectiveProgress = indexProgress ?? persistedProgress
   const ragUpdateError = 'Failed to update RAG settings.'
@@ -195,37 +176,31 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         }
       })()
     },
-    [ragUpdateError, setSettings],
+    [setSettings],
   )
 
-  const refreshPgliteResourceStatus = useCallback(() => {
+  const refreshPgliteResourceStatus = useCallback(async () => {
     setIsCheckingPgliteResources(true)
 
-    void plugin
-      .getDbManager()
-      .then((dbManager) => {
-        const result = dbManager.checkPGliteResources()
-        setPgliteResourceStatus({
-          ...result,
-          checkedAt: Date.now(),
-        })
+    try {
+      const result = await plugin.getPGliteRuntimeManager().getStatus()
+      setPgliteResourceStatus(result)
+    } catch (error: unknown) {
+      console.error('Failed to inspect PGlite resources', error)
+      setPgliteResourceStatus({
+        kind: 'failed',
+        expectedVersion: PGLITE_RUNTIME_VERSION,
+        dir: plugin.getPGliteRuntimeManager().getRuntimeRootDir(),
+        checkedAt: Date.now(),
+        reason: error instanceof Error ? error.message : String(error),
       })
-      .catch((error: unknown) => {
-        console.error('Failed to inspect PGlite resources', error)
-        setPgliteResourceStatus({
-          available: false,
-          needsDownload: false,
-          fromCDN: false,
-          checkedAt: Date.now(),
-        })
-      })
-      .finally(() => {
-        setIsCheckingPgliteResources(false)
-      })
+    } finally {
+      setIsCheckingPgliteResources(false)
+    }
   }, [plugin])
 
   useEffect(() => {
-    refreshPgliteResourceStatus()
+    void refreshPgliteResourceStatus()
   }, [refreshPgliteResourceStatus])
 
   const parseIntegerInput = (value: string) => {
@@ -305,62 +280,130 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     [settings.ragOptions.excludePatterns],
   )
 
-  const pgliteResourcePath = useMemo(
-    () => resolvePgliteResourcePath(app, plugin),
-    [app, plugin],
-  )
-
   const pgliteStatusLabel = useMemo(() => {
-    if (isCheckingPgliteResources && pgliteResourceStatus.checkedAt === null) {
+    if (isCheckingPgliteResources && pgliteResourceStatus === null) {
       return t('settings.rag.pgliteStateChecking', 'Checking')
     }
-    if (!pgliteResourceStatus.available) {
-      return pgliteResourceStatus.needsDownload
-        ? t('settings.rag.pgliteStateMissing', 'Not downloaded')
-        : t('settings.rag.pgliteStateUnavailable', 'Unavailable')
+    switch (pgliteResourceStatus?.kind) {
+      case 'missing':
+        return t('settings.rag.pgliteStateMissing', 'Not downloaded')
+      case 'downloading':
+        return t('settings.rag.pgliteStateDownloading', 'Downloading')
+      case 'ready':
+        return t('settings.rag.pgliteStateReady', 'Ready')
+      case 'failed':
+        return t('settings.rag.pgliteStateFailed', 'Failed')
+      default:
+        return t('settings.rag.pgliteStateUnchecked', 'Not recorded')
     }
-    return t('settings.rag.pgliteStateReady', 'Ready')
   }, [isCheckingPgliteResources, pgliteResourceStatus, t])
 
-  const pgliteStatusTone = pgliteResourceStatus.available
-    ? 'is-ready'
-    : pgliteResourceStatus.needsDownload
-      ? 'is-warning'
-      : 'is-danger'
+  const pgliteStatusTone =
+    pgliteResourceStatus?.kind === 'ready'
+      ? 'is-ready'
+      : pgliteResourceStatus?.kind === 'missing' ||
+          pgliteResourceStatus?.kind === 'downloading'
+        ? 'is-warning'
+        : 'is-danger'
 
-  const pgliteSourceLabel = pgliteResourceStatus.fromCDN
-    ? t('settings.rag.pgliteSourceRemote', 'Remote cache')
-    : t('settings.rag.pgliteSourceBundled', 'Bundled with plugin')
+  const pgliteSourceLabel = t(
+    'settings.rag.pgliteSourceLocalCache',
+    'Local cache',
+  )
 
-  const canUseIndexMaintenance = pgliteResourceStatus.available
+  const canUseIndexMaintenance = pgliteResourceStatus?.kind === 'ready'
   const pglitePrimaryActionLabel =
-    pgliteResourceStatus.available && pgliteResourceStatus.fromCDN
+    pgliteResourceStatus?.kind === 'ready'
       ? t('settings.rag.pgliteRedownload', 'Download again')
       : t('settings.rag.pgliteDownload', 'Download resources')
-  const pglitePrimaryActionHint = pgliteResourceStatus.fromCDN
-    ? t(
-        'settings.rag.pgliteDownloadPlaceholder',
-        'The manual download entry point for remote PGlite resources will be wired here.',
-      )
-    : t(
-        'settings.rag.pgliteDownloadPlaceholder',
-        'The manual download entry point for remote PGlite resources will be wired here.',
-      )
-  const pgliteDeleteActionEnabled = pgliteResourceStatus.fromCDN
-  const pgliteSummaryText = pgliteResourceStatus.available
-    ? pgliteResourceStatus.fromCDN
+  const pgliteDeleteActionEnabled =
+    pgliteResourceStatus?.kind === 'ready' ||
+    pgliteResourceStatus?.kind === 'failed'
+  const pgliteSummaryText =
+    pgliteResourceStatus?.kind === 'ready'
       ? t(
-          'settings.rag.pgliteSummaryReadyRemote',
+          'settings.rag.pgliteSummaryReady',
           'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
         )
-      : t(
-          'settings.rag.pgliteSummaryReadyBundled',
-          'The plugin is still using bundled PGlite resources. After remote distribution is introduced, this card will show local cache status and host the manual download entry.',
-        )
-    : t(
-        'settings.rag.pgliteSummaryUnavailable',
-        'PGlite runtime resources are unavailable. Index maintenance and embedding database management will remain disabled until resources are ready.',
-      )
+      : pgliteResourceStatus?.kind === 'downloading'
+        ? t(
+            'settings.rag.pgliteSummaryDownloading',
+            'PGlite runtime resources are being prepared. Once the download finishes, indexing and embedding database management will become available.',
+          )
+        : pgliteResourceStatus?.kind === 'failed'
+          ? t(
+              'settings.rag.pgliteSummaryFailed',
+              'PGlite runtime preparation failed. Retry downloading or remove the local cache before using knowledge base features again.',
+            )
+          : t(
+              'settings.rag.pgliteSummaryMissing',
+              'PGlite runtime resources have not been prepared yet. The plugin will auto-download them on first knowledge base use, and you can also prepare them here manually.',
+            )
+  const pgliteStatusPath = pgliteResourceStatus?.dir
+    ? pgliteResourceStatus.dir
+    : plugin.getPGliteRuntimeManager().getRuntimeRootDir()
+  const pgliteStatusVersion =
+    pgliteResourceStatus?.kind === 'ready'
+      ? pgliteResourceStatus.version
+      : PGLITE_RUNTIME_VERSION
+  const pgliteStatusReason =
+    pgliteResourceStatus?.kind === 'failed'
+      ? pgliteResourceStatus.reason
+      : pgliteResourceStatus?.kind === 'downloading' &&
+          pgliteResourceStatus.currentFile
+        ? `${t('settings.rag.pgliteDownloadingFile', 'Downloading')}: ${
+            pgliteResourceStatus.currentFile
+          }`
+        : null
+  const pgliteReadyAt =
+    pgliteResourceStatus?.kind === 'ready' ? pgliteResourceStatus.readyAt : null
+
+  const runPgliteAction = useCallback(
+    (action: 'download' | 'delete') => {
+      setIsRunningPgliteAction(true)
+
+      void (async () => {
+        try {
+          const runtimeManager = plugin.getPGliteRuntimeManager()
+          if (action === 'delete') {
+            await runtimeManager.clearLocalRuntime()
+          } else if (pgliteResourceStatus?.kind === 'ready') {
+            new Notice(
+              t(
+                'notices.downloadingPglite',
+                'Downloading PGlite runtime assets. This may take a moment...',
+              ),
+            )
+            await runtimeManager.redownload()
+          } else {
+            new Notice(
+              t(
+                'notices.downloadingPglite',
+                'Downloading PGlite runtime assets. This may take a moment...',
+              ),
+            )
+            await runtimeManager.ensureReady()
+          }
+          await refreshPgliteResourceStatus()
+        } catch (error: unknown) {
+          console.error('Failed to run PGlite runtime action', error)
+          new Notice(
+            error instanceof Error
+              ? error.message
+              : t(
+                  'notices.pgliteUnavailable',
+                  'PGlite runtime is unavailable. Please retry downloading the runtime assets.',
+                ),
+            5000,
+          )
+          await refreshPgliteResourceStatus()
+        } finally {
+          setIsRunningPgliteAction(false)
+        }
+      })()
+    },
+    [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t],
+  )
 
   const handleIndexProgress = useCallback((progress: IndexProgress) => {
     setIndexProgress(progress)
@@ -482,16 +525,21 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 <>
                   <ObsidianButton
                     text={pglitePrimaryActionLabel}
-                    onClick={() => {
-                      new Notice(pglitePrimaryActionHint)
-                    }}
+                    onClick={() => runPgliteAction('download')}
+                    disabled={
+                      isCheckingPgliteResources ||
+                      isRunningPgliteAction ||
+                      pgliteResourceStatus?.kind === 'downloading'
+                    }
                   />
                   <ObsidianButton
                     text={t('settings.rag.pgliteRecheck', 'Check again')}
                     onClick={() => {
                       refreshPgliteResourceStatus()
                     }}
-                    disabled={isCheckingPgliteResources}
+                    disabled={
+                      isCheckingPgliteResources || isRunningPgliteAction
+                    }
                   />
                   <ObsidianButton
                     text={t(
@@ -499,27 +547,20 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       'Delete local resources',
                     )}
                     disabled={!pgliteDeleteActionEnabled}
-                    onClick={() => {
-                      new Notice(
-                        t(
-                          'settings.rag.pgliteDeletePlaceholder',
-                          'The local PGlite resource deletion entry point will be wired here.',
-                        ),
-                      )
-                    }}
+                    onClick={() => runPgliteAction('delete')}
                   />
                 </>
               }
             >
               <div className="smtcmp-rag-resource-summary">
-                <span
-                  className={`smtcmp-rag-status-pill ${pgliteStatusTone}`}
-                >
+                <span className={`smtcmp-rag-status-pill ${pgliteStatusTone}`}>
                   {pgliteStatusLabel}
                 </span>
-                <span className="smtcmp-rag-status-pill">{pgliteSourceLabel}</span>
                 <span className="smtcmp-rag-status-pill">
-                  {t('settings.rag.pgliteDeliveryManual', 'Manual download')}
+                  {pgliteSourceLabel}
+                </span>
+                <span className="smtcmp-rag-status-pill">
+                  {pgliteStatusVersion}
                 </span>
               </div>
 
@@ -545,7 +586,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     {t('settings.rag.pgliteStatusPath', 'Resource path')}
                   </div>
                   <div className="smtcmp-rag-resource-value smtcmp-rag-resource-value--mono">
-                    {pgliteResourcePath}
+                    {pgliteStatusPath}
                   </div>
                 </div>
                 <div className="smtcmp-rag-resource-item">
@@ -553,8 +594,33 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     {t('settings.rag.pgliteStatusCheckedAt', 'Last checked')}
                   </div>
                   <div className="smtcmp-rag-resource-value">
-                    {formatTimestamp(pgliteResourceStatus.checkedAt) ||
+                    {formatTimestamp(pgliteResourceStatus?.checkedAt ?? null) ||
                       t('settings.rag.pgliteStateUnchecked', 'Not recorded')}
+                  </div>
+                </div>
+                <div className="smtcmp-rag-resource-item">
+                  <div className="smtcmp-rag-resource-label">
+                    {t('settings.rag.pgliteStatusVersion', 'Runtime version')}
+                  </div>
+                  <div className="smtcmp-rag-resource-value">
+                    {pgliteStatusVersion}
+                  </div>
+                </div>
+                <div className="smtcmp-rag-resource-item">
+                  <div className="smtcmp-rag-resource-label">
+                    {t('settings.rag.pgliteStatusReadyAt', 'Last prepared')}
+                  </div>
+                  <div className="smtcmp-rag-resource-value">
+                    {formatTimestamp(pgliteReadyAt) ||
+                      t('settings.rag.pgliteStateUnchecked', 'Not recorded')}
+                  </div>
+                </div>
+                <div className="smtcmp-rag-resource-item">
+                  <div className="smtcmp-rag-resource-label">
+                    {t('settings.rag.pgliteStatusReason', 'Details')}
+                  </div>
+                  <div className="smtcmp-rag-resource-value">
+                    {pgliteStatusReason ?? '-'}
                   </div>
                 </div>
               </div>
@@ -582,7 +648,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         patterns,
                         plugin.app.vault,
                       )
-                      new IncludedFilesModal(app, includedFiles, patterns).open()
+                      new IncludedFilesModal(
+                        app,
+                        includedFiles,
+                        patterns,
+                      ).open()
                     })().catch((error) => {
                       console.error('Failed to test include patterns', error)
                     })
@@ -710,7 +780,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             </RAGCard>
 
             <RAGCard
-              title={t('settings.rag.maintenanceCardTitle', 'Index Maintenance')}
+              title={t(
+                'settings.rag.maintenanceCardTitle',
+                'Index Maintenance',
+              )}
               description={t(
                 'settings.rag.maintenanceCardDesc',
                 'Manage auto updates, incremental updates, rebuilds, and index progress.',
@@ -814,24 +887,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     disabled={isIndexing || !canUseIndexMaintenance}
                     onClick={() => {
                       void (async () => {
-                        try {
-                          const dbManager = await plugin.getDbManager()
-                          const resourceCheck = dbManager.checkPGliteResources()
-
-                          if (!resourceCheck.available) {
-                            new Notice(
-                              t(
-                                'notices.pgliteUnavailable',
-                                'PGlite resources unavailable. Please reinstall the plugin.',
-                              ),
-                              5000,
-                            )
-                            return
-                          }
-                        } catch (error) {
-                          console.warn('Failed to check PGlite resources:', error)
-                        }
-
                         const abortController = new AbortController()
                         setIndexAbortController(abortController)
                         setIsIndexing(true)
@@ -839,7 +894,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         try {
                           const ragEngine = await plugin.getRAGEngine()
                           await ragEngine.updateVaultIndex(
-                            { reindexAll: true, signal: abortController.signal },
+                            {
+                              reindexAll: true,
+                              signal: abortController.signal,
+                            },
                             (queryProgress) => {
                               if (queryProgress.type === 'indexing') {
                                 handleIndexProgress(queryProgress.indexProgress)
@@ -859,7 +917,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                             error instanceof DOMException &&
                             error.name === 'AbortError'
                           ) {
-                            new Notice(t('notices.indexCancelled', '索引已取消'))
+                            new Notice(
+                              t('notices.indexCancelled', '索引已取消'),
+                            )
                           } else {
                             console.error('Failed to rebuild index:', error)
                             new Notice(t('notices.rebuildFailed'))
@@ -878,7 +938,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       onClick={() => {
                         console.debug('[YOLO] Cancel button clicked')
                         indexAbortController.abort()
-                        new Notice(t('notices.indexCancelling', '正在取消索引...'))
+                        new Notice(
+                          t('notices.indexCancelling', '正在取消索引...'),
+                        )
                       }}
                     />
                   )}
@@ -908,10 +970,15 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
                   <div className="smtcmp-provider-info">
                     <span className="smtcmp-provider-id">
-                      {t('settings.rag.indexProgressTitle', 'RAG Index Progress')}
+                      {t(
+                        'settings.rag.indexProgressTitle',
+                        'RAG Index Progress',
+                      )}
                     </span>
                     {headerPercent !== null ? (
-                      <span className="smtcmp-provider-type">{headerPercent}%</span>
+                      <span className="smtcmp-provider-type">
+                        {headerPercent}%
+                      </span>
                     ) : (
                       <span className="smtcmp-provider-type">
                         {isIndexing
@@ -990,7 +1057,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       onBlur={() => {
                         const chunkSize = parseIntegerInput(chunkSizeInput)
                         if (chunkSize === null) {
-                          setChunkSizeInput(String(settings.ragOptions.chunkSize))
+                          setChunkSizeInput(
+                            String(settings.ragOptions.chunkSize),
+                          )
                         }
                       }}
                     />
@@ -1017,7 +1086,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         }
                       }}
                       onBlur={() => {
-                        const minSimilarity = parseFloatInput(minSimilarityInput)
+                        const minSimilarity =
+                          parseFloatInput(minSimilarityInput)
                         if (minSimilarity === null) {
                           setMinSimilarityInput(
                             String(settings.ragOptions.minSimilarity),
@@ -1057,7 +1127,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   </ObsidianSetting>
 
                   <ObsidianSetting
-                    name={t('settings.rag.autoUpdateInterval', '最小间隔(小时)')}
+                    name={t(
+                      'settings.rag.autoUpdateInterval',
+                      '最小间隔(小时)',
+                    )}
                     desc={t(
                       'settings.rag.autoUpdateIntervalDesc',
                       '到达该间隔才会触发自动更新；用于避免频繁重建。',

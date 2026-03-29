@@ -564,13 +564,19 @@ export const zh: TranslationKeys = {
       pgliteStatusSource: '资源来源',
       pgliteStatusPath: '资源目录',
       pgliteStatusCheckedAt: '最近检查',
+      pgliteStatusVersion: '运行时版本',
+      pgliteStatusReadyAt: '最近准备',
+      pgliteStatusReason: '详情',
       pgliteStateUnchecked: '未记录',
       pgliteStateChecking: '检查中',
       pgliteStateMissing: '未下载',
+      pgliteStateDownloading: '下载中',
       pgliteStateUnavailable: '未就绪',
+      pgliteStateFailed: '准备失败',
       pgliteStateReady: '已就绪',
       pgliteSourceRemote: '远程缓存',
       pgliteSourceBundled: '插件内置',
+      pgliteSourceLocalCache: '本地缓存',
       pgliteDeliveryManual: '手动下载',
       pgliteDownload: '下载资源',
       pgliteRedownload: '重新下载',
@@ -584,6 +590,15 @@ export const zh: TranslationKeys = {
         '当前仍使用插件内置的 PGlite 资源。后续切到远程分发后，这里会展示本地缓存状态并承接手动下载入口。',
       pgliteSummaryUnavailable:
         'PGlite 运行时资源未就绪。索引维护与嵌入数据库管理在资源可用前将暂不可用。',
+      pgliteSummaryReady:
+        '当前 PGlite 运行时资源已就绪，可用于知识库索引与嵌入数据库管理。',
+      pgliteSummaryDownloading:
+        'PGlite 运行时资源正在准备中。下载完成后，索引维护与嵌入数据库管理会自动恢复可用。',
+      pgliteSummaryFailed:
+        'PGlite 运行时准备失败。请重试下载，或清理本地缓存后再重新使用知识库能力。',
+      pgliteSummaryMissing:
+        'PGlite 运行时资源尚未准备。首次使用知识库功能时会自动下载，也可以在这里手动提前准备。',
+      pgliteDownloadingFile: '正在下载',
       // Index progress header/status
       indexProgressTitle: 'RAG 索引进度',
       indexing: '进行中',
@@ -1062,9 +1077,9 @@ export const zh: TranslationKeys = {
     rebuildComplete: '重建库索引完成',
     rebuildFailed: '重建库索引失败',
     openYoloNewChatFailed: '打开 YOLO 聊天窗口失败，请先用命令面板尝试',
-    pgliteUnavailable: 'PGlite 资源不可用，请重新安装插件',
+    pgliteUnavailable: 'PGlite 运行时不可用，请重试下载资源',
     downloadingPglite:
-      '正在从 CDN 下载 PGlite 依赖 (~20MB)，首次使用需要一点时间...',
+      '正在下载 PGlite 运行时资源，首次使用知识库可能需要一点时间...',
     updatingIndex: '正在更新库索引...',
     indexUpdated: '库索引已更新',
     indexUpdateFailed: '库索引更新失败',

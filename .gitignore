@@ -8,6 +8,7 @@
 # npm
 node_modules
 vendor/
+runtime/
 
 # Don't include the compiled files in the repo.
 # They should be uploaded to GitHub releases instead.

@@ -601,13 +601,19 @@ export const it: TranslationKeys = {
       pgliteStatusSource: 'Origine risorsa',
       pgliteStatusPath: 'Percorso risorsa',
       pgliteStatusCheckedAt: 'Ultimo controllo',
+      pgliteStatusVersion: 'Versione runtime',
+      pgliteStatusReadyAt: 'Ultima preparazione',
+      pgliteStatusReason: 'Dettagli',
       pgliteStateUnchecked: 'Non registrato',
       pgliteStateChecking: 'Controllo in corso',
       pgliteStateMissing: 'Non scaricato',
+      pgliteStateDownloading: 'Download in corso',
       pgliteStateUnavailable: 'Non disponibile',
+      pgliteStateFailed: 'Preparazione fallita',
       pgliteStateReady: 'Pronto',
       pgliteSourceRemote: 'Cache remota',
       pgliteSourceBundled: 'Incluso nel plugin',
+      pgliteSourceLocalCache: 'Cache locale',
       pgliteDeliveryManual: 'Download manuale',
       pgliteDownload: 'Scarica risorse',
       pgliteRedownload: 'Scarica di nuovo',
@@ -623,6 +629,15 @@ export const it: TranslationKeys = {
         'Il plugin sta ancora usando risorse PGlite integrate. Dopo il passaggio alla distribuzione remota, questa scheda mostrerà lo stato della cache locale e ospiterà il download manuale.',
       pgliteSummaryUnavailable:
         'Le risorse runtime di PGlite non sono disponibili. La manutenzione dell’indice e la gestione del database embedding resteranno disabilitate finché le risorse non saranno pronte.',
+      pgliteSummaryReady:
+        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
+      pgliteSummaryDownloading:
+        'Le risorse runtime di PGlite sono in preparazione. Al termine del download, la manutenzione dell’indice e la gestione del database embedding torneranno disponibili automaticamente.',
+      pgliteSummaryFailed:
+        'La preparazione del runtime PGlite non è riuscita. Riprova il download oppure svuota la cache locale prima di usare di nuovo le funzioni knowledge base.',
+      pgliteSummaryMissing:
+        'Le risorse runtime di PGlite non sono ancora state preparate. Verranno scaricate automaticamente al primo uso della knowledge base, oppure puoi prepararle qui manualmente.',
+      pgliteDownloadingFile: 'Download',
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',
@@ -1138,9 +1153,10 @@ export const it: TranslationKeys = {
     rebuildFailed: 'Ricostruzione indice vault fallita.',
     openYoloNewChatFailed:
       'Impossibile aprire la finestra chat YOLO; prova prima dal palette comandi.',
-    pgliteUnavailable: 'Risorse PGlite non disponibili; reinstalla il plugin.',
+    pgliteUnavailable:
+      'Runtime PGlite non disponibile; riprova a scaricare le risorse runtime.',
     downloadingPglite:
-      'Download dipendenze PGlite da CDN (~20MB); potrebbe richiedere un momento…',
+      'Download delle risorse runtime PGlite in corso; il primo utilizzo della knowledge base potrebbe richiedere un momento…',
     updatingIndex: 'Aggiornamento indice vault in corso…',
     indexUpdated: 'Indice vault aggiornato.',
     indexUpdateFailed: 'Aggiornamento indice vault fallito.',

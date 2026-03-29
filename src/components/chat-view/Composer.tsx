@@ -372,25 +372,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
       setIsIndexing(true)
 
       try {
-        if (reindexAll) {
-          try {
-            const dbManager = await plugin.getDbManager()
-            const resourceCheck = dbManager.checkPGliteResources()
-            if (!resourceCheck.available) {
-              new Notice(
-                t(
-                  'notices.pgliteUnavailable',
-                  'PGlite resources unavailable. Please reinstall the plugin.',
-                ),
-                5000,
-              )
-              return
-            }
-          } catch (error) {
-            console.warn('Failed to check PGlite resources:', error)
-          }
-        }
-
         const ragEngine = await plugin.getRAGEngine()
         await ragEngine.updateVaultIndex(
           { reindexAll, signal: abortController.signal },

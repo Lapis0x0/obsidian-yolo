@@ -467,13 +467,19 @@ export type TranslationKeys = {
       pgliteStatusSource?: string
       pgliteStatusPath?: string
       pgliteStatusCheckedAt?: string
+      pgliteStatusVersion?: string
+      pgliteStatusReadyAt?: string
+      pgliteStatusReason?: string
       pgliteStateUnchecked?: string
       pgliteStateChecking?: string
       pgliteStateMissing?: string
+      pgliteStateDownloading?: string
       pgliteStateUnavailable?: string
+      pgliteStateFailed?: string
       pgliteStateReady?: string
       pgliteSourceRemote?: string
       pgliteSourceBundled?: string
+      pgliteSourceLocalCache?: string
       pgliteDeliveryManual?: string
       pgliteDownload?: string
       pgliteRedownload?: string
@@ -484,6 +490,11 @@ export type TranslationKeys = {
       pgliteSummaryReadyRemote?: string
       pgliteSummaryReadyBundled?: string
       pgliteSummaryUnavailable?: string
+      pgliteSummaryReady?: string
+      pgliteSummaryDownloading?: string
+      pgliteSummaryFailed?: string
+      pgliteSummaryMissing?: string
+      pgliteDownloadingFile?: string
       // Index progress header/status
       indexProgressTitle?: string
       indexing?: string
