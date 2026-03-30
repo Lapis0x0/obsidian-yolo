@@ -884,7 +884,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@添加标签引用，/选择技能」',
+    placeholder: '输入消息...「@添加标签引用，/选择技能或命令」',
     placeholderCompact: '点击展开编辑...',
     sendMessage: '发送消息',
     newChat: '新建聊天',
@@ -919,6 +919,12 @@ export const zh: TranslationKeys = {
       entryFile: '文件',
       entryFolder: '文件夹',
     },
+    slashCommands: {
+      compact: {
+        label: '压缩上下文',
+        description: '手动压缩较早对话历史，并在新的上下文窗口中继续当前任务。',
+      },
+    },
     emptyState: {
       chatTitle: '先想清楚，再落笔',
       chatDescription: '适合提问、润色与改写，专注表达本身',
@@ -926,9 +932,15 @@ export const zh: TranslationKeys = {
       agentDescription: '启用工具链，处理搜索、读写与多步骤任务',
     },
     compaction: {
+      pendingTitle: '正在压缩上下文',
       dividerTitle: '从这里继续当前任务',
       dividerDescription: '以上对话已压缩为摘要，以下回复基于摘要继续。',
       pendingStatus: '正在整理上下文，稍后将从新的上下文继续。',
+      success: '已压缩较早上下文，后续回复将基于摘要继续。',
+      failed: '上下文压缩失败，请稍后重试。',
+      empty: '当前还没有可压缩的对话内容。',
+      runActive: '请等待当前回复完成后再压缩上下文。',
+      waitingApproval: '请先处理当前待确认的工具调用，再压缩上下文。',
     },
     codeBlock: {
       showRawText: '显示原始文本',

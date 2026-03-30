@@ -928,7 +928,7 @@ export const it: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill」',
+      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill o un comando」',
     placeholderCompact: 'Clicca per espandere e modificare...',
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
@@ -960,6 +960,13 @@ export const it: TranslationKeys = {
       entryFile: 'File',
       entryFolder: 'Cartella',
     },
+    slashCommands: {
+      compact: {
+        label: 'Compatta contesto',
+        description:
+          'Comprimi manualmente la cronologia precedente e continua il task corrente in una nuova finestra di contesto.',
+      },
+    },
     emptyState: {
       chatTitle: 'Pensa prima, poi scrivi',
       chatDescription:
@@ -969,11 +976,20 @@ export const it: TranslationKeys = {
         'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
     },
     compaction: {
+      pendingTitle: 'Compattazione del contesto in corso',
       dividerTitle: "Da qui continua l'attivita corrente",
       dividerDescription:
         'La conversazione precedente e stata compressa in un riassunto. Le risposte seguenti continuano da quel riassunto.',
       pendingStatus:
         'Sto riorganizzando il contesto. La conversazione continuera tra poco in un nuovo contesto.',
+      success:
+        'Il contesto precedente e stato compresso. Le prossime risposte continueranno dal riassunto.',
+      failed: 'Compattazione del contesto non riuscita. Riprova tra poco.',
+      empty: 'Non ci sono ancora contenuti di conversazione da comprimere.',
+      runActive:
+        'Attendi che la risposta corrente finisca prima di compattare il contesto.',
+      waitingApproval:
+        "Gestisci prima l'approvazione dello strumento in sospeso, poi compatta il contesto.",
     },
     codeBlock: {
       showRawText: 'Mostra testo grezzo',

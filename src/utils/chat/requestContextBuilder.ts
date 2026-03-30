@@ -24,11 +24,13 @@ import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
   ChatConversationCompaction,
+  ChatConversationCompactionLike,
   ChatMessage,
   ChatSelectedSkill,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
+import { getLatestChatConversationCompaction } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
@@ -175,7 +177,7 @@ export class RequestContextBuilder {
     maxContextOverride?: number
     model: ChatModel
     conversationId: string
-    compaction?: ChatConversationCompaction | null
+    compaction?: ChatConversationCompactionLike | null
     currentFileContextMode?: CurrentFileContextMode
     currentFileOverride?: TFile | null
   }): Promise<RequestMessage[]> {
@@ -299,7 +301,7 @@ export class RequestContextBuilder {
     messages: ChatMessage[]
     maxContextOverride?: number
     snapshotEntries: Record<string, string | ContentPart[]>
-    compaction?: ChatConversationCompaction | null
+    compaction?: ChatConversationCompactionLike | null
   }): Promise<RequestMessage[]> {
     // Determine max context messages with priority:
     // 1) explicit override from conversation settings
@@ -314,22 +316,22 @@ export class RequestContextBuilder {
     const contextMessages = messages.slice(-maxContext)
     const prunedToolCallIds = collectContextPrunedToolCallIds(messages)
 
-    if (compaction) {
+    const latestCompaction = getLatestChatConversationCompaction(compaction)
+
+    if (latestCompaction) {
       const compactTrigger = findCompactTrigger(messages)
       const anchorIndex = messages.findIndex(
-        (message) => message.id === compaction.anchorMessageId,
+        (message) => message.id === latestCompaction.anchorMessageId,
       )
 
-      if (
-        anchorIndex !== -1 &&
-        compactTrigger &&
-        compactTrigger.anchorMessageId === compaction.anchorMessageId
-      ) {
-        requestMessages.push(buildCompactionSummaryMessage(compaction))
-        const compactContextStartIndex = Math.max(
-          messages.length - contextMessages.length,
-          compactTrigger.retainedStartIndex,
-        )
+      if (anchorIndex !== -1) {
+        requestMessages.push(buildCompactionSummaryMessage(latestCompaction))
+        const compactContextStartIndex = compactTrigger
+          ? Math.max(
+              messages.length - contextMessages.length,
+              compactTrigger.retainedStartIndex,
+            )
+          : Math.max(messages.length - contextMessages.length, anchorIndex + 1)
         const compactContextMessages = messages.slice(compactContextStartIndex)
 
         for (const message of compactContextMessages) {

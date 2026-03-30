@@ -60,6 +60,7 @@ import {
   $isSkillNode,
   SkillNode,
 } from './plugins/mention/SkillNode'
+import type { SlashCommand } from './plugins/mention/SkillSlashPlugin'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import {
   ReasoningLevel,
@@ -112,6 +113,7 @@ export type ChatUserInputProps = {
   onSelectChatModeForConversation?: (mode: 'chat' | 'agent') => void
   allowAgentModeOption?: boolean
   enableResize?: boolean
+  onRunSlashCommand?: (command: SlashCommand) => void
 }
 
 type ChatSubmitOptions = {
@@ -162,6 +164,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onSelectChatModeForConversation,
       allowAgentModeOption = true,
       enableResize = false,
+      onRunSlashCommand,
     },
     ref,
   ) => {
@@ -1144,6 +1147,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 (skill) => skill.id,
               )}
               onSelectSkill={handleSelectSkill}
+              onRunSlashCommand={onRunSlashCommand}
               autoFocus={autoFocus}
               plugins={{
                 onEnter: {

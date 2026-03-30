@@ -1,4 +1,9 @@
-import { ChatConversationCompaction, ChatMessage } from '../../types/chat'
+import {
+  ChatConversationCompactionLike,
+  ChatConversationCompactionState,
+  ChatMessage,
+  normalizeChatConversationCompactionState,
+} from '../../types/chat'
 import {
   ToolCallRequest,
   ToolCallResponse,
@@ -21,7 +26,7 @@ export type AgentConversationState = {
   status: AgentRunStatus
   runId?: number
   messages: ChatMessage[]
-  compaction?: ChatConversationCompaction | null
+  compaction?: ChatConversationCompactionState
   pendingCompactionAnchorMessageId?: string | null
   anchorMessageId?: string
   errorMessage?: string
@@ -60,7 +65,7 @@ type AgentServiceOptions = {
   persistConversationMessages?: (payload: {
     conversationId: string
     messages: ChatMessage[]
-    compaction?: ChatConversationCompaction | null
+    compaction?: ChatConversationCompactionState
     status: AgentRunStatus
   }) => Promise<void>
 }
@@ -218,7 +223,7 @@ export class AgentService {
   replaceConversationMessages(
     conversationId: string,
     messages: ChatMessage[],
-    compaction?: ChatConversationCompaction | null,
+    compaction?: ChatConversationCompactionLike | null,
   ): void {
     const entry = this.getOrCreateEntry(conversationId)
     entry.state = {
@@ -495,7 +500,7 @@ export class AgentService {
         conversationId,
         status: 'idle',
         messages: [],
-        compaction: null,
+        compaction: [],
         pendingCompactionAnchorMessageId: null,
       },
     }
@@ -521,7 +526,7 @@ export class AgentService {
       status: state.status,
       runId: state.runId,
       messages: [...state.messages],
-      compaction: state.compaction ?? null,
+      compaction: [...(state.compaction ?? [])],
       pendingCompactionAnchorMessageId:
         state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
@@ -575,7 +580,7 @@ export class AgentService {
         .persistConversationMessages?.({
           conversationId: state.conversationId,
           messages: state.messages,
-          compaction: state.compaction ?? null,
+          compaction: [...(state.compaction ?? [])],
           status: state.status,
         })
         .catch((error) => {
@@ -673,16 +678,13 @@ export class AgentService {
   }
 
   private normalizeCompaction(
-    compaction: ChatConversationCompaction | null | undefined,
+    compaction: ChatConversationCompactionLike | null | undefined,
     messages: ChatMessage[],
-  ): ChatConversationCompaction | null {
-    if (!compaction) {
-      return null
-    }
-
-    return messages.some((message) => message.id === compaction.anchorMessageId)
-      ? compaction
-      : null
+  ): ChatConversationCompactionState {
+    return normalizeChatConversationCompactionState(compaction).filter(
+      (entry) =>
+        messages.some((message) => message.id === entry.anchorMessageId),
+    )
   }
 
   private normalizePendingCompactionAnchorMessageId(

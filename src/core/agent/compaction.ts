@@ -170,6 +170,28 @@ export const buildCompactedConversationState = ({
   }
 }
 
+export const buildManualCompactionState = ({
+  messages,
+  summary,
+  summaryModelId,
+}: {
+  messages: ChatMessage[]
+  summary: string
+  summaryModelId?: string
+}): ChatConversationCompaction | null => {
+  const anchorMessageId = messages.at(-1)?.id
+  if (!anchorMessageId) {
+    return null
+  }
+
+  return {
+    anchorMessageId,
+    summary,
+    compactedAt: Date.now(),
+    summaryModelId,
+  }
+}
+
 export const getCompactionSummarySourceMessages = (
   messages: ChatMessage[],
 ): ChatMessage[] => {

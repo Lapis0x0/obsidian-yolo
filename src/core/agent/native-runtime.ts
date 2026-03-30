@@ -3,8 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   ChatAssistantMessage,
   ChatConversationCompaction,
+  ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
+  getLatestChatConversationCompaction,
+  normalizeChatConversationCompactionState,
 } from '../../types/chat'
 import {
   ToolCallRequest,
@@ -32,7 +35,7 @@ import {
 export class NativeAgentRuntime implements AgentRuntime {
   private subscribers: AgentRuntimeSubscribe[] = []
   private messages: ChatMessage[] = []
-  private compactionState: ChatConversationCompaction | null = null
+  private compactionState: ChatConversationCompactionState = []
   private pendingCompactionAnchorMessageId: string | null = null
   private runAbortController: AbortController | null = null
 
@@ -52,7 +55,7 @@ export class NativeAgentRuntime implements AgentRuntime {
   getSnapshot(): AgentRuntimeSnapshot {
     return {
       messages: [...this.messages],
-      compaction: this.compactionState,
+      compaction: [...this.compactionState],
       pendingCompactionAnchorMessageId: this.pendingCompactionAnchorMessageId,
     }
   }
@@ -65,7 +68,9 @@ export class NativeAgentRuntime implements AgentRuntime {
   }
 
   async run(input: AgentRuntimeRunInput): Promise<void> {
-    this.compactionState = input.compaction ?? null
+    this.compactionState = normalizeChatConversationCompactionState(
+      input.compaction,
+    )
     this.pendingCompactionAnchorMessageId = null
     const localAbortController = new AbortController()
     this.runAbortController = localAbortController
@@ -123,7 +128,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   mcpManager: input.mcpManager,
                   conversationId: input.conversationId,
                   messages: [...input.messages, ...this.messages],
-                  compaction: this.compactionState ?? input.compaction,
+                  compaction: this.compactionState,
                   enableTools: this.loopConfig.enableTools,
                   includeBuiltinTools: this.loopConfig.includeBuiltinTools,
                   allowedToolNames: input.allowedToolNames,
@@ -209,11 +214,14 @@ export class NativeAgentRuntime implements AgentRuntime {
                       model: input.compactionModel,
                       messages: conversationMessages,
                     })
-                    this.compactionState = buildCompactedConversationState({
+                    const nextCompaction = buildCompactedConversationState({
                       messages: conversationMessages,
                       summary,
                       summaryModelId: input.compactionModel.id,
                     })
+                    this.compactionState = nextCompaction
+                      ? [...this.compactionState, nextCompaction]
+                      : this.compactionState
                     this.pendingCompactionAnchorMessageId = null
                     this.notifySubscribers()
                   } catch (error) {
@@ -222,10 +230,13 @@ export class NativeAgentRuntime implements AgentRuntime {
                     throw error
                   }
 
+                  const latestCompaction = getLatestChatConversationCompaction(
+                    this.compactionState,
+                  )
                   console.debug('[YOLO][Compact] compact state ready', {
                     conversationId: input.conversationId,
-                    anchorMessageId: this.compactionState?.anchorMessageId,
-                    triggerToolCallId: this.compactionState?.triggerToolCallId,
+                    anchorMessageId: latestCompaction?.anchorMessageId,
+                    triggerToolCallId: latestCompaction?.triggerToolCallId,
                   })
 
                   worker.postMessage({

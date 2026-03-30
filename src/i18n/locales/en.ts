@@ -945,7 +945,7 @@ export const en: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Type a message...「@ to add references, / to choose a skill」',
+      'Type a message...「@ to add references, / to choose a skill or command」',
     placeholderCompact: 'Click to expand and edit...',
     sendMessage: 'Send message',
     newChat: 'New chat',
@@ -980,6 +980,13 @@ export const en: TranslationKeys = {
       entryFile: 'File',
       entryFolder: 'Folder',
     },
+    slashCommands: {
+      compact: {
+        label: 'Compact Context',
+        description:
+          'Manually compress earlier conversation history and continue the current task in a fresh context window.',
+      },
+    },
     emptyState: {
       chatTitle: 'Think first, then write',
       chatDescription:
@@ -989,11 +996,20 @@ export const en: TranslationKeys = {
         'Enable tools to handle search, read/write operations, and multi-step tasks.',
     },
     compaction: {
+      pendingTitle: 'Compacting context',
       dividerTitle: 'Continue the current task from here',
       dividerDescription:
         'Earlier conversation has been compressed into a summary. Replies below continue from that summary.',
       pendingStatus:
         'Organizing context now. The conversation will continue in a fresh context shortly.',
+      success:
+        'Earlier context has been compressed. Future replies will continue from the summary.',
+      failed: 'Context compaction failed. Please try again shortly.',
+      empty: 'There is no conversation content to compact yet.',
+      runActive:
+        'Wait for the current reply to finish before compacting context.',
+      waitingApproval:
+        'Resolve the current pending tool approval before compacting context.',
     },
     codeBlock: {
       showRawText: 'Show raw text',

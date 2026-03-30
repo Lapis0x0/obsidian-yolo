@@ -692,6 +692,153 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     })
   })
 
+  it('injects manual compaction summary even without a compact tool boundary', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'old prompt',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: 'old answer',
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+      compaction: {
+        anchorMessageId: 'assistant-1',
+        summary: 'Earlier history summary',
+        compactedAt: 1,
+      },
+    })
+
+    expect(requestMessages[1]).toEqual({
+      role: 'user',
+      content: expect.stringContaining('Earlier history summary'),
+    })
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'assistant' && message.content === 'old answer',
+      ),
+    ).toBe(false)
+    expect(requestMessages.at(-1)).toEqual({
+      role: 'user',
+      content: expect.stringContaining(
+        'Resume the task that was active immediately before compaction.',
+      ),
+    })
+  })
+
+  it('uses the latest compaction entry when multiple compactions exist', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'old prompt',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: 'old answer',
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'new follow-up',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-2',
+          content: 'new answer',
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+      compaction: [
+        {
+          anchorMessageId: 'assistant-1',
+          summary: 'Earlier history summary',
+          compactedAt: 1,
+        },
+        {
+          anchorMessageId: 'assistant-2',
+          summary: 'Latest history summary',
+          compactedAt: 2,
+        },
+      ],
+    })
+
+    expect(requestMessages[1]).toEqual({
+      role: 'user',
+      content: expect.stringContaining('Latest history summary'),
+    })
+    expect(requestMessages[1]).not.toEqual({
+      role: 'user',
+      content: expect.stringContaining('Earlier history summary'),
+    })
+  })
+
   it('keeps compaction history within the recent context window', async () => {
     const app = {
       vault: {

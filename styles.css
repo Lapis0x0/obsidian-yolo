@@ -5974,6 +5974,50 @@
   color: var(--text-muted);
 }
 
+.smtcmp-chat-compaction-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: var(--size-4-3) 0 var(--size-4-2);
+  animation: smtcmp-chat-compaction-pending-enter 220ms
+    cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.smtcmp-chat-compaction-pending__loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+}
+
+.smtcmp-chat-compaction-pending__loader .smtcmp-thinking-loader {
+  gap: 8px;
+}
+
+.smtcmp-chat-compaction-pending__loader .smtcmp-thinking-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.smtcmp-chat-compaction-pending__loader .smtcmp-thinking-icon-svg {
+  width: 14px;
+  height: 14px;
+}
+
+.smtcmp-chat-compaction-pending__loader .smtcmp-thinking-text {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  line-height: 1.35;
+}
+
+.smtcmp-chat-compaction-pending__description {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.45;
+  text-align: center;
+}
+
 .smtcmp-chat-compaction-divider.is-entering {
   animation: smtcmp-chat-compaction-divider-enter 220ms
     cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -6021,6 +6065,18 @@
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes smtcmp-chat-compaction-pending-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 
   to {

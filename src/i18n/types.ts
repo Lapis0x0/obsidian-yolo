@@ -850,6 +850,12 @@ export type TranslationKeys = {
       entryFile?: string
       entryFolder?: string
     }
+    slashCommands?: {
+      compact?: {
+        label?: string
+        description?: string
+      }
+    }
     emptyState?: {
       chatTitle?: string
       chatDescription?: string
@@ -857,9 +863,15 @@ export type TranslationKeys = {
       agentDescription?: string
     }
     compaction?: {
+      pendingTitle?: string
       dividerTitle?: string
       dividerDescription?: string
       pendingStatus?: string
+      success?: string
+      failed?: string
+      empty?: string
+      runActive?: string
+      waitingApproval?: string
     }
     codeBlock?: {
       showRawText?: string

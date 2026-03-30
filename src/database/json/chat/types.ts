@@ -1,5 +1,6 @@
 import {
   ChatConversationCompaction,
+  ChatConversationCompactionLike,
   SerializedChatMessage,
 } from '../../../types/chat'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
@@ -20,7 +21,7 @@ export type ChatConversation = {
   conversationModelId?: string
   messageModelMap?: Record<string, string>
   reasoningLevel?: string
-  compaction?: ChatConversationCompaction | null
+  compaction?: ChatConversationCompactionLike | null
 }
 
 export type ChatConversationMetadata = {

@@ -1,7 +1,12 @@
 import { TFile } from 'obsidian'
 
 import { ReasoningLevel } from '../../components/chat-view/chat-input/ReasoningSelect'
-import { ChatConversationCompaction, ChatMessage } from '../../types/chat'
+import {
+  ChatConversationCompaction,
+  ChatConversationCompactionLike,
+  ChatConversationCompactionState,
+  ChatMessage,
+} from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMProvider } from '../../types/provider.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
@@ -10,7 +15,7 @@ import { McpManager } from '../mcp/mcpManager'
 
 export type AgentRuntimeSnapshot = {
   messages: ChatMessage[]
-  compaction: ChatConversationCompaction | null
+  compaction: ChatConversationCompactionState
   pendingCompactionAnchorMessageId: string | null
 }
 
@@ -23,7 +28,7 @@ export type AgentRuntimeRunInput = {
   conversationId: string
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
-  compaction?: ChatConversationCompaction | null
+  compaction?: ChatConversationCompactionLike | null
   compactionProviderClient?: BaseLLMProvider<LLMProvider>
   compactionModel?: ChatModel
   abortSignal?: AbortSignal

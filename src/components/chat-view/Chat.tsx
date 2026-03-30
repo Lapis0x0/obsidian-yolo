@@ -42,10 +42,12 @@ import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
   ChatConversationCompaction,
+  ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
+import { getLatestChatConversationCompaction } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
   Mentionable,
@@ -86,6 +88,7 @@ import type { ReasoningLevel } from './chat-input/ReasoningSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
+import DotLoader from '../common/DotLoader'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
@@ -103,8 +106,14 @@ type ChatTimelineItem =
       item: ChatUserMessage | AssistantToolMessageGroup
     }
   | {
+      type: 'compaction-pending'
+      key: string
+      anchorMessageId: string
+    }
+  | {
       type: 'compaction-divider'
       key: string
+      anchorMessageId: string
     }
 
 const shouldShowContinueResponse = (
@@ -387,7 +396,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [compactionState, setCompactionState] =
-    useState<ChatConversationCompaction | null>(null)
+    useState<ChatConversationCompactionState>([])
   const [
     pendingCompactionAnchorMessageId,
     setPendingCompactionAnchorMessageId,
@@ -798,17 +807,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return chatMessages.find((message) => message.role === 'user')?.id
   }, [chatMessages])
 
-  const effectiveCompactionState = useMemo(() => {
-    if (!compactionState) {
-      return null
-    }
-
-    return chatMessages.some(
-      (message) => message.id === compactionState.anchorMessageId,
-    )
-      ? compactionState
-      : null
-  }, [chatMessages, compactionState])
+  const effectiveCompactionState = useMemo(
+    () =>
+      compactionState.filter((entry) =>
+        chatMessages.some((message) => message.id === entry.anchorMessageId),
+      ),
+    [chatMessages, compactionState],
+  )
+  const latestCompactionState = useMemo(
+    () => getLatestChatConversationCompaction(effectiveCompactionState),
+    [effectiveCompactionState],
+  )
 
   useEffect(() => {
     inputMessageRef.current = inputMessage
@@ -823,17 +832,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [chatMessages],
   )
 
-  const compactionDividerAnchorMessageId = useMemo(() => {
-    if (!effectiveCompactionState) {
-      return null
-    }
-
-    return chatMessages.some(
-      (message) => message.id === effectiveCompactionState.anchorMessageId,
-    )
-      ? effectiveCompactionState.anchorMessageId
-      : null
-  }, [chatMessages, effectiveCompactionState])
+  const compactionDividerAnchorMessageIds = useMemo(
+    () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
+    [effectiveCompactionState],
+  )
+  const compactionDividerAnchorMessageId =
+    latestCompactionState?.anchorMessageId ?? null
   const previousPendingCompactionAnchorMessageIdRef = useRef<string | null>(
     null,
   )
@@ -870,13 +874,41 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     'chat.compaction.dividerTitle',
     '从这里继续当前任务',
   )
+  const compactionPendingTitle = t(
+    'chat.compaction.pendingTitle',
+    '正在压缩上下文',
+  )
   const compactionDividerDescription = t(
     'chat.compaction.dividerDescription',
     '以上对话已压缩为摘要，以下回复基于摘要继续。',
   )
+  const compactionPendingDescription = t(
+    'chat.compaction.pendingStatus',
+    '正在整理上下文，稍后将从新的上下文继续。',
+  )
 
   const chatTimelineItems: ChatTimelineItem[] = useMemo(() => {
     const items: ChatTimelineItem[] = []
+    let hasInsertedPendingItem = false
+    const compactionAnchorMessageIdSet = new Set(
+      compactionDividerAnchorMessageIds,
+    )
+    const insertPendingItem = (anchorMessageId: string) => {
+      if (
+        hasInsertedPendingItem ||
+        !pendingCompactionAnchorMessageId ||
+        anchorMessageId !== pendingCompactionAnchorMessageId
+      ) {
+        return
+      }
+
+      items.push({
+        type: 'compaction-pending',
+        key: `${pendingCompactionAnchorMessageId}-compact-pending`,
+        anchorMessageId: pendingCompactionAnchorMessageId,
+      })
+      hasInsertedPendingItem = true
+    }
 
     groupedChatMessages.forEach((messageOrGroup) => {
       if (!Array.isArray(messageOrGroup)) {
@@ -885,51 +917,49 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           key: messageOrGroup.id,
           item: messageOrGroup,
         })
+        insertPendingItem(messageOrGroup.id)
         return
       }
 
-      const boundaryIndex = compactionDividerAnchorMessageId
-        ? messageOrGroup.findIndex(
-            (message) => message.id === compactionDividerAnchorMessageId,
-          )
-        : -1
-
-      if (boundaryIndex === -1) {
+      let currentGroup: AssistantToolMessageGroup = []
+      let sliceIndex = 0
+      const pushCurrentGroup = () => {
+        if (currentGroup.length === 0) {
+          return
+        }
         items.push({
           type: 'message',
-          key: messageOrGroup.at(0)?.id ?? `group-${items.length}`,
-          item: messageOrGroup,
+          key: currentGroup.at(0)?.id ?? `group-${items.length}-${sliceIndex}`,
+          item: currentGroup,
         })
-        return
+        insertPendingItem(currentGroup.at(-1)?.id ?? '')
+        currentGroup = []
+        sliceIndex += 1
       }
 
-      const beforeBoundaryGroup = messageOrGroup.slice(0, boundaryIndex + 1)
-      const afterBoundaryGroup = messageOrGroup.slice(boundaryIndex + 1)
+      for (const message of messageOrGroup) {
+        currentGroup.push(message)
+        if (!compactionAnchorMessageIdSet.has(message.id)) {
+          continue
+        }
 
-      if (beforeBoundaryGroup.length > 0) {
+        pushCurrentGroup()
         items.push({
-          type: 'message',
-          key: beforeBoundaryGroup.at(0)?.id ?? `group-${items.length}`,
-          item: beforeBoundaryGroup,
+          type: 'compaction-divider',
+          key: `${message.id}-compact-divider`,
+          anchorMessageId: message.id,
         })
       }
 
-      items.push({
-        type: 'compaction-divider',
-        key: `${compactionDividerAnchorMessageId}-compact-divider`,
-      })
-
-      if (afterBoundaryGroup.length > 0) {
-        items.push({
-          type: 'message',
-          key: `${afterBoundaryGroup.at(0)?.id ?? `group-${items.length}`}-post-compact`,
-          item: afterBoundaryGroup,
-        })
-      }
+      pushCurrentGroup()
     })
 
     return items
-  }, [compactionDividerAnchorMessageId, groupedChatMessages])
+  }, [
+    compactionDividerAnchorMessageIds,
+    groupedChatMessages,
+    pendingCompactionAnchorMessageId,
+  ])
 
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
     for (let index = chatTimelineItems.length - 1; index >= 0; index -= 1) {
@@ -990,6 +1020,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const {
     abortConversationRun,
+    compactConversation,
     currentConversationRunSummary,
     submitChatMutation,
   } = useChatStreamManager({
@@ -1195,6 +1226,94 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleManualContextCompaction = useCallback(async () => {
+    if (currentConversationRunSummary.isRunning) {
+      new Notice(
+        t('chat.compaction.runActive', '请等待当前回复完成后再压缩上下文。'),
+      )
+      return
+    }
+
+    if (currentConversationRunSummary.isWaitingApproval) {
+      new Notice(
+        t(
+          'chat.compaction.waitingApproval',
+          '请先处理当前待确认的工具调用，再压缩上下文。',
+        ),
+      )
+      return
+    }
+
+    if (chatMessages.length === 0) {
+      new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
+      return
+    }
+
+    try {
+      setPendingCompactionAnchorMessageId(chatMessages.at(-1)?.id ?? null)
+      const nextCompactionState = await compactConversation(chatMessages)
+      setPendingCompactionAnchorMessageId(null)
+
+      if (!nextCompactionState) {
+        new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
+        return
+      }
+
+      const nextCompactionHistory = [
+        ...effectiveCompactionState,
+        nextCompactionState,
+      ]
+
+      plugin
+        .getAgentService()
+        .replaceConversationMessages(
+          currentConversationId,
+          chatMessages,
+          nextCompactionHistory,
+        )
+
+      const effectiveOverrides = {
+        ...(conversationOverrides ?? {}),
+        chatMode,
+      }
+      await createOrUpdateConversationImmediately(
+        currentConversationId,
+        chatMessages,
+        effectiveOverrides,
+        conversationModelId,
+        serializeMessageModelMap(chatMessages),
+        conversationReasoningLevelRef.current.get(currentConversationId) ??
+          reasoningLevel,
+        nextCompactionHistory,
+      )
+      new Notice(
+        t(
+          'chat.compaction.success',
+          '已压缩较早上下文，后续回复将基于摘要继续。',
+        ),
+      )
+    } catch (error) {
+      setPendingCompactionAnchorMessageId(null)
+      new Notice(t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'))
+      console.error('Failed to compact conversation context', error)
+    }
+  }, [
+    chatMessages,
+    chatMode,
+    compactConversation,
+    conversationModelId,
+    conversationOverrides,
+    createOrUpdateConversationImmediately,
+    currentConversationId,
+    currentConversationRunSummary.isRunning,
+    currentConversationRunSummary.isWaitingApproval,
+    effectiveCompactionState,
+    plugin,
+    reasoningLevel,
+    serializeMessageModelMap,
+    t,
+  ])
+
   const registerChatUserInputRef = (
     id: string,
     ref: ChatUserInputRef | null,
@@ -1215,7 +1334,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         setCurrentConversationId(conversationId)
         setChatMessages(conversation.messages)
-        setCompactionState(conversation.compaction ?? null)
+        setCompactionState(conversation.compaction ?? [])
         setPendingCompactionAnchorMessageId(null)
         const storedAutoAttach = conversation.overrides?.autoAttachCurrentFile
         const resolvedAutoAttach =
@@ -1365,7 +1484,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setMessageModelMap(new Map())
     setMessageReasoningMap(new Map())
     setChatMessages([])
-    setCompactionState(null)
+    setCompactionState([])
     setPendingCompactionAnchorMessageId(null)
     setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(defaultReasoningLevel)
@@ -1498,13 +1617,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           retainedUserMessageIds.has(messageId),
         ),
       )
-      const branchedCompactionState =
-        effectiveCompactionState &&
-        nextMessages.some(
-          (message) => message.id === effectiveCompactionState.anchorMessageId,
-        )
-          ? effectiveCompactionState
-          : null
+      const branchedCompactionState = effectiveCompactionState.filter((entry) =>
+        nextMessages.some((message) => message.id === entry.anchorMessageId),
+      )
 
       setCurrentConversationId(newConversationId)
       setChatMessages(nextMessages)
@@ -2932,6 +3047,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )}
       <div className="smtcmp-chat-messages" ref={chatMessagesRef}>
         {chatTimelineItems.map((timelineItem) => {
+          if (timelineItem.type === 'compaction-pending') {
+            return (
+              <div
+                key={timelineItem.key}
+                className="smtcmp-chat-compaction-pending"
+                data-anchor-message-id={timelineItem.anchorMessageId}
+              >
+                <div className="smtcmp-chat-compaction-pending__loader">
+                  <DotLoader text={compactionPendingTitle} />
+                </div>
+                <div className="smtcmp-chat-compaction-pending__description">
+                  {compactionPendingDescription}
+                </div>
+              </div>
+            )
+          }
+
           if (timelineItem.type === 'compaction-divider') {
             return (
               <div
@@ -3401,6 +3533,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             onSelectChatModeForConversation={handleChatModeChange}
             allowAgentModeOption={Platform.isDesktop}
             enableResize
+            onRunSlashCommand={(command) => {
+              if (command.id === 'compact-context') {
+                void handleManualContextCompaction()
+              }
+            }}
           />
         </div>
       </div>

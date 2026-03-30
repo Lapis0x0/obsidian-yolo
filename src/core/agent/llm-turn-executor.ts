@@ -7,7 +7,7 @@ import {
 } from '../../components/chat-view/chat-input/ReasoningSelect'
 import {
   ChatAssistantMessage,
-  ChatConversationCompaction,
+  ChatConversationCompactionLike,
   ChatMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
@@ -37,7 +37,7 @@ type AgentLlmTurnExecutorInput = {
   mcpManager: McpManager
   conversationId: string
   messages: ChatMessage[]
-  compaction?: ChatConversationCompaction | null
+  compaction?: ChatConversationCompactionLike | null
   enableTools: boolean
   includeBuiltinTools: boolean
   allowedToolNames?: string[]

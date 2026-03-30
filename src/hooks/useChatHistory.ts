@@ -16,10 +16,12 @@ import { promoteProviderTransportModeToObsidian } from '../core/llm/transportMod
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import { ChatConversationMetadata } from '../database/json/chat/types'
 import {
-  ChatConversationCompaction,
+  ChatConversationCompactionLike,
+  ChatConversationCompactionState,
   ChatMessage,
   ChatSelectedSkill,
   SerializedChatMessage,
+  normalizeChatConversationCompactionState,
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'
 import { Mentionable } from '../types/mentionable'
@@ -77,7 +79,7 @@ type UseChatHistory = {
     conversationModelId?: string,
     messageModelMap?: Record<string, string>,
     reasoningLevel?: string,
-    compaction?: ChatConversationCompaction | null,
+    compaction?: ChatConversationCompactionState,
   ) => Promise<void> | undefined
   createOrUpdateConversationImmediately: (
     id: string,
@@ -86,7 +88,7 @@ type UseChatHistory = {
     conversationModelId?: string,
     messageModelMap?: Record<string, string>,
     reasoningLevel?: string,
-    compaction?: ChatConversationCompaction | null,
+    compaction?: ChatConversationCompactionState,
   ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
@@ -96,7 +98,7 @@ type UseChatHistory = {
     conversationModelId?: string
     messageModelMap?: Record<string, string>
     reasoningLevel?: string
-    compaction?: ChatConversationCompaction | null
+    compaction?: ChatConversationCompactionState
   } | null>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   toggleConversationPinned: (id: string) => Promise<void>
@@ -170,10 +172,15 @@ export function useChatHistory(): UseChatHistory {
       conversationModelId?: string,
       messageModelMap?: Record<string, string>,
       reasoningLevel?: string,
-      compaction?: ChatConversationCompaction | null,
+      compaction?: ChatConversationCompactionLike | null,
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
+      const normalizedCompaction =
+        normalizeChatConversationCompactionState(compaction)
+      const existingCompaction = normalizeChatConversationCompactionState(
+        existingConversation?.compaction,
+      )
       const compactedMessages = await compactConversationMessagesForStorage({
         app,
         conversationId: id,
@@ -199,7 +206,7 @@ export function useChatHistory(): UseChatHistory {
             messageModelMap ?? null,
           ) &&
           existingConversation.reasoningLevel === reasoningLevel &&
-          isEqual(existingConversation.compaction ?? null, compaction ?? null)
+          isEqual(existingCompaction, normalizedCompaction)
         ) {
           return
         }
@@ -220,8 +227,8 @@ export function useChatHistory(): UseChatHistory {
           reasoningLevel,
           compaction:
             compaction === undefined
-              ? (existingConversation.compaction ?? null)
-              : compaction,
+              ? existingCompaction
+              : normalizedCompaction,
         })
       } else {
         // 默认标题统一为"新对话"，待首条用户消息保存后由对话命名模型自动改名
@@ -235,7 +242,7 @@ export function useChatHistory(): UseChatHistory {
           conversationModelId,
           messageModelMap,
           reasoningLevel,
-          compaction: compaction ?? null,
+          compaction: normalizedCompaction,
         })
       }
 
@@ -268,7 +275,7 @@ export function useChatHistory(): UseChatHistory {
       conversationModelId?: string,
       messageModelMap?: Record<string, string>,
       reasoningLevel?: string,
-      compaction?: ChatConversationCompaction | null,
+      compaction?: ChatConversationCompactionState,
     ): Promise<void> | undefined =>
       debouncedCreateOrUpdateConversation(
         id,
@@ -290,7 +297,7 @@ export function useChatHistory(): UseChatHistory {
       conversationModelId?: string,
       messageModelMap?: Record<string, string>,
       reasoningLevel?: string,
-      compaction?: ChatConversationCompaction | null,
+      compaction?: ChatConversationCompactionState,
     ): Promise<void> => {
       debouncedCreateOrUpdateConversation.cancel()
       await persistConversationInternal(
@@ -337,7 +344,7 @@ export function useChatHistory(): UseChatHistory {
       conversationModelId?: string
       messageModelMap?: Record<string, string>
       reasoningLevel?: string
-      compaction?: ChatConversationCompaction | null
+      compaction?: ChatConversationCompactionState
     } | null> => {
       const conversation = await chatManager.findById(id)
       if (!conversation) return null
@@ -349,7 +356,9 @@ export function useChatHistory(): UseChatHistory {
         conversationModelId: conversation.conversationModelId,
         messageModelMap: conversation.messageModelMap,
         reasoningLevel: conversation.reasoningLevel,
-        compaction: conversation.compaction ?? null,
+        compaction: normalizeChatConversationCompactionState(
+          conversation.compaction,
+        ),
       }
     },
     [chatManager, app],
