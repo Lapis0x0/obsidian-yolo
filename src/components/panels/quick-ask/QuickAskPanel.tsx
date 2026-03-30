@@ -975,9 +975,10 @@ export function QuickAskPanel({
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
+    plugin.getAgentService().abortConversation(conversationId)
     setIsStreaming(false)
     setRunStatus(null)
-  }, [])
+  }, [conversationId, plugin])
 
   // Submit message
   const submitMessage = useCallback(

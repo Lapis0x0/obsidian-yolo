@@ -74,6 +74,19 @@ const reconcileAssistantGenerationState = (
   previousMessages: ChatMessage[],
   nextMessages: ChatMessage[],
 ): ChatMessage[] => {
+  const previousToolResponseMap = new Map<string, ToolCallResponse['status']>(
+    previousMessages.flatMap((message) => {
+      if (message.role !== 'tool') {
+        return []
+      }
+
+      return message.toolCalls.map((toolCall) => [
+        toolCall.request.id,
+        toolCall.response.status,
+      ])
+    }),
+  )
+
   const previousAssistantStateMap = new Map(
     previousMessages
       .filter((message) => message.role === 'assistant')
@@ -81,6 +94,32 @@ const reconcileAssistantGenerationState = (
   )
 
   return nextMessages.map((message) => {
+    if (message.role === 'tool') {
+      let updated = false
+      const nextToolCalls = message.toolCalls.map((toolCall) => {
+        const previousStatus = previousToolResponseMap.get(toolCall.request.id)
+        if (
+          previousStatus !== ToolCallResponseStatus.Aborted ||
+          toolCall.response.status === ToolCallResponseStatus.Aborted
+        ) {
+          return toolCall
+        }
+
+        updated = true
+        return {
+          ...toolCall,
+          response: { status: ToolCallResponseStatus.Aborted as const },
+        }
+      })
+
+      return updated
+        ? {
+            ...message,
+            toolCalls: nextToolCalls,
+          }
+        : message
+    }
+
     if (message.role !== 'assistant') {
       return message
     }
@@ -103,13 +142,62 @@ const reconcileAssistantGenerationState = (
   })
 }
 
+const abortVisibleMessages = (messages: ChatMessage[]): ChatMessage[] => {
+  return messages.map((message) => {
+    if (message.role === 'assistant') {
+      if (message.metadata?.generationState !== 'streaming') {
+        return message
+      }
+
+      return {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          generationState: 'aborted',
+        },
+      }
+    }
+
+    if (message.role !== 'tool') {
+      return message
+    }
+
+    let updated = false
+    const nextToolCalls = message.toolCalls.map((toolCall) => {
+      if (
+        toolCall.response.status !== ToolCallResponseStatus.PendingApproval &&
+        toolCall.response.status !== ToolCallResponseStatus.Running
+      ) {
+        return toolCall
+      }
+
+      updated = true
+      return {
+        ...toolCall,
+        response: { status: ToolCallResponseStatus.Aborted as const },
+      }
+    })
+
+    return updated
+      ? {
+          ...message,
+          toolCalls: nextToolCalls,
+        }
+      : message
+  })
+}
+
 const mergeVisibleMessages = (
+  previousVisibleMessages: ChatMessage[],
   baseMessages: ChatMessage[],
   anchorMessageId: string | undefined,
   responseMessages: ChatMessage[],
 ): ChatMessage[] => {
   if (!anchorMessageId) {
-    return reconcileAssistantGenerationState(baseMessages, responseMessages)
+    return reconcileAssistantGenerationState(
+      previousVisibleMessages,
+      responseMessages,
+    )
   }
 
   const anchorIndex = baseMessages.findIndex(
@@ -117,10 +205,13 @@ const mergeVisibleMessages = (
   )
 
   if (anchorIndex === -1) {
-    return reconcileAssistantGenerationState(baseMessages, responseMessages)
+    return reconcileAssistantGenerationState(
+      previousVisibleMessages,
+      responseMessages,
+    )
   }
 
-  return reconcileAssistantGenerationState(baseMessages, [
+  return reconcileAssistantGenerationState(previousVisibleMessages, [
     ...baseMessages.slice(0, anchorIndex + 1),
     ...responseMessages,
   ])
@@ -395,6 +486,7 @@ export class AgentService {
         return
       }
       const mergedMessages = mergeVisibleMessages(
+        currentEntry.state.messages,
         input.messages,
         currentEntry.state.anchorMessageId,
         snapshot.messages,
@@ -470,6 +562,7 @@ export class AgentService {
     entry.runtime.abort()
     entry.state = {
       ...entry.state,
+      messages: abortVisibleMessages(entry.state.messages),
       status: 'aborted',
       pendingCompactionAnchorMessageId: null,
     }
