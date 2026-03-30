@@ -22,6 +22,7 @@ export type AgentConversationState = {
   runId?: number
   messages: ChatMessage[]
   compaction?: ChatConversationCompaction | null
+  pendingCompactionAnchorMessageId?: string | null
   anchorMessageId?: string
   errorMessage?: string
 }
@@ -378,22 +379,33 @@ export class AgentService {
       runId,
       messages: [...input.messages],
       compaction: this.normalizeCompaction(input.compaction, input.messages),
+      pendingCompactionAnchorMessageId: null,
       anchorMessageId: input.messages.at(-1)?.id,
     }
     this.notifySubscribers(entry)
 
-    const unsubscribe = runtime.subscribe((messages) => {
+    const unsubscribe = runtime.subscribe((snapshot) => {
       const currentEntry = this.runsByConversation.get(conversationId)
       if (!currentEntry || currentEntry.runToken !== runToken) {
         return
       }
+      const mergedMessages = mergeVisibleMessages(
+        input.messages,
+        currentEntry.state.anchorMessageId,
+        snapshot.messages,
+      )
       currentEntry.state = {
         ...currentEntry.state,
-        messages: mergeVisibleMessages(
-          input.messages,
-          currentEntry.state.anchorMessageId,
-          messages,
+        messages: mergedMessages,
+        compaction: this.normalizeCompaction(
+          snapshot.compaction,
+          mergedMessages,
         ),
+        pendingCompactionAnchorMessageId:
+          this.normalizePendingCompactionAnchorMessageId(
+            snapshot.pendingCompactionAnchorMessageId,
+            mergedMessages,
+          ),
       }
       this.notifySubscribers(currentEntry)
     })
@@ -406,11 +418,10 @@ export class AgentService {
         return
       }
 
-      this.syncRuntimeCompactionState(currentEntry, runToken, runtime)
-
       currentEntry.state = {
         ...currentEntry.state,
         status: input.abortSignal?.aborted ? 'aborted' : 'completed',
+        pendingCompactionAnchorMessageId: null,
       }
       this.notifySubscribers(currentEntry)
     } catch (error) {
@@ -418,13 +429,13 @@ export class AgentService {
       if (!currentEntry || currentEntry.runToken !== runToken) {
         return
       }
-      this.syncRuntimeCompactionState(currentEntry, runToken, runtime)
       const aborted =
         input.abortSignal?.aborted ||
         (error instanceof Error && error.name === 'AbortError')
       currentEntry.state = {
         ...currentEntry.state,
         status: aborted ? 'aborted' : 'error',
+        pendingCompactionAnchorMessageId: null,
         errorMessage:
           aborted || !(error instanceof Error)
             ? undefined
@@ -455,6 +466,7 @@ export class AgentService {
     entry.state = {
       ...entry.state,
       status: 'aborted',
+      pendingCompactionAnchorMessageId: null,
     }
     this.notifySubscribers(entry)
     return true
@@ -484,6 +496,7 @@ export class AgentService {
         status: 'idle',
         messages: [],
         compaction: null,
+        pendingCompactionAnchorMessageId: null,
       },
     }
     this.runsByConversation.set(conversationId, created)
@@ -509,6 +522,8 @@ export class AgentService {
       runId: state.runId,
       messages: [...state.messages],
       compaction: state.compaction ?? null,
+      pendingCompactionAnchorMessageId:
+        state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
     }
@@ -670,29 +685,16 @@ export class AgentService {
       : null
   }
 
-  private syncRuntimeCompactionState(
-    entry: AgentRunEntry,
-    runToken: symbol,
-    runtime: NativeAgentRuntime,
-  ): void {
-    const currentEntry = this.runsByConversation.get(entry.state.conversationId)
-    if (!currentEntry || currentEntry.runToken !== runToken) {
-      return
+  private normalizePendingCompactionAnchorMessageId(
+    anchorMessageId: string | null | undefined,
+    messages: ChatMessage[],
+  ): string | null {
+    if (!anchorMessageId) {
+      return null
     }
 
-    const runtimeCompaction = this.normalizeCompaction(
-      runtime.getCompactionState(),
-      currentEntry.state.messages,
-    )
-
-    if (runtimeCompaction === currentEntry.state.compaction) {
-      return
-    }
-
-    currentEntry.state = {
-      ...currentEntry.state,
-      compaction: runtimeCompaction,
-    }
-    this.notifySubscribers(currentEntry)
+    return messages.some((message) => message.id === anchorMessageId)
+      ? anchorMessageId
+      : null
   }
 }

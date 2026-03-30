@@ -502,10 +502,12 @@ export const getToolMessageContent = (
 const ToolMessage = memo(function ToolMessage({
   message,
   conversationId,
+  isCompactionPending = false,
   onMessageUpdate,
 }: {
   message: ChatToolMessage
   conversationId: string
+  isCompactionPending?: boolean
   onMessageUpdate: (message: ChatToolMessage) => void
 }) {
   return (
@@ -519,6 +521,9 @@ const ToolMessage = memo(function ToolMessage({
             request={toolCall.request}
             response={toolCall.response}
             conversationId={conversationId}
+            showCompactionPendingHint={
+              isCompactionPending && index === message.toolCalls.length - 1
+            }
             onResponseUpdate={(response) =>
               onMessageUpdate({
                 ...message,
@@ -538,14 +543,17 @@ function ToolCallItem({
   request,
   response,
   conversationId,
+  showCompactionPendingHint = false,
   onResponseUpdate,
 }: {
   request: ToolCallRequest
   response: ToolCallResponse
   conversationId: string
+  showCompactionPendingHint?: boolean
   onResponseUpdate: (response: ToolCallResponse) => void
 }) {
   const STATUS_TRANSITION_MS = 180
+  const COMPACTION_PENDING_EXIT_MS = 180
   const {
     handleToolCall,
     handleAllowForConversation,
@@ -610,6 +618,13 @@ function ToolCallItem({
       ? 'pending'
       : null,
   )
+  const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
+    useState(
+      showCompactionPendingHint &&
+        response.status === ToolCallResponseStatus.Success,
+    )
+  const [isCompactionPendingHintExiting, setIsCompactionPendingHintExiting] =
+    useState(false)
 
   useEffect(() => {
     if (response.status !== ToolCallResponseStatus.Running) {
@@ -649,6 +664,32 @@ function ToolCallItem({
     : shouldShowRunningFooter
       ? 'running'
       : null
+
+  useEffect(() => {
+    const shouldShowCompactionPendingHint =
+      showCompactionPendingHint &&
+      response.status === ToolCallResponseStatus.Success
+
+    if (shouldShowCompactionPendingHint) {
+      setRenderCompactionPendingHint(true)
+      setIsCompactionPendingHintExiting(false)
+      return
+    }
+
+    if (!renderCompactionPendingHint) {
+      return
+    }
+
+    setIsCompactionPendingHintExiting(true)
+    const timer = window.setTimeout(() => {
+      setRenderCompactionPendingHint(false)
+      setIsCompactionPendingHintExiting(false)
+    }, COMPACTION_PENDING_EXIT_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [renderCompactionPendingHint, response.status, showCompactionPendingHint])
 
   useEffect(() => {
     if (footerMode) {
@@ -750,6 +791,27 @@ function ToolCallItem({
               <ObsidianCodeBlock content={response.error} />
             </div>
           )}
+        </div>
+      )}
+      {renderCompactionPendingHint && (
+        <div
+          className={cx(
+            'smtcmp-toolcall-compaction-pending',
+            isCompactionPendingHintExiting &&
+              'smtcmp-toolcall-compaction-pending--exiting',
+          )}
+          aria-live="polite"
+        >
+          <Loader2
+            size={12}
+            className="smtcmp-toolcall-compaction-pending-icon"
+          />
+          <span>
+            {t(
+              'chat.compaction.pendingStatus',
+              '正在整理上下文，稍后将从新的上下文继续。',
+            )}
+          </span>
         </div>
       )}
       {renderFooter && (

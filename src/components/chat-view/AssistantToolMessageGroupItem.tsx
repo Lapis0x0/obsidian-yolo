@@ -50,6 +50,8 @@ export type AssistantToolMessageGroupItemProps = {
   onOpenEditSummaryFile: (path: string) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
+  pendingCompactionAnchorMessageId?: string | null
+  hidePendingAssistantPlaceholders?: boolean
 }
 
 export default function AssistantToolMessageGroupItem({
@@ -77,6 +79,8 @@ export default function AssistantToolMessageGroupItem({
   onOpenEditSummaryFile,
   onUndoEditSummary,
   undoingEditSummaryTarget,
+  pendingCompactionAnchorMessageId,
+  hidePendingAssistantPlaceholders = false,
 }: AssistantToolMessageGroupItemProps) {
   const assistantMessages = messages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
@@ -96,6 +100,7 @@ export default function AssistantToolMessageGroupItem({
       message.role === 'assistant' &&
       message.metadata?.generationState === 'streaming',
   )
+  const hasToolMessages = messages.some((message) => message.role === 'tool')
   const hasPendingAssistantShell = assistantMessages.some(
     (message) =>
       message.metadata?.generationState === 'streaming' &&
@@ -119,8 +124,26 @@ export default function AssistantToolMessageGroupItem({
 
   return (
     <div className="smtcmp-assistant-tool-message-group">
-      {messages.map((message) =>
-        message.role === 'assistant' ? (
+      {messages.map((message) => {
+        const hasVisibleAssistantContent =
+          message.role === 'assistant' && message.content.trim().length > 0
+        const hasVisibleAssistantReasoning =
+          message.role === 'assistant' &&
+          (message.reasoning ?? '').trim().length > 0
+        const hasVisibleAssistantAnnotations =
+          message.role === 'assistant' && Boolean(message.annotations)
+        const shouldHideAssistantPendingState =
+          message.role === 'assistant' &&
+          (hasToolMessages || hidePendingAssistantPlaceholders) &&
+          !hasVisibleAssistantContent &&
+          !hasVisibleAssistantReasoning &&
+          !hasVisibleAssistantAnnotations
+
+        if (shouldHideAssistantPendingState) {
+          return null
+        }
+
+        return message.role === 'assistant' ? (
           message.reasoning ||
           message.annotations ||
           message.content ||
@@ -133,7 +156,8 @@ export default function AssistantToolMessageGroupItem({
               {(message.reasoning ||
                 (message.metadata?.generationState === 'streaming' &&
                   !message.content &&
-                  !message.annotations)) && (
+                  !message.annotations &&
+                  !message.toolCallRequests?.length)) && (
                 <AssistantMessageReasoning
                   reasoning={message.reasoning ?? ''}
                   hasAnswerContent={message.content.trim().length > 0}
@@ -174,11 +198,14 @@ export default function AssistantToolMessageGroupItem({
             <ToolMessage
               message={message}
               conversationId={conversationId}
+              isCompactionPending={
+                message.id === pendingCompactionAnchorMessageId
+              }
               onMessageUpdate={onToolMessageUpdate}
             />
           </div>
-        ),
-      )}
+        )
+      })}
       {groupEditSummary &&
         !suppressFooter &&
         !hasPendingAssistantShell &&

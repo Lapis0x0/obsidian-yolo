@@ -1,5 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
+import cx from 'clsx'
 import {
   ArrowDown,
   Bot,
@@ -94,6 +95,17 @@ import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
+
+type ChatTimelineItem =
+  | {
+      type: 'message'
+      key: string
+      item: ChatUserMessage | AssistantToolMessageGroup
+    }
+  | {
+      type: 'compaction-divider'
+      key: string
+    }
 
 const shouldShowContinueResponse = (
   messages: ChatMessage[],
@@ -376,6 +388,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [compactionState, setCompactionState] =
     useState<ChatConversationCompaction | null>(null)
+  const [
+    pendingCompactionAnchorMessageId,
+    setPendingCompactionAnchorMessageId,
+  ] = useState<string | null>(null)
+  const [
+    enteringCompactionDividerAnchorMessageId,
+    setEnteringCompactionDividerAnchorMessageId,
+  ] = useState<string | null>(null)
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
   const [currentConversationId, setCurrentConversationId] =
     useState<string>(uuidv4())
@@ -774,15 +794,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return groupAssistantAndToolMessages(chatMessages)
     }, [chatMessages])
 
-  const latestAssistantToolGroupIndex = useMemo(() => {
-    for (let index = groupedChatMessages.length - 1; index >= 0; index -= 1) {
-      if (Array.isArray(groupedChatMessages[index])) {
-        return index
-      }
-    }
-    return -1
-  }, [groupedChatMessages])
-
   const firstUserMessageId = useMemo(() => {
     return chatMessages.find((message) => message.role === 'user')?.id
   }, [chatMessages])
@@ -812,18 +823,124 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [chatMessages],
   )
 
-  const compactionDividerFirstMessageId = useMemo(() => {
+  const compactionDividerAnchorMessageId = useMemo(() => {
     if (!effectiveCompactionState) {
       return null
     }
 
-    const anchorIndex = chatMessages.findIndex(
+    return chatMessages.some(
       (message) => message.id === effectiveCompactionState.anchorMessageId,
     )
-    return anchorIndex === -1
-      ? null
-      : (chatMessages[anchorIndex + 1]?.id ?? null)
+      ? effectiveCompactionState.anchorMessageId
+      : null
   }, [chatMessages, effectiveCompactionState])
+  const previousPendingCompactionAnchorMessageIdRef = useRef<string | null>(
+    null,
+  )
+
+  useEffect(() => {
+    const previousPendingAnchorMessageId =
+      previousPendingCompactionAnchorMessageIdRef.current
+    previousPendingCompactionAnchorMessageIdRef.current =
+      pendingCompactionAnchorMessageId
+
+    if (
+      previousPendingAnchorMessageId === null ||
+      pendingCompactionAnchorMessageId !== null ||
+      !compactionDividerAnchorMessageId
+    ) {
+      return
+    }
+
+    setEnteringCompactionDividerAnchorMessageId(
+      compactionDividerAnchorMessageId,
+    )
+    const timer = window.setTimeout(() => {
+      setEnteringCompactionDividerAnchorMessageId((current) =>
+        current === compactionDividerAnchorMessageId ? null : current,
+      )
+    }, 240)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [compactionDividerAnchorMessageId, pendingCompactionAnchorMessageId])
+
+  const compactionDividerTitle = t(
+    'chat.compaction.dividerTitle',
+    '从这里继续当前任务',
+  )
+  const compactionDividerDescription = t(
+    'chat.compaction.dividerDescription',
+    '以上对话已压缩为摘要，以下回复基于摘要继续。',
+  )
+
+  const chatTimelineItems: ChatTimelineItem[] = useMemo(() => {
+    const items: ChatTimelineItem[] = []
+
+    groupedChatMessages.forEach((messageOrGroup) => {
+      if (!Array.isArray(messageOrGroup)) {
+        items.push({
+          type: 'message',
+          key: messageOrGroup.id,
+          item: messageOrGroup,
+        })
+        return
+      }
+
+      const boundaryIndex = compactionDividerAnchorMessageId
+        ? messageOrGroup.findIndex(
+            (message) => message.id === compactionDividerAnchorMessageId,
+          )
+        : -1
+
+      if (boundaryIndex === -1) {
+        items.push({
+          type: 'message',
+          key: messageOrGroup.at(0)?.id ?? `group-${items.length}`,
+          item: messageOrGroup,
+        })
+        return
+      }
+
+      const beforeBoundaryGroup = messageOrGroup.slice(0, boundaryIndex + 1)
+      const afterBoundaryGroup = messageOrGroup.slice(boundaryIndex + 1)
+
+      if (beforeBoundaryGroup.length > 0) {
+        items.push({
+          type: 'message',
+          key: beforeBoundaryGroup.at(0)?.id ?? `group-${items.length}`,
+          item: beforeBoundaryGroup,
+        })
+      }
+
+      items.push({
+        type: 'compaction-divider',
+        key: `${compactionDividerAnchorMessageId}-compact-divider`,
+      })
+
+      if (afterBoundaryGroup.length > 0) {
+        items.push({
+          type: 'message',
+          key: `${afterBoundaryGroup.at(0)?.id ?? `group-${items.length}`}-post-compact`,
+          item: afterBoundaryGroup,
+        })
+      }
+    })
+
+    return items
+  }, [compactionDividerAnchorMessageId, groupedChatMessages])
+
+  const latestTimelineAssistantToolGroupKey = useMemo(() => {
+    for (let index = chatTimelineItems.length - 1; index >= 0; index -= 1) {
+      const candidate = chatTimelineItems[index]
+      if (candidate.type === 'message' && Array.isArray(candidate.item)) {
+        return candidate.key
+      }
+    }
+
+    return null
+  }, [chatTimelineItems])
 
   const shouldShowAutoAttachBadge =
     settings.chatOptions.includeCurrentFileContent &&
@@ -878,6 +995,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } = useChatStreamManager({
     setChatMessages,
     setCompactionState,
+    setPendingCompactionAnchorMessageId,
     autoScrollToBottom,
     requestContextBuilder,
     currentConversationId,
@@ -893,6 +1011,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const isCurrentConversationRunActive =
     currentConversationRunSummary.isRunning ||
     currentConversationRunSummary.isWaitingApproval
+  const shouldHidePendingAssistantPlaceholders = useMemo(() => {
+    if (!isCurrentConversationRunActive) {
+      return false
+    }
+
+    let lastUserIndex = -1
+    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+      if (chatMessages[index].role === 'user') {
+        lastUserIndex = index
+        break
+      }
+    }
+
+    if (lastUserIndex === -1) {
+      return false
+    }
+
+    return chatMessages
+      .slice(lastUserIndex + 1)
+      .some((message) => message.role === 'tool')
+  }, [chatMessages, isCurrentConversationRunActive])
 
   useEffect(() => {
     const chatMessagesElement = chatMessagesRef.current
@@ -1077,6 +1216,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         setCurrentConversationId(conversationId)
         setChatMessages(conversation.messages)
         setCompactionState(conversation.compaction ?? null)
+        setPendingCompactionAnchorMessageId(null)
         const storedAutoAttach = conversation.overrides?.autoAttachCurrentFile
         const resolvedAutoAttach =
           typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
@@ -1226,6 +1366,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setMessageReasoningMap(new Map())
     setChatMessages([])
     setCompactionState(null)
+    setPendingCompactionAnchorMessageId(null)
     setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(defaultReasoningLevel)
     if (selectedBlock) {
@@ -1368,6 +1509,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setCurrentConversationId(newConversationId)
       setChatMessages(nextMessages)
       setCompactionState(branchedCompactionState)
+      setPendingCompactionAnchorMessageId(null)
       setEditingAssistantMessageId(null)
 
       setConversationOverrides(nextOverrides)
@@ -2789,42 +2931,51 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         </div>
       )}
       <div className="smtcmp-chat-messages" ref={chatMessagesRef}>
-        {groupedChatMessages.map((messageOrGroup, index) => {
-          const firstRenderedMessageId = Array.isArray(messageOrGroup)
-            ? (messageOrGroup.at(0)?.id ?? null)
-            : messageOrGroup.id
-
-          if (Array.isArray(messageOrGroup)) {
+        {chatTimelineItems.map((timelineItem) => {
+          if (timelineItem.type === 'compaction-divider') {
             return (
-              <Fragment key={messageOrGroup.at(0)?.id}>
-                {firstRenderedMessageId === compactionDividerFirstMessageId && (
-                  <div
-                    key={`${firstRenderedMessageId}-compact-divider`}
-                    className="smtcmp-chat-compaction-divider"
-                  >
-                    <div className="smtcmp-chat-compaction-divider__line" />
-                    <div className="smtcmp-chat-compaction-divider__content">
-                      <div className="smtcmp-chat-compaction-divider__title">
-                        {t(
-                          'chat.compaction.dividerTitle',
-                          '此处已执行上下文压缩',
-                        )}
-                      </div>
-                      <div className="smtcmp-chat-compaction-divider__description">
-                        {t(
-                          'chat.compaction.dividerDescription',
-                          '以上历史已折叠为摘要，以下内容为新的上下文窗口。',
-                        )}
-                      </div>
-                    </div>
-                  </div>
+              <div
+                key={timelineItem.key}
+                className={cx(
+                  'smtcmp-chat-compaction-divider',
+                  timelineItem.key ===
+                    `${enteringCompactionDividerAnchorMessageId}-compact-divider` &&
+                    'is-entering',
                 )}
+              >
+                <div className="smtcmp-chat-compaction-divider__title">
+                  {compactionDividerTitle}
+                </div>
+                <div className="smtcmp-chat-compaction-divider__line" />
+                <div className="smtcmp-chat-compaction-divider__content">
+                  <div className="smtcmp-chat-compaction-divider__description">
+                    {compactionDividerDescription}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          const messageOrGroup = timelineItem.item
+          const groupedMessageIndex = groupedChatMessages.findIndex(
+            (candidate) => candidate === messageOrGroup,
+          )
+          if (Array.isArray(messageOrGroup)) {
+            const containsCompactionAnchor =
+              compactionDividerAnchorMessageId !== null &&
+              messageOrGroup.some(
+                (message) => message.id === compactionDividerAnchorMessageId,
+              )
+
+            return (
+              <Fragment key={timelineItem.key}>
                 <AssistantToolMessageGroupItem
                   messages={messageOrGroup}
                   conversationId={currentConversationId}
                   suppressFooter={
-                    isCurrentConversationRunActive &&
-                    index === latestAssistantToolGroupIndex
+                    containsCompactionAnchor ||
+                    (isCurrentConversationRunActive &&
+                      timelineItem.key === latestTimelineAssistantToolGroupKey)
                   }
                   isApplying={applyMutation.isPending}
                   activeApplyRequestKey={activeApplyRequestKey}
@@ -2842,6 +2993,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   onOpenEditSummaryFile={handleOpenEditSummaryFile}
                   onUndoEditSummary={handleUndoEditSummary}
                   undoingEditSummaryTarget={undoingEditSummaryTarget}
+                  pendingCompactionAnchorMessageId={
+                    pendingCompactionAnchorMessageId
+                  }
+                  hidePendingAssistantPlaceholders={
+                    shouldHidePendingAssistantPlaceholders
+                  }
                 />
               </Fragment>
             )
@@ -2853,29 +3010,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             reasoningLevel
 
           return (
-            <Fragment key={messageOrGroup.id}>
-              {firstRenderedMessageId === compactionDividerFirstMessageId && (
-                <div
-                  key={`${firstRenderedMessageId}-compact-divider`}
-                  className="smtcmp-chat-compaction-divider"
-                >
-                  <div className="smtcmp-chat-compaction-divider__line" />
-                  <div className="smtcmp-chat-compaction-divider__content">
-                    <div className="smtcmp-chat-compaction-divider__title">
-                      {t(
-                        'chat.compaction.dividerTitle',
-                        '此处已执行上下文压缩',
-                      )}
-                    </div>
-                    <div className="smtcmp-chat-compaction-divider__description">
-                      {t(
-                        'chat.compaction.dividerDescription',
-                        '以上历史已折叠为摘要，以下内容为新的上下文窗口。',
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+            <Fragment key={timelineItem.key}>
               <UserMessageItem
                 message={messageOrGroup}
                 isFocused={focusedMessageId === messageOrGroup.id}
@@ -2930,7 +3065,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   void handleUserMessageSubmit({
                     inputChatMessages: [
                       ...groupedChatMessages
-                        .slice(0, index)
+                        .slice(0, groupedMessageIndex)
                         .flatMap((messageOrGroup): ChatMessage[] =>
                           !Array.isArray(messageOrGroup)
                             ? [messageOrGroup]

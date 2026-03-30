@@ -926,8 +926,9 @@ export const zh: TranslationKeys = {
       agentDescription: '启用工具链，处理搜索、读写与多步骤任务',
     },
     compaction: {
-      dividerTitle: '此处已执行上下文压缩',
-      dividerDescription: '以上历史已折叠为摘要，以下内容为新的上下文窗口。',
+      dividerTitle: '从这里继续当前任务',
+      dividerDescription: '以上对话已压缩为摘要，以下回复基于摘要继续。',
+      pendingStatus: '正在整理上下文，稍后将从新的上下文继续。',
     },
     codeBlock: {
       showRawText: '显示原始文本',

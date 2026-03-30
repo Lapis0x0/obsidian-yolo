@@ -39,6 +39,9 @@ type UseChatStreamManagerParams = {
   setCompactionState: React.Dispatch<
     React.SetStateAction<ChatConversationCompaction | null>
   >
+  setPendingCompactionAnchorMessageId: React.Dispatch<
+    React.SetStateAction<string | null>
+  >
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
@@ -100,6 +103,7 @@ export type UseChatStreamManager = {
 export function useChatStreamManager({
   setChatMessages,
   setCompactionState,
+  setPendingCompactionAnchorMessageId,
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
@@ -150,6 +154,9 @@ export function useChatStreamManager({
 
       setChatMessages(state.messages)
       setCompactionState(state.compaction ?? null)
+      setPendingCompactionAnchorMessageId(
+        state.pendingCompactionAnchorMessageId ?? null,
+      )
       if (!(state.status === 'running' || runSummary.isWaitingApproval)) {
         return
       }
@@ -185,6 +192,7 @@ export function useChatStreamManager({
     plugin,
     setChatMessages,
     setCompactionState,
+    setPendingCompactionAnchorMessageId,
   ])
 
   const abortConversationRun = useCallback(

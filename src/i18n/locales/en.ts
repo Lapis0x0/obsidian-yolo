@@ -989,9 +989,11 @@ export const en: TranslationKeys = {
         'Enable tools to handle search, read/write operations, and multi-step tasks.',
     },
     compaction: {
-      dividerTitle: 'Context compacted here',
+      dividerTitle: 'Continue the current task from here',
       dividerDescription:
-        'Earlier history has been folded into a summary. The messages below continue in a fresh context window.',
+        'Earlier conversation has been compressed into a summary. Replies below continue from that summary.',
+      pendingStatus:
+        'Organizing context now. The conversation will continue in a fresh context shortly.',
     },
     codeBlock: {
       showRawText: 'Show raw text',

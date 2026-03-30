@@ -859,6 +859,7 @@ export type TranslationKeys = {
     compaction?: {
       dividerTitle?: string
       dividerDescription?: string
+      pendingStatus?: string
     }
     codeBlock?: {
       showRawText?: string

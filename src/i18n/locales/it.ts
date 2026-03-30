@@ -969,9 +969,11 @@ export const it: TranslationKeys = {
         'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
     },
     compaction: {
-      dividerTitle: 'Qui e stato eseguito il compact del contesto',
+      dividerTitle: "Da qui continua l'attivita corrente",
       dividerDescription:
-        'La cronologia precedente e stata riassunta. I messaggi seguenti continuano in una nuova finestra di contesto.',
+        'La conversazione precedente e stata compressa in un riassunto. Le risposte seguenti continuano da quel riassunto.',
+      pendingStatus:
+        'Sto riorganizzando il contesto. La conversazione continuera tra poco in un nuovo contesto.',
     },
     codeBlock: {
       showRawText: 'Mostra testo grezzo',

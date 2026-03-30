@@ -8,7 +8,13 @@ import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'
 
-export type AgentRuntimeSubscribe = (messages: ChatMessage[]) => void
+export type AgentRuntimeSnapshot = {
+  messages: ChatMessage[]
+  compaction: ChatConversationCompaction | null
+  pendingCompactionAnchorMessageId: string | null
+}
+
+export type AgentRuntimeSubscribe = (snapshot: AgentRuntimeSnapshot) => void
 
 export type AgentRuntimeRunInput = {
   providerClient: BaseLLMProvider<LLMProvider>
