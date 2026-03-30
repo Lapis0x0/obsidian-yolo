@@ -234,6 +234,21 @@ function createNewAgent(defaultModelId: string): Assistant {
   }
 }
 
+const DEFAULT_DISABLED_NEW_AGENT_BUILTIN_TOOL_NAMES = new Set([
+  'context_prune_tool_results',
+  'context_compact',
+])
+
+function isDefaultDisabledNewAgentBuiltinTool(toolName: string): boolean {
+  try {
+    return DEFAULT_DISABLED_NEW_AGENT_BUILTIN_TOOL_NAMES.has(
+      parseToolName(toolName).toolName,
+    )
+  } catch {
+    return DEFAULT_DISABLED_NEW_AGENT_BUILTIN_TOOL_NAMES.has(toolName)
+  }
+}
+
 function toDraftAgent(
   assistant: Assistant,
   fallbackModelId: string,
@@ -467,12 +482,19 @@ export function AgentsSectionContent({
       const nextEnabledToolNames = new Set(getEnabledAssistantToolNames(prev))
 
       for (const toolName of builtinToolNames) {
-        nextEnabledToolNames.add(toolName)
+        const existingPreference = nextToolPreferences[toolName]
+        const shouldDefaultDisabled =
+          isDefaultDisabledNewAgentBuiltinTool(toolName) &&
+          existingPreference === undefined
+
+        if (!shouldDefaultDisabled) {
+          nextEnabledToolNames.add(toolName)
+        }
         nextToolPreferences[toolName] = {
-          ...nextToolPreferences[toolName],
-          enabled: true,
+          ...existingPreference,
+          enabled: existingPreference?.enabled ?? !shouldDefaultDisabled,
           approvalMode:
-            nextToolPreferences[toolName]?.approvalMode ??
+            existingPreference?.approvalMode ??
             getDefaultApprovalModeForTool(toolName),
         }
       }
@@ -1228,12 +1250,22 @@ export function AgentsSectionContent({
                           }
 
                           if (serverName === localFsServerName) {
-                            nextEnabledToolNames.add(tool.name)
+                            const existingPreference =
+                              nextToolPreferences[tool.name]
+                            const shouldDefaultDisabled =
+                              isDefaultDisabledNewAgentBuiltinTool(tool.name) &&
+                              existingPreference === undefined
+
+                            if (!shouldDefaultDisabled) {
+                              nextEnabledToolNames.add(tool.name)
+                            }
                             nextToolPreferences[tool.name] = {
-                              ...nextToolPreferences[tool.name],
-                              enabled: true,
+                              ...existingPreference,
+                              enabled:
+                                existingPreference?.enabled ??
+                                !shouldDefaultDisabled,
                               approvalMode:
-                                nextToolPreferences[tool.name]?.approvalMode ??
+                                existingPreference?.approvalMode ??
                                 getDefaultApprovalModeForTool(tool.name),
                             }
                           }
