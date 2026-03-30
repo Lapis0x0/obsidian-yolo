@@ -549,6 +549,33 @@ describe('local fs tool action helpers', () => {
     })
   })
 
+  it('supports context compact control operation', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'compact-1',
+      toolName: 'context_compact',
+      args: {
+        reason: 'context window is crowded',
+        instruction: 'preserve pending edits and file paths',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_compact',
+      toolCallId: 'compact-1',
+      operation: 'compact_restart',
+      reason: 'context window is crowded',
+      instruction: 'preserve pending edits and file paths',
+    })
+  })
+
   it('handles memory tools through local tool dispatcher', async () => {
     const entries = new Map<string, unknown>()
     const contents = new Map<string, string>()

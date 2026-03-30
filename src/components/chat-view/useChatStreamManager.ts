@@ -24,7 +24,7 @@ import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
-import { ChatMessage } from '../../types/chat'
+import { ChatConversationCompaction, ChatMessage } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
@@ -36,6 +36,9 @@ import { ReasoningLevel } from './chat-input/ReasoningSelect'
 
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
+  setCompactionState: React.Dispatch<
+    React.SetStateAction<ChatConversationCompaction | null>
+  >
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
@@ -44,6 +47,7 @@ type UseChatStreamManagerParams = {
   chatMode: ChatMode
   currentFileOverride?: TFile | null
   assistantIdOverride?: string
+  compaction?: ChatConversationCompaction | null
   onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
 }
 
@@ -95,6 +99,7 @@ export type UseChatStreamManager = {
 
 export function useChatStreamManager({
   setChatMessages,
+  setCompactionState,
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
@@ -103,6 +108,7 @@ export function useChatStreamManager({
   chatMode,
   currentFileOverride,
   assistantIdOverride,
+  compaction,
   onRunSettled,
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
@@ -143,6 +149,7 @@ export function useChatStreamManager({
       }
 
       setChatMessages(state.messages)
+      setCompactionState(state.compaction ?? null)
       if (!(state.status === 'running' || runSummary.isWaitingApproval)) {
         return
       }
@@ -172,7 +179,13 @@ export function useChatStreamManager({
     return () => {
       unsubscribe()
     }
-  }, [autoScrollToBottom, currentConversationId, plugin, setChatMessages])
+  }, [
+    autoScrollToBottom,
+    currentConversationId,
+    plugin,
+    setChatMessages,
+    setCompactionState,
+  ])
 
   const abortConversationRun = useCallback(
     (conversationId: string) => {
@@ -245,6 +258,17 @@ export function useChatStreamManager({
         const currentProvider = settings.providers.find(
           (provider) => provider.id === resolvedClient.model.providerId,
         )
+        const compactionModelId = settings.chatTitleModelId || requestedModelId
+        let resolvedCompactionClient: ReturnType<typeof getChatModelClient>
+        try {
+          resolvedCompactionClient = getChatModelClient({
+            settings,
+            modelId: compactionModelId,
+            onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+          })
+        } catch {
+          resolvedCompactionClient = resolvedClient
+        }
         const shouldStreamResponse = shouldUseStreamingForProvider({
           requestedStream: conversationOverrides?.stream ?? true,
           provider: currentProvider,
@@ -315,6 +339,9 @@ export function useChatStreamManager({
             conversationId,
             requestContextBuilder,
             mcpManager,
+            compaction,
+            compactionProviderClient: resolvedCompactionClient.providerClient,
+            compactionModel: resolvedCompactionClient.model,
             abortSignal: abortController.signal,
             reasoningLevel,
             allowedToolNames: effectiveAllowedToolNames,

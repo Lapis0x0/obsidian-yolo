@@ -78,6 +78,7 @@ type LocalFileToolName =
   | 'fs_search'
   | 'fs_read'
   | 'context_prune_tool_results'
+  | 'context_compact'
   | 'fs_edit'
   | 'fs_create_file'
   | 'fs_delete_file'
@@ -456,6 +457,26 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['toolCallIds'],
+      },
+    },
+    {
+      name: 'context_compact',
+      description:
+        'Compact earlier conversation history into a summary and continue in a fresh context window while preserving visible chat history.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description:
+              'Optional short reason for compacting, such as context is getting crowded.',
+          },
+          instruction: {
+            type: 'string',
+            description:
+              'Optional focus hint for the summary, such as preserve file paths and pending tasks.',
+          },
+        },
       },
     },
     {
@@ -1624,6 +1645,20 @@ export async function callLocalFileTool({
             acceptedToolCallIds,
             ignoredToolCallIds,
             reason: getOptionalTextArg(args, 'reason')?.trim() || null,
+          }),
+        }
+      }
+
+      case 'context_compact': {
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'context_compact',
+            toolCallId: toolCallId ?? null,
+            operation: 'compact_restart',
+            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
+            instruction:
+              getOptionalTextArg(args, 'instruction')?.trim() || null,
           }),
         }
       }

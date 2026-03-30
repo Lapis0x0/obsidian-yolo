@@ -486,4 +486,337 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       ),
     ).toBe(true)
   })
+
+  it('injects compact summary and retains the latest assistant tool boundary', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'old prompt',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: 'old answer',
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-tools',
+          content: 'checking files',
+          toolCallRequests: [
+            {
+              id: 'compact-1',
+              name: 'yolo_local__context_compact',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-compact',
+          toolCalls: [
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    tool: 'context_compact',
+                    toolCallId: 'compact-1',
+                    operation: 'compact_restart',
+                  }),
+                },
+              },
+            },
+          ],
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+      compaction: {
+        anchorMessageId: 'tool-compact',
+        summary: 'Earlier history summary',
+        compactedAt: 1,
+        triggerToolCallId: 'compact-1',
+      },
+    })
+
+    expect(requestMessages[1]).toEqual({
+      role: 'user',
+      content: expect.stringContaining('Earlier history summary'),
+    })
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'assistant' && message.content === 'checking files',
+      ),
+    ).toBe(true)
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'tool' && message.tool_call.id === 'compact-1',
+      ),
+    ).toBe(true)
+    expect(
+      requestMessages.some(
+        (message) =>
+          message.role === 'assistant' && message.content === 'old answer',
+      ),
+    ).toBe(false)
+    expect(requestMessages.at(-1)).toEqual({
+      role: 'user',
+      content: expect.stringContaining(
+        'Resume the task that was active immediately before compaction.',
+      ),
+    })
+  })
+
+  it('does not append compact resume instruction after a new user turn', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'assistant',
+          id: 'assistant-tools',
+          content: 'checking files',
+          toolCallRequests: [
+            {
+              id: 'compact-1',
+              name: 'yolo_local__context_compact',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-compact',
+          toolCalls: [
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    tool: 'context_compact',
+                    toolCallId: 'compact-1',
+                    operation: 'compact_restart',
+                  }),
+                },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'new turn after compact',
+          mentionables: [],
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+      compaction: {
+        anchorMessageId: 'tool-compact',
+        summary: 'Earlier history summary',
+        compactedAt: 1,
+        triggerToolCallId: 'compact-1',
+      },
+    })
+
+    expect(requestMessages.at(-1)).toEqual({
+      role: 'user',
+      content: 'new turn after compact',
+    })
+  })
+
+  it('keeps compaction history within the recent context window', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-before',
+          content: null,
+          promptContent: 'old question before compact',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-tools',
+          content: 'checking files',
+          toolCallRequests: [
+            {
+              id: 'compact-1',
+              name: 'yolo_local__context_compact',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-compact',
+          toolCalls: [
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    tool: 'context_compact',
+                    toolCallId: 'compact-1',
+                    operation: 'compact_restart',
+                  }),
+                },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'follow-up 1',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-2',
+          content: 'answer 1',
+        },
+        {
+          role: 'user',
+          id: 'user-3',
+          content: null,
+          promptContent: 'follow-up 2',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-3',
+          content: 'answer 2',
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+      maxContextOverride: 2,
+      compaction: {
+        anchorMessageId: 'tool-compact',
+        summary: 'Earlier history summary',
+        compactedAt: 1,
+        triggerToolCallId: 'compact-1',
+      },
+    })
+
+    expect(requestMessages[1]).toEqual({
+      role: 'user',
+      content: expect.stringContaining('Earlier history summary'),
+    })
+    expect(requestMessages).toEqual([
+      expect.objectContaining({ role: 'system' }),
+      expect.objectContaining({
+        role: 'user',
+        content: expect.stringContaining('Earlier history summary'),
+      }),
+      {
+        role: 'user',
+        content: 'follow-up 2',
+      },
+      {
+        role: 'assistant',
+        content: 'answer 2',
+      },
+    ])
+  })
 })

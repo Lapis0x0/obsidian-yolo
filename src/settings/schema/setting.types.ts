@@ -239,7 +239,7 @@ export const smartComposerSettingsSchema = z.object({
   embeddingModels: z.array(embeddingModelSchema).catch([]),
 
   chatModelId: z.string().catch(''), // model for default chat feature
-  chatTitleModelId: z.string().catch(''), // model for automatic conversation naming
+  chatTitleModelId: z.string().catch(''), // model for automatic conversation naming and compact summaries
   embeddingModelId: z.string().catch(''), // model for embedding
 
   // System Prompt

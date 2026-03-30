@@ -11,6 +11,7 @@ import {
 import { MarkdownView, Notice, Platform, TFile } from 'obsidian'
 import type { TFolder } from 'obsidian'
 import {
+  Fragment,
   forwardRef,
   useCallback,
   useEffect,
@@ -39,6 +40,7 @@ import { useChatHistory } from '../../hooks/useChatHistory'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
+  ChatConversationCompaction,
   ChatMessage,
   ChatToolMessage,
   ChatUserMessage,
@@ -294,6 +296,7 @@ export type ChatProps = {
 const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const app = useApp()
   const plugin = usePlugin()
+  const agentService = plugin.getAgentService()
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const { getRAGEngine } = useRAG()
@@ -371,6 +374,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatMessagesStateRef = useRef<ChatMessage[]>([])
   const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [compactionState, setCompactionState] =
+    useState<ChatConversationCompaction | null>(null)
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
   const [currentConversationId, setCurrentConversationId] =
     useState<string>(uuidv4())
@@ -782,6 +787,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return chatMessages.find((message) => message.role === 'user')?.id
   }, [chatMessages])
 
+  const effectiveCompactionState = useMemo(() => {
+    if (!compactionState) {
+      return null
+    }
+
+    return chatMessages.some(
+      (message) => message.id === compactionState.anchorMessageId,
+    )
+      ? compactionState
+      : null
+  }, [chatMessages, compactionState])
+
   useEffect(() => {
     inputMessageRef.current = inputMessage
   }, [inputMessage])
@@ -794,6 +811,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () => chatMessages.some((message) => message.role === 'user'),
     [chatMessages],
   )
+
+  const compactionDividerFirstMessageId = useMemo(() => {
+    if (!effectiveCompactionState) {
+      return null
+    }
+
+    const anchorIndex = chatMessages.findIndex(
+      (message) => message.id === effectiveCompactionState.anchorMessageId,
+    )
+    return anchorIndex === -1
+      ? null
+      : (chatMessages[anchorIndex + 1]?.id ?? null)
+  }, [chatMessages, effectiveCompactionState])
 
   const shouldShowAutoAttachBadge =
     settings.chatOptions.includeCurrentFileContent &&
@@ -847,6 +877,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     submitChatMutation,
   } = useChatStreamManager({
     setChatMessages,
+    setCompactionState,
     autoScrollToBottom,
     requestContextBuilder,
     currentConversationId,
@@ -855,6 +886,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMode,
     currentFileOverride,
     assistantIdOverride: conversationAssistantId,
+    compaction: effectiveCompactionState,
   })
   const [runSummariesByConversationId, setRunSummariesByConversationId] =
     useState<Map<string, AgentConversationRunSummary>>(new Map())
@@ -924,16 +956,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [])
 
   useEffect(() => {
-    const unsubscribe = plugin
-      .getAgentService()
-      .subscribeToRunSummaries((summaries) => {
-        setRunSummariesByConversationId(summaries)
-      })
+    const unsubscribe = agentService.subscribeToRunSummaries((summaries) => {
+      setRunSummariesByConversationId(summaries)
+    })
 
     return () => {
       unsubscribe()
     }
-  }, [plugin])
+  }, [agentService])
 
   const serializeMessageModelMap = useCallback(
     (
@@ -970,6 +1000,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           serializeMessageModelMap(messages),
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
+          effectiveCompactionState,
         )
       } catch (error) {
         new Notice('Failed to save chat history')
@@ -982,6 +1013,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversationOverrides,
       createOrUpdateConversation,
       currentConversationId,
+      effectiveCompactionState,
       reasoningLevel,
       serializeMessageModelMap,
     ],
@@ -1003,6 +1035,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           serializeMessageModelMap(messages),
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
+          effectiveCompactionState,
         )
         return true
       } catch (error) {
@@ -1017,6 +1050,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversationOverrides,
       createOrUpdateConversationImmediately,
       currentConversationId,
+      effectiveCompactionState,
       reasoningLevel,
       serializeMessageModelMap,
     ],
@@ -1042,6 +1076,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         setCurrentConversationId(conversationId)
         setChatMessages(conversation.messages)
+        setCompactionState(conversation.compaction ?? null)
         const storedAutoAttach = conversation.overrides?.autoAttachCurrentFile
         const resolvedAutoAttach =
           typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
@@ -1190,6 +1225,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setMessageModelMap(new Map())
     setMessageReasoningMap(new Map())
     setChatMessages([])
+    setCompactionState(null)
     setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(defaultReasoningLevel)
     if (selectedBlock) {
@@ -1321,9 +1357,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           retainedUserMessageIds.has(messageId),
         ),
       )
+      const branchedCompactionState =
+        effectiveCompactionState &&
+        nextMessages.some(
+          (message) => message.id === effectiveCompactionState.anchorMessageId,
+        )
+          ? effectiveCompactionState
+          : null
 
       setCurrentConversationId(newConversationId)
       setChatMessages(nextMessages)
+      setCompactionState(branchedCompactionState)
       setEditingAssistantMessageId(null)
 
       setConversationOverrides(nextOverrides)
@@ -1378,6 +1422,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           resolvedConversationModelId,
           serializeMessageModelMap(nextMessages, nextMessageModelMap),
           resolvedReasoningLevel,
+          branchedCompactionState,
         )
         await updateConversationTitle(newConversationId, branchTitle)
         new Notice(t('chat.branchCreated', 'Branch created'))
@@ -1394,6 +1439,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversationOverrides,
       createOrUpdateConversationImmediately,
       currentConversationId,
+      effectiveCompactionState,
       messageModelMap,
       messageReasoningMap,
       reasoningLevel,
@@ -1563,6 +1609,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ),
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
+        effectiveCompactionState,
       )
       void generateConversationTitle(currentConversationId, compiledMessages)
       const requestReasoningLevel =
@@ -1582,6 +1629,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       abortConversationRun,
       forceScrollToBottom,
       createOrUpdateConversation,
+      effectiveCompactionState,
       generateConversationTitle,
       chatMode,
       messageModelMap,
@@ -1872,9 +1920,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         })
 
         setChatMessages(updatedMessages)
-        plugin
-          .getAgentService()
-          .replaceConversationMessages(currentConversationId, updatedMessages)
+        agentService.replaceConversationMessages(
+          currentConversationId,
+          updatedMessages,
+        )
         await persistConversationImmediately(updatedMessages)
 
         if (appliedCount > 0 && unavailableCount === 0) {
@@ -1908,10 +1957,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       app.vault,
+      agentService,
       chatMessages,
       currentConversationId,
       persistConversationImmediately,
-      plugin,
       t,
     ],
   )
@@ -1952,9 +2001,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         message.id === toolMessage.id ? toolMessage : message,
       )
       setChatMessages(updatedMessages)
-      plugin
-        .getAgentService()
-        .replaceConversationMessages(currentConversationId, updatedMessages)
+      agentService.replaceConversationMessages(
+        currentConversationId,
+        updatedMessages,
+      )
 
       // Resume the chat automatically if this tool message is the last message
       // and all tool calls have completed.
@@ -1982,6 +2032,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [
       chatMessages,
       currentConversationId,
+      agentService,
       submitChatMutation,
       getMcpManager,
       forceScrollToBottom,
@@ -2028,7 +2079,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [
     chatMessages,
-    currentConversationId,
     isCurrentConversationRunActive,
     persistConversationImmediately,
   ])
@@ -2740,33 +2790,60 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )}
       <div className="smtcmp-chat-messages" ref={chatMessagesRef}>
         {groupedChatMessages.map((messageOrGroup, index) => {
+          const firstRenderedMessageId = Array.isArray(messageOrGroup)
+            ? (messageOrGroup.at(0)?.id ?? null)
+            : messageOrGroup.id
+
           if (Array.isArray(messageOrGroup)) {
             return (
-              <AssistantToolMessageGroupItem
-                key={messageOrGroup.at(0)?.id}
-                messages={messageOrGroup}
-                conversationId={currentConversationId}
-                suppressFooter={
-                  isCurrentConversationRunActive &&
-                  index === latestAssistantToolGroupIndex
-                }
-                isApplying={applyMutation.isPending}
-                activeApplyRequestKey={activeApplyRequestKey}
-                onApply={handleApply}
-                onToolMessageUpdate={handleToolMessageUpdate}
-                editingAssistantMessageId={editingAssistantMessageId}
-                onEditStart={(messageId) => {
-                  setEditingAssistantMessageId(messageId)
-                }}
-                onEditCancel={handleAssistantMessageEditCancel}
-                onEditSave={handleAssistantMessageEditSave}
-                onDeleteGroup={handleAssistantMessageGroupDelete}
-                onBranchGroup={handleAssistantMessageGroupBranch}
-                onQuoteAssistantSelection={handleQuoteAssistantSelection}
-                onOpenEditSummaryFile={handleOpenEditSummaryFile}
-                onUndoEditSummary={handleUndoEditSummary}
-                undoingEditSummaryTarget={undoingEditSummaryTarget}
-              />
+              <Fragment key={messageOrGroup.at(0)?.id}>
+                {firstRenderedMessageId === compactionDividerFirstMessageId && (
+                  <div
+                    key={`${firstRenderedMessageId}-compact-divider`}
+                    className="smtcmp-chat-compaction-divider"
+                  >
+                    <div className="smtcmp-chat-compaction-divider__line" />
+                    <div className="smtcmp-chat-compaction-divider__content">
+                      <div className="smtcmp-chat-compaction-divider__title">
+                        {t(
+                          'chat.compaction.dividerTitle',
+                          '此处已执行上下文压缩',
+                        )}
+                      </div>
+                      <div className="smtcmp-chat-compaction-divider__description">
+                        {t(
+                          'chat.compaction.dividerDescription',
+                          '以上历史已折叠为摘要，以下内容为新的上下文窗口。',
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <AssistantToolMessageGroupItem
+                  messages={messageOrGroup}
+                  conversationId={currentConversationId}
+                  suppressFooter={
+                    isCurrentConversationRunActive &&
+                    index === latestAssistantToolGroupIndex
+                  }
+                  isApplying={applyMutation.isPending}
+                  activeApplyRequestKey={activeApplyRequestKey}
+                  onApply={handleApply}
+                  onToolMessageUpdate={handleToolMessageUpdate}
+                  editingAssistantMessageId={editingAssistantMessageId}
+                  onEditStart={(messageId) => {
+                    setEditingAssistantMessageId(messageId)
+                  }}
+                  onEditCancel={handleAssistantMessageEditCancel}
+                  onEditSave={handleAssistantMessageEditSave}
+                  onDeleteGroup={handleAssistantMessageGroupDelete}
+                  onBranchGroup={handleAssistantMessageGroupBranch}
+                  onQuoteAssistantSelection={handleQuoteAssistantSelection}
+                  onOpenEditSummaryFile={handleOpenEditSummaryFile}
+                  onUndoEditSummary={handleUndoEditSummary}
+                  undoingEditSummaryTarget={undoingEditSummaryTarget}
+                />
+              </Fragment>
             )
           }
 
@@ -2776,183 +2853,208 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             reasoningLevel
 
           return (
-            <UserMessageItem
-              key={messageOrGroup.id}
-              message={messageOrGroup}
-              isFocused={focusedMessageId === messageOrGroup.id}
-              displayMentionables={
-                messageOrGroup.id === firstUserMessageId
-                  ? messageOrGroup.mentionables
-                  : messageOrGroup.mentionables.filter(
-                      (mentionable) => mentionable.type !== 'current-file',
-                    )
-              }
-              chatUserInputRef={(ref) =>
-                registerChatUserInputRef(messageOrGroup.id, ref)
-              }
-              onBlur={() => {
-                if (focusedMessageId === messageOrGroup.id) {
-                  setFocusedMessageId(inputMessage.id)
+            <Fragment key={messageOrGroup.id}>
+              {firstRenderedMessageId === compactionDividerFirstMessageId && (
+                <div
+                  key={`${firstRenderedMessageId}-compact-divider`}
+                  className="smtcmp-chat-compaction-divider"
+                >
+                  <div className="smtcmp-chat-compaction-divider__line" />
+                  <div className="smtcmp-chat-compaction-divider__content">
+                    <div className="smtcmp-chat-compaction-divider__title">
+                      {t(
+                        'chat.compaction.dividerTitle',
+                        '此处已执行上下文压缩',
+                      )}
+                    </div>
+                    <div className="smtcmp-chat-compaction-divider__description">
+                      {t(
+                        'chat.compaction.dividerDescription',
+                        '以上历史已折叠为摘要，以下内容为新的上下文窗口。',
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              <UserMessageItem
+                message={messageOrGroup}
+                isFocused={focusedMessageId === messageOrGroup.id}
+                displayMentionables={
+                  messageOrGroup.id === firstUserMessageId
+                    ? messageOrGroup.mentionables
+                    : messageOrGroup.mentionables.filter(
+                        (mentionable) => mentionable.type !== 'current-file',
+                      )
                 }
-              }}
-              onInputChange={(content) => {
-                setChatMessages((prevChatHistory) =>
-                  prevChatHistory.map((msg) =>
-                    msg.role === 'user' && msg.id === messageOrGroup.id
-                      ? {
-                          ...msg,
-                          content,
-                          promptContent: null,
-                          similaritySearchResults: undefined,
-                        }
-                      : msg,
-                  ),
-                )
-              }}
-              onSubmit={(content, useVaultSearch) => {
-                if (
-                  editorStateToPlainText(content).trim() === '' &&
-                  messageOrGroup.mentionables.length === 0 &&
-                  (messageOrGroup.selectedSkills?.length ?? 0) === 0
-                ) {
-                  return
+                chatUserInputRef={(ref) =>
+                  registerChatUserInputRef(messageOrGroup.id, ref)
                 }
-                // Use the model mapping for this message if exists, otherwise current conversation model
-                const modelForThisMessage =
+                onBlur={() => {
+                  if (focusedMessageId === messageOrGroup.id) {
+                    setFocusedMessageId(inputMessage.id)
+                  }
+                }}
+                onInputChange={(content) => {
+                  setChatMessages((prevChatHistory) =>
+                    prevChatHistory.map((msg) =>
+                      msg.role === 'user' && msg.id === messageOrGroup.id
+                        ? {
+                            ...msg,
+                            content,
+                            promptContent: null,
+                            similaritySearchResults: undefined,
+                          }
+                        : msg,
+                    ),
+                  )
+                }}
+                onSubmit={(content, useVaultSearch) => {
+                  if (
+                    editorStateToPlainText(content).trim() === '' &&
+                    messageOrGroup.mentionables.length === 0 &&
+                    (messageOrGroup.selectedSkills?.length ?? 0) === 0
+                  ) {
+                    return
+                  }
+                  const modelForThisMessage =
+                    messageModelMap.get(messageOrGroup.id) ??
+                    conversationModelId
+                  const reasoningForThisMessage =
+                    messageReasoningMap.get(messageOrGroup.id) ??
+                    messageReasoningLevel
+                  const nextMessageModelMap = new Map(messageModelMap)
+                  nextMessageModelMap.set(
+                    messageOrGroup.id,
+                    modelForThisMessage,
+                  )
+                  void handleUserMessageSubmit({
+                    inputChatMessages: [
+                      ...groupedChatMessages
+                        .slice(0, index)
+                        .flatMap((messageOrGroup): ChatMessage[] =>
+                          !Array.isArray(messageOrGroup)
+                            ? [messageOrGroup]
+                            : messageOrGroup,
+                        ),
+                      {
+                        role: 'user',
+                        content: content,
+                        promptContent: null,
+                        id: messageOrGroup.id,
+                        reasoningLevel: reasoningForThisMessage,
+                        mentionables: messageOrGroup.mentionables,
+                        selectedSkills: messageOrGroup.selectedSkills ?? [],
+                      },
+                    ],
+                    useVaultSearch,
+                    persistedMessageModelMap: nextMessageModelMap,
+                  })
+                  chatUserInputRefs.current.get(inputMessage.id)?.focus()
+                  setMessageModelMap(nextMessageModelMap)
+                  setMessageReasoningMap((prev) => {
+                    const next = new Map(prev)
+                    next.set(messageOrGroup.id, reasoningForThisMessage)
+                    return next
+                  })
+                }}
+                onFocus={() => {
+                  setFocusedMessageId(messageOrGroup.id)
+                }}
+                onMentionablesChange={(mentionables) => {
+                  setChatMessages((prevChatHistory) =>
+                    prevChatHistory.map((msg) => {
+                      if (msg.id !== messageOrGroup.id) return msg
+                      if (msg.role !== 'user') return msg
+                      const prevKeys = msg.mentionables.map((m) =>
+                        getMentionableKey(serializeMentionable(m)),
+                      )
+                      const nextKeys = mentionables.map((m) =>
+                        getMentionableKey(serializeMentionable(m)),
+                      )
+                      const nextKeySet = new Set(nextKeys)
+                      const isSameMentionables =
+                        prevKeys.length === nextKeys.length &&
+                        prevKeys.every((key) => nextKeySet.has(key))
+                      return {
+                        ...msg,
+                        mentionables,
+                        promptContent: isSameMentionables
+                          ? msg.promptContent
+                          : null,
+                        similaritySearchResults: isSameMentionables
+                          ? msg.similaritySearchResults
+                          : undefined,
+                      }
+                    }),
+                  )
+                }}
+                onSelectedSkillsChange={(selectedSkills) => {
+                  setChatMessages((prevChatHistory) =>
+                    prevChatHistory.map((msg) =>
+                      msg.role === 'user' && msg.id === messageOrGroup.id
+                        ? {
+                            ...msg,
+                            selectedSkills,
+                            promptContent: null,
+                            snapshotRef: undefined,
+                            similaritySearchResults: undefined,
+                          }
+                        : msg,
+                    ),
+                  )
+                }}
+                modelId={
                   messageModelMap.get(messageOrGroup.id) ?? conversationModelId
-                const reasoningForThisMessage =
-                  messageReasoningMap.get(messageOrGroup.id) ??
-                  messageReasoningLevel
-                const nextMessageModelMap = new Map(messageModelMap)
-                nextMessageModelMap.set(messageOrGroup.id, modelForThisMessage)
-                void handleUserMessageSubmit({
-                  inputChatMessages: [
-                    ...groupedChatMessages
-                      .slice(0, index)
-                      .flatMap((messageOrGroup): ChatMessage[] =>
-                        !Array.isArray(messageOrGroup)
-                          ? [messageOrGroup]
-                          : messageOrGroup,
-                      ),
-                    {
-                      role: 'user',
-                      content: content,
-                      promptContent: null,
-                      id: messageOrGroup.id,
-                      reasoningLevel: reasoningForThisMessage,
-                      mentionables: messageOrGroup.mentionables,
-                      selectedSkills: messageOrGroup.selectedSkills ?? [],
-                    },
-                  ],
-                  useVaultSearch,
-                  persistedMessageModelMap: nextMessageModelMap,
-                })
-                chatUserInputRefs.current.get(inputMessage.id)?.focus()
-                // Record the model used for this message id
-                setMessageModelMap(nextMessageModelMap)
-                setMessageReasoningMap((prev) => {
-                  const next = new Map(prev)
-                  next.set(messageOrGroup.id, reasoningForThisMessage)
-                  return next
-                })
-              }}
-              onFocus={() => {
-                setFocusedMessageId(messageOrGroup.id)
-              }}
-              onMentionablesChange={(mentionables) => {
-                setChatMessages((prevChatHistory) =>
-                  prevChatHistory.map((msg) => {
-                    if (msg.id !== messageOrGroup.id) return msg
-                    if (msg.role !== 'user') return msg
-                    const prevKeys = msg.mentionables.map((m) =>
-                      getMentionableKey(serializeMentionable(m)),
-                    )
-                    const nextKeys = mentionables.map((m) =>
-                      getMentionableKey(serializeMentionable(m)),
-                    )
-                    const nextKeySet = new Set(nextKeys)
-                    const isSameMentionables =
-                      prevKeys.length === nextKeys.length &&
-                      prevKeys.every((key) => nextKeySet.has(key))
-                    return {
-                      ...msg,
-                      mentionables,
-                      promptContent: isSameMentionables
-                        ? msg.promptContent
-                        : null,
-                      similaritySearchResults: isSameMentionables
-                        ? msg.similaritySearchResults
-                        : undefined,
-                    }
-                  }),
-                )
-              }}
-              onSelectedSkillsChange={(selectedSkills) => {
-                setChatMessages((prevChatHistory) =>
-                  prevChatHistory.map((msg) =>
-                    msg.role === 'user' && msg.id === messageOrGroup.id
-                      ? {
-                          ...msg,
-                          selectedSkills,
-                          promptContent: null,
-                          snapshotRef: undefined,
-                          similaritySearchResults: undefined,
-                        }
-                      : msg,
-                  ),
-                )
-              }}
-              modelId={
-                messageModelMap.get(messageOrGroup.id) ?? conversationModelId
-              }
-              onModelChange={(id) => {
-                // Update both the mapping for this message and the conversation-level model
-                setMessageModelMap((prev) => {
-                  const next = new Map(prev)
-                  next.set(messageOrGroup.id, id)
-                  return next
-                })
-                setConversationModelId(id)
-                conversationModelIdRef.current.set(currentConversationId, id)
-                const nextReasoningLevel = getReasoningLevelForModelId(id)
-                setReasoningLevel(nextReasoningLevel)
-                conversationReasoningLevelRef.current.set(
-                  currentConversationId,
-                  nextReasoningLevel,
-                )
-                setInputMessage((prev) => ({
-                  ...prev,
-                  reasoningLevel: nextReasoningLevel,
-                }))
-              }}
-              reasoningLevel={messageReasoningLevel}
-              onReasoningChange={(level) => {
-                setMessageReasoningMap((prev) => {
-                  const next = new Map(prev)
-                  next.set(messageOrGroup.id, level)
-                  return next
-                })
-                setChatMessages((prevChatHistory) =>
-                  prevChatHistory.map((msg) =>
-                    msg.role === 'user' && msg.id === messageOrGroup.id
-                      ? {
-                          ...msg,
-                          reasoningLevel: level,
-                        }
-                      : msg,
-                  ),
-                )
-                setReasoningLevel(level)
-                conversationReasoningLevelRef.current.set(
-                  currentConversationId,
-                  level,
-                )
-                void persistReasoningLevelForModel(conversationModelId, level)
-              }}
-              currentAssistantId={conversationAssistantId}
-              currentChatMode={chatMode}
-              onSelectChatModeForConversation={handleChatModeChange}
-            />
+                }
+                onModelChange={(id) => {
+                  // Update both the mapping for this message and the conversation-level model
+                  setMessageModelMap((prev) => {
+                    const next = new Map(prev)
+                    next.set(messageOrGroup.id, id)
+                    return next
+                  })
+                  setConversationModelId(id)
+                  conversationModelIdRef.current.set(currentConversationId, id)
+                  const nextReasoningLevel = getReasoningLevelForModelId(id)
+                  setReasoningLevel(nextReasoningLevel)
+                  conversationReasoningLevelRef.current.set(
+                    currentConversationId,
+                    nextReasoningLevel,
+                  )
+                  setInputMessage((prev) => ({
+                    ...prev,
+                    reasoningLevel: nextReasoningLevel,
+                  }))
+                }}
+                reasoningLevel={messageReasoningLevel}
+                onReasoningChange={(level) => {
+                  setMessageReasoningMap((prev) => {
+                    const next = new Map(prev)
+                    next.set(messageOrGroup.id, level)
+                    return next
+                  })
+                  setChatMessages((prevChatHistory) =>
+                    prevChatHistory.map((msg) =>
+                      msg.role === 'user' && msg.id === messageOrGroup.id
+                        ? {
+                            ...msg,
+                            reasoningLevel: level,
+                          }
+                        : msg,
+                    ),
+                  )
+                  setReasoningLevel(level)
+                  conversationReasoningLevelRef.current.set(
+                    currentConversationId,
+                    level,
+                  )
+                  void persistReasoningLevelForModel(conversationModelId, level)
+                }}
+                currentAssistantId={conversationAssistantId}
+                currentChatMode={chatMode}
+                onSelectChatModeForConversation={handleChatModeChange}
+              />
+            </Fragment>
           )
         })}
         <QueryProgress state={queryProgress} />

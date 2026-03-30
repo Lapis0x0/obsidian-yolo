@@ -6,6 +6,11 @@ import type { QueryProgressState } from '../../components/chat-view/QueryProgres
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
+  buildCompactionResumeMessage,
+  buildCompactionSummaryMessage,
+  findCompactTrigger,
+} from '../../core/agent/compaction'
+import {
   getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../../core/skills/liteSkills'
@@ -18,6 +23,7 @@ import type { SelectEmbedding } from '../../database/schema'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
+  ChatConversationCompaction,
   ChatMessage,
   ChatSelectedSkill,
   ChatToolMessage,
@@ -159,6 +165,7 @@ export class RequestContextBuilder {
     maxContextOverride,
     model: _model,
     conversationId,
+    compaction,
     currentFileContextMode = 'full',
     currentFileOverride,
   }: {
@@ -168,6 +175,7 @@ export class RequestContextBuilder {
     maxContextOverride?: number
     model: ChatModel
     conversationId: string
+    compaction?: ChatConversationCompaction | null
     currentFileContextMode?: CurrentFileContextMode
     currentFileOverride?: TFile | null
   }): Promise<RequestMessage[]> {
@@ -274,6 +282,7 @@ export class RequestContextBuilder {
         messages: compiledMessages,
         maxContextOverride: maxContext,
         snapshotEntries,
+        compaction,
       })),
       ...(currentFileMessage ? [currentFileMessage] : []),
     ]
@@ -285,10 +294,12 @@ export class RequestContextBuilder {
     messages,
     maxContextOverride,
     snapshotEntries,
+    compaction,
   }: {
     messages: ChatMessage[]
     maxContextOverride?: number
     snapshotEntries: Record<string, string | ContentPart[]>
+    compaction?: ChatConversationCompaction | null
   }): Promise<RequestMessage[]> {
     // Determine max context messages with priority:
     // 1) explicit override from conversation settings
@@ -302,6 +313,60 @@ export class RequestContextBuilder {
     const requestMessages: RequestMessage[] = []
     const contextMessages = messages.slice(-maxContext)
     const prunedToolCallIds = collectContextPrunedToolCallIds(messages)
+
+    if (compaction) {
+      const compactTrigger = findCompactTrigger(messages)
+      const anchorIndex = messages.findIndex(
+        (message) => message.id === compaction.anchorMessageId,
+      )
+
+      if (
+        anchorIndex !== -1 &&
+        compactTrigger &&
+        compactTrigger.anchorMessageId === compaction.anchorMessageId
+      ) {
+        requestMessages.push(buildCompactionSummaryMessage(compaction))
+        const compactContextStartIndex = Math.max(
+          messages.length - contextMessages.length,
+          compactTrigger.retainedStartIndex,
+        )
+        const compactContextMessages = messages.slice(compactContextStartIndex)
+
+        for (const message of compactContextMessages) {
+          if (message.role === 'user') {
+            requestMessages.push({
+              role: 'user',
+              content: await this.getUserMessageContent({
+                message,
+                snapshotEntries,
+              }),
+            })
+            continue
+          }
+
+          if (message.role === 'assistant') {
+            requestMessages.push(
+              ...this.parseAssistantMessage({ message, prunedToolCallIds }),
+            )
+            continue
+          }
+
+          requestMessages.push(
+            ...this.parseToolMessage({ message, prunedToolCallIds }),
+          )
+        }
+
+        if (
+          !compactContextMessages.some((message) => message.role === 'user')
+        ) {
+          requestMessages.push(buildCompactionResumeMessage())
+        }
+
+        return filterRequestMessagesByToolBoundary(
+          filterEmptyAssistantMessages(requestMessages),
+        )
+      }
+    }
 
     for (const message of contextMessages) {
       if (message.role === 'user') {

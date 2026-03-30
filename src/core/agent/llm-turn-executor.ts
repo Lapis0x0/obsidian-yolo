@@ -5,7 +5,11 @@ import {
   ReasoningLevel,
   reasoningLevelToConfig,
 } from '../../components/chat-view/chat-input/ReasoningSelect'
-import { ChatAssistantMessage, ChatMessage } from '../../types/chat'
+import {
+  ChatAssistantMessage,
+  ChatConversationCompaction,
+  ChatMessage,
+} from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage, RequestTool } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
@@ -16,6 +20,7 @@ import {
   formatTokenCount,
 } from '../../utils/llm/contextTokenEstimate'
 import { executeSingleTurn } from '../ai/single-turn'
+import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import { BaseLLMProvider } from '../llm/base'
 import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
@@ -32,6 +37,7 @@ type AgentLlmTurnExecutorInput = {
   mcpManager: McpManager
   conversationId: string
   messages: ChatMessage[]
+  compaction?: ChatConversationCompaction | null
   enableTools: boolean
   includeBuiltinTools: boolean
   allowedToolNames?: string[]
@@ -74,6 +80,7 @@ export class AgentLlmTurnExecutor {
     'fs_search',
     'fs_read',
     'context_prune_tool_results',
+    CONTEXT_COMPACT_TOOL_NAME,
     'fs_edit',
     'fs_create_file',
     'fs_delete_file',
@@ -158,6 +165,7 @@ export class AgentLlmTurnExecutor {
         maxContextOverride: this.input.maxContextOverride,
         model: this.input.model,
         conversationId: this.input.conversationId,
+        compaction: this.input.compaction,
         currentFileContextMode: this.input.currentFileContextMode,
         currentFileOverride: this.input.currentFileOverride,
       })

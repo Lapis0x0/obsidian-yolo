@@ -146,9 +146,9 @@ export const it: TranslationKeys = {
       defaultChatModel: 'Modello chat predefinito',
       defaultChatModelDesc:
         'Scegli il modello che vuoi usare per la chat nella barra laterale.',
-      chatTitleModel: 'Modello titolo conversazione',
+      chatTitleModel: 'Modello per titolo e riepilogo conversazione',
       chatTitleModelDesc:
-        'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni.',
+        'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni e generare i riepiloghi compact.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",
@@ -350,6 +350,9 @@ export const it: TranslationKeys = {
       builtinContextPruneToolResultsLabel: 'Pulisci contesto',
       builtinContextPruneToolResultsDesc:
         'Esclude dai futuri contesti visibili al modello i risultati storici di fs_read selezionati, senza eliminare la cronologia chat.',
+      builtinContextCompactLabel: 'Compatta contesto',
+      builtinContextCompactDesc:
+        'Comprimi la cronologia meno recente in un riepilogo e continua in una nuova finestra di contesto.',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
         'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, replace_lines, insert_after e append.',
@@ -964,6 +967,11 @@ export const it: TranslationKeys = {
       agentTitle: "Lascia eseguire all'AI",
       agentDescription:
         'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
+    },
+    compaction: {
+      dividerTitle: 'Qui e stato eseguito il compact del contesto',
+      dividerDescription:
+        'La cronologia precedente e stata riassunta. I messaggi seguenti continuano in una nuova finestra di contesto.',
     },
     codeBlock: {
       showRawText: 'Mostra testo grezzo',

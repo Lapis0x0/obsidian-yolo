@@ -3,7 +3,11 @@ import { App } from 'obsidian'
 import { ChatManager } from '../../database/json/chat/ChatManager'
 import { compactConversationMessagesForStorage } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
-import type { ChatMessage, SerializedChatMessage } from '../../types/chat'
+import type {
+  ChatConversationCompaction,
+  ChatMessage,
+  SerializedChatMessage,
+} from '../../types/chat'
 import { serializeMentionable } from '../../utils/chat/mentionable'
 
 const DEFAULT_UNTITLED_CONVERSATION_TITLE = '新对话'
@@ -50,9 +54,11 @@ export const createAgentConversationPersistence = (
     persistConversationMessages: async ({
       conversationId,
       messages,
+      compaction,
     }: {
       conversationId: string
       messages: ChatMessage[]
+      compaction?: ChatConversationCompaction | null
     }): Promise<void> => {
       const settings = getSettings()
       const chatManager = new ChatManager(app, settings)
@@ -69,12 +75,14 @@ export const createAgentConversationPersistence = (
       if (existingConversation) {
         await chatManager.updateChat(conversationId, {
           messages: compactedMessages,
+          compaction: compaction ?? existingConversation.compaction ?? null,
         })
       } else {
         await chatManager.createChat({
           id: conversationId,
           title: DEFAULT_UNTITLED_CONVERSATION_TITLE,
           messages: compactedMessages,
+          compaction: compaction ?? null,
         })
       }
 

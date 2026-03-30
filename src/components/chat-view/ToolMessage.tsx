@@ -129,6 +129,7 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'context_prune_tool_results',
         translate,
       ),
+      context_compact: translateBuiltinToolLabel('context_compact', translate),
       fs_edit: translateBuiltinToolLabel('fs_edit', translate),
       fs_create_file: translate(
         'chat.toolCall.writeAction.create_file',

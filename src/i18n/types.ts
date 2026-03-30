@@ -233,6 +233,8 @@ export type TranslationKeys = {
       builtinFsReadDesc?: string
       builtinContextPruneToolResultsLabel?: string
       builtinContextPruneToolResultsDesc?: string
+      builtinContextCompactLabel?: string
+      builtinContextCompactDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
       fsEditReviewToggle?: string
@@ -853,6 +855,10 @@ export type TranslationKeys = {
       chatDescription?: string
       agentTitle?: string
       agentDescription?: string
+    }
+    compaction?: {
+      dividerTitle?: string
+      dividerDescription?: string
     }
     codeBlock?: {
       showRawText?: string

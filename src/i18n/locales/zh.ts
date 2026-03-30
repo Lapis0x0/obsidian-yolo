@@ -121,8 +121,8 @@ export const zh: TranslationKeys = {
       title: '默认模型与提示词',
       defaultChatModel: '默认聊天模型',
       defaultChatModelDesc: '选择你想用于侧边栏聊天的模型。',
-      chatTitleModel: '对话命名模型',
-      chatTitleModelDesc: '选择用于自动对话命名的模型。',
+      chatTitleModel: '对话命名与摘要模型',
+      chatTitleModelDesc: '选择用于自动对话命名和 compact 摘要的模型。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc:
         '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',
@@ -306,6 +306,9 @@ export const zh: TranslationKeys = {
       builtinContextPruneToolResultsLabel: '清理上下文',
       builtinContextPruneToolResultsDesc:
         '将指定历史 fs_read 工具结果从后续模型可见上下文中排除，但不删除聊天记录。',
+      builtinContextCompactLabel: '压缩上下文',
+      builtinContextCompactDesc:
+        '将较早对话历史压缩为摘要，并在新的上下文窗口中继续当前任务。',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc:
         '在单个现有文件中精确执行一次文本编辑操作，支持文本替换、按行替换、锚点后插入和追加。',
@@ -921,6 +924,10 @@ export const zh: TranslationKeys = {
       chatDescription: '适合提问、润色与改写，专注表达本身',
       agentTitle: '让 AI 去执行',
       agentDescription: '启用工具链，处理搜索、读写与多步骤任务',
+    },
+    compaction: {
+      dividerTitle: '此处已执行上下文压缩',
+      dividerDescription: '以上历史已折叠为摘要，以下内容为新的上下文窗口。',
     },
     codeBlock: {
       showRawText: '显示原始文本',

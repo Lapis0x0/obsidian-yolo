@@ -1,4 +1,4 @@
-import { ChatMessage } from '../../types/chat'
+import { ChatConversationCompaction, ChatMessage } from '../../types/chat'
 import {
   ToolCallRequest,
   ToolCallResponse,
@@ -21,6 +21,7 @@ export type AgentConversationState = {
   status: AgentRunStatus
   runId?: number
   messages: ChatMessage[]
+  compaction?: ChatConversationCompaction | null
   anchorMessageId?: string
   errorMessage?: string
 }
@@ -58,6 +59,7 @@ type AgentServiceOptions = {
   persistConversationMessages?: (payload: {
     conversationId: string
     messages: ChatMessage[]
+    compaction?: ChatConversationCompaction | null
     status: AgentRunStatus
   }) => Promise<void>
 }
@@ -215,11 +217,16 @@ export class AgentService {
   replaceConversationMessages(
     conversationId: string,
     messages: ChatMessage[],
+    compaction?: ChatConversationCompaction | null,
   ): void {
     const entry = this.getOrCreateEntry(conversationId)
     entry.state = {
       ...entry.state,
       messages: [...messages],
+      compaction: this.normalizeCompaction(
+        compaction === undefined ? entry.state.compaction : compaction,
+        messages,
+      ),
     }
     this.notifySubscribers(entry)
   }
@@ -370,6 +377,7 @@ export class AgentService {
       status: 'running',
       runId,
       messages: [...input.messages],
+      compaction: this.normalizeCompaction(input.compaction, input.messages),
       anchorMessageId: input.messages.at(-1)?.id,
     }
     this.notifySubscribers(entry)
@@ -398,6 +406,8 @@ export class AgentService {
         return
       }
 
+      this.syncRuntimeCompactionState(currentEntry, runToken, runtime)
+
       currentEntry.state = {
         ...currentEntry.state,
         status: input.abortSignal?.aborted ? 'aborted' : 'completed',
@@ -408,6 +418,7 @@ export class AgentService {
       if (!currentEntry || currentEntry.runToken !== runToken) {
         return
       }
+      this.syncRuntimeCompactionState(currentEntry, runToken, runtime)
       const aborted =
         input.abortSignal?.aborted ||
         (error instanceof Error && error.name === 'AbortError')
@@ -472,6 +483,7 @@ export class AgentService {
         conversationId,
         status: 'idle',
         messages: [],
+        compaction: null,
       },
     }
     this.runsByConversation.set(conversationId, created)
@@ -496,6 +508,7 @@ export class AgentService {
       status: state.status,
       runId: state.runId,
       messages: [...state.messages],
+      compaction: state.compaction ?? null,
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
     }
@@ -547,6 +560,7 @@ export class AgentService {
         .persistConversationMessages?.({
           conversationId: state.conversationId,
           messages: state.messages,
+          compaction: state.compaction ?? null,
           status: state.status,
         })
         .catch((error) => {
@@ -641,5 +655,44 @@ export class AgentService {
     }
 
     return null
+  }
+
+  private normalizeCompaction(
+    compaction: ChatConversationCompaction | null | undefined,
+    messages: ChatMessage[],
+  ): ChatConversationCompaction | null {
+    if (!compaction) {
+      return null
+    }
+
+    return messages.some((message) => message.id === compaction.anchorMessageId)
+      ? compaction
+      : null
+  }
+
+  private syncRuntimeCompactionState(
+    entry: AgentRunEntry,
+    runToken: symbol,
+    runtime: NativeAgentRuntime,
+  ): void {
+    const currentEntry = this.runsByConversation.get(entry.state.conversationId)
+    if (!currentEntry || currentEntry.runToken !== runToken) {
+      return
+    }
+
+    const runtimeCompaction = this.normalizeCompaction(
+      runtime.getCompactionState(),
+      currentEntry.state.messages,
+    )
+
+    if (runtimeCompaction === currentEntry.state.compaction) {
+      return
+    }
+
+    currentEntry.state = {
+      ...currentEntry.state,
+      compaction: runtimeCompaction,
+    }
+    this.notifySubscribers(currentEntry)
   }
 }

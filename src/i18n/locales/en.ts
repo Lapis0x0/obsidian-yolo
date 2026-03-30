@@ -146,9 +146,9 @@ export const en: TranslationKeys = {
       defaultChatModel: 'Default chat model',
       defaultChatModelDesc:
         'Choose the model you want to use for sidebar chat.',
-      chatTitleModel: 'Conversation title model',
+      chatTitleModel: 'Conversation title and summary model',
       chatTitleModelDesc:
-        'Choose the model used for automatic conversation naming.',
+        'Choose the model used for automatic conversation naming and compact summaries.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
@@ -342,6 +342,9 @@ export const en: TranslationKeys = {
       builtinContextPruneToolResultsLabel: 'Prune Context',
       builtinContextPruneToolResultsDesc:
         'Exclude selected historical fs_read results from future model-visible context without deleting chat history.',
+      builtinContextCompactLabel: 'Compact Context',
+      builtinContextCompactDesc:
+        'Compress earlier conversation history into a summary and continue in a fresh context window.',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc:
         'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
@@ -984,6 +987,11 @@ export const en: TranslationKeys = {
       agentTitle: 'Let AI execute',
       agentDescription:
         'Enable tools to handle search, read/write operations, and multi-step tasks.',
+    },
+    compaction: {
+      dividerTitle: 'Context compacted here',
+      dividerDescription:
+        'Earlier history has been folded into a summary. The messages below continue in a fresh context window.',
     },
     codeBlock: {
       showRawText: 'Show raw text',

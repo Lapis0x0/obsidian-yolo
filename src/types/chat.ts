@@ -19,6 +19,14 @@ export type ChatSelectedSkill = {
   path: string
 }
 
+export type ChatConversationCompaction = {
+  anchorMessageId: string
+  summary: string
+  compactedAt: number
+  triggerToolCallId?: string
+  summaryModelId?: string
+}
+
 export type ChatUserMessage = {
   role: 'user'
   content: SerializedEditorState | null
@@ -117,6 +125,7 @@ export type ChatConversation = {
   pinnedAt?: number
   messages: SerializedChatMessage[]
   reasoningLevel?: string
+  compaction?: ChatConversationCompaction | null
 }
 export type ChatConversationMeta = {
   schemaVersion: number

@@ -36,6 +36,13 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Exclude selected historical fs_read results from future model-visible context without deleting chat history.',
   },
+  context_compact: {
+    labelKey: 'settings.agent.builtinContextCompactLabel',
+    descKey: 'settings.agent.builtinContextCompactDesc',
+    labelFallback: 'Compact Context',
+    descFallback:
+      'Compress earlier conversation history into a summary and continue in a fresh context window.',
+  },
   fs_edit: {
     labelKey: 'settings.agent.builtinFsEditLabel',
     descKey: 'settings.agent.builtinFsEditDesc',
