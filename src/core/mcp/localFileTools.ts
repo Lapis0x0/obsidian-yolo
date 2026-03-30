@@ -100,6 +100,8 @@ type FsReadOperation =
       endLine?: number
       maxLines: number
     }
+type ContextPruneMode = 'selected' | 'all'
+
 type FsFileOpAction =
   | 'create_file'
   | 'delete_file'
@@ -437,25 +439,30 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'context_prune_tool_results',
       description:
-        'Exclude selected historical tool call results from future model-visible context without deleting chat history.',
+        'Exclude historical tool call results from future model-visible context without deleting chat history. Supports pruning selected calls or all prunable calls at once.',
       inputSchema: {
         type: 'object',
         properties: {
+          mode: {
+            type: 'string',
+            enum: ['selected', 'all'],
+            description:
+              'Prune mode. Use selected to prune specific toolCallIds, or all to prune all historical prunable tool results.',
+          },
           toolCallIds: {
             type: 'array',
             items: {
               type: 'string',
             },
             description:
-              'Tool call ids to exclude from future prompt context.',
+              'Tool call ids to exclude from future prompt context when mode is selected.',
           },
           reason: {
             type: 'string',
             description:
-              'Optional short reason for pruning, such as superseded by newer results.',
+              'Optional short reason for pruning, such as superseded by newer results or preparing for a fresh planning step.',
           },
         },
-        required: ['toolCallIds'],
       },
     },
     {
@@ -974,6 +981,19 @@ const getFsSearchScope = (args: Record<string, unknown>): FsSearchScope => {
     value !== 'all'
   ) {
     throw new Error('scope must be one of: files, dirs, content, all.')
+  }
+  return value
+}
+
+const getContextPruneMode = (
+  args: Record<string, unknown>,
+): ContextPruneMode => {
+  const value = args.mode
+  if (value === undefined) {
+    return 'selected'
+  }
+  if (value !== 'selected' && value !== 'all') {
+    throw new Error('mode must be one of: selected, all.')
   }
   return value
 }
@@ -1613,21 +1633,26 @@ export async function callLocalFileTool({
       }
 
       case 'context_prune_tool_results': {
-        const toolCallIds = getStringArrayArg(args, 'toolCallIds')
-          .map((value) => value.trim())
-          .filter(
-            (value, index, arr) =>
-              value.length > 0 && arr.indexOf(value) === index,
-          )
-
-        if (toolCallIds.length === 0) {
-          throw new Error('toolCallIds cannot be empty.')
-        }
+        const mode = getContextPruneMode(args)
 
         const prunableToolCallIds = getContextPrunableToolCallIds(
           conversationMessages,
           toolCallId,
         )
+        const toolCallIds =
+          mode === 'all'
+            ? [...prunableToolCallIds]
+            : getStringArrayArg(args, 'toolCallIds')
+                .map((value) => value.trim())
+                .filter(
+                  (value, index, arr) =>
+                    value.length > 0 && arr.indexOf(value) === index,
+                )
+
+        if (mode === 'selected' && toolCallIds.length === 0) {
+          throw new Error('toolCallIds cannot be empty when mode is selected.')
+        }
+
         const acceptedToolCallIds = toolCallIds.filter((value) =>
           prunableToolCallIds.has(value),
         )
@@ -1640,7 +1665,7 @@ export async function callLocalFileTool({
           text: formatJsonResult({
             tool: 'context_prune_tool_results',
             toolCallId: toolCallId ?? null,
-            operation: 'prune_selected',
+            operation: mode === 'all' ? 'prune_all' : 'prune_selected',
             acceptedToolCallIds,
             ignoredToolCallIds,
             reason: getOptionalTextArg(args, 'reason')?.trim() || null,

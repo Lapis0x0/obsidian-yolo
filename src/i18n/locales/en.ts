@@ -341,7 +341,7 @@ export const en: TranslationKeys = {
         'Read vault files by path with either full-file or targeted line-range operations.',
       builtinContextPruneToolResultsLabel: 'Prune Tool Results',
       builtinContextPruneToolResultsDesc:
-        'Exclude selected historical tool results from future model-visible context without deleting chat history.',
+        'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
       builtinContextCompactLabel: 'Compact Context',
       builtinContextCompactDesc:
         'Compress earlier conversation history into a summary and continue in a fresh context window.',

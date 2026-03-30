@@ -34,7 +34,7 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descKey: 'settings.agent.builtinContextPruneToolResultsDesc',
     labelFallback: 'Prune Tool Results',
     descFallback:
-      'Exclude selected historical tool results from future model-visible context without deleting chat history.',
+      'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
   },
   context_compact: {
     labelKey: 'settings.agent.builtinContextCompactLabel',

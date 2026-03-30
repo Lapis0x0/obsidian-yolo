@@ -349,7 +349,7 @@ export const it: TranslationKeys = {
         'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
       builtinContextPruneToolResultsLabel: 'Pota risultati strumenti',
       builtinContextPruneToolResultsDesc:
-        'Esclude dai futuri contesti visibili al modello i risultati storici degli strumenti selezionati, senza eliminare la cronologia chat.',
+        'Esclude dai futuri contesti visibili al modello i risultati storici degli strumenti selezionati, oppure tutti quelli potabili in una volta, senza eliminare la cronologia chat.',
       builtinContextCompactLabel: 'Compatta contesto',
       builtinContextCompactDesc:
         'Comprimi la cronologia meno recente in un riepilogo e continua in una nuova finestra di contesto.',

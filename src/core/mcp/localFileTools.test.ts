@@ -565,6 +565,142 @@ describe('local fs tool action helpers', () => {
     })
   })
 
+  it('supports pruning all prunable tool results at once', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-all-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'search-1',
+                name: 'yolo_local__fs_search',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+            {
+              request: {
+                id: 'remote-1',
+                name: 'server__tool_a',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        mode: 'all',
+        reason: 'reset working set',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-all-1',
+      operation: 'prune_all',
+      acceptedToolCallIds: ['search-1', 'remote-1'],
+      ignoredToolCallIds: [],
+      reason: 'reset working set',
+    })
+  })
+
+  it('returns success with empty accepted ids when mode is all and nothing is prunable', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-all-empty-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        mode: 'all',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-all-empty-1',
+      operation: 'prune_all',
+      acceptedToolCallIds: [],
+      ignoredToolCallIds: [],
+      reason: null,
+    })
+  })
+
+  it('requires toolCallIds when mode is selected', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-selected-empty-1',
+      toolName: 'context_prune_tool_results',
+      args: {
+        mode: 'selected',
+        toolCallIds: [],
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain(
+        'toolCallIds cannot be empty when mode is selected.',
+      )
+    }
+  })
+
   it('supports context compact control operation', async () => {
     const result = await callLocalFileTool({
       app: {
