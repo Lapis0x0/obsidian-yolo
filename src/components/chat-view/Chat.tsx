@@ -599,7 +599,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [isSidebarPlacement, isWorkspaceWideHeader])
 
   const containerClassName = `smtcmp-chat-container${
-    isSidebarPlacement ? '' : ' smtcmp-chat-container--centered'
+    isSidebarPlacement ? ' smtcmp-chat-container--sidebar' : ' smtcmp-chat-container--centered'
   }${
     !isSidebarPlacement && isWorkspaceWideHeader
       ? ' smtcmp-chat-container--workspace-wide-header'

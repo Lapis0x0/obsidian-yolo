@@ -21,14 +21,11 @@ const ChatSidebarTabs: React.FC<ChatSidebarTabsProps> = ({
 
   // Keep the initial props stable even if parent clears them after render
   const chatProps = useMemo(() => initialChatProps, [initialChatProps])
-  const paneClassName = `smtcmp-sidebar-pane is-active${
-    placement === 'sidebar' ? ' smtcmp-sidebar-pane--chat-sidebar' : ''
-  }`
 
   return (
     <div className="smtcmp-sidebar-root">
       <div className="smtcmp-sidebar-panels">
-        <div className={paneClassName} aria-hidden={false}>
+        <div className="smtcmp-sidebar-pane is-active" aria-hidden={false}>
           <Chat
             ref={chatRef}
             {...(chatProps ?? {})}
