@@ -339,9 +339,9 @@ export const en: TranslationKeys = {
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc:
         'Read vault files by path with either full-file or targeted line-range operations.',
-      builtinContextPruneToolResultsLabel: 'Prune Context',
+      builtinContextPruneToolResultsLabel: 'Prune Tool Results',
       builtinContextPruneToolResultsDesc:
-        'Exclude selected historical fs_read results from future model-visible context without deleting chat history.',
+        'Exclude selected historical tool results from future model-visible context without deleting chat history.',
       builtinContextCompactLabel: 'Compact Context',
       builtinContextCompactDesc:
         'Compress earlier conversation history into a summary and continue in a fresh context window.',

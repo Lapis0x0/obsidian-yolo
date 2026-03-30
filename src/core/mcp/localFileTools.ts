@@ -4,6 +4,7 @@ import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { ChatMessage } from '../../types/chat'
 import { McpTool } from '../../types/mcp.types'
+import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import {
   ToolCallResponseStatus,
   type ToolEditSummary,
@@ -58,9 +59,7 @@ const getContextPrunableToolCallIds = (
 
     for (const toolCall of message.toolCalls) {
       if (
-        ['fs_read', `${getLocalFileToolServerName()}__fs_read`].includes(
-          toolCall.request.name,
-        ) &&
+        isContextPrunableToolName(toolCall.request.name) &&
         toolCall.response.status === ToolCallResponseStatus.Success &&
         toolCall.response.data.type === 'text' &&
         toolCall.request.id.trim().length > 0
@@ -438,7 +437,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'context_prune_tool_results',
       description:
-        'Exclude selected historical fs_read tool call results from future model-visible context without deleting chat history.',
+        'Exclude selected historical tool call results from future model-visible context without deleting chat history.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -448,12 +447,12 @@ export function getLocalFileTools(): McpTool[] {
               type: 'string',
             },
             description:
-              'Tool call ids to exclude from future prompt context. Only historical fs_read calls are affected.',
+              'Tool call ids to exclude from future prompt context.',
           },
           reason: {
             type: 'string',
             description:
-              'Optional short reason for pruning, such as superseded by newer reads.',
+              'Optional short reason for pruning, such as superseded by newer results.',
           },
         },
         required: ['toolCallIds'],

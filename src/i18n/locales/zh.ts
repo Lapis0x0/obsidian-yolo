@@ -303,9 +303,9 @@ export const zh: TranslationKeys = {
       builtinFsSearchDesc: '搜索库中的文件、文件夹或 Markdown 内容。',
       builtinFsReadLabel: '读取',
       builtinFsReadDesc: '按路径读取库内文件，支持全文或按行范围两种模式。',
-      builtinContextPruneToolResultsLabel: '清理上下文',
+      builtinContextPruneToolResultsLabel: '裁剪工具调用结果',
       builtinContextPruneToolResultsDesc:
-        '将指定历史 fs_read 工具结果从后续模型可见上下文中排除，但不删除聊天记录。',
+        '将指定历史工具结果从后续模型可见上下文中排除，但不删除聊天记录。',
       builtinContextCompactLabel: '压缩上下文',
       builtinContextCompactDesc:
         '将较早对话历史压缩为摘要，并在新的上下文窗口中继续当前任务。',

@@ -45,7 +45,7 @@ describe('tool context pruning', () => {
     ])
   })
 
-  it('filters only fs_read tool calls from assistant and tool messages', () => {
+  it('filters pruned tool calls from assistant and tool messages', () => {
     const prunedToolCallIds = new Set(['read-1', 'edit-1'])
 
     expect(
@@ -64,13 +64,7 @@ describe('tool context pruning', () => {
         ],
         prunedToolCallIds,
       ),
-    ).toEqual([
-      {
-        id: 'edit-1',
-        name: 'yolo_local__fs_edit',
-        arguments: emptyArgs,
-      },
-    ])
+    ).toBeUndefined()
 
     expect(
       filterContextPrunedToolCalls(
@@ -97,9 +91,53 @@ describe('tool context pruning', () => {
               data: { type: 'text', text: '{}' },
             },
           },
+          {
+            request: {
+              id: 'prune-1',
+              name: 'yolo_local__context_prune_tool_results',
+              arguments: emptyArgs,
+            },
+            response: {
+              status: ToolCallResponseStatus.Success,
+              data: { type: 'text', text: '{}' },
+            },
+          },
         ],
         prunedToolCallIds,
       ),
     ).toHaveLength(1)
+  })
+
+  it('keeps context control tools even when ids are present in prune results', () => {
+    const prunedToolCallIds = new Set(['prune-1', 'compact-1'])
+
+    expect(
+      filterContextPrunedAssistantToolCalls(
+        [
+          {
+            id: 'prune-1',
+            name: 'yolo_local__context_prune_tool_results',
+            arguments: emptyArgs,
+          },
+          {
+            id: 'compact-1',
+            name: 'yolo_local__context_compact',
+            arguments: emptyArgs,
+          },
+        ],
+        prunedToolCallIds,
+      ),
+    ).toEqual([
+      {
+        id: 'prune-1',
+        name: 'yolo_local__context_prune_tool_results',
+        arguments: emptyArgs,
+      },
+      {
+        id: 'compact-1',
+        name: 'yolo_local__context_compact',
+        arguments: emptyArgs,
+      },
+    ])
   })
 })

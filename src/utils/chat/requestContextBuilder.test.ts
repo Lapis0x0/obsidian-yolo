@@ -339,7 +339,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
 
   const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
-  it('hides pruned fs_read results from future request context', async () => {
+  it('hides pruned tool results from future request context', async () => {
     const app = {
       vault: {
         adapter: {
@@ -370,24 +370,24 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
         {
           role: 'assistant',
-          id: 'assistant-read',
+          id: 'assistant-tool',
           content: '',
           toolCallRequests: [
             {
-              id: 'read-1',
-              name: 'yolo_local__fs_read',
+              id: 'edit-1',
+              name: 'yolo_local__fs_edit',
               arguments: emptyArgs,
             },
           ],
         },
         {
           role: 'tool',
-          id: 'tool-read',
+          id: 'tool-edit',
           toolCalls: [
             {
               request: {
-                id: 'read-1',
-                name: 'yolo_local__fs_read',
+                id: 'edit-1',
+                name: 'yolo_local__fs_edit',
                 arguments: emptyArgs,
               },
               response: {
@@ -395,14 +395,9 @@ describe('RequestContextBuilder generateRequestMessages', () => {
                 data: {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'fs_read',
-                    results: [
-                      {
-                        path: 'note.md',
-                        ok: true,
-                        content: '1|hello',
-                      },
-                    ],
+                    tool: 'fs_edit',
+                    path: 'note.md',
+                    status: 'ok',
                   }),
                 },
               },
@@ -438,7 +433,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
                   text: JSON.stringify({
                     tool: 'context_prune_tool_results',
                     operation: 'prune_selected',
-                    acceptedToolCallIds: ['read-1'],
+                    acceptedToolCallIds: ['edit-1'],
                     ignoredToolCallIds: [],
                   }),
                 },
@@ -467,7 +462,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     expect(
       requestMessages.some(
         (message) =>
-          message.role === 'tool' && message.tool_call.id === 'read-1',
+          message.role === 'tool' && message.tool_call.id === 'edit-1',
       ),
     ).toBe(false)
     expect(
@@ -475,7 +470,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         (message) =>
           message.role === 'assistant' &&
           (message.tool_calls ?? []).some(
-            (toolCall) => toolCall.id === 'read-1',
+            (toolCall) => toolCall.id === 'edit-1',
           ),
       ),
     ).toBe(false)

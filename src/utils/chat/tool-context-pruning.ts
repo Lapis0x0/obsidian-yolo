@@ -5,7 +5,7 @@ import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 
 const CONTEXT_PRUNE_TOOL_NAME = 'context_prune_tool_results'
-const CONTEXT_PRUNABLE_TOOL_NAME = 'fs_read'
+const CONTEXT_COMPACT_TOOL_NAME = 'context_compact'
 
 const normalizeToolName = (toolName: string): string => {
   try {
@@ -25,7 +25,11 @@ export const isContextPruneToolName = (toolName: string): boolean => {
 }
 
 export const isContextPrunableToolName = (toolName: string): boolean => {
-  return normalizeToolName(toolName) === CONTEXT_PRUNABLE_TOOL_NAME
+  const normalized = normalizeToolName(toolName)
+  return (
+    normalized !== CONTEXT_PRUNE_TOOL_NAME &&
+    normalized !== CONTEXT_COMPACT_TOOL_NAME
+  )
 }
 
 const getPrunedToolCallIdsFromText = (text: string): string[] => {

@@ -362,7 +362,7 @@ describe('local fs tool action helpers', () => {
     }
   })
 
-  it('supports context prune tool results', async () => {
+  it('supports context prune tool results for any successful text tool output', async () => {
     const result = await callLocalFileTool({
       app: {
         vault: {},
@@ -376,8 +376,8 @@ describe('local fs tool action helpers', () => {
           toolCalls: [
             {
               request: {
-                id: 'read-1',
-                name: 'yolo_local__fs_read',
+                id: 'edit-1',
+                name: 'yolo_local__fs_edit',
                 arguments: createCompleteToolCallArguments({ value: {} }),
               },
               response: {
@@ -389,7 +389,7 @@ describe('local fs tool action helpers', () => {
         },
       ],
       args: {
-        toolCallIds: [' read-1 ', 'read-2', 'read-1'],
+        toolCallIds: [' edit-1 ', 'read-2', 'edit-1'],
         reason: 'superseded by newer reads',
       },
     })
@@ -403,13 +403,13 @@ describe('local fs tool action helpers', () => {
       tool: 'context_prune_tool_results',
       toolCallId: 'prune-1',
       operation: 'prune_selected',
-      acceptedToolCallIds: ['read-1'],
+      acceptedToolCallIds: ['edit-1'],
       ignoredToolCallIds: ['read-2'],
       reason: 'superseded by newer reads',
     })
   })
 
-  it('ignores fs_read results from the same tool message as prune', async () => {
+  it('ignores tool results from the same tool message as prune', async () => {
     const result = await callLocalFileTool({
       app: {
         vault: {},
@@ -423,8 +423,8 @@ describe('local fs tool action helpers', () => {
           toolCalls: [
             {
               request: {
-                id: 'read-history',
-                name: 'yolo_local__fs_read',
+                id: 'edit-history',
+                name: 'yolo_local__fs_edit',
                 arguments: createCompleteToolCallArguments({ value: {} }),
               },
               response: {
@@ -440,8 +440,8 @@ describe('local fs tool action helpers', () => {
           toolCalls: [
             {
               request: {
-                id: 'read-current',
-                name: 'yolo_local__fs_read',
+                id: 'edit-current',
+                name: 'server__tool_a',
                 arguments: createCompleteToolCallArguments({ value: {} }),
               },
               response: {
@@ -463,7 +463,7 @@ describe('local fs tool action helpers', () => {
         },
       ],
       args: {
-        toolCallIds: ['read-history', 'read-current'],
+        toolCallIds: ['edit-history', 'edit-current'],
       },
     })
 
@@ -476,13 +476,13 @@ describe('local fs tool action helpers', () => {
       tool: 'context_prune_tool_results',
       toolCallId: 'prune-1',
       operation: 'prune_selected',
-      acceptedToolCallIds: ['read-history'],
-      ignoredToolCallIds: ['read-current'],
+      acceptedToolCallIds: ['edit-history'],
+      ignoredToolCallIds: ['edit-current'],
       reason: null,
     })
   })
 
-  it('only accepts successful text fs_read results for pruning', async () => {
+  it('only accepts successful text non-control tool results for pruning', async () => {
     const result = await callLocalFileTool({
       app: {
         vault: {},
@@ -496,8 +496,8 @@ describe('local fs tool action helpers', () => {
           toolCalls: [
             {
               request: {
-                id: 'read-success',
-                name: 'yolo_local__fs_read',
+                id: 'search-success',
+                name: 'yolo_local__fs_search',
                 arguments: createCompleteToolCallArguments({ value: {} }),
               },
               response: {
@@ -507,8 +507,8 @@ describe('local fs tool action helpers', () => {
             },
             {
               request: {
-                id: 'read-error',
-                name: 'yolo_local__fs_read',
+                id: 'edit-error',
+                name: 'yolo_local__fs_edit',
                 arguments: createCompleteToolCallArguments({ value: {} }),
               },
               response: {
@@ -518,19 +518,35 @@ describe('local fs tool action helpers', () => {
             },
             {
               request: {
-                id: 'read-aborted',
-                name: 'yolo_local__fs_read',
+                id: 'remote-aborted',
+                name: 'server__tool_a',
                 arguments: createCompleteToolCallArguments({ value: {} }),
               },
               response: {
                 status: ToolCallResponseStatus.Aborted,
               },
             },
+            {
+              request: {
+                id: 'compact-success',
+                name: 'yolo_local__context_compact',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
           ],
         },
       ],
       args: {
-        toolCallIds: ['read-success', 'read-error', 'read-aborted'],
+        toolCallIds: [
+          'search-success',
+          'edit-error',
+          'remote-aborted',
+          'compact-success',
+        ],
       },
     })
 
@@ -543,8 +559,8 @@ describe('local fs tool action helpers', () => {
       tool: 'context_prune_tool_results',
       toolCallId: 'prune-1',
       operation: 'prune_selected',
-      acceptedToolCallIds: ['read-success'],
-      ignoredToolCallIds: ['read-error', 'read-aborted'],
+      acceptedToolCallIds: ['search-success'],
+      ignoredToolCallIds: ['edit-error', 'remote-aborted', 'compact-success'],
       reason: null,
     })
   })
