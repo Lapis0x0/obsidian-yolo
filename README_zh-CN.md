@@ -72,7 +72,7 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 
 1. 打开 Obsidian 设置 → 社区插件 → 浏览 → 搜索 **"YOLO"**
 2. 安装并启用
-3. 在插件设置中配置你的 API Key：
+3. 在插件设置中配置你的 API Key，或者使用你自己的 ChatGPT OAuth / Gemini OAuth：
    - [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys) / [Gemini](https://aistudio.google.com/apikey) / [Groq](https://console.groq.com/keys)
 4. 打开侧边栏，开始对话——或者在编辑器里输入 `@` 试试 Quick Ask
 

@@ -67,7 +67,7 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
 
 1. Apri Impostazioni Obsidian → Plugin Community → Browse → Cerca **"YOLO"**
 2. Installa e abilita
-3. Configura la tua API key nelle impostazioni del plugin:
+3. Configura la tua API key nelle impostazioni del plugin, oppure usa il tuo ChatGPT OAuth / Gemini OAuth:
    - [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys) / [Gemini](https://aistudio.google.com/apikey) / [Groq](https://console.groq.com/keys)
 4. Apri la sidebar per iniziare a chattare — oppure prova Quick Ask digitando `@` nell'editor
 
