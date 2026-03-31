@@ -1,4 +1,9 @@
-import { ChatMessage } from '../../types/chat'
+import {
+  ChatConversationCompactionLike,
+  ChatConversationCompactionState,
+  ChatMessage,
+  normalizeChatConversationCompactionState,
+} from '../../types/chat'
 import {
   ToolCallRequest,
   ToolCallResponse,
@@ -21,6 +26,8 @@ export type AgentConversationState = {
   status: AgentRunStatus
   runId?: number
   messages: ChatMessage[]
+  compaction?: ChatConversationCompactionState
+  pendingCompactionAnchorMessageId?: string | null
   anchorMessageId?: string
   errorMessage?: string
 }
@@ -58,6 +65,7 @@ type AgentServiceOptions = {
   persistConversationMessages?: (payload: {
     conversationId: string
     messages: ChatMessage[]
+    compaction?: ChatConversationCompactionState
     status: AgentRunStatus
   }) => Promise<void>
 }
@@ -66,6 +74,19 @@ const reconcileAssistantGenerationState = (
   previousMessages: ChatMessage[],
   nextMessages: ChatMessage[],
 ): ChatMessage[] => {
+  const previousToolResponseMap = new Map<string, ToolCallResponse['status']>(
+    previousMessages.flatMap((message) => {
+      if (message.role !== 'tool') {
+        return []
+      }
+
+      return message.toolCalls.map((toolCall) => [
+        toolCall.request.id,
+        toolCall.response.status,
+      ])
+    }),
+  )
+
   const previousAssistantStateMap = new Map(
     previousMessages
       .filter((message) => message.role === 'assistant')
@@ -73,6 +94,32 @@ const reconcileAssistantGenerationState = (
   )
 
   return nextMessages.map((message) => {
+    if (message.role === 'tool') {
+      let updated = false
+      const nextToolCalls = message.toolCalls.map((toolCall) => {
+        const previousStatus = previousToolResponseMap.get(toolCall.request.id)
+        if (
+          previousStatus !== ToolCallResponseStatus.Aborted ||
+          toolCall.response.status === ToolCallResponseStatus.Aborted
+        ) {
+          return toolCall
+        }
+
+        updated = true
+        return {
+          ...toolCall,
+          response: { status: ToolCallResponseStatus.Aborted as const },
+        }
+      })
+
+      return updated
+        ? {
+            ...message,
+            toolCalls: nextToolCalls,
+          }
+        : message
+    }
+
     if (message.role !== 'assistant') {
       return message
     }
@@ -95,13 +142,62 @@ const reconcileAssistantGenerationState = (
   })
 }
 
+const abortVisibleMessages = (messages: ChatMessage[]): ChatMessage[] => {
+  return messages.map((message) => {
+    if (message.role === 'assistant') {
+      if (message.metadata?.generationState !== 'streaming') {
+        return message
+      }
+
+      return {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          generationState: 'aborted',
+        },
+      }
+    }
+
+    if (message.role !== 'tool') {
+      return message
+    }
+
+    let updated = false
+    const nextToolCalls = message.toolCalls.map((toolCall) => {
+      if (
+        toolCall.response.status !== ToolCallResponseStatus.PendingApproval &&
+        toolCall.response.status !== ToolCallResponseStatus.Running
+      ) {
+        return toolCall
+      }
+
+      updated = true
+      return {
+        ...toolCall,
+        response: { status: ToolCallResponseStatus.Aborted as const },
+      }
+    })
+
+    return updated
+      ? {
+          ...message,
+          toolCalls: nextToolCalls,
+        }
+      : message
+  })
+}
+
 const mergeVisibleMessages = (
+  previousVisibleMessages: ChatMessage[],
   baseMessages: ChatMessage[],
   anchorMessageId: string | undefined,
   responseMessages: ChatMessage[],
 ): ChatMessage[] => {
   if (!anchorMessageId) {
-    return reconcileAssistantGenerationState(baseMessages, responseMessages)
+    return reconcileAssistantGenerationState(
+      previousVisibleMessages,
+      responseMessages,
+    )
   }
 
   const anchorIndex = baseMessages.findIndex(
@@ -109,10 +205,13 @@ const mergeVisibleMessages = (
   )
 
   if (anchorIndex === -1) {
-    return reconcileAssistantGenerationState(baseMessages, responseMessages)
+    return reconcileAssistantGenerationState(
+      previousVisibleMessages,
+      responseMessages,
+    )
   }
 
-  return reconcileAssistantGenerationState(baseMessages, [
+  return reconcileAssistantGenerationState(previousVisibleMessages, [
     ...baseMessages.slice(0, anchorIndex + 1),
     ...responseMessages,
   ])
@@ -215,11 +314,16 @@ export class AgentService {
   replaceConversationMessages(
     conversationId: string,
     messages: ChatMessage[],
+    compaction?: ChatConversationCompactionLike | null,
   ): void {
     const entry = this.getOrCreateEntry(conversationId)
     entry.state = {
       ...entry.state,
       messages: [...messages],
+      compaction: this.normalizeCompaction(
+        compaction === undefined ? entry.state.compaction : compaction,
+        messages,
+      ),
     }
     this.notifySubscribers(entry)
   }
@@ -267,6 +371,7 @@ export class AgentService {
       name: toolCall.request.name,
       args: getToolCallArgumentsObject(toolCall.request.arguments),
       id: toolCall.request.id,
+      conversationMessages: entry.state.messages,
     })
 
     const nextMessages = this.updateToolCallResponse({
@@ -369,22 +474,35 @@ export class AgentService {
       status: 'running',
       runId,
       messages: [...input.messages],
+      compaction: this.normalizeCompaction(input.compaction, input.messages),
+      pendingCompactionAnchorMessageId: null,
       anchorMessageId: input.messages.at(-1)?.id,
     }
     this.notifySubscribers(entry)
 
-    const unsubscribe = runtime.subscribe((messages) => {
+    const unsubscribe = runtime.subscribe((snapshot) => {
       const currentEntry = this.runsByConversation.get(conversationId)
       if (!currentEntry || currentEntry.runToken !== runToken) {
         return
       }
+      const mergedMessages = mergeVisibleMessages(
+        currentEntry.state.messages,
+        input.messages,
+        currentEntry.state.anchorMessageId,
+        snapshot.messages,
+      )
       currentEntry.state = {
         ...currentEntry.state,
-        messages: mergeVisibleMessages(
-          input.messages,
-          currentEntry.state.anchorMessageId,
-          messages,
+        messages: mergedMessages,
+        compaction: this.normalizeCompaction(
+          snapshot.compaction,
+          mergedMessages,
         ),
+        pendingCompactionAnchorMessageId:
+          this.normalizePendingCompactionAnchorMessageId(
+            snapshot.pendingCompactionAnchorMessageId,
+            mergedMessages,
+          ),
       }
       this.notifySubscribers(currentEntry)
     })
@@ -400,6 +518,7 @@ export class AgentService {
       currentEntry.state = {
         ...currentEntry.state,
         status: input.abortSignal?.aborted ? 'aborted' : 'completed',
+        pendingCompactionAnchorMessageId: null,
       }
       this.notifySubscribers(currentEntry)
     } catch (error) {
@@ -413,6 +532,7 @@ export class AgentService {
       currentEntry.state = {
         ...currentEntry.state,
         status: aborted ? 'aborted' : 'error',
+        pendingCompactionAnchorMessageId: null,
         errorMessage:
           aborted || !(error instanceof Error)
             ? undefined
@@ -442,7 +562,9 @@ export class AgentService {
     entry.runtime.abort()
     entry.state = {
       ...entry.state,
+      messages: abortVisibleMessages(entry.state.messages),
       status: 'aborted',
+      pendingCompactionAnchorMessageId: null,
     }
     this.notifySubscribers(entry)
     return true
@@ -471,6 +593,8 @@ export class AgentService {
         conversationId,
         status: 'idle',
         messages: [],
+        compaction: [],
+        pendingCompactionAnchorMessageId: null,
       },
     }
     this.runsByConversation.set(conversationId, created)
@@ -495,6 +619,9 @@ export class AgentService {
       status: state.status,
       runId: state.runId,
       messages: [...state.messages],
+      compaction: [...(state.compaction ?? [])],
+      pendingCompactionAnchorMessageId:
+        state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
     }
@@ -546,6 +673,7 @@ export class AgentService {
         .persistConversationMessages?.({
           conversationId: state.conversationId,
           messages: state.messages,
+          compaction: [...(state.compaction ?? [])],
           status: state.status,
         })
         .catch((error) => {
@@ -640,5 +768,28 @@ export class AgentService {
     }
 
     return null
+  }
+
+  private normalizeCompaction(
+    compaction: ChatConversationCompactionLike | null | undefined,
+    messages: ChatMessage[],
+  ): ChatConversationCompactionState {
+    return normalizeChatConversationCompactionState(compaction).filter(
+      (entry) =>
+        messages.some((message) => message.id === entry.anchorMessageId),
+    )
+  }
+
+  private normalizePendingCompactionAnchorMessageId(
+    anchorMessageId: string | null | undefined,
+    messages: ChatMessage[],
+  ): string | null {
+    if (!anchorMessageId) {
+      return null
+    }
+
+    return messages.some((message) => message.id === anchorMessageId)
+      ? anchorMessageId
+      : null
   }
 }

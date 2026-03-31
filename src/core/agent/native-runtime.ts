@@ -2,14 +2,23 @@ import { v4 as uuidv4 } from 'uuid'
 
 import {
   ChatAssistantMessage,
+  ChatConversationCompaction,
+  ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
+  getLatestChatConversationCompaction,
+  normalizeChatConversationCompactionState,
 } from '../../types/chat'
 import {
   ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
 
+import {
+  buildCompactedConversationState,
+  createConversationCompactionSummary,
+  findCompactToolCallId,
+} from './compaction'
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
 import { AgentRuntime } from './runtime'
@@ -18,6 +27,7 @@ import { shouldProceedToToolPhase } from './tool-phase'
 import {
   AgentRuntimeLoopConfig,
   AgentRuntimeRunInput,
+  AgentRuntimeSnapshot,
   AgentRuntimeSubscribe,
   AgentWorkerOutbound,
 } from './types'
@@ -25,6 +35,8 @@ import {
 export class NativeAgentRuntime implements AgentRuntime {
   private subscribers: AgentRuntimeSubscribe[] = []
   private messages: ChatMessage[] = []
+  private compactionState: ChatConversationCompactionState = []
+  private pendingCompactionAnchorMessageId: string | null = null
   private runAbortController: AbortController | null = null
 
   constructor(private readonly loopConfig: AgentRuntimeLoopConfig) {}
@@ -40,6 +52,14 @@ export class NativeAgentRuntime implements AgentRuntime {
     return this.messages
   }
 
+  getSnapshot(): AgentRuntimeSnapshot {
+    return {
+      messages: [...this.messages],
+      compaction: [...this.compactionState],
+      pendingCompactionAnchorMessageId: this.pendingCompactionAnchorMessageId,
+    }
+  }
+
   abort(): void {
     if (this.runAbortController) {
       this.runAbortController.abort()
@@ -48,6 +68,10 @@ export class NativeAgentRuntime implements AgentRuntime {
   }
 
   async run(input: AgentRuntimeRunInput): Promise<void> {
+    this.compactionState = normalizeChatConversationCompactionState(
+      input.compaction,
+    )
+    this.pendingCompactionAnchorMessageId = null
     const localAbortController = new AbortController()
     this.runAbortController = localAbortController
 
@@ -104,6 +128,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   mcpManager: input.mcpManager,
                   conversationId: input.conversationId,
                   messages: [...input.messages, ...this.messages],
+                  compaction: this.compactionState,
                   enableTools: this.loopConfig.enableTools,
                   includeBuiltinTools: this.loopConfig.includeBuiltinTools,
                   allowedToolNames: input.allowedToolNames,
@@ -118,7 +143,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   geminiTools: input.geminiTools,
                   onAssistantMessage: (assistantMessage) => {
                     this.upsertAssistantMessage(assistantMessage)
-                    this.notifySubscribers([...this.messages])
+                    this.notifySubscribers()
                   },
                 })
 
@@ -149,16 +174,78 @@ export class NativeAgentRuntime implements AgentRuntime {
                 pendingToolMessageId = initialToolMessage.id
 
                 this.messages.push(initialToolMessage)
-                this.notifySubscribers([...this.messages])
+                this.notifySubscribers()
 
                 const completedToolMessage =
                   await toolGateway.executeAutoToolCalls({
                     toolMessage: initialToolMessage,
+                    conversationMessages: [...input.messages, ...this.messages],
                     signal: abortSignal,
                   })
 
                 this.replaceToolMessage(completedToolMessage)
-                this.notifySubscribers([...this.messages])
+                this.notifySubscribers()
+
+                const compactToolCallId =
+                  findCompactToolCallId(completedToolMessage)
+                if (
+                  compactToolCallId &&
+                  input.compactionProviderClient &&
+                  input.compactionModel
+                ) {
+                  this.pendingCompactionAnchorMessageId =
+                    completedToolMessage.id
+                  this.notifySubscribers()
+
+                  const conversationMessages = [
+                    ...input.messages,
+                    ...this.messages,
+                  ]
+
+                  console.debug('[YOLO][Compact] compact trigger detected', {
+                    conversationId: input.conversationId,
+                    triggerToolCallId: compactToolCallId,
+                    messageCount: conversationMessages.length,
+                  })
+
+                  try {
+                    const summary = await createConversationCompactionSummary({
+                      providerClient: input.compactionProviderClient,
+                      model: input.compactionModel,
+                      messages: conversationMessages,
+                    })
+                    const nextCompaction = buildCompactedConversationState({
+                      messages: conversationMessages,
+                      summary,
+                      summaryModelId: input.compactionModel.id,
+                    })
+                    this.compactionState = nextCompaction
+                      ? [...this.compactionState, nextCompaction]
+                      : this.compactionState
+                    this.pendingCompactionAnchorMessageId = null
+                    this.notifySubscribers()
+                  } catch (error) {
+                    this.pendingCompactionAnchorMessageId = null
+                    this.notifySubscribers()
+                    throw error
+                  }
+
+                  const latestCompaction = getLatestChatConversationCompaction(
+                    this.compactionState,
+                  )
+                  console.debug('[YOLO][Compact] compact state ready', {
+                    conversationId: input.conversationId,
+                    anchorMessageId: latestCompaction?.anchorMessageId,
+                    triggerToolCallId: latestCompaction?.triggerToolCallId,
+                  })
+
+                  worker.postMessage({
+                    type: 'tool_result',
+                    runId,
+                    hasPendingTools: false,
+                  })
+                  return
+                }
 
                 worker.postMessage({
                   type: 'tool_result',
@@ -201,7 +288,7 @@ export class NativeAgentRuntime implements AgentRuntime {
         worker.postMessage({ type: 'abort', runId })
         if (pendingToolMessageId) {
           this.markToolMessageAborted(pendingToolMessageId)
-          this.notifySubscribers([...this.messages])
+          this.notifySubscribers()
         }
       }
       abortSignal.addEventListener('abort', abortListener, { once: true })
@@ -257,16 +344,17 @@ export class NativeAgentRuntime implements AgentRuntime {
       geminiTools: input.geminiTools,
       onAssistantMessage: (assistantMessage) => {
         this.upsertAssistantMessage(assistantMessage)
-        this.notifySubscribers([...this.messages])
+        this.notifySubscribers()
       },
     })
 
     await llmTurnExecutor.run()
   }
 
-  private notifySubscribers(messages: ChatMessage[]): void {
+  private notifySubscribers(): void {
+    const snapshot = this.getSnapshot()
     this.subscribers.forEach((callback) => {
-      callback(messages)
+      callback(snapshot)
     })
   }
 

@@ -146,9 +146,9 @@ export const it: TranslationKeys = {
       defaultChatModel: 'Modello chat predefinito',
       defaultChatModelDesc:
         'Scegli il modello che vuoi usare per la chat nella barra laterale.',
-      chatTitleModel: 'Modello titolo conversazione',
+      chatTitleModel: 'Modello per titolo e riepilogo conversazione',
       chatTitleModelDesc:
-        'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni.',
+        'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni e generare i riepiloghi compact.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",
@@ -344,9 +344,15 @@ export const it: TranslationKeys = {
       builtinFsSearchLabel: 'Cerca nel vault',
       builtinFsSearchDesc:
         'Cerca file, cartelle o contenuti Markdown nel vault.',
-      builtinFsReadLabel: 'Leggi file',
+      builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc:
-        'Legge intervalli di righe da uno o più file del vault.',
+        'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
+      builtinContextPruneToolResultsLabel: 'Pota risultati strumenti',
+      builtinContextPruneToolResultsDesc:
+        'Esclude dai futuri contesti visibili al modello i risultati storici degli strumenti selezionati, oppure tutti quelli potabili in una volta, senza eliminare la cronologia chat.',
+      builtinContextCompactLabel: 'Compatta contesto',
+      builtinContextCompactDesc:
+        'Comprimi la cronologia meno recente in un riepilogo e continua in una nuova finestra di contesto.',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc:
         'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, replace_lines, insert_after e append.',
@@ -583,6 +589,63 @@ export const it: TranslationKeys = {
       manualUpdateNowDesc:
         "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
       advanced: 'Impostazioni avanzate',
+      basicCardTitle: 'Base RAG',
+      basicCardDesc:
+        "Controlla l'accesso alla ricerca e il modello base per gli embedding.",
+      resourceCardTitle: 'Risorse PGlite',
+      resourceCardDesc:
+        'Gestisce le risorse runtime del database necessarie alla base di conoscenza.',
+      scopeCardTitle: 'Ambito di ricerca',
+      scopeCardDesc:
+        "Specifica quali cartelle includere o escludere dall'indicizzazione.",
+      maintenanceCardTitle: "Manutenzione dell'indice",
+      maintenanceCardDesc:
+        "Gestisce aggiornamenti automatici, aggiornamenti incrementali, ricostruzione e avanzamento dell'indice.",
+      maintenanceUnavailableHint:
+        "Prepara prima le risorse PGlite qui sopra per usare la manutenzione dell'indice o il database embedding.",
+      pgliteStatusCurrent: 'Stato attuale',
+      pgliteStatusSource: 'Origine risorsa',
+      pgliteStatusPath: 'Percorso risorsa',
+      pgliteStatusCheckedAt: 'Ultimo controllo',
+      pgliteStatusVersion: 'Versione runtime',
+      pgliteStatusReadyAt: 'Ultima preparazione',
+      pgliteStatusReason: 'Dettagli',
+      pgliteStateUnchecked: 'Non registrato',
+      pgliteStateChecking: 'Controllo in corso',
+      pgliteStateMissing: 'Non scaricato',
+      pgliteStateDownloading: 'Download in corso',
+      pgliteStateUnavailable: 'Non disponibile',
+      pgliteStateFailed: 'Preparazione fallita',
+      pgliteStateReady: 'Pronto',
+      pgliteSourceRemote: 'Cache remota',
+      pgliteSourceBundled: 'Incluso nel plugin',
+      pgliteSourceLocalCache: 'Cache locale',
+      pgliteDeliveryManual: 'Download manuale',
+      pgliteDownload: 'Scarica risorse',
+      pgliteRedownload: 'Scarica di nuovo',
+      pgliteRecheck: 'Controlla di nuovo',
+      pgliteDeleteLocal: 'Elimina risorse locali',
+      pgliteDownloadPlaceholder:
+        'Qui verrà collegato il punto di download manuale delle risorse PGlite remote.',
+      pgliteDeletePlaceholder:
+        'Qui verrà collegato il punto di eliminazione delle risorse locali di PGlite.',
+      pgliteDownloadingUnknownFile: 'file runtime',
+      pgliteInlineErrorTitle: 'Download non riuscito',
+      pgliteSummaryReadyRemote:
+        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
+      pgliteSummaryReadyBundled:
+        'Il plugin sta ancora usando risorse PGlite integrate. Dopo il passaggio alla distribuzione remota, questa scheda mostrerà lo stato della cache locale e ospiterà il download manuale.',
+      pgliteSummaryUnavailable:
+        'Le risorse runtime di PGlite non sono disponibili. La manutenzione dell’indice e la gestione del database embedding resteranno disabilitate finché le risorse non saranno pronte.',
+      pgliteSummaryReady:
+        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
+      pgliteSummaryDownloading:
+        'Le risorse runtime di PGlite sono in preparazione. Al termine del download, la manutenzione dell’indice e la gestione del database embedding torneranno disponibili automaticamente.',
+      pgliteSummaryFailed:
+        'La preparazione del runtime PGlite non è riuscita. Riprova il download oppure svuota la cache locale prima di usare di nuovo le funzioni knowledge base.',
+      pgliteSummaryMissing:
+        'Le risorse runtime di PGlite non sono ancora state preparate. Verranno scaricate automaticamente al primo uso della knowledge base, oppure puoi prepararle qui manualmente.',
+      pgliteDownloadingFile: 'Download',
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',
@@ -813,6 +876,9 @@ export const it: TranslationKeys = {
         'Sei sicuro di voler ripristinare la configurazione degli agent? Questa azione rimuoverà gli agent personalizzati e reimposterà la selezione corrente.',
       resetAgentsSuccess:
         'La configurazione degli agent è stata ripristinata ai valori predefiniti.',
+      logModelRequestContext: 'Registra il contesto della richiesta al modello',
+      logModelRequestContextDesc:
+        'Stampa nella console sviluppatore il payload finale realmente inviato al modello per ogni turno Agent.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
@@ -822,6 +888,11 @@ export const it: TranslationKeys = {
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",
       mentionDisplayModeInline: 'Dentro la casella',
       mentionDisplayModeBadge: 'Badge in alto',
+      mentionContextMode: 'Modalita contesto file @',
+      mentionContextModeDesc:
+        'Controlla come i file con @ vengono iniettati nel modello. In modalita leggera vengono iniettati solo i percorsi dei file citati e la struttura Markdown, incoraggiando l agent a leggere solo il contenuto necessario.',
+      mentionContextModeLight: 'Modalita leggera',
+      mentionContextModeFull: 'Modalita completa',
       persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
       persistSelectionHighlightDesc:
         "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",
@@ -857,7 +928,7 @@ export const it: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill」',
+      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill o un comando」',
     placeholderCompact: 'Clicca per espandere e modificare...',
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
@@ -889,6 +960,13 @@ export const it: TranslationKeys = {
       entryFile: 'File',
       entryFolder: 'Cartella',
     },
+    slashCommands: {
+      compact: {
+        label: 'Compatta contesto',
+        description:
+          'Comprimi manualmente la cronologia precedente e continua il task corrente in una nuova finestra di contesto.',
+      },
+    },
     emptyState: {
       chatTitle: 'Pensa prima, poi scrivi',
       chatDescription:
@@ -896,6 +974,22 @@ export const it: TranslationKeys = {
       agentTitle: "Lascia eseguire all'AI",
       agentDescription:
         'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
+    },
+    compaction: {
+      pendingTitle: 'Compattazione del contesto in corso',
+      dividerTitle: "Da qui continua l'attivita corrente",
+      dividerDescription:
+        'La conversazione precedente e stata compressa in un riassunto. Le risposte seguenti continuano da quel riassunto.',
+      pendingStatus:
+        'Sto riorganizzando il contesto. La conversazione continuera tra poco in un nuovo contesto.',
+      success:
+        'Il contesto precedente e stato compresso. Le prossime risposte continueranno dal riassunto.',
+      failed: 'Compattazione del contesto non riuscita. Riprova tra poco.',
+      empty: 'Non ci sono ancora contenuti di conversazione da comprimere.',
+      runActive:
+        'Attendi che la risposta corrente finisca prima di compattare il contesto.',
+      waitingApproval:
+        "Gestisci prima l'approvazione dello strumento in sospeso, poi compatta il contesto.",
     },
     codeBlock: {
       showRawText: 'Mostra testo grezzo',
@@ -1040,6 +1134,10 @@ export const it: TranslationKeys = {
         delete_dir: 'Elimina cartella',
         move: 'Sposta percorso',
       },
+      readMode: {
+        full: 'Intero testo',
+        linesSuffix: ' righe',
+      },
       detail: {
         target: 'Destinazione',
         scope: 'Ambito',
@@ -1089,9 +1187,10 @@ export const it: TranslationKeys = {
     rebuildFailed: 'Ricostruzione indice vault fallita.',
     openYoloNewChatFailed:
       'Impossibile aprire la finestra chat YOLO; prova prima dal palette comandi.',
-    pgliteUnavailable: 'Risorse PGlite non disponibili; reinstalla il plugin.',
+    pgliteUnavailable:
+      'Runtime PGlite non disponibile; riprova a scaricare le risorse runtime.',
     downloadingPglite:
-      'Download dipendenze PGlite da CDN (~20MB); potrebbe richiedere un momento…',
+      'Download delle risorse runtime PGlite in corso; il primo utilizzo della knowledge base potrebbe richiedere un momento…',
     updatingIndex: 'Aggiornamento indice vault in corso…',
     indexUpdated: 'Indice vault aggiornato.',
     indexUpdateFailed: 'Aggiornamento indice vault fallito.',

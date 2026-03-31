@@ -231,6 +231,10 @@ export type TranslationKeys = {
       builtinFsSearchDesc?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string
+      builtinContextPruneToolResultsLabel?: string
+      builtinContextPruneToolResultsDesc?: string
+      builtinContextCompactLabel?: string
+      builtinContextCompactDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
       fsEditReviewToggle?: string
@@ -454,6 +458,49 @@ export type TranslationKeys = {
       manualUpdateNow?: string
       manualUpdateNowDesc?: string
       advanced?: string
+      basicCardTitle?: string
+      basicCardDesc?: string
+      resourceCardTitle?: string
+      resourceCardDesc?: string
+      scopeCardTitle?: string
+      scopeCardDesc?: string
+      maintenanceCardTitle?: string
+      maintenanceCardDesc?: string
+      maintenanceUnavailableHint?: string
+      pgliteStatusCurrent?: string
+      pgliteStatusSource?: string
+      pgliteStatusPath?: string
+      pgliteStatusCheckedAt?: string
+      pgliteStatusVersion?: string
+      pgliteStatusReadyAt?: string
+      pgliteStatusReason?: string
+      pgliteStateUnchecked?: string
+      pgliteStateChecking?: string
+      pgliteStateMissing?: string
+      pgliteStateDownloading?: string
+      pgliteStateUnavailable?: string
+      pgliteStateFailed?: string
+      pgliteStateReady?: string
+      pgliteSourceRemote?: string
+      pgliteSourceBundled?: string
+      pgliteSourceLocalCache?: string
+      pgliteDeliveryManual?: string
+      pgliteDownload?: string
+      pgliteRedownload?: string
+      pgliteRecheck?: string
+      pgliteDeleteLocal?: string
+      pgliteDownloadPlaceholder?: string
+      pgliteDeletePlaceholder?: string
+      pgliteDownloadingUnknownFile?: string
+      pgliteInlineErrorTitle?: string
+      pgliteSummaryReadyRemote?: string
+      pgliteSummaryReadyBundled?: string
+      pgliteSummaryUnavailable?: string
+      pgliteSummaryReady?: string
+      pgliteSummaryDownloading?: string
+      pgliteSummaryFailed?: string
+      pgliteSummaryMissing?: string
+      pgliteDownloadingFile?: string
       // Index progress header/status
       indexProgressTitle?: string
       indexing?: string
@@ -635,6 +682,8 @@ export type TranslationKeys = {
       resetAgentsDesc?: string
       resetAgentsConfirm?: string
       resetAgentsSuccess?: string
+      logModelRequestContext?: string
+      logModelRequestContextDesc?: string
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
@@ -642,6 +691,10 @@ export type TranslationKeys = {
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
       mentionDisplayModeBadge?: string
+      mentionContextMode?: string
+      mentionContextModeDesc?: string
+      mentionContextModeLight?: string
+      mentionContextModeFull?: string
       chatApplyMode?: string
       chatApplyModeDesc?: string
       chatApplyModeReviewRequired?: string
@@ -797,11 +850,28 @@ export type TranslationKeys = {
       entryFile?: string
       entryFolder?: string
     }
+    slashCommands?: {
+      compact?: {
+        label?: string
+        description?: string
+      }
+    }
     emptyState?: {
       chatTitle?: string
       chatDescription?: string
       agentTitle?: string
       agentDescription?: string
+    }
+    compaction?: {
+      pendingTitle?: string
+      dividerTitle?: string
+      dividerDescription?: string
+      pendingStatus?: string
+      success?: string
+      failed?: string
+      empty?: string
+      runActive?: string
+      waitingApproval?: string
     }
     codeBlock?: {
       showRawText?: string
@@ -894,6 +964,10 @@ export type TranslationKeys = {
         create_dir?: string
         delete_dir?: string
         move?: string
+      }
+      readMode?: {
+        full?: string
+        linesSuffix?: string
       }
       detail?: {
         target?: string

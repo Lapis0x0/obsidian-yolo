@@ -5,13 +5,22 @@ import {
   ReasoningLevel,
   reasoningLevelToConfig,
 } from '../../components/chat-view/chat-input/ReasoningSelect'
-import { ChatAssistantMessage, ChatMessage } from '../../types/chat'
+import {
+  ChatAssistantMessage,
+  ChatConversationCompactionLike,
+  ChatMessage,
+} from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
-import { RequestTool } from '../../types/llm/request'
+import { RequestMessage, RequestTool } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
 import { ToolCallRequest } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import {
+  estimateJsonTokens,
+  formatTokenCount,
+} from '../../utils/llm/contextTokenEstimate'
 import { executeSingleTurn } from '../ai/single-turn'
+import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import { BaseLLMProvider } from '../llm/base'
 import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
@@ -28,6 +37,7 @@ type AgentLlmTurnExecutorInput = {
   mcpManager: McpManager
   conversationId: string
   messages: ChatMessage[]
+  compaction?: ChatConversationCompactionLike | null
   enableTools: boolean
   includeBuiltinTools: boolean
   allowedToolNames?: string[]
@@ -69,6 +79,8 @@ export class AgentLlmTurnExecutor {
     'fs_list',
     'fs_search',
     'fs_read',
+    'context_prune_tool_results',
+    CONTEXT_COMPACT_TOOL_NAME,
     'fs_edit',
     'fs_create_file',
     'fs_delete_file',
@@ -153,6 +165,7 @@ export class AgentLlmTurnExecutor {
         maxContextOverride: this.input.maxContextOverride,
         model: this.input.model,
         conversationId: this.input.conversationId,
+        compaction: this.input.compaction,
         currentFileContextMode: this.input.currentFileContextMode,
         currentFileOverride: this.input.currentFileOverride,
       })
@@ -171,7 +184,7 @@ export class AgentLlmTurnExecutor {
             },
           }))
         : undefined
-
+    this.logModelRequestContext({ requestMessages, tools })
     const responseStart = Date.now()
     const effectiveModel = this.getEffectiveModel()
     const assistantMessage: ChatAssistantMessage = {
@@ -324,6 +337,41 @@ export class AgentLlmTurnExecutor {
       return true
     }
     return this.allowedToolNames.has(toolName)
+  }
+
+  private logModelRequestContext({
+    requestMessages,
+    tools,
+  }: {
+    requestMessages: RequestMessage[]
+    tools: RequestTool[] | undefined
+  }): void {
+    if (
+      !this.input.requestContextBuilder.isModelRequestContextLoggingEnabled?.()
+    ) {
+      return
+    }
+
+    const estimatedTokens = estimateJsonTokens({
+      messages: requestMessages,
+      tools,
+    })
+    const effectiveModel = this.getEffectiveModel()
+
+    console.groupCollapsed(
+      `[YOLO][Agent Debug] request context ${formatTokenCount(estimatedTokens)} tokens`,
+    )
+    console.debug('[YOLO][Agent Debug] Summary', {
+      conversationId: this.input.conversationId,
+      modelId: effectiveModel.id,
+      providerId: effectiveModel.providerId,
+      messageCount: requestMessages.length,
+      toolCount: tools?.length ?? 0,
+      estimatedTokens,
+    })
+    console.debug('[YOLO][Agent Debug] Request messages', requestMessages)
+    console.debug('[YOLO][Agent Debug] Tools', tools ?? [])
+    console.groupEnd()
   }
 
   private isMemoryToolAvailable(toolName: string): boolean {

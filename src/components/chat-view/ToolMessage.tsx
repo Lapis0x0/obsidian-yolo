@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
+import { getBuiltinToolUiMeta } from '../../core/agent/builtinToolUiMeta'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -35,6 +36,8 @@ export type ToolLabels = {
   unknownStatus: string
   displayNames: Record<string, string>
   writeActionLabels: Record<string, string>
+  readFull: string
+  readLineRange: (startLine: number, endLine: number) => string
   target: string
   scope: string
   query: string
@@ -64,19 +67,23 @@ type ToolRequestLike = {
   arguments?: ToolCallRequest['arguments']
 }
 
+type FsReadOperationSummary =
+  | {
+      type: 'full'
+    }
+  | {
+      type: 'lines'
+      startLine: number
+      endLine?: number
+      maxLines?: number
+    }
+
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  fs_list: 'Read Vault',
-  fs_search: 'Search Vault',
-  fs_read: 'Read File',
-  fs_edit: 'Text editing',
   fs_create_file: 'Create file',
   fs_delete_file: 'Delete file',
   fs_create_dir: 'Create folder',
   fs_delete_dir: 'Delete folder',
   fs_move: 'Move path',
-  memory_add: 'Add memory',
-  memory_update: 'Update memory',
-  memory_delete: 'Delete memory',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
@@ -115,22 +122,15 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
     },
     unknownStatus: translate('chat.toolCall.status.unknown', 'Unknown'),
     displayNames: {
-      fs_list: translate(
-        'settings.agent.builtinFsListLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_list,
+      fs_list: translateBuiltinToolLabel('fs_list', translate),
+      fs_search: translateBuiltinToolLabel('fs_search', translate),
+      fs_read: translateBuiltinToolLabel('fs_read', translate),
+      context_prune_tool_results: translateBuiltinToolLabel(
+        'context_prune_tool_results',
+        translate,
       ),
-      fs_search: translate(
-        'settings.agent.builtinFsSearchLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_search,
-      ),
-      fs_read: translate(
-        'settings.agent.builtinFsReadLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_read,
-      ),
-      fs_edit: translate(
-        'settings.agent.builtinFsEditLabel',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_edit,
-      ),
+      context_compact: translateBuiltinToolLabel('context_compact', translate),
+      fs_edit: translateBuiltinToolLabel('fs_edit', translate),
       fs_create_file: translate(
         'chat.toolCall.writeAction.create_file',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_file,
@@ -151,18 +151,9 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.move',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
       ),
-      memory_add: translate(
-        'chat.toolCall.displayName.memory_add',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_add,
-      ),
-      memory_update: translate(
-        'chat.toolCall.displayName.memory_update',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_update,
-      ),
-      memory_delete: translate(
-        'chat.toolCall.displayName.memory_delete',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.memory_delete,
-      ),
+      memory_add: translateBuiltinToolLabel('memory_add', translate),
+      memory_update: translateBuiltinToolLabel('memory_update', translate),
+      memory_delete: translateBuiltinToolLabel('memory_delete', translate),
     },
     writeActionLabels: {
       create_file: translate(
@@ -186,6 +177,9 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         DEFAULT_WRITE_ACTION_LABELS.move,
       ),
     },
+    readFull: translate('chat.toolCall.readMode.full', 'Full'),
+    readLineRange: (startLine: number, endLine: number) =>
+      `${startLine}-${endLine}${translate('chat.toolCall.readMode.linesSuffix', ' lines')}`,
     target: translate('chat.toolCall.detail.target', 'Target'),
     scope: translate('chat.toolCall.detail.scope', 'Scope'),
     query: translate('chat.toolCall.detail.query', 'Query'),
@@ -203,6 +197,18 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'Allow for this chat',
     ),
   }
+}
+
+const translateBuiltinToolLabel = (
+  toolName: string,
+  translate: TranslateFn,
+): string => {
+  const meta = getBuiltinToolUiMeta(toolName)
+  if (!meta) {
+    return toolName
+  }
+
+  return translate(meta.labelKey, meta.labelFallback)
 }
 
 const truncateText = (text: string, maxLength: number): string => {
@@ -226,6 +232,137 @@ const asStringArray = (value: unknown): string[] | null => {
     return null
   }
   return value
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+const asInteger = (value: unknown): number | undefined => {
+  return Number.isInteger(value) ? (value as number) : undefined
+}
+
+const getFsReadOperationSummary = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): FsReadOperationSummary | undefined => {
+  const requestArguments = parseToolArguments(request.arguments)
+  const requestOperation = asRecord(requestArguments?.operation)
+
+  if (response?.status === ToolCallResponseStatus.Success) {
+    try {
+      const payload = JSON.parse(response.data.text) as unknown
+      const requestedOperation = asRecord(asRecord(payload)?.requestedOperation)
+      const type = requestedOperation?.type
+
+      if (type === 'full') {
+        return { type: 'full' }
+      }
+
+      if (type === 'lines') {
+        const startLine = asInteger(requestedOperation?.startLine)
+        if (typeof startLine !== 'number') {
+          return undefined
+        }
+        return {
+          type: 'lines',
+          startLine,
+          endLine: asInteger(requestedOperation?.endLine),
+          maxLines: asInteger(requestedOperation?.maxLines),
+        }
+      }
+    } catch {
+      // Fall back to request arguments when the response text is unavailable or malformed.
+    }
+  }
+
+  const requestType = requestOperation?.type
+  if (requestType === 'full') {
+    return { type: 'full' }
+  }
+
+  if (requestType === 'lines') {
+    const startLine = asInteger(requestOperation?.startLine) ?? 1
+    return {
+      type: 'lines',
+      startLine,
+      endLine: asInteger(requestOperation?.endLine),
+      maxLines: asInteger(requestOperation?.maxLines),
+    }
+  }
+
+  return undefined
+}
+
+const formatFsReadHeadlineMode = (
+  operation: FsReadOperationSummary | undefined,
+  labels: ToolLabels,
+): string | undefined => {
+  if (!operation) {
+    return undefined
+  }
+
+  if (operation.type === 'full') {
+    return labels.readFull
+  }
+
+  if (typeof operation.endLine === 'number') {
+    return labels.readLineRange(operation.startLine, operation.endLine)
+  }
+
+  if (typeof operation.maxLines === 'number') {
+    return labels.readLineRange(
+      operation.startLine,
+      operation.startLine + operation.maxLines - 1,
+    )
+  }
+
+  return labels.readLineRange(operation.startLine, operation.startLine)
+}
+
+export const getHeadlineDisplayInfo = ({
+  request,
+  response,
+  labels,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+  labels: ToolLabels
+}): ToolDisplayInfo => {
+  const displayInfo = getToolDisplayInfo(request, labels)
+
+  try {
+    const { serverName, toolName } = parseToolName(request.name)
+    if (serverName !== getLocalFileToolServerName() || toolName !== 'fs_read') {
+      return displayInfo
+    }
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+    return displayInfo
+  }
+
+  const modeText = formatFsReadHeadlineMode(
+    getFsReadOperationSummary({ request, response }),
+    labels,
+  )
+  if (!modeText) {
+    return displayInfo
+  }
+
+  return {
+    ...displayInfo,
+    summaryText: displayInfo.summaryText
+      ? `${displayInfo.summaryText} | ${modeText}`
+      : modeText,
+  }
 }
 
 const getLocalToolSummaryText = ({
@@ -337,7 +474,11 @@ export const getToolMessageContent = (
   const labels = getToolLabels(t)
   return message.toolCalls
     ?.map((toolCall) => {
-      const displayInfo = getToolDisplayInfo(toolCall.request, labels)
+      const displayInfo = getHeadlineDisplayInfo({
+        request: toolCall.request,
+        response: toolCall.response,
+        labels,
+      })
       return [
         getToolHeadlineText({
           status: toolCall.response.status,
@@ -361,10 +502,12 @@ export const getToolMessageContent = (
 const ToolMessage = memo(function ToolMessage({
   message,
   conversationId,
+  isCompactionPending = false,
   onMessageUpdate,
 }: {
   message: ChatToolMessage
   conversationId: string
+  isCompactionPending?: boolean
   onMessageUpdate: (message: ChatToolMessage) => void
 }) {
   return (
@@ -378,6 +521,9 @@ const ToolMessage = memo(function ToolMessage({
             request={toolCall.request}
             response={toolCall.response}
             conversationId={conversationId}
+            showCompactionPendingHint={
+              isCompactionPending && index === message.toolCalls.length - 1
+            }
             onResponseUpdate={(response) =>
               onMessageUpdate({
                 ...message,
@@ -397,14 +543,17 @@ function ToolCallItem({
   request,
   response,
   conversationId,
+  showCompactionPendingHint = false,
   onResponseUpdate,
 }: {
   request: ToolCallRequest
   response: ToolCallResponse
   conversationId: string
+  showCompactionPendingHint?: boolean
   onResponseUpdate: (response: ToolCallResponse) => void
 }) {
   const STATUS_TRANSITION_MS = 180
+  const COMPACTION_PENDING_EXIT_MS = 180
   const {
     handleToolCall,
     handleAllowForConversation,
@@ -420,8 +569,13 @@ function ToolCallItem({
   const { t } = useLanguage()
   const toolLabels = useMemo(() => getToolLabels(t), [t])
   const displayInfo = useMemo(
-    () => getToolDisplayInfo(request, toolLabels),
-    [request, toolLabels],
+    () =>
+      getHeadlineDisplayInfo({
+        request,
+        response,
+        labels: toolLabels,
+      }),
+    [request, response, toolLabels],
   )
   const editSummary =
     response.status === ToolCallResponseStatus.Success
@@ -464,6 +618,13 @@ function ToolCallItem({
       ? 'pending'
       : null,
   )
+  const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
+    useState(
+      showCompactionPendingHint &&
+        response.status === ToolCallResponseStatus.Success,
+    )
+  const [isCompactionPendingHintExiting, setIsCompactionPendingHintExiting] =
+    useState(false)
 
   useEffect(() => {
     if (response.status !== ToolCallResponseStatus.Running) {
@@ -503,6 +664,32 @@ function ToolCallItem({
     : shouldShowRunningFooter
       ? 'running'
       : null
+
+  useEffect(() => {
+    const shouldShowCompactionPendingHint =
+      showCompactionPendingHint &&
+      response.status === ToolCallResponseStatus.Success
+
+    if (shouldShowCompactionPendingHint) {
+      setRenderCompactionPendingHint(true)
+      setIsCompactionPendingHintExiting(false)
+      return
+    }
+
+    if (!renderCompactionPendingHint) {
+      return
+    }
+
+    setIsCompactionPendingHintExiting(true)
+    const timer = window.setTimeout(() => {
+      setRenderCompactionPendingHint(false)
+      setIsCompactionPendingHintExiting(false)
+    }, COMPACTION_PENDING_EXIT_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [renderCompactionPendingHint, response.status, showCompactionPendingHint])
 
   useEffect(() => {
     if (footerMode) {
@@ -604,6 +791,27 @@ function ToolCallItem({
               <ObsidianCodeBlock content={response.error} />
             </div>
           )}
+        </div>
+      )}
+      {renderCompactionPendingHint && (
+        <div
+          className={cx(
+            'smtcmp-toolcall-compaction-pending',
+            isCompactionPendingHintExiting &&
+              'smtcmp-toolcall-compaction-pending--exiting',
+          )}
+          aria-live="polite"
+        >
+          <Loader2
+            size={12}
+            className="smtcmp-toolcall-compaction-pending-icon"
+          />
+          <span>
+            {t(
+              'chat.compaction.pendingStatus',
+              '正在整理上下文，稍后将从新的上下文继续。',
+            )}
+          </span>
         </div>
       )}
       {renderFooter && (

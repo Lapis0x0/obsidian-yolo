@@ -2,7 +2,10 @@ jest.mock('obsidian')
 
 import { App, TFile, TFolder } from 'obsidian'
 
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import {
+  ToolCallResponseStatus,
+  createCompleteToolCallArguments,
+} from '../../types/tool-call.types'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 
 import {
@@ -218,6 +221,510 @@ describe('local fs tool action helpers', () => {
       totalFiles: 1,
       totalAddedLines: 2,
       totalRemovedLines: 2,
+    })
+  })
+
+  it('supports fs_read full operation', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const read = jest.fn().mockResolvedValue(['one', 'two', 'three'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolCallId: 'read-call-1',
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        operation: {
+          type: 'full',
+        },
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      toolCallId: string | null
+      requestedOperation: { type: string }
+      results: Array<{
+        ok: boolean
+        content: string
+        returnedRange: { startLine: number | null; endLine: number | null }
+      }>
+    }
+    expect(payload.toolCallId).toBe('read-call-1')
+    expect(payload.requestedOperation.type).toBe('full')
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      content: ['1|one', '2|two', '3|three'].join('\n'),
+      returnedRange: {
+        startLine: 1,
+        endLine: 3,
+      },
+    })
+  })
+
+  it('supports fs_read lines operation with numbered output', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 40 },
+    })
+    const read = jest
+      .fn()
+      .mockResolvedValue(['one', 'two', 'three', 'four'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        operation: {
+          type: 'lines',
+          startLine: 2,
+          maxLines: 2,
+        },
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      toolCallId: string | null
+      requestedOperation: {
+        type: string
+        startLine: number | null
+        maxLines: number | null
+      }
+      results: Array<{
+        ok: boolean
+        content: string
+        hasMoreAbove: boolean
+        hasMoreBelow: boolean
+        nextStartLine: number | null
+      }>
+    }
+    expect(payload.toolCallId).toBeNull()
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'lines',
+      startLine: 2,
+      maxLines: 2,
+    })
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      content: ['2|two', '3|three'].join('\n'),
+      hasMoreAbove: true,
+      hasMoreBelow: true,
+      nextStartLine: 4,
+    })
+  })
+
+  it('rejects removed top-level fs_read line arguments', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const read = jest.fn().mockResolvedValue('one\ntwo')
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        startLine: 1,
+        maxLines: 2,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain('operation must be an object')
+    }
+  })
+
+  it('supports context prune tool results for any successful text tool output', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'edit-1',
+                name: 'yolo_local__fs_edit',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        toolCallIds: [' edit-1 ', 'read-2', 'edit-1'],
+        reason: 'superseded by newer reads',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-1',
+      operation: 'prune_selected',
+      acceptedToolCallIds: ['edit-1'],
+      ignoredToolCallIds: ['read-2'],
+      reason: 'superseded by newer reads',
+    })
+  })
+
+  it('ignores tool results from the same tool message as prune', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-history',
+          toolCalls: [
+            {
+              request: {
+                id: 'edit-history',
+                name: 'yolo_local__fs_edit',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-message-current',
+          toolCalls: [
+            {
+              request: {
+                id: 'edit-current',
+                name: 'server__tool_a',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+            {
+              request: {
+                id: 'prune-1',
+                name: 'yolo_local__context_prune_tool_results',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Running,
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        toolCallIds: ['edit-history', 'edit-current'],
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-1',
+      operation: 'prune_selected',
+      acceptedToolCallIds: ['edit-history'],
+      ignoredToolCallIds: ['edit-current'],
+      reason: null,
+    })
+  })
+
+  it('only accepts successful text non-control tool results for pruning', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'search-success',
+                name: 'yolo_local__fs_search',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+            {
+              request: {
+                id: 'edit-error',
+                name: 'yolo_local__fs_edit',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Error,
+                error: 'missing file',
+              },
+            },
+            {
+              request: {
+                id: 'remote-aborted',
+                name: 'server__tool_a',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Aborted,
+              },
+            },
+            {
+              request: {
+                id: 'compact-success',
+                name: 'yolo_local__context_compact',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        toolCallIds: [
+          'search-success',
+          'edit-error',
+          'remote-aborted',
+          'compact-success',
+        ],
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-1',
+      operation: 'prune_selected',
+      acceptedToolCallIds: ['search-success'],
+      ignoredToolCallIds: ['edit-error', 'remote-aborted', 'compact-success'],
+      reason: null,
+    })
+  })
+
+  it('supports pruning all prunable tool results at once', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-all-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'search-1',
+                name: 'yolo_local__fs_search',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+            {
+              request: {
+                id: 'remote-1',
+                name: 'server__tool_a',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        mode: 'all',
+        reason: 'reset working set',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-all-1',
+      operation: 'prune_all',
+      acceptedToolCallIds: ['search-1', 'remote-1'],
+      ignoredToolCallIds: [],
+      reason: 'reset working set',
+    })
+  })
+
+  it('returns success with empty accepted ids when mode is all and nothing is prunable', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-all-empty-1',
+      toolName: 'context_prune_tool_results',
+      conversationMessages: [
+        {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'compact-1',
+                name: 'yolo_local__context_compact',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: '{}' },
+              },
+            },
+          ],
+        },
+      ],
+      args: {
+        mode: 'all',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_prune_tool_results',
+      toolCallId: 'prune-all-empty-1',
+      operation: 'prune_all',
+      acceptedToolCallIds: [],
+      ignoredToolCallIds: [],
+      reason: null,
+    })
+  })
+
+  it('requires toolCallIds when mode is selected', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'prune-selected-empty-1',
+      toolName: 'context_prune_tool_results',
+      args: {
+        mode: 'selected',
+        toolCallIds: [],
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain(
+        'toolCallIds cannot be empty when mode is selected.',
+      )
+    }
+  })
+
+  it('supports context compact control operation', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: {},
+      } as unknown as App,
+      toolCallId: 'compact-1',
+      toolName: 'context_compact',
+      args: {
+        reason: 'context window is crowded',
+        instruction: 'preserve pending edits and file paths',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'context_compact',
+      toolCallId: 'compact-1',
+      operation: 'compact_restart',
+      reason: 'context window is crowded',
+      instruction: 'preserve pending edits and file paths',
     })
   })
 
@@ -446,16 +953,14 @@ describe('local fs tool action helpers', () => {
   it('creates missing parent folders before creating a file', async () => {
     const entries = new Map<string, unknown>()
     const contents = new Map<string, string>()
-    const createFolder = jest
-      .fn()
-      .mockImplementation(async (path: string) => {
-        const folder = Object.assign(new TFolder(), {
-          path,
-          children: [],
-        })
-        entries.set(path, folder)
-        return folder
+    const createFolder = jest.fn().mockImplementation(async (path: string) => {
+      const folder = Object.assign(new TFolder(), {
+        path,
+        children: [],
       })
+      entries.set(path, folder)
+      return folder
+    })
     const create = jest
       .fn()
       .mockImplementation(async (path: string, content: string) => {
@@ -504,16 +1009,14 @@ describe('local fs tool action helpers', () => {
 
   it('creates missing parent folders before creating a directory', async () => {
     const entries = new Map<string, unknown>()
-    const createFolder = jest
-      .fn()
-      .mockImplementation(async (path: string) => {
-        const folder = Object.assign(new TFolder(), {
-          path,
-          children: [],
-        })
-        entries.set(path, folder)
-        return folder
+    const createFolder = jest.fn().mockImplementation(async (path: string) => {
+      const folder = Object.assign(new TFolder(), {
+        path,
+        children: [],
       })
+      entries.set(path, folder)
+      return folder
+    })
 
     const result = await callLocalFileTool({
       app: {

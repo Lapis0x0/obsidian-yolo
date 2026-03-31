@@ -19,6 +19,37 @@ export type ChatSelectedSkill = {
   path: string
 }
 
+export type ChatConversationCompaction = {
+  anchorMessageId: string
+  summary: string
+  compactedAt: number
+  triggerToolCallId?: string
+  summaryModelId?: string
+}
+
+export type ChatConversationCompactionState = ChatConversationCompaction[]
+
+export type ChatConversationCompactionLike =
+  | ChatConversationCompaction
+  | ChatConversationCompactionState
+
+export const normalizeChatConversationCompactionState = (
+  compaction: ChatConversationCompactionLike | null | undefined,
+): ChatConversationCompactionState => {
+  if (!compaction) {
+    return []
+  }
+
+  return Array.isArray(compaction) ? [...compaction] : [compaction]
+}
+
+export const getLatestChatConversationCompaction = (
+  compaction: ChatConversationCompactionLike | null | undefined,
+): ChatConversationCompaction | null => {
+  const normalized = normalizeChatConversationCompactionState(compaction)
+  return normalized.at(-1) ?? null
+}
+
 export type ChatUserMessage = {
   role: 'user'
   content: SerializedEditorState | null
@@ -117,6 +148,7 @@ export type ChatConversation = {
   pinnedAt?: number
   messages: SerializedChatMessage[]
   reasoningLevel?: string
+  compaction?: ChatConversationCompactionLike | null
 }
 export type ChatConversationMeta = {
   schemaVersion: number

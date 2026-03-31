@@ -39,6 +39,11 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
     return
   }
   try {
+    const stat = await app.vault.adapter.stat(path)
+    if (stat?.type === 'folder') {
+      await app.vault.adapter.rmdir(path, false)
+      return
+    }
     await app.vault.adapter.remove(path)
   } catch (error) {
     console.warn(

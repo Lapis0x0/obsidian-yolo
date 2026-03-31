@@ -6,6 +6,11 @@ import type { QueryProgressState } from '../../components/chat-view/QueryProgres
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
+  buildCompactionResumeMessage,
+  buildCompactionSummaryMessage,
+  findCompactTrigger,
+} from '../../core/agent/compaction'
+import {
   getLiteSkillDocument,
   listLiteSkillEntries,
 } from '../../core/skills/liteSkills'
@@ -18,11 +23,14 @@ import type { SelectEmbedding } from '../../database/schema'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
+  ChatConversationCompaction,
+  ChatConversationCompactionLike,
   ChatMessage,
   ChatSelectedSkill,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
+import { getLatestChatConversationCompaction } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
@@ -48,12 +56,81 @@ import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
 } from './tool-boundary'
+import {
+  collectContextPrunedToolCallIds,
+  filterContextPrunedAssistantToolCalls,
+  filterContextPrunedToolCalls,
+} from './tool-context-pruning'
 import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
 type RequestContextBuilderOptions = {
   includeSkills?: boolean
+}
+
+type MarkdownAtxHeading = {
+  level: number
+  line: number
+  text: string
+}
+
+type MentionedFileContextEntry = {
+  file: TFile
+  source: 'file' | 'current-file' | 'folder'
+}
+
+const MAX_MENTIONED_FILE_OUTLINES = 10
+
+type MentionContextMode = 'light' | 'full'
+
+export function extractMarkdownAtxHeadings(
+  content: string,
+): MarkdownAtxHeading[] {
+  const headings: MarkdownAtxHeading[] = []
+  const lines = content.split('\n')
+  let activeFenceMarker: '```' | '~~~' | null = null
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? ''
+    const trimmedLine = line.trim()
+
+    if (activeFenceMarker) {
+      if (trimmedLine.startsWith(activeFenceMarker)) {
+        activeFenceMarker = null
+      }
+      continue
+    }
+
+    if (trimmedLine.startsWith('```')) {
+      activeFenceMarker = '```'
+      continue
+    }
+
+    if (trimmedLine.startsWith('~~~')) {
+      activeFenceMarker = '~~~'
+      continue
+    }
+
+    const match = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(trimmedLine)
+    if (!match) {
+      continue
+    }
+
+    const marker = match[1]
+    const text = match[2]?.trim()
+    if (!marker || !text) {
+      continue
+    }
+
+    headings.push({
+      level: marker.length,
+      line: index + 1,
+      text,
+    })
+  }
+
+  return headings
 }
 
 export class RequestContextBuilder {
@@ -75,6 +152,14 @@ export class RequestContextBuilder {
     this.includeSkills = options?.includeSkills ?? true
   }
 
+  public isModelRequestContextLoggingEnabled(): boolean {
+    return this.settings.debug?.logModelRequestContext ?? false
+  }
+
+  private getMentionContextMode(): MentionContextMode {
+    return this.settings.chatOptions?.mentionContextMode ?? 'light'
+  }
+
   public async generateRequestMessages({
     messages,
     hasTools = false,
@@ -82,6 +167,7 @@ export class RequestContextBuilder {
     maxContextOverride,
     model: _model,
     conversationId,
+    compaction,
     currentFileContextMode = 'full',
     currentFileOverride,
   }: {
@@ -91,6 +177,7 @@ export class RequestContextBuilder {
     maxContextOverride?: number
     model: ChatModel
     conversationId: string
+    compaction?: ChatConversationCompactionLike | null
     currentFileContextMode?: CurrentFileContextMode
     currentFileOverride?: TFile | null
   }): Promise<RequestMessage[]> {
@@ -121,7 +208,6 @@ export class RequestContextBuilder {
       const { promptContent, similaritySearchResults } =
         await this.compileUserMessagePrompt({
           message: lastUserMessage,
-          preferToolRead: hasTools,
         })
       compiledMessages[lastUserMessageIndex] = {
         ...lastUserMessage,
@@ -168,7 +254,6 @@ export class RequestContextBuilder {
       const { promptContent, similaritySearchResults } =
         await this.compileUserMessagePrompt({
           message,
-          preferToolRead: hasTools,
         })
       compiledMessages[i] = {
         ...message,
@@ -199,6 +284,7 @@ export class RequestContextBuilder {
         messages: compiledMessages,
         maxContextOverride: maxContext,
         snapshotEntries,
+        compaction,
       })),
       ...(currentFileMessage ? [currentFileMessage] : []),
     ]
@@ -210,10 +296,12 @@ export class RequestContextBuilder {
     messages,
     maxContextOverride,
     snapshotEntries,
+    compaction,
   }: {
     messages: ChatMessage[]
     maxContextOverride?: number
     snapshotEntries: Record<string, string | ContentPart[]>
+    compaction?: ChatConversationCompactionLike | null
   }): Promise<RequestMessage[]> {
     // Determine max context messages with priority:
     // 1) explicit override from conversation settings
@@ -226,6 +314,62 @@ export class RequestContextBuilder {
     // Get the last N messages and parse them into request messages
     const requestMessages: RequestMessage[] = []
     const contextMessages = messages.slice(-maxContext)
+    const prunedToolCallIds = collectContextPrunedToolCallIds(messages)
+
+    const latestCompaction = getLatestChatConversationCompaction(compaction)
+
+    if (latestCompaction) {
+      const compactTrigger = findCompactTrigger(messages)
+      const anchorIndex = messages.findIndex(
+        (message) => message.id === latestCompaction.anchorMessageId,
+      )
+
+      if (anchorIndex !== -1) {
+        requestMessages.push(buildCompactionSummaryMessage(latestCompaction))
+        const compactContextStartIndex = compactTrigger
+          ? Math.max(
+              messages.length - contextMessages.length,
+              compactTrigger.retainedStartIndex,
+            )
+          : Math.max(messages.length - contextMessages.length, anchorIndex + 1)
+        const compactContextMessages = messages.slice(compactContextStartIndex)
+
+        for (const message of compactContextMessages) {
+          if (message.role === 'user') {
+            requestMessages.push({
+              role: 'user',
+              content: await this.getUserMessageContent({
+                message,
+                snapshotEntries,
+              }),
+            })
+            continue
+          }
+
+          if (message.role === 'assistant') {
+            requestMessages.push(
+              ...this.parseAssistantMessage({ message, prunedToolCallIds }),
+            )
+            continue
+          }
+
+          requestMessages.push(
+            ...this.parseToolMessage({ message, prunedToolCallIds }),
+          )
+        }
+
+        if (
+          !compactContextMessages.some((message) => message.role === 'user')
+        ) {
+          requestMessages.push(buildCompactionResumeMessage())
+        }
+
+        return filterRequestMessagesByToolBoundary(
+          filterEmptyAssistantMessages(requestMessages),
+        )
+      }
+    }
+
     for (const message of contextMessages) {
       if (message.role === 'user') {
         requestMessages.push({
@@ -239,11 +383,15 @@ export class RequestContextBuilder {
       }
 
       if (message.role === 'assistant') {
-        requestMessages.push(...this.parseAssistantMessage({ message }))
+        requestMessages.push(
+          ...this.parseAssistantMessage({ message, prunedToolCallIds }),
+        )
         continue
       }
 
-      requestMessages.push(...this.parseToolMessage({ message }))
+      requestMessages.push(
+        ...this.parseToolMessage({ message, prunedToolCallIds }),
+      )
     }
 
     return filterRequestMessagesByToolBoundary(
@@ -383,8 +531,10 @@ ${message.similaritySearchResults
 
   private parseAssistantMessage({
     message,
+    prunedToolCallIds,
   }: {
     message: ChatAssistantMessage
+    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
     let citationContent: string | null = null
     if (message.annotations && message.annotations.length > 0) {
@@ -407,12 +557,14 @@ ${message.annotations
         ].join('\n'),
         reasoning: message.reasoning,
         providerMetadata: message.metadata?.providerMetadata,
-        tool_calls:
+        tool_calls: filterContextPrunedAssistantToolCalls(
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))
             .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
               Boolean(toolCall),
             ) ?? undefined,
+          prunedToolCallIds ?? new Set<string>(),
+        ),
       },
     ]
   }
@@ -448,10 +600,15 @@ ${message.annotations
 
   private parseToolMessage({
     message,
+    prunedToolCallIds,
   }: {
     message: ChatToolMessage
+    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
-    return message.toolCalls.flatMap((toolCall): RequestMessage[] => {
+    return filterContextPrunedToolCalls(
+      message.toolCalls,
+      prunedToolCallIds ?? new Set<string>(),
+    ).flatMap((toolCall): RequestMessage[] => {
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
         case ToolCallResponseStatus.Running:
@@ -499,12 +656,10 @@ ${message.annotations
     message,
     useVaultSearch,
     onQueryProgressChange,
-    preferToolRead = false,
   }: {
     message: ChatUserMessage
     useVaultSearch?: boolean
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void
-    preferToolRead?: boolean
   }): Promise<{
     promptContent: ChatUserMessage['promptContent']
     shouldUseRAG: boolean
@@ -575,49 +730,11 @@ ${similaritySearchResults
           .map((m) => m.file)
           .filter((file): file is TFile => Boolean(file))
 
-        if (preferToolRead) {
-          filePrompt = this.buildMentionedPathsPrompt({
-            files,
-            folders,
-            currentFiles,
-          })
-        } else {
-          const nestedFiles = folders.flatMap((folder) =>
-            getNestedFiles(folder, this.app.vault),
-          )
-          const allFiles = [...files, ...currentFiles, ...nestedFiles]
-          const uniqueFiles = allFiles.filter(
-            (file, index, arr) =>
-              arr.findIndex((item) => item.path === file.path) === index,
-          )
-          const fileEntries = await Promise.all(
-            uniqueFiles.map(async (file) => {
-              try {
-                const content = await readTFileContent(file, this.app.vault)
-                return { file, content }
-              } catch (error) {
-                console.warn(
-                  '[YOLO] Failed to read mentioned file',
-                  file.path,
-                  error,
-                )
-                return null
-              }
-            }),
-          )
-          const readableFileEntries = fileEntries.filter(
-            (entry): entry is { file: TFile; content: string } =>
-              entry !== null,
-          )
-          const readableFiles = readableFileEntries.map((entry) => entry.file)
-          const fileContents = readableFileEntries.map((entry) => entry.content)
-
-          filePrompt = readableFiles
-            .map((file, index) => {
-              return `\`\`\`${file.path}\n${fileContents[index]}\n\`\`\`\n`
-            })
-            .join('')
-        }
+        filePrompt = await this.buildMentionedFilePrompt({
+          files,
+          folders,
+          currentFiles,
+        })
       }
 
       const blocks = message.mentionables.filter(
@@ -895,7 +1012,7 @@ ${customInstruction}
       section += `
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
-- When file paths are provided in context, read only necessary files/ranges with tools and avoid repeatedly reading the same window.
+- Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
 - If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
@@ -915,7 +1032,7 @@ ${customInstruction}
       section += `
 - You can use tools, but consult the provided markdown first. Only call tools when the vault content cannot answer the question.
 - When using tools, briefly state why they are needed and focus on summarizing the results for the user.
-- When file paths are provided in context, read only necessary files/ranges with tools and avoid repeatedly reading the same window.
+- Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
 - If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
@@ -923,7 +1040,7 @@ ${customInstruction}
     return section
   }
 
-  private buildMentionedPathsPrompt({
+  private async buildMentionedPathsPrompt({
     files,
     folders,
     currentFiles,
@@ -931,36 +1048,203 @@ ${customInstruction}
     files: TFile[]
     folders: TFolder[]
     currentFiles: TFile[]
-  }): string {
-    const filePathSet = new Set(files.map((file) => file.path))
+  }): Promise<string> {
     const folderPathSet = new Set(folders.map((folder) => folder.path))
-    const currentFilePathSet = new Set(
-      currentFiles
-        .map((file) => file.path)
-        .filter((path) => path.length > 0 && !filePathSet.has(path)),
-    )
+    const unifiedFiles = this.collectMentionedFiles({
+      files,
+      folders,
+      currentFiles,
+    })
 
-    if (
-      filePathSet.size === 0 &&
-      folderPathSet.size === 0 &&
-      currentFilePathSet.size === 0
-    ) {
+    if (unifiedFiles.length === 0 && folderPathSet.size === 0) {
       return ''
     }
 
-    const formatPaths = (paths: Set<string>): string => {
-      return paths.size > 0
-        ? [...paths].map((path) => `\`${path}\``).join(', ')
-        : '(none)'
+    const outlinedFilePaths = new Set(
+      unifiedFiles
+        .filter(({ file }) => file.extension === 'md')
+        .slice(0, MAX_MENTIONED_FILE_OUTLINES)
+        .map(({ file }) => file.path),
+    )
+    const fileLines = await Promise.all(
+      unifiedFiles.map(async ({ file }) => {
+        if (!outlinedFilePaths.has(file.path)) {
+          return `- \`${file.path}\``
+        }
+
+        try {
+          const content = await readTFileContent(file, this.app.vault)
+          const headings = extractMarkdownAtxHeadings(content)
+          if (headings.length === 0) {
+            return `- \`${file.path}\``
+          }
+
+          return [
+            `- \`${file.path}\``,
+            ...headings.map(
+              (heading) =>
+                `  - L${heading.line} ${'#'.repeat(heading.level)} ${heading.text}`,
+            ),
+          ].join('\n')
+        } catch (error) {
+          console.warn(
+            '[YOLO] Failed to read mentioned file outline',
+            file.path,
+            error,
+          )
+          return `- \`${file.path}\``
+        }
+      }),
+    )
+
+    const markdownFileCount = unifiedFiles.filter(
+      ({ file }) => file.extension === 'md',
+    ).length
+    const omittedOutlineCount = Math.max(
+      0,
+      markdownFileCount - outlinedFilePaths.size,
+    )
+
+    const sections = [
+      `## Mentioned Vault Files (outline only)
+${fileLines.join('\n')}`,
+    ]
+
+    if (folderPathSet.size > 0) {
+      sections.push(`## Mentioned Vault Folders
+${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     }
 
-    return `## Mentioned Vault Paths
-- Files: ${formatPaths(filePathSet)}
-- Folders: ${formatPaths(folderPathSet)}
-- Current files: ${formatPaths(currentFilePathSet)}
+    if (omittedOutlineCount > 0) {
+      sections.push(
+        `Additional mentioned markdown files omitted from outline due to limit: ${omittedOutlineCount}`,
+      )
+    }
 
-Use file tools to read only the files and line ranges you actually need before making claims.
-`
+    sections.push(
+      'This section provides only paths and outlines. Use file tools only if you need the full contents or a specific line range.',
+    )
+
+    return `${sections.join('\n\n')}\n`
+  }
+
+  private async buildMentionedFilePrompt({
+    files,
+    folders,
+    currentFiles,
+  }: {
+    files: TFile[]
+    folders: TFolder[]
+    currentFiles: TFile[]
+  }): Promise<string> {
+    const mentionContextMode = this.getMentionContextMode()
+
+    if (mentionContextMode === 'light') {
+      return this.buildMentionedPathsPrompt({
+        files,
+        folders,
+        currentFiles,
+      })
+    }
+
+    const folderPrompt = await this.buildMentionedPathsPrompt({
+      files: [],
+      folders,
+      currentFiles: [],
+    })
+    const fullFilePrompt = await this.buildFullMentionedFilesPrompt({
+      files,
+      currentFiles,
+    })
+
+    return `${folderPrompt}${fullFilePrompt}`
+  }
+
+  private async buildFullMentionedFilesPrompt({
+    files,
+    currentFiles,
+  }: {
+    files: TFile[]
+    currentFiles: TFile[]
+  }): Promise<string> {
+    const uniqueFiles = this.collectMentionedFiles({
+      files,
+      folders: [],
+      currentFiles,
+    }).map(({ file }) => file)
+
+    if (uniqueFiles.length === 0) {
+      return ''
+    }
+
+    const fileEntries = await Promise.all(
+      uniqueFiles.map(async (file) => {
+        try {
+          const content = await readTFileContent(file, this.app.vault)
+          return { file, content }
+        } catch (error) {
+          console.warn('[YOLO] Failed to read mentioned file', file.path, error)
+          return null
+        }
+      }),
+    )
+    const readableFileEntries = fileEntries.filter(
+      (entry): entry is { file: TFile; content: string } => entry !== null,
+    )
+
+    return readableFileEntries
+      .map(({ file, content }, index) => {
+        const numberedContent = this.addLineNumbersToContent({
+          content,
+          startLine: 1,
+        })
+        const prefix =
+          index === 0
+            ? '## Mentioned Vault Files (full content already provided below)\nUse this provided content first. Only call file tools if you need another file or want to verify the latest contents.\n\n'
+            : ''
+        return `${prefix}\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+      })
+      .join('')
+  }
+
+  private collectMentionedFiles({
+    files,
+    folders,
+    currentFiles,
+  }: {
+    files: TFile[]
+    folders: TFolder[]
+    currentFiles: TFile[]
+  }): MentionedFileContextEntry[] {
+    const collected: MentionedFileContextEntry[] = []
+    const seenPaths = new Set<string>()
+
+    const pushFile = (
+      file: TFile,
+      source: MentionedFileContextEntry['source'],
+    ): void => {
+      if (!file.path || seenPaths.has(file.path)) {
+        return
+      }
+      seenPaths.add(file.path)
+      collected.push({ file, source })
+    }
+
+    for (const file of files) {
+      pushFile(file, 'file')
+    }
+
+    for (const file of currentFiles) {
+      pushFile(file, 'current-file')
+    }
+
+    for (const folder of folders) {
+      for (const file of getNestedFiles(folder, this.app.vault)) {
+        pushFile(file, 'folder')
+      }
+    }
+
+    return collected
   }
 
   private async getCurrentFileMessage(

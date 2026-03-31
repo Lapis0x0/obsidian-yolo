@@ -85,6 +85,76 @@ describe('AgentLlmTurnExecutor', () => {
     mockExecuteSingleTurn.mockReset()
   })
 
+  it('logs final model request context when debug logging is enabled', async () => {
+    const provider = new MockProvider()
+    mockExecuteSingleTurn.mockResolvedValue({
+      content: 'done',
+      reasoning: undefined,
+      annotations: undefined,
+      usage: undefined,
+      providerMetadata: undefined,
+      toolCalls: [],
+    })
+
+    const requestContextBuilder = {
+      generateRequestMessages: jest
+        .fn()
+        .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+      isModelRequestContextLoggingEnabled: jest.fn().mockReturnValue(true),
+    } as unknown as RequestContextBuilder
+
+    const mcpManager = {
+      listAvailableTools: jest.fn().mockResolvedValue([]),
+    } as unknown as McpManager
+
+    const groupCollapsedSpy = jest
+      .spyOn(console, 'groupCollapsed')
+      .mockImplementation(() => {})
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {})
+    const groupEndSpy = jest
+      .spyOn(console, 'groupEnd')
+      .mockImplementation(() => {})
+
+    try {
+      const executor = new AgentLlmTurnExecutor({
+        providerClient: provider,
+        model: TEST_MODEL,
+        requestContextBuilder,
+        mcpManager,
+        conversationId: 'conv-1',
+        messages: [],
+        enableTools: true,
+        includeBuiltinTools: true,
+        requestParams: {
+          stream: true,
+        },
+        onAssistantMessage: () => {},
+      })
+
+      await executor.run()
+
+      expect(groupCollapsedSpy).toHaveBeenCalledTimes(1)
+      expect(debugSpy).toHaveBeenCalledWith(
+        '[YOLO][Agent Debug] Summary',
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          modelId: TEST_MODEL.id,
+          messageCount: 1,
+          toolCount: 0,
+        }),
+      )
+      expect(debugSpy).toHaveBeenCalledWith(
+        '[YOLO][Agent Debug] Request messages',
+        [{ role: 'user', content: 'hello' }],
+      )
+      expect(groupEndSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      groupCollapsedSpy.mockRestore()
+      debugSpy.mockRestore()
+      groupEndSpy.mockRestore()
+    }
+  })
+
   it('keeps streaming arguments for local write tool previews', async () => {
     const provider = new MockProvider()
     mockExecuteSingleTurn.mockImplementation(async ({ onStreamDelta }) => {

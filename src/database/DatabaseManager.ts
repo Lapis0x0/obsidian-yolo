@@ -8,7 +8,7 @@ import { yieldToMain } from '../utils/common/yield-to-main'
 import { PGLiteAbortedException } from './exception'
 import migrations from './migrations.json'
 import { VectorManager } from './modules/vector/VectorManager'
-import { loadEmbeddedPgliteResources } from './pgliteAssets'
+import { loadPgliteRuntimeFromDisk } from './runtime/loadPgliteRuntimeFromDisk'
 
 type DrizzleMigratableDatabase = PgliteDatabase & {
   dialect: {
@@ -34,7 +34,7 @@ const hasDrizzleMigrationSupport = (
 export class DatabaseManager {
   private app: App
   private dbPath: string
-  private pgliteResourcePath: string
+  private runtimeDir: string
   private pgClient: PGlite | null = null
   private db: PgliteDatabase | null = null
   // WeakMap to prevent circular references
@@ -43,15 +43,15 @@ export class DatabaseManager {
     { vectorManager?: VectorManager }
   >()
 
-  constructor(app: App, dbPath: string, pgliteResourcePath: string) {
+  constructor(app: App, dbPath: string, runtimeDir: string) {
     this.app = app
     this.dbPath = dbPath
-    this.pgliteResourcePath = normalizePath(pgliteResourcePath)
+    this.runtimeDir = normalizePath(runtimeDir)
   }
 
   static async create(
     app: App,
-    pgliteResourcePath: string,
+    runtimeDir: string,
     settings?: {
       yolo?: {
         baseDir?: string
@@ -59,7 +59,7 @@ export class DatabaseManager {
     } | null,
   ): Promise<DatabaseManager> {
     const dbPath = await ensureVectorDbPath(app, settings)
-    const dbManager = new DatabaseManager(app, dbPath, pgliteResourcePath)
+    const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
     dbManager.db = await dbManager.loadExistingDatabase()
     if (!dbManager.db) {
       dbManager.db = await dbManager.createNewDatabase()
@@ -231,35 +231,16 @@ export class DatabaseManager {
     this.db = null
   }
 
-  /**
-   * 检查 PGlite 资源是否可用（不依赖 CDN）
-   * @returns { available: boolean, needsDownload: boolean, fromCDN: boolean }
-   */
-  checkPGliteResources(): {
-    available: boolean
-    needsDownload: boolean
-    fromCDN: boolean
-  } {
-    try {
-      // 资源已经内联到 main.js，不依赖运行时下载
-      return { available: true, needsDownload: false, fromCDN: false }
-    } catch (error) {
-      console.error('Error checking PGlite resources:', error)
-      return { available: false, needsDownload: false, fromCDN: false }
-    }
-  }
-
-  // TODO: This function is a temporary workaround chosen due to the difficulty of bundling postgres.wasm and postgres.data from node_modules into a single JS file. The ultimate goal is to bundle everything into one JS file in the future.
   private async loadPGliteResources(): Promise<{
     fsBundle: Blob
     wasmModule: WebAssembly.Module
     vectorExtensionBundlePath: URL
   }> {
     try {
-      return await loadEmbeddedPgliteResources()
+      return await loadPgliteRuntimeFromDisk(this.app, this.runtimeDir)
     } catch (error) {
       console.error('Error loading PGlite resources:', error)
-      console.error('Plugin resource path:', this.pgliteResourcePath)
+      console.error('Runtime dir:', this.runtimeDir)
       console.error('Vault config dir:', this.app.vault.configDir)
       throw error
     }

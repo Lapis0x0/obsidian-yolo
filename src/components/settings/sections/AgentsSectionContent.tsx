@@ -13,6 +13,11 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  FILE_OPS_GROUP_TOOL_NAME,
+  MEMORY_OPS_GROUP_TOOL_NAME,
+  getBuiltinToolUiMeta,
+} from '../../../core/agent/builtinToolUiMeta'
+import {
   getAssistantToolApprovalMode,
   getAssistantToolPreferences,
   getDefaultApprovalModeForTool,
@@ -88,83 +93,6 @@ const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
-const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
-const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
-
-const BUILTIN_TOOL_LABEL_KEYS: Record<
-  string,
-  {
-    key: string
-    descKey: string
-    fallback: string
-    descFallback: string
-  }
-> = {
-  fs_list: {
-    key: 'settings.agent.builtinFsListLabel',
-    descKey: 'settings.agent.builtinFsListDesc',
-    fallback: 'Read Vault',
-    descFallback:
-      'List directory structure under a vault path. Useful for workspace orientation.',
-  },
-  fs_search: {
-    key: 'settings.agent.builtinFsSearchLabel',
-    descKey: 'settings.agent.builtinFsSearchDesc',
-    fallback: 'Search Vault',
-    descFallback: 'Search files, folders, or markdown content in vault.',
-  },
-  fs_read: {
-    key: 'settings.agent.builtinFsReadLabel',
-    descKey: 'settings.agent.builtinFsReadDesc',
-    fallback: 'Read File',
-    descFallback: 'Read line ranges from multiple vault files by path.',
-  },
-  fs_edit: {
-    key: 'settings.agent.builtinFsEditLabel',
-    descKey: 'settings.agent.builtinFsEditDesc',
-    fallback: 'Text Editing',
-    descFallback:
-      'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
-  },
-  fs_file_ops: {
-    key: 'settings.agent.builtinFsFileOpsLabel',
-    descKey: 'settings.agent.builtinFsFileOpsDesc',
-    fallback: 'File Operation Toolset',
-    descFallback:
-      'Grouped file path operations: create/delete file, create/delete folder, and move.',
-  },
-  memory_ops: {
-    key: 'settings.agent.builtinMemoryOpsLabel',
-    descKey: 'settings.agent.builtinMemoryOpsDesc',
-    fallback: 'Memory Toolset',
-    descFallback: 'Grouped memory operations: add, update, and delete memory.',
-  },
-  memory_add: {
-    key: 'settings.agent.builtinMemoryAddLabel',
-    descKey: 'settings.agent.builtinMemoryAddDesc',
-    fallback: 'Add Memory',
-    descFallback:
-      'Add one memory item into global or assistant memory and auto-assign an id.',
-  },
-  memory_update: {
-    key: 'settings.agent.builtinMemoryUpdateLabel',
-    descKey: 'settings.agent.builtinMemoryUpdateDesc',
-    fallback: 'Update Memory',
-    descFallback: 'Update an existing memory item by id.',
-  },
-  memory_delete: {
-    key: 'settings.agent.builtinMemoryDeleteLabel',
-    descKey: 'settings.agent.builtinMemoryDeleteDesc',
-    fallback: 'Delete Memory',
-    descFallback: 'Delete an existing memory item by id.',
-  },
-  open_skill: {
-    key: 'settings.agent.builtinOpenSkillLabel',
-    descKey: 'settings.agent.builtinOpenSkillDesc',
-    fallback: 'Open Skill',
-    descFallback: 'Load a skill markdown file by id or name.',
-  },
-}
 
 const AGENT_EDITOR_TABS: AgentEditorTab[] = [
   'profile',
@@ -303,6 +231,21 @@ function createNewAgent(defaultModelId: string): Assistant {
     customParameters: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
+  }
+}
+
+const DEFAULT_DISABLED_NEW_AGENT_BUILTIN_TOOL_NAMES = new Set([
+  'context_prune_tool_results',
+  'context_compact',
+])
+
+function isDefaultDisabledNewAgentBuiltinTool(toolName: string): boolean {
+  try {
+    return DEFAULT_DISABLED_NEW_AGENT_BUILTIN_TOOL_NAMES.has(
+      parseToolName(toolName).toolName,
+    )
+  } catch {
+    return DEFAULT_DISABLED_NEW_AGENT_BUILTIN_TOOL_NAMES.has(toolName)
   }
 }
 
@@ -539,12 +482,19 @@ export function AgentsSectionContent({
       const nextEnabledToolNames = new Set(getEnabledAssistantToolNames(prev))
 
       for (const toolName of builtinToolNames) {
-        nextEnabledToolNames.add(toolName)
+        const existingPreference = nextToolPreferences[toolName]
+        const shouldDefaultDisabled =
+          isDefaultDisabledNewAgentBuiltinTool(toolName) &&
+          existingPreference === undefined
+
+        if (!shouldDefaultDisabled) {
+          nextEnabledToolNames.add(toolName)
+        }
         nextToolPreferences[toolName] = {
-          ...nextToolPreferences[toolName],
-          enabled: true,
+          ...existingPreference,
+          enabled: existingPreference?.enabled ?? !shouldDefaultDisabled,
           approvalMode:
-            nextToolPreferences[toolName]?.approvalMode ??
+            existingPreference?.approvalMode ??
             getDefaultApprovalModeForTool(toolName),
         }
       }
@@ -805,12 +755,12 @@ export function AgentsSectionContent({
       const title = isBuiltin
         ? t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
         : serverName
-      const builtinMeta = isBuiltin ? BUILTIN_TOOL_LABEL_KEYS[toolName] : null
+      const builtinMeta = isBuiltin ? getBuiltinToolUiMeta(toolName) : null
       const displayName = builtinMeta
-        ? t(builtinMeta.key, builtinMeta.fallback)
+        ? t(builtinMeta.labelKey, builtinMeta.labelFallback)
         : toolName
       const description = builtinMeta
-        ? t(builtinMeta.descKey, builtinMeta.descFallback)
+        ? t(builtinMeta.descKey ?? '', builtinMeta.descFallback)
         : tool.description || t('common.none', 'None')
       const group = groups.get(key) ?? { title, tools: [] }
       group.tools.push({
@@ -828,14 +778,17 @@ export function AgentsSectionContent({
     ) {
       const key = localFsServerName
       const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
-      const fileOpsMeta = BUILTIN_TOOL_LABEL_KEYS[FILE_OPS_GROUP_TOOL_NAME]
+      const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
+      if (!fileOpsMeta) {
+        throw new Error('Missing built-in tool UI metadata for fs_file_ops')
+      }
       const group = groups.get(key) ?? { title, tools: [] }
       const prefixedAlias = `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`
       group.tools.push({
         fullName: prefixedAlias,
         toggleTargets: [...localSplitToolTargets],
-        displayName: t(fileOpsMeta.key, fileOpsMeta.fallback),
-        description: t(fileOpsMeta.descKey, fileOpsMeta.descFallback),
+        displayName: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
+        description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       })
       groups.set(key, group)
     }
@@ -846,14 +799,17 @@ export function AgentsSectionContent({
     ) {
       const key = localFsServerName
       const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
-      const memoryOpsMeta = BUILTIN_TOOL_LABEL_KEYS[MEMORY_OPS_GROUP_TOOL_NAME]
+      const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
+      if (!memoryOpsMeta) {
+        throw new Error('Missing built-in tool UI metadata for memory_ops')
+      }
       const group = groups.get(key) ?? { title, tools: [] }
       const prefixedAlias = `${localFsServerName}__${MEMORY_OPS_GROUP_TOOL_NAME}`
       group.tools.push({
         fullName: prefixedAlias,
         toggleTargets: [...localMemorySplitToolTargets],
-        displayName: t(memoryOpsMeta.key, memoryOpsMeta.fallback),
-        description: t(memoryOpsMeta.descKey, memoryOpsMeta.descFallback),
+        displayName: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
+        description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
       })
       groups.set(key, group)
     }
@@ -1294,12 +1250,22 @@ export function AgentsSectionContent({
                           }
 
                           if (serverName === localFsServerName) {
-                            nextEnabledToolNames.add(tool.name)
+                            const existingPreference =
+                              nextToolPreferences[tool.name]
+                            const shouldDefaultDisabled =
+                              isDefaultDisabledNewAgentBuiltinTool(tool.name) &&
+                              existingPreference === undefined
+
+                            if (!shouldDefaultDisabled) {
+                              nextEnabledToolNames.add(tool.name)
+                            }
                             nextToolPreferences[tool.name] = {
-                              ...nextToolPreferences[tool.name],
-                              enabled: true,
+                              ...existingPreference,
+                              enabled:
+                                existingPreference?.enabled ??
+                                !shouldDefaultDisabled,
                               approvalMode:
-                                nextToolPreferences[tool.name]?.approvalMode ??
+                                existingPreference?.approvalMode ??
                                 getDefaultApprovalModeForTool(tool.name),
                             }
                           }

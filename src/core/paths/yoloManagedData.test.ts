@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import { App, Stat } from 'obsidian'
 
 import {
   ensureJsonDbRootDir,
@@ -58,9 +58,52 @@ class MockAdapter {
     await this.ensureParent(path)
   }
 
+  async stat(path: string): Promise<Stat | null> {
+    if (this.files.has(path)) {
+      const value = this.files.get(path)
+      return {
+        type: 'file',
+        ctime: 0,
+        mtime: 0,
+        size: typeof value === 'string' ? value.length : value?.byteLength ?? 0,
+      }
+    }
+
+    if (this.folders.has(path)) {
+      return {
+        type: 'folder',
+        ctime: 0,
+        mtime: 0,
+        size: 0,
+      }
+    }
+
+    return null
+  }
+
   async remove(path: string): Promise<void> {
+    if (this.folders.has(path)) {
+      throw new Error(`Cannot remove directory as file: ${path}`)
+    }
     this.files.delete(path)
+  }
+
+  async rmdir(path: string, recursive: boolean): Promise<void> {
+    if (!this.folders.has(path)) {
+      throw new Error(`Directory does not exist: ${path}`)
+    }
+
     const prefix = `${path}/`
+    const hasChildren =
+      Array.from(this.files.keys()).some((filePath) => filePath.startsWith(prefix)) ||
+      Array.from(this.folders).some(
+        (folderPath) => folderPath !== path && folderPath.startsWith(prefix),
+      )
+
+    if (hasChildren && !recursive) {
+      throw new Error(`Directory is not empty: ${path}`)
+    }
+
     for (const filePath of Array.from(this.files.keys())) {
       if (filePath.startsWith(prefix)) {
         this.files.delete(filePath)
@@ -147,6 +190,26 @@ describe('yoloManagedData', () => {
     await expect(
       adapter.exists('YOLO/.yolo_json_db/chats/chat_snapshots/123.json'),
     ).resolves.toBe(true)
+    await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
+  })
+
+  test('cleans up legacy chat directories after migration', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.mkdir('.smtcmp_json_db/chats/chat_snapshots')
+    await adapter.write(
+      '.smtcmp_json_db/chats/chat_snapshots/123.json',
+      '{"schemaVersion":1,"entries":{}}',
+    )
+
+    await ensureJsonDbRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+
+    await expect(adapter.exists('.smtcmp_json_db/chats/chat_snapshots')).resolves.toBe(
+      false,
+    )
+    await expect(adapter.exists('.smtcmp_json_db/chats')).resolves.toBe(false)
     await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
   })
 

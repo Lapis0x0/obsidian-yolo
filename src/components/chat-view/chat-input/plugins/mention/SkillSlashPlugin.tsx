@@ -16,18 +16,38 @@ import {
 import { $createSkillNode } from './SkillNode'
 
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
+const COMPACT_COMMAND_ID = 'compact-context'
+
+export type SlashCommand = {
+  id: typeof COMPACT_COMMAND_ID
+  name: string
+  description: string
+}
 
 class SkillTypeaheadOption extends MenuOption {
+  type: 'skill' | 'command'
   name: string
   subtitle: string
-  skill: LiteSkillEntry
+  skill?: LiteSkillEntry
+  command?: SlashCommand
   isSelectedSkill: boolean
 
-  constructor(skill: LiteSkillEntry, isSelectedSkill: boolean) {
-    super(`skill:${skill.id}`)
-    this.name = skill.name
-    this.subtitle = skill.description
+  constructor({
+    skill,
+    command,
+    isSelectedSkill,
+  }: {
+    skill?: LiteSkillEntry
+    command?: SlashCommand
+    isSelectedSkill: boolean
+  }) {
+    const entity = skill ?? command
+    super(`${skill ? 'skill' : 'command'}:${entity?.id ?? 'unknown'}`)
+    this.type = skill ? 'skill' : 'command'
+    this.name = entity?.name ?? ''
+    this.subtitle = entity?.description ?? ''
     this.skill = skill
+    this.command = command
     this.isSelectedSkill = isSelectedSkill
   }
 }
@@ -86,6 +106,7 @@ export default function SkillSlashPlugin({
   menuContainerRef,
   placement = 'top',
   onSelectSkill,
+  onRunCommand,
 }: {
   skills: LiteSkillEntry[]
   selectedSkillIds?: string[]
@@ -94,6 +115,7 @@ export default function SkillSlashPlugin({
   menuContainerRef?: RefObject<HTMLElement>
   placement?: 'top' | 'bottom'
   onSelectSkill?: (skill: LiteSkillEntry) => void
+  onRunCommand?: (command: SlashCommand) => void
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
@@ -119,12 +141,24 @@ export default function SkillSlashPlugin({
     [selectedSkillIds],
   )
 
+  const compactCommand = useMemo<SlashCommand>(
+    () => ({
+      id: COMPACT_COMMAND_ID,
+      name: t('chat.slashCommands.compact.label', '压缩上下文'),
+      description: t(
+        'chat.slashCommands.compact.description',
+        '手动压缩较早对话历史，并在新的上下文窗口中继续当前任务。',
+      ),
+    }),
+    [t],
+  )
+
   const options = useMemo(() => {
     if (queryString == null) {
       return [] as SkillTypeaheadOption[]
     }
 
-    return skills
+    const skillOptions = skills
       .filter((skill) => {
         if (!normalizedQuery) return true
         return (
@@ -136,10 +170,31 @@ export default function SkillSlashPlugin({
       })
       .map(
         (skill) =>
-          new SkillTypeaheadOption(skill, selectedSkillIdSet.has(skill.id)),
+          new SkillTypeaheadOption({
+            skill,
+            isSelectedSkill: selectedSkillIdSet.has(skill.id),
+          }),
       )
-      .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
-  }, [normalizedQuery, queryString, selectedSkillIdSet, skills])
+    const commandMatches =
+      !normalizedQuery ||
+      compactCommand.name.toLowerCase().includes(normalizedQuery) ||
+      compactCommand.id.toLowerCase().includes(normalizedQuery) ||
+      compactCommand.description.toLowerCase().includes(normalizedQuery)
+
+    const commandOptions = commandMatches
+      ? [
+          new SkillTypeaheadOption({
+            command: compactCommand,
+            isSelectedSkill: false,
+          }),
+        ]
+      : []
+
+    return [
+      ...skillOptions.slice(0, SUGGESTION_LIST_LENGTH_LIMIT),
+      ...commandOptions,
+    ]
+  }, [compactCommand, normalizedQuery, queryString, selectedSkillIdSet, skills])
 
   const onSelectOption = useCallback(
     (
@@ -157,18 +212,33 @@ export default function SkillSlashPlugin({
         return
       }
 
+      if (selectedOption.type === 'command') {
+        if (nodeToReplace) {
+          const emptyNode = $createTextNode('')
+          nodeToReplace.replace(emptyNode)
+          emptyNode.select()
+        }
+        if (selectedOption.command) {
+          onRunCommand?.(selectedOption.command)
+        }
+        closeMenu()
+        return
+      }
+
       if (mentionDisplayMode === 'badge') {
         if (nodeToReplace) {
           const emptyNode = $createTextNode('')
           nodeToReplace.replace(emptyNode)
           emptyNode.select()
         }
-        onSelectSkill?.(selectedOption.skill)
+        if (selectedOption.skill) {
+          onSelectSkill?.(selectedOption.skill)
+        }
         closeMenu()
         return
       }
 
-      if (nodeToReplace) {
+      if (nodeToReplace && selectedOption.skill) {
         const skillNode = $createSkillNode(selectedOption.skill.name, {
           id: selectedOption.skill.id,
           name: selectedOption.skill.name,
@@ -180,20 +250,22 @@ export default function SkillSlashPlugin({
         skillNode.insertAfter(spaceNode)
         spaceNode.select()
       }
-      onSelectSkill?.(selectedOption.skill)
+      if (selectedOption.skill) {
+        onSelectSkill?.(selectedOption.skill)
+      }
       closeMenu()
     },
-    [mentionDisplayMode, onSelectSkill],
+    [mentionDisplayMode, onRunCommand, onSelectSkill],
   )
 
   const checkForTriggerMatch = useCallback(
     (text: string) => {
-      if (skills.length === 0) {
+      if (skills.length === 0 && !onRunCommand) {
         return null
       }
       return checkForSlashTriggerMatch(text, editor)
     },
-    [checkForSlashTriggerMatch, editor, skills.length],
+    [checkForSlashTriggerMatch, editor, onRunCommand, skills.length],
   )
 
   return (

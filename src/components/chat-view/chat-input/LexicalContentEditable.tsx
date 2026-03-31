@@ -29,7 +29,9 @@ import AutoLinkMentionPlugin from './plugins/mention/AutoLinkMentionPlugin'
 import { MentionNode } from './plugins/mention/MentionNode'
 import MentionPlugin from './plugins/mention/MentionPlugin'
 import { SkillNode } from './plugins/mention/SkillNode'
-import SkillSlashPlugin from './plugins/mention/SkillSlashPlugin'
+import SkillSlashPlugin, {
+  type SlashCommand,
+} from './plugins/mention/SkillSlashPlugin'
 import NoFormatPlugin from './plugins/no-format/NoFormatPlugin'
 import OnEnterPlugin from './plugins/on-enter/OnEnterPlugin'
 import OnMutationPlugin, {
@@ -67,6 +69,7 @@ export type LexicalContentEditableProps = {
   skills?: LiteSkillEntry[]
   selectedSkillIds?: string[]
   onSelectSkill?: (skill: LiteSkillEntry) => void
+  onRunSlashCommand?: (command: SlashCommand) => void
   plugins?: {
     onEnter?: {
       onVaultChat: () => void
@@ -105,6 +108,7 @@ export default function LexicalContentEditable({
   skills = [],
   selectedSkillIds = [],
   onSelectSkill,
+  onRunSlashCommand,
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
@@ -207,7 +211,7 @@ export default function LexicalContentEditable({
         allowAgentModeOption={allowAgentModeOption}
         searchFoldersByQuery={searchFoldersByQuery}
       />
-      {skills.length > 0 && onSelectSkill && (
+      {(skills.length > 0 || onRunSlashCommand) && (
         <SkillSlashPlugin
           skills={skills}
           selectedSkillIds={selectedSkillIds}
@@ -216,6 +220,7 @@ export default function LexicalContentEditable({
           menuContainerRef={mentionMenuContainerRef}
           placement={mentionMenuPlacement}
           onSelectSkill={onSelectSkill}
+          onRunCommand={onRunSlashCommand}
         />
       )}
       <OnChangePlugin

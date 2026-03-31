@@ -5,7 +5,6 @@ import {
   LLMResponseStreaming,
   ProviderMetadata,
   ResponseUsage,
-  ToolCallDelta,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import {
@@ -14,10 +13,13 @@ import {
 } from '../../types/tool-call.types'
 import {
   createToolCallArguments,
-  mergeStreamingToolArguments,
 } from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
+import {
+  ToolCallAccumulator,
+  createCanonicalToolEventsFromDeltas,
+} from './toolCallAccumulator'
 
 export type SingleTurnExecutionResult = {
   content: string
@@ -208,6 +210,25 @@ const hasInvalidWriteToolArguments = (
   })
 }
 
+const logStreamingRecoverTriggered = ({
+  reason,
+  finishReason,
+  toolCalls,
+  error,
+}: {
+  reason: 'invalid_write_args' | 'stream_protocol_error'
+  finishReason?: string | null
+  toolCalls?: SingleTurnExecutionResult['toolCalls']
+  error?: string
+}): void => {
+  console.warn('[YOLO] Streaming tool-call recovery triggered.', {
+    reason,
+    finishReason: finishReason ?? null,
+    toolNames: (toolCalls ?? []).map((toolCall) => toolCall.name),
+    error,
+  })
+}
+
 export async function executeSingleTurn({
   providerClient,
   model,
@@ -278,7 +299,8 @@ export async function executeSingleTurn({
   let usage: ResponseUsage | undefined
   let finishReason: string | null = null
   let providerMetadata: ProviderMetadata | undefined
-  let streamedToolCalls: Record<number, StreamedToolCall> = {}
+  const turnKey = `single-turn:${Date.now()}:${Math.random().toString(36).slice(2)}`
+  const toolCallAccumulator = new ToolCallAccumulator(turnKey)
 
   const clearTimeoutId = () => {
     if (timeoutId) {
@@ -344,13 +366,25 @@ export async function executeSingleTurn({
         annotations = mergeAnnotations(annotations, delta.annotations)
       }
       if (chunkToolCalls) {
-        streamedToolCalls = mergeToolCallDeltas(
-          chunkToolCalls,
-          streamedToolCalls,
+        toolCallAccumulator.applyAll(
+          createCanonicalToolEventsFromDeltas({
+            turnKey,
+            provider: 'openai-chat',
+            deltas: chunkToolCalls,
+            receivedAt: Date.now(),
+          }),
         )
       }
+      if (
+        chunkFinishReason === 'tool_calls' ||
+        chunkFinishReason === 'function_call'
+      ) {
+        const receivedAt = Date.now()
+        toolCallAccumulator.sealOpenCalls('turn_handoff', receivedAt)
+        toolCallAccumulator.handoff('tool_calls_finish', receivedAt)
+      }
 
-      const streamedToolCallList = Object.values(streamedToolCalls)
+      const streamedToolCallList = toolCallAccumulator.getSnapshots()
 
       onStreamDelta?.({
         contentDelta,
@@ -363,7 +397,12 @@ export async function executeSingleTurn({
       })
     }
 
-    const streamedToolCallList = Object.values(streamedToolCalls)
+    const streamEndedAt = Date.now()
+    toolCallAccumulator.sealOpenCalls('stream_end', streamEndedAt)
+    toolCallAccumulator.handoff('stream_end', streamEndedAt)
+
+    const streamedToolCallList = toolCallAccumulator
+      .getSnapshots()
       .map((toolCall) => {
         const name = toolCall.function?.name?.trim()
         if (!name) {
@@ -390,6 +429,11 @@ export async function executeSingleTurn({
     let finalProviderMetadata: ProviderMetadata | undefined = providerMetadata
 
     if (hasInvalidWriteToolArguments(streamedToolCallList)) {
+      logStreamingRecoverTriggered({
+        reason: 'invalid_write_args',
+        finishReason,
+        toolCalls: streamedToolCallList,
+      })
       try {
         const nonStreamingResult = await runNonStreaming()
         if (nonStreamingResult.toolCalls.length > 0) {
@@ -422,6 +466,11 @@ export async function executeSingleTurn({
     if (!shouldFallback) {
       throw error
     }
+    logStreamingRecoverTriggered({
+      reason: 'stream_protocol_error',
+      finishReason,
+      error: message,
+    })
     return runNonStreaming()
   } finally {
     clearTimeoutId()
@@ -444,52 +493,6 @@ function mergeProviderMetadata(
           }
         : undefined,
   }
-}
-
-function mergeToolCallDeltas(
-  next: ToolCallDelta[],
-  prev: Record<number, StreamedToolCall>,
-): Record<number, StreamedToolCall> {
-  const merged = { ...prev }
-  for (const toolCall of next) {
-    const { index } = toolCall
-    if (!merged[index]) {
-      merged[index] = {
-        index,
-        id: toolCall.id,
-        type: toolCall.type,
-        metadata: toolCall.metadata,
-        function: toolCall.function
-          ? {
-              name: toolCall.function.name,
-              arguments: createToolCallArguments(toolCall.function.arguments, {
-                allowPartial: true,
-              }),
-            }
-          : undefined,
-      }
-      continue
-    }
-
-    const mergedCall: StreamedToolCall = {
-      index,
-      id: merged[index].id ?? toolCall.id,
-      type: merged[index].type ?? toolCall.type,
-      metadata: merged[index].metadata ?? toolCall.metadata,
-    }
-
-    if (merged[index].function || toolCall.function) {
-      const existingArgs = merged[index].function?.arguments
-      const newArgs = toolCall.function?.arguments
-      mergedCall.function = {
-        name: merged[index].function?.name ?? toolCall.function?.name,
-        arguments: mergeStreamingToolArguments({ existingArgs, newArgs }),
-      }
-    }
-
-    merged[index] = mergedCall
-  }
-  return merged
 }
 
 function mergeAnnotations(

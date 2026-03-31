@@ -7,6 +7,11 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import {
+  FILE_OPS_GROUP_TOOL_NAME,
+  MEMORY_OPS_GROUP_TOOL_NAME,
+  getBuiltinToolUiMeta,
+} from '../../../core/agent/builtinToolUiMeta'
+import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
@@ -21,68 +26,10 @@ type AgentToolsModalProps = {
   plugin: SmartComposerPlugin
 }
 
-const BUILTIN_TOOL_I18N_KEYS: Record<
-  string,
-  {
-    labelKey: string
-    descKey: string
-    labelFallback: string
-    descFallback: string
-  }
-> = {
-  fs_list: {
-    labelKey: 'settings.agent.builtinFsListLabel',
-    descKey: 'settings.agent.builtinFsListDesc',
-    labelFallback: 'Read Vault',
-    descFallback:
-      'List directory structure under a vault path. Useful for workspace orientation.',
-  },
-  fs_search: {
-    labelKey: 'settings.agent.builtinFsSearchLabel',
-    descKey: 'settings.agent.builtinFsSearchDesc',
-    labelFallback: 'Search Vault',
-    descFallback: 'Search files, folders, or markdown content in vault.',
-  },
-  fs_read: {
-    labelKey: 'settings.agent.builtinFsReadLabel',
-    descKey: 'settings.agent.builtinFsReadDesc',
-    labelFallback: 'Read File',
-    descFallback: 'Read line ranges from multiple vault files by path.',
-  },
-  fs_edit: {
-    labelKey: 'settings.agent.builtinFsEditLabel',
-    descKey: 'settings.agent.builtinFsEditDesc',
-    labelFallback: 'Text Editing',
-    descFallback:
-      'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
-  },
-  fs_file_ops: {
-    labelKey: 'settings.agent.builtinFsFileOpsLabel',
-    descKey: 'settings.agent.builtinFsFileOpsDesc',
-    labelFallback: 'File Operation Toolset',
-    descFallback:
-      'Grouped file path operations: create/delete file, create/delete folder, and move.',
-  },
-  memory_ops: {
-    labelKey: 'settings.agent.builtinMemoryOpsLabel',
-    descKey: 'settings.agent.builtinMemoryOpsDesc',
-    labelFallback: 'Memory Toolset',
-    descFallback: 'Grouped memory operations: add, update, and delete memory.',
-  },
-  open_skill: {
-    labelKey: 'settings.agent.builtinOpenSkillLabel',
-    descKey: 'settings.agent.builtinOpenSkillDesc',
-    labelFallback: 'Open Skill',
-    descFallback: 'Load a skill markdown file by id or name.',
-  },
-}
-
 const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
-const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
-const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
 
 export class AgentToolsModal extends ReactModal<AgentToolsModalProps> {
   constructor(app: App, plugin: SmartComposerPlugin) {
@@ -136,12 +83,12 @@ function AgentToolsModalContent({
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name),
       )
       .map((tool) => {
-        const meta = BUILTIN_TOOL_I18N_KEYS[tool.name]
+        const meta = getBuiltinToolUiMeta(tool.name)
         return {
           id: tool.name,
           label: meta ? t(meta.labelKey, meta.labelFallback) : tool.name,
           description: meta
-            ? t(meta.descKey, meta.descFallback)
+            ? t(meta.descKey ?? '', meta.descFallback)
             : tool.description,
           enabled: !(toolOptions[tool.name]?.disabled ?? false),
         }
@@ -152,11 +99,14 @@ function AgentToolsModalContent({
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
     )
-    const fileOpsMeta = BUILTIN_TOOL_I18N_KEYS[FILE_OPS_GROUP_TOOL_NAME]
+    const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
+    if (!fileOpsMeta) {
+      throw new Error('Missing built-in tool UI metadata for fs_file_ops')
+    }
     const fileOpsTool = {
       id: FILE_OPS_GROUP_TOOL_NAME,
       label: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
-      description: t(fileOpsMeta.descKey, fileOpsMeta.descFallback),
+      description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       enabled: splitToolEnabled,
     }
 
@@ -165,11 +115,14 @@ function AgentToolsModalContent({
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[MEMORY_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
     )
-    const memoryOpsMeta = BUILTIN_TOOL_I18N_KEYS[MEMORY_OPS_GROUP_TOOL_NAME]
+    const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
+    if (!memoryOpsMeta) {
+      throw new Error('Missing built-in tool UI metadata for memory_ops')
+    }
     const memoryOpsTool = {
       id: MEMORY_OPS_GROUP_TOOL_NAME,
       label: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
-      description: t(memoryOpsMeta.descKey, memoryOpsMeta.descFallback),
+      description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
       enabled: memorySplitToolEnabled,
     }
 

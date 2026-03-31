@@ -1247,6 +1247,40 @@
   }
 }
 
+.smtcmp-toolcall-compaction-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--size-2-3) 0 24px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.smtcmp-toolcall-compaction-pending--exiting {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.smtcmp-toolcall-compaction-pending-icon {
+  animation: smtcmp-toolcall-spin 1s linear infinite;
+}
+
+@keyframes smtcmp-toolcall-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .smtcmp-toolcall-status-dot {
   width: 7px;
   height: 7px;

@@ -146,9 +146,9 @@ export const en: TranslationKeys = {
       defaultChatModel: 'Default chat model',
       defaultChatModelDesc:
         'Choose the model you want to use for sidebar chat.',
-      chatTitleModel: 'Conversation title model',
+      chatTitleModel: 'Conversation title and summary model',
       chatTitleModelDesc:
-        'Choose the model used for automatic conversation naming.',
+        'Choose the model used for automatic conversation naming and compact summaries.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
@@ -336,8 +336,15 @@ export const en: TranslationKeys = {
       builtinFsSearchLabel: 'Search Vault',
       builtinFsSearchDesc:
         'Search files, folders, or markdown content in vault.',
-      builtinFsReadLabel: 'Read File',
-      builtinFsReadDesc: 'Read line ranges from multiple vault files by path.',
+      builtinFsReadLabel: 'Read',
+      builtinFsReadDesc:
+        'Read vault files by path with either full-file or targeted line-range operations.',
+      builtinContextPruneToolResultsLabel: 'Prune Tool Results',
+      builtinContextPruneToolResultsDesc:
+        'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
+      builtinContextCompactLabel: 'Compact Context',
+      builtinContextCompactDesc:
+        'Compress earlier conversation history into a summary and continue in a fresh context window.',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc:
         'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
@@ -600,6 +607,63 @@ export const en: TranslationKeys = {
       manualUpdateNowDesc:
         'Run an incremental update immediately and record the last updated time.',
       advanced: 'Advanced settings',
+      basicCardTitle: 'RAG Basics',
+      basicCardDesc:
+        'Control the retrieval entry point and base embedding model.',
+      resourceCardTitle: 'PGlite Resources',
+      resourceCardDesc:
+        'Manage the database runtime resources required by the knowledge base.',
+      scopeCardTitle: 'Retrieval Scope',
+      scopeCardDesc:
+        'Choose which folders should be included in or excluded from indexing.',
+      maintenanceCardTitle: 'Index Maintenance',
+      maintenanceCardDesc:
+        'Manage auto updates, incremental updates, rebuilds, and index progress.',
+      maintenanceUnavailableHint:
+        'Prepare PGlite resources above before running index maintenance or embedding database management.',
+      pgliteStatusCurrent: 'Current status',
+      pgliteStatusSource: 'Resource source',
+      pgliteStatusPath: 'Resource path',
+      pgliteStatusCheckedAt: 'Last checked',
+      pgliteStatusVersion: 'Runtime version',
+      pgliteStatusReadyAt: 'Last prepared',
+      pgliteStatusReason: 'Details',
+      pgliteStateUnchecked: 'Not recorded',
+      pgliteStateChecking: 'Checking',
+      pgliteStateMissing: 'Not downloaded',
+      pgliteStateDownloading: 'Downloading',
+      pgliteStateUnavailable: 'Unavailable',
+      pgliteStateFailed: 'Failed',
+      pgliteStateReady: 'Ready',
+      pgliteSourceRemote: 'Remote cache',
+      pgliteSourceBundled: 'Bundled with plugin',
+      pgliteSourceLocalCache: 'Local cache',
+      pgliteDeliveryManual: 'Manual download',
+      pgliteDownload: 'Download resources',
+      pgliteRedownload: 'Download again',
+      pgliteRecheck: 'Check again',
+      pgliteDeleteLocal: 'Delete local resources',
+      pgliteDownloadPlaceholder:
+        'The manual download entry point for remote PGlite resources will be wired here.',
+      pgliteDeletePlaceholder:
+        'The local PGlite resource deletion entry point will be wired here.',
+      pgliteDownloadingUnknownFile: 'runtime file',
+      pgliteInlineErrorTitle: 'Download failed',
+      pgliteSummaryReadyRemote:
+        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
+      pgliteSummaryReadyBundled:
+        'The plugin is still using bundled PGlite resources. After remote distribution is introduced, this card will show local cache status and host the manual download entry.',
+      pgliteSummaryUnavailable:
+        'PGlite runtime resources are unavailable. Index maintenance and embedding database management will remain disabled until resources are ready.',
+      pgliteSummaryReady:
+        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
+      pgliteSummaryDownloading:
+        'PGlite runtime resources are being prepared. Once the download completes, index maintenance and embedding database management will become available automatically.',
+      pgliteSummaryFailed:
+        'PGlite runtime preparation failed. Retry downloading or clear the local cache before using knowledge base features again.',
+      pgliteSummaryMissing:
+        'PGlite runtime resources have not been prepared yet. They will be downloaded automatically on first knowledge base use, and you can also prepare them here manually.',
+      pgliteDownloadingFile: 'Downloading',
       // Index progress header/status
       indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',
@@ -826,6 +890,9 @@ export const en: TranslationKeys = {
       resetAgentsConfirm:
         'Are you sure you want to reset agent configuration? This will remove custom agents and reset the current selection.',
       resetAgentsSuccess: 'Agent configuration has been reset to defaults',
+      logModelRequestContext: 'Log model request context',
+      logModelRequestContextDesc:
+        'Print the final request payload actually sent to the model for each Agent turn in the developer console.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
@@ -835,6 +902,11 @@ export const en: TranslationKeys = {
         'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',
       mentionDisplayModeInline: 'Inside input box',
       mentionDisplayModeBadge: 'Top badges',
+      mentionContextMode: '@ file context injection mode',
+      mentionContextModeDesc:
+        'Control how @ files are injected into the model. In light mode, only the referenced file paths and Markdown structure are injected, encouraging the Agent to read only what is necessary.',
+      mentionContextModeLight: 'Light mode',
+      mentionContextModeFull: 'Full mode',
       chatApplyMode: 'Chat apply behavior',
       chatApplyModeDesc:
         'Only affects Apply in the sidebar Chat. Choose whether edits open inline review first or write directly to the file. Turning review off skips the second confirmation step.',
@@ -873,7 +945,7 @@ export const en: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Type a message...「@ to add references, / to choose a skill」',
+      'Type a message...「@ to add references, / to choose a skill or command」',
     placeholderCompact: 'Click to expand and edit...',
     sendMessage: 'Send message',
     newChat: 'New chat',
@@ -908,6 +980,13 @@ export const en: TranslationKeys = {
       entryFile: 'File',
       entryFolder: 'Folder',
     },
+    slashCommands: {
+      compact: {
+        label: 'Compact Context',
+        description:
+          'Manually compress earlier conversation history and continue the current task in a fresh context window.',
+      },
+    },
     emptyState: {
       chatTitle: 'Think first, then write',
       chatDescription:
@@ -915,6 +994,22 @@ export const en: TranslationKeys = {
       agentTitle: 'Let AI execute',
       agentDescription:
         'Enable tools to handle search, read/write operations, and multi-step tasks.',
+    },
+    compaction: {
+      pendingTitle: 'Compacting context',
+      dividerTitle: 'Continue the current task from here',
+      dividerDescription:
+        'Earlier conversation has been compressed into a summary. Replies below continue from that summary.',
+      pendingStatus:
+        'Organizing context now. The conversation will continue in a fresh context shortly.',
+      success:
+        'Earlier context has been compressed. Future replies will continue from the summary.',
+      failed: 'Context compaction failed. Please try again shortly.',
+      empty: 'There is no conversation content to compact yet.',
+      runActive:
+        'Wait for the current reply to finish before compacting context.',
+      waitingApproval:
+        'Resolve the current pending tool approval before compacting context.',
     },
     codeBlock: {
       showRawText: 'Show raw text',
@@ -1039,6 +1134,10 @@ export const en: TranslationKeys = {
         delete_dir: 'Delete folder',
         move: 'Move path',
       },
+      readMode: {
+        full: 'Full',
+        linesSuffix: ' lines',
+      },
       detail: {
         target: 'Target',
         scope: 'Scope',
@@ -1089,9 +1188,9 @@ export const en: TranslationKeys = {
     openYoloNewChatFailed:
       'Failed to open the YOLO chat window; try the command palette first.',
     pgliteUnavailable:
-      'PGlite resources unavailable; please reinstall the plugin.',
+      'PGlite runtime unavailable; retry downloading the runtime assets.',
     downloadingPglite:
-      'Downloading PGlite dependencies from the content delivery network (~20 megabytes); this may take a moment…',
+      'Downloading PGlite runtime assets; first-time knowledge base usage may take a moment…',
     updatingIndex: 'Updating vault index…',
     indexUpdated: 'Vault index updated.',
     indexUpdateFailed: 'Vault index update failed.',

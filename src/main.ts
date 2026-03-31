@@ -34,6 +34,8 @@ import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
 import type { VectorManager } from './database/modules/vector/VectorManager'
+import { PGliteRuntimeManager } from './database/runtime/PGliteRuntimeManager'
+import { PGLITE_RUNTIME_VERSION } from './database/runtime/pgliteRuntimeMetadata'
 import {
   ChatLeafPlacement,
   ChatLeafSessionManager,
@@ -75,7 +77,7 @@ export default class SmartComposerPlugin extends Plugin {
   dbManager: DatabaseManager | null = null
   private dbManagerInitPromise: Promise<DatabaseManager> | null = null
   private timeoutIds: ReturnType<typeof setTimeout>[] = [] // Use ReturnType instead of number
-  private pgliteResourcePath?: string
+  private pgliteRuntimeManager: PGliteRuntimeManager | null = null
   private isContinuationInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
@@ -208,22 +210,19 @@ export default class SmartComposerPlugin extends Plugin {
     clearChatGPTOAuthService(providerId)
   }
 
-  private resolvePgliteResourcePath(): string {
-    if (!this.pgliteResourcePath) {
-      // manifest.dir 已经包含完整的插件目录路径（相对于 vault）
-      // 例如：.obsidian/plugins/obsidian-smart-composer 或 .obsidian/plugins/yolo
-      const pluginDir = this.manifest.dir
-      if (pluginDir) {
-        this.pgliteResourcePath = normalizePath(`${pluginDir}/vendor/pglite`)
-      } else {
-        // 如果 manifest.dir 不存在，使用 manifest.id 作为后备
-        const configDir = this.app.vault.configDir
-        this.pgliteResourcePath = normalizePath(
-          `${configDir}/plugins/${this.manifest.id}/vendor/pglite`,
-        )
-      }
+  getPGliteRuntimeManager(): PGliteRuntimeManager {
+    if (!this.pgliteRuntimeManager) {
+      this.pgliteRuntimeManager = new PGliteRuntimeManager({
+        app: this.app,
+        pluginId: this.manifest.id,
+        pluginDir: this.manifest.dir
+          ? normalizePath(this.manifest.dir)
+          : undefined,
+        runtimeVersion: PGLITE_RUNTIME_VERSION,
+      })
     }
-    return this.pgliteResourcePath
+
+    return this.pgliteRuntimeManager
   }
 
   // Compute a robust panel anchor position just below the caret line
@@ -442,6 +441,7 @@ export default class SmartComposerPlugin extends Plugin {
       this.ragCoordinator = new RagCoordinator({
         app: this.app,
         getSettings: () => this.settings,
+        ensureRuntimeReady: () => this.getPGliteRuntimeManager().ensureReady(),
         getDbManager: () => this.getDbManager(),
       })
     }
@@ -1326,26 +1326,6 @@ export default class SmartComposerPlugin extends Plugin {
       id: 'rebuild-vault-index',
       name: this.t('commands.rebuildVaultIndex'),
       callback: async () => {
-        // 预检查 PGlite 资源
-        try {
-          const dbManager = await this.getDbManager()
-          const resourceCheck = dbManager.checkPGliteResources()
-
-          if (!resourceCheck.available) {
-            new Notice(
-              this.t(
-                'notices.pgliteUnavailable',
-                'PGlite resources unavailable. Please reinstall the plugin.',
-              ),
-              5000,
-            )
-            return
-          }
-        } catch (error) {
-          console.warn('Failed to check PGlite resources:', error)
-          // 继续执行，让实际的加载逻辑处理错误
-        }
-
         const notice = new Notice(this.t('notices.rebuildingIndex'), 0)
         try {
           const ragEngine = await this.getRAGEngine()
@@ -1622,9 +1602,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     if (!this.dbManagerInitPromise) {
       this.dbManagerInitPromise = (async () => {
         try {
+          const runtime = await this.getPGliteRuntimeManager().ensureReady()
           this.dbManager = await DatabaseManager.create(
             this.app,
-            this.resolvePgliteResourcePath(),
+            runtime.dir,
             this.settings,
           )
           return this.dbManager

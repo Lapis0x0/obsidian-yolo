@@ -10,6 +10,10 @@ import type {
   AgentConversationRunSummary,
   AgentConversationState,
 } from '../../core/agent/service'
+import {
+  buildManualCompactionState,
+  createConversationCompactionSummary,
+} from '../../core/agent/compaction'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import {
   LLMAPIKeyInvalidException,
@@ -24,7 +28,11 @@ import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
-import { ChatMessage } from '../../types/chat'
+import {
+  ChatConversationCompaction,
+  ChatConversationCompactionState,
+  ChatMessage,
+} from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
@@ -36,6 +44,12 @@ import { ReasoningLevel } from './chat-input/ReasoningSelect'
 
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
+  setCompactionState: React.Dispatch<
+    React.SetStateAction<ChatConversationCompactionState>
+  >
+  setPendingCompactionAnchorMessageId: React.Dispatch<
+    React.SetStateAction<string | null>
+  >
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
@@ -44,6 +58,7 @@ type UseChatStreamManagerParams = {
   chatMode: ChatMode
   currentFileOverride?: TFile | null
   assistantIdOverride?: string
+  compaction?: ChatConversationCompactionState
   onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
 }
 
@@ -81,6 +96,9 @@ const buildRunSummary = ({
 
 export type UseChatStreamManager = {
   abortConversationRun: (conversationId: string) => void
+  compactConversation: (
+    messages: ChatMessage[],
+  ) => Promise<ChatConversationCompaction | null>
   currentConversationRunSummary: AgentConversationRunSummary
   submitChatMutation: UseMutationResult<
     { aborted: boolean },
@@ -95,6 +113,8 @@ export type UseChatStreamManager = {
 
 export function useChatStreamManager({
   setChatMessages,
+  setCompactionState,
+  setPendingCompactionAnchorMessageId,
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
@@ -103,6 +123,7 @@ export function useChatStreamManager({
   chatMode,
   currentFileOverride,
   assistantIdOverride,
+  compaction,
   onRunSettled,
 }: UseChatStreamManagerParams): UseChatStreamManager {
   const app = useApp()
@@ -143,6 +164,10 @@ export function useChatStreamManager({
       }
 
       setChatMessages(state.messages)
+      setCompactionState(state.compaction ?? [])
+      setPendingCompactionAnchorMessageId(
+        state.pendingCompactionAnchorMessageId ?? null,
+      )
       if (!(state.status === 'running' || runSummary.isWaitingApproval)) {
         return
       }
@@ -172,7 +197,14 @@ export function useChatStreamManager({
     return () => {
       unsubscribe()
     }
-  }, [autoScrollToBottom, currentConversationId, plugin, setChatMessages])
+  }, [
+    autoScrollToBottom,
+    currentConversationId,
+    plugin,
+    setChatMessages,
+    setCompactionState,
+    setPendingCompactionAnchorMessageId,
+  ])
 
   const abortConversationRun = useCallback(
     (conversationId: string) => {
@@ -181,6 +213,74 @@ export function useChatStreamManager({
       plugin.getAgentService().abortConversation(conversationId)
     },
     [plugin],
+  )
+
+  const resolveCompactionClient = useCallback(() => {
+    const effectiveAssistantId =
+      assistantIdOverride ?? settings.currentAssistantId
+    const selectedAssistant = effectiveAssistantId
+      ? (settings.assistants || []).find(
+          (assistant) => assistant.id === effectiveAssistantId,
+        ) || null
+      : null
+
+    const requestedModelId =
+      modelId || selectedAssistant?.modelId || settings.chatModelId
+    const compactionModelId = settings.chatTitleModelId || requestedModelId
+
+    let resolvedClient: ReturnType<typeof getChatModelClient>
+    try {
+      resolvedClient = getChatModelClient({
+        settings,
+        modelId: requestedModelId,
+        onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+      })
+    } catch (error) {
+      if (
+        error instanceof LLMModelNotFoundException &&
+        settings.chatModels.length > 0
+      ) {
+        resolvedClient = getChatModelClient({
+          settings,
+          modelId: settings.chatModels[0].id,
+          onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+        })
+      } else {
+        throw error
+      }
+    }
+
+    try {
+      return getChatModelClient({
+        settings,
+        modelId: compactionModelId,
+        onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+      })
+    } catch {
+      return resolvedClient
+    }
+  }, [assistantIdOverride, handleAutoPromoteTransportMode, modelId, settings])
+
+  const compactConversation = useCallback(
+    async (messages: ChatMessage[]) => {
+      if (messages.length === 0) {
+        return null
+      }
+
+      const resolvedCompactionClient = resolveCompactionClient()
+      const summary = await createConversationCompactionSummary({
+        providerClient: resolvedCompactionClient.providerClient,
+        model: resolvedCompactionClient.model,
+        messages,
+      })
+
+      return buildManualCompactionState({
+        messages,
+        summary,
+        summaryModelId: resolvedCompactionClient.model.id,
+      })
+    },
+    [resolveCompactionClient],
   )
 
   const submitChatMutation = useMutation({
@@ -245,6 +345,7 @@ export function useChatStreamManager({
         const currentProvider = settings.providers.find(
           (provider) => provider.id === resolvedClient.model.providerId,
         )
+        const resolvedCompactionClient = resolveCompactionClient()
         const shouldStreamResponse = shouldUseStreamingForProvider({
           requestedStream: conversationOverrides?.stream ?? true,
           provider: currentProvider,
@@ -315,6 +416,9 @@ export function useChatStreamManager({
             conversationId,
             requestContextBuilder,
             mcpManager,
+            compaction,
+            compactionProviderClient: resolvedCompactionClient.providerClient,
+            compactionModel: resolvedCompactionClient.model,
             abortSignal: abortController.signal,
             reasoningLevel,
             allowedToolNames: effectiveAllowedToolNames,
@@ -400,6 +504,7 @@ export function useChatStreamManager({
   return {
     abortConversationRun,
     currentConversationRunSummary,
+    compactConversation,
     submitChatMutation,
   }
 }

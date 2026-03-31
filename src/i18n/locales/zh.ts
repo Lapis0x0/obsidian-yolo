@@ -121,8 +121,8 @@ export const zh: TranslationKeys = {
       title: '默认模型与提示词',
       defaultChatModel: '默认聊天模型',
       defaultChatModelDesc: '选择你想用于侧边栏聊天的模型。',
-      chatTitleModel: '对话命名模型',
-      chatTitleModelDesc: '选择用于自动对话命名的模型。',
+      chatTitleModel: '对话命名与摘要模型',
+      chatTitleModelDesc: '选择用于自动对话命名和 compact 摘要的模型。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc:
         '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',
@@ -301,8 +301,14 @@ export const zh: TranslationKeys = {
       builtinFsListDesc: '列出库内目录结构，便于快速了解工作区。',
       builtinFsSearchLabel: '搜索',
       builtinFsSearchDesc: '搜索库中的文件、文件夹或 Markdown 内容。',
-      builtinFsReadLabel: '读取文件',
-      builtinFsReadDesc: '按行读取一个或多个库内文件内容。',
+      builtinFsReadLabel: '读取',
+      builtinFsReadDesc: '按路径读取库内文件，支持全文或按行范围两种模式。',
+      builtinContextPruneToolResultsLabel: '裁剪工具调用结果',
+      builtinContextPruneToolResultsDesc:
+        '将指定历史工具结果，或一次性裁剪全部可裁剪工具结果，从后续模型可见上下文中排除，但不删除聊天记录。',
+      builtinContextCompactLabel: '压缩上下文',
+      builtinContextCompactDesc:
+        '将较早对话历史压缩为摘要，并在新的上下文窗口中继续当前任务。',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc:
         '在单个现有文件中精确执行一次文本编辑操作，支持文本替换、按行替换、锚点后插入和追加。',
@@ -550,6 +556,57 @@ export const zh: TranslationKeys = {
       manualUpdateNow: '立即更新',
       manualUpdateNowDesc: '手动执行一次增量更新，并记录最近更新时间。',
       advanced: '高级设置',
+      basicCardTitle: 'RAG 基础',
+      basicCardDesc: '控制知识库检索的入口与基础模型。',
+      resourceCardTitle: 'PGlite 资源',
+      resourceCardDesc: '管理知识库运行所需的数据库运行时资源。',
+      scopeCardTitle: '检索范围',
+      scopeCardDesc: '指定知识库索引要包含或排除的文件夹范围。',
+      maintenanceCardTitle: '索引维护',
+      maintenanceCardDesc: '管理自动更新、增量更新、重建索引与当前索引进度。',
+      maintenanceUnavailableHint:
+        '请先在上方准备好 PGlite 资源，再执行索引维护或嵌入数据库管理。',
+      pgliteStatusCurrent: '当前状态',
+      pgliteStatusSource: '资源来源',
+      pgliteStatusPath: '资源目录',
+      pgliteStatusCheckedAt: '最近检查',
+      pgliteStatusVersion: '运行时版本',
+      pgliteStatusReadyAt: '最近准备',
+      pgliteStatusReason: '详情',
+      pgliteStateUnchecked: '未记录',
+      pgliteStateChecking: '检查中',
+      pgliteStateMissing: '未下载',
+      pgliteStateDownloading: '下载中',
+      pgliteStateUnavailable: '未就绪',
+      pgliteStateFailed: '准备失败',
+      pgliteStateReady: '已就绪',
+      pgliteSourceRemote: '远程缓存',
+      pgliteSourceBundled: '插件内置',
+      pgliteSourceLocalCache: '本地缓存',
+      pgliteDeliveryManual: '手动下载',
+      pgliteDownload: '下载资源',
+      pgliteRedownload: '重新下载',
+      pgliteRecheck: '重新检查',
+      pgliteDeleteLocal: '删除本地资源',
+      pgliteDownloadPlaceholder: 'PGlite 远程资源手动下载入口将接入到这里。',
+      pgliteDeletePlaceholder: 'PGlite 本地资源删除入口将接入到这里。',
+      pgliteDownloadingUnknownFile: '运行时文件',
+      pgliteInlineErrorTitle: '下载失败',
+      pgliteSummaryReadyRemote:
+        '当前 PGlite 运行时资源已就绪，可用于知识库索引与嵌入数据库管理。',
+      pgliteSummaryReadyBundled:
+        '当前仍使用插件内置的 PGlite 资源。后续切到远程分发后，这里会展示本地缓存状态并承接手动下载入口。',
+      pgliteSummaryUnavailable:
+        'PGlite 运行时资源未就绪。索引维护与嵌入数据库管理在资源可用前将暂不可用。',
+      pgliteSummaryReady:
+        '当前 PGlite 运行时资源已就绪，可用于知识库索引与嵌入数据库管理。',
+      pgliteSummaryDownloading:
+        'PGlite 运行时资源正在准备中。下载完成后，索引维护与嵌入数据库管理会自动恢复可用。',
+      pgliteSummaryFailed:
+        'PGlite 运行时准备失败。请重试下载，或清理本地缓存后再重新使用知识库能力。',
+      pgliteSummaryMissing:
+        'PGlite 运行时资源尚未准备。首次使用知识库功能时会自动下载，也可以在这里手动提前准备。',
+      pgliteDownloadingFile: '正在下载',
       // Index progress header/status
       indexProgressTitle: 'RAG 索引进度',
       indexing: '进行中',
@@ -756,6 +813,9 @@ export const zh: TranslationKeys = {
       resetAgentsConfirm:
         '确定要重置 Agent 配置吗？此操作将删除自定义 Agent 并重置当前选择。',
       resetAgentsSuccess: 'Agent 配置已重置为默认',
+      logModelRequestContext: '记录模型请求上下文',
+      logModelRequestContextDesc:
+        '在开发者控制台输出每一轮 Agent 实际发送给模型的最终请求载荷。',
       yoloBaseDir: 'YOLO 根目录',
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
@@ -765,6 +825,11 @@ export const zh: TranslationKeys = {
         '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
       mentionDisplayModeInline: '输入框内',
       mentionDisplayModeBadge: '顶部徽章',
+      mentionContextMode: '@ 文件上下文注入模式',
+      mentionContextModeDesc:
+        '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
+      mentionContextModeLight: '轻量模式',
+      mentionContextModeFull: '全量模式',
       chatApplyMode: 'Chat 应用修改方式',
       chatApplyModeDesc:
         '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
@@ -819,7 +884,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@添加标签引用，/选择技能」',
+    placeholder: '输入消息...「@添加标签引用，/选择技能或命令」',
     placeholderCompact: '点击展开编辑...',
     sendMessage: '发送消息',
     newChat: '新建聊天',
@@ -854,11 +919,28 @@ export const zh: TranslationKeys = {
       entryFile: '文件',
       entryFolder: '文件夹',
     },
+    slashCommands: {
+      compact: {
+        label: '压缩上下文',
+        description: '手动压缩较早对话历史，并在新的上下文窗口中继续当前任务。',
+      },
+    },
     emptyState: {
       chatTitle: '先想清楚，再落笔',
       chatDescription: '适合提问、润色与改写，专注表达本身',
       agentTitle: '让 AI 去执行',
       agentDescription: '启用工具链，处理搜索、读写与多步骤任务',
+    },
+    compaction: {
+      pendingTitle: '正在压缩上下文',
+      dividerTitle: '从这里继续当前任务',
+      dividerDescription: '以上对话已压缩为摘要，以下回复基于摘要继续。',
+      pendingStatus: '正在整理上下文，稍后将从新的上下文继续。',
+      success: '已压缩较早上下文，后续回复将基于摘要继续。',
+      failed: '上下文压缩失败，请稍后重试。',
+      empty: '当前还没有可压缩的对话内容。',
+      runActive: '请等待当前回复完成后再压缩上下文。',
+      waitingApproval: '请先处理当前待确认的工具调用，再压缩上下文。',
     },
     codeBlock: {
       showRawText: '显示原始文本',
@@ -974,6 +1056,10 @@ export const zh: TranslationKeys = {
         delete_dir: '删除文件夹',
         move: '移动路径',
       },
+      readMode: {
+        full: '全文',
+        linesSuffix: '行',
+      },
       detail: {
         target: '目标',
         scope: '范围',
@@ -1019,9 +1105,9 @@ export const zh: TranslationKeys = {
     rebuildComplete: '重建库索引完成',
     rebuildFailed: '重建库索引失败',
     openYoloNewChatFailed: '打开 YOLO 聊天窗口失败，请先用命令面板尝试',
-    pgliteUnavailable: 'PGlite 资源不可用，请重新安装插件',
+    pgliteUnavailable: 'PGlite 运行时不可用，请重试下载资源',
     downloadingPglite:
-      '正在从 CDN 下载 PGlite 依赖 (~20MB)，首次使用需要一点时间...',
+      '正在下载 PGlite 运行时资源，首次使用知识库可能需要一点时间...',
     updatingIndex: '正在更新库索引...',
     indexUpdated: '库索引已更新',
     indexUpdateFailed: '库索引更新失败',

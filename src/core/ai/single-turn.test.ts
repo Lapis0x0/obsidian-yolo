@@ -77,6 +77,18 @@ async function* toAsyncIterable(
 }
 
 describe('executeSingleTurn', () => {
+  const consoleWarnSpy = jest
+    .spyOn(console, 'warn')
+    .mockImplementation(() => undefined)
+
+  afterEach(() => {
+    consoleWarnSpy.mockClear()
+  })
+
+  afterAll(() => {
+    consoleWarnSpy.mockRestore()
+  })
+
   it('uses streamed write tool calls without forcing non-stream refresh', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(
@@ -164,6 +176,96 @@ describe('executeSingleTurn', () => {
     expect(result.finishReason).toBe('tool_calls')
   })
 
+  it('preserves streamed nested object chunks that begin with "{\\"', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-nested-object',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-read-1',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_read',
+                      arguments: '{"paths":["foo.md"],"operation":',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-nested-object',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: {
+                      arguments:
+                        '{"type":"lines","startLine":1,"endLine":80}}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-nested-object',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+    })
+
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-read-1',
+        name: 'yolo_local__fs_read',
+        arguments: completeArgs(
+          {
+            paths: ['foo.md'],
+            operation: {
+              type: 'lines',
+              startLine: 1,
+              endLine: 80,
+            },
+          },
+          '{"paths":["foo.md"],"operation":{"type":"lines","startLine":1,"endLine":80}}',
+        ),
+        metadata: undefined,
+      },
+    ])
+  })
+
   it('falls back to non-stream request on streaming protocol errors', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockRejectedValue(new Error('unexpected EOF'))
@@ -192,6 +294,13 @@ describe('executeSingleTurn', () => {
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
     expect(result.content).toBe('ok')
     expect(result.toolCalls).toEqual([])
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[YOLO] Streaming tool-call recovery triggered.',
+      expect.objectContaining({
+        reason: 'stream_protocol_error',
+        error: 'unexpected EOF',
+      }),
+    )
   })
 
   it('falls back to non-stream when streamed local write arguments are invalid', async () => {
@@ -283,6 +392,14 @@ describe('executeSingleTurn', () => {
         metadata: undefined,
       },
     ])
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[YOLO] Streaming tool-call recovery triggered.',
+      expect.objectContaining({
+        reason: 'invalid_write_args',
+        finishReason: 'tool_calls',
+        toolNames: ['yolo_local__fs_edit'],
+      }),
+    )
   })
 
   it('falls back to non-stream when streamed write arguments fail schema checks', async () => {
