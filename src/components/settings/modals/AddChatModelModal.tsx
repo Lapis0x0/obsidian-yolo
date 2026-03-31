@@ -123,6 +123,18 @@ const CHATGPT_OAUTH_DEFAULT_MODELS = Array.from(
   ]),
 )
 
+const GEMINI_OAUTH_DEFAULT_MODELS = Array.from(
+  new Set([
+    ...DEFAULT_CHAT_MODELS.filter((model) =>
+      model.providerId.startsWith('gemini-oauth'),
+    ).map((model) => model.model),
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+  ]),
+)
+
 const isReasoningType = (value: string): value is ReasoningType =>
   REASONING_TYPES.includes(value as ReasoningType)
 
@@ -327,6 +339,46 @@ function AddChatModelModalComponent({
           setAvailableModels(fallback)
           plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
           return
+        }
+
+        if (selectedProvider.presetType === 'gemini-oauth') {
+          const service = plugin.getGeminiOAuthService(selectedProvider.id)
+          const credential = await service.getUsableCredential()
+
+          if (!credential) {
+            const fallback = Array.from(
+              new Set(GEMINI_OAUTH_DEFAULT_MODELS),
+            ).sort()
+            setAvailableModels(fallback)
+            plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
+            return
+          }
+
+          try {
+            const configuredProjectId =
+              typeof selectedProvider.additionalSettings?.projectId === 'string'
+                ? selectedProvider.additionalSettings.projectId
+                : undefined
+            const models =
+              await service.listAvailableModels(configuredProjectId)
+            const unique = Array.from(
+              new Set([...(models ?? []), ...GEMINI_OAUTH_DEFAULT_MODELS]),
+            ).sort()
+            setAvailableModels(unique)
+            plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
+            return
+          } catch (error) {
+            console.warn(
+              '[YOLO] Failed to fetch Gemini OAuth models, fallback to defaults.',
+              error,
+            )
+            const fallback = Array.from(
+              new Set(GEMINI_OAUTH_DEFAULT_MODELS),
+            ).sort()
+            setAvailableModels(fallback)
+            plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
+            return
+          }
         }
 
         if (selectedProvider.apiType === 'amazon-bedrock') {

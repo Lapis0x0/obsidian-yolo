@@ -486,6 +486,18 @@ export const en: TranslationKeys = {
       chatgptOAuthStreamingNotice:
         'Due to Obsidian environment limitations, ChatGPT OAuth currently does not support streaming responses.',
       chatgptOAuthPendingCode: 'Current device code:',
+      geminiOAuthTitle: 'Gemini OAuth',
+      geminiOAuthConnect: 'Connect',
+      geminiOAuthDisconnect: 'Disconnect',
+      geminiOAuthConnecting: 'Connecting...',
+      geminiOAuthLoadingStatus: 'Loading Gemini OAuth status...',
+      geminiOAuthConnected: 'Connected',
+      geminiOAuthExpires: 'expires',
+      geminiOAuthDisconnectedHelp:
+        'Not connected. Connect to use Gemini quota from your Google account.',
+      geminiOAuthProject: 'project',
+      geminiOAuthStreamingNotice:
+        'Due to Obsidian environment limitations, Gemini OAuth currently does not support streaming responses.',
     },
     models: {
       title: 'Models',

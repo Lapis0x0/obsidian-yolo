@@ -63,6 +63,25 @@ export const PROVIDER_PRESET_INFO = {
     supportEmbedding: false,
     additionalSettings: [],
   },
+  'gemini-oauth': {
+    label: 'Gemini OAuth',
+    defaultProviderId: 'gemini-oauth',
+    requireApiKey: false,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    additionalSettings: [
+      {
+        label: 'Google Cloud Project ID',
+        key: 'projectId',
+        placeholder: 'my-gcp-project-id',
+        type: 'text',
+        required: false,
+        description:
+          'Optional. Some Gemini plans require a Google Cloud project ID to access paid quotas.',
+      },
+      REQUEST_TRANSPORT_MODE_SETTING,
+    ],
+  },
   anthropic: {
     label: 'Anthropic',
     defaultProviderId: 'anthropic',
@@ -264,6 +283,11 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
     id: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
   },
   {
+    presetType: 'gemini-oauth',
+    apiType: getDefaultApiTypeForPresetType('gemini-oauth'),
+    id: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
+  },
+  {
     presetType: 'anthropic',
     apiType: getDefaultApiTypeForPresetType('anthropic'),
     id: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
@@ -348,6 +372,39 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
       enabled: true,
       reasoning_effort: 'medium',
     },
+  },
+  {
+    providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
+    id: 'gemini-oauth/gemini-2.5-pro',
+    model: 'gemini-2.5-pro',
+    enable: false,
+    thinking: {
+      enabled: true,
+      thinking_budget: -1,
+    },
+    toolType: 'gemini',
+  },
+  {
+    providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
+    id: 'gemini-oauth/gemini-2.5-flash',
+    model: 'gemini-2.5-flash',
+    enable: false,
+    thinking: {
+      enabled: true,
+      thinking_budget: -1,
+    },
+    toolType: 'gemini',
+  },
+  {
+    providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
+    id: 'gemini-oauth/gemini-2.5-flash-lite',
+    model: 'gemini-2.5-flash-lite',
+    enable: false,
+    thinking: {
+      enabled: true,
+      thinking_budget: 0,
+    },
+    toolType: 'gemini',
   },
   {
     providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,

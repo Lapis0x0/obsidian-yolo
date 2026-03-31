@@ -22,6 +22,11 @@ import {
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
 } from './core/auth/chatgptOAuthRuntime'
+import {
+  clearGeminiOAuthService,
+  getGeminiOAuthService as getGeminiOAuthServiceRuntime,
+  initializeGeminiOAuthRuntime,
+} from './core/auth/geminiOAuthRuntime'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -208,6 +213,60 @@ export default class SmartComposerPlugin extends Plugin {
 
   clearChatGPTOAuthRuntime(providerId: string): void {
     clearChatGPTOAuthService(providerId)
+  }
+
+  getGeminiOAuthService(providerId = 'gemini-oauth') {
+    return (
+      getGeminiOAuthServiceRuntime(providerId) ??
+      initializeGeminiOAuthRuntime(this.app, this.manifest.id, providerId)
+    )
+  }
+
+  async getGeminiOAuthStatus(providerId = 'gemini-oauth'): Promise<{
+    connected: boolean
+    email?: string
+    expiresAt?: number
+    projectId?: string
+  }> {
+    const credential =
+      await this.getGeminiOAuthService(providerId).getUsableCredential()
+    if (!credential) {
+      return { connected: false }
+    }
+
+    return {
+      connected: true,
+      ...(credential.email ? { email: credential.email } : {}),
+      ...(credential.managedProjectId || credential.projectId
+        ? {
+            projectId: credential.managedProjectId ?? credential.projectId,
+          }
+        : {}),
+      expiresAt: credential.expiresAt,
+    }
+  }
+
+  async disconnectGeminiOAuthAccount(
+    providerId = 'gemini-oauth',
+  ): Promise<void> {
+    await this.getGeminiOAuthService(providerId).clearCredential()
+  }
+
+  clearGeminiOAuthRuntime(providerId: string): void {
+    clearGeminiOAuthService(providerId)
+  }
+
+  private syncOAuthRuntimesFromSettings(
+    settings: Pick<SmartComposerSettings, 'providers'> = this.settings,
+  ): void {
+    for (const provider of settings.providers) {
+      if (provider.presetType === 'chatgpt-oauth') {
+        this.getChatGPTOAuthService(provider.id)
+      }
+      if (provider.presetType === 'gemini-oauth') {
+        this.getGeminiOAuthService(provider.id)
+      }
+    }
   }
 
   getPGliteRuntimeManager(): PGliteRuntimeManager {
@@ -1136,7 +1195,7 @@ export default class SmartComposerPlugin extends Plugin {
     ensureBufferByteLengthCompat()
 
     await this.loadSettings()
-    this.getChatGPTOAuthService()
+    this.syncOAuthRuntimesFromSettings()
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
 
@@ -1543,6 +1602,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     this.settings = normalizedSettings
     await this.saveData(normalizedSettings)
+    this.syncOAuthRuntimesFromSettings(normalizedSettings)
     this.ragCoordinator?.updateSettings(normalizedSettings)
     this.settingsChangeListeners.forEach((listener) => {
       listener(normalizedSettings)

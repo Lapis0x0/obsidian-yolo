@@ -10,6 +10,7 @@ import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
 import { DeepSeekStudioProvider } from './deepseekStudioProvider'
 import { LLMModelNotFoundException } from './exception'
 import { GeminiProvider } from './gemini'
+import { GeminiOAuthProvider } from './geminiOAuthProvider'
 import { GroqProvider } from './groq'
 import { LmStudioProvider } from './lmStudioProvider'
 import { MistralProvider } from './mistralProvider'
@@ -61,6 +62,9 @@ export function getProviderClient({
       })
     }
     case 'gemini': {
+      if (provider.presetType === 'gemini-oauth') {
+        return new GeminiOAuthProvider(provider as never)
+      }
       return new GeminiProvider(provider as never)
     }
     case 'amazon-bedrock': {

@@ -357,6 +357,16 @@ export type TranslationKeys = {
       chatgptOAuthDisconnectedHelp: string
       chatgptOAuthStreamingNotice: string
       chatgptOAuthPendingCode?: string
+      geminiOAuthTitle?: string
+      geminiOAuthConnect?: string
+      geminiOAuthDisconnect?: string
+      geminiOAuthConnecting?: string
+      geminiOAuthLoadingStatus?: string
+      geminiOAuthConnected?: string
+      geminiOAuthExpires?: string
+      geminiOAuthDisconnectedHelp?: string
+      geminiOAuthProject?: string
+      geminiOAuthStreamingNotice?: string
     }
     models: {
       title: string

@@ -19,6 +19,7 @@ export const requestTransportModeSchema = z.enum([
 export const providerPresetTypeSchema = z.enum([
   'openai',
   'chatgpt-oauth',
+  'gemini-oauth',
   'anthropic',
   'gemini',
   'deepseek',
@@ -51,6 +52,7 @@ const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
 > = {
   openai: 'openai-responses',
   'chatgpt-oauth': 'openai-responses',
+  'gemini-oauth': 'gemini',
   anthropic: 'anthropic',
   gemini: 'gemini',
   deepseek: 'openai-compatible',

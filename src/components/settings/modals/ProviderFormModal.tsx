@@ -205,7 +205,9 @@ function ProviderFormComponent({
       PROVIDER_API_INFO[apiType].label,
     ]),
   )
-  const shouldHideCredentialFields = formData.presetType === 'chatgpt-oauth'
+  const shouldHideCredentialFields =
+    formData.presetType === 'chatgpt-oauth' ||
+    formData.presetType === 'gemini-oauth'
   const shouldShowBaseUrlField =
     !shouldHideCredentialFields &&
     !(

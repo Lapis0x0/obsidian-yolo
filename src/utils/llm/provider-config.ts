@@ -61,7 +61,7 @@ export function providerSupportsEmbedding(provider: LLMProvider): boolean {
     case 'amazon-bedrock':
       return false
     case 'gemini':
-      return true
+      return provider.presetType !== 'gemini-oauth'
     case 'openai-compatible':
       return (
         provider.presetType !== 'chatgpt-oauth' &&

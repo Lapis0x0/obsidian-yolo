@@ -228,6 +228,139 @@ function ChatGPTOAuthPanel({
   )
 }
 
+function GeminiOAuthPanel({
+  plugin,
+  provider,
+}: {
+  plugin: SmartComposerPlugin
+  provider: LLMProvider
+}) {
+  const { t } = useLanguage()
+  const [loading, setLoading] = useState(true)
+  const [connected, setConnected] = useState(false)
+  const [email, setEmail] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+
+  const refreshStatus = useCallback(async () => {
+    setLoading(true)
+    try {
+      const status = await plugin.getGeminiOAuthStatus(provider.id)
+      setConnected(status.connected)
+      setEmail(status.email ?? null)
+      setProjectId(status.projectId ?? null)
+      setExpiresAt(status.expiresAt ?? null)
+    } catch (error) {
+      console.error('[YOLO] Failed to load Gemini OAuth status:', error)
+      setConnected(false)
+      setEmail(null)
+      setProjectId(null)
+      setExpiresAt(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [plugin, provider.id])
+
+  useEffect(() => {
+    void refreshStatus()
+  }, [refreshStatus])
+
+  const handleConnect = () => {
+    const execute = async () => {
+      setIsConnecting(true)
+      const service = plugin.getGeminiOAuthService(provider.id)
+      const authorization = await service.beginBrowserAuthorization()
+      window.open(
+        authorization.authorizationUrl,
+        '_blank',
+        'noopener,noreferrer',
+      )
+      new Notice('已打开 Gemini OAuth 登录页面，请在浏览器中完成授权。', 8000)
+      await authorization.complete
+      new Notice('Gemini OAuth 连接成功')
+      await refreshStatus()
+    }
+
+    void execute()
+      .catch((error: unknown) => {
+        console.error('[YOLO] Failed to connect Gemini OAuth:', error)
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Failed to connect Gemini OAuth.'
+        new Notice(message)
+      })
+      .finally(() => {
+        setIsConnecting(false)
+      })
+  }
+
+  const handleDisconnect = () => {
+    const execute = async () => {
+      plugin
+        .getGeminiOAuthService(provider.id)
+        .cancelPendingBrowserAuthorization()
+      await plugin.disconnectGeminiOAuthAccount(provider.id)
+      new Notice('Gemini OAuth 已断开')
+      await refreshStatus()
+    }
+
+    void execute().catch((error: unknown) => {
+      console.error('[YOLO] Failed to disconnect Gemini OAuth:', error)
+      new Notice('Failed to disconnect Gemini OAuth.')
+    })
+  }
+
+  return (
+    <div className="smtcmp-models-subsection">
+      <div className="smtcmp-models-subsection-header">
+        <span>{t('settings.providers.geminiOAuthTitle', 'Gemini OAuth')}</span>
+        {!connected ? (
+          <button
+            type="button"
+            onClick={handleConnect}
+            className="smtcmp-add-model-btn"
+            disabled={isConnecting}
+          >
+            {isConnecting
+              ? t('settings.providers.geminiOAuthConnecting', 'Connecting...')
+              : t('settings.providers.geminiOAuthConnect', 'Connect')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            className="smtcmp-add-model-btn smtcmp-chatgpt-oauth-disconnect-btn"
+            disabled={isConnecting}
+          >
+            {t('settings.providers.geminiOAuthDisconnect', 'Disconnect')}
+          </button>
+        )}
+      </div>
+      <div className="smtcmp-no-models">
+        {loading
+          ? t(
+              'settings.providers.geminiOAuthLoadingStatus',
+              'Loading Gemini OAuth status...',
+            )
+          : connected
+            ? `${t('settings.providers.geminiOAuthConnected', 'Connected')}${email ? ` · ${email}` : ''}${projectId ? ` · ${t('settings.providers.geminiOAuthProject', 'project')} ${projectId}` : ''}${expiresAt ? ` · ${t('settings.providers.geminiOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
+            : t(
+                'settings.providers.geminiOAuthDisconnectedHelp',
+                'Not connected. Connect to use Gemini quota from your Google account.',
+              )}
+      </div>
+      <div className="smtcmp-chatgpt-oauth-note">
+        {t(
+          'settings.providers.geminiOAuthStreamingNotice',
+          'Gemini OAuth will try streaming by default and automatically fall back to buffered responses when needed.',
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ProviderSectionItem({
   provider,
   app,
@@ -249,6 +382,7 @@ function ProviderSectionItem({
   handleEmbeddingModelDragEnd,
 }: ProviderSectionItemProps) {
   const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
+  const isGeminiOAuth = provider.presetType === 'gemini-oauth'
   const displayBaseUrl = getProviderDisplayBaseUrl(provider)
   const chatModelsLabel = `${chatModels.length} ${t('settings.providers.chatModels').replace(/^个/, '')}`
   const embeddingModelsLabel = `${embeddingModels.length} ${t('settings.providers.embeddingModels').replace(/^个/, '')}`
@@ -401,6 +535,12 @@ function ProviderSectionItem({
               provider={
                 provider as Extract<LLMProvider, { type: 'chatgpt-oauth' }>
               }
+            />
+          )}
+          {isGeminiOAuth && (
+            <GeminiOAuthPanel
+              plugin={plugin}
+              provider={provider}
             />
           )}
           <ChatModelsTable
@@ -1089,6 +1229,13 @@ export function ProvidersAndModelsSection({
             .cancelPendingBrowserAuthorization()
           await plugin.disconnectChatGPTOAuthAccount(provider.id)
           plugin.clearChatGPTOAuthRuntime(provider.id)
+        }
+        if (provider.presetType === 'gemini-oauth') {
+          plugin
+            .getGeminiOAuthService(provider.id)
+            .cancelPendingBrowserAuthorization()
+          await plugin.disconnectGeminiOAuthAccount(provider.id)
+          plugin.clearGeminiOAuthRuntime(provider.id)
         }
 
         if (associatedEmbeddingModels.length > 0) {
