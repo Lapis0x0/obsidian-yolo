@@ -41,7 +41,6 @@ import { useChatHistory } from '../../hooks/useChatHistory'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
-  ChatConversationCompaction,
   ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
@@ -72,6 +71,7 @@ import {
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { readTFileContent } from '../../utils/obsidian'
+import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 
 // removed Prompt Templates feature
@@ -88,7 +88,6 @@ import type { ReasoningLevel } from './chat-input/ReasoningSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
-import DotLoader from '../common/DotLoader'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
@@ -599,7 +598,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [isSidebarPlacement, isWorkspaceWideHeader])
 
   const containerClassName = `smtcmp-chat-container${
-    isSidebarPlacement ? ' smtcmp-chat-container--sidebar' : ' smtcmp-chat-container--centered'
+    isSidebarPlacement
+      ? ' smtcmp-chat-container--sidebar'
+      : ' smtcmp-chat-container--centered'
   }${
     !isSidebarPlacement && isWorkspaceWideHeader
       ? ' smtcmp-chat-container--workspace-wide-header'

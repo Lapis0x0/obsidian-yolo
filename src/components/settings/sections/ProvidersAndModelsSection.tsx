@@ -27,7 +27,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_EMBEDDING_MODELS,
-  PROVIDER_TYPES_INFO,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -36,8 +35,8 @@ import SmartComposerPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
 import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
-import { providerSupportsEmbedding } from '../../../utils/llm/provider-config'
 import { resolveProviderDisplayBaseUrl } from '../../../utils/llm/provider-base-url'
+import { providerSupportsEmbedding } from '../../../utils/llm/provider-config'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { AddChatModelModal } from '../modals/AddChatModelModal'

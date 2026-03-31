@@ -1,5 +1,4 @@
 import {
-  ChatConversationCompaction,
   ChatConversationCompactionLike,
   SerializedChatMessage,
 } from '../../../types/chat'

@@ -3,13 +3,13 @@ import { htmlToMarkdown, requestUrl } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
-import { getMemoryPromptContext } from '../../core/memory/memoryManager'
-import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
   buildCompactionResumeMessage,
   buildCompactionSummaryMessage,
   findCompactTrigger,
 } from '../../core/agent/compaction'
+import { getMemoryPromptContext } from '../../core/memory/memoryManager'
+import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
   getLiteSkillDocument,
   listLiteSkillEntries,
@@ -23,7 +23,6 @@ import type { SelectEmbedding } from '../../database/schema'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
-  ChatConversationCompaction,
   ChatConversationCompactionLike,
   ChatMessage,
   ChatSelectedSkill,

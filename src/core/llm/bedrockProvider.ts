@@ -2,18 +2,18 @@ import {
   BedrockRuntimeClient,
   ContentBlock,
   ConverseCommand,
+  ConverseCommandInput,
   ConverseStreamCommand,
   ConverseStreamOutput,
   ImageFormat,
   InvokeModelCommand,
   Message,
   SystemContentBlock,
+  TokenUsage,
   Tool,
   ToolChoice,
   ToolResultContentBlock,
-  TokenUsage,
 } from '@aws-sdk/client-bedrock-runtime'
-import { DocumentType } from '@smithy/types'
 
 import { ChatModel } from '../../types/chat-model.types'
 import {
@@ -33,12 +33,12 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
-import { parseImageDataUrl } from '../../utils/llm/image'
 import {
   buildBedrockEmbeddingRequestBody,
   createBedrockBearerClientConfig,
   getBedrockRegion,
 } from '../../utils/llm/bedrock'
+import { parseImageDataUrl } from '../../utils/llm/image'
 
 import { BaseLLMProvider } from './base'
 import {
@@ -54,6 +54,10 @@ type BedrockJsonBody =
   | Uint8Array
   | { transformToString?: () => Promise<string> }
 
+type BedrockDocumentType = NonNullable<
+  ConverseCommandInput['additionalModelRequestFields']
+>
+
 export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
   private client: BedrockRuntimeClient
 
@@ -61,7 +65,9 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
   constructor(provider: LLMProvider) {
     super(provider)
-    this.client = new BedrockRuntimeClient(createBedrockBearerClientConfig(provider))
+    this.client = new BedrockRuntimeClient(
+      createBedrockBearerClientConfig(provider),
+    )
   }
 
   async generateResponse(
@@ -328,7 +334,9 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
           }
         }
       } else if (event.messageStop) {
-        finishReason = BedrockProvider.mapStopReason(event.messageStop.stopReason)
+        finishReason = BedrockProvider.mapStopReason(
+          event.messageStop.stopReason,
+        )
       } else if (event.metadata?.usage) {
         usage = BedrockProvider.convertUsage(event.metadata.usage)
       }
@@ -397,7 +405,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
   static extractSystemBlocks(messages: RequestMessage[]): SystemContentBlock[] {
     return messages
       .filter((m) => m.role === 'system')
-      .map((m): SystemContentBlock => ({ text: m.content as string }))
+      .map((m): SystemContentBlock => ({ text: m.content }))
   }
 
   static convertMessages(messages: RequestMessage[]): Message[] {
@@ -428,7 +436,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
                   toolUseId: tc.id,
                   name: tc.name,
                   input: (getToolCallArgumentsObject(tc.arguments) ??
-                    {}) as DocumentType,
+                    {}) as unknown as BedrockDocumentType,
                 },
               })
             }
@@ -525,7 +533,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
           name: t.function.name,
           description: t.function.description,
           inputSchema: {
-            json: t.function.parameters as DocumentType,
+            json: t.function.parameters as unknown as BedrockDocumentType,
           },
         },
       }),
@@ -555,8 +563,8 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
   private static buildAdditionalModelRequestFields(
     model: ChatModel,
-  ): DocumentType | undefined {
-    const fields: { [prop: string]: DocumentType } = {}
+  ): BedrockDocumentType | undefined {
+    const fields: { [prop: string]: BedrockDocumentType } = {}
 
     if (
       model.thinking?.enabled &&
@@ -679,10 +687,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
 
-    if (
-      statusCode === 503 ||
-      metadata.name === 'ServiceUnavailableException'
-    ) {
+    if (statusCode === 503 || metadata.name === 'ServiceUnavailableException') {
       return new Error(
         `Amazon Bedrock is temporarily unavailable for provider ${provider.id}${messageSuffix}. Please retry shortly.`,
       )

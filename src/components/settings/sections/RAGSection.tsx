@@ -356,51 +356,48 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       : null
   const pgliteFailureReason =
     pgliteResourceStatus?.kind === 'failed' ? pgliteResourceStatus.reason : null
-  const runPgliteAction = useCallback(
-    (action: 'download') => {
-      setIsRunningPgliteAction(true)
+  const runPgliteAction = useCallback(() => {
+    setIsRunningPgliteAction(true)
 
-      void (async () => {
-        try {
-          const runtimeManager = plugin.getPGliteRuntimeManager()
-          if (pgliteResourceStatus?.kind === 'ready') {
-            new Notice(
-              t(
-                'notices.downloadingPglite',
-                'Downloading PGlite runtime assets. This may take a moment...',
-              ),
-            )
-            await runtimeManager.redownload()
-          } else {
-            await refreshPgliteResourceStatus()
-            new Notice(
-              t(
-                'notices.downloadingPglite',
-                'Downloading PGlite runtime assets. This may take a moment...',
-              ),
-            )
-            await runtimeManager.ensureReady()
-          }
-          await refreshPgliteResourceStatus()
-        } catch (error: unknown) {
-          console.error('Failed to run PGlite runtime action', error)
+    void (async () => {
+      try {
+        const runtimeManager = plugin.getPGliteRuntimeManager()
+        if (pgliteResourceStatus?.kind === 'ready') {
           new Notice(
-            error instanceof Error
-              ? error.message
-              : t(
-                  'notices.pgliteUnavailable',
-                  'PGlite runtime is unavailable. Please retry downloading the runtime assets.',
-                ),
-            5000,
+            t(
+              'notices.downloadingPglite',
+              'Downloading PGlite runtime assets. This may take a moment...',
+            ),
           )
+          await runtimeManager.redownload()
+        } else {
           await refreshPgliteResourceStatus()
-        } finally {
-          setIsRunningPgliteAction(false)
+          new Notice(
+            t(
+              'notices.downloadingPglite',
+              'Downloading PGlite runtime assets. This may take a moment...',
+            ),
+          )
+          await runtimeManager.ensureReady()
         }
-      })()
-    },
-    [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t],
-  )
+        await refreshPgliteResourceStatus()
+      } catch (error: unknown) {
+        console.error('Failed to run PGlite runtime action', error)
+        new Notice(
+          error instanceof Error
+            ? error.message
+            : t(
+                'notices.pgliteUnavailable',
+                'PGlite runtime is unavailable. Please retry downloading the runtime assets.',
+              ),
+          5000,
+        )
+        await refreshPgliteResourceStatus()
+      } finally {
+        setIsRunningPgliteAction(false)
+      }
+    })()
+  }, [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t])
 
   const handleIndexProgress = useCallback((progress: IndexProgress) => {
     setIndexProgress(progress)
@@ -522,7 +519,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 <>
                   <ObsidianButton
                     text={pglitePrimaryActionLabel}
-                    onClick={() => runPgliteAction('download')}
+                    onClick={() => runPgliteAction()}
                     disabled={
                       isCheckingPgliteResources ||
                       isRunningPgliteAction ||

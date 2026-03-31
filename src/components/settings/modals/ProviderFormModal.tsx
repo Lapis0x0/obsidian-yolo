@@ -13,9 +13,8 @@ import {
 } from '../../../types/provider.types'
 import {
   getRequestTransportModeValue,
-  reconcileEmbeddingModelsForProviderUpdate,
-  providerSupportsEmbedding,
   providerSupportsTransportModeSelection,
+  reconcileEmbeddingModelsForProviderUpdate,
 } from '../../../utils/llm/provider-config'
 import { sanitizeProviderHeaders } from '../../../utils/llm/provider-headers'
 import { ObsidianButton } from '../../common/ObsidianButton'
@@ -128,7 +127,8 @@ function ProviderFormComponent({
         const providerIdChanged = provider.id !== validatedProvider.id
         const providerPresetChanged =
           provider.presetType !== validatedProvider.presetType
-        const providerApiChanged = provider.apiType !== validatedProvider.apiType
+        const providerApiChanged =
+          provider.apiType !== validatedProvider.apiType
         const updatedProviders = [...plugin.settings.providers]
         updatedProviders[providerIndex] = validatedProvider
 
