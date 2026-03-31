@@ -4,13 +4,13 @@ import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { ChatMessage } from '../../types/chat'
 import { McpTool } from '../../types/mcp.types'
-import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import {
   ToolCallResponseStatus,
   type ToolEditSummary,
 } from '../../types/tool-call.types'
 import { createToolEditSummary } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import {
   type TextEditOperation,
   type TextEditPlan,

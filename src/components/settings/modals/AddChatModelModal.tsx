@@ -220,7 +220,10 @@ function AddChatModelModalComponent({
       }
 
       // Check cache first
-      const cachedModels = plugin.getCachedModelList(selectedProvider.id, 'chat')
+      const cachedModels = plugin.getCachedModelList(
+        selectedProvider.id,
+        'chat',
+      )
       if (cachedModels) {
         setAvailableModels(cachedModels)
         setLoadingModels(false)

@@ -141,11 +141,7 @@ function AddEmbeddingModelModalComponent({
           const unique = await listBedrockEmbeddingModelIds(selectedProvider)
           const sorted = sortModelsForEmbedding(unique)
           setAvailableModels(sorted)
-          plugin.setCachedModelList(
-            selectedProvider.id,
-            unique,
-            'embedding',
-          )
+          plugin.setCachedModelList(selectedProvider.id, unique, 'embedding')
           return
         }
 
@@ -253,11 +249,7 @@ function AddEmbeddingModelModalComponent({
           const sorted = sortModelsForEmbedding(unique)
           setAvailableModels(sorted)
           // Cache the result (unsorted for consistency)
-          plugin.setCachedModelList(
-            selectedProvider.id,
-            unique,
-            'embedding',
-          )
+          plugin.setCachedModelList(selectedProvider.id, unique, 'embedding')
           return
         }
       } catch (err: unknown) {

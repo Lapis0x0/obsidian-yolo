@@ -22,7 +22,7 @@ const createSettings = (): SmartComposerSettings =>
         additionalSettings: { awsRegion: 'us-east-1' },
       },
     ],
-  } as unknown as SmartComposerSettings)
+  }) as unknown as SmartComposerSettings
 
 describe('getProviderClient', () => {
   it('routes native Bedrock providers to BedrockProvider', () => {

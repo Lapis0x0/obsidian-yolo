@@ -65,7 +65,8 @@ class MockAdapter {
         type: 'file',
         ctime: 0,
         mtime: 0,
-        size: typeof value === 'string' ? value.length : value?.byteLength ?? 0,
+        size:
+          typeof value === 'string' ? value.length : (value?.byteLength ?? 0),
       }
     }
 
@@ -95,7 +96,9 @@ class MockAdapter {
 
     const prefix = `${path}/`
     const hasChildren =
-      Array.from(this.files.keys()).some((filePath) => filePath.startsWith(prefix)) ||
+      Array.from(this.files.keys()).some((filePath) =>
+        filePath.startsWith(prefix),
+      ) ||
       Array.from(this.folders).some(
         (folderPath) => folderPath !== path && folderPath.startsWith(prefix),
       )
@@ -206,9 +209,9 @@ describe('yoloManagedData', () => {
       yolo: { baseDir: 'YOLO' },
     })
 
-    await expect(adapter.exists('.smtcmp_json_db/chats/chat_snapshots')).resolves.toBe(
-      false,
-    )
+    await expect(
+      adapter.exists('.smtcmp_json_db/chats/chat_snapshots'),
+    ).resolves.toBe(false)
     await expect(adapter.exists('.smtcmp_json_db/chats')).resolves.toBe(false)
     await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
   })

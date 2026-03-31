@@ -975,7 +975,13 @@ function createEditorPreferredInlineDiffTokens(
     modifiedLine,
   )
 
-  if (shouldPreferWholeLineReplacement(originalLine, modifiedLine, wordLevelTokens)) {
+  if (
+    shouldPreferWholeLineReplacement(
+      originalLine,
+      modifiedLine,
+      wordLevelTokens,
+    )
+  ) {
     return buildWholeLineReplacementTokens(originalLine, modifiedLine)
   }
 
@@ -1107,8 +1113,10 @@ function splitLineWithIntlSegmenter(line: string): string[] {
 
   try {
     const segmenter = new Segmenter('zh-CN', { granularity: 'word' })
-    return Array.from(segmenter.segment(line), (segment) => segment.segment)
-      .filter((token) => token.length > 0)
+    return Array.from(
+      segmenter.segment(line),
+      (segment) => segment.segment,
+    ).filter((token) => token.length > 0)
   } catch {
     return []
   }
@@ -1261,7 +1269,9 @@ function postProcessInlineDiffTokens(
   }
 
   return normalizeStandalonePunctuationTokens(
-    mergedTokens.flatMap((token) => splitLongChangedTokenByCjkPunctuation(token)),
+    mergedTokens.flatMap((token) =>
+      splitLongChangedTokenByCjkPunctuation(token),
+    ),
   )
 }
 
@@ -1384,7 +1394,10 @@ function shouldPreferCharacterLevelInlineDiff(
 
   const compactOriginalLength = originalLine.replace(/\s+/g, '').length
   const compactModifiedLength = modifiedLine.replace(/\s+/g, '').length
-  const maxCompactLength = Math.max(compactOriginalLength, compactModifiedLength)
+  const maxCompactLength = Math.max(
+    compactOriginalLength,
+    compactModifiedLength,
+  )
 
   return maxCompactLength <= 120
 }

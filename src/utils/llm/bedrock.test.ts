@@ -18,10 +18,7 @@ describe('bedrock utils', () => {
 
   it('builds a Titan embedding request body', () => {
     expect(
-      buildBedrockEmbeddingRequestBody(
-        'amazon.titan-embed-text-v2:0',
-        'hello',
-      ),
+      buildBedrockEmbeddingRequestBody('amazon.titan-embed-text-v2:0', 'hello'),
     ).toEqual({
       inputText: 'hello',
     })

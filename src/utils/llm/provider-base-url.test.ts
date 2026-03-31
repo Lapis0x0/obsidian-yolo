@@ -1,4 +1,7 @@
-import { getDefaultApiTypeForPresetType, LLMProvider } from '../../types/provider.types'
+import {
+  LLMProvider,
+  getDefaultApiTypeForPresetType,
+} from '../../types/provider.types'
 
 import {
   resolveProviderBaseUrl,

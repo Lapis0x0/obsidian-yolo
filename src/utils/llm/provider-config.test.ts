@@ -18,9 +18,7 @@ const createEmbeddingModels = (): EmbeddingModel[] => [
   },
 ]
 
-const createProvider = (
-  overrides: Partial<LLMProvider> = {},
-): LLMProvider => ({
+const createProvider = (overrides: Partial<LLMProvider> = {}): LLMProvider => ({
   id: 'bedrock',
   presetType: 'amazon-bedrock',
   apiType: 'amazon-bedrock',

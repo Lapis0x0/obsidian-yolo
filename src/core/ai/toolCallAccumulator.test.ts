@@ -28,9 +28,7 @@ describe('ToolCallAccumulator', () => {
       }),
     )
 
-    expect(
-      accumulator.getSnapshots()[0]?.function?.arguments,
-    ).toMatchObject({
+    expect(accumulator.getSnapshots()[0]?.function?.arguments).toMatchObject({
       kind: 'partial',
       rawText: '{"paths":["foo.md"],"operation":',
     })

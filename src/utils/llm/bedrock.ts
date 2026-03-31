@@ -40,7 +40,9 @@ export function resolveBedrockRuntimeBaseUrl(
   return `https://bedrock-runtime.${region}.amazonaws.com`
 }
 
-export function isNativeBedrockProvider(provider: BedrockProviderLike): boolean {
+export function isNativeBedrockProvider(
+  provider: BedrockProviderLike,
+): boolean {
   return (
     provider.presetType === 'amazon-bedrock' &&
     provider.apiType === 'amazon-bedrock'

@@ -209,10 +209,7 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           <ObsidianDropdown
             value={settings.chatOptions.mentionContextMode ?? 'light'}
             options={{
-              light: t(
-                'settings.etc.mentionContextModeLight',
-                '轻量模式',
-              ),
+              light: t('settings.etc.mentionContextModeLight', '轻量模式'),
               full: t('settings.etc.mentionContextModeFull', '全量模式'),
             }}
             onChange={handleMentionContextModeChange}
