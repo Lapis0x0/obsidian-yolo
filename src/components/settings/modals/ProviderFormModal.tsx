@@ -13,6 +13,7 @@ import {
 } from '../../../types/provider.types'
 import {
   getRequestTransportModeValue,
+  reconcileEmbeddingModelsForProviderUpdate,
   providerSupportsEmbedding,
   providerSupportsTransportModeSelection,
 } from '../../../utils/llm/provider-config'
@@ -148,21 +149,11 @@ function ProviderFormComponent({
 
         const updatedEmbeddingModels: typeof plugin.settings.embeddingModels =
           providerIdChanged || providerPresetChanged || providerApiChanged
-            ? providerPresetChanged &&
-              !providerSupportsEmbedding(validatedProvider)
-              ? plugin.settings.embeddingModels
-              : plugin.settings.embeddingModels.map((model) => {
-                  if (model.providerId !== provider.id) {
-                    return model
-                  }
-                  const updatedModel = {
-                    ...model,
-                    ...(providerIdChanged
-                      ? { providerId: validatedProvider.id }
-                      : {}),
-                  }
-                  return updatedModel as typeof model
-                })
+            ? reconcileEmbeddingModelsForProviderUpdate({
+                embeddingModels: plugin.settings.embeddingModels,
+                previousProvider: provider,
+                nextProvider: validatedProvider,
+              })
             : plugin.settings.embeddingModels
 
         await plugin.setSettings({

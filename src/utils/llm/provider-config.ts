@@ -75,6 +75,37 @@ export function providerSupportsEmbedding(provider: LLMProvider): boolean {
   }
 }
 
+export function reconcileEmbeddingModelsForProviderUpdate({
+  embeddingModels,
+  previousProvider,
+  nextProvider,
+}: {
+  embeddingModels: EmbeddingModel[]
+  previousProvider: Pick<LLMProvider, 'id'>
+  nextProvider: LLMProvider
+}): EmbeddingModel[] {
+  if (!providerSupportsEmbedding(nextProvider)) {
+    return embeddingModels.filter(
+      (model) => model.providerId !== previousProvider.id,
+    )
+  }
+
+  if (previousProvider.id === nextProvider.id) {
+    return embeddingModels
+  }
+
+  return embeddingModels.map((model) => {
+    if (model.providerId !== previousProvider.id) {
+      return model
+    }
+
+    return {
+      ...model,
+      providerId: nextProvider.id,
+    }
+  })
+}
+
 export function providerSupportsTransportModeSelection(
   provider: Pick<LLMProvider, 'presetType' | 'apiType'>,
 ): boolean {
