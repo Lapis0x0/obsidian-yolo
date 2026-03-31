@@ -18,6 +18,7 @@ import {
 } from './tool-preferences'
 
 export class AgentToolGateway {
+  private readonly toolsEnabled: boolean
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
   private readonly allowedSkillIds?: Set<string>
@@ -26,12 +27,14 @@ export class AgentToolGateway {
   constructor(
     private readonly mcpManager: McpManager,
     options?: {
+      toolsEnabled?: boolean
       allowedToolNames?: string[]
       toolPreferences?: Record<string, AssistantToolPreference>
       allowedSkillIds?: string[]
       allowedSkillNames?: string[]
     },
   ) {
+    this.toolsEnabled = options?.toolsEnabled ?? true
     this.allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : undefined
@@ -65,9 +68,11 @@ export class AgentToolGateway {
       toolCalls: toolCallRequests.map((request) => ({
         request,
         response: {
-          status: this.shouldStartToolCallRunning({ request, conversationId })
-            ? ToolCallResponseStatus.Running
-            : ToolCallResponseStatus.PendingApproval,
+          status: !this.isToolAllowed(request.name)
+            ? ToolCallResponseStatus.Rejected
+            : this.shouldStartToolCallRunning({ request, conversationId })
+              ? ToolCallResponseStatus.Running
+              : ToolCallResponseStatus.PendingApproval,
         },
       })),
     }
@@ -217,6 +222,10 @@ export class AgentToolGateway {
   }
 
   private isToolAllowed(toolName: string): boolean {
+    if (!this.toolsEnabled) {
+      return false
+    }
+
     if (this.isOpenSkillToolName(toolName)) {
       const hasAllowedSkills =
         (this.allowedSkillIds?.size ?? 0) > 0 ||

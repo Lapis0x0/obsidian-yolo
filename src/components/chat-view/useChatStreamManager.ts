@@ -63,7 +63,7 @@ type UseChatStreamManagerParams = {
 }
 
 const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
-const CHAT_READONLY_TOOL_NAMES = [
+const CHAT_SAFE_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'fs_search'),
   getToolName(getLocalFileToolServerName(), 'fs_read'),
   getToolName(getLocalFileToolServerName(), 'memory_add'),
@@ -71,6 +71,14 @@ const CHAT_READONLY_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'memory_delete'),
   getToolName(getLocalFileToolServerName(), 'open_skill'),
 ]
+
+const intersectToolNames = (
+  allowedToolNames: string[],
+  modeAllowedToolNames: string[],
+): string[] => {
+  const modeAllowed = new Set(modeAllowedToolNames)
+  return allowedToolNames.filter((toolName) => modeAllowed.has(toolName))
+}
 
 const buildRunSummary = ({
   conversationId,
@@ -387,17 +395,19 @@ export function useChatStreamManager({
         const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
-        const effectiveEnableTools =
-          chatMode === 'agent' ? (selectedAssistant?.enableTools ?? true) : true
+        const assistantEnabledToolNames =
+          getEnabledAssistantToolNames(selectedAssistant)
+        const effectiveEnableTools = selectedAssistant?.enableTools ?? true
         const effectiveIncludeBuiltinTools = effectiveEnableTools
-          ? chatMode === 'agent'
-            ? (selectedAssistant?.includeBuiltinTools ?? true)
-            : true
+          ? (selectedAssistant?.includeBuiltinTools ?? true)
           : false
         const effectiveAllowedToolNames = effectiveEnableTools
           ? chatMode === 'agent'
-            ? getEnabledAssistantToolNames(selectedAssistant)
-            : CHAT_READONLY_TOOL_NAMES
+            ? assistantEnabledToolNames
+            : intersectToolNames(
+                assistantEnabledToolNames,
+                CHAT_SAFE_TOOL_NAMES,
+              )
           : undefined
 
         const mcpManager = await getMcpManager()

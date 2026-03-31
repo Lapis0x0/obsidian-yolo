@@ -149,4 +149,53 @@ describe('AgentToolGateway', () => {
       signal: undefined,
     })
   })
+
+  it('rejects tool calls when tools are disabled', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn(),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      toolsEnabled: false,
+      allowedToolNames: ['server__tool_a'],
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Rejected,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects tool calls outside the allowed tool list', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn(),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['server__tool_a'],
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'server__tool_b', arguments: emptyArgs },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Rejected,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+  })
 })
