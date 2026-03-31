@@ -215,8 +215,7 @@ describe('executeSingleTurn', () => {
                   {
                     index: 0,
                     function: {
-                      arguments:
-                        '{"type":"lines","startLine":1,"endLine":80}}',
+                      arguments: '{"type":"lines","startLine":1,"endLine":80}}',
                     },
                   },
                 ],

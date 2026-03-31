@@ -107,13 +107,7 @@ describe('AgentLlmTurnExecutor', () => {
       listAvailableTools: jest.fn().mockResolvedValue([]),
     } as unknown as McpManager
 
-    const groupCollapsedSpy = jest
-      .spyOn(console, 'groupCollapsed')
-      .mockImplementation(() => {})
     const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {})
-    const groupEndSpy = jest
-      .spyOn(console, 'groupEnd')
-      .mockImplementation(() => {})
 
     try {
       const executor = new AgentLlmTurnExecutor({
@@ -133,7 +127,11 @@ describe('AgentLlmTurnExecutor', () => {
 
       await executor.run()
 
-      expect(groupCollapsedSpy).toHaveBeenCalledTimes(1)
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^\[YOLO\]\[Agent Debug\] request context \d+ tokens$/,
+        ),
+      )
       expect(debugSpy).toHaveBeenCalledWith(
         '[YOLO][Agent Debug] Summary',
         expect.objectContaining({
@@ -147,11 +145,8 @@ describe('AgentLlmTurnExecutor', () => {
         '[YOLO][Agent Debug] Request messages',
         [{ role: 'user', content: 'hello' }],
       )
-      expect(groupEndSpy).toHaveBeenCalledTimes(1)
     } finally {
-      groupCollapsedSpy.mockRestore()
       debugSpy.mockRestore()
-      groupEndSpy.mockRestore()
     }
   })
 

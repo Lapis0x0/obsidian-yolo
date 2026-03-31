@@ -6,14 +6,14 @@ import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
-import type {
-  AgentConversationRunSummary,
-  AgentConversationState,
-} from '../../core/agent/service'
 import {
   buildManualCompactionState,
   createConversationCompactionSummary,
 } from '../../core/agent/compaction'
+import type {
+  AgentConversationRunSummary,
+  AgentConversationState,
+} from '../../core/agent/service'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import {
   LLMAPIKeyInvalidException,

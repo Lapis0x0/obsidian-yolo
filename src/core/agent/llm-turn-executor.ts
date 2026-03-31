@@ -20,7 +20,6 @@ import {
   formatTokenCount,
 } from '../../utils/llm/contextTokenEstimate'
 import { executeSingleTurn } from '../ai/single-turn'
-import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import { BaseLLMProvider } from '../llm/base'
 import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
@@ -29,6 +28,8 @@ import {
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+
+import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 
 type AgentLlmTurnExecutorInput = {
   providerClient: BaseLLMProvider<LLMProvider>
@@ -358,7 +359,7 @@ export class AgentLlmTurnExecutor {
     })
     const effectiveModel = this.getEffectiveModel()
 
-    console.groupCollapsed(
+    console.debug(
       `[YOLO][Agent Debug] request context ${formatTokenCount(estimatedTokens)} tokens`,
     )
     console.debug('[YOLO][Agent Debug] Summary', {
@@ -371,7 +372,6 @@ export class AgentLlmTurnExecutor {
     })
     console.debug('[YOLO][Agent Debug] Request messages', requestMessages)
     console.debug('[YOLO][Agent Debug] Tools', tools ?? [])
-    console.groupEnd()
   }
 
   private isMemoryToolAvailable(toolName: string): boolean {

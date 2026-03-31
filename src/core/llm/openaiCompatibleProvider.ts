@@ -61,6 +61,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
   private browserClient: OpenAI
   private obsidianClient: OpenAI
   private nodeClient: OpenAI
+  private resolvedBaseUrl?: string
   private requestTransportMode: RequestTransportMode
   private requestTransportMemoryKey: string
   private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
@@ -87,11 +88,12 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     super(provider)
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     this.adapter = new OpenAIMessageAdapter()
+    this.resolvedBaseUrl = resolveProviderBaseUrl(provider)
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
-      baseUrl: provider.baseUrl,
+      baseUrl: this.resolvedBaseUrl,
     })
     this.requestTransportMode = resolveRequestTransportMode({
       additionalSettings: provider.additionalSettings,
@@ -104,7 +106,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     // Prefer standard OpenAI SDK; allow opting into NoStainless to bypass headers/validation when needed
     const clientOptions = {
       apiKey: provider.apiKey ?? '',
-      baseURL: resolveProviderBaseUrl(provider) ?? '',
+      baseURL: this.resolvedBaseUrl ?? '',
       dangerouslyAllowBrowser: true,
       maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
       defaultHeaders,
@@ -125,7 +127,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    if (!this.provider.baseUrl) {
+    if (!this.resolvedBaseUrl) {
       throw new LLMBaseUrlNotSetException(
         `Provider ${this.provider.id} base URL is missing. Please set it in settings menu.`,
       )
@@ -198,7 +200,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
       model,
-      baseUrl: this.provider.baseUrl,
+      baseUrl: this.resolvedBaseUrl,
     })
 
     // Keep explicit ReasoningEffort typing fallback for strongly OpenAI-like gateways.
@@ -241,7 +243,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    if (!this.provider.baseUrl) {
+    if (!this.resolvedBaseUrl) {
       throw new LLMBaseUrlNotSetException(
         `Provider ${this.provider.id} base URL is missing. Please set it in settings menu.`,
       )
@@ -314,7 +316,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
       model,
-      baseUrl: this.provider.baseUrl,
+      baseUrl: this.resolvedBaseUrl,
     })
 
     if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {

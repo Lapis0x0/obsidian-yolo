@@ -5,6 +5,7 @@ import { LLMProvider } from '../../types/provider.types'
 import { AnthropicProvider } from './anthropic'
 import { AzureOpenAIProvider } from './azureOpenaiProvider'
 import { BaseLLMProvider } from './base'
+import { BedrockProvider } from './bedrockProvider'
 import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
 import { DeepSeekStudioProvider } from './deepseekStudioProvider'
 import { LLMModelNotFoundException } from './exception'
@@ -61,6 +62,11 @@ export function getProviderClient({
     }
     case 'gemini': {
       return new GeminiProvider(provider as never)
+    }
+    case 'amazon-bedrock': {
+      // Base URL is constructed internally by the AWS SDK as
+      // https://bedrock-runtime.{region}.amazonaws.com from the region config.
+      return new BedrockProvider(provider)
     }
     case 'openai-compatible': {
       switch (provider.presetType) {

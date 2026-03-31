@@ -3,6 +3,8 @@ import { ChatModel } from '../../types/chat-model.types'
 import { EmbeddingModel } from '../../types/embedding-model.types'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 
+import { isBedrockMantleProvider, isNativeBedrockProvider } from './bedrock'
+
 export function getProviderById(
   settings: Pick<SmartComposerSettings, 'providers'>,
   providerId: string,
@@ -49,15 +51,62 @@ export function getRequestTransportModeValue(
 }
 
 export function providerSupportsEmbedding(provider: LLMProvider): boolean {
+  if (isNativeBedrockProvider(provider)) {
+    return true
+  }
+
   switch (provider.apiType) {
     case 'anthropic':
+      return false
+    case 'amazon-bedrock':
       return false
     case 'gemini':
       return true
     case 'openai-compatible':
+      return (
+        provider.presetType !== 'chatgpt-oauth' &&
+        !isBedrockMantleProvider(provider)
+      )
     case 'openai-responses':
       return provider.presetType !== 'chatgpt-oauth'
   }
+}
+
+export function reconcileEmbeddingModelsForProviderUpdate({
+  embeddingModels,
+  previousProvider,
+  nextProvider,
+}: {
+  embeddingModels: EmbeddingModel[]
+  previousProvider: Pick<LLMProvider, 'id'>
+  nextProvider: LLMProvider
+}): EmbeddingModel[] {
+  if (!providerSupportsEmbedding(nextProvider)) {
+    return embeddingModels.filter(
+      (model) => model.providerId !== previousProvider.id,
+    )
+  }
+
+  if (previousProvider.id === nextProvider.id) {
+    return embeddingModels
+  }
+
+  return embeddingModels.map((model) => {
+    if (model.providerId !== previousProvider.id) {
+      return model
+    }
+
+    return {
+      ...model,
+      providerId: nextProvider.id,
+    }
+  })
+}
+
+export function providerSupportsTransportModeSelection(
+  provider: Pick<LLMProvider, 'presetType' | 'apiType'>,
+): boolean {
+  return !isNativeBedrockProvider(provider as LLMProvider)
 }
 
 export function providerSupportsGeminiTools(provider: LLMProvider): boolean {

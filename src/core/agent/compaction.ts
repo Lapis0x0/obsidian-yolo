@@ -1,17 +1,17 @@
+import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type {
-  ChatConversationCompaction,
   ChatAssistantMessage,
+  ChatConversationCompaction,
   ChatMessage,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { RequestMessage } from '../../types/llm/request'
+import type { LLMProvider } from '../../types/provider.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
-import type { LLMProvider } from '../../types/provider.types'
 
 const COMPACTION_SYSTEM_PROMPT = `You are summarizing a conversation so it can continue in a fresh context window.
 

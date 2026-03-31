@@ -18,7 +18,7 @@ import {
 } from '../../types/tool-call.types'
 
 import { getToolHeadlineParts, getToolHeadlineText } from './toolHeadline'
-import { getHeadlineDisplayInfo, type ToolLabels } from './ToolMessage'
+import { type ToolLabels, getHeadlineDisplayInfo } from './ToolMessage'
 
 describe('ToolMessage headline helpers', () => {
   const labels: ToolLabels = {

@@ -8,10 +8,10 @@ jest.mock('../../core/memory/memoryManager', () => ({
   getMemoryPromptContext: jest.fn(async () => ''),
 }))
 
+import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
-import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 
 import {
   RequestContextBuilder,
