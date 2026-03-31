@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Platform } from 'obsidian'
 
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
@@ -41,6 +42,7 @@ export function SelectionActionsMenu({
   onAction,
   onHoverChange,
 }: SelectionActionsMenuProps) {
+  const isMobile = !Platform.isDesktop
   const { t } = useLanguage()
   const { settings } = useSettings()
   const menuRef = useRef<HTMLDivElement>(null)
@@ -153,30 +155,69 @@ export function SelectionActionsMenu({
     settings?.continuationOptions?.selectionChatActions,
   ])
 
+  const getMenuSize = useCallback(() => {
+    const measuredWidth = menuRef.current?.offsetWidth ?? 0
+    const measuredHeight = menuRef.current?.offsetHeight ?? 0
+
+    return {
+      width: measuredWidth > 0 ? measuredWidth : 180,
+      height: measuredHeight > 0 ? measuredHeight : 44 * actions.length + 16,
+    }
+  }, [actions.length])
+
   const updatePosition = useCallback(() => {
     const containerRect = containerEl.getBoundingClientRect()
-    // Position menu relative to indicator
-    const menuWidth = 200 // Approximate menu width
-    const menuHeight = 44 * actions.length + 16 // Approximate height
     const offset = 8
-
-    let left = indicatorPosition.left + 28 + offset // 28px is indicator width
-    let top = indicatorPosition.top
-
-    // Ensure menu stays within container bounds
     const viewportWidth = containerRect.width
     const viewportHeight = containerRect.height
+    const indicatorWidth = 28
+    const indicatorHeight = 28
+    let left = indicatorPosition.left + indicatorWidth + offset
+    let top = indicatorPosition.top
 
-    if (left + menuWidth > viewportWidth - 8) {
-      // Position to the left of indicator
-      left = indicatorPosition.left - menuWidth - offset
+    if (!isMobile) {
+      const menuWidth = 200
+      const menuHeight = 44 * actions.length + 16
+
+      if (left + menuWidth > viewportWidth - 8) {
+        left = indicatorPosition.left - menuWidth - offset
+      }
+      if (left < 8) {
+        left = 8
+      }
+
+      if (top + menuHeight > viewportHeight - 8) {
+        top = viewportHeight - menuHeight - 8
+      }
+      if (top < 8) {
+        top = 8
+      }
+
+      setPosition({ left, top })
+      return
     }
-    if (left < 8) {
-      left = 8
+
+    const { width: menuWidth, height: menuHeight } = getMenuSize()
+    const minLeft = 8
+    const maxLeft = Math.max(minLeft, containerRect.width - menuWidth - 8)
+    const preferredRightLeft = indicatorPosition.left + indicatorWidth + offset
+    const preferredLeftLeft = indicatorPosition.left - menuWidth - offset
+    const fallbackAlignedLeft =
+      indicatorPosition.left + indicatorWidth - menuWidth
+
+    if (preferredRightLeft + menuWidth <= viewportWidth - 8) {
+      left = preferredRightLeft
+    } else if (preferredLeftLeft >= minLeft) {
+      left = preferredLeftLeft
+    } else {
+      left = Math.min(maxLeft, Math.max(minLeft, fallbackAlignedLeft))
     }
 
     if (top + menuHeight > viewportHeight - 8) {
-      top = viewportHeight - menuHeight - 8
+      top = Math.max(
+        8,
+        indicatorPosition.top + indicatorHeight - menuHeight,
+      )
     }
     if (top < 8) {
       top = 8
@@ -186,13 +227,15 @@ export function SelectionActionsMenu({
   }, [
     actions.length,
     containerEl,
+    getMenuSize,
     indicatorPosition.left,
     indicatorPosition.top,
+    isMobile,
   ])
 
   useEffect(() => {
     updatePosition()
-  }, [selection, updatePosition])
+  }, [selection, updatePosition, visible])
 
   useEffect(() => {
     if (showTimerRef.current !== null) {
@@ -235,8 +278,14 @@ export function SelectionActionsMenu({
     () => ({
       left: `${Math.round(position.left)}px`,
       top: `${Math.round(position.top)}px`,
+      ...(isMobile
+        ? {
+            minWidth: '160px',
+            maxWidth: 'min(280px, calc(100vw - 24px))',
+          }
+        : {}),
     }),
-    [position.left, position.top],
+    [isMobile, position.left, position.top],
   )
 
   const menuClasses =
