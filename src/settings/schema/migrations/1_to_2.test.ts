@@ -1,8 +1,21 @@
+import { getDefaultApiTypeForPresetType } from '../../../types/provider.types'
+import type { LLMProviderPresetType } from '../../../types/provider.types'
+
 import {
   V2_DEFAULT_CHAT_MODELS,
   V2_DEFAULT_EMBEDDING_MODELS,
   migrateFrom1To2,
 } from './1_to_2'
+
+const expectedProvider = (
+  type: LLMProviderPresetType,
+  overrides: Record<string, unknown>,
+) => ({
+  type,
+  presetType: type,
+  apiType: getDefaultApiTypeForPresetType(type),
+  ...overrides,
+})
 
 describe('settings 1_to_2 migration', () => {
   it('should migrate from v1 to v2', () => {
@@ -58,41 +71,23 @@ describe('settings 1_to_2 migration', () => {
       version: 2,
 
       providers: [
-        {
-          type: 'openai',
-          id: 'openai',
-          apiKey: 'openai-api-key',
-        },
-        {
-          type: 'anthropic',
+        expectedProvider('openai', { id: 'openai', apiKey: 'openai-api-key' }),
+        expectedProvider('anthropic', {
           id: 'anthropic',
           apiKey: 'anthropic-api-key',
-        },
-        {
-          type: 'gemini',
-          id: 'gemini',
-          apiKey: 'gemini-api-key',
-        },
-        {
-          type: 'groq',
-          id: 'groq',
-          apiKey: 'groq-api-key',
-        },
-        {
-          type: 'openrouter',
-          id: 'openrouter',
-        },
-        {
-          type: 'ollama',
+        }),
+        expectedProvider('gemini', { id: 'gemini', apiKey: 'gemini-api-key' }),
+        expectedProvider('groq', { id: 'groq', apiKey: 'groq-api-key' }),
+        expectedProvider('openrouter', { id: 'openrouter' }),
+        expectedProvider('ollama', {
           id: 'ollama',
           baseUrl: 'http://127.0.0.1:11434',
-        },
-        {
-          type: 'openai-compatible',
+        }),
+        expectedProvider('openai-compatible', {
           id: 'custom-1',
           baseUrl: 'https://custom-openai-compatible-base-url',
           apiKey: 'custom-openai-compatible-key',
-        },
+        }),
       ],
 
       chatModels: [
@@ -165,12 +160,12 @@ describe('settings 1_to_2 migration', () => {
       version: 2,
 
       providers: [
-        { type: 'openai', id: 'openai', apiKey: '' },
-        { type: 'anthropic', id: 'anthropic', apiKey: '' },
-        { type: 'gemini', id: 'gemini', apiKey: '' },
-        { type: 'groq', id: 'groq', apiKey: '' },
-        { type: 'openrouter', id: 'openrouter' },
-        { type: 'ollama', id: 'ollama', baseUrl: '' },
+        expectedProvider('openai', { id: 'openai', apiKey: '' }),
+        expectedProvider('anthropic', { id: 'anthropic', apiKey: '' }),
+        expectedProvider('gemini', { id: 'gemini', apiKey: '' }),
+        expectedProvider('groq', { id: 'groq', apiKey: '' }),
+        expectedProvider('openrouter', { id: 'openrouter' }),
+        expectedProvider('ollama', { id: 'ollama', baseUrl: '' }),
       ],
 
       chatModels: V2_DEFAULT_CHAT_MODELS,
@@ -237,13 +232,19 @@ describe('settings 1_to_2 migration', () => {
       version: 2,
 
       providers: [
-        { type: 'openai', id: 'openai', apiKey: '' },
-        { type: 'anthropic', id: 'anthropic', apiKey: '' },
-        { type: 'gemini', id: 'gemini', apiKey: '' },
-        { type: 'groq', id: 'groq', apiKey: '' },
-        { type: 'openrouter', id: 'openrouter' },
-        { type: 'ollama', id: 'ollama', baseUrl: 'http://local-chat:11434' },
-        { type: 'ollama', id: 'ollama-1', baseUrl: 'http://local-apply:11434' },
+        expectedProvider('openai', { id: 'openai', apiKey: '' }),
+        expectedProvider('anthropic', { id: 'anthropic', apiKey: '' }),
+        expectedProvider('gemini', { id: 'gemini', apiKey: '' }),
+        expectedProvider('groq', { id: 'groq', apiKey: '' }),
+        expectedProvider('openrouter', { id: 'openrouter' }),
+        expectedProvider('ollama', {
+          id: 'ollama',
+          baseUrl: 'http://local-chat:11434',
+        }),
+        expectedProvider('ollama', {
+          id: 'ollama-1',
+          baseUrl: 'http://local-apply:11434',
+        }),
       ],
 
       chatModels: [
@@ -325,14 +326,23 @@ describe('settings 1_to_2 migration', () => {
       version: 2,
 
       providers: [
-        { type: 'openai', id: 'openai', apiKey: '' },
-        { type: 'anthropic', id: 'anthropic', apiKey: '' },
-        { type: 'gemini', id: 'gemini', apiKey: '' },
-        { type: 'groq', id: 'groq', apiKey: '' },
-        { type: 'openrouter', id: 'openrouter' },
-        { type: 'ollama', id: 'ollama', baseUrl: 'http://local-embed:11434' },
-        { type: 'ollama', id: 'ollama-1', baseUrl: 'http://local-chat:11434' },
-        { type: 'ollama', id: 'ollama-2', baseUrl: 'http://local-apply:11434' },
+        expectedProvider('openai', { id: 'openai', apiKey: '' }),
+        expectedProvider('anthropic', { id: 'anthropic', apiKey: '' }),
+        expectedProvider('gemini', { id: 'gemini', apiKey: '' }),
+        expectedProvider('groq', { id: 'groq', apiKey: '' }),
+        expectedProvider('openrouter', { id: 'openrouter' }),
+        expectedProvider('ollama', {
+          id: 'ollama',
+          baseUrl: 'http://local-embed:11434',
+        }),
+        expectedProvider('ollama', {
+          id: 'ollama-1',
+          baseUrl: 'http://local-chat:11434',
+        }),
+        expectedProvider('ollama', {
+          id: 'ollama-2',
+          baseUrl: 'http://local-apply:11434',
+        }),
       ],
 
       chatModels: [
@@ -414,24 +424,22 @@ describe('settings 1_to_2 migration', () => {
       version: 2,
 
       providers: [
-        { type: 'openai', id: 'openai', apiKey: '' },
-        { type: 'anthropic', id: 'anthropic', apiKey: '' },
-        { type: 'gemini', id: 'gemini', apiKey: '' },
-        { type: 'groq', id: 'groq', apiKey: '' },
-        { type: 'openrouter', id: 'openrouter' },
-        { type: 'ollama', id: 'ollama', baseUrl: '' },
-        {
-          type: 'openai-compatible',
+        expectedProvider('openai', { id: 'openai', apiKey: '' }),
+        expectedProvider('anthropic', { id: 'anthropic', apiKey: '' }),
+        expectedProvider('gemini', { id: 'gemini', apiKey: '' }),
+        expectedProvider('groq', { id: 'groq', apiKey: '' }),
+        expectedProvider('openrouter', { id: 'openrouter' }),
+        expectedProvider('ollama', { id: 'ollama', baseUrl: '' }),
+        expectedProvider('openai-compatible', {
           id: 'custom-1',
           baseUrl: 'https://custom-chat-endpoint',
           apiKey: 'CUSTOM_CHAT_KEY',
-        },
-        {
-          type: 'openai-compatible',
+        }),
+        expectedProvider('openai-compatible', {
           id: 'custom-2',
           baseUrl: 'https://custom-apply-endpoint',
           apiKey: 'CUSTOM_APPLY_KEY',
-        },
+        }),
       ],
 
       chatModels: [
@@ -503,12 +511,12 @@ describe('settings 1_to_2 migration', () => {
       version: 2,
 
       providers: [
-        { type: 'openai', id: 'openai', apiKey: '' },
-        { type: 'anthropic', id: 'anthropic', apiKey: '' },
-        { type: 'gemini', id: 'gemini', apiKey: '' },
-        { type: 'groq', id: 'groq', apiKey: '' },
-        { type: 'openrouter', id: 'openrouter' },
-        { type: 'ollama', id: 'ollama', baseUrl: '' },
+        expectedProvider('openai', { id: 'openai', apiKey: '' }),
+        expectedProvider('anthropic', { id: 'anthropic', apiKey: '' }),
+        expectedProvider('gemini', { id: 'gemini', apiKey: '' }),
+        expectedProvider('groq', { id: 'groq', apiKey: '' }),
+        expectedProvider('openrouter', { id: 'openrouter' }),
+        expectedProvider('ollama', { id: 'ollama', baseUrl: '' }),
       ],
 
       chatModels: V2_DEFAULT_CHAT_MODELS,
