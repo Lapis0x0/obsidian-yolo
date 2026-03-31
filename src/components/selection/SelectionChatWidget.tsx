@@ -252,9 +252,13 @@ export class SelectionChatWidget {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null
       if (!target) return
-      if (this.isMobile && this.overlayContainer?.contains(target)) {
-        this.preserveUntil =
-          Date.now() + SelectionChatWidget.INTERACTION_GUARD_MS
+
+      const isInsideOverlay = this.overlayContainer?.contains(target) ?? false
+      if (isInsideOverlay) {
+        if (this.isMobile) {
+          this.preserveUntil =
+            Date.now() + SelectionChatWidget.INTERACTION_GUARD_MS
+        }
         return
       }
 
