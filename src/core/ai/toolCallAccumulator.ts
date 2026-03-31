@@ -150,10 +150,7 @@ export class ToolCallAccumulator {
         return
       }
       for (const record of this.records.values()) {
-        if (
-          record.streamState === 'sealed' &&
-          record.parseState === 'valid'
-        ) {
+        if (record.streamState === 'sealed' && record.parseState === 'valid') {
           record.handoffReady = true
           record.execState = 'ready'
           record.updatedAt = event.receivedAt

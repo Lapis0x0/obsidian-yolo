@@ -27,7 +27,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_EMBEDDING_MODELS,
-  PROVIDER_TYPES_INFO,
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -36,6 +35,8 @@ import SmartComposerPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
 import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
+import { resolveProviderDisplayBaseUrl } from '../../../utils/llm/provider-base-url'
+import { providerSupportsEmbedding } from '../../../utils/llm/provider-config'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
@@ -73,26 +74,8 @@ type ProviderSectionItemProps = {
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
 }
 
-const PROVIDER_DISPLAY_BASE_URLS: Partial<
-  Record<LLMProvider['presetType'], string>
-> = {
-  openai: 'https://api.openai.com',
-  'chatgpt-oauth': 'https://chatgpt.com/backend-api/codex',
-  anthropic: 'https://api.anthropic.com',
-  gemini: 'https://generativelanguage.googleapis.com',
-  deepseek: 'https://api.deepseek.com',
-  perplexity: 'https://api.perplexity.ai',
-  groq: 'https://api.groq.com/openai',
-  mistral: 'https://api.mistral.ai',
-  openrouter: 'https://openrouter.ai/api',
-  ollama: 'http://127.0.0.1:11434',
-  'lm-studio': 'http://127.0.0.1:1234',
-  morph: 'https://api.morphllm.com',
-}
-
 function getProviderDisplayBaseUrl(provider: LLMProvider): string {
-  const rawBaseUrl =
-    provider.baseUrl?.trim() || PROVIDER_DISPLAY_BASE_URLS[provider.presetType]
+  const rawBaseUrl = resolveProviderDisplayBaseUrl(provider)
 
   if (!rawBaseUrl) {
     return ''
@@ -561,12 +544,13 @@ function EmbeddingModelsTable({
   onDelete,
 }: EmbeddingModelsTableProps) {
   const items = models.map((model) => model.id)
+  const embeddingSupported = providerSupportsEmbedding(provider)
 
   return (
     <div className="smtcmp-models-subsection">
       <div className="smtcmp-models-subsection-header">
         <span>{t('settings.models.embeddingModels')}</span>
-        {PROVIDER_TYPES_INFO[provider.presetType].supportEmbedding && (
+        {embeddingSupported && (
           <button
             type="button"
             className="smtcmp-add-model-btn"
@@ -622,7 +606,7 @@ function EmbeddingModelsTable({
         </DndContext>
       ) : (
         <div className="smtcmp-no-models">
-          {!PROVIDER_TYPES_INFO[provider.presetType].supportEmbedding
+          {!embeddingSupported
             ? `${provider.id} provider does not support embeddings.`
             : t('settings.models.noEmbeddingModelsConfigured')}
         </div>

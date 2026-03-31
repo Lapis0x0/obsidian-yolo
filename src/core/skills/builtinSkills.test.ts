@@ -1,4 +1,7 @@
-import { getBuiltinLiteSkillByIdOrName, listBuiltinLiteSkills } from './builtinSkills'
+import {
+  getBuiltinLiteSkillByIdOrName,
+  listBuiltinLiteSkills,
+} from './builtinSkills'
 
 describe('builtin skills', () => {
   it('renders skill creator content with the configured skills directory', () => {

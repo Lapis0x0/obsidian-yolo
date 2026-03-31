@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { DEFAULT_CHAT_MODELS } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
+import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel, chatModelSchema } from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
@@ -139,7 +140,8 @@ const isThinkingConfigurable = (
 ): provider is LLMProvider =>
   provider?.apiType === 'anthropic' ||
   provider?.apiType === 'gemini' ||
-  provider?.apiType === 'openai-compatible'
+  provider?.apiType === 'openai-compatible' ||
+  provider?.apiType === 'amazon-bedrock'
 
 const supportsGeminiTools = (provider: LLMProvider | undefined): boolean =>
   provider?.apiType === 'gemini' || provider?.apiType === 'openai-compatible'
@@ -218,7 +220,10 @@ function AddChatModelModalComponent({
       }
 
       // Check cache first
-      const cachedModels = plugin.getCachedModelList(selectedProvider.id)
+      const cachedModels = plugin.getCachedModelList(
+        selectedProvider.id,
+        'chat',
+      )
       if (cachedModels) {
         setAvailableModels(cachedModels)
         setLoadingModels(false)
@@ -244,7 +249,7 @@ function AddChatModelModalComponent({
               new Set(CHATGPT_OAUTH_DEFAULT_MODELS),
             ).sort()
             setAvailableModels(fallback)
-            plugin.setCachedModelList(selectedProvider.id, fallback)
+            plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
             return
           }
 
@@ -305,7 +310,7 @@ function AddChatModelModalComponent({
               }
 
               setAvailableModels(unique)
-              plugin.setCachedModelList(selectedProvider.id, unique)
+              plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
               return
             } catch (error) {
               lastErr = error
@@ -320,7 +325,14 @@ function AddChatModelModalComponent({
             new Set(CHATGPT_OAUTH_DEFAULT_MODELS),
           ).sort()
           setAvailableModels(fallback)
-          plugin.setCachedModelList(selectedProvider.id, fallback)
+          plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
+          return
+        }
+
+        if (selectedProvider.apiType === 'amazon-bedrock') {
+          const unique = await listBedrockChatModelIds(selectedProvider)
+          setAvailableModels(unique)
+          plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
           return
         }
 
@@ -380,7 +392,7 @@ function AddChatModelModalComponent({
                 const unique = Array.from(new Set(buckets)).sort()
                 setAvailableModels(unique)
                 // Cache the result
-                plugin.setCachedModelList(selectedProvider.id, unique)
+                plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
                 fetched = true
                 break
               } catch (error) {
@@ -422,7 +434,7 @@ function AddChatModelModalComponent({
           const unique = Array.from(new Set(names)).sort()
           setAvailableModels(unique)
           // Cache the result
-          plugin.setCachedModelList(selectedProvider.id, unique)
+          plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
           return
         }
       } catch (err: unknown) {

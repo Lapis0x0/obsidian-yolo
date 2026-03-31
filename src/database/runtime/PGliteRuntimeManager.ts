@@ -1,9 +1,9 @@
 import { App, normalizePath, requestUrl } from 'obsidian'
 
 import {
-  createPGliteRuntimeManifest,
   type PGliteRuntimeFileName,
   type PGliteRuntimeManifest,
+  createPGliteRuntimeManifest,
 } from './pgliteRuntimeMetadata'
 
 type RuntimeCurrentFile = {

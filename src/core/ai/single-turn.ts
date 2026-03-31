@@ -11,11 +11,10 @@ import {
   type ToolCallArguments,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
-import {
-  createToolCallArguments,
-} from '../../utils/chat/tool-arguments'
+import { createToolCallArguments } from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
+
 import {
   ToolCallAccumulator,
   createCanonicalToolEventsFromDeltas,

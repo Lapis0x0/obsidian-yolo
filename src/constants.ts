@@ -167,6 +167,23 @@ export const PROVIDER_PRESET_INFO = {
       REQUEST_TRANSPORT_MODE_SETTING,
     ],
   },
+  'amazon-bedrock': {
+    label: 'Amazon Bedrock',
+    defaultProviderId: null, // no default provider for this type
+    requireApiKey: true,
+    requireBaseUrl: false,
+    supportEmbedding: true,
+    additionalSettings: [
+      {
+        label: 'AWS Region',
+        key: 'awsRegion',
+        placeholder: 'us-east-1',
+        type: 'text',
+        required: true,
+      },
+      REQUEST_TRANSPORT_MODE_SETTING,
+    ],
+  },
   'openai-compatible': {
     label: 'OpenAI Compatible',
     defaultProviderId: null, // no default provider for this type
@@ -222,6 +239,9 @@ export const PROVIDER_API_INFO: Record<
   },
   gemini: {
     label: 'Gemini API',
+  },
+  'amazon-bedrock': {
+    label: 'Amazon Bedrock Converse',
   },
 }
 
