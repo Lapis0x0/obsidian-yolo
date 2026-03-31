@@ -235,6 +235,13 @@ export class SelectionChatController {
     selection: SelectionInfo | null,
     editor: Editor,
   ) {
+    if (
+      !selection &&
+      this.selectionChatWidget?.shouldPreserveOnSelectionLoss()
+    ) {
+      return
+    }
+
     this.syncSelectionBadge(selection, editor)
 
     if (this.selectionChatWidget) {

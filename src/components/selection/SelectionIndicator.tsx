@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { SelectionInfo } from './SelectionManager'
 
-const getIndicatorPosition = (
+export const getIndicatorPosition = (
   selection: SelectionInfo,
   containerEl: HTMLElement,
   offset: number,
@@ -50,6 +50,7 @@ const getIndicatorPosition = (
 type SelectionIndicatorProps = {
   selection: SelectionInfo
   onHoverChange: (isHovering: boolean) => void
+  onPress?: () => void
   containerEl: HTMLElement
   offset?: number
 }
@@ -57,6 +58,7 @@ type SelectionIndicatorProps = {
 export function SelectionIndicator({
   selection,
   onHoverChange,
+  onPress,
   containerEl,
   offset = 8,
 }: SelectionIndicatorProps) {
@@ -104,6 +106,7 @@ export function SelectionIndicator({
       style={positionStyles}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onClick={onPress}
     >
       <Sparkles size={14} />
     </div>

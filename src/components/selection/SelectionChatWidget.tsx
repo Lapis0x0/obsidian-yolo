@@ -1,4 +1,4 @@
-import { Editor } from 'obsidian'
+import { Editor, Platform } from 'obsidian'
 import React, { useEffect, useRef, useState } from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
@@ -12,7 +12,7 @@ import type {
   SelectionActionRewriteBehavior,
 } from './SelectionActionsMenu'
 import { SelectionActionsMenu } from './SelectionActionsMenu'
-import { SelectionIndicator } from './SelectionIndicator'
+import { getIndicatorPosition, SelectionIndicator } from './SelectionIndicator'
 import type { SelectionInfo } from './SelectionManager'
 
 type SelectionChatWidgetProps = {
@@ -38,7 +38,9 @@ function SelectionChatWidgetBody({
   onClose,
   onAction,
 }: SelectionChatWidgetProps) {
+  const isMobile = !Platform.isDesktop
   const [showMenu, setShowMenu] = useState(false)
+  const [menuPinned, setMenuPinned] = useState(false)
   const [isHoveringIndicator, setIsHoveringIndicator] = useState(false)
   const [isHoveringMenu, setIsHoveringMenu] = useState(false)
   const hideTimeoutRef = useRef<number | null>(null)
@@ -50,20 +52,15 @@ function SelectionChatWidgetBody({
 
   useEffect(() => {
     // Calculate indicator position for menu positioning
-    const { rect } = selection
-    const containerRect = editorContainer.getBoundingClientRect()
-    const offset = 8
-    const isRTL = document.dir === 'rtl'
-
-    const left = isRTL
-      ? rect.left - containerRect.left - 28 - offset
-      : rect.right - containerRect.left + offset
-    const top = rect.bottom - containerRect.top + offset
-
-    setIndicatorPosition({ left, top })
+    setIndicatorPosition(getIndicatorPosition(selection, editorContainer, 8))
   }, [editorContainer, selection])
 
   useEffect(() => {
+    if (isMobile && menuPinned) {
+      setShowMenu(true)
+      return
+    }
+
     const isHovering = isHoveringIndicator || isHoveringMenu
 
     if (hideTimeoutRef.current !== null) {
@@ -98,7 +95,7 @@ function SelectionChatWidgetBody({
         window.clearTimeout(showTimeoutRef.current)
       }
     }
-  }, [isHoveringIndicator, isHoveringMenu])
+  }, [isHoveringIndicator, isHoveringMenu, isMobile, menuPinned])
 
   const handleAction = async (
     actionId: string,
@@ -110,18 +107,30 @@ function SelectionChatWidgetBody({
     await onAction(actionId, selection, instruction, mode, rewriteBehavior)
   }
 
+  const handleIndicatorPress = () => {
+    if (!isMobile) {
+      return
+    }
+    setMenuPinned((current) => {
+      const next = !current
+      setShowMenu(next)
+      return next
+    })
+  }
+
   return (
     <>
       <SelectionIndicator
         selection={selection}
         containerEl={editorContainer}
         onHoverChange={setIsHoveringIndicator}
+        onPress={isMobile ? handleIndicatorPress : undefined}
       />
       <SelectionActionsMenu
         selection={selection}
         containerEl={editorContainer}
         indicatorPosition={indicatorPosition}
-        visible={showMenu}
+        visible={showMenu || (isMobile && menuPinned)}
         onAction={handleAction}
         onHoverChange={setIsHoveringMenu}
       />
@@ -131,6 +140,8 @@ function SelectionChatWidgetBody({
 
 export class SelectionChatWidget {
   private static overlayRoot: HTMLElement | null = null
+  private static readonly INTERACTION_GUARD_MS = 750
+  private readonly isMobile = !Platform.isDesktop
   private root: Root | null = null
   private overlayContainer: HTMLDivElement | null = null
   private cleanupListeners: (() => void) | null = null
@@ -138,6 +149,7 @@ export class SelectionChatWidget {
   private overlayHost: HTMLElement | null = null
   private currentSelection: SelectionInfo
   private scrollThrottle: number | null = null
+  private preserveUntil = 0
 
   constructor(
     private readonly options: {
@@ -206,6 +218,10 @@ export class SelectionChatWidget {
     }
   }
 
+  shouldPreserveOnSelectionLoss(): boolean {
+    return this.isMobile && Date.now() < this.preserveUntil
+  }
+
   private static getOverlayRoot(host: HTMLElement): HTMLElement {
     if (
       SelectionChatWidget.overlayRoot &&
@@ -236,7 +252,11 @@ export class SelectionChatWidget {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null
       if (!target) return
-      if (this.overlayContainer?.contains(target)) return
+      if (this.isMobile && this.overlayContainer?.contains(target)) {
+        this.preserveUntil =
+          Date.now() + SelectionChatWidget.INTERACTION_GUARD_MS
+        return
+      }
 
       // Close if clicking outside
       this.handleClose()
