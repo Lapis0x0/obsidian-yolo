@@ -14,7 +14,7 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { getChatGPTOAuthService } from '../auth/chatgptOAuthRuntime'
@@ -25,10 +25,13 @@ import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import {
+  AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
@@ -37,16 +40,49 @@ const OAUTH_PROVIDER_API_KEY = 'chatgpt-oauth'
 export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
   private readonly chatAdapter = new OpenAIMessageAdapter()
+  private readonly browserClient: OpenAI
   private readonly obsidianClient: OpenAI
+  private readonly nodeClient: OpenAI
   private readonly requestTransportMemoryKey: string
+  private requestTransportMode: RequestTransportMode
+  private readonly onAutoPromoteTransportMode?: (
+    mode: AutoPromotedTransportMode,
+  ) => void
 
-  constructor(provider: LLMProvider) {
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) {
+      return
+    }
+
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: mode,
+    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
+  }
+
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+    },
+  ) {
     super(provider)
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: CODEX_BASE_URL,
     })
+    this.requestTransportMode =
+      provider.additionalSettings?.requestTransportMode === undefined
+        ? 'auto'
+        : resolveRequestTransportMode({
+            additionalSettings: provider.additionalSettings,
+            hasCustomBaseUrl: true,
+            memoryKey: this.requestTransportMemoryKey,
+          })
 
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const createClient = (customFetch: typeof fetch) =>
@@ -59,7 +95,9 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
         fetch: this.createAuthorizedFetch(customFetch),
       })
 
+    this.browserClient = createClient(fetch)
     this.obsidianClient = createClient(createObsidianFetch())
+    this.nodeClient = createClient(createDesktopNodeFetch())
   }
 
   async generateResponse(
@@ -85,11 +123,12 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransport({
-      mode: 'obsidian',
+      mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: async () =>
         this.generateResponseWithFallback(
-          this.obsidianClient,
+          this.browserClient,
           body,
           formattedRequest,
           options,
@@ -97,6 +136,13 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       runObsidian: async () =>
         this.generateResponseWithFallback(
           this.obsidianClient,
+          body,
+          formattedRequest,
+          options,
+        ),
+      runNode: async () =>
+        this.generateResponseWithFallback(
+          this.nodeClient,
           body,
           formattedRequest,
           options,
@@ -124,12 +170,13 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransportForStream({
-      mode: 'obsidian',
+      mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       signal: options?.signal,
       createBrowserStream: async (signal) =>
         this.streamResponseWithFallback(
-          this.obsidianClient,
+          this.browserClient,
           body,
           formattedRequest,
           { ...options, signal: signal ?? options?.signal },
@@ -137,6 +184,13 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       createObsidianStream: async (signal) =>
         this.streamResponseWithFallback(
           this.obsidianClient,
+          body,
+          formattedRequest,
+          { ...options, signal: signal ?? options?.signal },
+        ),
+      createNodeStream: async (signal) =>
+        this.streamResponseWithFallback(
+          this.nodeClient,
           body,
           formattedRequest,
           { ...options, signal: signal ?? options?.signal },

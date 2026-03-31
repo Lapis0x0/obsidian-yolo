@@ -476,7 +476,7 @@ export const it: TranslationKeys = {
       chatgptOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare i modelli del tuo account ChatGPT Plus / Pro.',
       chatgptOAuthStreamingNotice:
-        'A causa delle limitazioni dell ambiente Obsidian, ChatGPT OAuth al momento non supporta le risposte in streaming.',
+        'ChatGPT OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
       chatgptOAuthPendingCode: 'Codice dispositivo corrente:',
       geminiOAuthTitle: 'Gemini OAuth',
       geminiOAuthConnect: 'Connetti',
@@ -489,7 +489,7 @@ export const it: TranslationKeys = {
         'Non connesso. Connettiti per usare la quota Gemini del tuo account Google.',
       geminiOAuthProject: 'progetto',
       geminiOAuthStreamingNotice:
-        'A causa delle limitazioni dell ambiente Obsidian, Gemini OAuth al momento non supporta le risposte in streaming.',
+        'Gemini OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
     },
     models: {
       title: 'Modelli',

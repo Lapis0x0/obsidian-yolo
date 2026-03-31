@@ -61,7 +61,7 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: false,
     requireBaseUrl: false,
     supportEmbedding: false,
-    additionalSettings: [],
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
   'gemini-oauth': {
     label: 'Gemini OAuth',

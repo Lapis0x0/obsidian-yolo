@@ -1,3 +1,5 @@
+// eslint-disable-next-line import/no-nodejs-modules -- Desktop Node fetch returns a Node stream body that must be adapted for SSE parsing
+import { Readable } from 'node:stream'
 import type {
   Content as GeminiContent,
   GenerateContentResponse as GeminiGenerateContentResponse,
@@ -15,7 +17,7 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-import { LLMProvider } from '../../types/provider.types'
+import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
@@ -28,10 +30,13 @@ import {
 } from './exception'
 import { GeminiProvider } from './gemini'
 import {
+  AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { createDesktopNodeFetch } from './sdkFetch'
 
 const CODE_ASSIST_ENDPOINT = 'https://cloudcode-pa.googleapis.com'
 
@@ -45,16 +50,55 @@ type GeminiStreamingChunk = GeminiGenerateContentResponse & {
 }
 
 export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
+  private readonly browserFetch = fetch
   private readonly requestTransportMemoryKey: string
   private readonly obsidianFetch = createObsidianFetch()
+  private readonly nodeFetch = createDesktopNodeFetch()
+  private requestTransportMode: RequestTransportMode
+  private readonly onAutoPromoteTransportMode?: (
+    mode: AutoPromotedTransportMode,
+  ) => void
 
-  constructor(provider: LLMProvider) {
+  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
+    if (this.requestTransportMode === mode) {
+      return
+    }
+
+    this.provider.additionalSettings = {
+      ...(this.provider.additionalSettings ?? {}),
+      requestTransportMode: mode,
+    }
+    this.requestTransportMode = mode
+    this.onAutoPromoteTransportMode?.(mode)
+  }
+
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+    },
+  ) {
     super(provider)
+    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: CODE_ASSIST_ENDPOINT,
     })
+    this.requestTransportMode =
+      provider.additionalSettings?.requestTransportMode === undefined
+        ? 'auto'
+        : resolveRequestTransportMode({
+            additionalSettings: provider.additionalSettings,
+            hasCustomBaseUrl: true,
+            memoryKey: this.requestTransportMemoryKey,
+          })
+  }
+
+  async getEmbedding(_model: string, _text: string): Promise<number[]> {
+    throw new LLMProviderNotConfiguredException(
+      'Gemini OAuth provider does not support embeddings.',
+    )
   }
 
   async generateResponse(
@@ -65,12 +109,15 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     const payload = await this.buildWrappedPayload(model, request, options)
 
     return runWithRequestTransport({
-      mode: this.getTransportMode(),
+      mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: async () =>
-        this.generateViaFetch(this.obsidianFetch, payload, request.model),
+        this.generateViaFetch(this.browserFetch, payload, request.model),
       runObsidian: async () =>
         this.generateViaFetch(this.obsidianFetch, payload, request.model),
+      runNode: async () =>
+        this.generateViaFetch(this.nodeFetch, payload, request.model),
     })
   }
 
@@ -82,16 +129,12 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     const payload = await this.buildWrappedPayload(model, request, options)
 
     return runWithRequestTransportForStream({
-      mode: this.getTransportMode(),
+      mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
+      onAutoPromoteTransportMode: this.promoteTransportMode,
       signal: options?.signal,
       createBrowserStream: async (signal) =>
-        this.streamViaBufferedFetch(
-          this.obsidianFetch,
-          payload,
-          request.model,
-          signal,
-        ),
+        this.streamViaFetch(this.browserFetch, payload, request.model, signal),
       createObsidianStream: async (signal) =>
         this.streamViaBufferedFetch(
           this.obsidianFetch,
@@ -99,21 +142,9 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
           request.model,
           signal,
         ),
+      createNodeStream: async (signal) =>
+        this.streamViaFetch(this.nodeFetch, payload, request.model, signal),
     })
-  }
-
-  async getEmbedding(_model: string, _text: string): Promise<number[]> {
-    throw new LLMProviderNotConfiguredException(
-      'Gemini OAuth provider does not support embeddings.',
-    )
-  }
-
-  private getTransportMode() {
-    // Gemini OAuth relies on Google Code Assist endpoints. In Obsidian these
-    // endpoints are reliably reachable through requestUrl, while browser fetch
-    // hits CORS and desktop node-fetch can time out or expose incompatible
-    // stream bodies. Force the transport to Obsidian for stability.
-    return 'obsidian' as const
   }
 
   private async buildWrappedPayload(
@@ -336,11 +367,11 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
   }
 
   private async *streamFromSse(
-    stream: ReadableStream<Uint8Array>,
+    stream: ReadableStream<Uint8Array> | Readable,
     model: string,
     signal?: AbortSignal,
   ): AsyncIterable<LLMResponseStreaming> {
-    const reader = stream.getReader()
+    const reader = this.toReadableStream(stream).getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     try {
@@ -414,6 +445,38 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
       model,
       body.responseId ?? crypto.randomUUID(),
     )
+  }
+
+  private toReadableStream(
+    stream: ReadableStream<Uint8Array> | Readable,
+  ): ReadableStream<Uint8Array> {
+    if ('getReader' in stream) {
+      return stream
+    }
+
+    const readableWithToWeb = Readable as typeof Readable & {
+      toWeb?: (stream: Readable) => ReadableStream<Uint8Array>
+    }
+    if (typeof readableWithToWeb.toWeb === 'function') {
+      return readableWithToWeb.toWeb(stream)
+    }
+
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        stream.on('data', (chunk: Buffer | string) => {
+          const value =
+            typeof chunk === 'string'
+              ? new TextEncoder().encode(chunk)
+              : new Uint8Array(chunk)
+          controller.enqueue(value)
+        })
+        stream.once('end', () => controller.close())
+        stream.once('error', (error) => controller.error(error))
+      },
+      cancel() {
+        stream.destroy()
+      },
+    })
   }
 
   private prepareTools(

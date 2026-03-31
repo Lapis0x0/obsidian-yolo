@@ -441,7 +441,7 @@ export const zh: TranslationKeys = {
       chatgptOAuthDisconnectedHelp:
         '未连接。连接后即可使用你的 ChatGPT Plus / Pro 账号模型。',
       chatgptOAuthStreamingNotice:
-        '受 Obsidian 环境限制，ChatGPT OAuth 渠道当前不支持流式传输。',
+        'ChatGPT OAuth 支持流式传输；使用 Obsidian requestUrl 时会退化为缓冲输出，桌面端 Node fetch 可提供实时流式。',
       geminiOAuthTitle: 'Gemini OAuth',
       geminiOAuthConnect: '连接',
       geminiOAuthDisconnect: '断开连接',
@@ -453,7 +453,7 @@ export const zh: TranslationKeys = {
         '未连接。连接后即可使用你的 Google 账号 Gemini 配额。',
       geminiOAuthProject: '项目',
       geminiOAuthStreamingNotice:
-        '受 Obsidian 环境限制，Gemini OAuth 渠道当前不支持流式传输。',
+        'Gemini OAuth 支持流式传输；使用 Obsidian requestUrl 时会退化为缓冲输出，桌面端 Node fetch 可提供实时流式。',
     },
     models: {
       title: '模型',
