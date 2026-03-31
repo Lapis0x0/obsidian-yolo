@@ -194,7 +194,14 @@ export const buildManualCompactionState = ({
 
 export const getCompactionSummarySourceMessages = (
   messages: ChatMessage[],
+  options?: {
+    retainLatestToolBoundary?: boolean
+  },
 ): ChatMessage[] => {
+  if (options?.retainLatestToolBoundary === false) {
+    return messages
+  }
+
   const trigger = findCompactTrigger(messages)
   if (!trigger) {
     return messages
@@ -267,12 +274,16 @@ export const createConversationCompactionSummary = async ({
   providerClient,
   model,
   messages,
+  retainLatestToolBoundary,
 }: {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
   messages: ChatMessage[]
+  retainLatestToolBoundary?: boolean
 }): Promise<string> => {
-  const source = getCompactionSummarySourceMessages(messages)
+  const source = getCompactionSummarySourceMessages(messages, {
+    retainLatestToolBoundary,
+  })
   const transcript = buildCompactionTranscript(source)
 
   console.debug('[YOLO][Compact] starting summary generation', {

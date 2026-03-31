@@ -280,6 +280,7 @@ export function useChatStreamManager({
         providerClient: resolvedCompactionClient.providerClient,
         model: resolvedCompactionClient.model,
         messages,
+        retainLatestToolBoundary: false,
       })
 
       return buildManualCompactionState({

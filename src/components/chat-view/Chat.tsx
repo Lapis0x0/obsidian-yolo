@@ -3098,6 +3098,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               messageOrGroup.some(
                 (message) => message.id === compactionDividerAnchorMessageId,
               )
+            const shouldSuppressCompactionAnchorFooter =
+              containsCompactionAnchor &&
+              Boolean(latestCompactionState?.triggerToolCallId)
 
             return (
               <Fragment key={timelineItem.key}>
@@ -3105,7 +3108,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   messages={messageOrGroup}
                   conversationId={currentConversationId}
                   suppressFooter={
-                    containsCompactionAnchor ||
+                    shouldSuppressCompactionAnchorFooter ||
                     (isCurrentConversationRunActive &&
                       timelineItem.key === latestTimelineAssistantToolGroupKey)
                   }

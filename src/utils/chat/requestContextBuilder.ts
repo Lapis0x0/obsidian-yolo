@@ -8,7 +8,6 @@ import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
   buildCompactionResumeMessage,
   buildCompactionSummaryMessage,
-  findCompactTrigger,
 } from '../../core/agent/compaction'
 import {
   getLiteSkillDocument,
@@ -319,19 +318,21 @@ export class RequestContextBuilder {
     const latestCompaction = getLatestChatConversationCompaction(compaction)
 
     if (latestCompaction) {
-      const compactTrigger = findCompactTrigger(messages)
       const anchorIndex = messages.findIndex(
         (message) => message.id === latestCompaction.anchorMessageId,
       )
 
       if (anchorIndex !== -1) {
         requestMessages.push(buildCompactionSummaryMessage(latestCompaction))
-        const compactContextStartIndex = compactTrigger
-          ? Math.max(
-              messages.length - contextMessages.length,
-              compactTrigger.retainedStartIndex,
-            )
-          : Math.max(messages.length - contextMessages.length, anchorIndex + 1)
+        const retainedStartIndex = latestCompaction.triggerToolCallId
+          ? anchorIndex > 0 && messages[anchorIndex - 1]?.role === 'assistant'
+            ? anchorIndex - 1
+            : anchorIndex
+          : anchorIndex + 1
+        const compactContextStartIndex = Math.max(
+          messages.length - contextMessages.length,
+          retainedStartIndex,
+        )
         const compactContextMessages = messages.slice(compactContextStartIndex)
 
         for (const message of compactContextMessages) {
