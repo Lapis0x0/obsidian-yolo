@@ -172,7 +172,7 @@ export const PROVIDER_PRESET_INFO = {
     defaultProviderId: null, // no default provider for this type
     requireApiKey: true,
     requireBaseUrl: false,
-    supportEmbedding: false,
+    supportEmbedding: true,
     additionalSettings: [
       {
         label: 'AWS Region',

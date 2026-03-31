@@ -3,6 +3,7 @@ import { App, Notice, requestUrl } from 'obsidian'
 import { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { listBedrockEmbeddingModelIds } from '../../../core/llm/bedrockCatalog'
 import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
 import { getProviderClient } from '../../../core/llm/manager'
 import { supportedDimensionsForIndex } from '../../../database/schema'
@@ -115,7 +116,10 @@ function AddEmbeddingModelModalComponent({
       }
 
       // Check cache first
-      const cachedModels = plugin.getCachedModelList(selectedProvider.id)
+      const cachedModels = plugin.getCachedModelList(
+        selectedProvider.id,
+        'embedding',
+      )
       if (cachedModels) {
         const sorted = sortModelsForEmbedding(cachedModels)
         setAvailableModels(sorted)
@@ -132,6 +136,18 @@ function AddEmbeddingModelModalComponent({
         const isOpenAIStyle =
           selectedProvider.apiType === 'openai-compatible' ||
           selectedProvider.apiType === 'openai-responses'
+
+        if (selectedProvider.apiType === 'amazon-bedrock') {
+          const unique = await listBedrockEmbeddingModelIds(selectedProvider)
+          const sorted = sortModelsForEmbedding(unique)
+          setAvailableModels(sorted)
+          plugin.setCachedModelList(
+            selectedProvider.id,
+            unique,
+            'embedding',
+          )
+          return
+        }
 
         if (isOpenAIStyle) {
           const base = resolveProviderBaseUrl(selectedProvider) ?? ''
@@ -190,7 +206,11 @@ function AddEmbeddingModelModalComponent({
                 const sorted = sortModelsForEmbedding(unique)
                 setAvailableModels(sorted)
                 // Cache the result (unsorted for consistency)
-                plugin.setCachedModelList(selectedProvider.id, unique)
+                plugin.setCachedModelList(
+                  selectedProvider.id,
+                  unique,
+                  'embedding',
+                )
                 fetched = true
                 break
               } catch (error) {
@@ -233,7 +253,11 @@ function AddEmbeddingModelModalComponent({
           const sorted = sortModelsForEmbedding(unique)
           setAvailableModels(sorted)
           // Cache the result (unsorted for consistency)
-          plugin.setCachedModelList(selectedProvider.id, unique)
+          plugin.setCachedModelList(
+            selectedProvider.id,
+            unique,
+            'embedding',
+          )
           return
         }
       } catch (err: unknown) {

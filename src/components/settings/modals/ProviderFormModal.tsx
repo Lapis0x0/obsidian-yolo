@@ -11,7 +11,11 @@ import {
   getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from '../../../types/provider.types'
-import { getRequestTransportModeValue } from '../../../utils/llm/provider-config'
+import {
+  getRequestTransportModeValue,
+  providerSupportsEmbedding,
+  providerSupportsTransportModeSelection,
+} from '../../../utils/llm/provider-config'
 import { sanitizeProviderHeaders } from '../../../utils/llm/provider-headers'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
@@ -123,6 +127,7 @@ function ProviderFormComponent({
         const providerIdChanged = provider.id !== validatedProvider.id
         const providerPresetChanged =
           provider.presetType !== validatedProvider.presetType
+        const providerApiChanged = provider.apiType !== validatedProvider.apiType
         const updatedProviders = [...plugin.settings.providers]
         updatedProviders[providerIndex] = validatedProvider
 
@@ -142,10 +147,9 @@ function ProviderFormComponent({
           : plugin.settings.chatModels
 
         const updatedEmbeddingModels: typeof plugin.settings.embeddingModels =
-          providerIdChanged || providerPresetChanged
+          providerIdChanged || providerPresetChanged || providerApiChanged
             ? providerPresetChanged &&
-              !PROVIDER_PRESET_INFO[validatedProvider.presetType]
-                .supportEmbedding
+              !providerSupportsEmbedding(validatedProvider)
               ? plugin.settings.embeddingModels
               : plugin.settings.embeddingModels.map((model) => {
                   if (model.providerId !== provider.id) {
@@ -211,6 +215,12 @@ function ProviderFormComponent({
     ]),
   )
   const shouldHideCredentialFields = formData.presetType === 'chatgpt-oauth'
+  const shouldShowBaseUrlField =
+    !shouldHideCredentialFields &&
+    !(
+      formData.presetType === 'amazon-bedrock' &&
+      formData.apiType === 'amazon-bedrock'
+    )
   const requestTransportOptions = {
     auto: t('settings.providers.requestTransportModeAuto'),
     browser: t('settings.providers.requestTransportModeBrowser'),
@@ -221,6 +231,29 @@ function ProviderFormComponent({
         }
       : {}),
   }
+  const visibleAdditionalSettings = providerTypeInfo.additionalSettings.filter(
+    (setting: (typeof providerTypeInfo.additionalSettings)[number]) =>
+      setting.key !== 'requestTransportMode' ||
+      providerSupportsTransportModeSelection(formData),
+  )
+  const apiKeyDesc =
+    formData.presetType === 'amazon-bedrock'
+      ? 'Enter your Amazon Bedrock API key / bearer token.'
+      : t('settings.providers.apiKeyDesc')
+  const apiKeyPlaceholder =
+    formData.presetType === 'amazon-bedrock'
+      ? 'Enter your Amazon Bedrock API key'
+      : t('settings.providers.apiKeyPlaceholder')
+  const baseUrlDesc =
+    formData.presetType === 'amazon-bedrock' &&
+    formData.apiType === 'openai-compatible'
+      ? 'Optional override. Leave empty to use the region-derived Bedrock Mantle endpoint.'
+      : t('settings.providers.baseUrlDesc')
+  const baseUrlPlaceholder =
+    formData.presetType === 'amazon-bedrock' &&
+    formData.apiType === 'openai-compatible'
+      ? 'https://bedrock-mantle.us-east-1.api.aws'
+      : t('settings.providers.baseUrlPlaceholder')
 
   return (
     <div className="smtcmp-provider-form">
@@ -286,35 +319,37 @@ function ProviderFormComponent({
         <>
           <ObsidianSetting
             name={t('settings.providers.apiKey')}
-            desc={t('settings.providers.apiKeyDesc')}
+            desc={apiKeyDesc}
             required={providerTypeInfo.requireApiKey}
           >
             <ObsidianTextInput
               value={formData.apiKey ?? ''}
-              placeholder={t('settings.providers.apiKeyPlaceholder')}
+              placeholder={apiKeyPlaceholder}
               onChange={(value: string) =>
                 setFormData((prev) => ({ ...prev, apiKey: value }))
               }
             />
           </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.providers.baseUrl')}
-            desc={t('settings.providers.baseUrlDesc')}
-            required={providerTypeInfo.requireBaseUrl}
-          >
-            <ObsidianTextInput
-              value={formData.baseUrl ?? ''}
-              placeholder={t('settings.providers.baseUrlPlaceholder')}
-              onChange={(value: string) =>
-                setFormData((prev) => ({ ...prev, baseUrl: value }))
-              }
-            />
-          </ObsidianSetting>
+          {shouldShowBaseUrlField && (
+            <ObsidianSetting
+              name={t('settings.providers.baseUrl')}
+              desc={baseUrlDesc}
+              required={providerTypeInfo.requireBaseUrl}
+            >
+              <ObsidianTextInput
+                value={formData.baseUrl ?? ''}
+                placeholder={baseUrlPlaceholder}
+                onChange={(value: string) =>
+                  setFormData((prev) => ({ ...prev, baseUrl: value }))
+                }
+              />
+            </ObsidianSetting>
+          )}
         </>
       )}
 
-      {providerTypeInfo.additionalSettings.map((setting) => {
+      {visibleAdditionalSettings.map((setting) => {
         const label =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeaders')

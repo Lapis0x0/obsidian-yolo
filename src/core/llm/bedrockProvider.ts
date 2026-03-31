@@ -5,6 +5,7 @@ import {
   ConverseStreamCommand,
   ConverseStreamOutput,
   ImageFormat,
+  InvokeModelCommand,
   Message,
   SystemContentBlock,
   Tool,
@@ -33,13 +34,25 @@ import {
 import { LLMProvider } from '../../types/provider.types'
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
+import {
+  buildBedrockEmbeddingRequestBody,
+  createBedrockBearerClientConfig,
+  getBedrockRegion,
+} from '../../utils/llm/bedrock'
 
 import { BaseLLMProvider } from './base'
-import { LLMAPIKeyNotSetException } from './exception'
+import {
+  LLMAPIKeyInvalidException,
+  LLMAPIKeyNotSetException,
+  LLMModelNotFoundException,
+  LLMProviderNotConfiguredException,
+  LLMRateLimitExceededException,
+} from './exception'
 
-type BedrockAdditionalSettings = {
-  awsRegion?: string
-}
+type BedrockJsonBody =
+  | string
+  | Uint8Array
+  | { transformToString?: () => Promise<string> }
 
 export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
   private client: BedrockRuntimeClient
@@ -48,17 +61,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
   constructor(provider: LLMProvider) {
     super(provider)
-
-    const additionalSettings =
-      (provider.additionalSettings as BedrockAdditionalSettings) ?? {}
-
-    const region = additionalSettings.awsRegion || 'us-east-1'
-
-    this.client = new BedrockRuntimeClient({
-      region,
-      token: { token: provider.apiKey ?? '' },
-      authSchemePreference: ['httpBearerAuth'],
-    })
+    this.client = new BedrockRuntimeClient(createBedrockBearerClientConfig(provider))
   }
 
   async generateResponse(
@@ -66,7 +69,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    this.validateCredentials()
+    this.validateConfiguration()
 
     const systemBlocks = BedrockProvider.extractSystemBlocks(request.messages)
     const messages = BedrockProvider.convertMessages(request.messages)
@@ -85,73 +88,80 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     const additionalModelRequestFields =
       BedrockProvider.buildAdditionalModelRequestFields(model)
 
-    const command = new ConverseCommand({
-      modelId: request.model,
-      messages,
-      ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
-      inferenceConfig: {
-        maxTokens,
-        ...(request.temperature != null
-          ? { temperature: request.temperature }
-          : {}),
-        ...(request.top_p != null ? { topP: request.top_p } : {}),
-      },
-      ...(toolConfig ? { toolConfig } : {}),
-      ...(additionalModelRequestFields ? { additionalModelRequestFields } : {}),
-    })
-
-    const response = await this.client.send(command, {
-      abortSignal: options?.signal,
-    })
-
-    const outputMessage = response.output?.message
-    const contentBlocks = outputMessage?.content ?? []
-
-    const textContent = contentBlocks
-      .filter((b): b is ContentBlock.TextMember => 'text' in b)
-      .map((b) => b.text)
-      .join('')
-
-    const reasoningContent =
-      contentBlocks
-        .filter(
-          (b): b is ContentBlock.ReasoningContentMember =>
-            'reasoningContent' in b,
-        )
-        .map((b) => b.reasoningContent.reasoningText?.text ?? '')
-        .join('') || undefined
-
-    const toolCalls: ToolCall[] = contentBlocks
-      .filter((b): b is ContentBlock.ToolUseMember => 'toolUse' in b)
-      .map(
-        (b): ToolCall => ({
-          id: b.toolUse.toolUseId,
-          type: 'function',
-          function: {
-            name: b.toolUse.name ?? '',
-            arguments: JSON.stringify(b.toolUse.input),
+    try {
+      const response = await this.client.send(
+        new ConverseCommand({
+          modelId: request.model,
+          messages,
+          ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
+          inferenceConfig: {
+            maxTokens,
+            ...(request.temperature != null
+              ? { temperature: request.temperature }
+              : {}),
+            ...(request.top_p != null ? { topP: request.top_p } : {}),
           },
+          ...(toolConfig ? { toolConfig } : {}),
+          ...(additionalModelRequestFields
+            ? { additionalModelRequestFields }
+            : {}),
         }),
+        {
+          abortSignal: options?.signal,
+        },
       )
 
-    const usage = BedrockProvider.convertUsage(response.usage)
+      const outputMessage = response.output?.message
+      const contentBlocks = outputMessage?.content ?? []
 
-    return {
-      id: `bedrock-${Date.now()}`,
-      choices: [
-        {
-          finish_reason: BedrockProvider.mapStopReason(response.stopReason),
-          message: {
-            content: textContent,
-            reasoning: reasoningContent,
-            role: 'assistant',
-            tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+      const textContent = contentBlocks
+        .filter((b): b is ContentBlock.TextMember => 'text' in b)
+        .map((b) => b.text)
+        .join('')
+
+      const reasoningContent =
+        contentBlocks
+          .filter(
+            (b): b is ContentBlock.ReasoningContentMember =>
+              'reasoningContent' in b,
+          )
+          .map((b) => b.reasoningContent.reasoningText?.text ?? '')
+          .join('') || undefined
+
+      const toolCalls: ToolCall[] = contentBlocks
+        .filter((b): b is ContentBlock.ToolUseMember => 'toolUse' in b)
+        .map(
+          (b): ToolCall => ({
+            id: b.toolUse.toolUseId,
+            type: 'function',
+            function: {
+              name: b.toolUse.name ?? '',
+              arguments: JSON.stringify(b.toolUse.input),
+            },
+          }),
+        )
+
+      const usage = BedrockProvider.convertUsage(response.usage)
+
+      return {
+        id: `bedrock-${Date.now()}`,
+        choices: [
+          {
+            finish_reason: BedrockProvider.mapStopReason(response.stopReason),
+            message: {
+              content: textContent,
+              reasoning: reasoningContent,
+              role: 'assistant',
+              tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+            },
           },
-        },
-      ],
-      model: request.model,
-      object: 'chat.completion',
-      usage,
+        ],
+        model: request.model,
+        object: 'chat.completion',
+        usage,
+      }
+    } catch (error) {
+      throw BedrockProvider.toBedrockError(this.provider, error)
     }
   }
 
@@ -160,7 +170,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    this.validateCredentials()
+    this.validateConfiguration()
 
     const systemBlocks = BedrockProvider.extractSystemBlocks(request.messages)
     const messages = BedrockProvider.convertMessages(request.messages)
@@ -179,30 +189,37 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     const additionalModelRequestFields =
       BedrockProvider.buildAdditionalModelRequestFields(model)
 
-    const command = new ConverseStreamCommand({
-      modelId: request.model,
-      messages,
-      ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
-      inferenceConfig: {
-        maxTokens,
-        ...(request.temperature != null
-          ? { temperature: request.temperature }
-          : {}),
-        ...(request.top_p != null ? { topP: request.top_p } : {}),
-      },
-      ...(toolConfig ? { toolConfig } : {}),
-      ...(additionalModelRequestFields ? { additionalModelRequestFields } : {}),
-    })
+    try {
+      const response = await this.client.send(
+        new ConverseStreamCommand({
+          modelId: request.model,
+          messages,
+          ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
+          inferenceConfig: {
+            maxTokens,
+            ...(request.temperature != null
+              ? { temperature: request.temperature }
+              : {}),
+            ...(request.top_p != null ? { topP: request.top_p } : {}),
+          },
+          ...(toolConfig ? { toolConfig } : {}),
+          ...(additionalModelRequestFields
+            ? { additionalModelRequestFields }
+            : {}),
+        }),
+        {
+          abortSignal: options?.signal,
+        },
+      )
 
-    const response = await this.client.send(command, {
-      abortSignal: options?.signal,
-    })
+      if (!response.stream) {
+        throw new Error('Bedrock ConverseStream returned no stream')
+      }
 
-    if (!response.stream) {
-      throw new Error('Bedrock ConverseStream returned no stream')
+      return this.streamResponseGenerator(response.stream, request.model)
+    } catch (error) {
+      throw BedrockProvider.toBedrockError(this.provider, error)
     }
-
-    return this.streamResponseGenerator(response.stream, request.model)
   }
 
   private async *streamResponseGenerator(
@@ -215,6 +232,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       completion_tokens: 0,
       total_tokens: 0,
     }
+    let finishReason: string | null = null
 
     for await (const event of stream) {
       if (event.contentBlockDelta) {
@@ -309,65 +327,86 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
             model,
           }
         }
-      } else if (event.metadata) {
-        if (event.metadata.usage) {
-          usage = BedrockProvider.convertUsage(event.metadata.usage)
-        }
+      } else if (event.messageStop) {
+        finishReason = BedrockProvider.mapStopReason(event.messageStop.stopReason)
+      } else if (event.metadata?.usage) {
+        usage = BedrockProvider.convertUsage(event.metadata.usage)
       }
     }
 
-    // Yield final usage chunk
     yield {
       id: messageId,
-      choices: [],
+      choices: [
+        {
+          finish_reason: finishReason,
+          delta: {},
+        },
+      ],
       object: 'chat.completion.chunk',
       model,
       usage,
     }
   }
 
-  getEmbedding(_model: string, _text: string): Promise<number[]> {
-    return Promise.reject(
-      new Error(
-        `Provider ${this.provider.id} does not support embeddings via the Converse API. Please use a different provider.`,
-      ),
-    )
+  async getEmbedding(model: string, text: string): Promise<number[]> {
+    this.validateConfiguration()
+
+    try {
+      const response = await this.client.send(
+        new InvokeModelCommand({
+          modelId: model,
+          contentType: 'application/json',
+          accept: 'application/json',
+          body: JSON.stringify(buildBedrockEmbeddingRequestBody(model, text)),
+        }),
+      )
+
+      const rawBody = await BedrockProvider.bodyToString(response.body)
+      const parsed = JSON.parse(rawBody) as Record<string, unknown>
+      const vector = BedrockProvider.extractBedrockEmbeddingVector(parsed)
+
+      if (!Array.isArray(vector) || vector.length === 0) {
+        throw new Error('Bedrock embedding response did not include values.')
+      }
+
+      return vector
+    } catch (error) {
+      throw BedrockProvider.toBedrockError(this.provider, error, {
+        modelId: model,
+        action: 'embedding',
+      })
+    }
   }
 
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  private validateCredentials(): void {
-    if (!this.provider.apiKey) {
+  private validateConfiguration(): void {
+    const token = this.provider.apiKey?.trim()
+    if (!token) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is not set. Please set the API key in the provider settings.`,
       )
     }
+
+    const region = getBedrockRegion(this.provider)
+    if (!region) {
+      throw new LLMProviderNotConfiguredException(
+        `Provider ${this.provider.id} AWS region is not set. Please set the AWS region in the provider settings.`,
+      )
+    }
   }
 
-  /**
-   * Extract system messages into Bedrock SystemContentBlock[].
-   */
   static extractSystemBlocks(messages: RequestMessage[]): SystemContentBlock[] {
     return messages
       .filter((m) => m.role === 'system')
       .map((m): SystemContentBlock => ({ text: m.content as string }))
   }
 
-  /**
-   * Convert the unified RequestMessage[] into Bedrock Message[].
-   * System messages are excluded (handled separately).
-   */
   static convertMessages(messages: RequestMessage[]): Message[] {
     const result: Message[] = []
 
     for (const msg of messages) {
       switch (msg.role) {
         case 'system':
-          // Handled separately
           break
-
         case 'user': {
           const contentBlocks = BedrockProvider.convertUserContent(msg.content)
           if (contentBlocks.length > 0) {
@@ -375,7 +414,6 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
           }
           break
         }
-
         case 'assistant': {
           const contentBlocks: ContentBlock[] = []
 
@@ -401,11 +439,9 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
           }
           break
         }
-
         case 'tool': {
           const toolResultContent: ToolResultContentBlock[] = []
 
-          // Try to parse as JSON first, fall back to text
           try {
             const parsed = JSON.parse(msg.content)
             toolResultContent.push({ json: parsed })
@@ -433,9 +469,6 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     return result
   }
 
-  /**
-   * Convert user message content (string or ContentPart[]) to Bedrock ContentBlock[].
-   */
   private static convertUserContent(
     content: string | ContentPart[],
   ): ContentBlock[] {
@@ -480,9 +513,6 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     return format
   }
 
-  /**
-   * Build Bedrock ToolConfiguration from request tools/choice.
-   */
   private static buildToolConfig(
     tools?: RequestTool[],
     toolChoice?: RequestToolChoice,
@@ -508,7 +538,6 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       } else if (toolChoice === 'required') {
         bedrockToolChoice = { any: {} }
       } else if (toolChoice === 'none') {
-        // Bedrock doesn't have a "none" tool choice -- omit toolConfig entirely
         return undefined
       } else if (
         typeof toolChoice === 'object' &&
@@ -524,16 +553,11 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  /**
-   * Build additionalModelRequestFields for model-specific features
-   * like Claude extended thinking.
-   */
   private static buildAdditionalModelRequestFields(
     model: ChatModel,
   ): DocumentType | undefined {
     const fields: { [prop: string]: DocumentType } = {}
 
-    // Claude extended thinking support via Bedrock
     if (
       model.thinking?.enabled &&
       typeof model.thinking.budget_tokens === 'number'
@@ -562,11 +586,131 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       case 'tool_use':
         return 'tool_calls'
       case 'max_tokens':
+      case 'model_context_window_exceeded':
         return 'length'
       case 'stop_sequence':
         return 'stop'
+      case 'guardrail_intervened':
+      case 'content_filtered':
+        return 'content_filter'
       default:
         return reason ?? 'stop'
     }
+  }
+
+  private static extractBedrockEmbeddingVector(
+    payload: Record<string, unknown>,
+  ): number[] {
+    if (Array.isArray(payload.embedding)) {
+      return payload.embedding as number[]
+    }
+
+    if (Array.isArray(payload.embeddings) && payload.embeddings.length > 0) {
+      const first = payload.embeddings[0]
+      if (Array.isArray(first)) {
+        return first as number[]
+      }
+      if (
+        first &&
+        typeof first === 'object' &&
+        Array.isArray((first as { embedding?: number[] }).embedding)
+      ) {
+        return (first as { embedding: number[] }).embedding
+      }
+    }
+
+    throw new Error('Embedding model returned an invalid result')
+  }
+
+  private static async bodyToString(body: BedrockJsonBody): Promise<string> {
+    if (typeof body === 'string') {
+      return body
+    }
+
+    if (body instanceof Uint8Array) {
+      return new TextDecoder().decode(body)
+    }
+
+    if (body && typeof body.transformToString === 'function') {
+      return body.transformToString()
+    }
+
+    throw new Error('Bedrock returned a response body in an unknown format.')
+  }
+
+  private static toBedrockError(
+    provider: Pick<LLMProvider, 'id'>,
+    error: unknown,
+    context?: { modelId?: string; action?: 'chat' | 'embedding' },
+  ): Error {
+    if (!(error instanceof Error)) {
+      return new Error(
+        `Amazon Bedrock request failed for provider ${provider.id}.`,
+      )
+    }
+
+    const metadata = error as Error & {
+      $metadata?: { httpStatusCode?: number }
+      name?: string
+    }
+    const statusCode = metadata.$metadata?.httpStatusCode
+    const action = context?.action ?? 'chat'
+    const modelId = context?.modelId
+    const messageSuffix = modelId ? ` (model: ${modelId})` : ''
+
+    if (statusCode === 403) {
+      return new LLMAPIKeyInvalidException(
+        `Amazon Bedrock authentication failed for provider ${provider.id}${messageSuffix}. Please verify the API key / bearer token and its permissions.`,
+        error,
+      )
+    }
+
+    if (statusCode === 404) {
+      return new LLMModelNotFoundException(
+        `Amazon Bedrock could not find the requested ${action} model for provider ${provider.id}${messageSuffix}.`,
+        error,
+      )
+    }
+
+    if (statusCode === 429) {
+      return new LLMRateLimitExceededException(
+        `Amazon Bedrock rate limit exceeded for provider ${provider.id}${messageSuffix}. Please try again later.`,
+        error,
+      )
+    }
+
+    if (
+      statusCode === 503 ||
+      metadata.name === 'ServiceUnavailableException'
+    ) {
+      return new Error(
+        `Amazon Bedrock is temporarily unavailable for provider ${provider.id}${messageSuffix}. Please retry shortly.`,
+      )
+    }
+
+    if (
+      metadata.name === 'ValidationException' &&
+      action === 'embedding' &&
+      modelId
+    ) {
+      return new Error(
+        `Amazon Bedrock rejected the embedding request for model ${modelId}. Make sure the model supports text embeddings and is compatible with Bedrock InvokeModel.`,
+      )
+    }
+
+    if (
+      /model not found|could not resolve the foundation model|unknown model/i.test(
+        error.message,
+      )
+    ) {
+      return new LLMModelNotFoundException(
+        `Amazon Bedrock could not find the requested model for provider ${provider.id}${messageSuffix}.`,
+        error,
+      )
+    }
+
+    return new Error(
+      `Amazon Bedrock ${action} request failed for provider ${provider.id}${messageSuffix}: ${error.message}`,
+    )
   }
 }

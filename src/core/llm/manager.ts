@@ -115,19 +115,6 @@ export function getProviderClient({
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
-        case 'amazon-bedrock': {
-          const awsRegion =
-            (provider.additionalSettings as { awsRegion?: string })
-              ?.awsRegion || 'us-east-1'
-          const bedrockProvider = {
-            ...provider,
-            baseUrl: `https://bedrock-mantle.${awsRegion}.api.aws`,
-          }
-          return new OpenAICompatibleProvider(bedrockProvider as never, {
-            onAutoPromoteTransportMode: (mode) =>
-              onAutoPromoteTransportMode?.(provider.id, mode),
-          })
-        }
         default:
           return new OpenAICompatibleProvider(provider as never, {
             onAutoPromoteTransportMode: (mode) =>

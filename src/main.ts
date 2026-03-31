@@ -135,9 +135,21 @@ export default class SmartComposerPlugin extends Plugin {
     return this.chatLeafSessionManager
   }
 
+  private getModelListCacheKey(
+    providerId: string,
+    scope: 'chat' | 'embedding',
+  ): string {
+    return `${providerId}::${scope}`
+  }
+
   // Get cached model list for a provider
-  getCachedModelList(providerId: string): string[] | null {
-    const cached = this.modelListCache.get(providerId)
+  getCachedModelList(
+    providerId: string,
+    scope: 'chat' | 'embedding' = 'chat',
+  ): string[] | null {
+    const cached = this.modelListCache.get(
+      this.getModelListCacheKey(providerId, scope),
+    )
     if (cached) {
       return cached.models
     }
@@ -145,8 +157,12 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   // Set model list cache for a provider
-  setCachedModelList(providerId: string, models: string[]): void {
-    this.modelListCache.set(providerId, {
+  setCachedModelList(
+    providerId: string,
+    models: string[],
+    scope: 'chat' | 'embedding' = 'chat',
+  ): void {
+    this.modelListCache.set(this.getModelListCacheKey(providerId, scope), {
       models,
       timestamp: Date.now(),
     })
