@@ -36,6 +36,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 const CODE_ASSIST_ENDPOINT = 'https://cloudcode-pa.googleapis.com'
@@ -58,6 +59,7 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
   private readonly onAutoPromoteTransportMode?: (
     mode: AutoPromotedTransportMode,
   ) => void
+  private readonly requestPolicy?: ModelRequestPolicy
 
   private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
     if (this.requestTransportMode === mode) {
@@ -76,10 +78,12 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     provider: LLMProvider,
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+      requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
+    this.requestPolicy = options?.requestPolicy
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
@@ -113,11 +117,26 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
       memoryKey: this.requestTransportMemoryKey,
       onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: async () =>
-        this.generateViaFetch(this.browserFetch, payload, request.model),
+        this.generateViaFetch(
+          this.browserFetch,
+          payload,
+          request.model,
+          options?.signal,
+        ),
       runObsidian: async () =>
-        this.generateViaFetch(this.obsidianFetch, payload, request.model),
+        this.generateViaFetch(
+          this.obsidianFetch,
+          payload,
+          request.model,
+          options?.signal,
+        ),
       runNode: async () =>
-        this.generateViaFetch(this.nodeFetch, payload, request.model),
+        this.generateViaFetch(
+          this.nodeFetch,
+          payload,
+          request.model,
+          options?.signal,
+        ),
     })
   }
 
@@ -187,7 +206,9 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
 
-    const systemMessages = request.messages.filter((message) => message.role === 'system')
+    const systemMessages = request.messages.filter(
+      (message) => message.role === 'system',
+    )
     const systemInstruction =
       systemMessages.length > 0
         ? systemMessages.map((message) => message.content).join('\n')
@@ -254,21 +275,27 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
       body: string
     },
     model: string,
+    signal?: AbortSignal,
   ): Promise<LLMResponseNonStreaming> {
-    const response = await customFetch(
-      `${CODE_ASSIST_ENDPOINT}/v1internal:generateContent`,
-      {
-        method: 'POST',
-        headers: payload.headers,
-        body: payload.body,
-      },
-    )
+    const response = await runWithModelRequestPolicy({
+      requestPolicy: this.requestPolicy,
+      signal,
+      run: (requestSignal) =>
+        customFetch(`${CODE_ASSIST_ENDPOINT}/v1internal:generateContent`, {
+          method: 'POST',
+          headers: payload.headers,
+          body: payload.body,
+          signal: requestSignal,
+        }),
+    })
 
     if (!response.ok) {
       await this.throwForBadResponse(response)
     }
 
-    const parsed = (await response.json()) as GeminiApiBody | GeminiGenerateContentResponse
+    const parsed = (await response.json()) as
+      | GeminiApiBody
+      | GeminiGenerateContentResponse
     const body = this.unwrapResponse(parsed)
     return GeminiProvider.parseNonStreamingResponse(
       body,
@@ -289,15 +316,20 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     const headers = new Headers(payload.headers)
     headers.set('Accept', 'text/event-stream')
 
-    const response = await customFetch(
-      `${CODE_ASSIST_ENDPOINT}/v1internal:streamGenerateContent?alt=sse`,
-      {
-        method: 'POST',
-        headers,
-        body: payload.body,
-        signal,
-      },
-    )
+    const response = await runWithModelRequestPolicy({
+      requestPolicy: this.requestPolicy,
+      signal,
+      run: (requestSignal) =>
+        customFetch(
+          `${CODE_ASSIST_ENDPOINT}/v1internal:streamGenerateContent?alt=sse`,
+          {
+            method: 'POST',
+            headers,
+            body: payload.body,
+            signal: requestSignal,
+          },
+        ),
+    })
 
     if (!response.ok) {
       await this.throwForBadResponse(response)
@@ -322,15 +354,20 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     const headers = new Headers(payload.headers)
     headers.set('Accept', 'text/event-stream')
 
-    const response = await customFetch(
-      `${CODE_ASSIST_ENDPOINT}/v1internal:streamGenerateContent?alt=sse`,
-      {
-        method: 'POST',
-        headers,
-        body: payload.body,
-        signal,
-      },
-    )
+    const response = await runWithModelRequestPolicy({
+      requestPolicy: this.requestPolicy,
+      signal,
+      run: (requestSignal) =>
+        customFetch(
+          `${CODE_ASSIST_ENDPOINT}/v1internal:streamGenerateContent?alt=sse`,
+          {
+            method: 'POST',
+            headers,
+            body: payload.body,
+            signal: requestSignal,
+          },
+        ),
+    })
 
     if (!response.ok) {
       await this.throwForBadResponse(response)
@@ -358,9 +395,7 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     if ('response' in value && value.response) {
       const responseId = value.response.responseId ?? value.traceId
       return (
-        responseId
-          ? { ...value.response, responseId }
-          : value.response
+        responseId ? { ...value.response, responseId } : value.response
       ) as GeminiGenerateContentResponse
     }
     return value as GeminiGenerateContentResponse

@@ -142,13 +142,22 @@ export const it: TranslationKeys = {
       buyMeACoffee: 'Offrimi un caffè',
     },
     defaults: {
-      title: 'Modelli e prompt predefiniti',
+      title: 'Criteri modello predefiniti e prompt',
       defaultChatModel: 'Modello chat predefinito',
       defaultChatModelDesc:
         'Scegli il modello che vuoi usare per la chat nella barra laterale.',
       chatTitleModel: 'Modello per titolo e riepilogo conversazione',
       chatTitleModelDesc:
         'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni e generare i riepiloghi compact.',
+      modelRequestSectionTitle: 'Criteri richiesta modello',
+      modelRequestSectionDesc:
+        'Controlla timeout e retry automatico per le richieste condivise usate da chat, quick ask, smart space, write assist e completamento tab. Non modifica il fallback automatico del trasporto in modalita Auto.',
+      modelRequestAutoRetry: 'Abilita retry automatico',
+      modelRequestAutoRetryDesc:
+        'Riprova una volta lo stesso percorso di richiesta dopo un timeout o un errore temporaneo.',
+      modelRequestTimeout: 'Timeout richiesta (secondi)',
+      modelRequestTimeoutDesc:
+        'Quanto attendere prima che un singolo tentativo di richiesta al modello venga considerato in timeout. Predefinito: 12 secondi.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",

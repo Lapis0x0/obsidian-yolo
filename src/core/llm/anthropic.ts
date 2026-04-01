@@ -45,6 +45,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
@@ -74,6 +75,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     provider: LLMProvider,
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+      requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
@@ -95,7 +97,11 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
         ? provider.baseUrl.replace(/\/+$/, '')
         : undefined, // use default
       dangerouslyAllowBrowser: true,
-      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+      maxRetries: resolveSdkMaxRetries({
+        requestPolicy: options?.requestPolicy,
+        requestTransportMode: this.requestTransportMode,
+      }),
+      timeout: options?.requestPolicy?.timeoutMs,
       ...(defaultHeaders ? { defaultHeaders } : {}),
     }
     this.browserClient = new Anthropic(clientOptions)

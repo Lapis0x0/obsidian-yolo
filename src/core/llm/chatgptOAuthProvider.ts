@@ -31,6 +31,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
@@ -66,6 +67,7 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     provider: LLMProvider,
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+      requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
@@ -90,7 +92,11 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
         apiKey: OAUTH_PROVIDER_API_KEY,
         baseURL: CODEX_BASE_URL,
         dangerouslyAllowBrowser: true,
-        maxRetries: undefined,
+        maxRetries: resolveSdkMaxRetries({
+          requestPolicy: options?.requestPolicy,
+          requestTransportMode: this.requestTransportMode,
+        }),
+        timeout: options?.requestPolicy?.timeoutMs,
         defaultHeaders,
         fetch: this.createAuthorizedFetch(customFetch),
       })

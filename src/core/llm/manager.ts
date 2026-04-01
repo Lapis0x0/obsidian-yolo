@@ -20,6 +20,7 @@ import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 import { OpenAIResponsesProvider } from './openaiResponsesProvider'
 import { OpenRouterProvider } from './openRouterProvider'
 import { PerplexityProvider } from './perplexityProvider'
+import { resolveModelRequestPolicy } from './requestPolicy'
 import { AutoPromotedTransportMode } from './requestTransport'
 
 /*
@@ -45,82 +46,98 @@ export function getProviderClient({
     throw new Error(`Provider ${providerId} not found`)
   }
 
+  const requestPolicy = resolveModelRequestPolicy(settings)
+
   switch (provider.apiType) {
     case 'openai-responses': {
       if (provider.presetType === 'chatgpt-oauth') {
-        return new ChatGPTOAuthProvider(provider as never)
+        return new ChatGPTOAuthProvider(provider as never, { requestPolicy })
       }
       return new OpenAIResponsesProvider(provider, {
+        requestPolicy,
         onAutoPromoteTransportMode: (mode) =>
           onAutoPromoteTransportMode?.(provider.id, mode),
       })
     }
     case 'anthropic': {
       return new AnthropicProvider(provider as never, {
+        requestPolicy,
         onAutoPromoteTransportMode: (mode) =>
           onAutoPromoteTransportMode?.(provider.id, mode),
       })
     }
     case 'gemini': {
       if (provider.presetType === 'gemini-oauth') {
-        return new GeminiOAuthProvider(provider as never)
+        return new GeminiOAuthProvider(provider as never, {
+          requestPolicy,
+        })
       }
-      return new GeminiProvider(provider as never)
+      return new GeminiProvider(provider as never, { requestPolicy })
     }
     case 'amazon-bedrock': {
       // Base URL is constructed internally by the AWS SDK as
       // https://bedrock-runtime.{region}.amazonaws.com from the region config.
-      return new BedrockProvider(provider)
+      return new BedrockProvider(provider, { requestPolicy })
     }
     case 'openai-compatible': {
       switch (provider.presetType) {
         case 'openrouter':
           return new OpenRouterProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'perplexity':
           return new PerplexityProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'groq':
           return new GroqProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'mistral':
           return new MistralProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'ollama':
           return new OllamaProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'lm-studio':
           return new LmStudioProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'deepseek':
           return new DeepSeekStudioProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'morph':
           return new MorphProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         case 'azure-openai':
           return new AzureOpenAIProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })
         default:
           return new OpenAICompatibleProvider(provider as never, {
+            requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),
           })

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   DEFAULT_CHAT_TITLE_PROMPT,
@@ -7,12 +7,15 @@ import {
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../../settings/schema/setting.types'
 import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
 } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 
 export function DefaultModelsAndPromptsSection() {
   const { settings, setSettings } = useSettings()
@@ -95,11 +98,31 @@ export function DefaultModelsAndPromptsSection() {
 
   const defaultTitlePrompt =
     DEFAULT_CHAT_TITLE_PROMPT[language] ?? DEFAULT_CHAT_TITLE_PROMPT.en
+  const modelRequestAutoRetryEnabled =
+    settings.continuationOptions.modelRequestAutoRetryEnabled ?? true
+  const modelRequestTimeoutMs =
+    settings.continuationOptions.modelRequestTimeoutMs ??
+    DEFAULT_MODEL_REQUEST_TIMEOUT_MS
+  const [modelRequestTimeoutSecondsInput, setModelRequestTimeoutSecondsInput] =
+    useState(String(Math.round(modelRequestTimeoutMs / 1000)))
 
   const chatTitlePromptValue =
     (settings.chatOptions.chatTitlePrompt ?? '').trim().length > 0
       ? settings.chatOptions.chatTitlePrompt!
       : defaultTitlePrompt
+
+  useEffect(() => {
+    setModelRequestTimeoutSecondsInput(
+      String(Math.round(modelRequestTimeoutMs / 1000)),
+    )
+  }, [modelRequestTimeoutMs])
+
+  const parseIntegerInput = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) return null
+    if (!/^-?\d+$/.test(trimmed)) return null
+    return parseInt(trimmed, 10)
+  }
 
   return (
     <div className="smtcmp-settings-section">
@@ -143,6 +166,85 @@ export function DefaultModelsAndPromptsSection() {
               }}
             />
           </ObsidianSetting>
+
+          <div className="smtcmp-models-textarea-card">
+            <ObsidianSetting
+              name={t('settings.defaults.modelRequestSectionTitle')}
+              desc={t('settings.defaults.modelRequestSectionDesc')}
+              className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
+            />
+
+            <div className="smtcmp-models-textarea-card-body">
+              <ObsidianSetting
+                name={t('settings.defaults.modelRequestAutoRetry')}
+                desc={t('settings.defaults.modelRequestAutoRetryDesc')}
+              >
+                <ObsidianToggle
+                  value={modelRequestAutoRetryEnabled}
+                  onChange={(value) => {
+                    commitSettingsUpdate(
+                      {
+                        continuationOptions: {
+                          ...settings.continuationOptions,
+                          modelRequestAutoRetryEnabled: value,
+                        },
+                      },
+                      'modelRequestAutoRetryEnabled',
+                    )
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.defaults.modelRequestTimeout')}
+                desc={t('settings.defaults.modelRequestTimeoutDesc')}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={modelRequestTimeoutSecondsInput}
+                  onChange={(value) => {
+                    setModelRequestTimeoutSecondsInput(value)
+                    const nextSeconds = parseIntegerInput(value)
+                    if (nextSeconds === null) return
+                    const clampedSeconds = Math.min(
+                      600,
+                      Math.max(1, nextSeconds),
+                    )
+                    commitSettingsUpdate(
+                      {
+                        continuationOptions: {
+                          ...settings.continuationOptions,
+                          modelRequestTimeoutMs: clampedSeconds * 1000,
+                        },
+                      },
+                      'modelRequestTimeoutMs',
+                    )
+                  }}
+                  onBlur={() => {
+                    const parsedSeconds = parseIntegerInput(
+                      modelRequestTimeoutSecondsInput,
+                    )
+                    const nextSeconds =
+                      parsedSeconds === null
+                        ? Math.round(modelRequestTimeoutMs / 1000)
+                        : Math.min(600, Math.max(1, parsedSeconds))
+                    setModelRequestTimeoutSecondsInput(String(nextSeconds))
+                    if (nextSeconds * 1000 !== modelRequestTimeoutMs) {
+                      commitSettingsUpdate(
+                        {
+                          continuationOptions: {
+                            ...settings.continuationOptions,
+                            modelRequestTimeoutMs: nextSeconds * 1000,
+                          },
+                        },
+                        'modelRequestTimeoutMs',
+                      )
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+            </div>
+          </div>
 
           <div className="smtcmp-models-textarea-card">
             <ObsidianSetting

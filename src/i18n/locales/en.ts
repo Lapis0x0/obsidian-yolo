@@ -142,13 +142,22 @@ export const en: TranslationKeys = {
       buyMeACoffee: 'Buy me a coffee',
     },
     defaults: {
-      title: 'Default models & prompts',
+      title: 'Default model policies & prompts',
       defaultChatModel: 'Default chat model',
       defaultChatModelDesc:
         'Choose the model you want to use for sidebar chat.',
       chatTitleModel: 'Conversation title and summary model',
       chatTitleModelDesc:
         'Choose the model used for automatic conversation naming and compact summaries.',
+      modelRequestSectionTitle: 'Model request policy',
+      modelRequestSectionDesc:
+        'Control timeout and automatic retry for shared model requests used by chat, quick ask, smart space, write assist, and tab completion. This does not change Auto transport fallback.',
+      modelRequestAutoRetry: 'Enable automatic retry',
+      modelRequestAutoRetryDesc:
+        'Retry the same request path once after a timeout or retryable failure.',
+      modelRequestTimeout: 'Request timeout (seconds)',
+      modelRequestTimeoutDesc:
+        'How long to wait before a single model request attempt is treated as timed out. Default: 12 seconds.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',

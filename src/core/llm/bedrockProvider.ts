@@ -48,6 +48,7 @@ import {
   LLMProviderNotConfiguredException,
   LLMRateLimitExceededException,
 } from './exception'
+import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 
 type BedrockJsonBody =
   | string
@@ -60,11 +61,18 @@ type BedrockDocumentType = NonNullable<
 
 export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
   private client: BedrockRuntimeClient
+  private readonly requestPolicy?: ModelRequestPolicy
 
   private static readonly DEFAULT_MAX_TOKENS = 8192
 
-  constructor(provider: LLMProvider) {
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      requestPolicy?: ModelRequestPolicy
+    },
+  ) {
     super(provider)
+    this.requestPolicy = options?.requestPolicy
     this.client = new BedrockRuntimeClient(
       createBedrockBearerClientConfig(provider),
     )
@@ -95,27 +103,32 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       BedrockProvider.buildAdditionalModelRequestFields(model)
 
     try {
-      const response = await this.client.send(
-        new ConverseCommand({
-          modelId: request.model,
-          messages,
-          ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
-          inferenceConfig: {
-            maxTokens,
-            ...(request.temperature != null
-              ? { temperature: request.temperature }
-              : {}),
-            ...(request.top_p != null ? { topP: request.top_p } : {}),
-          },
-          ...(toolConfig ? { toolConfig } : {}),
-          ...(additionalModelRequestFields
-            ? { additionalModelRequestFields }
-            : {}),
-        }),
-        {
-          abortSignal: options?.signal,
-        },
-      )
+      const response = await runWithModelRequestPolicy({
+        requestPolicy: this.requestPolicy,
+        signal: options?.signal,
+        run: (signal) =>
+          this.client.send(
+            new ConverseCommand({
+              modelId: request.model,
+              messages,
+              ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
+              inferenceConfig: {
+                maxTokens,
+                ...(request.temperature != null
+                  ? { temperature: request.temperature }
+                  : {}),
+                ...(request.top_p != null ? { topP: request.top_p } : {}),
+              },
+              ...(toolConfig ? { toolConfig } : {}),
+              ...(additionalModelRequestFields
+                ? { additionalModelRequestFields }
+                : {}),
+            }),
+            {
+              abortSignal: signal,
+            },
+          ),
+      })
 
       const outputMessage = response.output?.message
       const contentBlocks = outputMessage?.content ?? []
@@ -196,27 +209,32 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
       BedrockProvider.buildAdditionalModelRequestFields(model)
 
     try {
-      const response = await this.client.send(
-        new ConverseStreamCommand({
-          modelId: request.model,
-          messages,
-          ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
-          inferenceConfig: {
-            maxTokens,
-            ...(request.temperature != null
-              ? { temperature: request.temperature }
-              : {}),
-            ...(request.top_p != null ? { topP: request.top_p } : {}),
-          },
-          ...(toolConfig ? { toolConfig } : {}),
-          ...(additionalModelRequestFields
-            ? { additionalModelRequestFields }
-            : {}),
-        }),
-        {
-          abortSignal: options?.signal,
-        },
-      )
+      const response = await runWithModelRequestPolicy({
+        requestPolicy: this.requestPolicy,
+        signal: options?.signal,
+        run: (signal) =>
+          this.client.send(
+            new ConverseStreamCommand({
+              modelId: request.model,
+              messages,
+              ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
+              inferenceConfig: {
+                maxTokens,
+                ...(request.temperature != null
+                  ? { temperature: request.temperature }
+                  : {}),
+                ...(request.top_p != null ? { topP: request.top_p } : {}),
+              },
+              ...(toolConfig ? { toolConfig } : {}),
+              ...(additionalModelRequestFields
+                ? { additionalModelRequestFields }
+                : {}),
+            }),
+            {
+              abortSignal: signal,
+            },
+          ),
+      })
 
       if (!response.stream) {
         throw new Error('Bedrock ConverseStream returned no stream')

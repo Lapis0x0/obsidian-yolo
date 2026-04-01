@@ -24,6 +24,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 export class LmStudioProvider extends BaseLLMProvider<LLMProvider> {
@@ -52,6 +53,7 @@ export class LmStudioProvider extends BaseLLMProvider<LLMProvider> {
     provider: LLMProvider,
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+      requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
@@ -73,7 +75,11 @@ export class LmStudioProvider extends BaseLLMProvider<LLMProvider> {
       baseURL: `${provider.baseUrl ? provider.baseUrl.replace(/\/+$/, '') : 'http://127.0.0.1:1234'}/v1`,
       dangerouslyAllowBrowser: true,
       defaultHeaders,
-      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+      maxRetries: resolveSdkMaxRetries({
+        requestPolicy: options?.requestPolicy,
+        requestTransportMode: this.requestTransportMode,
+      }),
+      timeout: options?.requestPolicy?.timeoutMs,
     }
     this.browserClient = new OpenAI(clientOptions)
     this.obsidianClient = new OpenAI({

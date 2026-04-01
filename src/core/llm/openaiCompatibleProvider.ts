@@ -32,6 +32,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 type GeminiThinkingConfig = {
@@ -83,6 +84,7 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     provider: LLMProvider,
     options?: {
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+      requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
@@ -108,7 +110,11 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       apiKey: provider.apiKey ?? '',
       baseURL: this.resolvedBaseUrl ?? '',
       dangerouslyAllowBrowser: true,
-      maxRetries: this.requestTransportMode === 'auto' ? 0 : undefined,
+      maxRetries: resolveSdkMaxRetries({
+        requestPolicy: options?.requestPolicy,
+        requestTransportMode: this.requestTransportMode,
+      }),
+      timeout: options?.requestPolicy?.timeoutMs,
       defaultHeaders,
     }
     this.browserClient = new ClientCtor(clientOptions)

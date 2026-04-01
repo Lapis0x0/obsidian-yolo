@@ -40,6 +40,7 @@ import {
   LLMAPIKeyNotSetException,
   LLMRateLimitExceededException,
 } from './exception'
+import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 
 type GeminiStreamGenerator = Awaited<
   ReturnType<
@@ -82,9 +83,16 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
 
   private client: GoogleGenAI
   private apiKey: string
+  private readonly requestPolicy?: ModelRequestPolicy
 
-  constructor(provider: LLMProvider) {
+  constructor(
+    provider: LLMProvider,
+    options?: {
+      requestPolicy?: ModelRequestPolicy
+    },
+  ) {
     super(provider)
+    this.requestPolicy = options?.requestPolicy
 
     const baseUrl = provider.baseUrl
       ? GeminiProvider.normalizeBaseUrl(provider.baseUrl)
@@ -168,7 +176,18 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
         payloadBase as GeminiGenerateContentParams & Record<string, unknown>,
       )
 
-      const result = await this.client.models.generateContent(payload)
+      const result = await runWithModelRequestPolicy({
+        requestPolicy: this.requestPolicy,
+        signal: options?.signal,
+        run: (signal) =>
+          this.client.models.generateContent({
+            ...payload,
+            config: {
+              ...(payload.config ?? {}),
+              abortSignal: signal,
+            },
+          }),
+      })
 
       const messageId = crypto.randomUUID()
       return GeminiProvider.parseNonStreamingResponse(
@@ -259,7 +278,18 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
         payloadBase as GeminiGenerateContentParams & Record<string, unknown>,
       )
 
-      const stream = await this.client.models.generateContentStream(payload)
+      const stream = await runWithModelRequestPolicy({
+        requestPolicy: this.requestPolicy,
+        signal: options?.signal,
+        run: (signal) =>
+          this.client.models.generateContentStream({
+            ...payload,
+            config: {
+              ...(payload.config ?? {}),
+              abortSignal: signal,
+            },
+          }),
+      })
 
       const messageId = crypto.randomUUID()
       return this.streamResponseGenerator(
