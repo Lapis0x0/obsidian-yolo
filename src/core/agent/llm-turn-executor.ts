@@ -51,6 +51,8 @@ type AgentLlmTurnExecutorInput = {
     temperature?: number
     top_p?: number
     max_tokens?: number
+    primaryRequestTimeoutMs?: number
+    streamFallbackRecoveryEnabled?: boolean
   }
   maxContextOverride?: number
   currentFileContextMode?: 'full' | 'summary'
@@ -214,6 +216,10 @@ export class AgentLlmTurnExecutor {
         tools,
         signal: this.input.abortSignal,
         stream: this.input.requestParams?.stream ?? true,
+        primaryRequestTimeoutMs:
+          this.input.requestParams?.primaryRequestTimeoutMs,
+        streamFallbackRecoveryEnabled:
+          this.input.requestParams?.streamFallbackRecoveryEnabled,
         geminiTools: this.input.geminiTools,
         onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
           if (contentDelta) {

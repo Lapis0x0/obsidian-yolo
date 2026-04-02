@@ -447,6 +447,10 @@ export function useChatStreamManager({
                 modelTemperature,
               top_p: conversationOverrides?.top_p ?? assistantTopP ?? modelTopP,
               max_tokens: assistantMaxTokens ?? modelMaxTokens,
+              primaryRequestTimeoutMs:
+                settings.continuationOptions.primaryRequestTimeoutMs,
+              streamFallbackRecoveryEnabled:
+                settings.continuationOptions.streamFallbackRecoveryEnabled,
             },
             maxContextOverride:
               conversationOverrides?.maxContextMessages ??

@@ -435,10 +435,15 @@ export const smartComposerSettingsSchema = z.object({
       quickAskContextBeforeChars: z.number().int().min(0).optional(),
       // quick ask context chars after cursor
       quickAskContextAfterChars: z.number().int().min(0).optional(),
-      // whether model requests should auto retry once after retryable failures
-      modelRequestAutoRetryEnabled: z.boolean().optional(),
-      // timeout for a single model request attempt
-      modelRequestTimeoutMs: z.number().int().min(1000).max(600000).optional(),
+      // whether a failed streaming primary request should recover once with non-stream fallback
+      streamFallbackRecoveryEnabled: z.boolean().optional(),
+      // timeout for the primary request before recovery is considered
+      primaryRequestTimeoutMs: z
+        .number()
+        .int()
+        .min(1000)
+        .max(600000)
+        .optional(),
     })
     .catch({
       continuationModelId:
@@ -474,8 +479,8 @@ export const smartComposerSettingsSchema = z.object({
       quickAskAutoDockToTopRight: true,
       quickAskContextBeforeChars: 5000,
       quickAskContextAfterChars: 2000,
-      modelRequestAutoRetryEnabled: true,
-      modelRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
+      streamFallbackRecoveryEnabled: true,
+      primaryRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
     }),
 
   // Assistant list

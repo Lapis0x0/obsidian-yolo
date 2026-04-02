@@ -37,6 +37,8 @@ export type AgentRuntimeRunInput = {
     temperature?: number
     top_p?: number
     max_tokens?: number
+    primaryRequestTimeoutMs?: number
+    streamFallbackRecoveryEnabled?: boolean
   }
   allowedToolNames?: string[]
   toolPreferences?: Record<

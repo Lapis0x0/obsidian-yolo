@@ -150,6 +150,54 @@ describe('AgentLlmTurnExecutor', () => {
     }
   })
 
+  it('passes primary timeout and recovery settings to single turn execution', async () => {
+    const provider = new MockProvider()
+    mockExecuteSingleTurn.mockResolvedValue({
+      content: 'done',
+      reasoning: undefined,
+      annotations: undefined,
+      usage: undefined,
+      providerMetadata: undefined,
+      toolCalls: [],
+    })
+
+    const requestContextBuilder = {
+      generateRequestMessages: jest
+        .fn()
+        .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+    } as unknown as RequestContextBuilder
+
+    const mcpManager = {
+      listAvailableTools: jest.fn().mockResolvedValue([]),
+    } as unknown as McpManager
+
+    const executor = new AgentLlmTurnExecutor({
+      providerClient: provider,
+      model: TEST_MODEL,
+      requestContextBuilder,
+      mcpManager,
+      conversationId: 'conv-1',
+      messages: [],
+      enableTools: false,
+      includeBuiltinTools: false,
+      requestParams: {
+        stream: true,
+        primaryRequestTimeoutMs: 20000,
+        streamFallbackRecoveryEnabled: false,
+      },
+      onAssistantMessage: () => {},
+    })
+
+    await executor.run()
+
+    expect(mockExecuteSingleTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryRequestTimeoutMs: 20000,
+        streamFallbackRecoveryEnabled: false,
+      }),
+    )
+  })
+
   it('keeps streaming arguments for local write tool previews', async () => {
     const provider = new MockProvider()
     mockExecuteSingleTurn.mockImplementation(async ({ onStreamDelta }) => {

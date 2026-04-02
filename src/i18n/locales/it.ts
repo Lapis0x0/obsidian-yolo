@@ -149,15 +149,15 @@ export const it: TranslationKeys = {
       chatTitleModel: 'Modello per titolo e riepilogo conversazione',
       chatTitleModelDesc:
         'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni e generare i riepiloghi compact.',
-      modelRequestSectionTitle: 'Criteri richiesta modello',
-      modelRequestSectionDesc:
-        'Controlla timeout e retry automatico per le richieste condivise usate da chat, quick ask, smart space, write assist e completamento tab. Non modifica il fallback automatico del trasporto in modalita Auto.',
-      modelRequestAutoRetry: 'Abilita retry automatico',
-      modelRequestAutoRetryDesc:
-        'Riprova una volta lo stesso percorso di richiesta dopo un timeout o un errore temporaneo.',
-      modelRequestTimeout: 'Timeout richiesta (secondi)',
-      modelRequestTimeoutDesc:
-        'Quanto attendere prima che un singolo tentativo di richiesta al modello venga considerato in timeout. Predefinito: 12 secondi.',
+      requestRecoverySectionTitle: 'Criteri recupero richiesta',
+      requestRecoverySectionDesc:
+        'Controlla il timeout della richiesta primaria e il recupero automatico condivisi da chat, quick ask, smart space, write assist e completamento tab. Il probing del trasporto Auto resta separato da questa impostazione.',
+      streamFallbackRecovery: 'Abilita recupero automatico',
+      streamFallbackRecoveryDesc:
+        'Quando la richiesta primaria in streaming scade o fallisce, esegue un secondo tentativo in modalita non streaming.',
+      primaryRequestTimeout: 'Timeout richiesta primaria (secondi)',
+      primaryRequestTimeoutDesc:
+        'Quanto attendere prima che la richiesta primaria in streaming venga considerata in timeout. Se il recupero automatico e attivo, dopo il timeout verra tentato un fallback non streaming. Predefinito: 12 secondi.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",

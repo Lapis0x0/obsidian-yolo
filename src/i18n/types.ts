@@ -133,12 +133,12 @@ export type TranslationKeys = {
       defaultChatModelDesc: string
       chatTitleModel: string
       chatTitleModelDesc: string
-      modelRequestSectionTitle?: string
-      modelRequestSectionDesc?: string
-      modelRequestAutoRetry?: string
-      modelRequestAutoRetryDesc?: string
-      modelRequestTimeout?: string
-      modelRequestTimeoutDesc?: string
+      requestRecoverySectionTitle?: string
+      requestRecoverySectionDesc?: string
+      streamFallbackRecovery?: string
+      streamFallbackRecoveryDesc?: string
+      primaryRequestTimeout?: string
+      primaryRequestTimeoutDesc?: string
       globalSystemPrompt: string
       globalSystemPromptDesc: string
       continuationSystemPrompt: string

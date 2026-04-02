@@ -17,16 +17,14 @@ describe('requestPolicy', () => {
     ).toEqual(DEFAULT_MODEL_REQUEST_POLICY)
   })
 
-  it('enables one retry when auto retry is on', () => {
+  it('reads the configured primary request timeout', () => {
     expect(
       resolveModelRequestPolicy({
         continuationOptions: {
-          modelRequestAutoRetryEnabled: true,
-          modelRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
+          primaryRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
         },
       } as never),
     ).toEqual({
-      maxRetries: 1,
       timeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
     })
   })
@@ -35,72 +33,62 @@ describe('requestPolicy', () => {
     expect(
       resolveModelRequestPolicy({
         continuationOptions: {
-          modelRequestAutoRetryEnabled: false,
-          modelRequestTimeoutMs: 500,
+          primaryRequestTimeoutMs: 500,
         },
       } as never),
     ).toEqual({
-      maxRetries: 0,
       timeoutMs: 1000,
     })
 
     expect(
       resolveModelRequestPolicy({
         continuationOptions: {
-          modelRequestAutoRetryEnabled: false,
-          modelRequestTimeoutMs: 999999,
+          primaryRequestTimeoutMs: 999999,
         },
       } as never),
     ).toEqual({
-      maxRetries: 0,
       timeoutMs: 600000,
     })
   })
 
-  it('keeps sdk retries disabled in auto transport mode', () => {
+  it('keeps sdk retries disabled for every transport mode', () => {
+    expect(resolveSdkMaxRetries()).toBe(0)
     expect(
       resolveSdkMaxRetries({
         requestPolicy: {
-          maxRetries: 1,
           timeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
         },
         requestTransportMode: 'auto',
       }),
     ).toBe(0)
-
     expect(
       resolveSdkMaxRetries({
         requestPolicy: {
-          maxRetries: 1,
           timeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
         },
         requestTransportMode: 'obsidian',
       }),
-    ).toBe(1)
+    ).toBe(0)
   })
 
-  it('retries once after timeout', async () => {
-    const run = jest
-      .fn<Promise<string>, [AbortSignal]>()
-      .mockImplementationOnce(
-        () =>
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new ModelRequestTimeoutError(5)), 20)
-          }),
-      )
-      .mockResolvedValueOnce('ok')
+  it('enforces timeout without retrying', async () => {
+    const run = jest.fn<Promise<string>, [AbortSignal]>().mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new ModelRequestTimeoutError(5)), 20)
+        }),
+    )
 
     await expect(
       runWithModelRequestPolicy({
         requestPolicy: {
-          maxRetries: 1,
           timeoutMs: 5,
         },
         run,
       }),
-    ).resolves.toBe('ok')
+    ).rejects.toBeInstanceOf(ModelRequestTimeoutError)
 
-    expect(run).toHaveBeenCalledTimes(2)
+    expect(run).toHaveBeenCalledTimes(1)
   })
 
   it('does not retry user aborts', async () => {
@@ -111,7 +99,6 @@ describe('requestPolicy', () => {
     await expect(
       runWithModelRequestPolicy({
         requestPolicy: {
-          maxRetries: 1,
           timeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
         },
         signal: controller.signal,

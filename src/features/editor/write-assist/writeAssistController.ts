@@ -63,8 +63,6 @@ type WriteAssistDeps = {
   openApplyReview: (state: ApplyViewState) => Promise<boolean>
 }
 
-const FIRST_TOKEN_TIMEOUT_MS = 12000
-
 function getSelectionEndPosition(
   from: { line: number; ch: number },
   text: string,
@@ -106,6 +104,7 @@ export class WriteAssistController {
 
     const notice = new Notice('正在生成改写...', 0)
     const controller = new AbortController()
+    const settings = this.deps.getSettings()
     this.deps.addAbortController(controller)
 
     try {
@@ -174,6 +173,10 @@ export class WriteAssistController {
         request: rewriteRequestBase,
         signal: controller.signal,
         stream: streamPreference,
+        primaryRequestTimeoutMs:
+          settings.continuationOptions.primaryRequestTimeoutMs,
+        streamFallbackRecoveryEnabled:
+          settings.continuationOptions.streamFallbackRecoveryEnabled,
       })
       const rewritten = stripFences(rewriteResult.content).trim()
       if (!rewritten) {
@@ -610,7 +613,10 @@ export class WriteAssistController {
         request: baseRequest,
         signal: controller.signal,
         stream: streamPreference,
-        firstTokenTimeoutMs: FIRST_TOKEN_TIMEOUT_MS,
+        primaryRequestTimeoutMs:
+          settings.continuationOptions.primaryRequestTimeoutMs,
+        streamFallbackRecoveryEnabled:
+          settings.continuationOptions.streamFallbackRecoveryEnabled,
         geminiTools,
         onStreamDelta: ({ contentDelta, reasoningDelta }) => {
           if (reasoningDelta) {

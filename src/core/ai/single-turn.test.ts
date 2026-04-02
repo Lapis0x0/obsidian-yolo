@@ -302,6 +302,24 @@ describe('executeSingleTurn', () => {
     )
   })
 
+  it('does not recover with non-stream fallback when automatic recovery is disabled', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockRejectedValue(new Error('unexpected EOF'))
+
+    await expect(
+      executeSingleTurn({
+        providerClient: provider,
+        model: TEST_MODEL,
+        request: TEST_REQUEST,
+        stream: true,
+        streamFallbackRecoveryEnabled: false,
+      }),
+    ).rejects.toThrow('unexpected EOF')
+
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(consoleWarnSpy).not.toHaveBeenCalled()
+  })
+
   it('falls back to non-stream when streamed local write arguments are invalid', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(
@@ -399,6 +417,74 @@ describe('executeSingleTurn', () => {
         toolNames: ['yolo_local__fs_edit'],
       }),
     )
+  })
+
+  it('keeps invalid streamed write arguments when automatic recovery is disabled', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-no-recovery',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-invalid',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_edit',
+                      arguments:
+                        '{"path":"note.md","operation":{"type":"append"}}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-no-recovery',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+      streamFallbackRecoveryEnabled: false,
+    })
+
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-invalid',
+        name: 'yolo_local__fs_edit',
+        arguments: completeArgs(
+          {
+            path: 'note.md',
+            operation: { type: 'append' },
+          },
+          '{"path":"note.md","operation":{"type":"append"}}',
+        ),
+        metadata: undefined,
+      },
+    ])
+    expect(consoleWarnSpy).not.toHaveBeenCalled()
   })
 
   it('falls back to non-stream when streamed write arguments fail schema checks', async () => {

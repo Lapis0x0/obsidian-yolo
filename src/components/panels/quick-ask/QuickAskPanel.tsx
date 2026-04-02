@@ -1129,6 +1129,10 @@ export function QuickAskPanel({
             allowedSkillNames,
             requestParams: {
               stream: true,
+              primaryRequestTimeoutMs:
+                settings.continuationOptions.primaryRequestTimeoutMs,
+              streamFallbackRecoveryEnabled:
+                settings.continuationOptions.streamFallbackRecoveryEnabled,
             },
             currentFileContextMode: 'summary',
           },

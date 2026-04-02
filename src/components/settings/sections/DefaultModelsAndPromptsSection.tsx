@@ -98,13 +98,15 @@ export function DefaultModelsAndPromptsSection() {
 
   const defaultTitlePrompt =
     DEFAULT_CHAT_TITLE_PROMPT[language] ?? DEFAULT_CHAT_TITLE_PROMPT.en
-  const modelRequestAutoRetryEnabled =
-    settings.continuationOptions.modelRequestAutoRetryEnabled ?? true
-  const modelRequestTimeoutMs =
-    settings.continuationOptions.modelRequestTimeoutMs ??
+  const streamFallbackRecoveryEnabled =
+    settings.continuationOptions.streamFallbackRecoveryEnabled ?? true
+  const primaryRequestTimeoutMs =
+    settings.continuationOptions.primaryRequestTimeoutMs ??
     DEFAULT_MODEL_REQUEST_TIMEOUT_MS
-  const [modelRequestTimeoutSecondsInput, setModelRequestTimeoutSecondsInput] =
-    useState(String(Math.round(modelRequestTimeoutMs / 1000)))
+  const [
+    primaryRequestTimeoutSecondsInput,
+    setPrimaryRequestTimeoutSecondsInput,
+  ] = useState(String(Math.round(primaryRequestTimeoutMs / 1000)))
 
   const chatTitlePromptValue =
     (settings.chatOptions.chatTitlePrompt ?? '').trim().length > 0
@@ -112,10 +114,10 @@ export function DefaultModelsAndPromptsSection() {
       : defaultTitlePrompt
 
   useEffect(() => {
-    setModelRequestTimeoutSecondsInput(
-      String(Math.round(modelRequestTimeoutMs / 1000)),
+    setPrimaryRequestTimeoutSecondsInput(
+      String(Math.round(primaryRequestTimeoutMs / 1000)),
     )
-  }, [modelRequestTimeoutMs])
+  }, [primaryRequestTimeoutMs])
 
   const parseIntegerInput = (value: string) => {
     const trimmed = value.trim()
@@ -169,41 +171,41 @@ export function DefaultModelsAndPromptsSection() {
 
           <div className="smtcmp-models-textarea-card">
             <ObsidianSetting
-              name={t('settings.defaults.modelRequestSectionTitle')}
-              desc={t('settings.defaults.modelRequestSectionDesc')}
+              name={t('settings.defaults.requestRecoverySectionTitle')}
+              desc={t('settings.defaults.requestRecoverySectionDesc')}
               className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
             />
 
             <div className="smtcmp-models-textarea-card-body">
               <ObsidianSetting
-                name={t('settings.defaults.modelRequestAutoRetry')}
-                desc={t('settings.defaults.modelRequestAutoRetryDesc')}
+                name={t('settings.defaults.streamFallbackRecovery')}
+                desc={t('settings.defaults.streamFallbackRecoveryDesc')}
               >
                 <ObsidianToggle
-                  value={modelRequestAutoRetryEnabled}
+                  value={streamFallbackRecoveryEnabled}
                   onChange={(value) => {
                     commitSettingsUpdate(
                       {
                         continuationOptions: {
                           ...settings.continuationOptions,
-                          modelRequestAutoRetryEnabled: value,
+                          streamFallbackRecoveryEnabled: value,
                         },
                       },
-                      'modelRequestAutoRetryEnabled',
+                      'streamFallbackRecoveryEnabled',
                     )
                   }}
                 />
               </ObsidianSetting>
 
               <ObsidianSetting
-                name={t('settings.defaults.modelRequestTimeout')}
-                desc={t('settings.defaults.modelRequestTimeoutDesc')}
+                name={t('settings.defaults.primaryRequestTimeout')}
+                desc={t('settings.defaults.primaryRequestTimeoutDesc')}
               >
                 <ObsidianTextInput
                   type="number"
-                  value={modelRequestTimeoutSecondsInput}
+                  value={primaryRequestTimeoutSecondsInput}
                   onChange={(value) => {
-                    setModelRequestTimeoutSecondsInput(value)
+                    setPrimaryRequestTimeoutSecondsInput(value)
                     const nextSeconds = parseIntegerInput(value)
                     if (nextSeconds === null) return
                     const clampedSeconds = Math.min(
@@ -214,30 +216,30 @@ export function DefaultModelsAndPromptsSection() {
                       {
                         continuationOptions: {
                           ...settings.continuationOptions,
-                          modelRequestTimeoutMs: clampedSeconds * 1000,
+                          primaryRequestTimeoutMs: clampedSeconds * 1000,
                         },
                       },
-                      'modelRequestTimeoutMs',
+                      'primaryRequestTimeoutMs',
                     )
                   }}
                   onBlur={() => {
                     const parsedSeconds = parseIntegerInput(
-                      modelRequestTimeoutSecondsInput,
+                      primaryRequestTimeoutSecondsInput,
                     )
                     const nextSeconds =
                       parsedSeconds === null
-                        ? Math.round(modelRequestTimeoutMs / 1000)
+                        ? Math.round(primaryRequestTimeoutMs / 1000)
                         : Math.min(600, Math.max(1, parsedSeconds))
-                    setModelRequestTimeoutSecondsInput(String(nextSeconds))
-                    if (nextSeconds * 1000 !== modelRequestTimeoutMs) {
+                    setPrimaryRequestTimeoutSecondsInput(String(nextSeconds))
+                    if (nextSeconds * 1000 !== primaryRequestTimeoutMs) {
                       commitSettingsUpdate(
                         {
                           continuationOptions: {
                             ...settings.continuationOptions,
-                            modelRequestTimeoutMs: nextSeconds * 1000,
+                            primaryRequestTimeoutMs: nextSeconds * 1000,
                           },
                         },
-                        'modelRequestTimeoutMs',
+                        'primaryRequestTimeoutMs',
                       )
                     }
                   }}

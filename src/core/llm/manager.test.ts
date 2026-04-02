@@ -36,8 +36,8 @@ const createSettings = (): SmartComposerSettings =>
       },
     ],
     continuationOptions: {
-      modelRequestAutoRetryEnabled: true,
-      modelRequestTimeoutMs: 12000,
+      streamFallbackRecoveryEnabled: true,
+      primaryRequestTimeoutMs: 12000,
     },
   }) as unknown as SmartComposerSettings
 
@@ -66,12 +66,11 @@ describe('getProviderClient', () => {
       providerId: 'gemini-native',
     })
     const clientWithPolicy = client as unknown as {
-      requestPolicy?: { maxRetries: number; timeoutMs: number }
+      requestPolicy?: { timeoutMs: number }
     }
 
     expect(client).toBeInstanceOf(GeminiProvider)
     expect(clientWithPolicy.requestPolicy).toEqual({
-      maxRetries: 1,
       timeoutMs: 12000,
     })
   })
@@ -82,12 +81,11 @@ describe('getProviderClient', () => {
       providerId: 'gemini-oauth',
     })
     const clientWithPolicy = client as unknown as {
-      requestPolicy?: { maxRetries: number; timeoutMs: number }
+      requestPolicy?: { timeoutMs: number }
     }
 
     expect(client).toBeInstanceOf(GeminiOAuthProvider)
     expect(clientWithPolicy.requestPolicy).toEqual({
-      maxRetries: 1,
       timeoutMs: 12000,
     })
   })
@@ -98,11 +96,10 @@ describe('getProviderClient', () => {
       providerId: 'bedrock-native',
     })
     const clientWithPolicy = client as unknown as {
-      requestPolicy?: { maxRetries: number; timeoutMs: number }
+      requestPolicy?: { timeoutMs: number }
     }
 
     expect(clientWithPolicy.requestPolicy).toEqual({
-      maxRetries: 1,
       timeoutMs: 12000,
     })
   })

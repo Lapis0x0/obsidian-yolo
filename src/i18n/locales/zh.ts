@@ -123,14 +123,15 @@ export const zh: TranslationKeys = {
       defaultChatModelDesc: '选择你想用于侧边栏聊天的模型。',
       chatTitleModel: '对话命名与摘要模型',
       chatTitleModelDesc: '选择用于自动对话命名和 compact 摘要的模型。',
-      modelRequestSectionTitle: '模型请求策略',
-      modelRequestSectionDesc:
-        '统一控制聊天、Quick Ask、Smart Space、Write Assist 与 Tab 补全共用的模型请求超时和自动重试行为。不影响 Auto 传输模式下的自动回退。',
-      modelRequestAutoRetry: '启用自动重试',
-      modelRequestAutoRetryDesc:
-        '当同一路径的模型请求超时或失败时，再自动重试 1 次。',
-      modelRequestTimeout: '请求超时（秒）',
-      modelRequestTimeoutDesc: '单次模型请求等待多久后判定为超时。默认 12 秒。',
+      requestRecoverySectionTitle: '请求恢复策略',
+      requestRecoverySectionDesc:
+        '统一控制聊天、Quick Ask、Smart Space、Write Assist 与 Tab 补全共用的主请求超时和自动恢复行为。Auto 传输模式下的短时选路探测不受此设置影响。',
+      streamFallbackRecovery: '启用自动恢复',
+      streamFallbackRecoveryDesc:
+        '当流式主请求超时或失败时，自动改用非流式再尝试一次。',
+      primaryRequestTimeout: '主请求超时（秒）',
+      primaryRequestTimeoutDesc:
+        '流式主请求等待多久后判定为超时。超时后如已启用自动恢复，将自动改用非流式再尝试一次。默认 12 秒。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc:
         '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',

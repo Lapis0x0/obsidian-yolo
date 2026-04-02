@@ -12,6 +12,7 @@ import {
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import { createToolCallArguments } from '../../utils/chat/tool-arguments'
+import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../settings/schema/setting.types'
 import { BaseLLMProvider } from '../llm/base'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
 
@@ -57,7 +58,8 @@ type SingleTurnExecutionInput = {
   tools?: RequestTool[]
   signal?: AbortSignal
   stream?: boolean
-  firstTokenTimeoutMs?: number
+  primaryRequestTimeoutMs?: number
+  streamFallbackRecoveryEnabled?: boolean
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
@@ -70,7 +72,7 @@ type SingleTurnExecutionInput = {
   }) => void
 }
 
-const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 12000
+const DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS = DEFAULT_MODEL_REQUEST_TIMEOUT_MS
 
 const normalizeToolName = (toolName: string): string => {
   if (!toolName.includes('__')) {
@@ -235,7 +237,8 @@ export async function executeSingleTurn({
   tools,
   signal,
   stream = true,
-  firstTokenTimeoutMs = DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
+  primaryRequestTimeoutMs = DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS,
+  streamFallbackRecoveryEnabled = true,
   geminiTools,
   onStreamDelta,
 }: SingleTurnExecutionInput): Promise<SingleTurnExecutionResult> {
@@ -312,7 +315,7 @@ export async function executeSingleTurn({
     timeoutId = setTimeout(() => {
       timedOut = true
       streamController.abort()
-    }, firstTokenTimeoutMs)
+    }, primaryRequestTimeoutMs)
 
     const streamIterator = await providerClient.streamResponse(
       model,
@@ -427,7 +430,10 @@ export async function executeSingleTurn({
       finishReason ?? undefined
     let finalProviderMetadata: ProviderMetadata | undefined = providerMetadata
 
-    if (hasInvalidWriteToolArguments(streamedToolCallList)) {
+    if (
+      streamFallbackRecoveryEnabled &&
+      hasInvalidWriteToolArguments(streamedToolCallList)
+    ) {
       logStreamingRecoverTriggered({
         reason: 'invalid_write_args',
         finishReason,
@@ -462,7 +468,7 @@ export async function executeSingleTurn({
     const shouldFallback =
       (timedOut && !(signal?.aborted ?? false)) ||
       /protocol error|unexpected EOF|incomplete envelope/i.test(message)
-    if (!shouldFallback) {
+    if (!streamFallbackRecoveryEnabled || !shouldFallback) {
       throw error
     }
     logStreamingRecoverTriggered({

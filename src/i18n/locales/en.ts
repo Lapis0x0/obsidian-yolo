@@ -149,15 +149,15 @@ export const en: TranslationKeys = {
       chatTitleModel: 'Conversation title and summary model',
       chatTitleModelDesc:
         'Choose the model used for automatic conversation naming and compact summaries.',
-      modelRequestSectionTitle: 'Model request policy',
-      modelRequestSectionDesc:
-        'Control timeout and automatic retry for shared model requests used by chat, quick ask, smart space, write assist, and tab completion. This does not change Auto transport fallback.',
-      modelRequestAutoRetry: 'Enable automatic retry',
-      modelRequestAutoRetryDesc:
-        'Retry the same request path once after a timeout or retryable failure.',
-      modelRequestTimeout: 'Request timeout (seconds)',
-      modelRequestTimeoutDesc:
-        'How long to wait before a single model request attempt is treated as timed out. Default: 12 seconds.',
+      requestRecoverySectionTitle: 'Request recovery policy',
+      requestRecoverySectionDesc:
+        'Control the shared primary request timeout and automatic recovery behavior used by chat, quick ask, smart space, write assist, and tab completion. Auto transport probing stays separate from this setting.',
+      streamFallbackRecovery: 'Enable automatic recovery',
+      streamFallbackRecoveryDesc:
+        'When the streaming primary request times out or fails, retry once with a non-streaming fallback.',
+      primaryRequestTimeout: 'Primary request timeout (seconds)',
+      primaryRequestTimeoutDesc:
+        'How long to wait before the streaming primary request is treated as timed out. If automatic recovery is enabled, a non-streaming fallback is attempted afterward. Default: 12 seconds.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
