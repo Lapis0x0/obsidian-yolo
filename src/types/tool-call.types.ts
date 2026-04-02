@@ -69,6 +69,7 @@ export type ToolEditSummaryFile = {
   addedLines: number
   removedLines: number
   undoStatus: Exclude<ToolEditUndoStatus, 'partial'>
+  reviewRoundId?: string
 }
 
 export type ToolEditSummary = {

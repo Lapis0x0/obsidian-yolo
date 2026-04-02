@@ -497,7 +497,7 @@ export function QuickAskPanel({
 
   const noop = useCallback(() => {}, [])
   const handleOpenEditSummaryFile = useCallback(
-    (path: string) => {
+    ({ path }: { path: string }) => {
       const targetFile = app.vault.getAbstractFileByPath(path)
       if (!(targetFile instanceof TFile)) {
         new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))

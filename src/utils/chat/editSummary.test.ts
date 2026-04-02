@@ -25,6 +25,7 @@ describe('editSummary helpers', () => {
       totalAddedLines: 2,
       totalRemovedLines: 2,
       undoStatus: 'available',
+      files: [{ reviewRoundId: undefined }],
     })
   })
 
@@ -90,7 +91,11 @@ describe('editSummary helpers', () => {
       undoStatus: 'available',
       hasUndoableFiles: true,
     })
-    expect(result?.files[0]?.path).toBe('note.md')
+    expect(result?.files[0]).toMatchObject({
+      path: 'note.md',
+      firstRoundId: 'tool-1',
+      latestRoundId: 'tool-1',
+    })
   })
 
   it('prefers in-memory snapshots to compute net file deltas', () => {

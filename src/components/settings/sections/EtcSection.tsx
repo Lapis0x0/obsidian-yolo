@@ -11,6 +11,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
+import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
@@ -110,6 +111,7 @@ export function EtcSection({ app }: EtcSectionProps) {
       onConfirm: () => {
         void (async () => {
           await clearAllPromptSnapshotStores(app, settings)
+          await clearAllEditReviewSnapshotStores(app, settings)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
         })().catch((error: unknown) => {
           console.error('Failed to clear chat snapshots', error)

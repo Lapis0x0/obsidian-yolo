@@ -2,7 +2,10 @@ import { Loader2, Undo2 } from 'lucide-react'
 import { memo } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import type { GroupEditSummary } from '../../utils/chat/editSummary'
+import type {
+  GroupEditSummary,
+  GroupEditSummaryPathItem,
+} from '../../utils/chat/editSummary'
 
 const formatDelta = (value: number, sign: '+' | '-') => {
   return `${sign}${value}`
@@ -19,7 +22,7 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
   undoingTargetKey: string | null
   onUndo: () => void
   onUndoFile: (path: string) => void
-  onOpenFile: (path: string) => void
+  onOpenFile: (file: GroupEditSummaryPathItem) => void
 }) {
   const { t } = useLanguage()
   const undoDisabled =
@@ -69,7 +72,7 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
             <button
               type="button"
               className="smtcmp-agent-edit-summary-path"
-              onClick={() => onOpenFile(file.path)}
+              onClick={() => onOpenFile(file)}
               title={file.path}
             >
               {file.path}

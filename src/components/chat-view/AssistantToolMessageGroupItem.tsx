@@ -1,12 +1,18 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { useApp } from '../../contexts/app-context'
+import { useSettings } from '../../contexts/settings-context'
+import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatToolMessage,
 } from '../../types/chat'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
-import { collectGroupEditSummary } from '../../utils/chat/editSummary'
+import {
+  collectGroupEditSummary,
+  countChangedLines,
+} from '../../utils/chat/editSummary'
 
 import AssistantEditSummary from './AssistantEditSummary'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
@@ -47,7 +53,7 @@ export type AssistantToolMessageGroupItemProps = {
     conversationId: string
     content: string
   }) => void
-  onOpenEditSummaryFile: (path: string) => void
+  onOpenEditSummaryFile: (file: GroupEditSummary['files'][number]) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
   pendingCompactionAnchorMessageId?: string | null
@@ -82,6 +88,8 @@ export default function AssistantToolMessageGroupItem({
   pendingCompactionAnchorMessageId,
   hidePendingAssistantPlaceholders = false,
 }: AssistantToolMessageGroupItemProps) {
+  const app = useApp()
+  const { settings } = useSettings()
   const assistantMessages = messages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
   )
@@ -109,10 +117,82 @@ export default function AssistantToolMessageGroupItem({
       !message.annotations &&
       !message.toolCallRequests?.length,
   )
-  const groupEditSummary = useMemo(
+  const baseGroupEditSummary = useMemo(
     () => collectGroupEditSummary(messages),
     [messages],
   )
+  const [groupEditSummary, setGroupEditSummary] =
+    useState<GroupEditSummary | null>(baseGroupEditSummary)
+
+  useEffect(() => {
+    if (!baseGroupEditSummary) {
+      setGroupEditSummary(null)
+      return
+    }
+
+    let cancelled = false
+    setGroupEditSummary(baseGroupEditSummary)
+
+    void (async () => {
+      const snapshotEntries = await Promise.all(
+        baseGroupEditSummary.files.map(async (file) => {
+          const [firstSnapshot, latestSnapshot] = await Promise.all([
+            readEditReviewSnapshot({
+              app,
+              conversationId,
+              roundId: file.firstRoundId,
+              filePath: file.path,
+              settings,
+            }),
+            readEditReviewSnapshot({
+              app,
+              conversationId,
+              roundId: file.latestRoundId,
+              filePath: file.path,
+              settings,
+            }),
+          ])
+
+          if (!firstSnapshot || !latestSnapshot) {
+            return file
+          }
+
+          const counts = countChangedLines(
+            firstSnapshot.beforeContent,
+            latestSnapshot.afterContent,
+          )
+
+          return {
+            ...file,
+            addedLines: counts.addedLines,
+            removedLines: counts.removedLines,
+          }
+        }),
+      )
+
+      if (cancelled) {
+        return
+      }
+
+      setGroupEditSummary({
+        ...baseGroupEditSummary,
+        files: snapshotEntries,
+        totalAddedLines: snapshotEntries.reduce(
+          (sum, file) => sum + file.addedLines,
+          0,
+        ),
+        totalRemovedLines: snapshotEntries.reduce(
+          (sum, file) => sum + file.removedLines,
+          0,
+        ),
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [app, baseGroupEditSummary, conversationId, settings])
+
   const groupEditSummaryKey = useMemo(
     () =>
       groupEditSummary

@@ -569,6 +569,8 @@ export class McpManager {
     name,
     args,
     id,
+    conversationId,
+    roundId,
     conversationMessages,
     signal,
     requireReview = false,
@@ -576,6 +578,8 @@ export class McpManager {
     name: string
     args?: Record<string, unknown> | undefined
     id?: string
+    conversationId?: string
+    roundId?: string
     conversationMessages?: ChatMessage[]
     signal?: AbortSignal
     requireReview?: boolean
@@ -609,7 +613,9 @@ export class McpManager {
           app: this.app,
           settings: this.settings,
           openApplyReview: this.openApplyReview,
+          conversationId,
           conversationMessages,
+          roundId,
           toolCallId: id,
           toolName,
           args: parsedArgs ?? {},

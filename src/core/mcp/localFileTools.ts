@@ -10,6 +10,7 @@ import {
 } from '../../types/tool-call.types'
 import { createToolEditSummary } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import {
   type TextEditOperation,
@@ -1386,7 +1387,9 @@ export async function callLocalFileTool({
   app,
   settings,
   openApplyReview,
+  conversationId,
   conversationMessages,
+  roundId,
   toolCallId,
   toolName,
   args,
@@ -1396,7 +1399,9 @@ export async function callLocalFileTool({
   app: App
   settings?: SmartComposerSettings
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
+  conversationId?: string
   conversationMessages?: ChatMessage[]
+  roundId?: string
   toolCallId?: string
   toolName: string
   args: Record<string, unknown>
@@ -1743,10 +1748,11 @@ export async function callLocalFileTool({
           await app.vault.modify(file, nextContent)
         }
 
-        const editSummary = createToolEditSummary({
+        let editSummary = createToolEditSummary({
           path,
           beforeContent: content,
           afterContent: appliedContent,
+          reviewRoundId: roundId,
         })
         const appliedAt = Date.now()
         if (toolCallId && editSummary) {
@@ -1757,6 +1763,29 @@ export async function callLocalFileTool({
             afterContent: appliedContent,
             appliedAt,
           })
+        }
+
+        if (conversationId && roundId && editSummary) {
+          const snapshot = await upsertEditReviewSnapshot({
+            app,
+            conversationId,
+            roundId,
+            filePath: path,
+            beforeContent: content,
+            afterContent: appliedContent,
+            settings,
+          })
+          editSummary = {
+            ...editSummary,
+            files: editSummary.files.map((file) => ({
+              ...file,
+              addedLines: snapshot.addedLines,
+              removedLines: snapshot.removedLines,
+              reviewRoundId: roundId,
+            })),
+            totalAddedLines: snapshot.addedLines,
+            totalRemovedLines: snapshot.removedLines,
+          }
         }
 
         return {

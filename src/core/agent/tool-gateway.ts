@@ -80,10 +80,12 @@ export class AgentToolGateway {
 
   async executeAutoToolCalls({
     toolMessage,
+    conversationId,
     conversationMessages,
     signal,
   }: {
     toolMessage: ChatToolMessage
+    conversationId: string
     conversationMessages?: ChatMessage[]
     signal?: AbortSignal
   }): Promise<ChatToolMessage> {
@@ -101,7 +103,9 @@ export class AgentToolGateway {
           name: toolCall.request.name,
           args: getToolCallArgumentsObject(toolCall.request.arguments),
           id: toolCall.request.id,
+          conversationId,
           conversationMessages,
+          roundId: toolMessage.id,
           requireReview: this.shouldUseFsEditReview(toolCall.request.name),
           signal,
         }),

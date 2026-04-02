@@ -136,7 +136,10 @@ describe('AgentToolGateway', () => {
       ToolCallResponseStatus.Running,
     )
 
-    await gateway.executeAutoToolCalls({ toolMessage: message })
+    await gateway.executeAutoToolCalls({
+      toolMessage: message,
+      conversationId: 'conv-1',
+    })
 
     // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
     const callToolMock = mcpManager.callTool
@@ -144,7 +147,9 @@ describe('AgentToolGateway', () => {
       name: 'yolo_local__fs_edit',
       args: {},
       id: 'tool-1',
+      conversationId: 'conv-1',
       conversationMessages: undefined,
+      roundId: message.id,
       requireReview: true,
       signal: undefined,
     })

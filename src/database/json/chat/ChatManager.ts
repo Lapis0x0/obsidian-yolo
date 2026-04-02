@@ -9,6 +9,7 @@ import { CHAT_DIR } from '../constants'
 import { EmptyChatTitleException } from '../exception'
 
 import { deletePromptSnapshotStore } from './promptSnapshotStore'
+import { deleteEditReviewSnapshotStore } from './editReviewSnapshotStore'
 import {
   CHAT_SCHEMA_VERSION,
   ChatConversation,
@@ -167,6 +168,7 @@ export class ChatManager extends AbstractJsonRepository<
 
     await this.delete(targetMetadata.fileName)
     await deletePromptSnapshotStore(this.app, id, this.settings)
+    await deleteEditReviewSnapshotStore(this.app, id, this.settings)
     await this.removeFromIndex(id)
     return true
   }

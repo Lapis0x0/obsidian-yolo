@@ -56,12 +56,12 @@ import type {
   MentionableCurrentFile,
 } from '../../types/mentionable'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   type GroupEditSummary,
   deriveToolEditUndoStatus,
   updateToolMessageEditSummary,
 } from '../../utils/chat/editSummary'
-import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import {
   getBlockContentHash,
   getBlockMentionableCountInfo,
@@ -2050,6 +2050,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleUndoEditSummary = useCallback(
     async (summary: GroupEditSummary) => {
+      if (!currentConversationId) {
+        return
+      }
+
       const summaryKey = summary.entries
         .map((entry) => entry.toolCallId)
         .join(':')
@@ -2060,79 +2064,52 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setUndoingEditSummaryTarget(targetKey)
 
       try {
-        const undoStateByPath = new Map<
-          string,
-          Map<string, 'applied' | 'unavailable'>
-        >()
+        const undoStateByPath = new Map<string, 'applied' | 'unavailable'>()
 
         for (const fileGroup of summary.files) {
-          const relatedEntries = summary.entries
-            .flatMap((entry) =>
-              entry.summary.files
-                .filter((file) => file.path === fileGroup.path)
-                .map((file, index) => ({
-                  entry,
-                  fileIndex: index,
-                  file,
-                })),
-            )
-            .reverse()
-
-          if (relatedEntries.length === 0) {
-            continue
-          }
-
           const targetFile = app.vault.getAbstractFileByPath(fileGroup.path)
           if (!(targetFile instanceof TFile)) {
-            undoStateByPath.set(
-              fileGroup.path,
-              new Map(
-                relatedEntries.map((entry) => [
-                  `${entry.entry.toolCallId}:${entry.fileIndex}`,
-                  'unavailable',
-                ]),
-              ),
-            )
+            undoStateByPath.set(fileGroup.path, 'unavailable')
             continue
           }
 
+          const [firstSnapshot, latestSnapshot] = await Promise.all([
+            readEditReviewSnapshot({
+              app,
+              conversationId: currentConversationId,
+              roundId: fileGroup.firstRoundId,
+              filePath: fileGroup.path,
+              settings,
+            }),
+            readEditReviewSnapshot({
+              app,
+              conversationId: currentConversationId,
+              roundId: fileGroup.latestRoundId,
+              filePath: fileGroup.path,
+              settings,
+            }),
+          ])
+
           const currentContent = await app.vault.read(targetFile)
-          let nextContent = currentContent
-          const entryStates = new Map<string, 'applied' | 'unavailable'>()
-
-          for (const entry of relatedEntries) {
-            const entryKey = `${entry.entry.toolCallId}:${entry.fileIndex}`
-            const snapshot = editUndoSnapshotStore.get(
-              entry.entry.toolCallId,
-              entry.file.path,
-            )
-            if (!snapshot || nextContent !== snapshot.afterContent) {
-              relatedEntries.forEach((remainingEntry) => {
-                const remainingKey = `${remainingEntry.entry.toolCallId}:${remainingEntry.fileIndex}`
-                if (!entryStates.has(remainingKey)) {
-                  entryStates.set(remainingKey, 'unavailable')
-                }
-              })
-              break
-            }
-
-            nextContent = snapshot.beforeContent
-            entryStates.set(entryKey, 'applied')
-            editUndoSnapshotStore.delete(
-              entry.entry.toolCallId,
-              entry.file.path,
-            )
+          if (
+            !firstSnapshot ||
+            !latestSnapshot ||
+            currentContent !== latestSnapshot.afterContent
+          ) {
+            undoStateByPath.set(fileGroup.path, 'unavailable')
+            continue
           }
 
-          undoStateByPath.set(fileGroup.path, entryStates)
-
-          if (nextContent !== currentContent) {
-            await app.vault.modify(targetFile, nextContent)
+          undoStateByPath.set(fileGroup.path, 'applied')
+          if (currentContent !== firstSnapshot.beforeContent) {
+            await app.vault.modify(targetFile, firstSnapshot.beforeContent)
           }
         }
 
-        let appliedCount = 0
-        let unavailableCount = 0
+        const appliedCount = summary.files.filter(
+          (file) => undoStateByPath.get(file.path) === 'applied',
+        ).length
+        const unavailableCount = summary.files.length - appliedCount
 
         const updatedMessages = chatMessages.map((message) => {
           if (message.role !== 'tool') {
@@ -2147,15 +2124,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
             const nextFiles = entry.summary.files.map((file, index) => {
               const nextStatus =
-                undoStateByPath
-                  .get(file.path)
-                  ?.get(`${entry.toolCallId}:${index}`) ?? file.undoStatus
-
-              if (nextStatus === 'applied') {
-                appliedCount += 1
-              } else if (nextStatus === 'unavailable') {
-                unavailableCount += 1
-              }
+                undoStateByPath.get(file.path) ?? file.undoStatus
 
               return {
                 ...file,
@@ -2214,27 +2183,65 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
     },
     [
-      app.vault,
+      app,
       agentService,
       chatMessages,
       currentConversationId,
       persistConversationImmediately,
+      settings,
       t,
     ],
   )
 
   const handleOpenEditSummaryFile = useCallback(
-    (path: string) => {
+    async ({
+      path,
+      firstRoundId,
+      latestRoundId,
+    }: GroupEditSummary['files'][number]) => {
       const targetFile = app.vault.getAbstractFileByPath(path)
       if (!(targetFile instanceof TFile)) {
         new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
         return
       }
 
+      if (!currentConversationId) {
+        const leaf = app.workspace.getLeaf(false)
+        void leaf.openFile(targetFile)
+        return
+      }
+
+      const [firstSnapshot, latestSnapshot] = await Promise.all([
+        readEditReviewSnapshot({
+          app,
+          conversationId: currentConversationId,
+          roundId: firstRoundId,
+          filePath: path,
+          settings,
+        }),
+        readEditReviewSnapshot({
+          app,
+          conversationId: currentConversationId,
+          roundId: latestRoundId,
+          filePath: path,
+          settings,
+        }),
+      ])
+
+      if (firstSnapshot && latestSnapshot) {
+        await plugin.openApplyReview({
+          file: targetFile,
+          originalContent: firstSnapshot.beforeContent,
+          newContent: latestSnapshot.afterContent,
+          reviewMode: 'full',
+        })
+        return
+      }
+
       const leaf = app.workspace.getLeaf(false)
-      void leaf.openFile(targetFile)
+      await leaf.openFile(targetFile)
     },
-    [app.vault, app.workspace, t],
+    [app, app.vault, app.workspace, currentConversationId, plugin, settings, t],
   )
 
   const handleToolMessageUpdate = useCallback(

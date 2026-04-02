@@ -371,7 +371,9 @@ export class AgentService {
       name: toolCall.request.name,
       args: getToolCallArgumentsObject(toolCall.request.arguments),
       id: toolCall.request.id,
+      conversationId,
       conversationMessages: entry.state.messages,
+      roundId: toolMessage.id,
     })
 
     const nextMessages = this.updateToolCallResponse({

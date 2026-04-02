@@ -28,6 +28,8 @@ export type GroupEditSummaryPathItem = {
   addedLines: number
   removedLines: number
   undoStatus: ToolEditUndoStatus
+  firstRoundId: string
+  latestRoundId: string
 }
 
 export type GroupEditSummary = {
@@ -46,7 +48,10 @@ const LINE_DIFF_OPTIONS: ILinesDiffComputerOptions = {
   maxComputationTimeMs: 0,
 }
 
-const countChangedLines = (beforeContent: string, afterContent: string) => {
+export const countChangedLines = (
+  beforeContent: string,
+  afterContent: string,
+) => {
   const beforeLines = beforeContent.split('\n')
   const afterLines = afterContent.split('\n')
   const diffComputer = new AdvancedLinesDiffComputer()
@@ -89,10 +94,12 @@ export const createToolEditSummary = ({
   path,
   beforeContent,
   afterContent,
+  reviewRoundId,
 }: {
   path: string
   beforeContent: string
   afterContent: string
+  reviewRoundId?: string
 }): ToolEditSummary | undefined => {
   if (beforeContent === afterContent) {
     return undefined
@@ -109,6 +116,7 @@ export const createToolEditSummary = ({
       addedLines,
       removedLines,
       undoStatus: 'available',
+      reviewRoundId,
     },
   ]
 
@@ -182,12 +190,15 @@ export const collectGroupEditSummary = (
       removedLines: number
       statuses: ToolEditUndoStatus[]
       latestToolCallId: string
+      firstRoundId: string
+      latestRoundId: string
     }
   >()
 
   entries.forEach((entry) => {
     const { summary } = entry
     summary.files.forEach((file) => {
+      const roundId = file.reviewRoundId ?? entry.toolMessageId
       const existing = pathMap.get(file.path)
       if (!existing) {
         pathMap.set(file.path, {
@@ -196,6 +207,8 @@ export const collectGroupEditSummary = (
           removedLines: file.removedLines,
           statuses: [file.undoStatus],
           latestToolCallId: entry.toolCallId,
+          firstRoundId: roundId,
+          latestRoundId: roundId,
         })
         return
       }
@@ -204,6 +217,7 @@ export const collectGroupEditSummary = (
       existing.removedLines = file.removedLines
       existing.statuses.push(file.undoStatus)
       existing.latestToolCallId = entry.toolCallId
+      existing.latestRoundId = roundId
     })
   })
 
@@ -229,6 +243,8 @@ export const collectGroupEditSummary = (
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
       undoStatus: aggregateUndoStatus(value.statuses),
+      firstRoundId: value.firstRoundId,
+      latestRoundId: value.latestRoundId,
     }
   })
 
