@@ -123,9 +123,6 @@ export const zh: TranslationKeys = {
       defaultChatModelDesc: '选择你想用于侧边栏聊天的模型。',
       chatTitleModel: '对话命名与摘要模型',
       chatTitleModelDesc: '选择用于自动对话命名和 compact 摘要的模型。',
-      requestRecoverySectionTitle: '请求恢复策略',
-      requestRecoverySectionDesc:
-        '统一控制聊天、Quick Ask、Smart Space、Write Assist 与 Tab 补全共用的主请求超时和自动恢复行为。Auto 传输模式下的短时选路探测不受此设置影响。',
       streamFallbackRecovery: '启用自动恢复',
       streamFallbackRecoveryDesc:
         '当流式主请求超时或失败时，自动改用非流式再尝试一次。',

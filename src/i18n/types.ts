@@ -133,8 +133,6 @@ export type TranslationKeys = {
       defaultChatModelDesc: string
       chatTitleModel: string
       chatTitleModelDesc: string
-      requestRecoverySectionTitle?: string
-      requestRecoverySectionDesc?: string
       streamFallbackRecovery?: string
       streamFallbackRecoveryDesc?: string
       primaryRequestTimeout?: string

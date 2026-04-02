@@ -149,9 +149,6 @@ export const it: TranslationKeys = {
       chatTitleModel: 'Modello per titolo e riepilogo conversazione',
       chatTitleModelDesc:
         'Scegli il modello usato per assegnare automaticamente un nome alle conversazioni e generare i riepiloghi compact.',
-      requestRecoverySectionTitle: 'Criteri recupero richiesta',
-      requestRecoverySectionDesc:
-        'Controlla il timeout della richiesta primaria e il recupero automatico condivisi da chat, quick ask, smart space, write assist e completamento tab. Il probing del trasporto Auto resta separato da questa impostazione.',
       streamFallbackRecovery: 'Abilita recupero automatico',
       streamFallbackRecoveryDesc:
         'Quando la richiesta primaria in streaming scade o fallisce, esegue un secondo tentativo in modalita non streaming.',

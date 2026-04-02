@@ -169,84 +169,75 @@ export function DefaultModelsAndPromptsSection() {
             />
           </ObsidianSetting>
 
-          <div className="smtcmp-models-textarea-card">
-            <ObsidianSetting
-              name={t('settings.defaults.requestRecoverySectionTitle')}
-              desc={t('settings.defaults.requestRecoverySectionDesc')}
-              className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
+          <ObsidianSetting
+            name={t('settings.defaults.streamFallbackRecovery')}
+            desc={t('settings.defaults.streamFallbackRecoveryDesc')}
+            className="smtcmp-models-select-card"
+          >
+            <ObsidianToggle
+              value={streamFallbackRecoveryEnabled}
+              onChange={(value) => {
+                commitSettingsUpdate(
+                  {
+                    continuationOptions: {
+                      ...settings.continuationOptions,
+                      streamFallbackRecoveryEnabled: value,
+                    },
+                  },
+                  'streamFallbackRecoveryEnabled',
+                )
+              }}
             />
+          </ObsidianSetting>
 
-            <div className="smtcmp-models-textarea-card-body">
-              <ObsidianSetting
-                name={t('settings.defaults.streamFallbackRecovery')}
-                desc={t('settings.defaults.streamFallbackRecoveryDesc')}
-              >
-                <ObsidianToggle
-                  value={streamFallbackRecoveryEnabled}
-                  onChange={(value) => {
-                    commitSettingsUpdate(
-                      {
-                        continuationOptions: {
-                          ...settings.continuationOptions,
-                          streamFallbackRecoveryEnabled: value,
-                        },
+          {streamFallbackRecoveryEnabled ? (
+            <ObsidianSetting
+              name={t('settings.defaults.primaryRequestTimeout')}
+              desc={t('settings.defaults.primaryRequestTimeoutDesc')}
+              className="smtcmp-models-select-card"
+            >
+              <ObsidianTextInput
+                type="number"
+                value={primaryRequestTimeoutSecondsInput}
+                onChange={(value) => {
+                  setPrimaryRequestTimeoutSecondsInput(value)
+                  const nextSeconds = parseIntegerInput(value)
+                  if (nextSeconds === null) return
+                  const clampedSeconds = Math.min(600, Math.max(1, nextSeconds))
+                  commitSettingsUpdate(
+                    {
+                      continuationOptions: {
+                        ...settings.continuationOptions,
+                        primaryRequestTimeoutMs: clampedSeconds * 1000,
                       },
-                      'streamFallbackRecoveryEnabled',
-                    )
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.defaults.primaryRequestTimeout')}
-                desc={t('settings.defaults.primaryRequestTimeoutDesc')}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={primaryRequestTimeoutSecondsInput}
-                  onChange={(value) => {
-                    setPrimaryRequestTimeoutSecondsInput(value)
-                    const nextSeconds = parseIntegerInput(value)
-                    if (nextSeconds === null) return
-                    const clampedSeconds = Math.min(
-                      600,
-                      Math.max(1, nextSeconds),
-                    )
+                    },
+                    'primaryRequestTimeoutMs',
+                  )
+                }}
+                onBlur={() => {
+                  const parsedSeconds = parseIntegerInput(
+                    primaryRequestTimeoutSecondsInput,
+                  )
+                  const nextSeconds =
+                    parsedSeconds === null
+                      ? Math.round(primaryRequestTimeoutMs / 1000)
+                      : Math.min(600, Math.max(1, parsedSeconds))
+                  setPrimaryRequestTimeoutSecondsInput(String(nextSeconds))
+                  if (nextSeconds * 1000 !== primaryRequestTimeoutMs) {
                     commitSettingsUpdate(
                       {
                         continuationOptions: {
                           ...settings.continuationOptions,
-                          primaryRequestTimeoutMs: clampedSeconds * 1000,
+                          primaryRequestTimeoutMs: nextSeconds * 1000,
                         },
                       },
                       'primaryRequestTimeoutMs',
                     )
-                  }}
-                  onBlur={() => {
-                    const parsedSeconds = parseIntegerInput(
-                      primaryRequestTimeoutSecondsInput,
-                    )
-                    const nextSeconds =
-                      parsedSeconds === null
-                        ? Math.round(primaryRequestTimeoutMs / 1000)
-                        : Math.min(600, Math.max(1, parsedSeconds))
-                    setPrimaryRequestTimeoutSecondsInput(String(nextSeconds))
-                    if (nextSeconds * 1000 !== primaryRequestTimeoutMs) {
-                      commitSettingsUpdate(
-                        {
-                          continuationOptions: {
-                            ...settings.continuationOptions,
-                            primaryRequestTimeoutMs: nextSeconds * 1000,
-                          },
-                        },
-                        'primaryRequestTimeoutMs',
-                      )
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-            </div>
-          </div>
+                  }
+                }}
+              />
+            </ObsidianSetting>
+          ) : null}
 
           <div className="smtcmp-models-textarea-card">
             <ObsidianSetting

@@ -149,9 +149,6 @@ export const en: TranslationKeys = {
       chatTitleModel: 'Conversation title and summary model',
       chatTitleModelDesc:
         'Choose the model used for automatic conversation naming and compact summaries.',
-      requestRecoverySectionTitle: 'Request recovery policy',
-      requestRecoverySectionDesc:
-        'Control the shared primary request timeout and automatic recovery behavior used by chat, quick ask, smart space, write assist, and tab completion. Auto transport probing stays separate from this setting.',
       streamFallbackRecovery: 'Enable automatic recovery',
       streamFallbackRecoveryDesc:
         'When the streaming primary request times out or fails, retry once with a non-streaming fallback.',
