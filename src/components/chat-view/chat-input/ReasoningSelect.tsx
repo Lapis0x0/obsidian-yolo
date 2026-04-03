@@ -348,7 +348,7 @@ export const ReasoningSelect = forwardRef<
           <div className="smtcmp-reasoning-select__icon">
             <Brain size={14} />
           </div>
-          <div className="smtcmp-chat-input-model-select__model-name">
+          <div className="smtcmp-chat-input-model-select__label smtcmp-chat-input-model-select__model-name">
             {t(
               currentOption?.labelKey ?? 'reasoning.medium',
               currentOption?.labelFallback ?? 'Medium',

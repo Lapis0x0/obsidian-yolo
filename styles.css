@@ -6544,7 +6544,6 @@
   display: flex;
   flex-direction: row;
   gap: var(--size-4-1);
-  justify-content: space-between;
   align-items: center;
   flex-wrap: nowrap;
   height: var(--size-4-4);
@@ -6553,13 +6552,18 @@
     display: flex;
     align-items: center;
     gap: var(--size-4-3);
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
   }
 
   .smtcmp-chat-user-input-controls__right {
-    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--size-4-2);
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
   .smtcmp-chat-user-input-controls__model-select-container {
@@ -6582,15 +6586,25 @@
   flex-shrink: 1;
 }
 
+.smtcmp-chat-user-input-controls__left .smtcmp-reasoning-select {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 .smtcmp-chat-user-input-controls__left
   .smtcmp-chat-input-model-select__model-name {
   max-width: 120px;
+}
+
+.smtcmp-chat-user-input-controls__right .smtcmp-chat-user-input-submit-button {
+  flex: 0 1 96px;
 }
 
 .smtcmp-chat-user-input-controls .smtcmp-chat-user-input-submit-button {
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
+  min-width: 0;
   font-size: var(--font-smallest);
   color: var(--text-muted);
   background: transparent;
@@ -6608,7 +6622,21 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    flex-shrink: 0;
   }
+}
+
+.smtcmp-chat-user-input-submit-button-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtcmp-chat-input-model-select__label {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 /* Circle submit button (ChatGPT style) */
@@ -6702,8 +6730,34 @@
 /* Reasoning Select */
 
 .smtcmp-reasoning-select {
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  flex-shrink: 1;
   gap: var(--size-4-1);
+}
+
+.smtcmp-reasoning-select .smtcmp-chat-input-model-select__label {
+  flex: 0 1 auto;
+  text-align: left;
+}
+
+@media (max-width: 520px) {
+  .smtcmp-chat-user-input-controls__right
+    .smtcmp-chat-user-input-submit-button {
+    flex-basis: auto;
+    padding-inline: 0;
+  }
+
+  .smtcmp-chat-user-input-controls__right
+    .smtcmp-chat-user-input-submit-button-label {
+    display: none;
+  }
+
+  .smtcmp-chat-user-input-controls__left .smtcmp-reasoning-select {
+    flex-basis: auto;
+  }
 }
 
 .smtcmp-reasoning-select__icon {

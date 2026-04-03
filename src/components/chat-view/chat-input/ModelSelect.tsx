@@ -194,7 +194,7 @@ export const ModelSelect = forwardRef<
           className="smtcmp-chat-input-model-select"
           onKeyDown={handleTriggerKeyDown}
         >
-          <div className="smtcmp-chat-input-model-select__model-name">
+          <div className="smtcmp-chat-input-model-select__label smtcmp-chat-input-model-select__model-name">
             {getCurrentModelDisplay()}
           </div>
           <div className="smtcmp-chat-input-model-select__icon">

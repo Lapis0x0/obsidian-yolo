@@ -45,8 +45,10 @@ import {
   getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
+import { fileToMentionableImage } from '../../../utils/llm/image'
 
 import ChatSkillBadge from './ChatSkillBadge'
+import { ImageUploadButton } from './ImageUploadButton'
 import LexicalContentEditable from './LexicalContentEditable'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
@@ -1204,6 +1206,22 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 )}
               </div>
               <div className="smtcmp-chat-user-input-controls__right">
+                <ImageUploadButton
+                  onUpload={(files) => {
+                    void Promise.all(
+                      files.map((file) => fileToMentionableImage(file)),
+                    )
+                      .then((mentionableImages) => {
+                        handleCreateImageMentionables(mentionableImages)
+                      })
+                      .catch((error) => {
+                        console.error(
+                          'Failed to process uploaded images',
+                          error,
+                        )
+                      })
+                  }}
+                />
                 <SubmitButton onClick={() => handleSubmit()} />
               </div>
             </div>
