@@ -212,6 +212,28 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
+    const inlineMentionables = useMemo(() => {
+      if (mentionDisplayMode !== 'inline') {
+        return [] as Mentionable[]
+      }
+
+      const editableMentionableKeys = new Set(
+        mentionables.map((mentionable) =>
+          getMentionableKey(serializeMentionable(mentionable)),
+        ),
+      )
+      const displayOnlyCurrentFileMentionables = (
+        displayMentionables ?? []
+      ).filter(
+        (mentionable) =>
+          mentionable.type === 'current-file' &&
+          !editableMentionableKeys.has(
+            getMentionableKey(serializeMentionable(mentionable)),
+          ),
+      )
+
+      return [...displayOnlyCurrentFileMentionables, ...mentionables]
+    }, [displayMentionables, mentionDisplayMode, mentionables])
     const effectiveSelectedSkills = useMemo(
       () => selectedSkills,
       [selectedSkills],
@@ -376,7 +398,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             mentionable.type === 'block' &&
             typeof mentionable.content !== 'string'
           ) {
-            const existsInMentionables = effectiveMentionables.some(
+            const existsInMentionables = mentionables.some(
               (m) =>
                 getMentionableKey(serializeMentionable(m)) === mentionableKey,
             )
@@ -387,7 +409,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           }
 
           if (
-            effectiveMentionables.some(
+            mentionables.some(
               (m) =>
                 getMentionableKey(serializeMentionable(m)) === mentionableKey,
             ) ||
@@ -495,7 +517,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
       const mirrorTypes =
         mentionDisplayMode === 'inline' ? INLINE_MENTIONABLE_TYPES : []
-      const mentionablesToMirror = effectiveMentionables.filter((m) =>
+      const mentionablesToMirror = inlineMentionables.filter((m) =>
         mirrorTypes.includes(m.type),
       )
       const mentionablesByKey = new Map(
@@ -609,7 +631,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         paragraph.selectEnd()
       })
     }, [
-      effectiveMentionables,
+      inlineMentionables,
       isEditorReady,
       mentionDisplayMode,
       mentionableUnitLabel,
