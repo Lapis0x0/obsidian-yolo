@@ -1067,18 +1067,25 @@ export type TranslationKeys = {
   // Apply View
   applyView?: {
     applying?: string
+    reviewTitle?: string
     changesResolved?: string
     acceptAllIncoming?: string
+    keepAllChanges?: string
     rejectAll?: string
+    revertAllChanges?: string
     prevChange?: string
     nextChange?: string
     reset?: string
     applyAndClose?: string
     acceptIncoming?: string
+    keepChange?: string
     acceptCurrent?: string
+    revertChange?: string
     acceptBoth?: string
     acceptedIncoming?: string
+    keptChange?: string
     keptCurrent?: string
+    revertedChange?: string
     mergedBoth?: string
     undo?: string
   }

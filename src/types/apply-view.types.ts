@@ -23,6 +23,7 @@ export type ApplyViewState = {
   file: TFile
   originalContent: string
   newContent: string
+  viewMode?: 'apply' | 'revert-review'
   reviewMode?: 'full' | 'selection-focus'
   selectionRange?: ApplyViewSelectionRange
   callbacks?: ApplyViewCallbacks

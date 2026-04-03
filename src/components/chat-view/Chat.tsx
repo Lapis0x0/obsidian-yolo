@@ -2229,10 +2229,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ])
 
       if (firstSnapshot && latestSnapshot) {
+        const currentContent = await app.vault.read(targetFile)
+        if (currentContent !== latestSnapshot.afterContent) {
+          const leaf = app.workspace.getLeaf(false)
+          await leaf.openFile(targetFile)
+          new Notice(
+            t(
+              'chat.editSummary.undoUnavailable',
+              '文件内容已变化，无法安全撤销本轮修改。',
+            ),
+          )
+          return
+        }
+
         await plugin.openApplyReview({
           file: targetFile,
           originalContent: firstSnapshot.beforeContent,
           newContent: latestSnapshot.afterContent,
+          viewMode: 'revert-review',
           reviewMode: 'full',
         })
         return

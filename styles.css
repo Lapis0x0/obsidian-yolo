@@ -9338,6 +9338,19 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
     width: 100%;
   }
 
+  .smtcmp-apply-decision-status {
+    width: min(100%, var(--file-line-width));
+    margin: 0 auto;
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    line-height: 1.5;
+  }
+
+  .smtcmp-apply-decision-status {
+    margin-bottom: var(--size-4-1);
+    font-weight: var(--font-medium);
+  }
+
   .view-header {
     height: var(--header-height);
     display: flex;

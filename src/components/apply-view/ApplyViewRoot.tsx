@@ -58,6 +58,8 @@ export default function ApplyViewRoot({
   const { t } = useLanguage()
 
   const isSelectionFocusMode = state.reviewMode === 'selection-focus'
+  const isRevertReviewMode = state.viewMode === 'revert-review'
+  const defaultDecision = isRevertReviewMode ? 'incoming' : 'current'
   const diff = useMemo(
     () => buildFullReviewBlocks(state.originalContent, state.newContent),
     [state.newContent, state.originalContent],
@@ -90,6 +92,21 @@ export default function ApplyViewRoot({
     modifiedBlockIndices[currentDiffIndex] ?? Number.POSITIVE_INFINITY
   const autoCloseRef = useRef(false)
   const decisionCount = decisions.size
+  const headerTitle = isRevertReviewMode
+    ? t('applyView.reviewTitle', 'Review changes')
+    : t('applyView.applying', 'Applying')
+  const acceptIncomingLabel = isRevertReviewMode
+    ? t('applyView.keepChange', 'Keep this change')
+    : t('applyView.acceptIncoming', 'Accept incoming')
+  const acceptCurrentLabel = isRevertReviewMode
+    ? t('applyView.revertChange', 'Revert this change')
+    : t('applyView.acceptCurrent', 'Accept current')
+  const acceptAllIncomingLabel = isRevertReviewMode
+    ? t('applyView.keepAllChanges', 'Keep all changes')
+    : t('applyView.acceptAllIncoming', 'Accept all incoming')
+  const acceptAllCurrentLabel = isRevertReviewMode
+    ? t('applyView.revertAllChanges', 'Revert all changes')
+    : t('applyView.rejectAll', 'Reject all')
 
   const touchSession = useCallback(() => {
     setDecisions(new Map(session.getDecisions()))
@@ -104,7 +121,8 @@ export default function ApplyViewRoot({
   // Generate final content based on decisions
   const persistAndClose = useCallback(
     async (finalContent?: string) => {
-      const resolvedContent = finalContent ?? session.getFinalContent('current')
+      const resolvedContent =
+        finalContent ?? session.getFinalContent(defaultDecision)
       try {
         await session.persist(resolvedContent, state.abortSignal)
         if (state.abortSignal?.aborted) {
@@ -122,7 +140,7 @@ export default function ApplyViewRoot({
         close()
       }
     },
-    [close, session, state.abortSignal, state.callbacks],
+    [close, defaultDecision, session, state.abortSignal, state.callbacks],
   )
 
   useEffect(() => {
@@ -193,8 +211,14 @@ export default function ApplyViewRoot({
     const allDecided = session.areAllModifiedBlocksDecided()
     if (!allDecided) return
     autoCloseRef.current = true
-    void persistAndClose()
-  }, [decisionCount, modifiedBlockIndices.length, persistAndClose, session])
+    void persistAndClose(session.getFinalContent(defaultDecision))
+  }, [
+    decisionCount,
+    defaultDecision,
+    modifiedBlockIndices.length,
+    persistAndClose,
+    session,
+  ])
 
   const getOffsetTopFromScroller = useCallback(
     (element: HTMLElement, scroller: HTMLElement) => {
@@ -485,7 +509,7 @@ export default function ApplyViewRoot({
         <div className="view-header">
           <div className="view-header-title-container mod-at-start">
             <div className="view-header-title">
-              {t('applyView.applying', 'Applying')}: {state?.file?.name ?? ''}
+              {headerTitle}: {state?.file?.name ?? ''}
             </div>
           </div>
         </div>
@@ -525,6 +549,9 @@ export default function ApplyViewRoot({
                       }
                       onAcceptSelectionIncoming={acceptAllIncoming}
                       onAcceptSelectionCurrent={acceptAllCurrent}
+                      isRevertReviewMode={isRevertReviewMode}
+                      acceptIncomingLabel={acceptIncomingLabel}
+                      acceptCurrentLabel={acceptCurrentLabel}
                       t={t}
                       pluginComponent={plugin}
                       ref={(el) => {
@@ -575,24 +602,32 @@ export default function ApplyViewRoot({
                 onClick={acceptAllIncoming}
                 className="smtcmp-toolbar-btn smtcmp-accept"
                 title={t(
-                  'applyView.acceptAllIncoming',
-                  'Accept all incoming changes',
+                  isRevertReviewMode
+                    ? 'applyView.keepAllChanges'
+                    : 'applyView.acceptAllIncoming',
+                  isRevertReviewMode
+                    ? 'Keep all changes'
+                    : 'Accept all incoming changes',
                 )}
                 disabled={modifiedBlockIndices.length === 0}
               >
-                {t('applyView.acceptAllIncoming', 'Accept All Incoming')}
+                {acceptAllIncomingLabel}
               </button>
               <button
                 type="button"
                 onClick={acceptAllCurrent}
                 className="smtcmp-toolbar-btn smtcmp-exclude"
                 title={t(
-                  'applyView.rejectAll',
-                  'Reject all changes (keep original)',
+                  isRevertReviewMode
+                    ? 'applyView.revertAllChanges'
+                    : 'applyView.rejectAll',
+                  isRevertReviewMode
+                    ? 'Revert all changes'
+                    : 'Reject all changes (keep original)',
                 )}
                 disabled={modifiedBlockIndices.length === 0}
               >
-                {t('applyView.rejectAll', 'Reject All')}
+                {acceptAllCurrentLabel}
               </button>
             </div>
           </div>
@@ -616,6 +651,9 @@ const DiffBlockView = forwardRef<
     isSelectionTarget: boolean
     onAcceptSelectionIncoming: () => void
     onAcceptSelectionCurrent: () => void
+    isRevertReviewMode: boolean
+    acceptIncomingLabel: string
+    acceptCurrentLabel: string
     t: (keyPath: string, fallback?: string) => string
     pluginComponent: Component
   }
@@ -634,6 +672,9 @@ const DiffBlockView = forwardRef<
       isSelectionTarget,
       onAcceptSelectionIncoming,
       onAcceptSelectionCurrent,
+      isRevertReviewMode,
+      acceptIncomingLabel,
+      acceptCurrentLabel,
       t,
       pluginComponent,
     },
@@ -688,6 +729,15 @@ const DiffBlockView = forwardRef<
       )
     } else if (part.type === 'modified') {
       const isDecided = decision && decision !== 'pending'
+      const decisionStatusText = decision
+        ? decision === 'incoming'
+          ? isRevertReviewMode
+            ? t('applyView.keptChange', 'Kept this change')
+            : t('applyView.acceptedIncoming', 'Accepted incoming')
+          : isRevertReviewMode
+            ? t('applyView.revertedChange', 'Reverted this change')
+            : t('applyView.keptCurrent', 'Kept current')
+        : null
 
       // Show preview of the decision result
       const getDecisionPreview = () => {
@@ -720,6 +770,11 @@ const DiffBlockView = forwardRef<
             <>
               <div className="smtcmp-diff-block smtcmp-diff-block--resolved">
                 <div className="smtcmp-diff-block-content">
+                  {decisionStatusText && (
+                    <div className="smtcmp-apply-decision-status">
+                      {decisionStatusText}
+                    </div>
+                  )}
                   <ApplyMarkdownContent
                     content={getDecisionPreview() ?? ''}
                     component={pluginComponent}
@@ -778,14 +833,8 @@ const DiffBlockView = forwardRef<
                                   : onAcceptIncoming
                               }
                               className="smtcmp-apply-action smtcmp-apply-action-accept"
-                              title={t(
-                                'applyView.acceptIncoming',
-                                'Accept incoming',
-                              )}
-                              aria-label={t(
-                                'applyView.acceptIncoming',
-                                'Accept incoming',
-                              )}
+                              title={acceptIncomingLabel}
+                              aria-label={acceptIncomingLabel}
                             >
                               <span
                                 className="smtcmp-apply-action-icon"
@@ -802,14 +851,8 @@ const DiffBlockView = forwardRef<
                                   : onAcceptCurrent
                               }
                               className="smtcmp-apply-action smtcmp-apply-action-reject"
-                              title={t(
-                                'applyView.acceptCurrent',
-                                'Accept current',
-                              )}
-                              aria-label={t(
-                                'applyView.acceptCurrent',
-                                'Accept current',
-                              )}
+                              title={acceptCurrentLabel}
+                              aria-label={acceptCurrentLabel}
                             >
                               <span
                                 className="smtcmp-apply-action-icon"
@@ -848,14 +891,8 @@ const DiffBlockView = forwardRef<
                               : onAcceptIncoming
                           }
                           className="smtcmp-apply-action smtcmp-apply-action-accept"
-                          title={t(
-                            'applyView.acceptIncoming',
-                            'Accept incoming',
-                          )}
-                          aria-label={t(
-                            'applyView.acceptIncoming',
-                            'Accept incoming',
-                          )}
+                          title={acceptIncomingLabel}
+                          aria-label={acceptIncomingLabel}
                         >
                           <span
                             className="smtcmp-apply-action-icon"
@@ -872,11 +909,8 @@ const DiffBlockView = forwardRef<
                               : onAcceptCurrent
                           }
                           className="smtcmp-apply-action smtcmp-apply-action-reject"
-                          title={t('applyView.acceptCurrent', 'Accept current')}
-                          aria-label={t(
-                            'applyView.acceptCurrent',
-                            'Accept current',
-                          )}
+                          title={acceptCurrentLabel}
+                          aria-label={acceptCurrentLabel}
                         >
                           <span
                             className="smtcmp-apply-action-icon"
