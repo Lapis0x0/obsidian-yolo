@@ -567,8 +567,7 @@ export class SelectionChatController {
           selection.empty ||
           view.hasFocus ||
           !targetLeaf ||
-          this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf !==
-            targetLeaf
+          this.app.workspace.activeLeaf !== targetLeaf
         ) {
           return
         }
