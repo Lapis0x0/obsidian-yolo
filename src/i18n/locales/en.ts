@@ -786,10 +786,10 @@ export const en: TranslationKeys = {
         'Disable empty-line space trigger (keep "/"+space only)',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
-        'Cursor chat adds a selection actions menu for rewrite/explain and keeps selection synced to the sidebar chat.',
+        'Provides inline ask, rewrite, explain, and other quick actions around selected text.',
       selectionChatToggle: 'Enable cursor chat',
       selectionChatToggleDesc:
-        'Show the selection indicator and actions menu (rewrite/explain). Selection still syncs to the sidebar chat.',
+        'When enabled, selecting text shows quick actions so you can ask or run preset commands directly.',
       selectionChatAutoDock: 'Auto dock to top right',
       selectionChatAutoDockDesc:
         'After sending, move to the editor top right (manual drag disables auto follow).',

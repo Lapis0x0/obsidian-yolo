@@ -723,10 +723,10 @@ export const zh: TranslationKeys = {
       smartSpaceTriggerModeOff: '关闭空行空格触发（仅保留 "/"+空格）',
       selectionChatSubsectionTitle: 'Cursor Chat',
       selectionChatDescription:
-        'Cursor Chat 在选区右下角提供改写/解释等快捷操作，并保持选区内容同步到侧边 Chat。',
+        '围绕选中文本提供就地提问、改写、解释等快捷操作。',
       selectionChatToggle: '启用 Cursor Chat',
       selectionChatToggleDesc:
-        '控制选区右下角操作菜单（改写/解释）。选区内容仍会自动同步到侧边 Chat。',
+        '启用后，选中文本时会出现快捷操作入口，可直接发起提问或执行预设指令。',
       selectionChatAutoDock: '自动停靠到右上角',
       selectionChatAutoDockDesc:
         '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',

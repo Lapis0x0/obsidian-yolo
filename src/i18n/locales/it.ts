@@ -767,10 +767,10 @@ export const it: TranslationKeys = {
         'Disattiva trigger con spazio su riga vuota (solo "/" + spazio)',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
-        'Cursor chat aggiunge un menu azioni sulla selezione (riscrivi/spiega) e mantiene la selezione sincronizzata con la chat laterale.',
+        'Offre azioni rapide sul testo selezionato, come chiedere, riscrivere o spiegare.',
       selectionChatToggle: 'Abilita chat selezione',
       selectionChatToggleDesc:
-        "Mostra l'indicatore e il menu azioni (riscrivi/spiega). La selezione continua a sincronizzarsi con la chat laterale.",
+        'Quando attivo, selezionando del testo compaiono azioni rapide per fare domande o usare comandi predefiniti.',
       selectionChatAutoDock: 'Dock automatico in alto a destra',
       selectionChatAutoDockDesc:
         "Dopo l'invio, sposta in alto a destra (il trascinamento manuale disattiva il follow).",
