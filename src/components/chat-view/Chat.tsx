@@ -70,6 +70,7 @@ import {
 } from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
 import { readTFileContent } from '../../utils/obsidian'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
@@ -879,10 +880,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     'chat.compaction.pendingTitle',
     '正在压缩上下文',
   )
-  const compactionDividerDescription = t(
-    'chat.compaction.dividerDescription',
-    '以上对话已压缩为摘要，以下回复基于摘要继续。',
-  )
+  const compactionDividerDescription =
+    typeof latestCompactionState?.estimatedNextContextTokens === 'number'
+      ? t(
+          'chat.compaction.dividerDescriptionWithEstimate',
+          '以上对话已压缩为摘要，下一轮总上下文约为 {count} tokens',
+        ).replace(
+          '{count}',
+          formatTokenCount(latestCompactionState.estimatedNextContextTokens),
+        )
+      : t(
+          'chat.compaction.dividerDescription',
+          '以上对话已压缩为摘要，以下回复基于摘要继续',
+        )
   const compactionPendingDescription = t(
     'chat.compaction.pendingStatus',
     '正在整理上下文，稍后将从新的上下文继续。',

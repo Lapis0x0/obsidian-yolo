@@ -880,6 +880,7 @@ export type TranslationKeys = {
       pendingTitle?: string
       dividerTitle?: string
       dividerDescription?: string
+      dividerDescriptionWithEstimate?: string
       pendingStatus?: string
       success?: string
       failed?: string

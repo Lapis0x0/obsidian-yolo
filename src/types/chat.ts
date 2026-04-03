@@ -25,6 +25,7 @@ export type ChatConversationCompaction = {
   compactedAt: number
   triggerToolCallId?: string
   summaryModelId?: string
+  estimatedNextContextTokens?: number
 }
 
 export type ChatConversationCompactionState = ChatConversationCompaction[]

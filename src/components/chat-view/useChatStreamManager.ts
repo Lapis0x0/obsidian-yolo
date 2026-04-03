@@ -10,6 +10,7 @@ import {
   buildManualCompactionState,
   createConversationCompactionSummary,
 } from '../../core/agent/compaction'
+import { estimateContinuationRequestContextTokens } from '../../core/agent/requestContextEstimate'
 import type {
   AgentConversationRunSummary,
   AgentConversationState,
@@ -275,6 +276,73 @@ export function useChatStreamManager({
         return null
       }
 
+      const effectiveAssistantId =
+        assistantIdOverride ?? settings.currentAssistantId
+      const selectedAssistant = effectiveAssistantId
+        ? (settings.assistants || []).find(
+            (assistant) => assistant.id === effectiveAssistantId,
+          ) || null
+        : null
+      const requestedModelId =
+        modelId || selectedAssistant?.modelId || settings.chatModelId
+
+      let resolvedClient: ReturnType<typeof getChatModelClient>
+      try {
+        resolvedClient = getChatModelClient({
+          settings,
+          modelId: requestedModelId,
+          onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+        })
+      } catch (error) {
+        if (
+          error instanceof LLMModelNotFoundException &&
+          settings.chatModels.length > 0
+        ) {
+          resolvedClient = getChatModelClient({
+            settings,
+            modelId: settings.chatModels[0].id,
+            onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+          })
+        } else {
+          throw error
+        }
+      }
+
+      const effectiveModel =
+        chatMode === 'agent' && selectedAssistant
+          ? {
+              ...resolvedClient.model,
+              customParameters: mergeCustomParameters(
+                resolvedClient.model.customParameters,
+                selectedAssistant.customParameters,
+              ),
+            }
+          : resolvedClient.model
+      const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+      const enabledSkillEntries = selectedAssistant
+        ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+            isSkillEnabledForAssistant({
+              assistant: selectedAssistant,
+              skillId: skill.id,
+              disabledSkillIds,
+            }),
+          )
+        : []
+      const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
+      const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
+      const assistantEnabledToolNames =
+        getEnabledAssistantToolNames(selectedAssistant)
+      const effectiveEnableTools = selectedAssistant?.enableTools ?? true
+      const effectiveIncludeBuiltinTools = effectiveEnableTools
+        ? (selectedAssistant?.includeBuiltinTools ?? true)
+        : false
+      const effectiveAllowedToolNames = effectiveEnableTools
+        ? chatMode === 'agent'
+          ? assistantEnabledToolNames
+          : intersectToolNames(assistantEnabledToolNames, CHAT_SAFE_TOOL_NAMES)
+        : undefined
+      const assistantMaxContextMessages =
+        chatMode === 'agent' ? selectedAssistant?.maxContextMessages : undefined
       const resolvedCompactionClient = resolveCompactionClient()
       const summary = await createConversationCompactionSummary({
         providerClient: resolvedCompactionClient.providerClient,
@@ -283,13 +351,60 @@ export function useChatStreamManager({
         retainLatestToolBoundary: false,
       })
 
-      return buildManualCompactionState({
+      const nextCompaction = buildManualCompactionState({
         messages,
         summary,
         summaryModelId: resolvedCompactionClient.model.id,
       })
+
+      if (!nextCompaction) {
+        return null
+      }
+
+      try {
+        nextCompaction.estimatedNextContextTokens =
+          await estimateContinuationRequestContextTokens({
+            requestContextBuilder,
+            mcpManager: await getMcpManager(),
+            model: effectiveModel,
+            messages,
+            conversationId: currentConversationId,
+            compaction: nextCompaction,
+            enableTools: effectiveEnableTools,
+            includeBuiltinTools: effectiveIncludeBuiltinTools,
+            allowedToolNames: effectiveAllowedToolNames,
+            allowedSkillIds,
+            allowedSkillNames,
+            maxContextOverride:
+              conversationOverrides?.maxContextMessages ??
+              assistantMaxContextMessages ??
+              undefined,
+            currentFileContextMode: chatMode === 'agent' ? 'summary' : 'full',
+            currentFileOverride,
+          })
+      } catch (error) {
+        console.warn(
+          '[YOLO][Compact] failed to estimate continuation context tokens',
+          error,
+        )
+      }
+
+      return nextCompaction
     },
-    [resolveCompactionClient],
+    [
+      app,
+      assistantIdOverride,
+      chatMode,
+      conversationOverrides?.maxContextMessages,
+      currentConversationId,
+      currentFileOverride,
+      getMcpManager,
+      handleAutoPromoteTransportMode,
+      modelId,
+      requestContextBuilder,
+      resolveCompactionClient,
+      settings,
+    ],
   )
 
   const submitChatMutation = useMutation({

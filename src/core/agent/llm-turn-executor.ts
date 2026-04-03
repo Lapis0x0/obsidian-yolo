@@ -21,15 +21,11 @@ import {
 } from '../../utils/llm/contextTokenEstimate'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
-import {
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-  getLocalFileToolServerName,
-} from '../mcp/localFileTools'
+import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
-import { parseToolName } from '../mcp/tool-name-utils'
 
 import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
+import { selectAllowedTools } from './tool-selection'
 
 type AgentLlmTurnExecutorInput = {
   providerClient: BaseLLMProvider<LLMProvider>
@@ -71,13 +67,6 @@ type AgentLlmTurnExecutorOutput = {
 }
 
 export class AgentLlmTurnExecutor {
-  private static readonly LOCAL_MEMORY_TOOL_NAMES = new Set([
-    'memory_ops',
-    'memory_add',
-    'memory_update',
-    'memory_delete',
-  ])
-
   private static readonly LOCAL_TOOL_NAMES = new Set([
     'fs_list',
     'fs_search',
@@ -96,55 +85,7 @@ export class AgentLlmTurnExecutor {
     'open_skill',
   ])
 
-  private readonly allowedToolNames?: Set<string>
-  private readonly allowedSkillIds?: Set<string>
-  private readonly allowedSkillNames?: Set<string>
-
-  constructor(private readonly input: AgentLlmTurnExecutorInput) {
-    this.allowedToolNames = input.allowedToolNames
-      ? this.expandAllowedToolNames(input.allowedToolNames)
-      : undefined
-    this.allowedSkillIds = input.allowedSkillIds
-      ? new Set(input.allowedSkillIds.map((id) => id.toLowerCase()))
-      : undefined
-    this.allowedSkillNames = input.allowedSkillNames
-      ? new Set(input.allowedSkillNames.map((name) => name.toLowerCase()))
-      : undefined
-  }
-
-  private expandAllowedToolNames(toolNames: string[]): Set<string> {
-    const expanded = new Set<string>(toolNames)
-    const localServer = getLocalFileToolServerName()
-    const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
-    const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
-    const hasFileOpsGroup =
-      expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
-    const hasMemoryOpsGroup =
-      expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
-
-    if (!hasFileOpsGroup && !hasMemoryOpsGroup) {
-      return expanded
-    }
-
-    if (hasFileOpsGroup) {
-      for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
-        expanded.add(
-          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-        )
-        expanded.add(splitToolName)
-      }
-    }
-
-    if (hasMemoryOpsGroup) {
-      for (const splitToolName of LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES) {
-        expanded.add(
-          `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-        )
-        expanded.add(splitToolName)
-      }
-    }
-    return expanded
-  }
+  constructor(private readonly input: AgentLlmTurnExecutorInput) {}
 
   async run(): Promise<AgentLlmTurnExecutorOutput> {
     const availableTools = this.input.enableTools
@@ -152,14 +93,16 @@ export class AgentLlmTurnExecutor {
           includeBuiltinTools: this.input.includeBuiltinTools,
         })
       : []
-    const filteredTools = availableTools.filter((tool) =>
-      this.isToolAllowed(tool.name),
-    )
-
-    const hasTools = filteredTools.length > 0
-    const hasMemoryTools = filteredTools.some((tool) =>
-      this.isMemoryToolAvailable(tool.name),
-    )
+    const {
+      hasTools,
+      hasMemoryTools,
+      requestTools: tools,
+    } = selectAllowedTools({
+      availableTools,
+      allowedToolNames: this.input.allowedToolNames,
+      allowedSkillIds: this.input.allowedSkillIds,
+      allowedSkillNames: this.input.allowedSkillNames,
+    })
     const requestMessages =
       await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
@@ -173,20 +116,6 @@ export class AgentLlmTurnExecutor {
         currentFileOverride: this.input.currentFileOverride,
       })
 
-    const tools: RequestTool[] | undefined =
-      filteredTools.length > 0
-        ? filteredTools.map((tool) => ({
-            type: 'function',
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: {
-                ...tool.inputSchema,
-                properties: tool.inputSchema.properties ?? {},
-              },
-            },
-          }))
-        : undefined
     this.logModelRequestContext({ requestMessages, tools })
     const responseStart = Date.now()
     const effectiveModel = this.getEffectiveModel()
@@ -330,22 +259,6 @@ export class AgentLlmTurnExecutor {
     return `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
   }
 
-  private isToolAllowed(toolName: string): boolean {
-    if (this.isOpenSkillToolName(toolName)) {
-      const hasAllowedSkills =
-        (this.allowedSkillIds?.size ?? 0) > 0 ||
-        (this.allowedSkillNames?.size ?? 0) > 0
-      if (!hasAllowedSkills) {
-        return false
-      }
-    }
-
-    if (!this.allowedToolNames) {
-      return true
-    }
-    return this.allowedToolNames.has(toolName)
-  }
-
   private logModelRequestContext({
     requestMessages,
     tools,
@@ -378,30 +291,6 @@ export class AgentLlmTurnExecutor {
     })
     console.debug('[YOLO][Agent Debug] Request messages', requestMessages)
     console.debug('[YOLO][Agent Debug] Tools', tools ?? [])
-  }
-
-  private isMemoryToolAvailable(toolName: string): boolean {
-    try {
-      const parsed = parseToolName(toolName)
-      return (
-        parsed.serverName === getLocalFileToolServerName() &&
-        AgentLlmTurnExecutor.LOCAL_MEMORY_TOOL_NAMES.has(parsed.toolName)
-      )
-    } catch {
-      return AgentLlmTurnExecutor.LOCAL_MEMORY_TOOL_NAMES.has(toolName)
-    }
-  }
-
-  private isOpenSkillToolName(toolName: string): boolean {
-    try {
-      const parsed = parseToolName(toolName)
-      return (
-        parsed.serverName === getLocalFileToolServerName() &&
-        parsed.toolName === 'open_skill'
-      )
-    } catch {
-      return false
-    }
   }
 
   private getEffectiveModel(): ChatModel {

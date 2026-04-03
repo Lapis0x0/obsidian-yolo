@@ -20,6 +20,7 @@ import {
 } from './compaction'
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
+import { estimateContinuationRequestContextTokens } from './requestContextEstimate'
 import { AgentRuntime } from './runtime'
 import { AgentToolGateway } from './tool-gateway'
 import { shouldProceedToToolPhase } from './tool-phase'
@@ -220,6 +221,34 @@ export class NativeAgentRuntime implements AgentRuntime {
                       summary,
                       summaryModelId: input.compactionModel.id,
                     })
+                    if (nextCompaction) {
+                      try {
+                        nextCompaction.estimatedNextContextTokens =
+                          await estimateContinuationRequestContextTokens({
+                            requestContextBuilder: input.requestContextBuilder,
+                            mcpManager: input.mcpManager,
+                            model: input.model,
+                            messages: conversationMessages,
+                            conversationId: input.conversationId,
+                            compaction: nextCompaction,
+                            enableTools: this.loopConfig.enableTools,
+                            includeBuiltinTools:
+                              this.loopConfig.includeBuiltinTools,
+                            allowedToolNames: input.allowedToolNames,
+                            allowedSkillIds: input.allowedSkillIds,
+                            allowedSkillNames: input.allowedSkillNames,
+                            maxContextOverride: input.maxContextOverride,
+                            currentFileContextMode:
+                              input.currentFileContextMode,
+                            currentFileOverride: input.currentFileOverride,
+                          })
+                      } catch (error) {
+                        console.warn(
+                          '[YOLO][Compact] failed to estimate continuation context tokens',
+                          error,
+                        )
+                      }
+                    }
                     this.compactionState = nextCompaction
                       ? [...this.compactionState, nextCompaction]
                       : this.compactionState
