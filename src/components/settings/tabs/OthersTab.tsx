@@ -161,102 +161,121 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
             cta
           />
         </ObsidianSetting>
-        <ObsidianSetting
-          name={t('settings.etc.tabTitleFollowsConversation')}
-          desc={t('settings.etc.tabTitleFollowsConversationDesc')}
-        >
-          <ObsidianToggle
-            value={settings.chatOptions.tabTitleFollowsConversation ?? true}
-            onChange={handleTabTitleFollowsConversationChange}
-          />
-        </ObsidianSetting>
-        <ObsidianSetting
-          name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
-          desc={t(
-            'settings.etc.yoloBaseDirDesc',
-            '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
-          ).replace('{path}', skillsDir)}
-        >
-          <ObsidianTextInput
-            value={yoloBaseDirInput}
-            placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
-            onChange={setYoloBaseDirInput}
-            onBlur={handleYoloBaseDirBlur}
-          />
-        </ObsidianSetting>
-        <ObsidianSetting
-          name={t('settings.etc.mentionDisplayMode', '引用内容显示位置')}
-          desc={t(
-            'settings.etc.mentionDisplayModeDesc',
-            '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
-          )}
-        >
-          <ObsidianDropdown
-            value={settings.chatOptions.mentionDisplayMode ?? 'inline'}
-            options={{
-              inline: t('settings.etc.mentionDisplayModeInline', '输入框内'),
-              badge: t('settings.etc.mentionDisplayModeBadge', '顶部徽章'),
-            }}
-            onChange={handleMentionDisplayModeChange}
-          />
-        </ObsidianSetting>
-        <ObsidianSetting
-          name={t('settings.etc.mentionContextMode', '@ 文件上下文注入模式')}
-          desc={t(
-            'settings.etc.mentionContextModeDesc',
-            '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
-          )}
-        >
-          <ObsidianDropdown
-            value={settings.chatOptions.mentionContextMode ?? 'light'}
-            options={{
-              light: t('settings.etc.mentionContextModeLight', '轻量模式'),
-              full: t('settings.etc.mentionContextModeFull', '全量模式'),
-            }}
-            onChange={handleMentionContextModeChange}
-          />
-        </ObsidianSetting>
-        <ObsidianSetting
-          name={t('settings.etc.chatApplyMode', 'Chat 应用修改方式')}
-          desc={t(
-            'settings.etc.chatApplyModeDesc',
-            '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
-          )}
-        >
-          <ObsidianDropdown
-            value={settings.chatOptions.chatApplyMode ?? 'review-required'}
-            options={{
-              'review-required': t(
-                'settings.etc.chatApplyModeReviewRequired',
-                '先审阅后应用',
-              ),
-              'direct-apply': t(
-                'settings.etc.chatApplyModeDirectApply',
-                '直接写入文件',
-              ),
-            }}
-            onChange={handleChatApplyModeChange}
-          />
-        </ObsidianSetting>
-        <ObsidianSetting
-          name={t('settings.etc.persistSelectionHighlight', '保留选区块高亮')}
-          desc={t(
-            'settings.etc.persistSelectionHighlightDesc',
-            '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
-          )}
-        >
-          <ObsidianToggle
-            value={
-              settings.continuationOptions.persistSelectionHighlight ?? true
-            }
-            onChange={handlePersistSelectionHighlightChange}
-          />
-        </ObsidianSetting>
       </div>
 
-      <ChatPreferencesSection />
+      <div className="smtcmp-settings-section smtcmp-settings-section--tight">
+        <section className="smtcmp-settings-block">
+          <div className="smtcmp-settings-block-head">
+            <div className="smtcmp-settings-block-head-title-row">
+              <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+                {t('settings.etc.interactionSectionTitle', '交互')}
+              </div>
+            </div>
+          </div>
 
-      <EtcSection app={app} plugin={plugin} />
+          <div className="smtcmp-settings-block-content">
+            <ObsidianSetting
+              name={t('settings.etc.tabTitleFollowsConversation')}
+              desc={t('settings.etc.tabTitleFollowsConversationDesc')}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianToggle
+                value={settings.chatOptions.tabTitleFollowsConversation ?? true}
+                onChange={handleTabTitleFollowsConversationChange}
+              />
+            </ObsidianSetting>
+            <ObsidianSetting
+              name={t('settings.etc.mentionDisplayMode', '引用内容显示位置')}
+              desc={t(
+                'settings.etc.mentionDisplayModeDesc',
+                '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
+              )}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianDropdown
+                value={settings.chatOptions.mentionDisplayMode ?? 'inline'}
+                options={{
+                  inline: t(
+                    'settings.etc.mentionDisplayModeInline',
+                    '输入框内',
+                  ),
+                  badge: t('settings.etc.mentionDisplayModeBadge', '顶部徽章'),
+                }}
+                onChange={handleMentionDisplayModeChange}
+              />
+            </ObsidianSetting>
+            <ObsidianSetting
+              name={t(
+                'settings.etc.mentionContextMode',
+                '@ 文件上下文注入模式',
+              )}
+              desc={t(
+                'settings.etc.mentionContextModeDesc',
+                '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
+              )}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianDropdown
+                value={settings.chatOptions.mentionContextMode ?? 'light'}
+                options={{
+                  light: t('settings.etc.mentionContextModeLight', '轻量模式'),
+                  full: t('settings.etc.mentionContextModeFull', '全量模式'),
+                }}
+                onChange={handleMentionContextModeChange}
+              />
+            </ObsidianSetting>
+            <ObsidianSetting
+              name={t('settings.etc.chatApplyMode', 'Chat 应用修改方式')}
+              desc={t(
+                'settings.etc.chatApplyModeDesc',
+                '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
+              )}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianDropdown
+                value={settings.chatOptions.chatApplyMode ?? 'review-required'}
+                options={{
+                  'review-required': t(
+                    'settings.etc.chatApplyModeReviewRequired',
+                    '先审阅后应用',
+                  ),
+                  'direct-apply': t(
+                    'settings.etc.chatApplyModeDirectApply',
+                    '直接写入文件',
+                  ),
+                }}
+                onChange={handleChatApplyModeChange}
+              />
+            </ObsidianSetting>
+            <ObsidianSetting
+              name={t(
+                'settings.etc.persistSelectionHighlight',
+                '保留选区块高亮',
+              )}
+              desc={t(
+                'settings.etc.persistSelectionHighlightDesc',
+                '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
+              )}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianToggle
+                value={
+                  settings.continuationOptions.persistSelectionHighlight ?? true
+                }
+                onChange={handlePersistSelectionHighlightChange}
+              />
+            </ObsidianSetting>
+
+            <ChatPreferencesSection embedded />
+          </div>
+        </section>
+      </div>
+
+      <EtcSection
+        app={app}
+        plugin={plugin}
+        className="smtcmp-settings-section--tight"
+      />
     </>
   )
 }

@@ -14,7 +14,7 @@ export function ModelsTab({ app, plugin }: ModelsTabProps) {
   return (
     <>
       <ProvidersAndModelsSection app={app} plugin={plugin} />
-      <DefaultModelsAndPromptsSection />
+      <DefaultModelsAndPromptsSection className="smtcmp-settings-section--tight" />
     </>
   )
 }

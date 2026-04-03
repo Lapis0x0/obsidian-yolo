@@ -19,12 +19,14 @@ import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 
 type EtcSectionProps = {
   app: App
   plugin: SmartComposerPlugin
+  className?: string
 }
 
 type StorageUsage = {
@@ -112,13 +114,19 @@ const StorageBadge = ({ value }: { value: number | null }) => {
   )
 }
 
-export function EtcSection({ app }: EtcSectionProps) {
+export function EtcSection({ app, className }: EtcSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
+  const yoloBaseDir = settings.yolo?.baseDir ?? 'YOLO'
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({
     chatHistoryBytes: null,
     chatSnapshotBytes: null,
   })
+  const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
+
+  useEffect(() => {
+    setYoloBaseDirInput(yoloBaseDir)
+  }, [yoloBaseDir])
 
   const refreshStorageUsage = useCallback(() => {
     let cancelled = false
@@ -145,6 +153,20 @@ export function EtcSection({ app }: EtcSectionProps) {
   }, [app, settings])
 
   useEffect(() => refreshStorageUsage(), [refreshStorageUsage])
+
+  const handleYoloBaseDirBlur = (value: string) => {
+    const normalized = normalizePath(value.trim()).replace(/^\/+/, '') || 'YOLO'
+    setYoloBaseDirInput(normalized)
+    if (normalized === yoloBaseDir) return
+
+    void setSettings({
+      ...settings,
+      yolo: {
+        ...(settings.yolo ?? { baseDir: 'YOLO' }),
+        baseDir: normalized,
+      },
+    })
+  }
 
   const handleResetSettings = () => {
     new ConfirmModal(app, {
@@ -266,83 +288,119 @@ export function EtcSection({ app }: EtcSectionProps) {
   }
 
   return (
-    <div className="smtcmp-settings-section">
-      <div className="smtcmp-settings-header">{t('settings.etc.title')}</div>
+    <div
+      className={['smtcmp-settings-section', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <section className="smtcmp-settings-block">
+        <div className="smtcmp-settings-block-head">
+          <div className="smtcmp-settings-block-head-title-row">
+            <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+              {t('settings.etc.maintenanceSectionTitle', '维护')}
+            </div>
+          </div>
+        </div>
 
-      <ObsidianSetting
-        name={t('settings.etc.logModelRequestContext')}
-        desc={t('settings.etc.logModelRequestContextDesc')}
-      >
-        <ObsidianToggle
-          value={settings.debug?.logModelRequestContext ?? false}
-          onChange={(value) => {
-            void setSettings({
-              ...settings,
-              debug: {
-                ...settings.debug,
-                logModelRequestContext: value,
-              },
-            })
-          }}
-        />
-      </ObsidianSetting>
+        <div className="smtcmp-settings-block-content">
+          <ObsidianSetting
+            name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
+            desc={t(
+              'settings.etc.yoloBaseDirDesc',
+              '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
+            ).replace('{path}', `${yoloBaseDir}/skills`)}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianTextInput
+              value={yoloBaseDirInput}
+              placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
+              onChange={setYoloBaseDirInput}
+              onBlur={handleYoloBaseDirBlur}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.etc.clearChatHistory')}
-        nameExtra={<StorageBadge value={storageUsage.chatHistoryBytes} />}
-        desc={t('settings.etc.clearChatHistoryDesc')}
-      >
-        <ObsidianButton
-          text={t('common.clear')}
-          warning
-          onClick={handleClearChatHistory}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.etc.logModelRequestContext')}
+            desc={t('settings.etc.logModelRequestContextDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={settings.debug?.logModelRequestContext ?? false}
+              onChange={(value) => {
+                void setSettings({
+                  ...settings,
+                  debug: {
+                    ...settings.debug,
+                    logModelRequestContext: value,
+                  },
+                })
+              }}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.etc.clearChatSnapshots')}
-        nameExtra={<StorageBadge value={storageUsage.chatSnapshotBytes} />}
-        desc={t('settings.etc.clearChatSnapshotsDesc')}
-      >
-        <ObsidianButton
-          text={t('common.clear')}
-          warning
-          onClick={handleClearChatSnapshots}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.etc.clearChatHistory')}
+            nameExtra={<StorageBadge value={storageUsage.chatHistoryBytes} />}
+            desc={t('settings.etc.clearChatHistoryDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianButton
+              text={t('common.clear')}
+              warning
+              onClick={handleClearChatHistory}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.etc.resetProviders')}
-        desc={t('settings.etc.resetProvidersDesc')}
-      >
-        <ObsidianButton
-          text={t('settings.etc.reset')}
-          warning
-          onClick={handleResetProviders}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.etc.clearChatSnapshots')}
+            nameExtra={<StorageBadge value={storageUsage.chatSnapshotBytes} />}
+            desc={t('settings.etc.clearChatSnapshotsDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianButton
+              text={t('common.clear')}
+              warning
+              onClick={handleClearChatSnapshots}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.etc.resetAgents')}
-        desc={t('settings.etc.resetAgentsDesc')}
-      >
-        <ObsidianButton
-          text={t('settings.etc.reset')}
-          warning
-          onClick={handleResetAgents}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.etc.resetProviders')}
+            desc={t('settings.etc.resetProvidersDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianButton
+              text={t('settings.etc.reset')}
+              warning
+              onClick={handleResetProviders}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.etc.resetSettings')}
-        desc={t('settings.etc.resetSettingsDesc')}
-      >
-        <ObsidianButton
-          text={t('settings.etc.reset')}
-          warning
-          onClick={handleResetSettings}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.etc.resetAgents')}
+            desc={t('settings.etc.resetAgentsDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianButton
+              text={t('settings.etc.reset')}
+              warning
+              onClick={handleResetAgents}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name={t('settings.etc.resetSettings')}
+            desc={t('settings.etc.resetSettingsDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianButton
+              text={t('settings.etc.reset')}
+              warning
+              onClick={handleResetSettings}
+            />
+          </ObsidianSetting>
+        </div>
+      </section>
     </div>
   )
 }

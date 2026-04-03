@@ -17,7 +17,13 @@ import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 
-export function DefaultModelsAndPromptsSection() {
+type DefaultModelsAndPromptsSectionProps = {
+  className?: string
+}
+
+export function DefaultModelsAndPromptsSection({
+  className,
+}: DefaultModelsAndPromptsSectionProps = {}) {
   const { settings, setSettings } = useSettings()
   const { t, language } = useLanguage()
 
@@ -127,7 +133,11 @@ export function DefaultModelsAndPromptsSection() {
   }
 
   return (
-    <div className="smtcmp-settings-section">
+    <div
+      className={['smtcmp-settings-section', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <section className="smtcmp-models-block smtcmp-default-models-block">
         <div className="smtcmp-models-block-head">
           <div className="smtcmp-models-block-head-title-row">

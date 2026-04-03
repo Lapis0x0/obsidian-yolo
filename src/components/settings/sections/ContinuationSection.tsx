@@ -274,7 +274,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
         </section>
       </div>
 
-      <div className="smtcmp-settings-section">
+      <div className="smtcmp-settings-section smtcmp-settings-section--tight">
         <section className="smtcmp-settings-block">
           <div className="smtcmp-settings-block-head">
             <div className="smtcmp-settings-block-head-title-row">
@@ -470,7 +470,7 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
         </section>
       </div>
 
-      <div className="smtcmp-settings-section">
+      <div className="smtcmp-settings-section smtcmp-settings-section--tight">
         <section className="smtcmp-settings-block">
           <div className="smtcmp-settings-block-head">
             <div className="smtcmp-settings-block-head-title-row">
