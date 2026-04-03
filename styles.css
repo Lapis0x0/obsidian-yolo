@@ -5167,7 +5167,6 @@
   --smtcmp-chat-host-inline-padding: var(--size-4-3);
 }
 
-.smtcmp-chat-container--sidebar > .smtcmp-chat-header,
 .smtcmp-chat-container--sidebar > .smtcmp-chat-composer-wrapper,
 .smtcmp-chat-container--sidebar > .smtcmp-chat-footer,
 .smtcmp-chat-container--sidebar > .smtcmp-chat-user-input-files,
