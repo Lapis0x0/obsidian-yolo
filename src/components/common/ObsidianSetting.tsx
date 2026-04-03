@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 import { classNames } from '../../utils/common/classnames'
 
@@ -17,6 +18,7 @@ const SettingContext = createContext<SettingContextValue>({ setting: null })
 
 type ObsidianSettingProps = {
   name?: string
+  nameExtra?: React.ReactNode
   desc?: string
   heading?: boolean
   className?: string
@@ -26,6 +28,7 @@ type ObsidianSettingProps = {
 
 export function ObsidianSetting({
   name,
+  nameExtra,
   desc,
   heading,
   className,
@@ -33,7 +36,10 @@ export function ObsidianSetting({
   children,
 }: ObsidianSettingProps) {
   const [setting, setSetting] = useState<Setting | null>(null)
+  const [nameExtraContainer, setNameExtraContainer] =
+    useState<HTMLElement | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const nameExtraContainerRef = useRef<HTMLElement | null>(null)
   const defaultSettingElClassName = useRef('')
   const defaultNameElClassName = useRef('')
 
@@ -67,9 +73,44 @@ export function ObsidianSetting({
     })
   }, [name, desc, heading, className, setting, required])
 
+  useEffect(() => {
+    if (!setting || !nameExtra) {
+      nameExtraContainerRef.current?.remove()
+      nameExtraContainerRef.current = null
+      setNameExtraContainer(null)
+      setting?.nameEl.removeClass('smtcmp-setting-name-row')
+      return
+    }
+
+    nameExtraContainerRef.current?.remove()
+    const container = document.createElement('span')
+    container.className = 'smtcmp-setting-name-extra'
+    container.dataset.settingName = name ?? ''
+    setting.nameEl.addClass('smtcmp-setting-name-row')
+    setting.nameEl.appendChild(container)
+    nameExtraContainerRef.current = container
+    setNameExtraContainer(container)
+
+    return () => {
+      container.remove()
+      if (nameExtraContainerRef.current === container) {
+        nameExtraContainerRef.current = null
+        setNameExtraContainer(null)
+      }
+      if (!setting.nameEl.querySelector('.smtcmp-setting-name-extra')) {
+        setting.nameEl.removeClass('smtcmp-setting-name-row')
+      }
+    }
+  }, [name, nameExtra, setting])
+
   return (
     <SettingContext.Provider value={{ setting }}>
-      <div ref={containerRef}>{children}</div>
+      <div ref={containerRef}>
+        {nameExtraContainer && nameExtra
+          ? createPortal(nameExtra, nameExtraContainer)
+          : null}
+        {children}
+      </div>
     </SettingContext.Provider>
   )
 }

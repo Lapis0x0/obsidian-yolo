@@ -107,6 +107,25 @@
   margin-left: var(--size-4-1);
 }
 
+.smtcmp-setting-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex-wrap: wrap;
+}
+
+.smtcmp-setting-name-extra {
+  display: inline-flex;
+  align-items: center;
+}
+
+.smtcmp-setting-size-badge {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  line-height: 1;
+}
+
 /* Settings: Embedding DB Manage */
 
 .smtcmp-settings-embedding-db-manage-root {

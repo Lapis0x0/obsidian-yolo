@@ -1,4 +1,5 @@
-import { App, Notice } from 'obsidian'
+import { App, Notice, normalizePath } from 'obsidian'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   DEFAULT_CHAT_MODELS,
@@ -7,11 +8,13 @@ import {
   DEFAULT_EMBEDDING_MODELS,
   DEFAULT_PROVIDERS,
 } from '../../../constants'
+import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
+import { CHAT_DIR } from '../../../database/json/constants'
 import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
@@ -24,9 +27,124 @@ type EtcSectionProps = {
   plugin: SmartComposerPlugin
 }
 
+type StorageUsage = {
+  chatHistoryBytes: number | null
+  chatSnapshotBytes: number | null
+}
+
+const CHAT_SNAPSHOT_DIR = 'chat_snapshots'
+const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
+
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  const digits = value >= 10 ? 0 : 1
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
+}
+
+const getPathSize = async (app: App, path: string): Promise<number> => {
+  if (!(await app.vault.adapter.exists(path))) {
+    return 0
+  }
+
+  const stat = await app.vault.adapter.stat(path)
+  if (!stat) {
+    return 0
+  }
+
+  if (stat.type === 'file') {
+    return stat.size
+  }
+
+  const listing = await app.vault.adapter.list(path)
+  const childSizes = await Promise.all([
+    ...listing.files.map(async (filePath) => {
+      const fileStat = await app.vault.adapter.stat(filePath)
+      return fileStat?.size ?? 0
+    }),
+    ...listing.folders.map((folderPath) => getPathSize(app, folderPath)),
+  ])
+
+  return childSizes.reduce((sum, size) => sum + size, 0)
+}
+
+const loadStorageUsage = async (
+  app: App,
+  settings: Parameters<typeof ensureJsonDbRootDir>[1],
+): Promise<StorageUsage> => {
+  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const chatDir = normalizePath(`${rootDir}/${CHAT_DIR}`)
+
+  const [chatHistoryBytes, promptSnapshotBytes, editReviewSnapshotBytes] =
+    await Promise.all([
+      getPathSize(app, chatDir),
+      getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
+      getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
+    ])
+
+  return {
+    chatHistoryBytes: Math.max(
+      0,
+      chatHistoryBytes - promptSnapshotBytes - editReviewSnapshotBytes,
+    ),
+    chatSnapshotBytes: promptSnapshotBytes + editReviewSnapshotBytes,
+  }
+}
+
+const StorageBadge = ({ value }: { value: number | null }) => {
+  const { t } = useLanguage()
+
+  return (
+    <span className="smtcmp-setting-size-badge">
+      {value === null ? t('common.loading', '加载中...') : formatBytes(value)}
+    </span>
+  )
+}
+
 export function EtcSection({ app }: EtcSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
+  const [storageUsage, setStorageUsage] = useState<StorageUsage>({
+    chatHistoryBytes: null,
+    chatSnapshotBytes: null,
+  })
+
+  const refreshStorageUsage = useCallback(() => {
+    let cancelled = false
+
+    void loadStorageUsage(app, settings)
+      .then((nextUsage) => {
+        if (!cancelled) {
+          setStorageUsage(nextUsage)
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load storage usage', error)
+        if (!cancelled) {
+          setStorageUsage({
+            chatHistoryBytes: 0,
+            chatSnapshotBytes: 0,
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [app, settings])
+
+  useEffect(() => refreshStorageUsage(), [refreshStorageUsage])
 
   const handleResetSettings = () => {
     new ConfirmModal(app, {
@@ -58,6 +176,8 @@ export function EtcSection({ app }: EtcSectionProps) {
           for (const meta of list) {
             await manager.deleteChat(meta.id)
           }
+          const nextUsage = await loadStorageUsage(app, settings)
+          setStorageUsage(nextUsage)
           // Notify UI hooks (useChatHistory) to refresh chat list immediately
           window.dispatchEvent(new Event('smtcmp:chat-history-cleared'))
           new Notice(t('settings.etc.clearChatHistorySuccess'))
@@ -112,6 +232,8 @@ export function EtcSection({ app }: EtcSectionProps) {
         void (async () => {
           await clearAllPromptSnapshotStores(app, settings)
           await clearAllEditReviewSnapshotStores(app, settings)
+          const nextUsage = await loadStorageUsage(app, settings)
+          setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
         })().catch((error: unknown) => {
           console.error('Failed to clear chat snapshots', error)
@@ -167,6 +289,7 @@ export function EtcSection({ app }: EtcSectionProps) {
 
       <ObsidianSetting
         name={t('settings.etc.clearChatHistory')}
+        nameExtra={<StorageBadge value={storageUsage.chatHistoryBytes} />}
         desc={t('settings.etc.clearChatHistoryDesc')}
       >
         <ObsidianButton
@@ -178,6 +301,7 @@ export function EtcSection({ app }: EtcSectionProps) {
 
       <ObsidianSetting
         name={t('settings.etc.clearChatSnapshots')}
+        nameExtra={<StorageBadge value={storageUsage.chatSnapshotBytes} />}
         desc={t('settings.etc.clearChatSnapshotsDesc')}
       >
         <ObsidianButton
