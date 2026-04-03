@@ -157,7 +157,7 @@ export const en: TranslationKeys = {
         'How long to wait before the streaming primary request is treated as timed out. If automatic recovery is enabled, a non-streaming fallback is attempted afterward. Default: 12 seconds.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
-        'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
+        'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}, weekday {{current_weekday}}.',
       continuationSystemPrompt: 'Default continuation system prompt',
       continuationSystemPromptDesc:
         'Used as the system message when generating continuation text; leave empty to fall back to the built-in default.',
@@ -277,7 +277,7 @@ export const en: TranslationKeys = {
       description: 'Description',
       systemPrompt: 'System prompt',
       systemPromptDesc:
-        'This prompt will be added to the beginning of every chat. Supports {{current_date}}, {{current_hour}}, and {{current_minute}}.',
+        'This prompt will be added to the beginning of every chat. Supports {{current_date}}, {{current_hour}}, {{current_minute}}, and {{current_weekday}}.',
       systemPromptPlaceholder:
         "Enter system prompt to define assistant's behavior and capabilities",
       namePlaceholder: 'Enter assistant name',
@@ -390,7 +390,7 @@ export const en: TranslationKeys = {
       editorChooseIcon: 'Choose icon',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
-        'Primary behavior instruction for this agent. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}.',
+        'Primary behavior instruction for this agent. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}, weekday {{current_weekday}}.',
       editorEnableTools: 'Enable tools',
       editorEnableToolsDesc: 'Allow this agent to call tools',
       editorIncludeBuiltinTools: 'Include built-in tools',

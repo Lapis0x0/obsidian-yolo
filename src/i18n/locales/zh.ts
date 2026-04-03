@@ -131,7 +131,7 @@ export const zh: TranslationKeys = {
         '流式主请求等待多久后判定为超时。超时后如已启用自动恢复，将自动改用非流式再尝试一次。默认 12 秒。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc:
-        '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',
+        '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}、星期 {{current_weekday}}。',
       continuationSystemPrompt: '默认续写系统提示词',
       continuationSystemPromptDesc:
         '用于续写功能的系统消息。留空将使用内置默认值。',
@@ -243,7 +243,7 @@ export const zh: TranslationKeys = {
       descriptionPlaceholder: '输入描述',
       systemPrompt: '系统提示词',
       systemPromptDesc:
-        '该提示将添加到每次聊天的开头。支持 {{current_date}}、{{current_hour}} 和 {{current_minute}}。',
+        '该提示将添加到每次聊天的开头。支持 {{current_date}}、{{current_hour}}、{{current_minute}} 和 {{current_weekday}}。',
       systemPromptPlaceholder: '输入系统提示词，用于定义助手的行为与能力',
       namePlaceholder: '输入助手名称',
       defaultAssistantName: '新建助手',
@@ -351,7 +351,7 @@ export const zh: TranslationKeys = {
       editorChooseIcon: '选择图标',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
-        '该 Agent 的主行为指令。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}。',
+        '该 Agent 的主行为指令。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}、星期 {{current_weekday}}。',
       editorEnableTools: '启用工具',
       editorEnableToolsDesc: '允许该 Agent 调用工具',
       editorIncludeBuiltinTools: '包含内置工具',

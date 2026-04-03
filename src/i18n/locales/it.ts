@@ -157,7 +157,7 @@ export const it: TranslationKeys = {
         'Quanto attendere prima che la richiesta primaria in streaming venga considerata in timeout. Se il recupero automatico e attivo, dopo il timeout verra tentato un fallback non streaming. Predefinito: 12 secondi.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
-        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",
+        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.",
       continuationSystemPrompt:
         'Prompt di sistema di continuazione predefinito',
       continuationSystemPromptDesc:
@@ -285,7 +285,7 @@ export const it: TranslationKeys = {
       descriptionPlaceholder: 'Ad esempio, Aiuta con domande di programmazione',
       systemPrompt: 'Prompt di sistema',
       systemPromptDesc:
-        "Questo prompt viene aggiunto all'inizio di ogni chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.",
+        "Questo prompt viene aggiunto all'inizio di ogni chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.",
       systemPromptPlaceholder: 'Ad esempio, Sei un esperto programmatore...',
       defaultAssistantName: 'Nuovo assistente',
       actions: 'Azioni',
@@ -399,7 +399,7 @@ export const it: TranslationKeys = {
       editorChooseIcon: 'Scegli icona',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
-        'Istruzione comportamentale principale per questo agent. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}.',
+        'Istruzione comportamentale principale per questo agent. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.',
       editorEnableTools: 'Abilita strumenti',
       editorEnableToolsDesc: 'Consenti a questo agent di chiamare strumenti',
       editorIncludeBuiltinTools: 'Includi strumenti integrati',

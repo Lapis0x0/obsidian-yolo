@@ -14,6 +14,20 @@ const formatLocalMinute = (date: Date): string => {
   return `${formatLocalHour(date)}:${pad2(date.getMinutes())}`
 }
 
+const WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+]
+
+const formatLocalWeekday = (date: Date): string => {
+  return WEEKDAY_NAMES[date.getDay()] ?? WEEKDAY_NAMES[0]
+}
+
 const resolvePromptVariable = (
   variableName: string,
   variableGranularity: string | undefined,
@@ -34,6 +48,10 @@ const resolvePromptVariable = (
     return formatLocalMinute(now)
   }
 
+  if (normalizedName === 'current_weekday') {
+    return formatLocalWeekday(now)
+  }
+
   if (normalizedName !== 'current_time' || !normalizedGranularity) {
     return null
   }
@@ -45,6 +63,8 @@ const resolvePromptVariable = (
       return formatLocalHour(now)
     case 'minute':
       return formatLocalMinute(now)
+    case 'weekday':
+      return formatLocalWeekday(now)
     default:
       return null
   }
