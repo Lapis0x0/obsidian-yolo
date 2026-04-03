@@ -15,6 +15,7 @@ import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { ChatPreferencesSection } from '../sections/ChatPreferencesSection'
 import { EtcSection } from '../sections/EtcSection'
 
 type OthersTabProps = {
@@ -252,6 +253,8 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           />
         </ObsidianSetting>
       </div>
+
+      <ChatPreferencesSection />
 
       <EtcSection app={app} plugin={plugin} />
     </>

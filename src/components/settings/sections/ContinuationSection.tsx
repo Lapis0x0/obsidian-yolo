@@ -202,708 +202,825 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
   }
 
   return (
-    <div className="smtcmp-settings-section">
-      <div className="smtcmp-settings-header">
-        {t('settings.continuation.title')}
-      </div>
-      <div className="smtcmp-settings-sub-header">
-        {t('settings.continuation.customSubsectionTitle')}
-      </div>
-      <div className="smtcmp-settings-desc smtcmp-settings-callout">
-        {t('settings.continuation.smartSpaceDescription')}
-      </div>
-      <ObsidianSetting
-        name={t('settings.continuation.smartSpaceToggle')}
-        desc={t('settings.continuation.smartSpaceToggleDesc')}
-      >
-        <ObsidianToggle
-          value={enableSmartSpace}
-          onChange={(value) => {
-            updateContinuationOptions(
-              {
-                enableSmartSpace: value,
-              },
-              'enableSmartSpace',
-            )
-          }}
-        />
-      </ObsidianSetting>
+    <>
+      <div className="smtcmp-settings-section">
+        <section className="smtcmp-settings-block">
+          <div className="smtcmp-settings-block-head">
+            <div className="smtcmp-settings-block-head-title-row">
+              <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+                {t('settings.continuation.customSubsectionTitle')}
+              </div>
+              <div className="smtcmp-settings-desc smtcmp-settings-block-desc">
+                {t('settings.continuation.smartSpaceDescription')}
+              </div>
+            </div>
+          </div>
 
-      {enableSmartSpace && (
-        <>
-          <ObsidianSetting
-            name={t('settings.continuation.smartSpaceTriggerMode')}
-            desc={t('settings.continuation.smartSpaceTriggerModeDesc')}
-            className="smtcmp-smart-space-trigger-setting"
-          >
-            <ObsidianDropdown
-              value={smartSpaceTriggerMode}
-              options={{
-                'single-space': t(
-                  'settings.continuation.smartSpaceTriggerModeSingle',
-                ),
-                'double-space': t(
-                  'settings.continuation.smartSpaceTriggerModeDouble',
-                ),
-                off: t('settings.continuation.smartSpaceTriggerModeOff'),
-              }}
-              onChange={(value) => {
-                updateContinuationOptions(
-                  {
-                    smartSpaceTriggerMode: value as
-                      | 'single-space'
-                      | 'double-space'
-                      | 'off',
-                  },
-                  'smartSpaceTriggerMode',
-                )
-              }}
-            />
-          </ObsidianSetting>
-
-          <SmartSpaceQuickActionsSettings />
-        </>
-      )}
-
-      <div className="smtcmp-settings-sub-header">
-        {t('settings.continuation.quickAskSubsectionTitle')}
-      </div>
-      <div className="smtcmp-settings-desc smtcmp-settings-callout">
-        {t('settings.continuation.quickAskDescription')}
-      </div>
-      <ObsidianSetting
-        name={t('settings.continuation.quickAskToggle')}
-        desc={t('settings.continuation.quickAskToggleDesc')}
-      >
-        <ObsidianToggle
-          value={settings.continuationOptions.enableQuickAsk ?? true}
-          onChange={(value) => {
-            updateContinuationOptions(
-              {
-                enableQuickAsk: value,
-              },
-              'enableQuickAsk',
-            )
-          }}
-        />
-      </ObsidianSetting>
-
-      {(settings.continuationOptions.enableQuickAsk ?? true) && (
-        <>
-          <ObsidianSetting
-            name={t('settings.continuation.quickAskTrigger')}
-            desc={t('settings.continuation.quickAskTriggerDesc')}
-          >
-            <ObsidianTextInput
-              value={settings.continuationOptions.quickAskTrigger ?? '@'}
-              onChange={(value) => {
-                // Only allow single character or short string
-                const trimmed = value.trim()
-                if (trimmed.length > 0 && trimmed.length <= 3) {
+          <div className="smtcmp-settings-block-content">
+            <ObsidianSetting
+              name={t('settings.continuation.smartSpaceToggle')}
+              desc={t('settings.continuation.smartSpaceToggleDesc')}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianToggle
+                value={enableSmartSpace}
+                onChange={(value) => {
                   updateContinuationOptions(
                     {
-                      quickAskTrigger: trimmed,
+                      enableSmartSpace: value,
                     },
-                    'quickAskTrigger',
+                    'enableSmartSpace',
                   )
-                }
-              }}
-            />
-          </ObsidianSetting>
-          <ObsidianSetting
-            name={t('settings.continuation.quickAskContextBeforeChars')}
-            desc={t('settings.continuation.quickAskContextBeforeCharsDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={quickAskNumberInputs.contextBeforeChars}
-              onChange={(value) => {
-                setQuickAskNumberInputs((prev) => ({
-                  ...prev,
-                  contextBeforeChars: value,
-                }))
-                const parsed = parseIntegerInput(value)
-                if (parsed === null) return
-                const next = Math.max(0, parsed)
-                updateContinuationOptions(
-                  {
-                    quickAskContextBeforeChars: next,
-                  },
-                  'quickAskContextBeforeChars',
-                )
-              }}
-              onBlur={() => {
-                const parsed = parseIntegerInput(
-                  quickAskNumberInputs.contextBeforeChars,
-                )
-                if (parsed === null) {
-                  setQuickAskNumberInputs((prev) => ({
-                    ...prev,
-                    contextBeforeChars: String(quickAskContextBeforeChars),
-                  }))
-                }
-              }}
-            />
-          </ObsidianSetting>
-          <ObsidianSetting
-            name={t('settings.continuation.quickAskContextAfterChars')}
-            desc={t('settings.continuation.quickAskContextAfterCharsDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={quickAskNumberInputs.contextAfterChars}
-              onChange={(value) => {
-                setQuickAskNumberInputs((prev) => ({
-                  ...prev,
-                  contextAfterChars: value,
-                }))
-                const parsed = parseIntegerInput(value)
-                if (parsed === null) return
-                const next = Math.max(0, parsed)
-                updateContinuationOptions(
-                  {
-                    quickAskContextAfterChars: next,
-                  },
-                  'quickAskContextAfterChars',
-                )
-              }}
-              onBlur={() => {
-                const parsed = parseIntegerInput(
-                  quickAskNumberInputs.contextAfterChars,
-                )
-                if (parsed === null) {
-                  setQuickAskNumberInputs((prev) => ({
-                    ...prev,
-                    contextAfterChars: String(quickAskContextAfterChars),
-                  }))
-                }
-              }}
-            />
-          </ObsidianSetting>
-        </>
-      )}
+                }}
+              />
+            </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.continuation.selectionChatToggle')}
-        desc={t('settings.continuation.selectionChatToggleDesc')}
-      >
-        <ObsidianToggle
-          value={enableSelectionChat}
-          onChange={(value) => {
-            updateContinuationOptions(
-              {
-                enableSelectionChat: value,
-              },
-              'enableSelectionChat',
-            )
-          }}
-        />
-      </ObsidianSetting>
+            {enableSmartSpace && (
+              <>
+                <ObsidianSetting
+                  name={t('settings.continuation.smartSpaceTriggerMode')}
+                  desc={t('settings.continuation.smartSpaceTriggerModeDesc')}
+                  className="smtcmp-settings-card smtcmp-smart-space-trigger-setting"
+                >
+                  <ObsidianDropdown
+                    value={smartSpaceTriggerMode}
+                    options={{
+                      'single-space': t(
+                        'settings.continuation.smartSpaceTriggerModeSingle',
+                      ),
+                      'double-space': t(
+                        'settings.continuation.smartSpaceTriggerModeDouble',
+                      ),
+                      off: t('settings.continuation.smartSpaceTriggerModeOff'),
+                    }}
+                    onChange={(value) => {
+                      updateContinuationOptions(
+                        {
+                          smartSpaceTriggerMode: value as
+                            | 'single-space'
+                            | 'double-space'
+                            | 'off',
+                        },
+                        'smartSpaceTriggerMode',
+                      )
+                    }}
+                  />
+                </ObsidianSetting>
 
-      {enableSelectionChat && (
-        <>
-          <ObsidianSetting
-            name={t(
-              'settings.continuation.selectionChatAutoDock',
-              '自动停靠到右上角',
+                <SmartSpaceQuickActionsSettings />
+              </>
             )}
-            desc={t(
-              'settings.continuation.selectionChatAutoDockDesc',
-              '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
-            )}
-          >
-            <ObsidianToggle
-              value={
-                settings.continuationOptions.quickAskAutoDockToTopRight ?? true
-              }
-              onChange={(value) => {
-                updateContinuationOptions(
-                  {
-                    quickAskAutoDockToTopRight: value,
-                  },
-                  'quickAskAutoDockToTopRight',
-                )
-              }}
-            />
-          </ObsidianSetting>
-          <SelectionChatActionsSettings />
-        </>
-      )}
-
-      <div className="smtcmp-settings-sub-header">
-        {t('settings.continuation.tabSubsectionTitle')}
+          </div>
+        </section>
       </div>
-      <ObsidianSetting
-        name={t('settings.continuation.tabCompletion')}
-        desc={t('settings.continuation.tabCompletionDesc')}
-      >
-        <ObsidianToggle
-          value={enableTabCompletion}
-          onChange={(value) => {
-            updateContinuationOptions(
-              {
-                enableTabCompletion: value,
-                tabCompletionOptions: value
-                  ? {
-                      ...DEFAULT_TAB_COMPLETION_OPTIONS,
-                      ...(settings.continuationOptions.tabCompletionOptions ??
-                        {}),
-                    }
-                  : settings.continuationOptions.tabCompletionOptions,
-              },
-              'enableTabCompletion',
-            )
-          }}
-        />
-      </ObsidianSetting>
 
-      {enableTabCompletion && (
-        <>
-          {/* Core settings */}
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionModel')}
-            desc={t('settings.continuation.tabCompletionModelDesc')}
-          >
-            <ObsidianDropdown
-              value={
-                settings.continuationOptions.tabCompletionModelId ??
-                settings.continuationOptions.continuationModelId ??
-                enabledChatModels[0]?.id ??
-                ''
-              }
-              options={Object.fromEntries(
-                enabledChatModels.map((chatModel) => {
-                  const label = chatModel.name?.trim()
-                    ? chatModel.name.trim()
-                    : chatModel.model || chatModel.id
-                  return [chatModel.id, label]
-                }),
-              )}
-              onChange={(value) => {
-                updateContinuationOptions(
-                  {
-                    tabCompletionModelId: value,
-                  },
-                  'tabCompletionModelId',
-                )
-              }}
-            />
-          </ObsidianSetting>
+      <div className="smtcmp-settings-section">
+        <section className="smtcmp-settings-block">
+          <div className="smtcmp-settings-block-head">
+            <div className="smtcmp-settings-block-head-title-row">
+              <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+                {t('settings.continuation.quickAskSubsectionTitle')}
+              </div>
+              <div className="smtcmp-settings-desc smtcmp-settings-block-desc">
+                {t('settings.continuation.quickAskDescription')}
+              </div>
+            </div>
+          </div>
 
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionMaxSuggestionLength')}
-            desc={t(
-              'settings.continuation.tabCompletionMaxSuggestionLengthDesc',
+          <div className="smtcmp-settings-block-content">
+            <ObsidianSetting
+              name={t('settings.continuation.quickAskToggle')}
+              desc={t('settings.continuation.quickAskToggleDesc')}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianToggle
+                value={settings.continuationOptions.enableQuickAsk ?? true}
+                onChange={(value) => {
+                  updateContinuationOptions(
+                    {
+                      enableQuickAsk: value,
+                    },
+                    'enableQuickAsk',
+                  )
+                }}
+              />
+            </ObsidianSetting>
+
+            {(settings.continuationOptions.enableQuickAsk ?? true) && (
+              <>
+                <ObsidianSetting
+                  name={t('settings.continuation.quickAskTrigger')}
+                  desc={t('settings.continuation.quickAskTriggerDesc')}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianTextInput
+                    value={settings.continuationOptions.quickAskTrigger ?? '@'}
+                    onChange={(value) => {
+                      const trimmed = value.trim()
+                      if (trimmed.length > 0 && trimmed.length <= 3) {
+                        updateContinuationOptions(
+                          {
+                            quickAskTrigger: trimmed,
+                          },
+                          'quickAskTrigger',
+                        )
+                      }
+                    }}
+                  />
+                </ObsidianSetting>
+                <ObsidianSetting
+                  name={t('settings.continuation.quickAskContextBeforeChars')}
+                  desc={t(
+                    'settings.continuation.quickAskContextBeforeCharsDesc',
+                  )}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianTextInput
+                    type="number"
+                    value={quickAskNumberInputs.contextBeforeChars}
+                    onChange={(value) => {
+                      setQuickAskNumberInputs((prev) => ({
+                        ...prev,
+                        contextBeforeChars: value,
+                      }))
+                      const parsed = parseIntegerInput(value)
+                      if (parsed === null) return
+                      const next = Math.max(0, parsed)
+                      updateContinuationOptions(
+                        {
+                          quickAskContextBeforeChars: next,
+                        },
+                        'quickAskContextBeforeChars',
+                      )
+                    }}
+                    onBlur={() => {
+                      const parsed = parseIntegerInput(
+                        quickAskNumberInputs.contextBeforeChars,
+                      )
+                      if (parsed === null) {
+                        setQuickAskNumberInputs((prev) => ({
+                          ...prev,
+                          contextBeforeChars: String(
+                            quickAskContextBeforeChars,
+                          ),
+                        }))
+                      }
+                    }}
+                  />
+                </ObsidianSetting>
+                <ObsidianSetting
+                  name={t('settings.continuation.quickAskContextAfterChars')}
+                  desc={t(
+                    'settings.continuation.quickAskContextAfterCharsDesc',
+                  )}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianTextInput
+                    type="number"
+                    value={quickAskNumberInputs.contextAfterChars}
+                    onChange={(value) => {
+                      setQuickAskNumberInputs((prev) => ({
+                        ...prev,
+                        contextAfterChars: value,
+                      }))
+                      const parsed = parseIntegerInput(value)
+                      if (parsed === null) return
+                      const next = Math.max(0, parsed)
+                      updateContinuationOptions(
+                        {
+                          quickAskContextAfterChars: next,
+                        },
+                        'quickAskContextAfterChars',
+                      )
+                    }}
+                    onBlur={() => {
+                      const parsed = parseIntegerInput(
+                        quickAskNumberInputs.contextAfterChars,
+                      )
+                      if (parsed === null) {
+                        setQuickAskNumberInputs((prev) => ({
+                          ...prev,
+                          contextAfterChars: String(quickAskContextAfterChars),
+                        }))
+                      }
+                    }}
+                  />
+                </ObsidianSetting>
+              </>
             )}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={tabNumberInputs.maxSuggestionLength}
-              onChange={(value) => {
-                setTabNumberInputs((prev) => ({
-                  ...prev,
-                  maxSuggestionLength: value,
-                }))
-                const parsed = parseIntegerInput(value)
-                if (parsed === null) return
-                const next = Math.max(20, parsed)
-                updateTabCompletionOptions({ maxSuggestionLength: next })
-              }}
-              onBlur={() => {
-                const parsed = parseIntegerInput(
-                  tabNumberInputs.maxSuggestionLength,
-                )
-                if (parsed === null) {
-                  setTabNumberInputs((prev) => ({
-                    ...prev,
-                    maxSuggestionLength: String(
-                      tabCompletionOptions.maxSuggestionLength,
-                    ),
-                  }))
-                }
-              }}
-            />
-          </ObsidianSetting>
 
-          <div className="smtcmp-settings-sub-header">
-            {t('settings.continuation.tabCompletionTriggersTitle')}
-          </div>
-          <div className="smtcmp-settings-trigger-callout-row">
+            <div className="smtcmp-settings-sub-header">
+              {t('settings.continuation.selectionChatSubsectionTitle')}
+            </div>
             <div className="smtcmp-settings-desc smtcmp-settings-callout">
-              {t('settings.continuation.tabCompletionTriggersDesc')}
+              {t('settings.continuation.selectionChatDescription')}
             </div>
-            <div className="smtcmp-tab-trigger-add">
-              <ObsidianButton
-                text={t('settings.continuation.tabCompletionTriggerAdd')}
-                onClick={handleAddTrigger}
+
+            <ObsidianSetting
+              name={t('settings.continuation.selectionChatToggle')}
+              desc={t('settings.continuation.selectionChatToggleDesc')}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianToggle
+                value={enableSelectionChat}
+                onChange={(value) => {
+                  updateContinuationOptions(
+                    {
+                      enableSelectionChat: value,
+                    },
+                    'enableSelectionChat',
+                  )
+                }}
               />
+            </ObsidianSetting>
+
+            {enableSelectionChat && (
+              <>
+                <ObsidianSetting
+                  name={t(
+                    'settings.continuation.selectionChatAutoDock',
+                    '自动停靠到右上角',
+                  )}
+                  desc={t(
+                    'settings.continuation.selectionChatAutoDockDesc',
+                    '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
+                  )}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianToggle
+                    value={
+                      settings.continuationOptions.quickAskAutoDockToTopRight ??
+                      true
+                    }
+                    onChange={(value) => {
+                      updateContinuationOptions(
+                        {
+                          quickAskAutoDockToTopRight: value,
+                        },
+                        'quickAskAutoDockToTopRight',
+                      )
+                    }}
+                  />
+                </ObsidianSetting>
+                <SelectionChatActionsSettings />
+              </>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="smtcmp-settings-section">
+        <section className="smtcmp-settings-block">
+          <div className="smtcmp-settings-block-head">
+            <div className="smtcmp-settings-block-head-title-row">
+              <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+                {t('settings.continuation.tabSubsectionTitle')}
+              </div>
+              <div className="smtcmp-settings-desc smtcmp-settings-block-desc">
+                {t('settings.continuation.tabCompletionBasicDesc')}
+              </div>
             </div>
           </div>
-          <div className="smtcmp-settings-table-container">
-            <table className="smtcmp-settings-table">
-              <thead>
-                <tr>
-                  <th>
-                    {t('settings.continuation.tabCompletionTriggerEnabled')}
-                  </th>
-                  <th>{t('settings.continuation.tabCompletionTriggerType')}</th>
-                  <th>
-                    {t('settings.continuation.tabCompletionTriggerPattern')}
-                  </th>
-                  <th>
-                    {t('settings.continuation.tabCompletionTriggerDescription')}
-                  </th>
-                  <th>
-                    {t('settings.continuation.tabCompletionTriggerRemove')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tabCompletionTriggers.map((trigger) => (
-                  <tr key={trigger.id}>
-                    <td>
-                      <ObsidianToggle
-                        value={trigger.enabled}
-                        onChange={(value) => {
-                          handleTriggerChange(trigger.id, { enabled: value })
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <ObsidianDropdown
-                        value={trigger.type}
-                        options={{
-                          string: t(
-                            'settings.continuation.tabCompletionTriggerTypeString',
+
+          <div className="smtcmp-settings-block-content">
+            <ObsidianSetting
+              name={t('settings.continuation.tabCompletion')}
+              desc={t('settings.continuation.tabCompletionDesc')}
+              className="smtcmp-settings-card"
+            >
+              <ObsidianToggle
+                value={enableTabCompletion}
+                onChange={(value) => {
+                  updateContinuationOptions(
+                    {
+                      enableTabCompletion: value,
+                      tabCompletionOptions: value
+                        ? {
+                            ...DEFAULT_TAB_COMPLETION_OPTIONS,
+                            ...(settings.continuationOptions
+                              .tabCompletionOptions ?? {}),
+                          }
+                        : settings.continuationOptions.tabCompletionOptions,
+                    },
+                    'enableTabCompletion',
+                  )
+                }}
+              />
+            </ObsidianSetting>
+
+            {enableTabCompletion && (
+              <>
+                <ObsidianSetting
+                  name={t('settings.continuation.tabCompletionModel')}
+                  desc={t('settings.continuation.tabCompletionModelDesc')}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianDropdown
+                    value={
+                      settings.continuationOptions.tabCompletionModelId ??
+                      settings.continuationOptions.continuationModelId ??
+                      enabledChatModels[0]?.id ??
+                      ''
+                    }
+                    options={Object.fromEntries(
+                      enabledChatModels.map((chatModel) => {
+                        const label = chatModel.name?.trim()
+                          ? chatModel.name.trim()
+                          : chatModel.model || chatModel.id
+                        return [chatModel.id, label]
+                      }),
+                    )}
+                    onChange={(value) => {
+                      updateContinuationOptions(
+                        {
+                          tabCompletionModelId: value,
+                        },
+                        'tabCompletionModelId',
+                      )
+                    }}
+                  />
+                </ObsidianSetting>
+
+                <ObsidianSetting
+                  name={t(
+                    'settings.continuation.tabCompletionMaxSuggestionLength',
+                  )}
+                  desc={t(
+                    'settings.continuation.tabCompletionMaxSuggestionLengthDesc',
+                  )}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianTextInput
+                    type="number"
+                    value={tabNumberInputs.maxSuggestionLength}
+                    onChange={(value) => {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        maxSuggestionLength: value,
+                      }))
+                      const parsed = parseIntegerInput(value)
+                      if (parsed === null) return
+                      const next = Math.max(20, parsed)
+                      updateTabCompletionOptions({ maxSuggestionLength: next })
+                    }}
+                    onBlur={() => {
+                      const parsed = parseIntegerInput(
+                        tabNumberInputs.maxSuggestionLength,
+                      )
+                      if (parsed === null) {
+                        setTabNumberInputs((prev) => ({
+                          ...prev,
+                          maxSuggestionLength: String(
+                            tabCompletionOptions.maxSuggestionLength,
                           ),
-                          regex: t(
-                            'settings.continuation.tabCompletionTriggerTypeRegex',
+                        }))
+                      }
+                    }}
+                  />
+                </ObsidianSetting>
+
+                <div className="smtcmp-settings-sub-header">
+                  {t('settings.continuation.tabCompletionTriggersTitle')}
+                </div>
+                <div className="smtcmp-settings-trigger-callout-row">
+                  <div className="smtcmp-settings-desc smtcmp-settings-callout">
+                    {t('settings.continuation.tabCompletionTriggersDesc')}
+                  </div>
+                  <div className="smtcmp-tab-trigger-add">
+                    <ObsidianButton
+                      text={t('settings.continuation.tabCompletionTriggerAdd')}
+                      onClick={handleAddTrigger}
+                    />
+                  </div>
+                </div>
+                <div className="smtcmp-settings-table-container">
+                  <table className="smtcmp-settings-table">
+                    <thead>
+                      <tr>
+                        <th>
+                          {t(
+                            'settings.continuation.tabCompletionTriggerEnabled',
+                          )}
+                        </th>
+                        <th>
+                          {t('settings.continuation.tabCompletionTriggerType')}
+                        </th>
+                        <th>
+                          {t(
+                            'settings.continuation.tabCompletionTriggerPattern',
+                          )}
+                        </th>
+                        <th>
+                          {t(
+                            'settings.continuation.tabCompletionTriggerDescription',
+                          )}
+                        </th>
+                        <th>
+                          {t(
+                            'settings.continuation.tabCompletionTriggerRemove',
+                          )}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tabCompletionTriggers.map((trigger) => (
+                        <tr key={trigger.id}>
+                          <td>
+                            <ObsidianToggle
+                              value={trigger.enabled}
+                              onChange={(value) => {
+                                handleTriggerChange(trigger.id, {
+                                  enabled: value,
+                                })
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <ObsidianDropdown
+                              value={trigger.type}
+                              options={{
+                                string: t(
+                                  'settings.continuation.tabCompletionTriggerTypeString',
+                                ),
+                                regex: t(
+                                  'settings.continuation.tabCompletionTriggerTypeRegex',
+                                ),
+                              }}
+                              onChange={(value) => {
+                                handleTriggerChange(trigger.id, {
+                                  type: value as 'string' | 'regex',
+                                })
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <ObsidianTextInput
+                              value={trigger.pattern}
+                              onChange={(value) => {
+                                handleTriggerChange(trigger.id, {
+                                  pattern: value,
+                                })
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <ObsidianTextInput
+                              value={trigger.description ?? ''}
+                              onChange={(value) => {
+                                handleTriggerChange(trigger.id, {
+                                  description: value,
+                                })
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <ObsidianButton
+                              text={t(
+                                'settings.continuation.tabCompletionTriggerRemove',
+                              )}
+                              onClick={() => handleRemoveTrigger(trigger.id)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <ObsidianSetting
+                  name={t('settings.continuation.tabCompletionTriggerDelay')}
+                  desc={t(
+                    'settings.continuation.tabCompletionTriggerDelayDesc',
+                  )}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianTextInput
+                    type="number"
+                    value={tabNumberInputs.triggerDelayMs}
+                    onChange={(value) => {
+                      setTabNumberInputs((prev) => ({
+                        ...prev,
+                        triggerDelayMs: value,
+                      }))
+                      const parsed = parseIntegerInput(value)
+                      if (parsed === null) return
+                      const next = Math.max(200, parsed)
+                      updateTabCompletionOptions({ triggerDelayMs: next })
+                    }}
+                    onBlur={() => {
+                      const parsed = parseIntegerInput(
+                        tabNumberInputs.triggerDelayMs,
+                      )
+                      if (parsed === null) {
+                        setTabNumberInputs((prev) => ({
+                          ...prev,
+                          triggerDelayMs: String(
+                            tabCompletionOptions.triggerDelayMs,
                           ),
-                        }}
+                        }))
+                      }
+                    }}
+                  />
+                </ObsidianSetting>
+                <ObsidianSetting
+                  name={t('settings.continuation.tabCompletionAutoTrigger')}
+                  desc={t('settings.continuation.tabCompletionAutoTriggerDesc')}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianToggle
+                    value={tabCompletionOptions.idleTriggerEnabled}
+                    onChange={(value) => {
+                      updateTabCompletionOptions({ idleTriggerEnabled: value })
+                    }}
+                  />
+                </ObsidianSetting>
+                {tabCompletionOptions.idleTriggerEnabled && (
+                  <>
+                    <ObsidianSetting
+                      name={t(
+                        'settings.continuation.tabCompletionAutoTriggerDelay',
+                      )}
+                      desc={t(
+                        'settings.continuation.tabCompletionAutoTriggerDelayDesc',
+                      )}
+                      className="smtcmp-settings-card"
+                    >
+                      <ObsidianTextInput
+                        type="number"
+                        value={tabNumberInputs.autoTriggerDelayMs}
                         onChange={(value) => {
-                          handleTriggerChange(trigger.id, {
-                            type: value as 'string' | 'regex',
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            autoTriggerDelayMs: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          const next = Math.max(200, parsed)
+                          updateTabCompletionOptions({
+                            autoTriggerDelayMs: next,
                           })
                         }}
-                      />
-                    </td>
-                    <td>
-                      <ObsidianTextInput
-                        value={trigger.pattern}
-                        onChange={(value) => {
-                          handleTriggerChange(trigger.id, { pattern: value })
+                        onBlur={() => {
+                          const parsed = parseIntegerInput(
+                            tabNumberInputs.autoTriggerDelayMs,
+                          )
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              autoTriggerDelayMs: String(
+                                tabCompletionOptions.autoTriggerDelayMs,
+                              ),
+                            }))
+                          }
                         }}
                       />
-                    </td>
-                    <td>
+                    </ObsidianSetting>
+                    <ObsidianSetting
+                      name={t(
+                        'settings.continuation.tabCompletionAutoTriggerCooldown',
+                      )}
+                      desc={t(
+                        'settings.continuation.tabCompletionAutoTriggerCooldownDesc',
+                      )}
+                      className="smtcmp-settings-card"
+                    >
                       <ObsidianTextInput
-                        value={trigger.description ?? ''}
+                        type="number"
+                        value={tabNumberInputs.autoTriggerCooldownMs}
                         onChange={(value) => {
-                          handleTriggerChange(trigger.id, {
-                            description: value,
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            autoTriggerCooldownMs: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          const next = Math.max(0, parsed)
+                          updateTabCompletionOptions({
+                            autoTriggerCooldownMs: next,
                           })
                         }}
+                        onBlur={() => {
+                          const parsed = parseIntegerInput(
+                            tabNumberInputs.autoTriggerCooldownMs,
+                          )
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              autoTriggerCooldownMs: String(
+                                tabCompletionOptions.autoTriggerCooldownMs,
+                              ),
+                            }))
+                          }
+                        }}
                       />
-                    </td>
-                    <td>
-                      <ObsidianButton
-                        text={t(
-                          'settings.continuation.tabCompletionTriggerRemove',
+                    </ObsidianSetting>
+                  </>
+                )}
+
+                <div
+                  className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
+                    showAdvancedTabSettings ? ' is-expanded' : ''
+                  }`}
+                  onClick={() => setShowAdvancedTabSettings((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setShowAdvancedTabSettings((prev) => !prev)
+                    }
+                  }}
+                >
+                  <span className="smtcmp-settings-advanced-toggle-icon">
+                    ▶
+                  </span>
+                  {t('settings.continuation.tabCompletionAdvanced')}
+                </div>
+
+                {showAdvancedTabSettings && (
+                  <>
+                    <ObsidianSetting
+                      name={t(
+                        'settings.continuation.tabCompletionContextRange',
+                      )}
+                      desc={t(
+                        'settings.continuation.tabCompletionContextRangeDesc',
+                      )}
+                      className="smtcmp-settings-card"
+                    >
+                      <ObsidianTextInput
+                        type="number"
+                        value={tabNumberInputs.contextRange}
+                        onChange={(value) => {
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            contextRange: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          const next = Math.max(500, parsed)
+                          updateTabCompletionOptions({ contextRange: next })
+                        }}
+                        onBlur={() => {
+                          const parsed = parseIntegerInput(
+                            tabNumberInputs.contextRange,
+                          )
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              contextRange: String(
+                                tabCompletionOptions.contextRange,
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </ObsidianSetting>
+
+                    <ObsidianSetting
+                      name={t(
+                        'settings.continuation.tabCompletionMinContextLength',
+                      )}
+                      desc={t(
+                        'settings.continuation.tabCompletionMinContextLengthDesc',
+                      )}
+                      className="smtcmp-settings-card"
+                    >
+                      <ObsidianTextInput
+                        type="number"
+                        value={tabNumberInputs.minContextLength}
+                        onChange={(value) => {
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            minContextLength: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          const next = Math.max(0, parsed)
+                          updateTabCompletionOptions({
+                            minContextLength: next,
+                          })
+                        }}
+                        onBlur={() => {
+                          const parsed = parseIntegerInput(
+                            tabNumberInputs.minContextLength,
+                          )
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              minContextLength: String(
+                                tabCompletionOptions.minContextLength,
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </ObsidianSetting>
+
+                    <ObsidianSetting
+                      name={t('settings.continuation.tabCompletionTemperature')}
+                      desc={t(
+                        'settings.continuation.tabCompletionTemperatureDesc',
+                      )}
+                      className="smtcmp-settings-card"
+                    >
+                      <ObsidianTextInput
+                        type="number"
+                        value={tabNumberInputs.temperature}
+                        onChange={(value) => {
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            temperature: value,
+                          }))
+                          const parsed = parseFloatInput(value)
+                          if (parsed === null) return
+                          updateTabCompletionOptions({
+                            temperature: Math.min(Math.max(parsed, 0), 2),
+                          })
+                        }}
+                        onBlur={() => {
+                          const parsed = parseFloatInput(
+                            tabNumberInputs.temperature,
+                          )
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              temperature: String(
+                                tabCompletionOptions.temperature,
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </ObsidianSetting>
+
+                    <ObsidianSetting
+                      name={t(
+                        'settings.continuation.tabCompletionRequestTimeout',
+                      )}
+                      desc={t(
+                        'settings.continuation.tabCompletionRequestTimeoutDesc',
+                      )}
+                      className="smtcmp-settings-card"
+                    >
+                      <ObsidianTextInput
+                        type="number"
+                        value={tabNumberInputs.requestTimeoutMs}
+                        onChange={(value) => {
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            requestTimeoutMs: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          const next = Math.max(1000, parsed)
+                          updateTabCompletionOptions({ requestTimeoutMs: next })
+                        }}
+                        onBlur={() => {
+                          const parsed = parseIntegerInput(
+                            tabNumberInputs.requestTimeoutMs,
+                          )
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              requestTimeoutMs: String(
+                                tabCompletionOptions.requestTimeoutMs,
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </ObsidianSetting>
+
+                    <div className="smtcmp-models-textarea-card">
+                      <ObsidianSetting
+                        name={t(
+                          'settings.continuation.tabCompletionConstraints',
                         )}
-                        onClick={() => handleRemoveTrigger(trigger.id)}
+                        desc={t(
+                          'settings.continuation.tabCompletionConstraintsDesc',
+                        )}
+                        className="smtcmp-settings-textarea-header smtcmp-models-textarea-card-header"
                       />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <ObsidianSetting className="smtcmp-settings-textarea smtcmp-models-textarea-card-body">
+                        <ObsidianTextArea
+                          value={tabCompletionConstraints}
+                          onChange={(value: string) => {
+                            updateContinuationOptions(
+                              { tabCompletionConstraints: value },
+                              'tabCompletionConstraints',
+                            )
+                          }}
+                        />
+                      </ObsidianSetting>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionTriggerDelay')}
-            desc={t('settings.continuation.tabCompletionTriggerDelayDesc')}
-          >
-            <ObsidianTextInput
-              type="number"
-              value={tabNumberInputs.triggerDelayMs}
-              onChange={(value) => {
-                setTabNumberInputs((prev) => ({
-                  ...prev,
-                  triggerDelayMs: value,
-                }))
-                const parsed = parseIntegerInput(value)
-                if (parsed === null) return
-                const next = Math.max(200, parsed)
-                updateTabCompletionOptions({ triggerDelayMs: next })
-              }}
-              onBlur={() => {
-                const parsed = parseIntegerInput(tabNumberInputs.triggerDelayMs)
-                if (parsed === null) {
-                  setTabNumberInputs((prev) => ({
-                    ...prev,
-                    triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
-                  }))
-                }
-              }}
-            />
-          </ObsidianSetting>
-          <ObsidianSetting
-            name={t('settings.continuation.tabCompletionAutoTrigger')}
-            desc={t('settings.continuation.tabCompletionAutoTriggerDesc')}
-          >
-            <ObsidianToggle
-              value={tabCompletionOptions.idleTriggerEnabled}
-              onChange={(value) => {
-                updateTabCompletionOptions({ idleTriggerEnabled: value })
-              }}
-            />
-          </ObsidianSetting>
-          {tabCompletionOptions.idleTriggerEnabled && (
-            <>
-              <ObsidianSetting
-                name={t('settings.continuation.tabCompletionAutoTriggerDelay')}
-                desc={t(
-                  'settings.continuation.tabCompletionAutoTriggerDelayDesc',
-                )}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={tabNumberInputs.autoTriggerDelayMs}
-                  onChange={(value) => {
-                    setTabNumberInputs((prev) => ({
-                      ...prev,
-                      autoTriggerDelayMs: value,
-                    }))
-                    const parsed = parseIntegerInput(value)
-                    if (parsed === null) return
-                    const next = Math.max(200, parsed)
-                    updateTabCompletionOptions({ autoTriggerDelayMs: next })
-                  }}
-                  onBlur={() => {
-                    const parsed = parseIntegerInput(
-                      tabNumberInputs.autoTriggerDelayMs,
-                    )
-                    if (parsed === null) {
-                      setTabNumberInputs((prev) => ({
-                        ...prev,
-                        autoTriggerDelayMs: String(
-                          tabCompletionOptions.autoTriggerDelayMs,
-                        ),
-                      }))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t(
-                  'settings.continuation.tabCompletionAutoTriggerCooldown',
-                )}
-                desc={t(
-                  'settings.continuation.tabCompletionAutoTriggerCooldownDesc',
-                )}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={tabNumberInputs.autoTriggerCooldownMs}
-                  onChange={(value) => {
-                    setTabNumberInputs((prev) => ({
-                      ...prev,
-                      autoTriggerCooldownMs: value,
-                    }))
-                    const parsed = parseIntegerInput(value)
-                    if (parsed === null) return
-                    const next = Math.max(0, parsed)
-                    updateTabCompletionOptions({ autoTriggerCooldownMs: next })
-                  }}
-                  onBlur={() => {
-                    const parsed = parseIntegerInput(
-                      tabNumberInputs.autoTriggerCooldownMs,
-                    )
-                    if (parsed === null) {
-                      setTabNumberInputs((prev) => ({
-                        ...prev,
-                        autoTriggerCooldownMs: String(
-                          tabCompletionOptions.autoTriggerCooldownMs,
-                        ),
-                      }))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-            </>
-          )}
-          {/* Advanced settings toggle */}
-          <div
-            className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
-              showAdvancedTabSettings ? ' is-expanded' : ''
-            }`}
-            onClick={() => setShowAdvancedTabSettings((prev) => !prev)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                setShowAdvancedTabSettings((prev) => !prev)
-              }
-            }}
-          >
-            <span className="smtcmp-settings-advanced-toggle-icon">▶</span>
-            {t('settings.continuation.tabCompletionAdvanced')}
-          </div>
-
-          {/* Advanced settings */}
-          {showAdvancedTabSettings && (
-            <>
-              <ObsidianSetting
-                name={t('settings.continuation.tabCompletionContextRange')}
-                desc={t('settings.continuation.tabCompletionContextRangeDesc')}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={tabNumberInputs.contextRange}
-                  onChange={(value) => {
-                    setTabNumberInputs((prev) => ({
-                      ...prev,
-                      contextRange: value,
-                    }))
-                    const parsed = parseIntegerInput(value)
-                    if (parsed === null) return
-                    const next = Math.max(500, parsed)
-                    updateTabCompletionOptions({ contextRange: next })
-                  }}
-                  onBlur={() => {
-                    const parsed = parseIntegerInput(
-                      tabNumberInputs.contextRange,
-                    )
-                    if (parsed === null) {
-                      setTabNumberInputs((prev) => ({
-                        ...prev,
-                        contextRange: String(tabCompletionOptions.contextRange),
-                      }))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.continuation.tabCompletionMinContextLength')}
-                desc={t(
-                  'settings.continuation.tabCompletionMinContextLengthDesc',
-                )}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={tabNumberInputs.minContextLength}
-                  onChange={(value) => {
-                    setTabNumberInputs((prev) => ({
-                      ...prev,
-                      minContextLength: value,
-                    }))
-                    const parsed = parseIntegerInput(value)
-                    if (parsed === null) return
-                    const next = Math.max(0, parsed)
-                    updateTabCompletionOptions({ minContextLength: next })
-                  }}
-                  onBlur={() => {
-                    const parsed = parseIntegerInput(
-                      tabNumberInputs.minContextLength,
-                    )
-                    if (parsed === null) {
-                      setTabNumberInputs((prev) => ({
-                        ...prev,
-                        minContextLength: String(
-                          tabCompletionOptions.minContextLength,
-                        ),
-                      }))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.continuation.tabCompletionTemperature')}
-                desc={t('settings.continuation.tabCompletionTemperatureDesc')}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={tabNumberInputs.temperature}
-                  onChange={(value) => {
-                    setTabNumberInputs((prev) => ({
-                      ...prev,
-                      temperature: value,
-                    }))
-                    const parsed = parseFloatInput(value)
-                    if (parsed === null) return
-                    updateTabCompletionOptions({
-                      temperature: Math.min(Math.max(parsed, 0), 2),
-                    })
-                  }}
-                  onBlur={() => {
-                    const parsed = parseFloatInput(tabNumberInputs.temperature)
-                    if (parsed === null) {
-                      setTabNumberInputs((prev) => ({
-                        ...prev,
-                        temperature: String(tabCompletionOptions.temperature),
-                      }))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.continuation.tabCompletionRequestTimeout')}
-                desc={t(
-                  'settings.continuation.tabCompletionRequestTimeoutDesc',
-                )}
-              >
-                <ObsidianTextInput
-                  type="number"
-                  value={tabNumberInputs.requestTimeoutMs}
-                  onChange={(value) => {
-                    setTabNumberInputs((prev) => ({
-                      ...prev,
-                      requestTimeoutMs: value,
-                    }))
-                    const parsed = parseIntegerInput(value)
-                    if (parsed === null) return
-                    const next = Math.max(1000, parsed)
-                    updateTabCompletionOptions({ requestTimeoutMs: next })
-                  }}
-                  onBlur={() => {
-                    const parsed = parseIntegerInput(
-                      tabNumberInputs.requestTimeoutMs,
-                    )
-                    if (parsed === null) {
-                      setTabNumberInputs((prev) => ({
-                        ...prev,
-                        requestTimeoutMs: String(
-                          tabCompletionOptions.requestTimeoutMs,
-                        ),
-                      }))
-                    }
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.continuation.tabCompletionConstraints')}
-                desc={t('settings.continuation.tabCompletionConstraintsDesc')}
-                className="smtcmp-settings-textarea-header"
-              />
-              <ObsidianSetting className="smtcmp-settings-textarea">
-                <ObsidianTextArea
-                  value={tabCompletionConstraints}
-                  onChange={(value: string) => {
-                    updateContinuationOptions(
-                      { tabCompletionConstraints: value },
-                      'tabCompletionConstraints',
-                    )
-                  }}
-                />
-              </ObsidianSetting>
-            </>
-          )}
-        </>
-      )}
-    </div>
+        </section>
+      </div>
+    </>
   )
 }

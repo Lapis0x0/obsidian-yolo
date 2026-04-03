@@ -51,81 +51,92 @@ export function ChatPreferencesSection() {
 
   return (
     <div className="smtcmp-settings-section">
-      <div className="smtcmp-settings-header">
-        {t('settings.chatPreferences.title')}
-      </div>
+      <section className="smtcmp-settings-block">
+        <div className="smtcmp-settings-block-head">
+          <div className="smtcmp-settings-block-head-title-row">
+            <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+              {t('settings.chatPreferences.title')}
+            </div>
+          </div>
+        </div>
 
-      <ObsidianSetting
-        name={t('settings.chatPreferences.includeCurrentFile')}
-        desc={t('settings.chatPreferences.includeCurrentFileDesc')}
-      >
-        <ObsidianToggle
-          value={settings.chatOptions.includeCurrentFileContent}
-          onChange={(value) => {
-            updateChatOptions(
-              {
-                includeCurrentFileContent: value,
-              },
-              'includeCurrentFileContent',
-            )
-          }}
-        />
-      </ObsidianSetting>
+        <div className="smtcmp-settings-block-content">
+          <ObsidianSetting
+            name={t('settings.chatPreferences.includeCurrentFile')}
+            desc={t('settings.chatPreferences.includeCurrentFileDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={settings.chatOptions.includeCurrentFileContent}
+              onChange={(value) => {
+                updateChatOptions(
+                  {
+                    includeCurrentFileContent: value,
+                  },
+                  'includeCurrentFileContent',
+                )
+              }}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.chatPreferences.historyArchiveEnabled')}
-        desc={t('settings.chatPreferences.historyArchiveEnabledDesc')}
-      >
-        <ObsidianToggle
-          value={settings.chatOptions.historyArchiveEnabled ?? true}
-          onChange={(value) => {
-            updateChatOptions(
-              {
-                historyArchiveEnabled: value,
-              },
-              'historyArchiveEnabled',
-            )
-          }}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.chatPreferences.historyArchiveEnabled')}
+            desc={t('settings.chatPreferences.historyArchiveEnabledDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={settings.chatOptions.historyArchiveEnabled ?? true}
+              onChange={(value) => {
+                updateChatOptions(
+                  {
+                    historyArchiveEnabled: value,
+                  },
+                  'historyArchiveEnabled',
+                )
+              }}
+            />
+          </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.chatPreferences.historyArchiveThreshold')}
-        desc={t('settings.chatPreferences.historyArchiveThresholdDesc')}
-      >
-        <ObsidianTextInput
-          value={historyArchiveThresholdInput}
-          type="number"
-          onChange={(value) => {
-            setHistoryArchiveThresholdInput(value)
-          }}
-          onBlur={(value) => {
-            const parsed = Number.parseInt(value, 10)
-            if (Number.isNaN(parsed)) {
-              setHistoryArchiveThresholdInput(
-                String(
-                  settings.chatOptions.historyArchiveThreshold ??
-                    HISTORY_ARCHIVE_THRESHOLD_FALLBACK,
-                ),
-              )
-              return
-            }
-            const clamped = Math.max(
-              HISTORY_ARCHIVE_THRESHOLD_MIN,
-              Math.min(HISTORY_ARCHIVE_THRESHOLD_MAX, parsed),
-            )
-            setHistoryArchiveThresholdInput(String(clamped))
-            if (clamped !== settings.chatOptions.historyArchiveThreshold) {
-              updateChatOptions(
-                {
-                  historyArchiveThreshold: clamped,
-                },
-                'historyArchiveThreshold',
-              )
-            }
-          }}
-        />
-      </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.chatPreferences.historyArchiveThreshold')}
+            desc={t('settings.chatPreferences.historyArchiveThresholdDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianTextInput
+              value={historyArchiveThresholdInput}
+              type="number"
+              onChange={(value) => {
+                setHistoryArchiveThresholdInput(value)
+              }}
+              onBlur={(value) => {
+                const parsed = Number.parseInt(value, 10)
+                if (Number.isNaN(parsed)) {
+                  setHistoryArchiveThresholdInput(
+                    String(
+                      settings.chatOptions.historyArchiveThreshold ??
+                        HISTORY_ARCHIVE_THRESHOLD_FALLBACK,
+                    ),
+                  )
+                  return
+                }
+                const clamped = Math.max(
+                  HISTORY_ARCHIVE_THRESHOLD_MIN,
+                  Math.min(HISTORY_ARCHIVE_THRESHOLD_MAX, parsed),
+                )
+                setHistoryArchiveThresholdInput(String(clamped))
+                if (clamped !== settings.chatOptions.historyArchiveThreshold) {
+                  updateChatOptions(
+                    {
+                      historyArchiveThreshold: clamped,
+                    },
+                    'historyArchiveThreshold',
+                  )
+                }
+              }}
+            />
+          </ObsidianSetting>
+        </div>
+      </section>
     </div>
   )
 }
