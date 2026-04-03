@@ -1,6 +1,6 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $createTextNode, COMMAND_PRIORITY_NORMAL, TextNode } from 'lexical'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, Minimize2, Sparkles } from 'lucide-react'
 import { RefObject, useCallback, useEffect, useMemo, useState } from 'react'
 import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
@@ -65,6 +65,8 @@ function SkillTypeaheadMenuItem({
   onMouseEnter: () => void
   option: SkillTypeaheadOption
 }) {
+  const ItemIcon = option.type === 'command' ? Minimize2 : Sparkles
+
   return (
     <button
       type="button"
@@ -80,7 +82,7 @@ function SkillTypeaheadMenuItem({
       onClick={onClick}
       data-highlighted={isSelected ? 'true' : undefined}
     >
-      <Sparkles size={14} className="smtcmp-smart-space-mention-option-icon" />
+      <ItemIcon size={14} className="smtcmp-smart-space-mention-option-icon" />
       <div className="smtcmp-smart-space-mention-option-text smtcmp-smart-space-mention-option-text--inline-meta">
         <div className="smtcmp-smart-space-mention-option-name">
           {option.name}
