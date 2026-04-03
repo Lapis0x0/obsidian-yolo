@@ -299,6 +299,7 @@ export function SmartSpaceQuickActionsSettings({
           'settings.smartSpace.quickActionsDesc',
           '自定义 Smart Space 中显示的快捷选项和提示词',
         )}
+        className="smtcmp-settings-card"
       >
         <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
         <ObsidianButton

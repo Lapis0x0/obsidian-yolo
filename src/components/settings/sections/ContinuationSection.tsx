@@ -309,6 +309,33 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
             {(settings.continuationOptions.enableQuickAsk ?? true) && (
               <>
                 <ObsidianSetting
+                  name={t(
+                    'settings.continuation.selectionChatAutoDock',
+                    '自动停靠到右上角',
+                  )}
+                  desc={t(
+                    'settings.continuation.selectionChatAutoDockDesc',
+                    '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
+                  )}
+                  className="smtcmp-settings-card"
+                >
+                  <ObsidianToggle
+                    value={
+                      settings.continuationOptions.quickAskAutoDockToTopRight ??
+                      true
+                    }
+                    onChange={(value) => {
+                      updateContinuationOptions(
+                        {
+                          quickAskAutoDockToTopRight: value,
+                        },
+                        'quickAskAutoDockToTopRight',
+                      )
+                    }}
+                  />
+                </ObsidianSetting>
+
+                <ObsidianSetting
                   name={t('settings.continuation.quickAskTrigger')}
                   desc={t('settings.continuation.quickAskTriggerDesc')}
                   className="smtcmp-settings-card"
@@ -436,32 +463,6 @@ export function ContinuationSection({ app: _app }: ContinuationSectionProps) {
 
             {enableSelectionChat && (
               <>
-                <ObsidianSetting
-                  name={t(
-                    'settings.continuation.selectionChatAutoDock',
-                    '自动停靠到右上角',
-                  )}
-                  desc={t(
-                    'settings.continuation.selectionChatAutoDockDesc',
-                    '发送问题后自动移动到编辑器右上角（拖动后不再自动跟随）。',
-                  )}
-                  className="smtcmp-settings-card"
-                >
-                  <ObsidianToggle
-                    value={
-                      settings.continuationOptions.quickAskAutoDockToTopRight ??
-                      true
-                    }
-                    onChange={(value) => {
-                      updateContinuationOptions(
-                        {
-                          quickAskAutoDockToTopRight: value,
-                        },
-                        'quickAskAutoDockToTopRight',
-                      )
-                    }}
-                  />
-                </ObsidianSetting>
                 <SelectionChatActionsSettings />
               </>
             )}

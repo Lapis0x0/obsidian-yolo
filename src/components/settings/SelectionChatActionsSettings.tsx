@@ -172,6 +172,7 @@ export function SelectionChatActionsSettings({
           'settings.selectionChat.quickActionsDesc',
           '自定义选中文本后显示的快捷选项和提示词',
         )}
+        className="smtcmp-settings-card"
       >
         <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
         <ObsidianButton

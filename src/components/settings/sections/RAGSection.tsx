@@ -473,6 +473,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
           <ObsidianSetting
             name={t('settings.rag.enableRag')}
             desc={t('settings.rag.enableRagDesc')}
+            className="smtcmp-settings-card"
           >
             <ObsidianToggle
               value={isRagEnabled}
@@ -492,6 +493,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             <ObsidianSetting
               name={t('settings.rag.embeddingModel')}
               desc={t('settings.rag.embeddingModelDesc')}
+              className="smtcmp-settings-card"
             >
               <ObsidianDropdown
                 value={settings.embeddingModelId}
@@ -579,6 +581,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               <ObsidianSetting
                 name={t('settings.rag.includePatterns')}
                 desc={t('settings.rag.includePatternsDesc')}
+                className="smtcmp-settings-card"
               >
                 <ObsidianButton
                   text={t('settings.rag.testPatterns')}
@@ -623,6 +626,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               <ObsidianSetting
                 name={t('settings.rag.excludePatterns')}
                 desc={t('settings.rag.excludePatternsDesc')}
+                className="smtcmp-settings-card"
               >
                 <ObsidianButton
                   text={t('settings.rag.testPatterns')}
@@ -745,6 +749,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   'settings.rag.autoUpdateDesc',
                   '当包含模式下的文件夹内容有变化时，按设定的最小间隔自动执行增量更新；默认每日一次。',
                 )}
+                className="smtcmp-settings-card"
               >
                 <ObsidianToggle
                   value={!!settings.ragOptions.autoUpdateEnabled}
@@ -766,6 +771,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   'settings.rag.manualUpdateNowDesc',
                   '手动执行一次增量更新，并记录最近更新时间。',
                 )}
+                className="smtcmp-settings-card"
               >
                 <ObsidianButton
                   text={t('settings.rag.manualUpdateNow', '立即更新')}
@@ -814,7 +820,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 />
               </ObsidianSetting>
 
-              <ObsidianSetting name={t('settings.rag.manageEmbeddingDatabase')}>
+              <ObsidianSetting
+                name={t('settings.rag.manageEmbeddingDatabase')}
+                className="smtcmp-settings-card"
+              >
                 <div className="smtcmp-flex-row-gap-8">
                   <ObsidianButton
                     text={t('settings.rag.manage')}
@@ -978,6 +987,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   <ObsidianSetting
                     name={t('settings.rag.chunkSize')}
                     desc={t('settings.rag.chunkSizeDesc')}
+                    className="smtcmp-settings-card"
                   >
                     <ObsidianTextInput
                       value={chunkSizeInput}
@@ -1009,6 +1019,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   <ObsidianSetting
                     name={t('settings.rag.minSimilarity')}
                     desc={t('settings.rag.minSimilarityDesc')}
+                    className="smtcmp-settings-card"
                   >
                     <ObsidianTextInput
                       value={minSimilarityInput}
@@ -1041,6 +1052,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   <ObsidianSetting
                     name={t('settings.rag.limit')}
                     desc={t('settings.rag.limitDesc')}
+                    className="smtcmp-settings-card"
                   >
                     <ObsidianTextInput
                       value={limitInput}
@@ -1076,6 +1088,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       'settings.rag.autoUpdateIntervalDesc',
                       '到达该间隔才会触发自动更新；用于避免频繁重建。',
                     )}
+                    className="smtcmp-settings-card"
                   >
                     <ObsidianTextInput
                       value={autoUpdateIntervalInput}
