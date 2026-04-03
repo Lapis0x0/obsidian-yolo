@@ -3,15 +3,11 @@ import {
   type IncomingMessage,
   type Server,
   type ServerResponse,
-  createServer,
 } from 'node:http'
 
 import { requestUrl } from 'obsidian'
 
-import {
-  GeminiOAuthCredential,
-  GeminiOAuthStore,
-} from './geminiOAuthStore'
+import { GeminiOAuthCredential, GeminiOAuthStore } from './geminiOAuthStore'
 
 const GOOGLE_ISSUER = 'https://accounts.google.com'
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
@@ -84,6 +80,8 @@ type RetrieveUserQuotaResponse = {
     modelId?: string
   }>
 }
+
+type CreateServer = typeof import('node:http').createServer
 
 export type GeminiOAuthBrowserAuthorization = {
   authorizationUrl: string
@@ -209,17 +207,20 @@ export class GeminiOAuthService {
     const authorizationUrl = buildAuthorizeUrl(pkce, state)
 
     const complete = new Promise<GeminiOAuthCredential>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        if (!this.pendingBrowserAuthorization) {
-          return
-        }
-        this.pendingBrowserAuthorization = null
-        reject(
-          new GeminiOAuthError(
-            'OAuth callback timeout - authorization took too long',
-          ),
-        )
-      }, 5 * 60 * 1000)
+      const timeoutId = setTimeout(
+        () => {
+          if (!this.pendingBrowserAuthorization) {
+            return
+          }
+          this.pendingBrowserAuthorization = null
+          reject(
+            new GeminiOAuthError(
+              'OAuth callback timeout - authorization took too long',
+            ),
+          )
+        },
+        5 * 60 * 1000,
+      )
 
       this.pendingBrowserAuthorization = {
         state,
@@ -483,7 +484,9 @@ export class GeminiOAuthService {
   ): GeminiOAuthCredential {
     const refreshToken = tokens.refresh_token ?? fallbackRefreshToken
     if (!refreshToken) {
-      throw new GeminiOAuthError('Missing refresh token in Google OAuth response.')
+      throw new GeminiOAuthError(
+        'Missing refresh token in Google OAuth response.',
+      )
     }
 
     return {
@@ -522,24 +525,34 @@ export class GeminiOAuthService {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const server = createServer((req, res) => {
-        void this.handleOAuthRequest(req.url ?? '/', res)
-      })
+      void (async () => {
+        let createServer: CreateServer
+        try {
+          ;({ createServer } = await import('node:http'))
+        } catch (error) {
+          reject(error)
+          return
+        }
 
-      const onError = (error: Error) => {
-        server.removeListener('listening', onListening)
-        reject(error)
-      }
+        const server = createServer((req, res) => {
+          void this.handleOAuthRequest(req.url ?? '/', res)
+        })
 
-      const onListening = () => {
-        server.removeListener('error', onError)
-        this.oauthServer = server
-        resolve()
-      }
+        const onError = (error: Error) => {
+          server.removeListener('listening', onListening)
+          reject(error)
+        }
 
-      server.once('error', onError)
-      server.once('listening', onListening)
-      server.listen(CALLBACK_PORT, CALLBACK_HOST)
+        const onListening = () => {
+          server.removeListener('error', onError)
+          this.oauthServer = server
+          resolve()
+        }
+
+        server.once('error', onError)
+        server.once('listening', onListening)
+        server.listen(CALLBACK_PORT, CALLBACK_HOST)
+      })()
     }).catch((error: unknown) => {
       throw new GeminiOAuthError(
         `Failed to start local OAuth callback server on ${REDIRECT_URI}: ${toErrorMessage(error)}`,
@@ -666,7 +679,9 @@ export class GeminiOAuthService {
         ideType: 'IDE_UNSPECIFIED',
         platform: 'PLATFORM_UNSPECIFIED',
         pluginType: 'GEMINI',
-        ...(projectId && tierId !== FREE_TIER_ID ? { duetProject: projectId } : {}),
+        ...(projectId && tierId !== FREE_TIER_ID
+          ? { duetProject: projectId }
+          : {}),
       },
     }
     if (projectId && tierId !== FREE_TIER_ID) {

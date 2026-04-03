@@ -3,7 +3,6 @@ import {
   type IncomingMessage,
   type Server,
   type ServerResponse,
-  createServer,
 } from 'node:http'
 // eslint-disable-next-line import/no-nodejs-modules -- AddressInfo is used with the local desktop OAuth callback server
 import type { AddressInfo } from 'node:net'
@@ -73,6 +72,8 @@ export type IdTokenClaims = {
     chatgpt_account_id?: string
   }
 }
+
+type CreateServer = typeof import('node:http').createServer
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -452,25 +453,37 @@ export class ChatGPTOAuthService {
 
   private startOAuthServer(port: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      const server = createServer((req, res) => {
-        void this.handleOAuthRequest(req.url ?? '/', res)
-      })
+      void (async () => {
+        let createServer: CreateServer
+        try {
+          ;({ createServer } = await import('node:http'))
+        } catch (error) {
+          reject(error)
+          return
+        }
 
-      const onError = (error: Error) => {
-        server.removeListener('listening', onListening)
-        reject(error)
-      }
+        const server = createServer((req, res) => {
+          void this.handleOAuthRequest(req.url ?? '/', res)
+        })
 
-      const onListening = () => {
-        server.removeListener('error', onError)
-        this.oauthServer = server
-        this.oauthPort = (server.address() as AddressInfo).port
-        resolve(`http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`)
-      }
+        const onError = (error: Error) => {
+          server.removeListener('listening', onListening)
+          reject(error)
+        }
 
-      server.once('error', onError)
-      server.once('listening', onListening)
-      server.listen(port, OAUTH_CALLBACK_HOST)
+        const onListening = () => {
+          server.removeListener('error', onError)
+          this.oauthServer = server
+          this.oauthPort = (server.address() as AddressInfo).port
+          resolve(
+            `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`,
+          )
+        }
+
+        server.once('error', onError)
+        server.once('listening', onListening)
+        server.listen(port, OAUTH_CALLBACK_HOST)
+      })()
     })
   }
 

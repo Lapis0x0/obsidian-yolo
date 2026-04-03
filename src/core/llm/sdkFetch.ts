@@ -1,12 +1,7 @@
-// eslint-disable-next-line import/no-nodejs-modules -- Desktop transport needs access to macOS system proxy settings
-import { execFileSync } from 'node:child_process'
 // eslint-disable-next-line import/no-nodejs-modules -- Desktop transport needs RequestOptions agent typing from Node HTTP
 import type { RequestOptions } from 'node:http'
 
 import { Platform } from 'obsidian'
-import { ProxyAgent } from 'proxy-agent'
-// eslint-disable-next-line import/no-extraneous-dependencies -- Desktop transport honors proxy environment variables when present
-import { getProxyForUrl } from 'proxy-from-env'
 
 import type { RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
@@ -133,12 +128,14 @@ export const parseMacOsProxyEnv = (output: string): ProxyEnv => {
   return env
 }
 
-const readMacOsProxyEnv = (): ProxyEnv => {
+const readMacOsProxyEnv = async (): Promise<ProxyEnv> => {
   if (process.platform !== 'darwin') {
     return {}
   }
 
   try {
+    // eslint-disable-next-line import/no-nodejs-modules -- Desktop transport reads macOS proxy settings via scutil
+    const { execFileSync } = await import('node:child_process')
     const output = execFileSync('scutil', ['--proxy'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -151,20 +148,22 @@ const readMacOsProxyEnv = (): ProxyEnv => {
 
 export const resolveDesktopProxyEnv = (
   env: NodeJS.ProcessEnv = process.env,
-): ProxyEnv => {
+): Promise<ProxyEnv> => {
   if (hasProxyEnv(env)) {
-    return {}
+    return Promise.resolve({})
   }
 
   return readMacOsProxyEnv()
 }
 
-const getDesktopProxyAgent = (): RequestOptions['agent'] | undefined => {
+const getDesktopProxyAgent = async (): Promise<
+  RequestOptions['agent'] | undefined
+> => {
   if (desktopProxyAgent !== undefined) {
     return desktopProxyAgent ?? undefined
   }
 
-  const proxyEnv = resolveDesktopProxyEnv()
+  const proxyEnv = await resolveDesktopProxyEnv()
   if (Object.keys(proxyEnv).length === 0) {
     desktopProxyAgent = null
     return undefined
@@ -174,6 +173,11 @@ const getDesktopProxyAgent = (): RequestOptions['agent'] | undefined => {
     ...process.env,
     ...proxyEnv,
   }
+  // eslint-disable-next-line import/no-extraneous-dependencies -- Desktop transport honors proxy environment variables when present
+  const [{ ProxyAgent }, { getProxyForUrl }] = await Promise.all([
+    import('proxy-agent'),
+    import('proxy-from-env'),
+  ])
   desktopProxyAgent = new ProxyAgent({
     getProxyForUrl: (url) =>
       withProcessEnv(resolvedEnv, () => getProxyForUrl(url)),
@@ -205,14 +209,15 @@ export const createDesktopNodeFetch = (
     }
 
     const nodeFetch = await loadNodeFetch()
+    const defaultAgent = options.agent ?? (await getDesktopProxyAgent())
     const baseInit = init as NodeFetchRequestInit | undefined
     const requestInit: NodeFetchRequestInit | undefined = init
       ? {
           ...init,
-          agent: baseInit?.agent ?? options.agent ?? getDesktopProxyAgent(),
+          agent: baseInit?.agent ?? defaultAgent,
         }
-      : options.agent || getDesktopProxyAgent()
-        ? { agent: options.agent ?? getDesktopProxyAgent() }
+      : defaultAgent
+        ? { agent: defaultAgent }
         : undefined
 
     return nodeFetch(input, requestInit)

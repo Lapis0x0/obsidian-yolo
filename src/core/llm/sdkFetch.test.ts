@@ -31,8 +31,8 @@ describe('sdkFetch proxy helpers', () => {
     })
   })
 
-  it('does not override an explicit proxy env from the process', () => {
-    const env = resolveDesktopProxyEnv({
+  it('does not override an explicit proxy env from the process', async () => {
+    const env = await resolveDesktopProxyEnv({
       HTTPS_PROXY: 'http://custom-proxy:8080',
     } as NodeJS.ProcessEnv)
 

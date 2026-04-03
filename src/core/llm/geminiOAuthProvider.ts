@@ -1,5 +1,5 @@
 // eslint-disable-next-line import/no-nodejs-modules -- Desktop Node fetch returns a Node stream body that must be adapted for SSE parsing
-import { Readable } from 'node:stream'
+import type { Readable } from 'node:stream'
 import type {
   Content as GeminiContent,
   GenerateContentResponse as GeminiGenerateContentResponse,
@@ -406,7 +406,7 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     model: string,
     signal?: AbortSignal,
   ): AsyncIterable<LLMResponseStreaming> {
-    const reader = this.toReadableStream(stream).getReader()
+    const reader = (await this.toReadableStream(stream)).getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     try {
@@ -482,13 +482,14 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     )
   }
 
-  private toReadableStream(
+  private async toReadableStream(
     stream: ReadableStream<Uint8Array> | Readable,
-  ): ReadableStream<Uint8Array> {
+  ): Promise<ReadableStream<Uint8Array>> {
     if ('getReader' in stream) {
       return stream
     }
 
+    const { Readable } = await import('node:stream')
     const readableWithToWeb = Readable as typeof Readable & {
       toWeb?: (stream: Readable) => ReadableStream<Uint8Array>
     }
