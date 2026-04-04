@@ -907,6 +907,7 @@ export const zh: TranslationKeys = {
   chat: {
     placeholder: '输入消息...「@添加标签引用，/选择技能或命令」',
     placeholderCompact: '点击展开编辑...',
+    contextUsage: '上下文窗口占用',
     sendMessage: '发送消息',
     newChat: '新建聊天',
     continueResponse: '继续生成',

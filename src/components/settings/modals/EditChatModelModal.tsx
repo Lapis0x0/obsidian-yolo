@@ -1,5 +1,5 @@
 import { App, Notice } from 'obsidian'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
@@ -65,7 +65,8 @@ const MODEL_SAMPLING_DEFAULTS = {
   maxOutputTokens: 4096,
 } as const
 
-const MAX_CONTEXT_TOKENS_INPUT_MAX = 2000000
+const MAX_CONTEXT_TOKENS_INPUT_MAX = 1000000
+const MAX_CONTEXT_TOKENS_SLIDER_STEP = 64
 
 const clampTemperature = (value: number): number =>
   Math.min(2, Math.max(0, value))
@@ -74,6 +75,17 @@ const clampTopP = (value: number): number => Math.min(1, Math.max(0, value))
 
 const clampMaxContextTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
+
+const formatIntegerWithGrouping = (value: string): string => {
+  if (value.length === 0) {
+    return ''
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+    useGrouping: true,
+  }).format(Number(value))
+}
 
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
@@ -202,6 +214,16 @@ function EditChatModelModalComponent({
   const [maxContextTokens, setMaxContextTokens] = useState<number | undefined>(
     editableModel.maxContextTokens ?? resolvedKnownMaxContextTokens,
   )
+  const [maxContextTokensInput, setMaxContextTokensInput] = useState<string>(
+    () =>
+      String(
+        editableModel.maxContextTokens ??
+          resolvedKnownMaxContextTokens ??
+          modelParamCache.maxContextTokens,
+      ),
+  )
+  const [isMaxContextTokensInputFocused, setIsMaxContextTokensInputFocused] =
+    useState(false)
   const [maxOutputTokens, setMaxOutputTokens] = useState<number | undefined>(
     editableModel.maxOutputTokens,
   )
@@ -247,12 +269,41 @@ function EditChatModelModalComponent({
     }
 
     const matched = resolveKnownMaxContextTokens(formData.model)
+    const nextMaxContextTokens =
+      formData.model === editableModel.model &&
+      typeof editableModel.maxContextTokens === 'number'
+        ? editableModel.maxContextTokens
+        : matched
+
     setModelParamCache((prev) => ({
       ...prev,
-      maxContextTokens: matched ?? MODEL_SAMPLING_DEFAULTS.maxContextTokens,
+      maxContextTokens:
+        nextMaxContextTokens ?? MODEL_SAMPLING_DEFAULTS.maxContextTokens,
     }))
-    setMaxContextTokens(matched)
-  }, [formData.model, hasManualMaxContextTokens])
+    setMaxContextTokens(nextMaxContextTokens)
+  }, [
+    editableModel.maxContextTokens,
+    editableModel.model,
+    formData.model,
+    hasManualMaxContextTokens,
+  ])
+
+  useEffect(() => {
+    if (typeof maxContextTokens === 'number') {
+      setMaxContextTokensInput(String(maxContextTokens))
+    }
+  }, [maxContextTokens])
+
+  const updateMaxContextTokens = (value: number) => {
+    const clamped = clampMaxContextTokens(value)
+    setHasManualMaxContextTokens(true)
+    setModelParamCache((prev) => ({
+      ...prev,
+      maxContextTokens: clamped,
+    }))
+    setMaxContextTokens(clamped)
+    setMaxContextTokensInput(String(clamped))
+  }
 
   const setTemperatureEnabled = (enabled: boolean) => {
     const current = temperature ?? modelParamCache.temperature
@@ -535,7 +586,7 @@ function EditChatModelModalComponent({
                   type="range"
                   min={1024}
                   max={MAX_CONTEXT_TOKENS_INPUT_MAX}
-                  step={1024}
+                  step={MAX_CONTEXT_TOKENS_SLIDER_STEP}
                   value={Math.min(
                     MAX_CONTEXT_TOKENS_INPUT_MAX,
                     Math.max(
@@ -548,33 +599,42 @@ function EditChatModelModalComponent({
                     if (!Number.isFinite(next)) {
                       return
                     }
-                    const clamped = clampMaxContextTokens(next)
-                    setHasManualMaxContextTokens(true)
-                    setModelParamCache((prev) => ({
-                      ...prev,
-                      maxContextTokens: clamped,
-                    }))
-                    setMaxContextTokens(clamped)
+                    updateMaxContextTokens(next)
                   }}
                 />
                 <input
-                  type="number"
+                  type="text"
                   className="smtcmp-agent-model-number"
-                  min={1}
-                  step={1}
-                  value={maxContextTokens ?? modelParamCache.maxContextTokens}
+                  inputMode="numeric"
+                  value={
+                    isMaxContextTokensInputFocused
+                      ? maxContextTokensInput
+                      : formatIntegerWithGrouping(maxContextTokensInput)
+                  }
                   onChange={(event) => {
-                    const next = Number(event.currentTarget.value)
-                    if (!Number.isFinite(next)) {
+                    const nextValue = event.currentTarget.value
+                    if (!/^\d*$/.test(nextValue)) {
                       return
                     }
-                    const clamped = clampMaxContextTokens(next)
-                    setHasManualMaxContextTokens(true)
-                    setModelParamCache((prev) => ({
-                      ...prev,
-                      maxContextTokens: clamped,
-                    }))
-                    setMaxContextTokens(clamped)
+                    setMaxContextTokensInput(nextValue)
+                    if (nextValue === '') {
+                      return
+                    }
+                    updateMaxContextTokens(Number(nextValue))
+                  }}
+                  onFocus={() => {
+                    setIsMaxContextTokensInputFocused(true)
+                  }}
+                  onBlur={() => {
+                    setIsMaxContextTokensInputFocused(false)
+                    if (maxContextTokensInput !== '') {
+                      return
+                    }
+                    setMaxContextTokensInput(
+                      String(
+                        maxContextTokens ?? modelParamCache.maxContextTokens,
+                      ),
+                    )
                   }}
                 />
               </div>

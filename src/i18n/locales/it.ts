@@ -951,6 +951,7 @@ export const it: TranslationKeys = {
     placeholder:
       'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill o un comando」',
     placeholderCompact: 'Clicca per espandere e modificare...',
+    contextUsage: 'Utilizzo finestra di contesto',
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
     continueResponse: 'Continua risposta',

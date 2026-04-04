@@ -968,6 +968,7 @@ export const en: TranslationKeys = {
     placeholder:
       'Type a message...「@ to add references, / to choose a skill or command」',
     placeholderCompact: 'Click to expand and edit...',
+    contextUsage: 'Context window usage',
     sendMessage: 'Send message',
     newChat: 'New chat',
     continueResponse: 'Continue response',

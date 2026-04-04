@@ -89,6 +89,7 @@ import type { ReasoningLevel } from './chat-input/ReasoningSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
+import ContextUsageRing from './ContextUsageRing'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
@@ -641,6 +642,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [conversationModelId, setConversationModelId] = useState<string>(
     settings.chatModelId,
   )
+
+  const currentConversationModel = useMemo(() => {
+    return (
+      settings.chatModels.find((model) => model.id === conversationModelId) ??
+      null
+    )
+  }, [conversationModelId, settings.chatModels])
+
+  const latestPromptTokenUsage = useMemo(() => {
+    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+      const message = chatMessages[index]
+      if (message.role !== 'assistant') {
+        continue
+      }
+
+      const promptTokens = message.metadata?.usage?.prompt_tokens
+      if (typeof promptTokens === 'number' && promptTokens >= 0) {
+        return promptTokens
+      }
+    }
+
+    return null
+  }, [chatMessages])
+
+  const headerContextUsage = useMemo(() => {
+    const maxContextTokens = currentConversationModel?.maxContextTokens
+    if (
+      typeof latestPromptTokenUsage !== 'number' ||
+      typeof maxContextTokens !== 'number' ||
+      maxContextTokens <= 0
+    ) {
+      return null
+    }
+
+    return {
+      promptTokens: latestPromptTokenUsage,
+      maxContextTokens,
+    }
+  }, [currentConversationModel?.maxContextTokens, latestPromptTokenUsage])
 
   const getReasoningLevelForModelId = useCallback(
     (modelId?: string | null): ReasoningLevel => {
@@ -2929,6 +2969,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )}
       {activeView === 'chat' && (
         <div className="smtcmp-chat-header-right">
+          {headerContextUsage && (
+            <ContextUsageRing
+              promptTokens={headerContextUsage.promptTokens}
+              maxContextTokens={headerContextUsage.maxContextTokens}
+              label={t('chat.contextUsage', '上下文窗口占用')}
+            />
+          )}
           <AssistantSelector
             currentAssistantId={conversationAssistantId}
             triggerClassName={

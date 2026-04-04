@@ -5023,6 +5023,70 @@
   gap: var(--size-4-2);
 }
 
+.smtcmp-context-usage-ring {
+  --smtcmp-context-usage-ring-color: var(--interactive-accent);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--smtcmp-context-usage-ring-color);
+}
+
+.smtcmp-chat-header-right > .smtcmp-context-usage-ring {
+  margin-right: var(--size-2-1);
+}
+
+.smtcmp-context-usage-ring[data-tone='warning'] {
+  --smtcmp-context-usage-ring-color: var(--text-warning);
+}
+
+.smtcmp-context-usage-ring[data-tone='danger'] {
+  --smtcmp-context-usage-ring-color: var(--text-error);
+}
+
+.smtcmp-context-usage-ring__svg {
+  width: 18px;
+  height: 18px;
+  transform: rotate(-90deg);
+}
+
+.smtcmp-context-usage-ring__track,
+.smtcmp-context-usage-ring__progress {
+  fill: none;
+  stroke-width: 2;
+}
+
+.smtcmp-context-usage-ring__track {
+  stroke: color-mix(
+    in srgb,
+    var(--background-modifier-border) 82%,
+    transparent
+  );
+}
+
+.smtcmp-context-usage-ring__progress {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 0.18s ease,
+    stroke 0.18s ease;
+}
+
+.smtcmp-context-usage-ring__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .smtcmp-chat-header-title {
   font-size: var(--font-ui-medium);
   font-weight: var(--font-medium);

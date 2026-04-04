@@ -833,6 +833,7 @@ export type TranslationKeys = {
   chat: {
     placeholder: string
     placeholderCompact?: string
+    contextUsage?: string
     sendMessage: string
     newChat: string
     continueResponse?: string

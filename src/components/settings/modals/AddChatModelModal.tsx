@@ -69,7 +69,8 @@ const MODEL_SAMPLING_DEFAULTS = {
   maxOutputTokens: 4096,
 } as const
 
-const MAX_CONTEXT_TOKENS_INPUT_MAX = 2000000
+const MAX_CONTEXT_TOKENS_INPUT_MAX = 1000000
+const MAX_CONTEXT_TOKENS_SLIDER_STEP = 64
 
 const clampTemperature = (value: number): number =>
   Math.min(2, Math.max(0, value))
@@ -78,6 +79,17 @@ const clampTopP = (value: number): number => Math.min(1, Math.max(0, value))
 
 const clampMaxContextTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
+
+const formatIntegerWithGrouping = (value: string): string => {
+  if (value.length === 0) {
+    return ''
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+    useGrouping: true,
+  }).format(Number(value))
+}
 
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
@@ -202,6 +214,9 @@ function AddChatModelModalComponent({
     maxContextTokens: undefined,
     maxOutputTokens: undefined,
   })
+  const [maxContextTokensInput, setMaxContextTokensInput] = useState<string>('')
+  const [isMaxContextTokensInputFocused, setIsMaxContextTokensInputFocused] =
+    useState(false)
 
   // Auto-fetch available models via OpenAI-compatible GET /v1/models
   const [availableModels, setAvailableModels] = useState<string[]>([])
@@ -529,6 +544,28 @@ function AddChatModelModalComponent({
       maxContextTokens: matched,
     }))
   }, [formData.model, hasManualMaxContextTokens])
+
+  useEffect(() => {
+    if (typeof formData.maxContextTokens === 'number') {
+      setMaxContextTokensInput(String(formData.maxContextTokens))
+      return
+    }
+    setMaxContextTokensInput('')
+  }, [formData.maxContextTokens])
+
+  const updateMaxContextTokens = (value: number) => {
+    const clamped = clampMaxContextTokens(value)
+    setHasManualMaxContextTokens(true)
+    setModelParamCache((prev) => ({
+      ...prev,
+      maxContextTokens: clamped,
+    }))
+    setFormData((prev) => ({
+      ...prev,
+      maxContextTokens: clamped,
+    }))
+    setMaxContextTokensInput(String(clamped))
+  }
 
   const resetModelParams = () => {
     setModelParamCache({
@@ -864,7 +901,7 @@ function AddChatModelModalComponent({
                   type="range"
                   min={1024}
                   max={MAX_CONTEXT_TOKENS_INPUT_MAX}
-                  step={1024}
+                  step={MAX_CONTEXT_TOKENS_SLIDER_STEP}
                   value={Math.min(
                     MAX_CONTEXT_TOKENS_INPUT_MAX,
                     Math.max(
@@ -878,42 +915,43 @@ function AddChatModelModalComponent({
                     if (!Number.isFinite(next)) {
                       return
                     }
-                    const clamped = clampMaxContextTokens(next)
-                    setHasManualMaxContextTokens(true)
-                    setModelParamCache((prev) => ({
-                      ...prev,
-                      maxContextTokens: clamped,
-                    }))
-                    setFormData((prev) => ({
-                      ...prev,
-                      maxContextTokens: clamped,
-                    }))
+                    updateMaxContextTokens(next)
                   }}
                 />
                 <input
-                  type="number"
+                  type="text"
                   className="smtcmp-agent-model-number"
-                  min={1}
-                  step={1}
+                  inputMode="numeric"
                   value={
-                    formData.maxContextTokens ??
-                    modelParamCache.maxContextTokens
+                    isMaxContextTokensInputFocused
+                      ? maxContextTokensInput
+                      : formatIntegerWithGrouping(maxContextTokensInput)
                   }
                   onChange={(event) => {
-                    const next = Number(event.currentTarget.value)
-                    if (!Number.isFinite(next)) {
+                    const nextValue = event.currentTarget.value
+                    if (!/^\d*$/.test(nextValue)) {
                       return
                     }
-                    const clamped = clampMaxContextTokens(next)
-                    setHasManualMaxContextTokens(true)
-                    setModelParamCache((prev) => ({
-                      ...prev,
-                      maxContextTokens: clamped,
-                    }))
-                    setFormData((prev) => ({
-                      ...prev,
-                      maxContextTokens: clamped,
-                    }))
+                    setMaxContextTokensInput(nextValue)
+                    if (nextValue === '') {
+                      return
+                    }
+                    updateMaxContextTokens(Number(nextValue))
+                  }}
+                  onFocus={() => {
+                    setIsMaxContextTokensInputFocused(true)
+                  }}
+                  onBlur={() => {
+                    setIsMaxContextTokensInputFocused(false)
+                    if (maxContextTokensInput !== '') {
+                      return
+                    }
+                    setMaxContextTokensInput(
+                      String(
+                        formData.maxContextTokens ??
+                          modelParamCache.maxContextTokens,
+                      ),
+                    )
                   }}
                 />
               </div>
