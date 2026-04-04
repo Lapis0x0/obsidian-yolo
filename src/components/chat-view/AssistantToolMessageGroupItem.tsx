@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Ban, Check, CircleAlert, Loader2 } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -23,6 +31,46 @@ import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
 import ToolMessage from './ToolMessage'
+
+const getBranchStateLabel = (
+  state: 'streaming' | 'completed' | 'aborted' | 'error',
+  t: (keyPath: string, fallback?: string) => string,
+) => {
+  if (state === 'streaming') {
+    return t('chat.toolCall.status.running', '生成中')
+  }
+  if (state === 'error') {
+    return t('chat.toolCall.status.error', '失败')
+  }
+  if (state === 'aborted') {
+    return t('chat.toolCall.status.aborted', '已中止')
+  }
+  return t('chat.toolCall.status.success', '已完成')
+}
+
+const BranchStateIcon = ({
+  state,
+}: {
+  state: 'streaming' | 'completed' | 'aborted' | 'error'
+}) => {
+  if (state === 'streaming') {
+    return (
+      <Loader2
+        size={12}
+        className="smtcmp-multi-model-tab__status-icon is-spinning"
+      />
+    )
+  }
+  if (state === 'error') {
+    return (
+      <CircleAlert size={12} className="smtcmp-multi-model-tab__status-icon" />
+    )
+  }
+  if (state === 'aborted') {
+    return <Ban size={12} className="smtcmp-multi-model-tab__status-icon" />
+  }
+  return <Check size={12} className="smtcmp-multi-model-tab__status-icon" />
+}
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
@@ -92,6 +140,11 @@ export default function AssistantToolMessageGroupItem({
   const app = useApp()
   const { t } = useLanguage()
   const { settings } = useSettings()
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const pendingScrollRestoreRef = useRef<{
+    scrollContainer: HTMLElement
+    scrollTop: number
+  } | null>(null)
   const branchGroups = useMemo(() => {
     const groups = new Map<
       string,
@@ -134,6 +187,28 @@ export default function AssistantToolMessageGroupItem({
   }, [conversationId, messages])
   const hasMultipleBranches = branchGroups.length > 1
   const [activeBranchKey, setActiveBranchKey] = useState<string | null>(null)
+  const resolvedActiveBranchKey =
+    activeBranchKey ?? branchGroups[0]?.key ?? null
+
+  const handleBranchSwitch = useCallback(
+    (branchKey: string) => {
+      if (branchKey === resolvedActiveBranchKey) {
+        return
+      }
+
+      const scrollContainer = containerRef.current?.closest<HTMLElement>(
+        '.smtcmp-chat-messages',
+      )
+      if (scrollContainer) {
+        pendingScrollRestoreRef.current = {
+          scrollContainer,
+          scrollTop: scrollContainer.scrollTop,
+        }
+      }
+      setActiveBranchKey(branchKey)
+    },
+    [resolvedActiveBranchKey],
+  )
 
   useEffect(() => {
     if (!hasMultipleBranches) {
@@ -179,6 +254,19 @@ export default function AssistantToolMessageGroupItem({
       conversationId
     )
   }, [activeBranchKey, branchGroups, conversationId, hasMultipleBranches])
+  useLayoutEffect(() => {
+    if (activeBranchKey === null) {
+      return
+    }
+
+    const pendingRestore = pendingScrollRestoreRef.current
+    if (!pendingRestore) {
+      return
+    }
+
+    pendingScrollRestoreRef.current = null
+    pendingRestore.scrollContainer.scrollTop = pendingRestore.scrollTop
+  }, [activeBranchKey])
   const assistantMessages = displayedMessages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
   )
@@ -294,37 +382,42 @@ export default function AssistantToolMessageGroupItem({
   const effectiveGroupEditSummaryKey = groupEditSummaryKey ?? ''
 
   return (
-    <div className="smtcmp-assistant-tool-message-group">
+    <div className="smtcmp-assistant-tool-message-group" ref={containerRef}>
       {hasMultipleBranches && (
         <div className="smtcmp-multi-model-tabs" role="tablist">
           {branchGroups.map((group) => {
-            const isActive =
-              group.key === (activeBranchKey ?? branchGroups[0]?.key)
+            const isActive = group.key === resolvedActiveBranchKey
             const assistantMessage = group.messages.find(
               (message): message is ChatAssistantMessage =>
                 message.role === 'assistant',
             )
             const state =
               assistantMessage?.metadata?.generationState ?? 'completed'
-            const stateLabel =
-              state === 'streaming'
-                ? t('chat.toolCall.status.running', '生成中')
-                : state === 'error'
-                  ? t('chat.toolCall.status.error', '失败')
-                  : state === 'aborted'
-                    ? t('chat.toolCall.status.aborted', '已中止')
-                    : t('chat.toolCall.status.success', '已完成')
+            const stateLabel = getBranchStateLabel(state, t)
             return (
               <button
                 key={group.key}
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                className={`smtcmp-chat-input-model-select${isActive ? ' is-active' : ''}`}
-                onClick={() => setActiveBranchKey(group.key)}
+                className={`smtcmp-multi-model-tab smtcmp-multi-model-tab--${state}${isActive ? ' is-active' : ''}`}
+                onClick={() => handleBranchSwitch(group.key)}
+                title={`${group.label} · ${stateLabel}`}
               >
-                <span>{group.label}</span>
-                <span>{stateLabel}</span>
+                <span className="smtcmp-multi-model-tab__label">
+                  {group.label}
+                </span>
+                <span
+                  className={`smtcmp-multi-model-tab__status${state === 'completed' ? ' is-icon-only' : ''}`}
+                  title={stateLabel}
+                >
+                  <BranchStateIcon state={state} />
+                  {state !== 'completed' && (
+                    <span className="smtcmp-multi-model-tab__status-text">
+                      {stateLabel}
+                    </span>
+                  )}
+                </span>
               </button>
             )
           })}

@@ -196,7 +196,7 @@ export function useAutoScroll({
   }, [autoFollowState, isStreaming, requestFollow])
 
   useEffect(() => {
-    if (!isStreaming && !autoFollowState) {
+    if (!isStreaming) {
       return
     }
 
@@ -238,9 +238,13 @@ export function useAutoScroll({
         handleAnimatedLayoutChange,
       )
     }
-  }, [autoFollowState, isStreaming, requestFollow, scrollContainerRef])
+  }, [isStreaming, requestFollow, scrollContainerRef])
 
   useEffect(() => {
+    if (!isStreaming) {
+      return
+    }
+
     const scrollContainer = scrollContainerRef.current
     const bottomAnchor = bottomAnchorRef?.current
     if (
@@ -282,7 +286,13 @@ export function useAutoScroll({
     return () => {
       observer.disconnect()
     }
-  }, [bottomAnchorRef, requestFollow, scrollContainerRef, updateAutoFollow])
+  }, [
+    bottomAnchorRef,
+    isStreaming,
+    requestFollow,
+    scrollContainerRef,
+    updateAutoFollow,
+  ])
 
   useEffect(() => {
     return () => {

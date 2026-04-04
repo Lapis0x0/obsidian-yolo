@@ -7473,6 +7473,128 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   margin-top: var(--size-4-2);
 }
 
+.smtcmp-multi-model-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+  overflow-x: auto;
+  padding: 4px;
+  margin-bottom: 2px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: color-mix(
+    in srgb,
+    var(--background-secondary) 88%,
+    var(--background-primary)
+  );
+  scrollbar-width: thin;
+}
+
+.smtcmp-multi-model-tab {
+  -webkit-appearance: none !important;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  min-width: 0;
+  max-width: min(220px, 60vw);
+  padding: 6px 10px;
+  margin: 0;
+  min-height: 0;
+  height: auto;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-m);
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  color: var(--text-muted);
+  box-shadow: none !important;
+  outline: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.smtcmp-multi-model-tab:hover,
+.smtcmp-multi-model-tab:focus,
+.smtcmp-multi-model-tab:focus-visible {
+  color: var(--text-normal);
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.smtcmp-multi-model-tab.is-active {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border) !important;
+  background: var(--background-primary) !important;
+  background-color: var(--background-primary) !important;
+  background-image: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.smtcmp-multi-model-tab__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.smtcmp-multi-model-tab__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: calc(var(--font-smallest) * 0.96);
+  color: var(--text-faint);
+}
+
+.smtcmp-multi-model-tab__status.is-icon-only {
+  color: var(--color-green);
+}
+
+.smtcmp-multi-model-tab--streaming .smtcmp-multi-model-tab__status {
+  color: var(--interactive-accent);
+}
+
+.smtcmp-multi-model-tab--error .smtcmp-multi-model-tab__status {
+  color: var(--text-error);
+}
+
+.smtcmp-multi-model-tab--aborted .smtcmp-multi-model-tab__status {
+  color: var(--text-muted);
+}
+
+.smtcmp-multi-model-tab__status-icon {
+  flex: 0 0 auto;
+}
+
+.smtcmp-multi-model-tab__status-icon.is-spinning {
+  animation: smtcmp-toolcall-spin 1s linear infinite;
+}
+
+.smtcmp-multi-model-tab__status-text {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .smtcmp-multi-model-tab {
+    max-width: 70vw;
+  }
+}
+
 .smtcmp-agent-edit-summary {
   display: flex;
   flex-direction: column;
