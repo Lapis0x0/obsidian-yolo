@@ -1,3 +1,5 @@
+import { Platform } from 'obsidian'
+
 import { ChatModel } from './types/chat-model.types'
 import { EmbeddingModel } from './types/embedding-model.types'
 import {
@@ -5,6 +7,7 @@ import {
   LLMProviderApiType,
   LLMProviderPresetType,
   getDefaultApiTypeForPresetType,
+  getDefaultRequestTransportModeForPresetType,
 } from './types/provider.types'
 
 export const CHAT_VIEW_TYPE = 'smtcmp-chat-view'
@@ -274,6 +277,20 @@ export const PROVIDER_API_INFO: Record<
 
 export const PROVIDER_TYPES_INFO = PROVIDER_PRESET_INFO
 
+const getDefaultProviderAdditionalSettings = (
+  presetType: LLMProviderPresetType,
+): LLMProvider['additionalSettings'] => {
+  const requestTransportMode = getDefaultRequestTransportModeForPresetType(
+    presetType,
+    Platform.isDesktop,
+  )
+  if (!requestTransportMode) {
+    return undefined
+  }
+
+  return { requestTransportMode }
+}
+
 /**
  * Important
  * 1. When adding new default provider, settings migration should be added
@@ -289,11 +306,13 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
     presetType: 'chatgpt-oauth',
     apiType: getDefaultApiTypeForPresetType('chatgpt-oauth'),
     id: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
+    additionalSettings: getDefaultProviderAdditionalSettings('chatgpt-oauth'),
   },
   {
     presetType: 'gemini-oauth',
     apiType: getDefaultApiTypeForPresetType('gemini-oauth'),
     id: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
+    additionalSettings: getDefaultProviderAdditionalSettings('gemini-oauth'),
   },
   {
     presetType: 'anthropic',

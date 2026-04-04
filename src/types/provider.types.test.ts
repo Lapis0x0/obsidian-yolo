@@ -1,4 +1,7 @@
-import { llmProviderSchema } from './provider.types'
+import {
+  getDefaultRequestTransportModeForPresetType,
+  llmProviderSchema,
+} from './provider.types'
 
 describe('llmProviderSchema', () => {
   it('normalizes legacy kimi presetType to moonshot', () => {
@@ -29,5 +32,25 @@ describe('llmProviderSchema', () => {
       apiType: 'openai-compatible',
       apiKey: 'token',
     })
+  })
+})
+
+describe('getDefaultRequestTransportModeForPresetType', () => {
+  it('defaults OAuth presets to node on desktop', () => {
+    expect(
+      getDefaultRequestTransportModeForPresetType('chatgpt-oauth', true),
+    ).toBe('node')
+    expect(
+      getDefaultRequestTransportModeForPresetType('gemini-oauth', true),
+    ).toBe('node')
+  })
+
+  it('does not force node for non-OAuth or mobile presets', () => {
+    expect(
+      getDefaultRequestTransportModeForPresetType('openai', true),
+    ).toBeUndefined()
+    expect(
+      getDefaultRequestTransportModeForPresetType('chatgpt-oauth', false),
+    ).toBeUndefined()
   })
 })

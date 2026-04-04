@@ -52,6 +52,20 @@ const legacyProviderPresetTypeInputSchema = z.union([
 export type LLMProviderPresetType = z.infer<typeof providerPresetTypeSchema>
 export type LLMProviderApiType = z.infer<typeof providerApiTypeSchema>
 
+export function getDefaultRequestTransportModeForPresetType(
+  presetType: LLMProviderPresetType,
+  isDesktop: boolean,
+): RequestTransportMode | undefined {
+  if (
+    isDesktop &&
+    (presetType === 'chatgpt-oauth' || presetType === 'gemini-oauth')
+  ) {
+    return 'node'
+  }
+
+  return undefined
+}
+
 const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
   LLMProviderPresetType,
   LLMProviderApiType

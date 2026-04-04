@@ -8,6 +8,7 @@ import {
   LLMProvider,
   ProviderHeader,
   getDefaultApiTypeForPresetType,
+  getDefaultRequestTransportModeForPresetType,
   getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from '../../../types/provider.types'
@@ -65,6 +66,19 @@ function ProviderFormComponent({
   onClose,
 }: ProviderFormComponentProps & { onClose: () => void }) {
   const { t } = useLanguage()
+  const getDefaultAdditionalSettings = (
+    presetType: LLMProvider['presetType'],
+  ): LLMProvider['additionalSettings'] => {
+    const requestTransportMode = getDefaultRequestTransportModeForPresetType(
+      presetType,
+      Platform.isDesktop,
+    )
+    if (!requestTransportMode) {
+      return undefined
+    }
+
+    return { requestTransportMode }
+  }
 
   const [formData, setFormData] = useState<LLMProvider>(
     provider
@@ -80,6 +94,7 @@ function ProviderFormComponent({
           id: '',
           apiKey: '',
           baseUrl: '',
+          additionalSettings: getDefaultAdditionalSettings('openai-compatible'),
         },
   )
   const handleSubmit = () => {
@@ -288,7 +303,9 @@ function ProviderFormComponent({
                   apiType: getDefaultApiTypeForPresetType(
                     value as LLMProvider['presetType'],
                   ),
-                  additionalSettings: {},
+                  additionalSettings: getDefaultAdditionalSettings(
+                    value as LLMProvider['presetType'],
+                  ),
                 }) as LLMProvider,
             )
           }
