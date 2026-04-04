@@ -65,6 +65,7 @@ export function providerSupportsEmbedding(provider: LLMProvider): boolean {
     case 'openai-compatible':
       return (
         provider.presetType !== 'chatgpt-oauth' &&
+        provider.presetType !== 'qwen-oauth' &&
         !isBedrockMantleProvider(provider)
       )
     case 'openai-responses':

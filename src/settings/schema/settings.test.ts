@@ -118,6 +118,44 @@ describe('parseSmartComposerSettings', () => {
     expect(result.chatOptions.tabTitleFollowsConversation).toBe(true)
   })
 
+  it('migrates version 41 settings to include qwen oauth defaults', () => {
+    const result = parseSmartComposerSettings({
+      version: 41,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-5',
+          model: 'gpt-5',
+          enable: true,
+        },
+      ],
+    })
+
+    expect(result.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'qwen-oauth',
+          presetType: 'qwen-oauth',
+        }),
+      ]),
+    )
+    expect(result.chatModels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'qwen-oauth/coder-model',
+          providerId: 'qwen-oauth',
+        }),
+      ]),
+    )
+  })
+
   it('keeps valid providers when one provider entry is invalid', () => {
     const result = parseSmartComposerSettings({
       version: SETTINGS_SCHEMA_VERSION,

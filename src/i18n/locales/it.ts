@@ -496,6 +496,17 @@ export const it: TranslationKeys = {
       geminiOAuthProject: 'progetto',
       geminiOAuthStreamingNotice:
         'Gemini OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
+      qwenOAuthTitle: 'Qwen OAuth',
+      qwenOAuthConnect: 'Connetti',
+      qwenOAuthDisconnect: 'Disconnetti',
+      qwenOAuthConnecting: 'Connessione in corso...',
+      qwenOAuthLoadingStatus: 'Caricamento stato Qwen OAuth...',
+      qwenOAuthConnected: 'Connesso',
+      qwenOAuthExpires: 'scade',
+      qwenOAuthDisconnectedHelp:
+        'Non connesso. Connettiti per usare i modelli del tuo account Qwen.',
+      qwenOAuthStreamingNotice:
+        'Qwen OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
     },
     models: {
       title: 'Modelli',

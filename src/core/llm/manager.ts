@@ -21,6 +21,7 @@ import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 import { OpenAIResponsesProvider } from './openaiResponsesProvider'
 import { OpenRouterProvider } from './openRouterProvider'
 import { PerplexityProvider } from './perplexityProvider'
+import { QwenOAuthProvider } from './qwenOAuthProvider'
 import { resolveModelRequestPolicy } from './requestPolicy'
 import { AutoPromotedTransportMode } from './requestTransport'
 
@@ -108,6 +109,12 @@ export function getProviderClient({
           })
         case 'moonshot':
           return new MoonshotProvider(provider as never, {
+            requestPolicy,
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
+        case 'qwen-oauth':
+          return new QwenOAuthProvider(provider as never, {
             requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),

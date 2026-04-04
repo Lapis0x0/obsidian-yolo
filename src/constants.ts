@@ -85,6 +85,14 @@ export const PROVIDER_PRESET_INFO = {
       REQUEST_TRANSPORT_MODE_SETTING,
     ],
   },
+  'qwen-oauth': {
+    label: 'Qwen OAuth',
+    defaultProviderId: 'qwen-oauth',
+    requireApiKey: false,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
+  },
   anthropic: {
     label: 'Anthropic',
     defaultProviderId: 'anthropic',
@@ -315,6 +323,12 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
     additionalSettings: getDefaultProviderAdditionalSettings('gemini-oauth'),
   },
   {
+    presetType: 'qwen-oauth',
+    apiType: getDefaultApiTypeForPresetType('qwen-oauth'),
+    id: PROVIDER_PRESET_INFO['qwen-oauth'].defaultProviderId,
+    additionalSettings: getDefaultProviderAdditionalSettings('qwen-oauth'),
+  },
+  {
     presetType: 'anthropic',
     apiType: getDefaultApiTypeForPresetType('anthropic'),
     id: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
@@ -432,6 +446,13 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
       thinking_budget: 0,
     },
     toolType: 'gemini',
+  },
+  {
+    providerId: PROVIDER_PRESET_INFO['qwen-oauth'].defaultProviderId,
+    id: 'qwen-oauth/coder-model',
+    model: 'coder-model',
+    name: 'Qwen Coder',
+    enable: false,
   },
   {
     providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,

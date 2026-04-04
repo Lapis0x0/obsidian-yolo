@@ -25,6 +25,9 @@ export const calculateLLMCost = ({
     case 'chatgpt-oauth': {
       return 0
     }
+    case 'qwen-oauth': {
+      return 0
+    }
     case 'anthropic': {
       const modelPricing = ANTHROPIC_PRICES[model.model]
       if (!modelPricing) return null

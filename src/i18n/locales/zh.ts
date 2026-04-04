@@ -460,6 +460,16 @@ export const zh: TranslationKeys = {
       geminiOAuthProject: '项目',
       geminiOAuthStreamingNotice:
         'Gemini OAuth 支持流式传输；使用 Obsidian requestUrl 时会退化为缓冲输出，桌面端 Node fetch 可提供实时流式。',
+      qwenOAuthTitle: 'Qwen OAuth',
+      qwenOAuthConnect: '连接',
+      qwenOAuthDisconnect: '断开连接',
+      qwenOAuthConnecting: '连接中...',
+      qwenOAuthLoadingStatus: '正在加载 Qwen OAuth 状态...',
+      qwenOAuthConnected: '已连接',
+      qwenOAuthExpires: '过期时间',
+      qwenOAuthDisconnectedHelp: '未连接。连接后即可使用你的 Qwen 账号模型。',
+      qwenOAuthStreamingNotice:
+        'Qwen OAuth 支持流式传输；使用 Obsidian requestUrl 时会退化为缓冲输出，桌面端 Node fetch 可提供实时流式。',
     },
     models: {
       title: '模型',

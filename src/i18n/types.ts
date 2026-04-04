@@ -371,6 +371,15 @@ export type TranslationKeys = {
       geminiOAuthDisconnectedHelp?: string
       geminiOAuthProject?: string
       geminiOAuthStreamingNotice?: string
+      qwenOAuthTitle?: string
+      qwenOAuthConnect?: string
+      qwenOAuthDisconnect?: string
+      qwenOAuthConnecting?: string
+      qwenOAuthLoadingStatus?: string
+      qwenOAuthConnected?: string
+      qwenOAuthExpires?: string
+      qwenOAuthDisconnectedHelp?: string
+      qwenOAuthStreamingNotice?: string
     }
     models: {
       title: string

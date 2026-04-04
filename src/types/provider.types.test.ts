@@ -43,6 +43,9 @@ describe('getDefaultRequestTransportModeForPresetType', () => {
     expect(
       getDefaultRequestTransportModeForPresetType('gemini-oauth', true),
     ).toBe('node')
+    expect(
+      getDefaultRequestTransportModeForPresetType('qwen-oauth', true),
+    ).toBe('node')
   })
 
   it('does not force node for non-OAuth or mobile presets', () => {

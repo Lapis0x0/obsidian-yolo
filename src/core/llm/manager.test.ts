@@ -6,6 +6,7 @@ import { GeminiProvider } from './gemini'
 import { getProviderClient } from './manager'
 import { MoonshotProvider } from './moonshotProvider'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
+import { QwenOAuthProvider } from './qwenOAuthProvider'
 
 const createSettings = (): SmartComposerSettings =>
   ({
@@ -40,6 +41,11 @@ const createSettings = (): SmartComposerSettings =>
         presetType: 'moonshot',
         apiType: 'openai-compatible',
         apiKey: 'token',
+      },
+      {
+        id: 'qwen-oauth',
+        presetType: 'qwen-oauth',
+        apiType: 'openai-compatible',
       },
     ],
     continuationOptions: {
@@ -119,5 +125,14 @@ describe('getProviderClient', () => {
 
     expect(client).toBeInstanceOf(MoonshotProvider)
     expect(client).toBeInstanceOf(OpenAICompatibleProvider)
+  })
+
+  it('routes Qwen OAuth providers to QwenOAuthProvider', () => {
+    const client = getProviderClient({
+      settings: createSettings(),
+      providerId: 'qwen-oauth',
+    })
+
+    expect(client).toBeInstanceOf(QwenOAuthProvider)
   })
 })

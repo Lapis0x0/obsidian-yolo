@@ -27,6 +27,11 @@ import {
   getGeminiOAuthService as getGeminiOAuthServiceRuntime,
   initializeGeminiOAuthRuntime,
 } from './core/auth/geminiOAuthRuntime'
+import {
+  clearQwenOAuthService,
+  getQwenOAuthService as getQwenOAuthServiceRuntime,
+  initializeQwenOAuthRuntime,
+} from './core/auth/qwenOAuthRuntime'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -260,6 +265,39 @@ export default class SmartComposerPlugin extends Plugin {
     clearGeminiOAuthService(providerId)
   }
 
+  getQwenOAuthService(providerId = 'qwen-oauth') {
+    return (
+      getQwenOAuthServiceRuntime(providerId) ??
+      initializeQwenOAuthRuntime(this.app, this.manifest.id, providerId)
+    )
+  }
+
+  async getQwenOAuthStatus(providerId = 'qwen-oauth'): Promise<{
+    connected: boolean
+    expiresAt?: number
+    resourceUrl?: string
+  }> {
+    const credential =
+      await this.getQwenOAuthService(providerId).getUsableCredential()
+    if (!credential) {
+      return { connected: false }
+    }
+
+    return {
+      connected: true,
+      resourceUrl: credential.resourceUrl,
+      expiresAt: credential.expiresAt,
+    }
+  }
+
+  async disconnectQwenOAuthAccount(providerId = 'qwen-oauth'): Promise<void> {
+    await this.getQwenOAuthService(providerId).clearCredential()
+  }
+
+  clearQwenOAuthRuntime(providerId: string): void {
+    clearQwenOAuthService(providerId)
+  }
+
   private syncOAuthRuntimesFromSettings(
     settings: Pick<SmartComposerSettings, 'providers'> = this.settings,
   ): void {
@@ -269,6 +307,9 @@ export default class SmartComposerPlugin extends Plugin {
       }
       if (provider.presetType === 'gemini-oauth') {
         this.getGeminiOAuthService(provider.id)
+      }
+      if (provider.presetType === 'qwen-oauth') {
+        this.getQwenOAuthService(provider.id)
       }
     }
   }

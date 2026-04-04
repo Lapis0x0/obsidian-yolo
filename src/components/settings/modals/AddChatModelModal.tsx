@@ -154,6 +154,15 @@ const GEMINI_OAUTH_DEFAULT_MODELS = Array.from(
   ]),
 )
 
+const QWEN_OAUTH_DEFAULT_MODELS = Array.from(
+  new Set([
+    ...DEFAULT_CHAT_MODELS.filter((model) =>
+      model.providerId.startsWith('qwen-oauth'),
+    ).map((model) => model.model),
+    'coder-model',
+  ]),
+)
+
 const isReasoningType = (value: string): value is ReasoningType =>
   REASONING_TYPES.includes(value as ReasoningType)
 
@@ -406,6 +415,13 @@ function AddChatModelModalComponent({
             plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
             return
           }
+        }
+
+        if (selectedProvider.presetType === 'qwen-oauth') {
+          const models = Array.from(new Set(QWEN_OAUTH_DEFAULT_MODELS)).sort()
+          setAvailableModels(models)
+          plugin.setCachedModelList(selectedProvider.id, models, 'chat')
+          return
         }
 
         if (selectedProvider.apiType === 'amazon-bedrock') {
