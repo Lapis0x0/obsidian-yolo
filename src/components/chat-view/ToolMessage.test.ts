@@ -31,8 +31,20 @@ describe('ToolMessage headline helpers', () => {
       [ToolCallResponseStatus.Aborted]: 'Aborted',
     },
     unknownStatus: 'Unknown',
-    displayNames: {},
-    writeActionLabels: {},
+    displayNames: {
+      fs_create_file: 'Create file',
+      fs_delete_file: 'Delete file',
+      fs_create_dir: 'Create folder',
+      fs_delete_dir: 'Delete folder',
+      fs_move: 'Move path',
+    },
+    writeActionLabels: {
+      create_file: 'Create file',
+      delete_file: 'Delete file',
+      create_dir: 'Create folder',
+      delete_dir: 'Delete folder',
+      move: 'Move path',
+    },
     readFull: '全文',
     readLineRange: (startLine: number, endLine: number) =>
       `${startLine}-${endLine}行`,
@@ -169,5 +181,64 @@ describe('ToolMessage headline helpers', () => {
         labels,
       }).summaryText,
     ).toBe('docs/plan.md | 12-61行')
+  })
+
+  it('uses file path as summary for create-file headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_create_file',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'docs/new-note.md',
+              content: '# hello',
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Create file',
+      summaryText: 'docs/new-note.md',
+    })
+  })
+
+  it('uses folder path as summary for create-dir headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_create_dir',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'docs/archive',
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Create folder',
+      summaryText: 'docs/archive',
+    })
+  })
+
+  it('uses source and destination paths for move headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_move',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              oldPath: 'docs/old.md',
+              newPath: 'docs/new.md',
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Move path',
+      summaryText: 'docs/old.md -> docs/new.md',
+    })
   })
 })

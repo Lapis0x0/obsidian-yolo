@@ -413,6 +413,34 @@ const getLocalToolSummaryText = ({
     return path || undefined
   }
 
+  if (
+    toolName === 'fs_create_file' ||
+    toolName === 'fs_delete_file' ||
+    toolName === 'fs_create_dir' ||
+    toolName === 'fs_delete_dir'
+  ) {
+    const path =
+      typeof argumentsObject?.path === 'string' ? argumentsObject.path : ''
+    return path || undefined
+  }
+
+  if (toolName === 'fs_move') {
+    const oldPath =
+      typeof argumentsObject?.oldPath === 'string'
+        ? argumentsObject.oldPath
+        : ''
+    const newPath =
+      typeof argumentsObject?.newPath === 'string'
+        ? argumentsObject.newPath
+        : ''
+
+    if (oldPath && newPath) {
+      return `${oldPath} -> ${newPath}`
+    }
+
+    return oldPath || newPath || undefined
+  }
+
   const action = parseLocalFsActionFromToolArgs({
     toolName,
     args: getToolCallArgumentsObject(rawArguments),
