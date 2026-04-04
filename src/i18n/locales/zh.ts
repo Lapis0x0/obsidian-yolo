@@ -1060,6 +1060,7 @@ export const zh: TranslationKeys = {
         rejected: '已拒绝',
         running: '执行中',
         failed: '失败',
+        completed: '已完成',
         aborted: '已中止',
         unknown: '未知状态',
       },

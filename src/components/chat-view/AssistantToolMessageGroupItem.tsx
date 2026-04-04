@@ -40,12 +40,12 @@ const getBranchStateLabel = (
     return t('chat.toolCall.status.running', '生成中')
   }
   if (state === 'error') {
-    return t('chat.toolCall.status.error', '失败')
+    return t('chat.toolCall.status.failed', '失败')
   }
   if (state === 'aborted') {
     return t('chat.toolCall.status.aborted', '已中止')
   }
-  return t('chat.toolCall.status.success', '已完成')
+  return t('chat.toolCall.status.completed', '已完成')
 }
 
 const BranchStateIcon = ({

@@ -963,6 +963,7 @@ export type TranslationKeys = {
         rejected?: string
         running?: string
         failed?: string
+        completed?: string
         aborted?: string
         unknown?: string
       }

@@ -1138,6 +1138,7 @@ export const en: TranslationKeys = {
         rejected: 'Rejected',
         running: 'Running',
         failed: 'Failed',
+        completed: 'Completed',
         aborted: 'Aborted',
         unknown: 'Unknown',
       },

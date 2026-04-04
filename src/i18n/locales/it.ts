@@ -1138,6 +1138,7 @@ export const it: TranslationKeys = {
         rejected: 'Rifiutato',
         running: 'In esecuzione',
         failed: 'Fallito',
+        completed: 'Completato',
         aborted: 'Interrotto',
         unknown: 'Sconosciuto',
       },
