@@ -1,5 +1,3 @@
-// eslint-disable-next-line import/no-nodejs-modules -- Desktop Node fetch returns a Node stream body that must be adapted for SSE parsing
-import type { Readable } from 'node:stream'
 import type {
   Content as GeminiContent,
   GenerateContentResponse as GeminiGenerateContentResponse,
@@ -20,6 +18,7 @@ import {
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
+import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 import { getGeminiOAuthService } from '../auth/geminiOAuthRuntime'
 
@@ -38,6 +37,8 @@ import {
 } from './requestTransport'
 import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
+
+type Readable = import('node:stream').Readable
 
 const CODE_ASSIST_ENDPOINT = 'https://cloudcode-pa.googleapis.com'
 
@@ -489,7 +490,8 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
       return stream
     }
 
-    const { Readable } = await import('node:stream')
+    const { Readable } =
+      await loadDesktopNodeModule<typeof import('node:stream')>('node:stream')
     const readableWithToWeb = Readable as typeof Readable & {
       toWeb?: (stream: Readable) => ReadableStream<Uint8Array>
     }

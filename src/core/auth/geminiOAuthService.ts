@@ -1,13 +1,7 @@
-// eslint-disable-next-line import/no-nodejs-modules -- Local OAuth callback server requires Node's HTTP server on desktop
-import {
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from 'node:http'
-
 import { requestUrl } from 'obsidian'
 
 import { GeminiOAuthCredential, GeminiOAuthStore } from './geminiOAuthStore'
+import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 const GOOGLE_ISSUER = 'https://accounts.google.com'
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
@@ -82,6 +76,9 @@ type RetrieveUserQuotaResponse = {
 }
 
 type CreateServer = typeof import('node:http').createServer
+type IncomingMessage = import('node:http').IncomingMessage
+type Server = import('node:http').Server
+type ServerResponse = import('node:http').ServerResponse
 
 export type GeminiOAuthBrowserAuthorization = {
   authorizationUrl: string
@@ -528,7 +525,10 @@ export class GeminiOAuthService {
       void (async () => {
         let createServer: CreateServer
         try {
-          ;({ createServer } = await import('node:http'))
+          ;({ createServer } =
+            await loadDesktopNodeModule<typeof import('node:http')>(
+              'node:http',
+            ))
         } catch (error) {
           reject(error)
           return
@@ -562,7 +562,7 @@ export class GeminiOAuthService {
 
   private async handleOAuthRequest(
     rawUrl: string,
-    res: ServerResponse<IncomingMessage>,
+    res: ServerResponse,
   ): Promise<void> {
     const url = new URL(rawUrl, `http://${CALLBACK_HOST}:${CALLBACK_PORT}`)
 
@@ -625,7 +625,7 @@ export class GeminiOAuthService {
   }
 
   private respondHtml(
-    res: ServerResponse<IncomingMessage>,
+    res: ServerResponse,
     statusCode: number,
     message: string,
   ) {

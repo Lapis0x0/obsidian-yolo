@@ -1,15 +1,7 @@
-// eslint-disable-next-line import/no-nodejs-modules -- Local OAuth callback server requires Node's HTTP server on desktop
-import {
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from 'node:http'
-// eslint-disable-next-line import/no-nodejs-modules -- AddressInfo is used with the local desktop OAuth callback server
-import type { AddressInfo } from 'node:net'
-
 import { requestUrl } from 'obsidian'
 
 import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
+import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
@@ -74,6 +66,10 @@ export type IdTokenClaims = {
 }
 
 type CreateServer = typeof import('node:http').createServer
+type IncomingMessage = import('node:http').IncomingMessage
+type Server = import('node:http').Server
+type ServerResponse = import('node:http').ServerResponse
+type AddressInfo = import('node:net').AddressInfo
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -456,7 +452,10 @@ export class ChatGPTOAuthService {
       void (async () => {
         let createServer: CreateServer
         try {
-          ;({ createServer } = await import('node:http'))
+          ;({ createServer } =
+            await loadDesktopNodeModule<typeof import('node:http')>(
+              'node:http',
+            ))
         } catch (error) {
           reject(error)
           return
@@ -489,7 +488,7 @@ export class ChatGPTOAuthService {
 
   private async handleOAuthRequest(
     rawUrl: string,
-    res: ServerResponse<IncomingMessage>,
+    res: ServerResponse,
   ): Promise<void> {
     const url = new URL(rawUrl, `http://${OAUTH_CALLBACK_HOST}`)
 
@@ -561,7 +560,7 @@ export class ChatGPTOAuthService {
   }
 
   private respondHtml(
-    res: ServerResponse<IncomingMessage>,
+    res: ServerResponse,
     statusCode: number,
     message: string,
   ) {

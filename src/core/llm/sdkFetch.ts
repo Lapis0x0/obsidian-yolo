@@ -1,10 +1,10 @@
-// eslint-disable-next-line import/no-nodejs-modules -- Desktop transport needs RequestOptions agent typing from Node HTTP
-import type { RequestOptions } from 'node:http'
-
 import { Platform } from 'obsidian'
 
 import type { RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
+
+type RequestOptions = import('node:http').RequestOptions
 
 let nodeFetchPromise: Promise<typeof fetch> | null = null
 let desktopProxyAgent: RequestOptions['agent'] | null | undefined
@@ -135,7 +135,10 @@ const readMacOsProxyEnv = async (): Promise<ProxyEnv> => {
 
   try {
     // eslint-disable-next-line import/no-nodejs-modules -- Desktop transport reads macOS proxy settings via scutil
-    const { execFileSync } = await import('node:child_process')
+    const { execFileSync } =
+      await loadDesktopNodeModule<typeof import('node:child_process')>(
+        'node:child_process',
+      )
     const output = execFileSync('scutil', ['--proxy'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
