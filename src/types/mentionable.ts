@@ -47,6 +47,12 @@ export type MentionableImage = {
   mimeType: string
   data: string // base64
 }
+export type MentionableModel = {
+  type: 'model'
+  modelId: string
+  name: string
+  providerId?: string
+}
 export type Mentionable =
   | MentionableFile
   | MentionableFolder
@@ -56,6 +62,7 @@ export type Mentionable =
   | MentionableAssistantQuote
   | MentionableUrl
   | MentionableImage
+  | MentionableModel
 export type SerializedMentionableFile = {
   type: 'file'
   file: string
@@ -91,6 +98,7 @@ export type SerializedMentionableAssistantQuote = {
 }
 export type SerializedMentionableUrl = MentionableUrl
 export type SerializedMentionableImage = MentionableImage
+export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
   | SerializedMentionableFolder
@@ -100,3 +108,4 @@ export type SerializedMentionable =
   | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl
   | SerializedMentionableImage
+  | SerializedMentionableModel

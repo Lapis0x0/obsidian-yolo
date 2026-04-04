@@ -25,6 +25,9 @@ export type AgentRuntimeRunInput = {
   model: ChatModel
   messages: ChatMessage[]
   conversationId: string
+  branchId?: string
+  sourceUserMessageId?: string
+  branchLabel?: string
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   compaction?: ChatConversationCompactionLike | null

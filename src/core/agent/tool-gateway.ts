@@ -58,13 +58,28 @@ export class AgentToolGateway {
   createToolMessage({
     toolCallRequests,
     conversationId,
+    branchId,
+    sourceUserMessageId,
+    branchModelId,
+    branchLabel,
   }: {
     toolCallRequests: ToolCallRequest[]
     conversationId: string
+    branchId?: string
+    sourceUserMessageId?: string
+    branchModelId?: string
+    branchLabel?: string
   }): ChatToolMessage {
     return {
       role: 'tool',
       id: uuidv4(),
+      metadata: {
+        branchConversationId: conversationId,
+        branchId,
+        sourceUserMessageId,
+        branchModelId,
+        branchLabel,
+      },
       toolCalls: toolCallRequests.map((request) => ({
         request,
         response: {

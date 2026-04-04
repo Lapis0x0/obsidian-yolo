@@ -129,6 +129,9 @@ export class NativeAgentRuntime implements AgentRuntime {
                   mcpManager: input.mcpManager,
                   conversationId: input.conversationId,
                   messages: [...input.messages, ...this.messages],
+                  branchId: input.branchId,
+                  sourceUserMessageId: input.sourceUserMessageId,
+                  branchLabel: input.branchLabel,
                   compaction: this.compactionState,
                   enableTools: this.loopConfig.enableTools,
                   includeBuiltinTools: this.loopConfig.includeBuiltinTools,
@@ -171,6 +174,14 @@ export class NativeAgentRuntime implements AgentRuntime {
                 const initialToolMessage = toolGateway.createToolMessage({
                   toolCallRequests,
                   conversationId: input.conversationId,
+                  branchId: input.branchId,
+                  sourceUserMessageId: input.sourceUserMessageId,
+                  branchModelId: input.model.id,
+                  branchLabel:
+                    input.branchLabel ??
+                    input.model.name ??
+                    input.model.model ??
+                    input.model.id,
                 })
                 pendingToolMessageId = initialToolMessage.id
 

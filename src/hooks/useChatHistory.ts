@@ -645,6 +645,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         id: message.id,
         mentionables: message.mentionables.map(serializeMentionable),
         selectedSkills: message.selectedSkills ?? [],
+        selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
         similaritySearchResults: message.similaritySearchResults,
       }
@@ -663,6 +664,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         role: 'tool',
         toolCalls: message.toolCalls,
         id: message.id,
+        metadata: message.metadata,
       }
   }
 }
@@ -683,6 +685,7 @@ const deserializeChatMessage = (
           .map((m) => deserializeMentionable(m, app))
           .filter((m): m is Mentionable => m !== null),
         selectedSkills: message.selectedSkills ?? [],
+        selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
         similaritySearchResults: message.similaritySearchResults,
       }
@@ -702,6 +705,7 @@ const deserializeChatMessage = (
         role: 'tool',
         toolCalls: message.toolCalls,
         id: message.id,
+        metadata: message.metadata,
       }
   }
 }

@@ -949,7 +949,7 @@ export const it: TranslationKeys = {
 
   chat: {
     placeholder:
-      'Scrivi un messaggio...「@ per aggiungere riferimenti, / per scegliere una skill o un comando」',
+      'Scrivi un messaggio...「@ per aggiungere riferimenti o modelli, / per scegliere una skill o un comando」',
     placeholderCompact: 'Clicca per espandere e modificare...',
     contextUsage: 'Utilizzo finestra di contesto',
     sendMessage: 'Invia messaggio',
@@ -979,6 +979,7 @@ export const it: TranslationKeys = {
       entryMode: 'Modalita',
       entrySkill: 'Skill',
       entryAssistant: 'Assistente',
+      entryModel: 'Modello',
       entryFile: 'File',
       entryFolder: 'Cartella',
     },

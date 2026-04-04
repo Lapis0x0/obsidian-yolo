@@ -905,7 +905,7 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
-    placeholder: '输入消息...「@添加标签引用，/选择技能或命令」',
+    placeholder: '输入消息...「@添加引用或模型，/选择技能或命令」',
     placeholderCompact: '点击展开编辑...',
     contextUsage: '上下文窗口占用',
     sendMessage: '发送消息',
@@ -938,6 +938,7 @@ export const zh: TranslationKeys = {
       entryMode: '模式',
       entrySkill: '技能',
       entryAssistant: '助手',
+      entryModel: '模型',
       entryFile: '文件',
       entryFolder: '文件夹',
     },

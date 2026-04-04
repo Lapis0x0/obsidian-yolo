@@ -417,7 +417,11 @@ export class RequestContextBuilder {
       }
     }
 
-    const query = message.content ? editorStateToPlainText(message.content) : ''
+    const query = message.content
+      ? editorStateToPlainText(message.content, {
+          ignoreMentionableTypes: ['model'],
+        })
+      : ''
     const imageParts = message.mentionables
       .filter((m): m is MentionableImage => m.type === 'image')
       .map(
@@ -679,7 +683,9 @@ ${message.annotations
         }
       }
       const query = message.content
-        ? editorStateToPlainText(message.content)
+        ? editorStateToPlainText(message.content, {
+            ignoreMentionableTypes: ['model'],
+          })
         : ''
       let similaritySearchResults:
         | (Omit<SelectEmbedding, 'embedding'> & {

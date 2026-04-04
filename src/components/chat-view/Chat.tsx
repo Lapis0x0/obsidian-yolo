@@ -220,7 +220,37 @@ const getNewInputMessage = (
     reasoningLevel,
     mentionables: [],
     selectedSkills: [],
+    selectedModelIds: [],
   }
+}
+
+const extractSelectedModelIds = (mentionables: Mentionable[]): string[] => {
+  const seen = new Set<string>()
+  const modelIds: string[] = []
+  for (const mentionable of mentionables) {
+    if (mentionable.type !== 'model' || seen.has(mentionable.modelId)) {
+      continue
+    }
+    seen.add(mentionable.modelId)
+    modelIds.push(mentionable.modelId)
+  }
+  return modelIds
+}
+
+const getLatestUserSelectedModelIds = (
+  messages: ChatMessage[],
+): string[] | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'user') {
+      continue
+    }
+    return message.selectedModelIds?.length
+      ? message.selectedModelIds
+      : undefined
+  }
+
+  return undefined
 }
 
 const createSelectionBlockMentionable = (
@@ -1820,6 +1850,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         reasoningLevel,
         mentionables,
         selectedSkills: inputMessage.selectedSkills ?? [],
+        selectedModelIds: extractSelectedModelIds(mentionables),
       }
     },
     [
@@ -1922,10 +1953,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       void generateConversationTitle(currentConversationId, compiledMessages)
       const requestReasoningLevel =
         resolveReasoningLevelForMessages(compiledMessages)
+      const requestModelIds =
+        lastMessage.selectedModelIds && lastMessage.selectedModelIds.length > 0
+          ? lastMessage.selectedModelIds
+          : undefined
       submitChatMutation.mutate({
         chatMessages: compiledMessages,
         conversationId: currentConversationId,
         reasoningLevel: requestReasoningLevel,
+        modelIds: requestModelIds,
       })
     },
     [
@@ -2352,6 +2388,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           chatMessages: updatedMessages,
           conversationId: currentConversationId,
           reasoningLevel: resolveReasoningLevelForMessages(updatedMessages),
+          modelIds: getLatestUserSelectedModelIds(updatedMessages),
         })
         requestAnimationFrame(() => {
           forceScrollToBottom()
@@ -2377,10 +2414,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [chatMessages, isCurrentConversationRunActive])
 
   const handleContinueResponse = useCallback(() => {
+    const latestMessage = chatMessages.at(-1)
     submitChatMutation.mutate({
       chatMessages: chatMessages,
       conversationId: currentConversationId,
       reasoningLevel: resolveReasoningLevelForMessages(chatMessages),
+      modelIds:
+        latestMessage?.role === 'user'
+          ? latestMessage.selectedModelIds
+          : undefined,
     })
   }, [
     submitChatMutation,
@@ -3293,6 +3335,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                         reasoningLevel: reasoningForThisMessage,
                         mentionables: messageOrGroup.mentionables,
                         selectedSkills: messageOrGroup.selectedSkills ?? [],
+                        selectedModelIds: extractSelectedModelIds(
+                          messageOrGroup.mentionables,
+                        ),
                       },
                     ],
                     useVaultSearch,

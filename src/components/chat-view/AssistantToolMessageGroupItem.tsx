@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
+import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import {
@@ -89,8 +90,96 @@ export default function AssistantToolMessageGroupItem({
   hidePendingAssistantPlaceholders = false,
 }: AssistantToolMessageGroupItemProps) {
   const app = useApp()
+  const { t } = useLanguage()
   const { settings } = useSettings()
-  const assistantMessages = messages.filter(
+  const branchGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string
+        label: string
+        conversationId: string
+        messages: AssistantToolMessageGroup
+      }
+    >()
+    messages.forEach((message) => {
+      const branchId =
+        message.role === 'assistant'
+          ? message.metadata?.branchId
+          : message.metadata?.branchId
+      if (!branchId) {
+        return
+      }
+      const branchLabel =
+        message.role === 'assistant'
+          ? message.metadata?.branchLabel
+          : message.metadata?.branchLabel
+      const branchConversationId =
+        message.role === 'assistant'
+          ? message.metadata?.branchConversationId
+          : message.metadata?.branchConversationId
+      const existing = groups.get(branchId)
+      if (existing) {
+        existing.messages.push(message)
+        return
+      }
+      groups.set(branchId, {
+        key: branchId,
+        label: branchLabel ?? branchId,
+        conversationId: branchConversationId ?? conversationId,
+        messages: [message],
+      })
+    })
+    return Array.from(groups.values())
+  }, [conversationId, messages])
+  const hasMultipleBranches = branchGroups.length > 1
+  const [activeBranchKey, setActiveBranchKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!hasMultipleBranches) {
+      setActiveBranchKey(null)
+      return
+    }
+    if (
+      activeBranchKey &&
+      branchGroups.some((group) => group.key === activeBranchKey)
+    ) {
+      return
+    }
+    const firstCompletedBranch = branchGroups.find((group) =>
+      group.messages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.generationState === 'completed',
+      ),
+    )
+    setActiveBranchKey(
+      firstCompletedBranch?.key ?? branchGroups[0]?.key ?? null,
+    )
+  }, [activeBranchKey, branchGroups, hasMultipleBranches])
+
+  const displayedMessages = useMemo(() => {
+    if (!hasMultipleBranches) {
+      return messages
+    }
+    return (
+      branchGroups.find((group) => group.key === activeBranchKey)?.messages ??
+      branchGroups[0]?.messages ??
+      messages
+    )
+  }, [activeBranchKey, branchGroups, hasMultipleBranches, messages])
+  const effectiveConversationId = useMemo(() => {
+    if (!hasMultipleBranches) {
+      return conversationId
+    }
+    return (
+      branchGroups.find((group) => group.key === activeBranchKey)
+        ?.conversationId ??
+      branchGroups[0]?.conversationId ??
+      conversationId
+    )
+  }, [activeBranchKey, branchGroups, conversationId, hasMultipleBranches])
+  const assistantMessages = displayedMessages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
   )
   const editableAssistantMessage =
@@ -100,15 +189,17 @@ export default function AssistantToolMessageGroupItem({
     assistantMessages.at(-1) ??
     null
   const editableAssistantMessageId = editableAssistantMessage?.id ?? null
-  const isEditingGroup = messages.some(
+  const isEditingGroup = displayedMessages.some(
     (message) => message.id === editingAssistantMessageId,
   )
-  const isStreaming = messages.some(
+  const isStreaming = displayedMessages.some(
     (message) =>
       message.role === 'assistant' &&
       message.metadata?.generationState === 'streaming',
   )
-  const hasToolMessages = messages.some((message) => message.role === 'tool')
+  const hasToolMessages = displayedMessages.some(
+    (message) => message.role === 'tool',
+  )
   const hasPendingAssistantShell = assistantMessages.some(
     (message) =>
       message.metadata?.generationState === 'streaming' &&
@@ -118,8 +209,8 @@ export default function AssistantToolMessageGroupItem({
       !message.toolCallRequests?.length,
   )
   const baseGroupEditSummary = useMemo(
-    () => collectGroupEditSummary(messages),
-    [messages],
+    () => collectGroupEditSummary(displayedMessages),
+    [displayedMessages],
   )
   const [groupEditSummary, setGroupEditSummary] =
     useState<GroupEditSummary | null>(baseGroupEditSummary)
@@ -204,7 +295,42 @@ export default function AssistantToolMessageGroupItem({
 
   return (
     <div className="smtcmp-assistant-tool-message-group">
-      {messages.map((message) => {
+      {hasMultipleBranches && (
+        <div className="smtcmp-multi-model-tabs" role="tablist">
+          {branchGroups.map((group) => {
+            const isActive =
+              group.key === (activeBranchKey ?? branchGroups[0]?.key)
+            const assistantMessage = group.messages.find(
+              (message): message is ChatAssistantMessage =>
+                message.role === 'assistant',
+            )
+            const state =
+              assistantMessage?.metadata?.generationState ?? 'completed'
+            const stateLabel =
+              state === 'streaming'
+                ? t('chat.toolCall.status.running', '生成中')
+                : state === 'error'
+                  ? t('chat.toolCall.status.error', '失败')
+                  : state === 'aborted'
+                    ? t('chat.toolCall.status.aborted', '已中止')
+                    : t('chat.toolCall.status.success', '已完成')
+            return (
+              <button
+                key={group.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`smtcmp-chat-input-model-select${isActive ? ' is-active' : ''}`}
+                onClick={() => setActiveBranchKey(group.key)}
+              >
+                <span>{group.label}</span>
+                <span>{stateLabel}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {displayedMessages.map((message) => {
         const hasVisibleAssistantContent =
           message.role === 'assistant' && message.content.trim().length > 0
         const hasVisibleAssistantReasoning =
@@ -260,7 +386,7 @@ export default function AssistantToolMessageGroupItem({
               ) : (
                 <AssistantMessageContent
                   messageId={message.id}
-                  conversationId={conversationId}
+                  conversationId={effectiveConversationId}
                   content={message.content}
                   handleApply={onApply}
                   isApplying={isApplying}
@@ -277,7 +403,7 @@ export default function AssistantToolMessageGroupItem({
           <div key={message.id}>
             <ToolMessage
               message={message}
-              conversationId={conversationId}
+              conversationId={effectiveConversationId}
               isCompactionPending={
                 message.id === pendingCompactionAnchorMessageId
               }
@@ -313,14 +439,16 @@ export default function AssistantToolMessageGroupItem({
             }
           />
         )}
-      {messages.length > 0 &&
+      {displayedMessages.length > 0 &&
         !hasPendingAssistantShell &&
         !isStreaming &&
         !suppressFooter && (
           <div className="smtcmp-assistant-message-footer">
-            {showInlineInfo && <LLMResponseInlineInfo messages={messages} />}
+            {showInlineInfo && (
+              <LLMResponseInlineInfo messages={displayedMessages} />
+            )}
             <AssistantToolMessageGroupActions
-              messages={messages}
+              messages={displayedMessages}
               showInsert={showInsertAction}
               showCopy={showCopyAction}
               showBranch={showBranchAction}
@@ -329,7 +457,9 @@ export default function AssistantToolMessageGroupItem({
               onBranch={
                 !isStreaming
                   ? () => {
-                      onBranchGroup(messages.map((message) => message.id))
+                      onBranchGroup(
+                        displayedMessages.map((message) => message.id),
+                      )
                     }
                   : undefined
               }
@@ -343,7 +473,9 @@ export default function AssistantToolMessageGroupItem({
               onDelete={
                 !isStreaming
                   ? () => {
-                      onDeleteGroup(messages.map((message) => message.id))
+                      onDeleteGroup(
+                        displayedMessages.map((message) => message.id),
+                      )
                     }
                   : undefined
               }

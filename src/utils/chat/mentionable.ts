@@ -70,6 +70,13 @@ export const serializeMentionable = (
         mimeType: mentionable.mimeType,
         data: mentionable.data,
       }
+    case 'model':
+      return {
+        type: 'model',
+        modelId: mentionable.modelId,
+        name: mentionable.name,
+        providerId: mentionable.providerId,
+      }
   }
 }
 
@@ -183,6 +190,14 @@ export const deserializeMentionable = (
           data: mentionable.data,
         }
       }
+      case 'model': {
+        return {
+          type: 'model',
+          modelId: mentionable.modelId,
+          name: mentionable.name,
+          providerId: mentionable.providerId,
+        }
+      }
     }
   } catch (e) {
     console.error('Error deserializing mentionable', e)
@@ -208,6 +223,8 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `url:${mentionable.url}`
     case 'image':
       return `image:${mentionable.name}:${mentionable.data.length}:${mentionable.data.slice(-32)}`
+    case 'model':
+      return `model:${mentionable.modelId}`
   }
 }
 
@@ -307,6 +324,8 @@ export function getMentionableName(
     case 'url':
       return mentionable.url
     case 'image':
+      return mentionable.name
+    case 'model':
       return mentionable.name
   }
 }

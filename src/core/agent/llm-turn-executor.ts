@@ -34,6 +34,9 @@ type AgentLlmTurnExecutorInput = {
   mcpManager: McpManager
   conversationId: string
   messages: ChatMessage[]
+  branchId?: string
+  sourceUserMessageId?: string
+  branchLabel?: string
   compaction?: ChatConversationCompactionLike | null
   enableTools: boolean
   includeBuiltinTools: boolean
@@ -126,6 +129,15 @@ export class AgentLlmTurnExecutor {
       metadata: {
         model: effectiveModel,
         generationState: 'streaming',
+        branchConversationId: this.input.conversationId,
+        sourceUserMessageId: this.input.sourceUserMessageId,
+        branchId: this.input.branchId,
+        branchModelId: effectiveModel.id,
+        branchLabel:
+          this.input.branchLabel ??
+          effectiveModel.name ??
+          effectiveModel.model ??
+          effectiveModel.id,
       },
     }
     this.input.onAssistantMessage(assistantMessage)

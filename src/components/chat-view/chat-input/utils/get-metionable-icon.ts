@@ -5,6 +5,7 @@ import {
   FoldersIcon,
   ImageIcon,
   LinkIcon,
+  Cpu,
   Quote,
 } from 'lucide-react'
 
@@ -28,6 +29,8 @@ export const getMentionableIcon = (mentionable: Mentionable) => {
       return LinkIcon
     case 'image':
       return ImageIcon
+    case 'model':
+      return Cpu
     default:
       return null
   }

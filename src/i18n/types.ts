@@ -864,6 +864,7 @@ export type TranslationKeys = {
       entryMode?: string
       entrySkill?: string
       entryAssistant?: string
+      entryModel?: string
       entryFile?: string
       entryFolder?: string
     }

@@ -128,6 +128,7 @@ const INLINE_MENTIONABLE_TYPES = [
   'current-file',
   'block',
   'assistant-quote',
+  'model',
 ]
 const DEFAULT_INPUT_HEIGHT = 80
 const MIN_INPUT_HEIGHT = 80
@@ -239,6 +240,24 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const effectiveSelectedSkills = useMemo(
       () => selectedSkills,
       [selectedSkills],
+    )
+    const enabledChatModels = useMemo(
+      () => settings.chatModels.filter((model) => model.enable ?? true),
+      [settings.chatModels],
+    )
+    const selectedModelIds = useMemo(
+      () =>
+        mentionables
+          .filter(
+            (
+              mentionable,
+            ): mentionable is Mentionable & {
+              type: 'model'
+              modelId: string
+            } => mentionable.type === 'model',
+          )
+          .map((mentionable) => mentionable.modelId),
+      [mentionables],
     )
 
     const availableSkills = useMemo(() => {
@@ -1131,7 +1150,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 <div className="smtcmp-chat-user-input-placeholder">
                   {t(
                     'chat.placeholder',
-                    '输入消息...「@添加标签引用，/选择技能」',
+                    '输入消息...「@添加引用或模型，/选择技能」',
                   )}
                 </div>
               )}
@@ -1166,6 +1185,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               currentChatMode={currentChatMode}
               onSelectChatMode={onSelectChatModeForConversation}
               allowAgentModeOption={allowAgentModeOption}
+              models={enabledChatModels}
+              selectedModelIds={selectedModelIds}
               skills={availableSkills}
               selectedSkillIds={effectiveSelectedSkills.map(
                 (skill) => skill.id,

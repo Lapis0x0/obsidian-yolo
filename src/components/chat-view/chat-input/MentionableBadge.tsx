@@ -12,6 +12,7 @@ import {
   MentionableFile,
   MentionableFolder,
   MentionableImage,
+  MentionableModel,
   MentionableUrl,
   MentionableVault,
 } from '../../../types/mentionable'
@@ -403,6 +404,41 @@ function ImageBadge({
   )
 }
 
+function ModelBadge({
+  mentionable,
+  onDelete,
+  onClick,
+  isFocused,
+  showDeleteButton,
+}: {
+  mentionable: MentionableModel
+  onDelete: () => void
+  onClick: () => void
+  isFocused: boolean
+  showDeleteButton?: boolean
+}) {
+  const Icon = getMentionableIcon(mentionable)
+  return (
+    <BadgeBase
+      onDelete={onDelete}
+      onClick={onClick}
+      isFocused={isFocused}
+      showExpandButton={false}
+      showDeleteButton={showDeleteButton}
+    >
+      <div className="smtcmp-chat-user-input-file-badge-name">
+        {Icon && (
+          <Icon
+            size={12}
+            className="smtcmp-chat-user-input-file-badge-name-icon"
+          />
+        )}
+        <span>{mentionable.name}</span>
+      </div>
+    </BadgeBase>
+  )
+}
+
 export default function MentionableBadge({
   mentionable,
   onDelete,
@@ -506,6 +542,16 @@ export default function MentionableBadge({
           isFocused={isFocused}
           isExpanded={isExpanded}
           onToggleExpand={onToggleExpand}
+          showDeleteButton={showDeleteButton}
+        />
+      )
+    case 'model':
+      return (
+        <ModelBadge
+          mentionable={mentionable}
+          onDelete={onDelete}
+          onClick={onClick}
+          isFocused={isFocused}
           showDeleteButton={showDeleteButton}
         />
       )

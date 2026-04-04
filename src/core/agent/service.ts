@@ -51,12 +51,21 @@ export type AgentConversationRunSummarySubscriber = (
   summaries: Map<string, AgentConversationRunSummary>,
 ) => void
 
+type ConversationEntry = {
+  state: AgentConversationState
+  subscribers: Set<AgentConversationStateSubscriber>
+  baseMessages: ChatMessage[]
+  persistState: boolean
+}
+
 type AgentRunEntry = {
+  conversationId: string
+  branchId: string
+  sourceUserMessageId?: string
   runtime: NativeAgentRuntime | null
   state: AgentConversationState
   nextRunId: number
   runToken: symbol | null
-  subscribers: Set<AgentConversationStateSubscriber>
   lastRunInput: AgentRuntimeRunInput | null
   lastLoopConfig: AgentRuntimeLoopConfig | null
 }
@@ -69,6 +78,8 @@ type AgentServiceOptions = {
     status: AgentRunStatus
   }) => Promise<void>
 }
+
+const DEFAULT_BRANCH_ID = '__default__'
 
 const reconcileAssistantGenerationState = (
   previousMessages: ChatMessage[],
@@ -228,8 +239,63 @@ const hasPendingApproval = (messages: ChatMessage[]): boolean => {
   )
 }
 
+const getRunKey = (conversationId: string, branchId?: string): string => {
+  return `${conversationId}::${branchId ?? DEFAULT_BRANCH_ID}`
+}
+
+const buildBranchAggregateMessages = ({
+  baseMessages,
+  branchState,
+  sourceUserMessageId,
+}: {
+  baseMessages: ChatMessage[]
+  branchState: AgentConversationState
+  sourceUserMessageId?: string
+}): ChatMessage[] => {
+  if (!sourceUserMessageId) {
+    return branchState.messages
+  }
+
+  const anchorIndex = branchState.messages.findIndex(
+    (message) => message.id === sourceUserMessageId,
+  )
+  const responseMessages =
+    anchorIndex >= 0
+      ? branchState.messages.slice(anchorIndex + 1)
+      : branchState.messages
+  const userIndex = baseMessages.findIndex(
+    (message) => message.id === sourceUserMessageId,
+  )
+  if (userIndex === -1) {
+    return [...baseMessages, ...responseMessages]
+  }
+
+  let insertIndex = userIndex + 1
+  while (insertIndex < baseMessages.length) {
+    const currentMessage = baseMessages[insertIndex]
+    if (currentMessage.role === 'user') {
+      break
+    }
+    const currentSourceUserMessageId =
+      currentMessage.role === 'assistant'
+        ? currentMessage.metadata?.sourceUserMessageId
+        : currentMessage.metadata?.sourceUserMessageId
+    if (currentSourceUserMessageId !== sourceUserMessageId) {
+      break
+    }
+    insertIndex += 1
+  }
+
+  return [
+    ...baseMessages.slice(0, insertIndex),
+    ...responseMessages,
+    ...baseMessages.slice(insertIndex),
+  ]
+}
+
 export class AgentService {
-  private runsByConversation = new Map<string, AgentRunEntry>()
+  private conversationEntries = new Map<string, ConversationEntry>()
+  private runEntriesByKey = new Map<string, AgentRunEntry>()
   private summarySubscribers = new Set<AgentConversationRunSummarySubscriber>()
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -241,7 +307,7 @@ export class AgentService {
     callback: AgentConversationStateSubscriber,
     options?: { emitCurrent?: boolean },
   ): () => void {
-    const entry = this.getOrCreateEntry(conversationId)
+    const entry = this.getOrCreateConversationEntry(conversationId)
     entry.subscribers.add(callback)
 
     if (options?.emitCurrent ?? true) {
@@ -249,19 +315,20 @@ export class AgentService {
     }
 
     return () => {
-      const currentEntry = this.runsByConversation.get(conversationId)
-      currentEntry?.subscribers.delete(callback)
+      this.conversationEntries.get(conversationId)?.subscribers.delete(callback)
     }
   }
 
   getState(conversationId: string): AgentConversationState {
-    return this.cloneState(this.getOrCreateEntry(conversationId).state)
+    return this.cloneState(
+      this.getOrCreateConversationEntry(conversationId).state,
+    )
   }
 
   getConversationRunSummary(
     conversationId: string,
   ): AgentConversationRunSummary {
-    const state = this.getOrCreateEntry(conversationId).state
+    const state = this.getOrCreateConversationEntry(conversationId).state
     return this.buildRunSummary(state)
   }
 
@@ -270,7 +337,7 @@ export class AgentService {
     AgentConversationRunSummary
   > {
     const summaries = new Map<string, AgentConversationRunSummary>()
-    for (const [conversationId, entry] of this.runsByConversation.entries()) {
+    for (const [conversationId, entry] of this.conversationEntries.entries()) {
       const summary = this.buildRunSummary(entry.state)
       if (summary.isRunning || summary.isWaitingApproval) {
         summaries.set(conversationId, summary)
@@ -297,7 +364,7 @@ export class AgentService {
     this.stateFeedSubscribers.add(callback)
 
     if (options?.emitCurrent ?? true) {
-      for (const entry of this.runsByConversation.values()) {
+      for (const entry of this.conversationEntries.values()) {
         callback(this.cloneState(entry.state))
       }
     }
@@ -308,15 +375,23 @@ export class AgentService {
   }
 
   isRunning(conversationId: string): boolean {
-    return this.getOrCreateEntry(conversationId).state.status === 'running'
+    return (
+      this.getOrCreateConversationEntry(conversationId).state.status ===
+      'running'
+    )
   }
 
   replaceConversationMessages(
     conversationId: string,
     messages: ChatMessage[],
     compaction?: ChatConversationCompactionLike | null,
+    options?: { persistState?: boolean },
   ): void {
-    const entry = this.getOrCreateEntry(conversationId)
+    const entry = this.getOrCreateConversationEntry(conversationId)
+    if (typeof options?.persistState === 'boolean') {
+      entry.persistState = options.persistState
+    }
+    entry.baseMessages = [...messages]
     entry.state = {
       ...entry.state,
       messages: [...messages],
@@ -324,8 +399,13 @@ export class AgentService {
         compaction === undefined ? entry.state.compaction : compaction,
         messages,
       ),
+      status: this.runEntriesForConversation(conversationId).some(
+        (runEntry) => runEntry.state.status === 'running',
+      )
+        ? 'running'
+        : entry.state.status,
     }
-    this.notifySubscribers(entry)
+    this.notifyConversationSubscribers(conversationId)
   }
 
   async approveToolCall({
@@ -337,23 +417,24 @@ export class AgentService {
     toolCallId: string
     allowForConversation?: boolean
   }): Promise<boolean> {
-    const entry = this.runsByConversation.get(conversationId)
-    if (!entry?.lastRunInput || !entry.lastLoopConfig) {
+    const located = this.findToolCall(conversationId, toolCallId)
+    if (!located?.runEntry.lastRunInput || !located.runEntry.lastLoopConfig) {
       return false
     }
 
-    const target = this.findToolCall(entry.state.messages, toolCallId)
-    if (!target) {
-      return false
-    }
-
-    const { toolMessage, toolCall } = target
-    if (toolCall.response.status !== ToolCallResponseStatus.PendingApproval) {
+    const { runEntry, toolMessage, toolCall } = located
+    const lastRunInput = runEntry.lastRunInput
+    const lastLoopConfig = runEntry.lastLoopConfig
+    if (
+      !lastRunInput ||
+      !lastLoopConfig ||
+      toolCall.response.status !== ToolCallResponseStatus.PendingApproval
+    ) {
       return false
     }
 
     if (allowForConversation) {
-      entry.lastRunInput.mcpManager.allowToolForConversation(
+      lastRunInput.mcpManager.allowToolForConversation(
         toolCall.request.name,
         conversationId,
         getToolCallArgumentsObject(toolCall.request.arguments),
@@ -367,12 +448,12 @@ export class AgentService {
       status: 'running',
     })
 
-    const result = await entry.lastRunInput.mcpManager.callTool({
+    const result = await lastRunInput.mcpManager.callTool({
       name: toolCall.request.name,
       args: getToolCallArgumentsObject(toolCall.request.arguments),
       id: toolCall.request.id,
       conversationId,
-      conversationMessages: entry.state.messages,
+      conversationMessages: runEntry.state.messages,
       roundId: toolMessage.id,
     })
 
@@ -399,9 +480,9 @@ export class AgentService {
     ) {
       await this.run({
         conversationId,
-        loopConfig: entry.lastLoopConfig,
+        loopConfig: lastLoopConfig,
         input: {
-          ...entry.lastRunInput,
+          ...lastRunInput,
           messages: nextMessages,
         },
       })
@@ -433,17 +514,17 @@ export class AgentService {
     conversationId: string
     toolCallId: string
   }): boolean {
-    const entry = this.runsByConversation.get(conversationId)
-    if (!entry) {
+    const located = this.findToolCall(conversationId, toolCallId)
+    if (!located) {
       return false
     }
-    entry.lastRunInput?.mcpManager.abortToolCall(toolCallId)
+    located.runEntry.lastRunInput?.mcpManager.abortToolCall(toolCallId)
     return Boolean(
       this.updateToolCallResponse({
         conversationId,
         toolCallId,
         response: { status: ToolCallResponseStatus.Aborted },
-        status: entry.runtime ? 'aborted' : undefined,
+        status: located.runEntry.runtime ? 'aborted' : undefined,
       }),
     )
   }
@@ -452,49 +533,71 @@ export class AgentService {
     conversationId,
     input,
     loopConfig,
+    persistState,
   }: {
     conversationId: string
     input: AgentRuntimeRunInput
     loopConfig: AgentRuntimeLoopConfig
+    persistState?: boolean
   }): Promise<void> {
-    const entry = this.getOrCreateEntry(conversationId)
+    const conversationEntry = this.getOrCreateConversationEntry(conversationId)
+    if (typeof persistState === 'boolean') {
+      conversationEntry.persistState = persistState
+    }
 
-    if (entry.state.status === 'running' && entry.runtime) {
-      entry.runtime.abort()
+    const branchId = input.branchId ?? DEFAULT_BRANCH_ID
+    const runKey = getRunKey(conversationId, branchId)
+    const existingRunEntry = this.runEntriesByKey.get(runKey)
+    if (
+      existingRunEntry?.state.status === 'running' &&
+      existingRunEntry.runtime
+    ) {
+      existingRunEntry.runtime.abort()
+    }
+
+    const runEntry = this.getOrCreateRunEntry({
+      conversationId,
+      branchId,
+      sourceUserMessageId: input.sourceUserMessageId,
+    })
+
+    if (branchId === DEFAULT_BRANCH_ID) {
+      conversationEntry.baseMessages = [...input.messages]
     }
 
     const runtime = new NativeAgentRuntime(loopConfig)
-    const runToken = Symbol(`agent-run-${conversationId}`)
-    const runId = entry.nextRunId
-    entry.nextRunId += 1
-    entry.runtime = runtime
-    entry.runToken = runToken
-    entry.lastRunInput = input
-    entry.lastLoopConfig = loopConfig
-    entry.state = {
+    const runToken = Symbol(`agent-run-${conversationId}-${branchId}`)
+    const runId = runEntry.nextRunId
+    runEntry.nextRunId += 1
+    runEntry.runtime = runtime
+    runEntry.runToken = runToken
+    runEntry.lastRunInput = input
+    runEntry.lastLoopConfig = loopConfig
+    runEntry.sourceUserMessageId = input.sourceUserMessageId
+    runEntry.state = {
       conversationId,
       status: 'running',
       runId,
       messages: [...input.messages],
       compaction: this.normalizeCompaction(input.compaction, input.messages),
       pendingCompactionAnchorMessageId: null,
-      anchorMessageId: input.messages.at(-1)?.id,
+      anchorMessageId: input.sourceUserMessageId ?? input.messages.at(-1)?.id,
     }
-    this.notifySubscribers(entry)
+    this.recomputeConversationState(conversationId)
 
     const unsubscribe = runtime.subscribe((snapshot) => {
-      const currentEntry = this.runsByConversation.get(conversationId)
-      if (!currentEntry || currentEntry.runToken !== runToken) {
+      const currentRunEntry = this.runEntriesByKey.get(runKey)
+      if (!currentRunEntry || currentRunEntry.runToken !== runToken) {
         return
       }
       const mergedMessages = mergeVisibleMessages(
-        currentEntry.state.messages,
+        currentRunEntry.state.messages,
         input.messages,
-        currentEntry.state.anchorMessageId,
+        currentRunEntry.state.anchorMessageId,
         snapshot.messages,
       )
-      currentEntry.state = {
-        ...currentEntry.state,
+      currentRunEntry.state = {
+        ...currentRunEntry.state,
         messages: mergedMessages,
         compaction: this.normalizeCompaction(
           snapshot.compaction,
@@ -506,33 +609,33 @@ export class AgentService {
             mergedMessages,
           ),
       }
-      this.notifySubscribers(currentEntry)
+      this.recomputeConversationState(conversationId)
     })
 
     try {
       await runtime.run(input)
 
-      const currentEntry = this.runsByConversation.get(conversationId)
-      if (!currentEntry || currentEntry.runToken !== runToken) {
+      const currentRunEntry = this.runEntriesByKey.get(runKey)
+      if (!currentRunEntry || currentRunEntry.runToken !== runToken) {
         return
       }
 
-      currentEntry.state = {
-        ...currentEntry.state,
+      currentRunEntry.state = {
+        ...currentRunEntry.state,
         status: input.abortSignal?.aborted ? 'aborted' : 'completed',
         pendingCompactionAnchorMessageId: null,
       }
-      this.notifySubscribers(currentEntry)
+      this.recomputeConversationState(conversationId)
     } catch (error) {
-      const currentEntry = this.runsByConversation.get(conversationId)
-      if (!currentEntry || currentEntry.runToken !== runToken) {
+      const currentRunEntry = this.runEntriesByKey.get(runKey)
+      if (!currentRunEntry || currentRunEntry.runToken !== runToken) {
         return
       }
       const aborted =
         input.abortSignal?.aborted ||
         (error instanceof Error && error.name === 'AbortError')
-      currentEntry.state = {
-        ...currentEntry.state,
+      currentRunEntry.state = {
+        ...currentRunEntry.state,
         status: aborted ? 'aborted' : 'error',
         pendingCompactionAnchorMessageId: null,
         errorMessage:
@@ -540,55 +643,95 @@ export class AgentService {
             ? undefined
             : (error.message ?? 'Unknown error'),
       }
-      this.notifySubscribers(currentEntry)
+      this.recomputeConversationState(conversationId)
       if (!aborted) {
         throw error
       }
     } finally {
       unsubscribe()
-      const currentEntry = this.runsByConversation.get(conversationId)
-      if (currentEntry && currentEntry.runToken === runToken) {
-        currentEntry.runToken = null
-        if (currentEntry.runtime === runtime) {
-          currentEntry.runtime = null
+      const currentRunEntry = this.runEntriesByKey.get(runKey)
+      if (currentRunEntry && currentRunEntry.runToken === runToken) {
+        currentRunEntry.runToken = null
+        if (currentRunEntry.runtime === runtime) {
+          currentRunEntry.runtime = null
         }
       }
+      this.finalizeSettledConversationRuns(conversationId)
     }
   }
 
   abortConversation(conversationId: string): boolean {
-    const entry = this.runsByConversation.get(conversationId)
-    if (!entry || entry.state.status !== 'running' || !entry.runtime) {
+    const runEntries = this.runEntriesForConversation(conversationId)
+    if (runEntries.length === 0) {
       return false
     }
-    entry.runtime.abort()
-    entry.state = {
-      ...entry.state,
-      messages: abortVisibleMessages(entry.state.messages),
-      status: 'aborted',
-      pendingCompactionAnchorMessageId: null,
-    }
-    this.notifySubscribers(entry)
+
+    runEntries.forEach((runEntry) => {
+      runEntry.runtime?.abort()
+      runEntry.state = {
+        ...runEntry.state,
+        messages: abortVisibleMessages(runEntry.state.messages),
+        status: 'aborted',
+        pendingCompactionAnchorMessageId: null,
+      }
+    })
+    this.recomputeConversationState(conversationId)
     return true
   }
 
   abortAll(): void {
-    for (const [conversationId] of this.runsByConversation) {
+    for (const [conversationId] of this.conversationEntries) {
       this.abortConversation(conversationId)
     }
   }
 
-  private getOrCreateEntry(conversationId: string): AgentRunEntry {
-    const existing = this.runsByConversation.get(conversationId)
+  private getOrCreateConversationEntry(
+    conversationId: string,
+  ): ConversationEntry {
+    const existing = this.conversationEntries.get(conversationId)
     if (existing) {
       return existing
     }
 
+    const created: ConversationEntry = {
+      subscribers: new Set(),
+      baseMessages: [],
+      persistState: true,
+      state: {
+        conversationId,
+        status: 'idle',
+        messages: [],
+        compaction: [],
+        pendingCompactionAnchorMessageId: null,
+      },
+    }
+    this.conversationEntries.set(conversationId, created)
+    return created
+  }
+
+  private getOrCreateRunEntry({
+    conversationId,
+    branchId,
+    sourceUserMessageId,
+  }: {
+    conversationId: string
+    branchId: string
+    sourceUserMessageId?: string
+  }): AgentRunEntry {
+    const runKey = getRunKey(conversationId, branchId)
+    const existing = this.runEntriesByKey.get(runKey)
+    if (existing) {
+      existing.sourceUserMessageId = sourceUserMessageId
+      return existing
+    }
+
     const created: AgentRunEntry = {
+      conversationId,
+      branchId,
+      sourceUserMessageId,
       runtime: null,
       nextRunId: 1,
       runToken: null,
-      subscribers: new Set(),
       lastRunInput: null,
       lastLoopConfig: null,
       state: {
@@ -599,11 +742,98 @@ export class AgentService {
         pendingCompactionAnchorMessageId: null,
       },
     }
-    this.runsByConversation.set(conversationId, created)
+    this.runEntriesByKey.set(runKey, created)
     return created
   }
 
-  private notifySubscribers(entry: AgentRunEntry): void {
+  private runEntriesForConversation(conversationId: string): AgentRunEntry[] {
+    return [...this.runEntriesByKey.values()].filter(
+      (entry) => entry.conversationId === conversationId,
+    )
+  }
+
+  private recomputeConversationState(conversationId: string): void {
+    const conversationEntry = this.getOrCreateConversationEntry(conversationId)
+    const runEntries = this.runEntriesForConversation(conversationId)
+    const hasActiveRuns = runEntries.length > 0
+
+    if (!hasActiveRuns) {
+      this.notifyConversationSubscribers(conversationId)
+      return
+    }
+
+    const aggregateMessages = runEntries.reduce<ChatMessage[]>(
+      (messages, runEntry) => {
+        if (runEntry.branchId === DEFAULT_BRANCH_ID) {
+          return runEntry.state.messages
+        }
+        return buildBranchAggregateMessages({
+          baseMessages: messages,
+          branchState: runEntry.state,
+          sourceUserMessageId: runEntry.sourceUserMessageId,
+        })
+      },
+      conversationEntry.baseMessages,
+    )
+
+    const isRunning = runEntries.some(
+      (entry) => entry.state.status === 'running',
+    )
+    const hasError = runEntries.some((entry) => entry.state.status === 'error')
+    const hasAborted = runEntries.some(
+      (entry) => entry.state.status === 'aborted',
+    )
+    const latestCompaction = runEntries
+      .flatMap((entry) => entry.state.compaction ?? [])
+      .at(-1)
+    const pendingCompactionAnchorMessageId =
+      runEntries.find((entry) => entry.state.pendingCompactionAnchorMessageId)
+        ?.state.pendingCompactionAnchorMessageId ?? null
+
+    conversationEntry.state = {
+      conversationId,
+      status: isRunning
+        ? 'running'
+        : hasError
+          ? 'error'
+          : hasAborted
+            ? 'aborted'
+            : 'completed',
+      runId: runEntries.at(-1)?.state.runId,
+      messages: aggregateMessages,
+      compaction: this.normalizeCompaction(
+        latestCompaction
+          ? [latestCompaction]
+          : conversationEntry.state.compaction,
+        aggregateMessages,
+      ),
+      pendingCompactionAnchorMessageId,
+      anchorMessageId: runEntries.at(-1)?.state.anchorMessageId,
+      errorMessage: runEntries.find((entry) => entry.state.errorMessage)?.state
+        .errorMessage,
+    }
+    this.notifyConversationSubscribers(conversationId)
+  }
+
+  private finalizeSettledConversationRuns(conversationId: string): void {
+    const runEntries = this.runEntriesForConversation(conversationId)
+    if (runEntries.some((entry) => entry.state.status === 'running')) {
+      this.recomputeConversationState(conversationId)
+      return
+    }
+
+    const conversationEntry = this.getOrCreateConversationEntry(conversationId)
+    if (runEntries.length > 0) {
+      conversationEntry.baseMessages = [...conversationEntry.state.messages]
+      runEntries.forEach((entry) => {
+        this.runEntriesByKey.delete(getRunKey(conversationId, entry.branchId))
+      })
+    }
+    this.notifyConversationSubscribers(conversationId)
+  }
+
+  private notifyConversationSubscribers(conversationId: string): void {
+    const entry = this.getOrCreateConversationEntry(conversationId)
     const state = this.cloneState(entry.state)
     for (const subscriber of entry.subscribers) {
       subscriber(state)
@@ -655,6 +885,10 @@ export class AgentService {
     if (!this.options.persistConversationMessages) {
       return
     }
+    const entry = this.conversationEntries.get(state.conversationId)
+    if (entry && !entry.persistState) {
+      return
+    }
 
     const existingTimer = this.persistTimers.get(state.conversationId)
     if (existingTimer) {
@@ -701,13 +935,13 @@ export class AgentService {
     response: ToolCallResponse
     status?: AgentRunStatus
   }): ChatMessage[] | null {
-    const entry = this.runsByConversation.get(conversationId)
-    if (!entry) {
+    const located = this.findToolCall(conversationId, toolCallId)
+    if (!located) {
       return null
     }
 
     let updated = false
-    const nextMessages = entry.state.messages.map((message) => {
+    const nextMessages = located.runEntry.state.messages.map((message) => {
       if (message.role !== 'tool') {
         return message
       }
@@ -735,36 +969,40 @@ export class AgentService {
       return null
     }
 
-    entry.state = {
-      ...entry.state,
+    located.runEntry.state = {
+      ...located.runEntry.state,
       messages: nextMessages,
-      status: status ?? entry.state.status,
+      status: status ?? located.runEntry.state.status,
     }
-    this.notifySubscribers(entry)
+    this.recomputeConversationState(conversationId)
     return nextMessages
   }
 
   private findToolCall(
-    messages: ChatMessage[],
+    conversationId: string,
     toolCallId: string,
   ): {
+    runEntry: AgentRunEntry
     toolMessage: Extract<ChatMessage, { role: 'tool' }>
     toolCall: {
       request: ToolCallRequest
       response: ToolCallResponse
     }
   } | null {
-    for (const message of messages) {
-      if (message.role !== 'tool') {
-        continue
-      }
-      const toolCall = message.toolCalls.find(
-        (candidate) => candidate.request.id === toolCallId,
-      )
-      if (toolCall) {
-        return {
-          toolMessage: message,
-          toolCall,
+    for (const runEntry of this.runEntriesForConversation(conversationId)) {
+      for (const message of runEntry.state.messages) {
+        if (message.role !== 'tool') {
+          continue
+        }
+        const toolCall = message.toolCalls.find(
+          (candidate) => candidate.request.id === toolCallId,
+        )
+        if (toolCall) {
+          return {
+            runEntry,
+            toolMessage: message,
+            toolCall,
+          }
         }
       }
     }

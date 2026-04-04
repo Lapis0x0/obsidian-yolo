@@ -59,6 +59,7 @@ export type ChatUserMessage = {
   id: string
   mentionables: Mentionable[]
   selectedSkills?: ChatSelectedSkill[]
+  selectedModelIds?: string[]
   reasoningLevel?: string
   similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
     similarity: number
@@ -77,6 +78,11 @@ export type ChatAssistantMessage = {
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     providerMetadata?: ProviderMetadata
+    sourceUserMessageId?: string
+    branchId?: string
+    branchModelId?: string
+    branchLabel?: string
+    branchConversationId?: string
   }
 }
 export type ChatToolMessage = {
@@ -86,6 +92,13 @@ export type ChatToolMessage = {
     request: ToolCallRequest
     response: ToolCallResponse
   }[]
+  metadata?: {
+    sourceUserMessageId?: string
+    branchId?: string
+    branchModelId?: string
+    branchLabel?: string
+    branchConversationId?: string
+  }
 }
 
 export type ChatMessage =
@@ -106,6 +119,7 @@ export type SerializedChatUserMessage = {
   id: string
   mentionables: SerializedMentionable[]
   selectedSkills?: ChatSelectedSkill[]
+  selectedModelIds?: string[]
   reasoningLevel?: string
   similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
     similarity: number
@@ -124,6 +138,11 @@ export type SerializedChatAssistantMessage = {
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     providerMetadata?: ProviderMetadata
+    sourceUserMessageId?: string
+    branchId?: string
+    branchModelId?: string
+    branchLabel?: string
+    branchConversationId?: string
   }
 }
 export type SerializedChatToolMessage = {
@@ -133,6 +152,13 @@ export type SerializedChatToolMessage = {
     response: ToolCallResponse
   }[]
   id: string
+  metadata?: {
+    sourceUserMessageId?: string
+    branchId?: string
+    branchModelId?: string
+    branchLabel?: string
+    branchConversationId?: string
+  }
 }
 export type SerializedChatMessage =
   | SerializedChatUserMessage

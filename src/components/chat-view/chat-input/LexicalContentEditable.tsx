@@ -15,6 +15,7 @@ import { RefObject, useCallback, useEffect, useState } from 'react'
 import { useApp } from '../../../contexts/app-context'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { Assistant } from '../../../types/assistant.types'
+import { ChatModel } from '../../../types/chat-model.types'
 import { MentionableFolder } from '../../../types/mentionable'
 import { Mentionable, MentionableImage } from '../../../types/mentionable'
 import {
@@ -66,6 +67,8 @@ export type LexicalContentEditableProps = {
   currentChatMode?: 'chat' | 'agent'
   onSelectChatMode?: (mode: 'chat' | 'agent') => void
   allowAgentModeOption?: boolean
+  models?: ChatModel[]
+  selectedModelIds?: string[]
   skills?: LiteSkillEntry[]
   selectedSkillIds?: string[]
   onSelectSkill?: (skill: LiteSkillEntry) => void
@@ -105,6 +108,8 @@ export default function LexicalContentEditable({
   currentChatMode,
   onSelectChatMode,
   allowAgentModeOption = true,
+  models = [],
+  selectedModelIds = [],
   skills = [],
   selectedSkillIds = [],
   onSelectSkill,
@@ -209,6 +214,8 @@ export default function LexicalContentEditable({
         currentChatMode={currentChatMode}
         onSelectChatMode={onSelectChatMode}
         allowAgentModeOption={allowAgentModeOption}
+        models={models}
+        selectedModelIds={selectedModelIds}
         searchFoldersByQuery={searchFoldersByQuery}
       />
       {(skills.length > 0 || onRunSlashCommand) && (
