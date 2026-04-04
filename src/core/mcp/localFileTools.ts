@@ -547,7 +547,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_create_file',
       description:
-        'Create a single file in the vault. Use for one-file creation with explicit path and content.',
+        'Create file(s) in the vault using either path/content or items[].',
       inputSchema: {
         type: 'object',
         properties: {
@@ -559,18 +559,36 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Full file content.',
           },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Vault-relative file path.',
+                },
+                content: {
+                  type: 'string',
+                  description: 'Full file content.',
+                },
+              },
+              required: ['path', 'content'],
+            },
+          },
           dryRun: {
             type: 'boolean',
             description:
               'If true, validate and preview result without applying changes.',
           },
         },
-        required: ['path', 'content'],
+        oneOf: [{ required: ['path', 'content'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_delete_file',
-      description: 'Delete a single existing file in the vault.',
+      description: 'Delete file(s) in the vault using either path or items[].',
       inputSchema: {
         type: 'object',
         properties: {
@@ -578,18 +596,33 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Vault-relative file path.',
           },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Vault-relative file path.',
+                },
+              },
+              required: ['path'],
+            },
+          },
           dryRun: {
             type: 'boolean',
             description:
               'If true, validate and preview result without applying changes.',
           },
         },
-        required: ['path'],
+        oneOf: [{ required: ['path'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_create_dir',
-      description: 'Create a single folder in the vault.',
+      description:
+        'Create folder(s) in the vault using either path or items[].',
       inputSchema: {
         type: 'object',
         properties: {
@@ -597,18 +630,33 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Vault-relative folder path.',
           },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Vault-relative folder path.',
+                },
+              },
+              required: ['path'],
+            },
+          },
           dryRun: {
             type: 'boolean',
             description:
               'If true, validate and preview result without applying changes.',
           },
         },
-        required: ['path'],
+        oneOf: [{ required: ['path'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_delete_dir',
-      description: 'Delete a single existing folder in the vault.',
+      description:
+        'Delete folder(s) in the vault using either path or items[].',
       inputSchema: {
         type: 'object',
         properties: {
@@ -621,19 +669,38 @@ export function getLocalFileTools(): McpTool[] {
             description:
               'Default false; when false non-empty folders cannot be deleted.',
           },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Vault-relative folder path.',
+                },
+                recursive: {
+                  type: 'boolean',
+                  description:
+                    'Default false; when false non-empty folders cannot be deleted.',
+                },
+              },
+              required: ['path'],
+            },
+          },
           dryRun: {
             type: 'boolean',
             description:
               'If true, validate and preview result without applying changes.',
           },
         },
-        required: ['path'],
+        oneOf: [{ required: ['path'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_move',
       description:
-        'Move or rename a single file/folder path in the vault from oldPath to newPath.',
+        'Move or rename file/folder path(s) in the vault using either oldPath/newPath or items[].',
       inputSchema: {
         type: 'object',
         properties: {
@@ -645,13 +712,31 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Vault-relative destination path.',
           },
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              properties: {
+                oldPath: {
+                  type: 'string',
+                  description: 'Vault-relative source path.',
+                },
+                newPath: {
+                  type: 'string',
+                  description: 'Vault-relative destination path.',
+                },
+              },
+              required: ['oldPath', 'newPath'],
+            },
+          },
           dryRun: {
             type: 'boolean',
             description:
               'If true, validate and preview result without applying changes.',
           },
         },
-        required: ['oldPath', 'newPath'],
+        oneOf: [{ required: ['oldPath', 'newPath'] }, { required: ['items'] }],
       },
     },
     {
@@ -888,6 +973,24 @@ const getRecordArrayArg = (
     }
     return item as Record<string, unknown>
   })
+}
+
+const getFsFileOpItems = ({
+  args,
+  itemFactory,
+}: {
+  args: Record<string, unknown>
+  itemFactory: () => Record<string, unknown>
+}): Record<string, unknown>[] => {
+  if (args.items !== undefined) {
+    const items = getRecordArrayArg(args, 'items')
+    if (items.length === 0) {
+      throw new Error('items must contain at least one entry.')
+    }
+    return items
+  }
+
+  return [itemFactory()]
 }
 
 const assertContentSize = (content: string): void => {
@@ -1336,7 +1439,7 @@ const executeFsFileOps = async ({
         if (targetExists) {
           throw new Error(`Target path already exists: ${newPath}`)
         }
-        ensureParentFolderExists(app, newPath)
+        await ensureParentFolderExists(app, newPath)
 
         if (
           source instanceof TFolder &&
@@ -1817,12 +1920,13 @@ export async function callLocalFileTool({
         return executeFsFileOps({
           app,
           action: 'create_file',
-          items: [
-            {
+          items: getFsFileOpItems({
+            args,
+            itemFactory: () => ({
               path: getTextArg(args, 'path'),
               content: getTextArg(args, 'content'),
-            },
-          ],
+            }),
+          }),
           dryRun,
           signal,
           tool: 'fs_create_file',
@@ -1834,7 +1938,10 @@ export async function callLocalFileTool({
         return executeFsFileOps({
           app,
           action: 'delete_file',
-          items: [{ path: getTextArg(args, 'path') }],
+          items: getFsFileOpItems({
+            args,
+            itemFactory: () => ({ path: getTextArg(args, 'path') }),
+          }),
           dryRun,
           signal,
           tool: 'fs_delete_file',
@@ -1846,7 +1953,10 @@ export async function callLocalFileTool({
         return executeFsFileOps({
           app,
           action: 'create_dir',
-          items: [{ path: getTextArg(args, 'path') }],
+          items: getFsFileOpItems({
+            args,
+            itemFactory: () => ({ path: getTextArg(args, 'path') }),
+          }),
           dryRun,
           signal,
           tool: 'fs_create_dir',
@@ -1859,12 +1969,13 @@ export async function callLocalFileTool({
         return executeFsFileOps({
           app,
           action: 'delete_dir',
-          items: [
-            {
+          items: getFsFileOpItems({
+            args,
+            itemFactory: () => ({
               path: getTextArg(args, 'path'),
               ...(recursive === undefined ? {} : { recursive }),
-            },
-          ],
+            }),
+          }),
           dryRun,
           signal,
           tool: 'fs_delete_dir',
@@ -1876,12 +1987,13 @@ export async function callLocalFileTool({
         return executeFsFileOps({
           app,
           action: 'move',
-          items: [
-            {
+          items: getFsFileOpItems({
+            args,
+            itemFactory: () => ({
               oldPath: getTextArg(args, 'oldPath'),
               newPath: getTextArg(args, 'newPath'),
-            },
-          ],
+            }),
+          }),
           dryRun,
           signal,
           tool: 'fs_move',

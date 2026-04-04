@@ -241,4 +241,94 @@ describe('ToolMessage headline helpers', () => {
       summaryText: 'docs/old.md -> docs/new.md',
     })
   })
+
+  it('summarizes batch create-file headlines by shared parent directory', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_create_file',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              items: [
+                { path: 'docs/a.md', content: 'A' },
+                { path: 'docs/b.md', content: 'B' },
+              ],
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Create file',
+      summaryText: '在 docs 下创建 2 个文件',
+    })
+  })
+
+  it('summarizes batch move headlines by target directory', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_move',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              items: [
+                { oldPath: 'docs/a.md', newPath: 'docs/a-1.md' },
+                { oldPath: 'docs/b.md', newPath: 'docs/b-1.md' },
+                { oldPath: 'docs/c.md', newPath: 'docs/c-1.md' },
+              ],
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Move path',
+      summaryText: '移动 3 项到 docs',
+    })
+  })
+
+  it('summarizes batch delete-file headlines by shared parent directory', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_delete_file',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              items: [
+                { path: 'docs/a.md' },
+                { path: 'docs/b.md' },
+                { path: 'docs/c.md' },
+              ],
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Delete file',
+      summaryText: '删除 docs 下 3 个文件',
+    })
+  })
+
+  it('falls back to generic batch summary when create-file paths are distributed', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_create_file',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              items: [
+                { path: 'docs/a.md', content: 'A' },
+                { path: 'notes/b.md', content: 'B' },
+              ],
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Create file',
+      summaryText: '创建 2 个文件',
+    })
+  })
 })

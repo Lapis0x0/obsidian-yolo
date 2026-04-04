@@ -176,6 +176,75 @@ describe('executeSingleTurn', () => {
     expect(result.finishReason).toBe('tool_calls')
   })
 
+  it('accepts streamed batch fs_move arguments without fallback', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-batch-move',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-batch-move',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_move',
+                      arguments:
+                        '{"items":[{"oldPath":"a.md","newPath":"b.md"},{"oldPath":"c.md","newPath":"d.md"}],"dryRun":true}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: 'stream-batch-move',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+    })
+
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-batch-move',
+        name: 'yolo_local__fs_move',
+        arguments: completeArgs(
+          {
+            items: [
+              { oldPath: 'a.md', newPath: 'b.md' },
+              { oldPath: 'c.md', newPath: 'd.md' },
+            ],
+            dryRun: true,
+          },
+          '{"items":[{"oldPath":"a.md","newPath":"b.md"},{"oldPath":"c.md","newPath":"d.md"}],"dryRun":true}',
+        ),
+        metadata: undefined,
+      },
+    ])
+  })
+
   it('preserves streamed nested object chunks that begin with "{\\"', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(

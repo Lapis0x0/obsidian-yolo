@@ -114,6 +114,44 @@ const isPositiveIntegerField = (
   return typeof value === 'number' && Number.isInteger(value) && value > 0
 }
 
+const isRecordArrayField = (
+  args: Record<string, unknown>,
+  key: string,
+  itemValidator: (value: Record<string, unknown>) => boolean,
+): boolean => {
+  const value = args[key]
+  if (!Array.isArray(value) || value.length === 0) {
+    return false
+  }
+
+  return value.every(
+    (item) =>
+      isObjectRecord(item) && itemValidator(item as Record<string, unknown>),
+  )
+}
+
+const isValidFsCreateFileItem = (value: Record<string, unknown>): boolean => {
+  return isStringField(value, 'path') && isStringField(value, 'content')
+}
+
+const isValidFsDeleteFileItem = (value: Record<string, unknown>): boolean => {
+  return isStringField(value, 'path')
+}
+
+const isValidFsCreateDirItem = (value: Record<string, unknown>): boolean => {
+  return isStringField(value, 'path')
+}
+
+const isValidFsDeleteDirItem = (value: Record<string, unknown>): boolean => {
+  return (
+    isStringField(value, 'path') && isOptionalBooleanField(value, 'recursive')
+  )
+}
+
+const isValidFsMoveItem = (value: Record<string, unknown>): boolean => {
+  return isStringField(value, 'oldPath') && isStringField(value, 'newPath')
+}
+
 const isValidFsEditOperation = (value: unknown): boolean => {
   if (!isObjectRecord(value)) {
     return false
@@ -159,6 +197,12 @@ const isValidWriteToolArguments = ({
   }
 
   if (normalizedToolName === 'fs_create_file') {
+    if (args.items !== undefined) {
+      return (
+        isRecordArrayField(args, 'items', isValidFsCreateFileItem) &&
+        isOptionalBooleanField(args, 'dryRun')
+      )
+    }
     return (
       isStringField(args, 'path') &&
       isStringField(args, 'content') &&
@@ -167,14 +211,32 @@ const isValidWriteToolArguments = ({
   }
 
   if (normalizedToolName === 'fs_delete_file') {
+    if (args.items !== undefined) {
+      return (
+        isRecordArrayField(args, 'items', isValidFsDeleteFileItem) &&
+        isOptionalBooleanField(args, 'dryRun')
+      )
+    }
     return isStringField(args, 'path') && isOptionalBooleanField(args, 'dryRun')
   }
 
   if (normalizedToolName === 'fs_create_dir') {
+    if (args.items !== undefined) {
+      return (
+        isRecordArrayField(args, 'items', isValidFsCreateDirItem) &&
+        isOptionalBooleanField(args, 'dryRun')
+      )
+    }
     return isStringField(args, 'path') && isOptionalBooleanField(args, 'dryRun')
   }
 
   if (normalizedToolName === 'fs_delete_dir') {
+    if (args.items !== undefined) {
+      return (
+        isRecordArrayField(args, 'items', isValidFsDeleteDirItem) &&
+        isOptionalBooleanField(args, 'dryRun')
+      )
+    }
     return (
       isStringField(args, 'path') &&
       isOptionalBooleanField(args, 'recursive') &&
@@ -183,6 +245,12 @@ const isValidWriteToolArguments = ({
   }
 
   if (normalizedToolName === 'fs_move') {
+    if (args.items !== undefined) {
+      return (
+        isRecordArrayField(args, 'items', isValidFsMoveItem) &&
+        isOptionalBooleanField(args, 'dryRun')
+      )
+    }
     return (
       isStringField(args, 'oldPath') &&
       isStringField(args, 'newPath') &&

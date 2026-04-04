@@ -241,8 +241,77 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
   return value as Record<string, unknown>
 }
 
+const asRecordArray = (value: unknown): Record<string, unknown>[] | null => {
+  if (!Array.isArray(value)) {
+    return null
+  }
+  if (value.some((item) => !asRecord(item))) {
+    return null
+  }
+  return value as Record<string, unknown>[]
+}
+
 const asInteger = (value: unknown): number | undefined => {
   return Number.isInteger(value) ? (value as number) : undefined
+}
+
+const getParentPath = (path: string): string => {
+  const normalizedPath = path.trim().replace(/\/+$/, '')
+  if (!normalizedPath || !normalizedPath.includes('/')) {
+    return '/'
+  }
+
+  const lastSlashIndex = normalizedPath.lastIndexOf('/')
+  return lastSlashIndex <= 0 ? '/' : normalizedPath.slice(0, lastSlashIndex)
+}
+
+const getSharedParentPath = (paths: string[]): string | undefined => {
+  if (paths.length === 0) {
+    return undefined
+  }
+
+  const parentPath = getParentPath(paths[0])
+  if (paths.every((path) => getParentPath(path) === parentPath)) {
+    return parentPath
+  }
+
+  return undefined
+}
+
+const formatBatchPathSummary = ({
+  actionLabel,
+  noun,
+  paths,
+}: {
+  actionLabel: string
+  noun: string
+  paths: string[]
+}): string => {
+  const sharedParentPath = getSharedParentPath(paths)
+  if (sharedParentPath) {
+    return `${actionLabel} ${sharedParentPath} 下 ${paths.length} 个${noun}`
+  }
+
+  return `${actionLabel} ${paths.length} 个${noun}`
+}
+
+const formatBatchMoveSummary = (
+  items: Record<string, unknown>[],
+): string | undefined => {
+  const newPaths = items
+    .map((item) => (typeof item.newPath === 'string' ? item.newPath : ''))
+    .filter((path) => path.length > 0)
+
+  if (newPaths.length !== items.length) {
+    return undefined
+  }
+
+  const targetParentPath = getSharedParentPath(newPaths)
+  if (targetParentPath) {
+    return `移动 ${items.length} 项到 ${targetParentPath}`
+  }
+
+  return `移动 ${items.length} 项`
 }
 
 const getFsReadOperationSummary = ({
@@ -376,6 +445,8 @@ const getLocalToolSummaryText = ({
   rawArguments?: ToolCallRequest['arguments']
   labels: ToolLabels
 }): string | undefined => {
+  const batchItems = asRecordArray(argumentsObject?.items)
+
   if (toolName === 'fs_list') {
     const targetPath =
       typeof argumentsObject?.path === 'string' &&
@@ -419,12 +490,48 @@ const getLocalToolSummaryText = ({
     toolName === 'fs_create_dir' ||
     toolName === 'fs_delete_dir'
   ) {
+    if (batchItems && batchItems.length > 0) {
+      const pathKey =
+        toolName === 'fs_create_file' || toolName === 'fs_delete_file'
+          ? '文件'
+          : '文件夹'
+      const actionLabel =
+        toolName === 'fs_create_file' || toolName === 'fs_create_dir'
+          ? '在'
+          : '删除'
+      const paths = batchItems
+        .map((item) => (typeof item.path === 'string' ? item.path : ''))
+        .filter((path) => path.length > 0)
+
+      if (paths.length === batchItems.length) {
+        if (actionLabel === '在') {
+          const sharedParentPath = getSharedParentPath(paths)
+          if (sharedParentPath) {
+            return `在 ${sharedParentPath} 下创建 ${paths.length} 个${pathKey}`
+          }
+          return `创建 ${paths.length} 个${pathKey}`
+        }
+
+        return formatBatchPathSummary({
+          actionLabel,
+          noun: pathKey,
+          paths,
+        })
+      }
+
+      return undefined
+    }
+
     const path =
       typeof argumentsObject?.path === 'string' ? argumentsObject.path : ''
     return path || undefined
   }
 
   if (toolName === 'fs_move') {
+    if (batchItems && batchItems.length > 0) {
+      return formatBatchMoveSummary(batchItems)
+    }
+
     const oldPath =
       typeof argumentsObject?.oldPath === 'string'
         ? argumentsObject.oldPath
