@@ -15,6 +15,17 @@ import { llmProviderSchema } from '../../types/provider.types'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
+const resilientArraySchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  z
+    .array(z.unknown())
+    .transform((items): Array<z.infer<T>> => {
+      return items.flatMap((item) => {
+        const parsed = itemSchema.safeParse(item)
+        return parsed.success ? [parsed.data] : []
+      })
+    })
+    .catch([])
+
 const ragOptionsSchema = z.object({
   enabled: z.boolean().catch(true),
   chunkSize: z.number().catch(1000),
@@ -234,11 +245,11 @@ export const smartComposerSettingsSchema = z.object({
   // Version
   version: z.literal(SETTINGS_SCHEMA_VERSION).catch(SETTINGS_SCHEMA_VERSION),
 
-  providers: z.array(llmProviderSchema).catch([]),
+  providers: resilientArraySchema(llmProviderSchema),
 
-  chatModels: z.array(chatModelSchema).catch([]),
+  chatModels: resilientArraySchema(chatModelSchema),
 
-  embeddingModels: z.array(embeddingModelSchema).catch([]),
+  embeddingModels: resilientArraySchema(embeddingModelSchema),
 
   chatModelId: z.string().catch(''), // model for default chat feature
   chatTitleModelId: z.string().catch(''), // model for automatic conversation naming and compact summaries
@@ -264,7 +275,7 @@ export const smartComposerSettingsSchema = z.object({
   // MCP configuration
   mcp: z
     .object({
-      servers: z.array(mcpServerConfigSchema).catch([]),
+      servers: resilientArraySchema(mcpServerConfigSchema),
       builtinToolOptions: mcpServerToolOptionsSchema.catch({}),
     })
     .catch({
@@ -484,7 +495,7 @@ export const smartComposerSettingsSchema = z.object({
     }),
 
   // Assistant list
-  assistants: z.array(assistantSchema).catch([]),
+  assistants: resilientArraySchema(assistantSchema),
 
   // Currently selected assistant ID
   currentAssistantId: z.string().optional(),

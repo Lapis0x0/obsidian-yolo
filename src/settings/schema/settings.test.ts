@@ -78,6 +78,27 @@ describe('parseSmartComposerSettings', () => {
   it('migrates applyModelId to chatTitleModelId for legacy settings', () => {
     const result = parseSmartComposerSettings({
       version: 38,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-5',
+          model: 'gpt-5',
+          enable: true,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-4.1-mini',
+          model: 'gpt-4.1-mini',
+          enable: true,
+        },
+      ],
       chatModelId: 'openai/gpt-5',
       applyModelId: 'openai/gpt-4.1-mini',
     })
@@ -95,5 +116,184 @@ describe('parseSmartComposerSettings', () => {
     })
 
     expect(result.chatOptions.tabTitleFollowsConversation).toBe(true)
+  })
+
+  it('keeps valid providers when one provider entry is invalid', () => {
+    const result = parseSmartComposerSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+        {
+          id: 'broken',
+          presetType: 'not-a-provider',
+        },
+      ],
+    })
+
+    expect(result.providers).toEqual([
+      {
+        id: 'openai',
+        presetType: 'openai',
+        apiType: 'openai-responses',
+        apiKey: 'token',
+      },
+    ])
+  })
+
+  it('normalizes legacy kimi providers without clearing the provider list', () => {
+    const result = parseSmartComposerSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'moonshot',
+          presetType: 'kimi',
+          apiKey: 'token',
+        },
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token-2',
+        },
+      ],
+    })
+
+    expect(result.providers).toEqual([
+      {
+        id: 'moonshot',
+        presetType: 'moonshot',
+        apiType: 'openai-compatible',
+        apiKey: 'token',
+      },
+      {
+        id: 'openai',
+        presetType: 'openai',
+        apiType: 'openai-responses',
+        apiKey: 'token-2',
+      },
+    ])
+  })
+
+  it('drops orphan chat and embedding models when their providers are missing', () => {
+    const result = parseSmartComposerSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-5',
+          model: 'gpt-5',
+          enable: true,
+        },
+        {
+          providerId: 'missing-provider',
+          id: 'missing/model',
+          model: 'missing',
+          enable: true,
+        },
+      ],
+      embeddingModels: [
+        {
+          providerId: 'missing-provider',
+          id: 'missing/embed',
+          model: 'missing-embed',
+          dimension: 1024,
+        },
+      ],
+      chatModelId: 'missing/model',
+      chatTitleModelId: 'missing/model',
+      embeddingModelId: 'missing/embed',
+      continuationOptions: {
+        continuationModelId: 'missing/model',
+        tabCompletionModelId: 'missing/model',
+      },
+      assistants: [
+        {
+          id: 'assistant-1',
+          name: 'Assistant 1',
+          modelId: 'missing/model',
+        },
+      ],
+      currentAssistantId: 'missing-assistant',
+      quickAskAssistantId: 'missing-assistant',
+    })
+
+    expect(result.chatModels).toEqual([
+      {
+        providerId: 'openai',
+        id: 'openai/gpt-5',
+        model: 'gpt-5',
+        enable: true,
+      },
+    ])
+    expect(result.embeddingModels).toEqual([])
+    expect(result.chatModelId).toBe('openai/gpt-5')
+    expect(result.chatTitleModelId).toBe('openai/gpt-5')
+    expect(result.embeddingModelId).toBe('')
+    expect(result.continuationOptions.continuationModelId).toBe('openai/gpt-5')
+    expect(result.continuationOptions.tabCompletionModelId).toBe('openai/gpt-5')
+    expect(result.assistants).toEqual([
+      {
+        id: 'assistant-1',
+        name: 'Assistant 1',
+        modelId: undefined,
+        systemPrompt: '',
+      },
+    ])
+    expect(result.currentAssistantId).toBeUndefined()
+    expect(result.quickAskAssistantId).toBeUndefined()
+  })
+
+  it('clears invalid model references when no valid models remain after parsing', () => {
+    const result = parseSmartComposerSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: '',
+          model: 'broken',
+          enable: true,
+        },
+      ],
+      embeddingModels: [
+        {
+          providerId: 'openai',
+          id: '',
+          model: 'broken-embed',
+          dimension: 1024,
+        },
+      ],
+      chatModelId: 'broken/model',
+      chatTitleModelId: 'broken/model',
+      embeddingModelId: 'broken/embed',
+      continuationOptions: {
+        continuationModelId: 'broken/model',
+        tabCompletionModelId: 'broken/model',
+      },
+    })
+
+    expect(result.chatModels).toEqual([])
+    expect(result.embeddingModels).toEqual([])
+    expect(result.chatModelId).toBe('')
+    expect(result.chatTitleModelId).toBe('')
+    expect(result.embeddingModelId).toBe('')
+    expect(result.continuationOptions.continuationModelId).toBe('')
+    expect(result.continuationOptions.tabCompletionModelId).toBe('')
   })
 })

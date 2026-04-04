@@ -11,6 +11,7 @@ const DEFAULT_BASE_URL_BY_PRESET: Partial<
   Record<LLMProvider['presetType'], string>
 > = {
   openai: 'https://api.openai.com/v1',
+  moonshot: 'https://api.moonshot.cn/v1',
   openrouter: 'https://openrouter.ai/api/v1',
 }
 

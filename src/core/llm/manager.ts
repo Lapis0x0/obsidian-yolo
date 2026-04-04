@@ -15,6 +15,7 @@ import { GroqProvider } from './groq'
 import { LmStudioProvider } from './lmStudioProvider'
 import { MistralProvider } from './mistralProvider'
 import { MorphProvider } from './morphProvider'
+import { MoonshotProvider } from './moonshotProvider'
 import { OllamaProvider } from './ollama'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 import { OpenAIResponsesProvider } from './openaiResponsesProvider'
@@ -101,6 +102,12 @@ export function getProviderClient({
           })
         case 'mistral':
           return new MistralProvider(provider as never, {
+            requestPolicy,
+            onAutoPromoteTransportMode: (mode) =>
+              onAutoPromoteTransportMode?.(provider.id, mode),
+          })
+        case 'moonshot':
+          return new MoonshotProvider(provider as never, {
             requestPolicy,
             onAutoPromoteTransportMode: (mode) =>
               onAutoPromoteTransportMode?.(provider.id, mode),

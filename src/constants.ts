@@ -138,6 +138,14 @@ export const PROVIDER_PRESET_INFO = {
     supportEmbedding: false,
     additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
   },
+  moonshot: {
+    label: 'Moonshot',
+    defaultProviderId: null,
+    requireApiKey: true,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    additionalSettings: [REQUEST_TRANSPORT_MODE_SETTING],
+  },
   perplexity: {
     label: 'Perplexity',
     defaultProviderId: 'perplexity',

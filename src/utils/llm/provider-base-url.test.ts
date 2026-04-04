@@ -29,6 +29,19 @@ describe('provider-base-url', () => {
     )
   })
 
+  it('defaults moonshot preset to openai-compatible', () => {
+    expect(getDefaultApiTypeForPresetType('moonshot')).toBe('openai-compatible')
+  })
+
+  it('uses the Moonshot API URL for moonshot providers', () => {
+    expect(
+      resolveProviderBaseUrl({
+        presetType: 'moonshot',
+        apiType: 'openai-compatible',
+      }),
+    ).toBe('https://api.moonshot.cn/v1')
+  })
+
   it('derives the Bedrock Mantle URL for openai-compatible mode', () => {
     expect(
       resolveProviderBaseUrl(

@@ -23,6 +23,7 @@ export const providerPresetTypeSchema = z.enum([
   'anthropic',
   'gemini',
   'deepseek',
+  'moonshot',
   'perplexity',
   'groq',
   'mistral',
@@ -43,6 +44,11 @@ export const providerApiTypeSchema = z.enum([
   'amazon-bedrock',
 ])
 
+const legacyProviderPresetTypeInputSchema = z.union([
+  providerPresetTypeSchema,
+  z.literal('kimi'),
+])
+
 export type LLMProviderPresetType = z.infer<typeof providerPresetTypeSchema>
 export type LLMProviderApiType = z.infer<typeof providerApiTypeSchema>
 
@@ -56,6 +62,7 @@ const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
   anthropic: 'anthropic',
   gemini: 'gemini',
   deepseek: 'openai-compatible',
+  moonshot: 'openai-compatible',
   perplexity: 'openai-compatible',
   groq: 'openai-compatible',
   mistral: 'openai-compatible',
@@ -104,8 +111,8 @@ export function getSupportedApiTypesForPresetType(
 
 const baseLlmProviderInputSchema = z.object({
   id: z.string().min(1, 'id is required'),
-  type: providerPresetTypeSchema.optional(),
-  presetType: providerPresetTypeSchema.optional(),
+  type: legacyProviderPresetTypeInputSchema.optional(),
+  presetType: legacyProviderPresetTypeInputSchema.optional(),
   apiType: providerApiTypeSchema.optional(),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
@@ -132,7 +139,8 @@ const normalizedLlmProviderSchema = z.object({
  */
 export const llmProviderSchema = baseLlmProviderInputSchema
   .transform((value) => {
-    const presetType = value.presetType ?? value.type ?? 'openai-compatible'
+    const rawPresetType = value.presetType ?? value.type ?? 'openai-compatible'
+    const presetType = rawPresetType === 'kimi' ? 'moonshot' : rawPresetType
 
     return {
       id: value.id,

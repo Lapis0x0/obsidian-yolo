@@ -83,13 +83,14 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
   constructor(
     provider: LLMProvider,
     options?: {
+      adapter?: OpenAIMessageAdapter
       onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
       requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
-    this.adapter = new OpenAIMessageAdapter()
+    this.adapter = options?.adapter ?? new OpenAIMessageAdapter()
     this.resolvedBaseUrl = resolveProviderBaseUrl(provider)
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({

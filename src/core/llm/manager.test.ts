@@ -4,6 +4,7 @@ import { BedrockProvider } from './bedrockProvider'
 import { GeminiOAuthProvider } from './geminiOAuthProvider'
 import { GeminiProvider } from './gemini'
 import { getProviderClient } from './manager'
+import { MoonshotProvider } from './moonshotProvider'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 
 const createSettings = (): SmartComposerSettings =>
@@ -33,6 +34,12 @@ const createSettings = (): SmartComposerSettings =>
         id: 'gemini-oauth',
         presetType: 'gemini-oauth',
         apiType: 'gemini',
+      },
+      {
+        id: 'moonshot',
+        presetType: 'moonshot',
+        apiType: 'openai-compatible',
+        apiKey: 'token',
       },
     ],
     continuationOptions: {
@@ -102,5 +109,15 @@ describe('getProviderClient', () => {
     expect(clientWithPolicy.requestPolicy).toEqual({
       timeoutMs: 12000,
     })
+  })
+
+  it('routes Moonshot providers to MoonshotProvider', () => {
+    const client = getProviderClient({
+      settings: createSettings(),
+      providerId: 'moonshot',
+    })
+
+    expect(client).toBeInstanceOf(MoonshotProvider)
+    expect(client).toBeInstanceOf(OpenAICompatibleProvider)
   })
 })

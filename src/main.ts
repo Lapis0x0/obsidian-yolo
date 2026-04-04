@@ -66,7 +66,10 @@ import {
   SmartComposerSettings,
   smartComposerSettingsSchema,
 } from './settings/schema/setting.types'
-import { parseSmartComposerSettings } from './settings/schema/settings'
+import {
+  normalizeSmartComposerSettingsReferences,
+  parseSmartComposerSettings,
+} from './settings/schema/settings'
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
@@ -1575,7 +1578,9 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async setSettings(newSettings: SmartComposerSettings) {
-    const normalizedSettings = ensureDefaultAssistantInSettings(newSettings)
+    const normalizedSettings = ensureDefaultAssistantInSettings(
+      normalizeSmartComposerSettingsReferences(newSettings),
+    )
     const validationResult =
       smartComposerSettingsSchema.safeParse(normalizedSettings)
 
