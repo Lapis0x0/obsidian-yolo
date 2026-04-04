@@ -13,6 +13,7 @@ import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
+import { resolveKnownMaxContextTokens } from '../../../utils/llm/model-context-registry'
 import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
 import {
@@ -64,13 +65,19 @@ const isReservedCustomParameterKey = (key: string): boolean =>
 const MODEL_SAMPLING_DEFAULTS = {
   temperature: 0.8,
   topP: 0.9,
+  maxContextTokens: 32768,
   maxOutputTokens: 4096,
 } as const
+
+const MAX_CONTEXT_TOKENS_INPUT_MAX = 2000000
 
 const clampTemperature = (value: number): number =>
   Math.min(2, Math.max(0, value))
 
 const clampTopP = (value: number): number => Math.min(1, Math.max(0, value))
+
+const clampMaxContextTokens = (value: number): number =>
+  Math.max(1, Math.floor(value))
 
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
@@ -192,6 +199,7 @@ function AddChatModelModalComponent({
     name: undefined,
     temperature: undefined,
     topP: undefined,
+    maxContextTokens: undefined,
     maxOutputTokens: undefined,
   })
 
@@ -208,12 +216,16 @@ function AddChatModelModalComponent({
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
     topP: number
+    maxContextTokens: number
     maxOutputTokens: number
   }>(() => ({
     temperature: MODEL_SAMPLING_DEFAULTS.temperature,
     topP: MODEL_SAMPLING_DEFAULTS.topP,
+    maxContextTokens: MODEL_SAMPLING_DEFAULTS.maxContextTokens,
     maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
   }))
+  const [hasManualMaxContextTokens, setHasManualMaxContextTokens] =
+    useState<boolean>(false)
   const customParameterUidRef = useRef(0)
   const createCustomParameterUid = (): string => {
     customParameterUidRef.current += 1
@@ -502,18 +514,39 @@ function AddChatModelModalComponent({
     void fetchModels()
   }, [plugin, selectedProvider])
 
+  useEffect(() => {
+    if (hasManualMaxContextTokens) {
+      return
+    }
+
+    const matched = resolveKnownMaxContextTokens(formData.model)
+    setModelParamCache((prev) => ({
+      ...prev,
+      maxContextTokens: matched ?? MODEL_SAMPLING_DEFAULTS.maxContextTokens,
+    }))
+    setFormData((prev) => ({
+      ...prev,
+      maxContextTokens: matched,
+    }))
+  }, [formData.model, hasManualMaxContextTokens])
+
   const resetModelParams = () => {
     setModelParamCache({
       temperature: MODEL_SAMPLING_DEFAULTS.temperature,
       topP: MODEL_SAMPLING_DEFAULTS.topP,
+      maxContextTokens:
+        resolveKnownMaxContextTokens(formData.model) ??
+        MODEL_SAMPLING_DEFAULTS.maxContextTokens,
       maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
     })
     setFormData((prev) => ({
       ...prev,
       temperature: MODEL_SAMPLING_DEFAULTS.temperature,
       topP: MODEL_SAMPLING_DEFAULTS.topP,
+      maxContextTokens: resolveKnownMaxContextTokens(prev.model),
       maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
     }))
+    setHasManualMaxContextTokens(false)
   }
 
   const setTemperatureEnabled = (enabled: boolean) => {
@@ -537,6 +570,15 @@ function AddChatModelModalComponent({
       const current = prev.maxOutputTokens ?? modelParamCache.maxOutputTokens
       setModelParamCache((cache) => ({ ...cache, maxOutputTokens: current }))
       return { ...prev, maxOutputTokens: enabled ? current : undefined }
+    })
+  }
+
+  const setMaxContextTokensEnabled = (enabled: boolean) => {
+    setHasManualMaxContextTokens(true)
+    setFormData((prev) => {
+      const current = prev.maxContextTokens ?? modelParamCache.maxContextTokens
+      setModelParamCache((cache) => ({ ...cache, maxContextTokens: current }))
+      return { ...prev, maxContextTokens: enabled ? current : undefined }
     })
   }
 
@@ -777,7 +819,7 @@ function AddChatModelModalComponent({
       <div className="smtcmp-agent-tools-panel smtcmp-agent-model-panel">
         <div className="smtcmp-agent-tools-panel-head smtcmp-agent-model-panel-head">
           <div className="smtcmp-agent-tools-panel-title">
-            {t('settings.models.sampling', 'Sampling parameters')}
+            {t('settings.models.customParameters', 'Custom parameters')}
           </div>
           <button
             type="button"
@@ -789,6 +831,95 @@ function AddChatModelModalComponent({
         </div>
 
         <div className="smtcmp-agent-model-controls">
+          <div
+            className={`smtcmp-agent-model-control${
+              formData.maxContextTokens === undefined ? ' is-disabled' : ''
+            }`}
+          >
+            <div className="smtcmp-agent-model-control-top">
+              <div className="smtcmp-agent-model-control-meta">
+                <div className="smtcmp-agent-model-control-label">
+                  {t(
+                    'settings.models.maxContextTokens',
+                    'Context window tokens',
+                  )}
+                </div>
+                <div className="smtcmp-agent-model-control-desc">
+                  {t(
+                    'settings.models.maxContextTokensDesc',
+                    'Auto-filled when this model is recognized. Adjust it if your provider uses a different limit.',
+                  )}
+                </div>
+              </div>
+              <div className="smtcmp-agent-model-control-actions">
+                <ObsidianToggle
+                  value={formData.maxContextTokens !== undefined}
+                  onChange={setMaxContextTokensEnabled}
+                />
+              </div>
+            </div>
+            {formData.maxContextTokens !== undefined && (
+              <div className="smtcmp-agent-model-control-adjust">
+                <input
+                  type="range"
+                  min={1024}
+                  max={MAX_CONTEXT_TOKENS_INPUT_MAX}
+                  step={1024}
+                  value={Math.min(
+                    MAX_CONTEXT_TOKENS_INPUT_MAX,
+                    Math.max(
+                      1024,
+                      formData.maxContextTokens ??
+                        modelParamCache.maxContextTokens,
+                    ),
+                  )}
+                  onChange={(event) => {
+                    const next = Number(event.currentTarget.value)
+                    if (!Number.isFinite(next)) {
+                      return
+                    }
+                    const clamped = clampMaxContextTokens(next)
+                    setHasManualMaxContextTokens(true)
+                    setModelParamCache((prev) => ({
+                      ...prev,
+                      maxContextTokens: clamped,
+                    }))
+                    setFormData((prev) => ({
+                      ...prev,
+                      maxContextTokens: clamped,
+                    }))
+                  }}
+                />
+                <input
+                  type="number"
+                  className="smtcmp-agent-model-number"
+                  min={1}
+                  step={1}
+                  value={
+                    formData.maxContextTokens ??
+                    modelParamCache.maxContextTokens
+                  }
+                  onChange={(event) => {
+                    const next = Number(event.currentTarget.value)
+                    if (!Number.isFinite(next)) {
+                      return
+                    }
+                    const clamped = clampMaxContextTokens(next)
+                    setHasManualMaxContextTokens(true)
+                    setModelParamCache((prev) => ({
+                      ...prev,
+                      maxContextTokens: clamped,
+                    }))
+                    setFormData((prev) => ({
+                      ...prev,
+                      maxContextTokens: clamped,
+                    }))
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
           <div
             className={`smtcmp-agent-model-control${
               formData.temperature === undefined ? ' is-disabled' : ''

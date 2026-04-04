@@ -544,8 +544,11 @@ export const it: TranslationKeys = {
       gptToolWebSearch: 'Web Search',
       gptToolWebSearchDesc:
         'Consenti al modello di cercare sul web e restituire fonti citate.',
-      sampling: 'Parametri di campionamento',
+      sampling: 'Parametri personalizzati',
       restoreDefaults: 'Ripristina predefiniti',
+      maxContextTokens: 'Token finestra di contesto',
+      maxContextTokensDesc:
+        'Compilato automaticamente quando il modello e riconosciuto. Modificalo se il tuo provider usa un limite diverso.',
       maxOutputTokens: 'Token massimi in output',
       customParameters: 'Parametri personalizzati',
       customParametersDesc:

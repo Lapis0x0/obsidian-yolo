@@ -51,6 +51,7 @@ export const chatModelSchema = z.object({
     .optional(),
   temperature: z.number().min(0).max(2).optional(),
   topP: z.number().min(0).max(1).optional(),
+  maxContextTokens: z.number().int().min(1).optional(),
   maxOutputTokens: z.number().int().min(1).optional(),
   customParameters: z.array(customParameterSchema).optional(),
   reasoning: reasoningConfigSchema,

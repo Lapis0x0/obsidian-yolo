@@ -550,8 +550,11 @@ export const en: TranslationKeys = {
       gptToolWebSearch: 'Web Search',
       gptToolWebSearchDesc:
         'Allow the model to search the web and return cited sources.',
-      sampling: 'Sampling parameters',
+      sampling: 'Custom parameters',
       restoreDefaults: 'Restore defaults',
+      maxContextTokens: 'Context window tokens',
+      maxContextTokensDesc:
+        'Auto-filled when this model is recognized. Adjust it if your provider uses a different limit.',
       maxOutputTokens: 'Max output tokens',
       customParameters: 'Custom parameters',
       customParametersDesc:

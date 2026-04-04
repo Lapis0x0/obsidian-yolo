@@ -9,6 +9,7 @@ import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
+import { resolveKnownMaxContextTokens } from '../../../utils/llm/model-context-registry'
 import {
   detectReasoningTypeFromModelId,
   ensureUniqueModelId,
@@ -60,13 +61,19 @@ const isReservedCustomParameterKey = (key: string): boolean =>
 const MODEL_SAMPLING_DEFAULTS = {
   temperature: 0.8,
   topP: 0.9,
+  maxContextTokens: 32768,
   maxOutputTokens: 4096,
 } as const
+
+const MAX_CONTEXT_TOKENS_INPUT_MAX = 2000000
 
 const clampTemperature = (value: number): number =>
   Math.min(2, Math.max(0, value))
 
 const clampTopP = (value: number): number => Math.min(1, Math.max(0, value))
+
+const clampMaxContextTokens = (value: number): number =>
+  Math.max(1, Math.floor(value))
 
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
@@ -169,14 +176,22 @@ function EditChatModelModalComponent({
   const [gptWebSearchEnabled, setGptWebSearchEnabled] = useState<boolean>(
     editableModel.gptTools?.webSearch?.enabled === true,
   )
+  const resolvedKnownMaxContextTokens = resolveKnownMaxContextTokens(
+    model.model,
+  )
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
     topP: number
+    maxContextTokens: number
     maxOutputTokens: number
   }>(() => ({
     temperature:
       editableModel.temperature ?? MODEL_SAMPLING_DEFAULTS.temperature,
     topP: editableModel.topP ?? MODEL_SAMPLING_DEFAULTS.topP,
+    maxContextTokens:
+      editableModel.maxContextTokens ??
+      resolvedKnownMaxContextTokens ??
+      MODEL_SAMPLING_DEFAULTS.maxContextTokens,
     maxOutputTokens:
       editableModel.maxOutputTokens ?? MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
   }))
@@ -184,9 +199,14 @@ function EditChatModelModalComponent({
     editableModel.temperature,
   )
   const [topP, setTopP] = useState<number | undefined>(editableModel.topP)
+  const [maxContextTokens, setMaxContextTokens] = useState<number | undefined>(
+    editableModel.maxContextTokens ?? resolvedKnownMaxContextTokens,
+  )
   const [maxOutputTokens, setMaxOutputTokens] = useState<number | undefined>(
     editableModel.maxOutputTokens,
   )
+  const [hasManualMaxContextTokens, setHasManualMaxContextTokens] =
+    useState<boolean>(false)
   const customParameterUidRef = React.useRef(0)
   const createCustomParameterUid = (): string => {
     customParameterUidRef.current += 1
@@ -209,12 +229,30 @@ function EditChatModelModalComponent({
     setModelParamCache({
       temperature: MODEL_SAMPLING_DEFAULTS.temperature,
       topP: MODEL_SAMPLING_DEFAULTS.topP,
+      maxContextTokens:
+        resolveKnownMaxContextTokens(formData.model) ??
+        MODEL_SAMPLING_DEFAULTS.maxContextTokens,
       maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
     })
     setTemperature(MODEL_SAMPLING_DEFAULTS.temperature)
     setTopP(MODEL_SAMPLING_DEFAULTS.topP)
+    setMaxContextTokens(resolveKnownMaxContextTokens(formData.model))
     setMaxOutputTokens(MODEL_SAMPLING_DEFAULTS.maxOutputTokens)
+    setHasManualMaxContextTokens(false)
   }
+
+  React.useEffect(() => {
+    if (hasManualMaxContextTokens) {
+      return
+    }
+
+    const matched = resolveKnownMaxContextTokens(formData.model)
+    setModelParamCache((prev) => ({
+      ...prev,
+      maxContextTokens: matched ?? MODEL_SAMPLING_DEFAULTS.maxContextTokens,
+    }))
+    setMaxContextTokens(matched)
+  }, [formData.model, hasManualMaxContextTokens])
 
   const setTemperatureEnabled = (enabled: boolean) => {
     const current = temperature ?? modelParamCache.temperature
@@ -232,6 +270,13 @@ function EditChatModelModalComponent({
     const current = maxOutputTokens ?? modelParamCache.maxOutputTokens
     setModelParamCache((prev) => ({ ...prev, maxOutputTokens: current }))
     setMaxOutputTokens(enabled ? current : undefined)
+  }
+
+  const setMaxContextTokensEnabled = (enabled: boolean) => {
+    const current = maxContextTokens ?? modelParamCache.maxContextTokens
+    setHasManualMaxContextTokens(true)
+    setModelParamCache((prev) => ({ ...prev, maxContextTokens: current }))
+    setMaxContextTokens(enabled ? current : undefined)
   }
 
   const handleSubmit = () => {
@@ -269,6 +314,7 @@ function EditChatModelModalComponent({
               : undefined,
           temperature,
           topP,
+          maxContextTokens,
           maxOutputTokens,
         }
 
@@ -444,7 +490,7 @@ function EditChatModelModalComponent({
       <div className="smtcmp-agent-tools-panel smtcmp-agent-model-panel">
         <div className="smtcmp-agent-tools-panel-head smtcmp-agent-model-panel-head">
           <div className="smtcmp-agent-tools-panel-title">
-            {t('settings.models.sampling', 'Sampling parameters')}
+            {t('settings.models.customParameters', 'Custom parameters')}
           </div>
           <button
             type="button"
@@ -456,6 +502,85 @@ function EditChatModelModalComponent({
         </div>
 
         <div className="smtcmp-agent-model-controls">
+          <div
+            className={`smtcmp-agent-model-control${
+              maxContextTokens === undefined ? ' is-disabled' : ''
+            }`}
+          >
+            <div className="smtcmp-agent-model-control-top">
+              <div className="smtcmp-agent-model-control-meta">
+                <div className="smtcmp-agent-model-control-label">
+                  {t(
+                    'settings.models.maxContextTokens',
+                    'Context window tokens',
+                  )}
+                </div>
+                <div className="smtcmp-agent-model-control-desc">
+                  {t(
+                    'settings.models.maxContextTokensDesc',
+                    'Auto-filled when this model is recognized. Adjust it if your provider uses a different limit.',
+                  )}
+                </div>
+              </div>
+              <div className="smtcmp-agent-model-control-actions">
+                <ObsidianToggle
+                  value={maxContextTokens !== undefined}
+                  onChange={setMaxContextTokensEnabled}
+                />
+              </div>
+            </div>
+            {maxContextTokens !== undefined && (
+              <div className="smtcmp-agent-model-control-adjust">
+                <input
+                  type="range"
+                  min={1024}
+                  max={MAX_CONTEXT_TOKENS_INPUT_MAX}
+                  step={1024}
+                  value={Math.min(
+                    MAX_CONTEXT_TOKENS_INPUT_MAX,
+                    Math.max(
+                      1024,
+                      maxContextTokens ?? modelParamCache.maxContextTokens,
+                    ),
+                  )}
+                  onChange={(event) => {
+                    const next = Number(event.currentTarget.value)
+                    if (!Number.isFinite(next)) {
+                      return
+                    }
+                    const clamped = clampMaxContextTokens(next)
+                    setHasManualMaxContextTokens(true)
+                    setModelParamCache((prev) => ({
+                      ...prev,
+                      maxContextTokens: clamped,
+                    }))
+                    setMaxContextTokens(clamped)
+                  }}
+                />
+                <input
+                  type="number"
+                  className="smtcmp-agent-model-number"
+                  min={1}
+                  step={1}
+                  value={maxContextTokens ?? modelParamCache.maxContextTokens}
+                  onChange={(event) => {
+                    const next = Number(event.currentTarget.value)
+                    if (!Number.isFinite(next)) {
+                      return
+                    }
+                    const clamped = clampMaxContextTokens(next)
+                    setHasManualMaxContextTokens(true)
+                    setModelParamCache((prev) => ({
+                      ...prev,
+                      maxContextTokens: clamped,
+                    }))
+                    setMaxContextTokens(clamped)
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
           <div
             className={`smtcmp-agent-model-control${
               temperature === undefined ? ' is-disabled' : ''

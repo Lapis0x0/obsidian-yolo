@@ -505,8 +505,11 @@ export const zh: TranslationKeys = {
       gptToolsDesc: '选择该模型可用的 GPT 内置工具',
       gptToolWebSearch: 'Web Search',
       gptToolWebSearchDesc: '允许模型联网搜索并返回来源引用',
-      sampling: '采样参数',
+      sampling: '自定义参数',
       restoreDefaults: '恢复默认值',
+      maxContextTokens: '上下文窗口 token',
+      maxContextTokensDesc:
+        '识别到常见模型时会自动填充；如果你的提供商实际限制不同，可以手动修改。',
       maxOutputTokens: '最大输出 token',
       customParameters: '自定义参数',
       customParametersDesc:

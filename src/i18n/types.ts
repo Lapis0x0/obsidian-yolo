@@ -417,6 +417,8 @@ export type TranslationKeys = {
       gptToolWebSearchDesc?: string
       sampling?: string
       restoreDefaults?: string
+      maxContextTokens?: string
+      maxContextTokensDesc?: string
       maxOutputTokens?: string
       customParameters?: string
       customParametersDesc?: string

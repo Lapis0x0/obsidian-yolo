@@ -72,6 +72,7 @@ import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type { Mentionable, MentionableBlockData } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
+import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-context-registry'
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 
@@ -1543,7 +1544,17 @@ export default class SmartComposerPlugin extends Plugin {
 
   async loadSettings() {
     const parsedSettings = parseSmartComposerSettings(await this.loadData())
-    const normalizedSettings = ensureDefaultAssistantInSettings(parsedSettings)
+    const settingsWithDefaultAssistant =
+      ensureDefaultAssistantInSettings(parsedSettings)
+    const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
+      settingsWithDefaultAssistant.chatModels,
+    )
+    const normalizedSettings = changed
+      ? {
+          ...settingsWithDefaultAssistant,
+          chatModels,
+        }
+      : settingsWithDefaultAssistant
 
     this.settings = normalizedSettings
 
