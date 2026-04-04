@@ -34,6 +34,8 @@ import { createPortal } from 'react-dom'
 
 import { useApp } from '../../../../../contexts/app-context'
 import { useLanguage } from '../../../../../contexts/language-context'
+import { useSettings } from '../../../../../contexts/settings-context'
+import { PROVIDER_PRESET_INFO } from '../../../../../constants'
 import { Assistant } from '../../../../../types/assistant.types'
 import { ChatModel } from '../../../../../types/chat-model.types'
 import {
@@ -271,7 +273,8 @@ function MentionsTypeaheadMenuItem({
     option.payload.kind === 'assistant' ||
     option.payload.kind === 'mode' ||
     (option.payload.kind === 'mentionable' &&
-      (option.payload.mentionable.type === 'folder' ||
+      (option.payload.mentionable.type === 'model' ||
+        option.payload.mentionable.type === 'folder' ||
         option.payload.mentionable.type === 'file') &&
       Boolean(option.subtitle))
 
@@ -436,6 +439,7 @@ export default function NewMentionsPlugin({
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
   const app = useApp()
+  const { settings } = useSettings()
 
   const [queryString, setQueryString] = useState<string | null>(null)
   const [menuScope, setMenuScope] = useState<MentionMenuScope>('root')
@@ -460,6 +464,17 @@ export default function NewMentionsPlugin({
   const normalizedQuery = useMemo(
     () => (queryString ?? '').trim().toLowerCase(),
     [queryString],
+  )
+
+  const providerLabelById = useMemo(
+    () =>
+      new Map(
+        settings.providers.map((provider) => [
+          provider.id,
+          PROVIDER_PRESET_INFO[provider.presetType]?.label ?? provider.id,
+        ]),
+      ),
+    [settings.providers],
   )
 
   const results = useMemo(() => {
@@ -490,13 +505,15 @@ export default function NewMentionsPlugin({
 
     return modelMentionables.filter((model) => {
       const providerId = model.providerId ?? ''
+      const providerLabel = providerLabelById.get(providerId) ?? providerId
       return (
         model.name.toLowerCase().includes(normalizedQuery) ||
         model.modelId.toLowerCase().includes(normalizedQuery) ||
-        providerId.toLowerCase().includes(normalizedQuery)
+        providerId.toLowerCase().includes(normalizedQuery) ||
+        providerLabel.toLowerCase().includes(normalizedQuery)
       )
     })
-  }, [modelMentionables, normalizedQuery])
+  }, [modelMentionables, normalizedQuery, providerLabelById])
 
   const checkForSlashTriggerMatch = useBasicTypeaheadTriggerMatch('/', {
     minLength: 0,
@@ -562,7 +579,11 @@ export default function NewMentionsPlugin({
             new MentionTypeaheadOption({
               kind: 'mentionable',
               mentionable,
-              subtitle: mentionable.providerId,
+              subtitle:
+                mentionable.providerId != null
+                  ? (providerLabelById.get(mentionable.providerId) ??
+                    mentionable.providerId)
+                  : undefined,
               isSelected: selectedModelIds.includes(mentionable.modelId),
             }),
         )
@@ -697,7 +718,11 @@ export default function NewMentionsPlugin({
           new MentionTypeaheadOption({
             kind: 'mentionable',
             mentionable,
-            subtitle: mentionable.providerId,
+            subtitle:
+              mentionable.providerId != null
+                ? (providerLabelById.get(mentionable.providerId) ??
+                  mentionable.providerId)
+                : undefined,
             isSelected: selectedModelIds.includes(mentionable.modelId),
           }),
       )
@@ -764,6 +789,7 @@ export default function NewMentionsPlugin({
     menuScope,
     onSelectChatMode,
     normalizedQuery,
+    providerLabelById,
     queryString,
     results,
     searchFoldersByQuery,
