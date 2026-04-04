@@ -48,6 +48,13 @@ manifest.json
 
 # Obsidian
 .obsidian
+.opencode
+
+# Large non-source trees
+Reference
+Design
+vendor
+runtime
 
 # Markdown
 *.md
