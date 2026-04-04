@@ -75,6 +75,7 @@ const BranchStateIcon = ({
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
   conversationId: string
+  activeBranchKey?: string | null
   suppressFooter?: boolean
   showInlineInfo?: boolean
   showInsertAction?: boolean
@@ -97,6 +98,7 @@ export type AssistantToolMessageGroupItemProps = {
   onEditSave: (messageId: string, content: string) => void
   onDeleteGroup: (messageIds: string[]) => void
   onBranchGroup: (messageIds: string[]) => void
+  onActiveBranchChange?: (branchKey: string | null) => void
   onQuoteAssistantSelection: (payload: {
     messageId: string
     conversationId: string
@@ -112,6 +114,7 @@ export type AssistantToolMessageGroupItemProps = {
 export default function AssistantToolMessageGroupItem({
   messages,
   conversationId,
+  activeBranchKey: controlledActiveBranchKey,
   suppressFooter = false,
   showInlineInfo = true,
   showInsertAction = true,
@@ -130,6 +133,7 @@ export default function AssistantToolMessageGroupItem({
   onEditSave,
   onDeleteGroup,
   onBranchGroup,
+  onActiveBranchChange,
   onQuoteAssistantSelection,
   onOpenEditSummaryFile,
   onUndoEditSummary,
@@ -186,7 +190,10 @@ export default function AssistantToolMessageGroupItem({
     return Array.from(groups.values())
   }, [conversationId, messages])
   const hasMultipleBranches = branchGroups.length > 1
-  const [activeBranchKey, setActiveBranchKey] = useState<string | null>(null)
+  const [uncontrolledActiveBranchKey, setUncontrolledActiveBranchKey] =
+    useState<string | null>(null)
+  const activeBranchKey =
+    controlledActiveBranchKey ?? uncontrolledActiveBranchKey
   const resolvedActiveBranchKey =
     activeBranchKey ?? branchGroups[0]?.key ?? null
 
@@ -205,14 +212,16 @@ export default function AssistantToolMessageGroupItem({
           scrollTop: scrollContainer.scrollTop,
         }
       }
-      setActiveBranchKey(branchKey)
+      setUncontrolledActiveBranchKey(branchKey)
+      onActiveBranchChange?.(branchKey)
     },
-    [resolvedActiveBranchKey],
+    [onActiveBranchChange, resolvedActiveBranchKey],
   )
 
   useEffect(() => {
     if (!hasMultipleBranches) {
-      setActiveBranchKey(null)
+      setUncontrolledActiveBranchKey(null)
+      onActiveBranchChange?.(null)
       return
     }
     if (
@@ -228,32 +237,39 @@ export default function AssistantToolMessageGroupItem({
           message.metadata?.generationState === 'completed',
       ),
     )
-    setActiveBranchKey(
-      firstCompletedBranch?.key ?? branchGroups[0]?.key ?? null,
-    )
-  }, [activeBranchKey, branchGroups, hasMultipleBranches])
+    const nextActiveBranchKey =
+      firstCompletedBranch?.key ?? branchGroups[0]?.key ?? null
+    setUncontrolledActiveBranchKey(nextActiveBranchKey)
+    onActiveBranchChange?.(nextActiveBranchKey)
+  }, [activeBranchKey, branchGroups, hasMultipleBranches, onActiveBranchChange])
 
   const displayedMessages = useMemo(() => {
     if (!hasMultipleBranches) {
       return messages
     }
     return (
-      branchGroups.find((group) => group.key === activeBranchKey)?.messages ??
+      branchGroups.find((group) => group.key === resolvedActiveBranchKey)
+        ?.messages ??
       branchGroups[0]?.messages ??
       messages
     )
-  }, [activeBranchKey, branchGroups, hasMultipleBranches, messages])
+  }, [branchGroups, hasMultipleBranches, messages, resolvedActiveBranchKey])
   const effectiveConversationId = useMemo(() => {
     if (!hasMultipleBranches) {
       return conversationId
     }
     return (
-      branchGroups.find((group) => group.key === activeBranchKey)
+      branchGroups.find((group) => group.key === resolvedActiveBranchKey)
         ?.conversationId ??
       branchGroups[0]?.conversationId ??
       conversationId
     )
-  }, [activeBranchKey, branchGroups, conversationId, hasMultipleBranches])
+  }, [
+    branchGroups,
+    conversationId,
+    hasMultipleBranches,
+    resolvedActiveBranchKey,
+  ])
   useLayoutEffect(() => {
     if (activeBranchKey === null) {
       return

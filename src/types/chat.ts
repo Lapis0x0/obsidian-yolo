@@ -174,6 +174,7 @@ export type ChatConversation = {
   isPinned?: boolean
   pinnedAt?: number
   messages: SerializedChatMessage[]
+  activeBranchByUserMessageId?: Record<string, string>
   reasoningLevel?: string
   compaction?: ChatConversationCompactionLike | null
 }

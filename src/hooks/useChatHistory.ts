@@ -78,6 +78,7 @@ type UseChatHistory = {
     overrides?: ConversationOverrideSettings | null,
     conversationModelId?: string,
     messageModelMap?: Record<string, string>,
+    activeBranchByUserMessageId?: Record<string, string>,
     reasoningLevel?: string,
     compaction?: ChatConversationCompactionState,
   ) => Promise<void> | undefined
@@ -87,6 +88,7 @@ type UseChatHistory = {
     overrides?: ConversationOverrideSettings | null,
     conversationModelId?: string,
     messageModelMap?: Record<string, string>,
+    activeBranchByUserMessageId?: Record<string, string>,
     reasoningLevel?: string,
     compaction?: ChatConversationCompactionState,
   ) => Promise<void>
@@ -97,6 +99,7 @@ type UseChatHistory = {
     overrides: ConversationOverrideSettings | null | undefined
     conversationModelId?: string
     messageModelMap?: Record<string, string>
+    activeBranchByUserMessageId?: Record<string, string>
     reasoningLevel?: string
     compaction?: ChatConversationCompactionState
   } | null>
@@ -171,6 +174,7 @@ export function useChatHistory(): UseChatHistory {
       overrides?: ConversationOverrideSettings | null,
       conversationModelId?: string,
       messageModelMap?: Record<string, string>,
+      activeBranchByUserMessageId?: Record<string, string>,
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionLike | null,
     ): Promise<void> => {
@@ -205,6 +209,10 @@ export function useChatHistory(): UseChatHistory {
             existingConversation.messageModelMap ?? null,
             messageModelMap ?? null,
           ) &&
+          isEqual(
+            existingConversation.activeBranchByUserMessageId ?? null,
+            activeBranchByUserMessageId ?? null,
+          ) &&
           existingConversation.reasoningLevel === reasoningLevel &&
           isEqual(existingCompaction, normalizedCompaction)
         ) {
@@ -224,6 +232,10 @@ export function useChatHistory(): UseChatHistory {
             messageModelMap === undefined
               ? existingConversation.messageModelMap
               : messageModelMap,
+          activeBranchByUserMessageId:
+            activeBranchByUserMessageId === undefined
+              ? existingConversation.activeBranchByUserMessageId
+              : activeBranchByUserMessageId,
           reasoningLevel,
           compaction:
             compaction === undefined
@@ -241,6 +253,7 @@ export function useChatHistory(): UseChatHistory {
           overrides: overrides ?? null,
           conversationModelId,
           messageModelMap,
+          activeBranchByUserMessageId,
           reasoningLevel,
           compaction: normalizedCompaction,
         })
@@ -274,6 +287,7 @@ export function useChatHistory(): UseChatHistory {
       overrides?: ConversationOverrideSettings | null,
       conversationModelId?: string,
       messageModelMap?: Record<string, string>,
+      activeBranchByUserMessageId?: Record<string, string>,
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionState,
     ): Promise<void> | undefined =>
@@ -283,6 +297,7 @@ export function useChatHistory(): UseChatHistory {
         overrides,
         conversationModelId,
         messageModelMap,
+        activeBranchByUserMessageId,
         reasoningLevel,
         compaction,
       ),
@@ -296,6 +311,7 @@ export function useChatHistory(): UseChatHistory {
       overrides?: ConversationOverrideSettings | null,
       conversationModelId?: string,
       messageModelMap?: Record<string, string>,
+      activeBranchByUserMessageId?: Record<string, string>,
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionState,
     ): Promise<void> => {
@@ -306,6 +322,7 @@ export function useChatHistory(): UseChatHistory {
         overrides,
         conversationModelId,
         messageModelMap,
+        activeBranchByUserMessageId,
         reasoningLevel,
         compaction,
       )
@@ -343,6 +360,7 @@ export function useChatHistory(): UseChatHistory {
       overrides: ConversationOverrideSettings | null | undefined
       conversationModelId?: string
       messageModelMap?: Record<string, string>
+      activeBranchByUserMessageId?: Record<string, string>
       reasoningLevel?: string
       compaction?: ChatConversationCompactionState
     } | null> => {
@@ -355,6 +373,7 @@ export function useChatHistory(): UseChatHistory {
         overrides: conversation.overrides,
         conversationModelId: conversation.conversationModelId,
         messageModelMap: conversation.messageModelMap,
+        activeBranchByUserMessageId: conversation.activeBranchByUserMessageId,
         reasoningLevel: conversation.reasoningLevel,
         compaction: normalizeChatConversationCompactionState(
           conversation.compaction,

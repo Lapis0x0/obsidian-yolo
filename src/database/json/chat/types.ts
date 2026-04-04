@@ -19,6 +19,7 @@ export type ChatConversation = {
   overrides?: ConversationOverrideSettings | null
   conversationModelId?: string
   messageModelMap?: Record<string, string>
+  activeBranchByUserMessageId?: Record<string, string>
   reasoningLevel?: string
   compaction?: ChatConversationCompactionLike | null
 }

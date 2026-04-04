@@ -24,6 +24,7 @@ export type AgentRuntimeRunInput = {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
   messages: ChatMessage[]
+  requestMessages?: ChatMessage[]
   conversationId: string
   branchId?: string
   sourceUserMessageId?: string

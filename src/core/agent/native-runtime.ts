@@ -68,6 +68,7 @@ export class NativeAgentRuntime implements AgentRuntime {
   }
 
   async run(input: AgentRuntimeRunInput): Promise<void> {
+    const requestMessages = input.requestMessages ?? input.messages
     this.compactionState = normalizeChatConversationCompactionState(
       input.compaction,
     )
@@ -128,7 +129,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   requestContextBuilder: input.requestContextBuilder,
                   mcpManager: input.mcpManager,
                   conversationId: input.conversationId,
-                  messages: [...input.messages, ...this.messages],
+                  messages: [...requestMessages, ...this.messages],
                   branchId: input.branchId,
                   sourceUserMessageId: input.sourceUserMessageId,
                   branchLabel: input.branchLabel,
@@ -192,7 +193,10 @@ export class NativeAgentRuntime implements AgentRuntime {
                   await toolGateway.executeAutoToolCalls({
                     toolMessage: initialToolMessage,
                     conversationId: input.conversationId,
-                    conversationMessages: [...input.messages, ...this.messages],
+                    conversationMessages: [
+                      ...requestMessages,
+                      ...this.messages,
+                    ],
                     signal: abortSignal,
                   })
 
@@ -211,7 +215,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   this.notifySubscribers()
 
                   const conversationMessages = [
-                    ...input.messages,
+                    ...requestMessages,
                     ...this.messages,
                   ]
 
@@ -370,7 +374,10 @@ export class NativeAgentRuntime implements AgentRuntime {
       requestContextBuilder: input.requestContextBuilder,
       mcpManager: input.mcpManager,
       conversationId: input.conversationId,
-      messages: [...input.messages, ...this.messages],
+      messages: [
+        ...(input.requestMessages ?? input.messages),
+        ...this.messages,
+      ],
       enableTools: false,
       includeBuiltinTools: false,
       allowedToolNames: input.allowedToolNames,

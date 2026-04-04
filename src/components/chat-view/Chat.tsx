@@ -253,6 +253,84 @@ const getLatestUserSelectedModelIds = (
   return undefined
 }
 
+const getSourceUserMessageIdForGroup = (
+  messages: AssistantToolMessageGroup,
+): string | null => {
+  for (const message of messages) {
+    const sourceUserMessageId = message.metadata?.sourceUserMessageId
+    if (sourceUserMessageId) {
+      return sourceUserMessageId
+    }
+  }
+
+  return null
+}
+
+const getDisplayedAssistantToolMessages = (
+  messages: AssistantToolMessageGroup,
+  activeBranchKey?: string | null,
+): AssistantToolMessageGroup => {
+  const branchGroups = new Map<string, AssistantToolMessageGroup>()
+  messages.forEach((message) => {
+    const branchId = message.metadata?.branchId
+    if (!branchId) {
+      return
+    }
+
+    const existing = branchGroups.get(branchId)
+    if (existing) {
+      existing.push(message)
+      return
+    }
+
+    branchGroups.set(branchId, [message])
+  })
+
+  const groupedBranches = Array.from(branchGroups.values())
+  if (groupedBranches.length <= 1) {
+    return messages
+  }
+
+  const resolvedActiveBranchKey =
+    activeBranchKey ??
+    groupedBranches.find((branchMessages) =>
+      branchMessages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.generationState === 'completed',
+      ),
+    )?.[0]?.metadata?.branchId ??
+    groupedBranches[0]?.[0]?.metadata?.branchId ??
+    null
+
+  return (
+    groupedBranches.find(
+      (branchMessages) =>
+        branchMessages[0]?.metadata?.branchId === resolvedActiveBranchKey,
+    ) ??
+    groupedBranches[0] ??
+    messages
+  )
+}
+
+const serializeActiveBranchByUserMessageId = (
+  messages: ChatMessage[],
+  activeBranchByUserMessageId: ReadonlyMap<string, string>,
+): Record<string, string> | undefined => {
+  const validUserMessageIds = new Set(
+    messages
+      .filter((message): message is ChatUserMessage => message.role === 'user')
+      .map((message) => message.id),
+  )
+
+  const entries = Array.from(activeBranchByUserMessageId.entries()).filter(
+    ([userMessageId, branchId]) =>
+      validUserMessageIds.has(userMessageId) && branchId.trim().length > 0,
+  )
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
 const createSelectionBlockMentionable = (
   selectedBlock: MentionableBlockData,
 ): MentionableBlock => {
@@ -424,6 +502,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
   const inputMessageRef = useRef(inputMessage)
   const chatMessagesStateRef = useRef<ChatMessage[]>([])
+  const activeBranchByUserMessageIdRef = useRef<Map<string, string>>(new Map())
   const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [compactionState, setCompactionState] =
@@ -868,12 +947,29 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
     new Map(),
   )
+  const [activeBranchByUserMessageId, setActiveBranchByUserMessageId] =
+    useState<Map<string, string>>(new Map())
   const submitMutationPendingRef = useRef(false)
 
   const groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[] =
     useMemo(() => {
       return groupAssistantAndToolMessages(chatMessages)
     }, [chatMessages])
+
+  const displayedChatMessages = useMemo(() => {
+    return groupedChatMessages.flatMap((messageOrGroup): ChatMessage[] => {
+      if (!Array.isArray(messageOrGroup)) {
+        return [messageOrGroup]
+      }
+
+      return getDisplayedAssistantToolMessages(
+        messageOrGroup,
+        activeBranchByUserMessageId.get(
+          getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
+        ),
+      )
+    })
+  }, [activeBranchByUserMessageId, groupedChatMessages])
 
   const firstUserMessageId = useMemo(() => {
     return chatMessages.find((message) => message.role === 'user')?.id
@@ -1249,6 +1345,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           effectiveOverrides,
           conversationModelId,
           serializeMessageModelMap(messages),
+          serializeActiveBranchByUserMessageId(
+            messages,
+            activeBranchByUserMessageIdRef.current,
+          ),
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
           effectiveCompactionState,
@@ -1284,6 +1384,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           effectiveOverrides,
           conversationModelId,
           serializeMessageModelMap(messages),
+          serializeActiveBranchByUserMessageId(
+            messages,
+            activeBranchByUserMessageIdRef.current,
+          ),
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
           effectiveCompactionState,
@@ -1363,6 +1467,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         effectiveOverrides,
         conversationModelId,
         serializeMessageModelMap(chatMessages),
+        serializeActiveBranchByUserMessageId(
+          chatMessages,
+          activeBranchByUserMessageIdRef.current,
+        ),
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
         nextCompactionHistory,
@@ -1476,6 +1584,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         setMessageModelMap(
           new Map(Object.entries(conversation.messageModelMap ?? {})),
         )
+        const loadedActiveBranchByUserMessageId = new Map(
+          Object.entries(conversation.activeBranchByUserMessageId ?? {}),
+        )
+        activeBranchByUserMessageIdRef.current =
+          loadedActiveBranchByUserMessageId
+        setActiveBranchByUserMessageId(loadedActiveBranchByUserMessageId)
         const nextMessageReasoningMap = new Map<string, ReasoningLevel>()
         conversation.messages.forEach((message) => {
           if (message.role !== 'user') return
@@ -1563,6 +1677,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setReasoningLevel(defaultReasoningLevel)
     conversationReasoningLevelRef.current.set(newId, defaultReasoningLevel)
     setMessageModelMap(new Map())
+    activeBranchByUserMessageIdRef.current = new Map()
+    setActiveBranchByUserMessageId(new Map())
     setMessageReasoningMap(new Map())
     setChatMessages([])
     setCompactionState([])
@@ -1698,6 +1814,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           retainedUserMessageIds.has(messageId),
         ),
       )
+      const nextActiveBranchByUserMessageId = new Map(
+        Array.from(activeBranchByUserMessageIdRef.current.entries()).filter(
+          ([messageId]) => retainedUserMessageIds.has(messageId),
+        ),
+      )
       const branchedCompactionState = effectiveCompactionState.filter((entry) =>
         nextMessages.some((message) => message.id === entry.anchorMessageId),
       )
@@ -1742,6 +1863,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
       setMessageModelMap(nextMessageModelMap)
       setMessageReasoningMap(nextMessageReasoningMap)
+      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
+      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
 
       const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
       setInputMessage(newInputMessage)
@@ -1759,6 +1882,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           },
           resolvedConversationModelId,
           serializeMessageModelMap(nextMessages, nextMessageModelMap),
+          serializeActiveBranchByUserMessageId(
+            nextMessages,
+            nextActiveBranchByUserMessageId,
+          ),
           resolvedReasoningLevel,
           branchedCompactionState,
         )
@@ -1866,10 +1993,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleUserMessageSubmit = useCallback(
     async ({
       inputChatMessages,
+      requestChatMessages,
       useVaultSearch,
       persistedMessageModelMap,
     }: {
       inputChatMessages: ChatMessage[]
+      requestChatMessages?: ChatMessage[]
       useVaultSearch?: boolean
       persistedMessageModelMap?: Map<string, string>
     }) => {
@@ -1884,13 +2013,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         forceScrollToBottom()
       })
 
-      const lastMessage = inputChatMessages.at(-1)
+      const effectiveRequestChatMessages =
+        requestChatMessages ?? inputChatMessages
+      const lastMessage = effectiveRequestChatMessages.at(-1)
       if (lastMessage?.role !== 'user') {
         throw new Error('Last message is not a user message')
       }
 
-      const compiledMessages = await Promise.all(
-        inputChatMessages.map(async (message) => {
+      const compiledRequestMessages = await Promise.all(
+        effectiveRequestChatMessages.map(async (message) => {
           if (message.role === 'user' && message.id === lastMessage.id) {
             const { promptContent, similaritySearchResults } =
               await requestContextBuilder.compileUserMessagePrompt({
@@ -1920,7 +2051,31 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }),
       )
 
-      const persistedMessages = compiledMessages.map((message) => {
+      const compiledUserMessagesById = new Map(
+        compiledRequestMessages
+          .filter(
+            (message): message is ChatUserMessage => message.role === 'user',
+          )
+          .map((message) => [message.id, message]),
+      )
+
+      const compiledInputMessages = inputChatMessages.map((message) => {
+        if (message.role !== 'user') {
+          return message
+        }
+
+        const compiledUserMessage = compiledUserMessagesById.get(message.id)
+        return compiledUserMessage
+          ? {
+              ...message,
+              promptContent: compiledUserMessage.promptContent,
+              similaritySearchResults:
+                compiledUserMessage.similaritySearchResults,
+            }
+          : message
+      })
+
+      const persistedMessages = compiledInputMessages.map((message) => {
         if (message.role !== 'user') {
           return message
         }
@@ -1936,29 +2091,38 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setChatMessages(persistedMessages)
       void createOrUpdateConversation(
         currentConversationId,
-        compiledMessages,
+        compiledInputMessages,
         {
           ...(conversationOverrides ?? {}),
           chatMode,
         },
         conversationModelId,
         serializeMessageModelMap(
-          compiledMessages,
+          compiledInputMessages,
           persistedMessageModelMap ?? messageModelMap,
+        ),
+        serializeActiveBranchByUserMessageId(
+          compiledInputMessages,
+          activeBranchByUserMessageIdRef.current,
         ),
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
         effectiveCompactionState,
       )
-      void generateConversationTitle(currentConversationId, compiledMessages)
-      const requestReasoningLevel =
-        resolveReasoningLevelForMessages(compiledMessages)
+      void generateConversationTitle(
+        currentConversationId,
+        compiledInputMessages,
+      )
+      const requestReasoningLevel = resolveReasoningLevelForMessages(
+        compiledRequestMessages,
+      )
       const requestModelIds =
         lastMessage.selectedModelIds && lastMessage.selectedModelIds.length > 0
           ? lastMessage.selectedModelIds
           : undefined
       submitChatMutation.mutate({
-        chatMessages: compiledMessages,
+        chatMessages: compiledInputMessages,
+        requestMessages: compiledRequestMessages,
         conversationId: currentConversationId,
         reasoningLevel: requestReasoningLevel,
         modelIds: requestModelIds,
@@ -3228,6 +3392,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 <AssistantToolMessageGroupItem
                   messages={messageOrGroup}
                   conversationId={currentConversationId}
+                  activeBranchKey={activeBranchByUserMessageId.get(
+                    getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
+                  )}
                   suppressFooter={
                     shouldSuppressCompactionAnchorFooter ||
                     (isCurrentConversationRunActive &&
@@ -3245,6 +3412,22 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   onEditSave={handleAssistantMessageEditSave}
                   onDeleteGroup={handleAssistantMessageGroupDelete}
                   onBranchGroup={handleAssistantMessageGroupBranch}
+                  onActiveBranchChange={(branchKey) => {
+                    const sourceUserMessageId =
+                      getSourceUserMessageIdForGroup(messageOrGroup)
+                    if (!sourceUserMessageId) {
+                      return
+                    }
+                    const next = new Map(activeBranchByUserMessageIdRef.current)
+                    if (!branchKey) {
+                      next.delete(sourceUserMessageId)
+                    } else {
+                      next.set(sourceUserMessageId, branchKey)
+                    }
+                    activeBranchByUserMessageIdRef.current = next
+                    setActiveBranchByUserMessageId(next)
+                    void persistConversation(chatMessagesStateRef.current)
+                  }}
                   onQuoteAssistantSelection={handleQuoteAssistantSelection}
                   onOpenEditSummaryFile={handleOpenEditSummaryFile}
                   onUndoEditSummary={handleUndoEditSummary}
@@ -3318,28 +3501,48 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     messageOrGroup.id,
                     modelForThisMessage,
                   )
+                  const editedUserMessage: ChatUserMessage = {
+                    role: 'user',
+                    content: content,
+                    promptContent: null,
+                    id: messageOrGroup.id,
+                    reasoningLevel: reasoningForThisMessage,
+                    mentionables: messageOrGroup.mentionables,
+                    selectedSkills: messageOrGroup.selectedSkills ?? [],
+                    selectedModelIds: extractSelectedModelIds(
+                      messageOrGroup.mentionables,
+                    ),
+                  }
+                  const inputChatMessages = [
+                    ...groupedChatMessages
+                      .slice(0, groupedMessageIndex)
+                      .flatMap((messageOrGroup): ChatMessage[] =>
+                        !Array.isArray(messageOrGroup)
+                          ? [messageOrGroup]
+                          : messageOrGroup,
+                      ),
+                    editedUserMessage,
+                  ]
+                  const requestChatMessages = [
+                    ...groupedChatMessages
+                      .slice(0, groupedMessageIndex)
+                      .flatMap((messageOrGroup): ChatMessage[] =>
+                        !Array.isArray(messageOrGroup)
+                          ? [messageOrGroup]
+                          : getDisplayedAssistantToolMessages(
+                              messageOrGroup,
+                              activeBranchByUserMessageId.get(
+                                getSourceUserMessageIdForGroup(
+                                  messageOrGroup,
+                                ) ?? '',
+                              ),
+                            ),
+                      ),
+                    editedUserMessage,
+                  ]
                   void handleUserMessageSubmit({
-                    inputChatMessages: [
-                      ...groupedChatMessages
-                        .slice(0, groupedMessageIndex)
-                        .flatMap((messageOrGroup): ChatMessage[] =>
-                          !Array.isArray(messageOrGroup)
-                            ? [messageOrGroup]
-                            : messageOrGroup,
-                        ),
-                      {
-                        role: 'user',
-                        content: content,
-                        promptContent: null,
-                        id: messageOrGroup.id,
-                        reasoningLevel: reasoningForThisMessage,
-                        mentionables: messageOrGroup.mentionables,
-                        selectedSkills: messageOrGroup.selectedSkills ?? [],
-                        selectedModelIds: extractSelectedModelIds(
-                          messageOrGroup.mentionables,
-                        ),
-                      },
-                    ],
+                    inputChatMessages,
+                    requestChatMessages,
                     useVaultSearch,
                     persistedMessageModelMap: nextMessageModelMap,
                   })
@@ -3571,6 +3774,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               nextMessageModelMap.set(inputMessage.id, conversationModelId)
               void handleUserMessageSubmit({
                 inputChatMessages: [...chatMessages, messageForSubmit],
+                requestChatMessages: [
+                  ...displayedChatMessages,
+                  messageForSubmit,
+                ],
                 useVaultSearch,
                 persistedMessageModelMap: nextMessageModelMap,
               })

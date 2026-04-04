@@ -123,6 +123,7 @@ export type UseChatStreamManager = {
     Error,
     {
       chatMessages: ChatMessage[]
+      requestMessages?: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
@@ -604,11 +605,13 @@ export function useChatStreamManager({
   const submitChatMutation = useMutation({
     mutationFn: async ({
       chatMessages,
+      requestMessages,
       conversationId,
       reasoningLevel,
       modelIds,
     }: {
       chatMessages: ChatMessage[]
+      requestMessages?: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
@@ -785,6 +788,7 @@ export function useChatStreamManager({
             loopConfig,
             input: {
               ...baseInput,
+              requestMessages,
               providerClient: resolvedClient.providerClient,
               model: effectiveModel,
               conversationId,
@@ -833,6 +837,7 @@ export function useChatStreamManager({
               loopConfig,
               input: {
                 ...baseInput,
+                requestMessages,
                 providerClient: branchResolvedClient.providerClient,
                 model: branchModel,
                 conversationId,
