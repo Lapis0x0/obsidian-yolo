@@ -270,6 +270,23 @@ const getDisplayedAssistantToolMessages = (
   messages: AssistantToolMessageGroup,
   activeBranchKey?: string | null,
 ): AssistantToolMessageGroup => {
+  const isBranchCompleted = (branchMessages: AssistantToolMessageGroup) => {
+    const latestMessage = branchMessages.at(-1)
+    if (latestMessage?.metadata?.branchWaitingApproval) {
+      return false
+    }
+
+    if (latestMessage?.metadata?.branchRunStatus) {
+      return latestMessage.metadata.branchRunStatus === 'completed'
+    }
+
+    return branchMessages.some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.metadata?.generationState === 'completed',
+    )
+  }
+
   const branchGroups = new Map<string, AssistantToolMessageGroup>()
   messages.forEach((message) => {
     const branchId = message.metadata?.branchId
@@ -294,11 +311,7 @@ const getDisplayedAssistantToolMessages = (
   const resolvedActiveBranchKey =
     activeBranchKey ??
     groupedBranches.find((branchMessages) =>
-      branchMessages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.metadata?.generationState === 'completed',
-      ),
+      isBranchCompleted(branchMessages),
     )?.[0]?.metadata?.branchId ??
     groupedBranches[0]?.[0]?.metadata?.branchId ??
     null

@@ -83,6 +83,8 @@ export type ChatAssistantMessage = {
     branchModelId?: string
     branchLabel?: string
     branchConversationId?: string
+    branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
+    branchWaitingApproval?: boolean
   }
 }
 export type ChatToolMessage = {
@@ -98,6 +100,8 @@ export type ChatToolMessage = {
     branchModelId?: string
     branchLabel?: string
     branchConversationId?: string
+    branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
+    branchWaitingApproval?: boolean
   }
 }
 
@@ -143,6 +147,8 @@ export type SerializedChatAssistantMessage = {
     branchModelId?: string
     branchLabel?: string
     branchConversationId?: string
+    branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
+    branchWaitingApproval?: boolean
   }
 }
 export type SerializedChatToolMessage = {
@@ -158,6 +164,8 @@ export type SerializedChatToolMessage = {
     branchModelId?: string
     branchLabel?: string
     branchConversationId?: string
+    branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
+    branchWaitingApproval?: boolean
   }
 }
 export type SerializedChatMessage =

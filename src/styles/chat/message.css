@@ -480,6 +480,10 @@
   color: var(--interactive-accent);
 }
 
+.smtcmp-multi-model-tab--waiting-approval .smtcmp-multi-model-tab__status {
+  color: var(--text-warning);
+}
+
 .smtcmp-multi-model-tab--error .smtcmp-multi-model-tab__status {
   color: var(--text-error);
 }

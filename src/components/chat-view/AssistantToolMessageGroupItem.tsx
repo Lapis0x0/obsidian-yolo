@@ -33,11 +33,14 @@ import LLMResponseInlineInfo from './LLMResponseInlineInfo'
 import ToolMessage from './ToolMessage'
 
 const getBranchStateLabel = (
-  state: 'streaming' | 'completed' | 'aborted' | 'error',
+  state: 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error',
   t: (keyPath: string, fallback?: string) => string,
 ) => {
   if (state === 'streaming') {
     return t('chat.toolCall.status.running', '生成中')
+  }
+  if (state === 'waiting-approval') {
+    return t('common.agentStatusWaitingApproval', '待审批')
   }
   if (state === 'error') {
     return t('chat.toolCall.status.failed', '失败')
@@ -51,7 +54,7 @@ const getBranchStateLabel = (
 const BranchStateIcon = ({
   state,
 }: {
-  state: 'streaming' | 'completed' | 'aborted' | 'error'
+  state: 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error'
 }) => {
   if (state === 'streaming') {
     return (
@@ -59,6 +62,11 @@ const BranchStateIcon = ({
         size={12}
         className="smtcmp-multi-model-tab__status-icon is-spinning"
       />
+    )
+  }
+  if (state === 'waiting-approval') {
+    return (
+      <CircleAlert size={12} className="smtcmp-multi-model-tab__status-icon" />
     )
   }
   if (state === 'error') {
@@ -70,6 +78,37 @@ const BranchStateIcon = ({
     return <Ban size={12} className="smtcmp-multi-model-tab__status-icon" />
   }
   return <Check size={12} className="smtcmp-multi-model-tab__status-icon" />
+}
+
+const getBranchTabState = (
+  messages: AssistantToolMessageGroup,
+): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
+  const latestMessage = messages.at(-1)
+  const latestMetadata = latestMessage?.metadata
+
+  if (latestMetadata?.branchWaitingApproval) {
+    return 'waiting-approval'
+  }
+
+  switch (latestMetadata?.branchRunStatus) {
+    case 'running':
+      return 'streaming'
+    case 'completed':
+      return 'completed'
+    case 'aborted':
+      return 'aborted'
+    case 'error':
+      return 'error'
+  }
+
+  const assistantMessage = messages.find(
+    (message): message is ChatAssistantMessage => message.role === 'assistant',
+  )
+  return assistantMessage?.metadata?.generationState ?? 'completed'
+}
+
+const isBranchCompleted = (messages: AssistantToolMessageGroup): boolean => {
+  return getBranchTabState(messages) === 'completed'
 }
 
 export type AssistantToolMessageGroupItemProps = {
@@ -231,11 +270,7 @@ export default function AssistantToolMessageGroupItem({
       return
     }
     const firstCompletedBranch = branchGroups.find((group) =>
-      group.messages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.metadata?.generationState === 'completed',
-      ),
+      isBranchCompleted(group.messages),
     )
     const nextActiveBranchKey =
       firstCompletedBranch?.key ?? branchGroups[0]?.key ?? null
@@ -403,12 +438,7 @@ export default function AssistantToolMessageGroupItem({
         <div className="smtcmp-multi-model-tabs" role="tablist">
           {branchGroups.map((group) => {
             const isActive = group.key === resolvedActiveBranchKey
-            const assistantMessage = group.messages.find(
-              (message): message is ChatAssistantMessage =>
-                message.role === 'assistant',
-            )
-            const state =
-              assistantMessage?.metadata?.generationState ?? 'completed'
+            const state = getBranchTabState(group.messages)
             const stateLabel = getBranchStateLabel(state, t)
             return (
               <button

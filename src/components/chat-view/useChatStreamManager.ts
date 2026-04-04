@@ -138,7 +138,10 @@ const isRunSummaryActive = (summary: AgentConversationRunSummary): boolean => {
 const annotateBranchMessages = (
   messages: ChatMessage[],
   branch: ActiveBranchRun,
+  branchState: AgentConversationState,
 ): ChatMessage[] => {
+  const branchRunSummary = buildRunSummary(branchState)
+
   return messages.map((message) => {
     if (message.role === 'assistant') {
       return {
@@ -150,6 +153,8 @@ const annotateBranchMessages = (
           branchModelId: branch.branchModelId,
           branchLabel: branch.branchLabel,
           branchConversationId: branch.branchConversationId,
+          branchRunStatus: branchState.status,
+          branchWaitingApproval: branchRunSummary.isWaitingApproval,
         },
       }
     }
@@ -164,6 +169,8 @@ const annotateBranchMessages = (
           branchModelId: branch.branchModelId,
           branchLabel: branch.branchLabel,
           branchConversationId: branch.branchConversationId,
+          branchRunStatus: branchState.status,
+          branchWaitingApproval: branchRunSummary.isWaitingApproval,
         },
       }
       return toolMessage
@@ -241,7 +248,9 @@ export function useChatStreamManager({
             anchorIndex >= 0
               ? branchState.messages.slice(anchorIndex + 1)
               : branchState.messages
-          result.push(...annotateBranchMessages(responseMessages, branch))
+          result.push(
+            ...annotateBranchMessages(responseMessages, branch, branchState),
+          )
         }
       }
 
