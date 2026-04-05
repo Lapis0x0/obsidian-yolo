@@ -168,7 +168,7 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           <div className="smtcmp-settings-block-head">
             <div className="smtcmp-settings-block-head-title-row">
               <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
-                {t('settings.etc.interactionSectionTitle', '交互')}
+                {t('settings.etc.interactionSectionTitle', 'Interaction')}
               </div>
             </div>
           </div>

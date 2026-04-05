@@ -743,6 +743,8 @@ export type TranslationKeys = {
       notificationApprovalRequiredDesc?: string
       notificationTaskCompleted?: string
       notificationTaskCompletedDesc?: string
+      interactionSectionTitle?: string
+      maintenanceSectionTitle?: string
       tabTitleFollowsConversation?: string
       tabTitleFollowsConversationDesc?: string
     }

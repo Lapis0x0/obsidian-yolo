@@ -297,7 +297,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
         <div className="smtcmp-settings-block-head">
           <div className="smtcmp-settings-block-head-title-row">
             <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
-              {t('settings.etc.maintenanceSectionTitle', '维护')}
+              {t('settings.etc.maintenanceSectionTitle', 'Maintenance')}
             </div>
           </div>
         </div>

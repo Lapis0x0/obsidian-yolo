@@ -951,6 +951,8 @@ export const it: TranslationKeys = {
       notificationTaskCompleted: 'Notifica al termine del task',
       notificationTaskCompletedDesc:
         "Avvisa quando l'esecuzione corrente di Agent termina senza attendere ulteriori approvazioni.",
+      interactionSectionTitle: 'Interazione',
+      maintenanceSectionTitle: 'Manutenzione',
       tabTitleFollowsConversation:
         'Usa il titolo della conversazione nella scheda',
       tabTitleFollowsConversationDesc:
