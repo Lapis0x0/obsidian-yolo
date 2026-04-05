@@ -45,6 +45,7 @@ import {
   getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
+import { getDisplayOnlyCurrentFileMentionables } from '../../../utils/chat/currentFileMentionable'
 import { fileToMentionableImage } from '../../../utils/llm/image'
 
 import ChatSkillBadge from './ChatSkillBadge'
@@ -215,28 +216,30 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
+    const displayOnlyCurrentFileMentionables = useMemo(
+      () =>
+        getDisplayOnlyCurrentFileMentionables(
+          mentionables,
+          displayMentionables,
+        ),
+      [displayMentionables, mentionables],
+    )
+    const displayOnlyCurrentFileMentionableKeys = useMemo(
+      () =>
+        new Set(
+          displayOnlyCurrentFileMentionables.map((mentionable) =>
+            getMentionableKey(serializeMentionable(mentionable)),
+          ),
+        ),
+      [displayOnlyCurrentFileMentionables],
+    )
     const inlineMentionables = useMemo(() => {
       if (mentionDisplayMode !== 'inline') {
         return [] as Mentionable[]
       }
 
-      const editableMentionableKeys = new Set(
-        mentionables.map((mentionable) =>
-          getMentionableKey(serializeMentionable(mentionable)),
-        ),
-      )
-      const displayOnlyCurrentFileMentionables = (
-        displayMentionables ?? []
-      ).filter(
-        (mentionable) =>
-          mentionable.type === 'current-file' &&
-          !editableMentionableKeys.has(
-            getMentionableKey(serializeMentionable(mentionable)),
-          ),
-      )
-
       return [...displayOnlyCurrentFileMentionables, ...mentionables]
-    }, [displayMentionables, mentionDisplayMode, mentionables])
+    }, [displayOnlyCurrentFileMentionables, mentionDisplayMode, mentionables])
     const effectiveSelectedSkills = useMemo(
       () => selectedSkills,
       [selectedSkills],
@@ -415,6 +418,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             destroyedMentionableKeys.push(mentionableKey)
           }
         } else if (mutation.mutation === 'created') {
+          if (
+            mentionable.type === 'current-file' &&
+            displayOnlyCurrentFileMentionableKeys.has(mentionableKey)
+          ) {
+            return
+          }
+
           if (
             mentionable.type === 'block' &&
             typeof mentionable.content !== 'string'

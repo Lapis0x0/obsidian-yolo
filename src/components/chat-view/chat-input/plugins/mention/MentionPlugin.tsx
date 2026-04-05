@@ -815,9 +815,14 @@ export default function NewMentionsPlugin({
 
       if (selectedOption.payload.kind === 'entry') {
         if (selectedOption.payload.entryType === 'current-file') {
+          const activeFile = app.workspace.getActiveFile()
+          if (!activeFile) {
+            closeMenu()
+            return
+          }
           const currentFileMentionable: Mentionable = {
-            type: 'current-file',
-            file: app.workspace.getActiveFile(),
+            type: 'file',
+            file: activeFile,
           }
 
           if (mentionDisplayMode === 'badge') {

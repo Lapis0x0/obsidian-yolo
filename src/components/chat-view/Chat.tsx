@@ -53,7 +53,6 @@ import type {
   MentionableAssistantQuote,
   MentionableBlock,
   MentionableBlockData,
-  MentionableCurrentFile,
 } from '../../types/mentionable'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
@@ -68,6 +67,7 @@ import {
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
+import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
@@ -1169,12 +1169,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     Boolean(activeFile)
 
   const displayMentionablesForInput = useMemo(() => {
-    if (!shouldShowAutoAttachBadge) return inputMessage.mentionables
-    const autoAttachMentionable: MentionableCurrentFile = {
-      type: 'current-file',
-      file: activeFile,
-    }
-    return [autoAttachMentionable, ...inputMessage.mentionables]
+    return normalizeMentionablesWithAutoCurrentFile(
+      inputMessage.mentionables,
+      activeFile,
+      shouldShowAutoAttachBadge,
+    )
   }, [activeFile, inputMessage.mentionables, shouldShowAutoAttachBadge])
 
   const currentFileOverride = useMemo(() => {
@@ -1963,27 +1962,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const buildInputMessageForSubmit = useCallback(
     (content: ChatUserMessage['content']): ChatUserMessage => {
-      let mentionables = inputMessage.mentionables
       const shouldAttachCurrentFileBadge =
         settings.chatOptions.includeCurrentFileContent &&
         autoAttachCurrentFile &&
         !hasUserMessages
-      const hasCurrentFileMentionable = mentionables.some(
-        (mentionable) => mentionable.type === 'current-file',
+      const mentionables = normalizeMentionablesWithAutoCurrentFile(
+        inputMessage.mentionables,
+        activeFile,
+        shouldAttachCurrentFileBadge,
       )
-      if (
-        shouldAttachCurrentFileBadge &&
-        !hasCurrentFileMentionable &&
-        activeFile
-      ) {
-        mentionables = [
-          {
-            type: 'current-file',
-            file: activeFile,
-          },
-          ...mentionables,
-        ]
-      }
       return {
         ...inputMessage,
         content,

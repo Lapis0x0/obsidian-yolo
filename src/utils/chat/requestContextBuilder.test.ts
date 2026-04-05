@@ -322,6 +322,42 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     )
     expect(textContent).not.toContain('Folder body')
   })
+
+  it('uses only the latest valid current-file mention when old current-file references accumulated', async () => {
+    const staleCurrentFile = createMockFile('notes/stale.md')
+    const latestCurrentFile = createMockFile('notes/latest.md')
+
+    const fileContents = new Map<string, string>([
+      [staleCurrentFile.path, '# Stale'],
+      [latestCurrentFile.path, '# Latest'],
+    ])
+
+    const app = createMockApp({
+      files: [staleCurrentFile, latestCurrentFile],
+      fileContents,
+    })
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const result = await builder.compileUserMessagePrompt({
+      message: createUserMessage([
+        { type: 'current-file', file: staleCurrentFile },
+        { type: 'current-file', file: null },
+        { type: 'current-file', file: latestCurrentFile },
+      ]),
+    })
+
+    const textContent = getTextContent(result.promptContent)
+
+    expect(textContent).toContain('- `notes/latest.md`\n  - L1 # Latest')
+    expect(textContent).not.toContain('notes/stale.md')
+  })
 })
 
 describe('RequestContextBuilder generateRequestMessages', () => {

@@ -34,7 +34,6 @@ import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
   MentionableAssistantQuote,
   MentionableBlock,
-  MentionableCurrentFile,
   MentionableFile,
   MentionableFolder,
   MentionableImage,
@@ -50,6 +49,7 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
+import { getLatestValidCurrentFileMentionable } from './currentFileMentionable'
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
@@ -731,10 +731,10 @@ ${similaritySearchResults
           .filter((m): m is MentionableFolder => m.type === 'folder')
           .map((m) => this.app.vault.getFolderByPath(m.folder.path))
           .filter((folder): folder is TFolder => Boolean(folder))
-        const currentFiles = message.mentionables
-          .filter((m): m is MentionableCurrentFile => m.type === 'current-file')
-          .map((m) => m.file)
-          .filter((file): file is TFile => Boolean(file))
+        const latestCurrentFile = getLatestValidCurrentFileMentionable(
+          message.mentionables,
+        )
+        const currentFiles = latestCurrentFile ? [latestCurrentFile] : []
 
         filePrompt = await this.buildMentionedFilePrompt({
           files,
