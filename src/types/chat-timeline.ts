@@ -4,9 +4,11 @@ import type {
   ChatSelectedSkill,
   ChatUserMessage,
 } from './chat'
+import type { SerializedEditorState } from 'lexical'
 import type { Mentionable } from './mentionable'
 
 export type UserMessageDisplaySnapshot = {
+  content: SerializedEditorState | null
   text: string
   mentionables: Mentionable[]
   selectedSkills: ChatSelectedSkill[]

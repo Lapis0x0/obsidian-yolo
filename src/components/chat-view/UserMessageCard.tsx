@@ -11,6 +11,7 @@ import {
 } from '../../utils/chat/mentionable'
 import MentionableBadge from './chat-input/MentionableBadge'
 import ChatSkillBadge from './chat-input/ChatSkillBadge'
+import ReadOnlyUserMessageContent from './ReadOnlyUserMessageContent'
 
 type UserMessageCardProps = {
   snapshot: UserMessageDisplaySnapshot
@@ -54,12 +55,13 @@ function UserMessageCard({
 }: UserMessageCardProps) {
   const { settings } = useSettings()
   const mentionDisplayMode = settings.chatOptions.mentionDisplayMode ?? 'inline'
-  const lines = useMemo(
+  const fallbackText = useMemo(
     () =>
       snapshot.text
         .split('\n')
         .map((line) => line.trimEnd())
-        .filter((line, index, lines) => line.length > 0 || lines.length === 1),
+        .filter((line, index, lines) => line.length > 0 || lines.length === 1)
+        .join('\n'),
     [snapshot.text],
   )
 
@@ -98,15 +100,11 @@ function UserMessageCard({
       <div className="smtcmp-chat-user-input-container">
         <div className="smtcmp-chat-user-input-editor">
           <div className="smtcmp-user-message-card__content">
-            {lines.length > 0 ? (
-              lines.map((line, index) => (
-                <div
-                  key={`${index}-${line.slice(0, 32)}`}
-                  className="smtcmp-user-message-card__line"
-                >
-                  {line.length > 0 ? line : '\u00a0'}
-                </div>
-              ))
+            {fallbackText.length > 0 || snapshot.content ? (
+              <ReadOnlyUserMessageContent
+                content={snapshot.content}
+                fallbackText={fallbackText}
+              />
             ) : (
               <div className="smtcmp-chat-user-input-placeholder">
                 Click to edit...

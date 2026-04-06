@@ -59,6 +59,7 @@ function UserMessageItem({
 }: UserMessageItemProps) {
   const snapshot = useMemo<UserMessageDisplaySnapshot>(
     () => ({
+      content: message.content,
       text: message.content ? editorStateToPlainText(message.content) : '',
       mentionables: displayMentionables ?? message.mentionables,
       selectedSkills: message.selectedSkills ?? [],
