@@ -375,6 +375,12 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
           input: text,
           encoding_format: 'float',
         }),
+      runNode: () =>
+        this.nodeClient.embeddings.create({
+          model: model,
+          input: text,
+          encoding_format: 'float',
+        }),
     })
     return extractEmbeddingVector(embedding)
   }
