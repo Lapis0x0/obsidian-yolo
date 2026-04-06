@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { FollowOutput } from 'react-virtuoso'
 
 const PROGRAMMATIC_SCROLL_LOCK_MS = 180
 const USER_SCROLL_INTENT_WINDOW_MS = 280
@@ -135,6 +136,31 @@ export function useAutoScroll({
     [scheduleFollowFrame],
   )
 
+  const handleAtBottomStateChange = useCallback(
+    (atBottom: boolean) => {
+      if (atBottom) {
+        updateAutoFollow(true)
+        return
+      }
+
+      const hasRecentUserScrollIntent =
+        Date.now() - lastUserScrollIntentRef.current <
+        USER_SCROLL_INTENT_WINDOW_MS
+      if (hasRecentUserScrollIntent) {
+        updateAutoFollow(false)
+      }
+    },
+    [updateAutoFollow],
+  )
+
+  const followOutput: FollowOutput = useCallback((isAtBottom: boolean) => {
+    if (followForceRef.current) {
+      return 'auto'
+    }
+
+    return autoFollowRef.current || isAtBottom ? 'auto' : false
+  }, [])
+
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
@@ -200,99 +226,8 @@ export function useAutoScroll({
       return
     }
 
-    const scrollContainer = scrollContainerRef.current
-    if (!scrollContainer || typeof MutationObserver === 'undefined') {
-      return
-    }
-
-    const observer = new MutationObserver(() => {
-      requestFollow()
-    })
-
-    observer.observe(scrollContainer, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'aria-expanded'],
-    })
-
-    const handleAnimatedLayoutChange = () => {
-      requestFollow()
-    }
-
-    scrollContainer.addEventListener(
-      'transitionend',
-      handleAnimatedLayoutChange,
-    )
-    scrollContainer.addEventListener('animationend', handleAnimatedLayoutChange)
-
-    return () => {
-      observer.disconnect()
-      scrollContainer.removeEventListener(
-        'transitionend',
-        handleAnimatedLayoutChange,
-      )
-      scrollContainer.removeEventListener(
-        'animationend',
-        handleAnimatedLayoutChange,
-      )
-    }
-  }, [isStreaming, requestFollow, scrollContainerRef])
-
-  useEffect(() => {
-    if (!isStreaming) {
-      return
-    }
-
-    const scrollContainer = scrollContainerRef.current
-    const bottomAnchor = bottomAnchorRef?.current
-    if (
-      !scrollContainer ||
-      !bottomAnchor ||
-      typeof IntersectionObserver === 'undefined'
-    ) {
-      return
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        const hasRecentUserScrollIntent =
-          Date.now() - lastUserScrollIntentRef.current <
-          USER_SCROLL_INTENT_WINDOW_MS
-
-        if (
-          entry.isIntersecting &&
-          !autoFollowRef.current &&
-          hasRecentUserScrollIntent
-        ) {
-          updateAutoFollow(true)
-          return
-        }
-
-        if (!entry.isIntersecting && autoFollowRef.current) {
-          requestFollow()
-        }
-      },
-      {
-        root: scrollContainer,
-        threshold: 1,
-      },
-    )
-
-    observer.observe(bottomAnchor)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [
-    bottomAnchorRef,
-    isStreaming,
-    requestFollow,
-    scrollContainerRef,
-    updateAutoFollow,
-  ])
+    requestFollow()
+  }, [isStreaming, requestFollow])
 
   useEffect(() => {
     return () => {
@@ -320,5 +255,7 @@ export function useAutoScroll({
     autoScrollToBottom,
     forceScrollToBottom,
     isAutoFollowEnabled: autoFollowState,
+    followOutput,
+    onAtBottomStateChange: handleAtBottomStateChange,
   }
 }

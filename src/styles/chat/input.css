@@ -294,7 +294,7 @@
 
 .smtcmp-chat-container--sidebar
   .smtcmp-chat-messages
-  > .smtcmp-chat-timeline-row {
+  .smtcmp-chat-timeline-row {
   margin-inline: var(--smtcmp-chat-sidebar-inline-padding);
 }
 
@@ -312,7 +312,7 @@
 
 .smtcmp-chat-container--centered
   .smtcmp-chat-messages
-  > .smtcmp-chat-timeline-row {
+  .smtcmp-chat-timeline-row {
   width: min(100%, var(--smtcmp-chat-content-max-width));
   margin-left: auto;
   margin-right: auto;

@@ -725,6 +725,8 @@
 .smtcmp-markdown-rendered {
   &.markdown-rendered {
     --render-scale: 1;
+    --smtcmp-flow-spacing: calc(var(--render-scale) * 0.75rem);
+    --smtcmp-heading-flow-spacing: calc(var(--render-scale) * 1rem);
     font-size: calc(var(--render-scale) * 1rem);
     line-height: 1.5;
 
@@ -741,8 +743,8 @@
     }
 
     /* override default variables */
-    --p-spacing: calc(var(--render-scale) * 1rem);
-    --heading-spacing: calc(var(--p-spacing) * 2.5);
+    --p-spacing: var(--smtcmp-flow-spacing);
+    --heading-spacing: calc(var(--render-scale) * 1.5rem);
     --checkbox-size: calc(var(--render-scale) * 1rem);
     --checkbox-radius: calc(var(--render-scale) * var(--radius-s));
     --icon-size: calc(var(--render-scale) * var(--icon-m));
@@ -750,17 +752,60 @@
     /* adjust list indent */
     --list-indent: 1.5em;
 
+    p,
+    ul,
+    ol,
+    pre,
+    blockquote,
+    table,
+    hr,
+    .callout {
+      margin-block: 0;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin-block: 0;
+      line-height: 1.3;
+    }
+
+    li > p,
+    li > ul,
+    li > ol {
+      margin-block: 0;
+    }
+
+    > :where(p, ul, ol, pre, blockquote, table, hr, .callout)
+      + :where(p, ul, ol, pre, blockquote, table, hr, .callout) {
+      margin-top: var(--smtcmp-flow-spacing);
+    }
+
+    > :where(h1, h2, h3, h4, h5, h6)
+      + :where(p, ul, ol, pre, blockquote, table, hr, .callout),
+    > :where(p, ul, ol, pre, blockquote, table, hr, .callout)
+      + :where(h1, h2, h3, h4, h5, h6),
+    > :where(h1, h2, h3, h4, h5, h6)
+      + :where(h1, h2, h3, h4, h5, h6) {
+      margin-top: var(--smtcmp-heading-flow-spacing);
+    }
+
     blockquote {
+      margin-top: 0;
       padding-inline-start: calc(var(--render-scale) * 1.5rem);
     }
 
     pre {
+      margin-top: 0;
       padding: calc(var(--render-scale) * 0.75rem)
         calc(var(--render-scale) * 1rem);
     }
 
     hr {
-      margin: calc(var(--render-scale) * 2rem) 0;
+      margin-top: calc(var(--render-scale) * 1.25rem);
     }
 
     th,

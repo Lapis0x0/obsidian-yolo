@@ -95,10 +95,10 @@ import ContextUsageRing from './ContextUsageRing'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
+import { ChatTimelineList } from './ChatTimelineList'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
-import { VirtualizedTimeline } from './VirtualizedTimeline'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
@@ -1101,12 +1101,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [chatMessages],
   )
 
-  const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
-    useAutoScroll({
-      scrollContainerRef: chatMessagesRef,
-      bottomAnchorRef,
-      isStreaming: hasStreamingMessages,
-    })
+  const {
+    autoScrollToBottom,
+    forceScrollToBottom,
+    isAutoFollowEnabled,
+    followOutput,
+    onAtBottomStateChange,
+  } = useAutoScroll({
+    scrollContainerRef: chatMessagesRef,
+    bottomAnchorRef,
+    isStreaming: hasStreamingMessages,
+  })
 
   const {
     abortConversationRun,
@@ -3695,14 +3700,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           </div>
         </div>
       )}
-      <div className="smtcmp-chat-messages" ref={chatMessagesRef}>
-        <VirtualizedTimeline
-          items={chatTimelineItems}
-          scrollContainerRef={chatMessagesRef}
-          renderItem={renderChatTimelineItem}
-          forceRenderItemIds={['bottom-anchor']}
-        />
-      </div>
+      <ChatTimelineList
+        items={chatTimelineItems}
+        conversationId={currentConversationId}
+        scrollContainerRef={chatMessagesRef}
+        renderItem={renderChatTimelineItem}
+        forceRenderItemIds={['bottom-anchor']}
+        followOutput={followOutput}
+        onAtBottomStateChange={onAtBottomStateChange}
+        virtualizationThreshold={
+          editingAssistantMessageId ? chatTimelineItems.length : undefined
+        }
+        scrollContainerClassName="smtcmp-chat-messages"
+      />
       <div
         className={`smtcmp-chat-footer${
           isCurrentConversationRunActive ? ' is-generating' : ''

@@ -1,10 +1,14 @@
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
 import type {
   AssistantToolMessageGroup,
+  ChatAssistantMessage,
   ChatConversationCompaction,
+  ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
+import { getToolCallArgumentsText } from '../../types/tool-call.types'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
+import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 
 const USER_MESSAGE_ESTIMATED_HEIGHT = 92
 const ASSISTANT_GROUP_ESTIMATED_HEIGHT = 180
@@ -14,6 +18,138 @@ const CONTINUE_RESPONSE_ESTIMATED_HEIGHT = 52
 const BOTTOM_ANCHOR_ESTIMATED_HEIGHT = 8
 const TIMELINE_START_SPACING = 12
 const USER_TO_ASSISTANT_SPACING = 16
+const USER_MESSAGE_MAX_ESTIMATED_HEIGHT = 420
+const ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT = 2800
+const TOOL_MESSAGE_MAX_ESTIMATED_HEIGHT = 720
+
+function clampEstimatedHeight(
+  value: number,
+  { min, max }: { min: number; max: number },
+): number {
+  return Math.max(min, Math.min(max, Math.ceil(value)))
+}
+
+function countMatches(content: string, pattern: RegExp): number {
+  return content.match(pattern)?.length ?? 0
+}
+
+function estimateMarkdownTextHeight(
+  content: string,
+  {
+    baseHeight,
+    charsPerLine,
+    lineHeight,
+    maxHeight,
+  }: {
+    baseHeight: number
+    charsPerLine: number
+    lineHeight: number
+    maxHeight: number
+  },
+): number {
+  const trimmed = content.trim()
+  if (!trimmed) {
+    return baseHeight
+  }
+
+  const explicitLineCount = trimmed.split('\n').length
+  const wrappedLineCount = Math.ceil(trimmed.length / charsPerLine)
+  const effectiveLineCount = Math.max(explicitLineCount, wrappedLineCount)
+  const paragraphCount =
+    countMatches(trimmed, /\n\s*\n/g) + 1
+  const headingCount = countMatches(trimmed, /^#{1,6}\s/gm)
+  const listItemCount = countMatches(trimmed, /^\s*(?:[-*+]|\d+\.)\s/gm)
+  const quoteCount = countMatches(trimmed, /^\s*>\s/gm)
+  const codeFenceCount = Math.floor(countMatches(trimmed, /^```/gm) / 2)
+
+  const estimated =
+    baseHeight +
+    effectiveLineCount * lineHeight +
+    paragraphCount * 10 +
+    headingCount * 18 +
+    listItemCount * 6 +
+    quoteCount * 8 +
+    codeFenceCount * 120
+
+  return clampEstimatedHeight(estimated, {
+    min: baseHeight,
+    max: maxHeight,
+  })
+}
+
+function estimateUserMessageHeight(message: ChatUserMessage): number {
+  const text = editorStateToPlainText(message.content)
+  const mentionableCount = message.mentionables.length
+  const selectedSkillCount = message.selectedSkills?.length ?? 0
+  const similarityResultCount = message.similaritySearchResults?.length ?? 0
+  const estimated =
+    estimateMarkdownTextHeight(text, {
+      baseHeight: USER_MESSAGE_ESTIMATED_HEIGHT,
+      charsPerLine: 34,
+      lineHeight: 18,
+      maxHeight: USER_MESSAGE_MAX_ESTIMATED_HEIGHT,
+    }) +
+    mentionableCount * 22 +
+    selectedSkillCount * 18 +
+    similarityResultCount * 56
+
+  return clampEstimatedHeight(estimated, {
+    min: USER_MESSAGE_ESTIMATED_HEIGHT,
+    max: USER_MESSAGE_MAX_ESTIMATED_HEIGHT,
+  })
+}
+
+function estimateAssistantMessageHeight(message: ChatAssistantMessage): number {
+  const contentHeight = estimateMarkdownTextHeight(message.content, {
+    baseHeight: 96,
+    charsPerLine: 38,
+    lineHeight: 20,
+    maxHeight: ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT,
+  })
+  const reasoningHeight = message.reasoning
+    ? estimateMarkdownTextHeight(message.reasoning, {
+        baseHeight: 54,
+        charsPerLine: 42,
+        lineHeight: 18,
+        maxHeight: 520,
+      })
+    : 0
+  const annotationHeight = (message.annotations?.length ?? 0) * 42
+  const toolRequestHeight = (message.toolCallRequests?.length ?? 0) * 36
+
+  return contentHeight + reasoningHeight + annotationHeight + toolRequestHeight
+}
+
+function estimateToolMessageHeight(message: ChatToolMessage): number {
+  const toolCallCount = message.toolCalls.length
+  const payloadWeight = message.toolCalls.reduce((sum, toolCall) => {
+    const requestArgsLength =
+      getToolCallArgumentsText(toolCall.request.arguments)?.length ?? 0
+    const responseLength = JSON.stringify(toolCall.response ?? {}).length
+    return sum + requestArgsLength + responseLength
+  }, 0)
+
+  const estimated = 72 + toolCallCount * 64 + Math.ceil(payloadWeight / 180)
+  return clampEstimatedHeight(estimated, {
+    min: 72,
+    max: TOOL_MESSAGE_MAX_ESTIMATED_HEIGHT,
+  })
+}
+
+function estimateAssistantGroupHeight(messages: AssistantToolMessageGroup): number {
+  const estimated = messages.reduce((sum, message) => {
+    if (message.role === 'assistant') {
+      return sum + estimateAssistantMessageHeight(message)
+    }
+
+    return sum + estimateToolMessageHeight(message)
+  }, 0)
+
+  return clampEstimatedHeight(estimated + 20, {
+    min: ASSISTANT_GROUP_ESTIMATED_HEIGHT,
+    max: ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT,
+  })
+}
 
 export const getDefaultTimelineEstimatedHeight = (
   item: ChatTimelineItem,
@@ -63,7 +199,7 @@ export const buildMessageTimelineItems = ({
         kind: 'assistant-group',
         id: firstMessageId,
         renderKey: firstMessageId,
-        estimatedHeight: ASSISTANT_GROUP_ESTIMATED_HEIGHT,
+        estimatedHeight: estimateAssistantGroupHeight(messageOrGroup),
         spacingBefore,
         messages: messageOrGroup,
         isPinnedForRender:
@@ -77,7 +213,7 @@ export const buildMessageTimelineItems = ({
       kind: 'user-message',
       id: messageOrGroup.id,
       renderKey: messageOrGroup.id,
-      estimatedHeight: USER_MESSAGE_ESTIMATED_HEIGHT,
+      estimatedHeight: estimateUserMessageHeight(messageOrGroup),
       spacingBefore,
       message: messageOrGroup,
       isEditable: true,

@@ -25,6 +25,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import type { FollowOutput } from 'react-virtuoso'
 import { v4 as uuidv4 } from 'uuid'
 
 import { useApp } from '../../../contexts/app-context'
@@ -83,8 +84,8 @@ import {
 } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
+import { ChatTimelineList } from '../../chat-view/ChatTimelineList'
 import UserMessageItem from '../../chat-view/UserMessageItem'
-import { VirtualizedTimeline } from '../../chat-view/VirtualizedTimeline'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
@@ -341,7 +342,6 @@ export function QuickAskPanel({
   const applyAbortControllerRef = useRef<AbortController | null>(null)
   const shouldAutoScrollRef = useRef(true)
   const userDisabledAutoScrollRef = useRef(false)
-  const lastScrollTopRef = useRef(0)
   const autoSendRef = useRef(false)
   const hasAppliedInitialInputRef = useRef(false)
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
@@ -649,67 +649,44 @@ export function QuickAskPanel({
     settings,
   ])
 
-  // Track user scroll position to determine if we should auto-scroll
+  // Track explicit user interaction intent; bottom-state recovery is delegated
+  // to Virtuoso's atBottomStateChange callback.
   useEffect(() => {
     const chatArea = chatAreaRef.current
     if (!chatArea) return
 
     const disableAutoScroll = () => {
+      userDisabledAutoScrollRef.current = true
       shouldAutoScrollRef.current = false
     }
 
-    const handleScroll = () => {
-      // Check if user is near the bottom (within 100px)
-      const distanceToBottom =
-        chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight
-      const isNearBottom = distanceToBottom < 100
-
-      const currentScrollTop = chatArea.scrollTop
-      const scrolledUp = currentScrollTop < lastScrollTopRef.current
-      lastScrollTopRef.current = currentScrollTop
-
-      if (scrolledUp) {
-        // 用户向上滚动，立即关闭自动滚动
-        userDisabledAutoScrollRef.current = true
-        shouldAutoScrollRef.current = false
-        return
-      }
-
-      if (userDisabledAutoScrollRef.current) {
-        // 只有用户手动滚回底部附近才恢复自动滚动
-        if (isNearBottom) {
-          userDisabledAutoScrollRef.current = false
-          shouldAutoScrollRef.current = true
-        }
-        return
-      }
-
-      shouldAutoScrollRef.current = isNearBottom
-    }
-
-    // Initialize state based on current position
-    handleScroll()
-
-    chatArea.addEventListener('scroll', handleScroll)
     chatArea.addEventListener('wheel', disableAutoScroll, { passive: true })
     chatArea.addEventListener('touchstart', disableAutoScroll, {
       passive: true,
     })
     chatArea.addEventListener('pointerdown', disableAutoScroll)
     return () => {
-      chatArea.removeEventListener('scroll', handleScroll)
       chatArea.removeEventListener('wheel', disableAutoScroll)
       chatArea.removeEventListener('touchstart', disableAutoScroll)
       chatArea.removeEventListener('pointerdown', disableAutoScroll)
     }
-  }, [chatMessages.length])
+  }, [])
 
-  // Auto-scroll to bottom when messages change, but only if user hasn't scrolled up
-  useEffect(() => {
-    if (chatAreaRef.current && shouldAutoScrollRef.current) {
-      chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
+  const handleTimelineAtBottomStateChange = useCallback((atBottom: boolean) => {
+    if (!atBottom) {
+      return
     }
-  }, [chatMessages])
+
+    userDisabledAutoScrollRef.current = false
+    shouldAutoScrollRef.current = true
+  }, [])
+
+  const quickAskFollowOutput: FollowOutput = useCallback(
+    (isAtBottom: boolean) => {
+      return shouldAutoScrollRef.current || isAtBottom ? 'auto' : false
+    },
+    [],
+  )
 
   const autoScrollToBottom = useCallback(() => {
     if (!chatAreaRef.current || !shouldAutoScrollRef.current) {
@@ -2229,17 +2206,21 @@ export function QuickAskPanel({
 
       {/* Chat area - only shown when there are messages */}
       {hasMessages && (
-        <div
-          className="smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared"
-          ref={chatAreaRef}
-          style={panelSize?.height ? { maxHeight: 'none' } : undefined}
-        >
-          <VirtualizedTimeline
-            items={quickAskTimelineItems}
-            scrollContainerRef={chatAreaRef}
-            renderItem={renderQuickAskTimelineItem}
-          />
-        </div>
+        <ChatTimelineList
+          items={quickAskTimelineItems}
+          conversationId={conversationId}
+          scrollContainerRef={chatAreaRef}
+          renderItem={renderQuickAskTimelineItem}
+          followOutput={quickAskFollowOutput}
+          onAtBottomStateChange={handleTimelineAtBottomStateChange}
+          virtualizationThreshold={
+            focusedUserMessageId ? quickAskTimelineItems.length : undefined
+          }
+          scrollContainerClassName="smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared"
+          scrollContainerStyle={
+            panelSize?.height ? { maxHeight: 'none' } : undefined
+          }
+        />
       )}
 
       {/* Bottom toolbar (Cursor style): assistant selector left, actions right */}
