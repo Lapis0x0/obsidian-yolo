@@ -131,6 +131,12 @@ export type AssistantToolMessageGroupItemProps = {
     targetFilePath?: string,
   ) => void
   onToolMessageUpdate: (message: ChatToolMessage) => void
+  onRecoverToolCall?: (payload: {
+    conversationId: string
+    toolMessageId: string
+    request: ChatToolMessage['toolCalls'][number]['request']
+    allowForConversation?: boolean
+  }) => Promise<boolean>
   editingAssistantMessageId?: string | null
   onEditStart: (messageId: string) => void
   onEditCancel: () => void
@@ -166,6 +172,7 @@ export default function AssistantToolMessageGroupItem({
   activeApplyRequestKey,
   onApply,
   onToolMessageUpdate,
+  onRecoverToolCall,
   editingAssistantMessageId,
   onEditStart,
   onEditCancel,
@@ -547,6 +554,7 @@ export default function AssistantToolMessageGroupItem({
                 message.id === pendingCompactionAnchorMessageId
               }
               onMessageUpdate={onToolMessageUpdate}
+              onRecoverToolCall={onRecoverToolCall}
             />
           </div>
         )

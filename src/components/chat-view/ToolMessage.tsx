@@ -639,11 +639,18 @@ const ToolMessage = memo(function ToolMessage({
   conversationId,
   isCompactionPending = false,
   onMessageUpdate,
+  onRecoverToolCall,
 }: {
   message: ChatToolMessage
   conversationId: string
   isCompactionPending?: boolean
   onMessageUpdate: (message: ChatToolMessage) => void
+  onRecoverToolCall?: (payload: {
+    conversationId: string
+    toolMessageId: string
+    request: ToolCallRequest
+    allowForConversation?: boolean
+  }) => Promise<boolean>
 }) {
   return (
     <div className="smtcmp-toolcall-container">
@@ -656,9 +663,11 @@ const ToolMessage = memo(function ToolMessage({
             request={toolCall.request}
             response={toolCall.response}
             conversationId={conversationId}
+            toolMessageId={message.id}
             showCompactionPendingHint={
               isCompactionPending && index === message.toolCalls.length - 1
             }
+            onRecoverToolCall={onRecoverToolCall}
             onResponseUpdate={(response) =>
               onMessageUpdate({
                 ...message,
@@ -678,13 +687,22 @@ function ToolCallItem({
   request,
   response,
   conversationId,
+  toolMessageId,
   showCompactionPendingHint = false,
+  onRecoverToolCall,
   onResponseUpdate,
 }: {
   request: ToolCallRequest
   response: ToolCallResponse
   conversationId: string
+  toolMessageId: string
   showCompactionPendingHint?: boolean
+  onRecoverToolCall?: (payload: {
+    conversationId: string
+    toolMessageId: string
+    request: ToolCallRequest
+    allowForConversation?: boolean
+  }) => Promise<boolean>
   onResponseUpdate: (response: ToolCallResponse) => void
 }) {
   const STATUS_TRANSITION_MS = 180
@@ -694,7 +712,13 @@ function ToolCallItem({
     handleAllowForConversation,
     handleReject,
     handleAbort,
-  } = useToolCall(request, conversationId, onResponseUpdate)
+  } = useToolCall(
+    request,
+    conversationId,
+    toolMessageId,
+    onResponseUpdate,
+    onRecoverToolCall,
+  )
 
   const [isOpen, setIsOpen] = useState(
     // Open by default if the tool call requires approval
@@ -1008,7 +1032,14 @@ function ToolCallItem({
 function useToolCall(
   request: ToolCallRequest,
   conversationId: string,
+  toolMessageId: string,
   onResponseUpdate: (response: ToolCallResponse) => void,
+  onRecoverToolCall?: (payload: {
+    conversationId: string
+    toolMessageId: string
+    request: ToolCallRequest
+    allowForConversation?: boolean
+  }) => Promise<boolean>,
 ) {
   const plugin = usePlugin()
   const showReloadNotice = useCallback(() => {
@@ -1017,15 +1048,34 @@ function useToolCall(
     )
   }, [])
 
+  const tryRecoverToolCall = useCallback(
+    async (allowForConversation = false): Promise<boolean> => {
+      if (!onRecoverToolCall) {
+        return false
+      }
+
+      return onRecoverToolCall({
+        conversationId,
+        toolMessageId,
+        request,
+        allowForConversation,
+      })
+    },
+    [conversationId, onRecoverToolCall, request, toolMessageId],
+  )
+
   const handleToolCall = useCallback(async () => {
     const approved = await plugin.getAgentService().approveToolCall({
       conversationId,
       toolCallId: request.id,
     })
     if (!approved) {
-      showReloadNotice()
+      const recovered = await tryRecoverToolCall()
+      if (!recovered) {
+        showReloadNotice()
+      }
     }
-  }, [conversationId, plugin, request.id, showReloadNotice])
+  }, [conversationId, plugin, request.id, showReloadNotice, tryRecoverToolCall])
 
   const handleAllowForConversation = useCallback(async () => {
     const approved = await plugin.getAgentService().approveToolCall({
@@ -1034,9 +1084,12 @@ function useToolCall(
       allowForConversation: true,
     })
     if (!approved) {
-      showReloadNotice()
+      const recovered = await tryRecoverToolCall(true)
+      if (!recovered) {
+        showReloadNotice()
+      }
     }
-  }, [conversationId, plugin, request.id, showReloadNotice])
+  }, [conversationId, plugin, request.id, showReloadNotice, tryRecoverToolCall])
 
   const handleReject = useCallback(() => {
     const rejected = plugin.getAgentService().rejectToolCall({

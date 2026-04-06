@@ -55,7 +55,12 @@ import type {
   MentionableBlock,
   MentionableBlockData,
 } from '../../types/mentionable'
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import {
+  type ToolCallRequest,
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+  getToolCallArgumentsObject,
+} from '../../types/tool-call.types'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   type GroupEditSummary,
@@ -125,6 +130,97 @@ const shouldShowContinueResponse = (
     ].includes(toolCall.response.status),
   )
 }
+
+const normalizeHydratedConversationMessages = (
+  messages: ChatMessage[],
+): { messages: ChatMessage[]; changed: boolean } => {
+  let changed = false
+
+  const nextMessages = messages.map((message) => {
+    if (
+      message.role === 'assistant' &&
+      message.metadata?.generationState === 'streaming'
+    ) {
+      changed = true
+      return {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          generationState: 'aborted' as const,
+        },
+      }
+    }
+
+    if (message.role !== 'tool') {
+      return message
+    }
+
+    let toolCallUpdated = false
+    const nextToolCalls = message.toolCalls.map((toolCall) => {
+      if (toolCall.response.status !== ToolCallResponseStatus.Running) {
+        return toolCall
+      }
+
+      toolCallUpdated = true
+      changed = true
+      return {
+        ...toolCall,
+        response: { status: ToolCallResponseStatus.Aborted as const },
+      }
+    })
+
+    if (!toolCallUpdated && message.metadata?.branchRunStatus !== 'running') {
+      return message
+    }
+
+    if (message.metadata?.branchRunStatus === 'running') {
+      changed = true
+    }
+
+    return {
+      ...message,
+      toolCalls: nextToolCalls,
+      metadata:
+        message.metadata?.branchRunStatus === 'running'
+          ? {
+              ...message.metadata,
+              branchRunStatus: 'aborted' as const,
+            }
+          : message.metadata,
+    }
+  })
+
+  return {
+    messages: nextMessages,
+    changed,
+  }
+}
+
+const updateToolCallResponseInMessages = ({
+  messages,
+  toolMessageId,
+  toolCallId,
+  response,
+}: {
+  messages: ChatMessage[]
+  toolMessageId: string
+  toolCallId: string
+  response: ToolCallResponse
+}) =>
+  messages.map((message) => {
+    if (message.role !== 'tool' || message.id !== toolMessageId) {
+      return message
+    }
+
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) =>
+        toolCall.request.id === toolCallId
+          ? { ...toolCall, response }
+          : toolCall,
+      ),
+    }
+  })
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
   const clampedOffset = Math.max(0, Math.min(offset, content.length))
@@ -1530,10 +1626,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         if (!conversation) {
           throw new Error('Conversation not found')
         }
+        const normalizedConversation = normalizeHydratedConversationMessages(
+          conversation.messages,
+        )
         setCurrentConversationId(conversationId)
-        setChatMessages(conversation.messages)
+        setChatMessages(normalizedConversation.messages)
         setCompactionState(conversation.compaction ?? [])
         setPendingCompactionAnchorMessageId(null)
+        plugin
+          .getAgentService()
+          .replaceConversationMessages(
+            conversationId,
+            normalizedConversation.messages,
+            conversation.compaction ?? [],
+            { persistState: true },
+          )
         const storedAutoAttach = conversation.overrides?.autoAttachCurrentFile
         const resolvedAutoAttach =
           typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
@@ -1600,7 +1707,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           loadedActiveBranchByUserMessageId
         setActiveBranchByUserMessageId(loadedActiveBranchByUserMessageId)
         const nextMessageReasoningMap = new Map<string, ReasoningLevel>()
-        conversation.messages.forEach((message) => {
+        normalizedConversation.messages.forEach((message) => {
           if (message.role !== 'user') return
           const messageLevel = normalizeReasoningLevel(message.reasoningLevel)
           if (messageLevel) {
@@ -1615,6 +1722,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         setQueryProgress({
           type: 'idle',
         })
+        if (normalizedConversation.changed) {
+          await createOrUpdateConversationImmediately(
+            conversationId,
+            normalizedConversation.messages,
+            conversation.overrides,
+            conversation.conversationModelId,
+            conversation.messageModelMap,
+            conversation.activeBranchByUserMessageId,
+            conversation.reasoningLevel,
+            conversation.compaction,
+          )
+        }
       } catch (error) {
         new Notice('Failed to load conversation')
         console.error('Failed to load conversation', error)
@@ -1622,6 +1741,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       getConversationById,
+      createOrUpdateConversationImmediately,
+      plugin,
       settings.chatModelId,
       settings.currentAssistantId,
       settings.chatOptions.chatMode,
@@ -1935,6 +2056,152 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return storedLevel ?? reasoningLevel
     },
     [normalizeReasoningLevel, reasoningLevel],
+  )
+
+  const handleRecoverPendingToolCall = useCallback(
+    async ({
+      conversationId,
+      toolMessageId,
+      request,
+      allowForConversation = false,
+    }: {
+      conversationId: string
+      toolMessageId: string
+      request: ToolCallRequest
+      allowForConversation?: boolean
+    }): Promise<boolean> => {
+      if (conversationId !== currentConversationId) {
+        return false
+      }
+
+      const sourceMessages = chatMessagesStateRef.current
+      const toolMessageIndex = sourceMessages.findIndex(
+        (message) => message.role === 'tool' && message.id === toolMessageId,
+      )
+      if (toolMessageIndex === -1) {
+        return false
+      }
+
+      const toolMessage = sourceMessages[toolMessageIndex]
+      if (toolMessage.role !== 'tool') {
+        return false
+      }
+
+      const targetToolCall = toolMessage.toolCalls.find(
+        (toolCall) => toolCall.request.id === request.id,
+      )
+      if (
+        !targetToolCall ||
+        targetToolCall.response.status !==
+          ToolCallResponseStatus.PendingApproval
+      ) {
+        return false
+      }
+
+      const applyMessages = (nextMessages: ChatMessage[]) => {
+        setChatMessages(nextMessages)
+        chatMessagesStateRef.current = nextMessages
+        plugin
+          .getAgentService()
+          .replaceConversationMessages(
+            conversationId,
+            nextMessages,
+            effectiveCompactionState,
+            { persistState: true },
+          )
+      }
+
+      const runningMessages = updateToolCallResponseInMessages({
+        messages: sourceMessages,
+        toolMessageId,
+        toolCallId: request.id,
+        response: { status: ToolCallResponseStatus.Running },
+      })
+      applyMessages(runningMessages)
+
+      try {
+        const mcpManager = await getMcpManager()
+        const args = getToolCallArgumentsObject(request.arguments)
+
+        if (allowForConversation) {
+          mcpManager.allowToolForConversation(
+            request.name,
+            conversationId,
+            args,
+          )
+        }
+
+        const result = await mcpManager.callTool({
+          name: request.name,
+          args,
+          id: request.id,
+          conversationId,
+          conversationMessages: runningMessages,
+          roundId: toolMessageId,
+        })
+
+        const resolvedMessages = updateToolCallResponseInMessages({
+          messages: chatMessagesStateRef.current,
+          toolMessageId,
+          toolCallId: request.id,
+          response: result,
+        })
+        applyMessages(resolvedMessages)
+        await persistConversationImmediately(resolvedMessages)
+
+        const latestToolMessage = resolvedMessages.find(
+          (message) => message.role === 'tool' && message.id === toolMessageId,
+        )
+        if (
+          toolMessageIndex === resolvedMessages.length - 1 &&
+          latestToolMessage?.role === 'tool' &&
+          latestToolMessage.toolCalls.every((toolCall) =>
+            [
+              ToolCallResponseStatus.Success,
+              ToolCallResponseStatus.Error,
+            ].includes(toolCall.response.status),
+          )
+        ) {
+          submitChatMutation.mutate({
+            chatMessages: resolvedMessages,
+            conversationId,
+            reasoningLevel: resolveReasoningLevelForMessages(resolvedMessages),
+            modelIds: getLatestUserSelectedModelIds(resolvedMessages),
+          })
+        }
+
+        return true
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Tool call failed'
+        const failedMessages = updateToolCallResponseInMessages({
+          messages: chatMessagesStateRef.current,
+          toolMessageId,
+          toolCallId: request.id,
+          response: {
+            status: ToolCallResponseStatus.Error,
+            error: errorMessage,
+          },
+        })
+        applyMessages(failedMessages)
+        await persistConversationImmediately(failedMessages)
+        console.error('[YOLO] Failed to recover pending tool call', {
+          conversationId,
+          toolCallId: request.id,
+          error,
+        })
+        return true
+      }
+    },
+    [
+      currentConversationId,
+      effectiveCompactionState,
+      getMcpManager,
+      persistConversationImmediately,
+      plugin,
+      resolveReasoningLevelForMessages,
+      submitChatMutation,
+    ],
   )
 
   const updateAutoAttachCurrentFile = useCallback(
@@ -3343,6 +3610,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             activeApplyRequestKey={activeApplyRequestKey}
             onApply={handleApply}
             onToolMessageUpdate={handleToolMessageUpdate}
+            onRecoverToolCall={handleRecoverPendingToolCall}
             editingAssistantMessageId={editingAssistantMessageId}
             onEditStart={(messageId) => {
               setEditingAssistantMessageId(messageId)
@@ -3720,7 +3988,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       >
         {(isCurrentConversationRunActive || showScrollToBottomButton) && (
           <div className="smtcmp-chat-floating-actions" aria-hidden="true">
-            {isCurrentConversationRunActive && (
+            {currentConversationRunSummary.isRunning && (
               <button
                 type="button"
                 onClick={() => abortConversationRun(currentConversationId)}
