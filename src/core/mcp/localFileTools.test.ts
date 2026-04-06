@@ -1128,42 +1128,38 @@ describe('local fs tool action helpers', () => {
     })
   })
 
-  it('requires non-empty batch items in fs tool schemas', () => {
+  it('keeps fs tool schemas batch-friendly without top-level combinators', () => {
     const tools = getLocalFileTools()
     const schemaByName = new Map(
       tools.map((tool) => [tool.name, tool.inputSchema] as const),
     )
 
-    expect(schemaByName.get('fs_create_file')).toMatchObject({
-      oneOf: [{ required: ['path', 'content'] }, { required: ['items'] }],
-      properties: {
-        items: { minItems: 1 },
-      },
-    })
-    expect(schemaByName.get('fs_delete_file')).toMatchObject({
-      oneOf: [{ required: ['path'] }, { required: ['items'] }],
-      properties: {
-        items: { minItems: 1 },
-      },
-    })
-    expect(schemaByName.get('fs_create_dir')).toMatchObject({
-      oneOf: [{ required: ['path'] }, { required: ['items'] }],
-      properties: {
-        items: { minItems: 1 },
-      },
-    })
-    expect(schemaByName.get('fs_delete_dir')).toMatchObject({
-      oneOf: [{ required: ['path'] }, { required: ['items'] }],
-      properties: {
-        items: { minItems: 1 },
-      },
-    })
-    expect(schemaByName.get('fs_move')).toMatchObject({
-      oneOf: [{ required: ['oldPath', 'newPath'] }, { required: ['items'] }],
-      properties: {
-        items: { minItems: 1 },
-      },
-    })
+    for (const toolName of [
+      'fs_create_file',
+      'fs_delete_file',
+      'fs_create_dir',
+      'fs_delete_dir',
+      'fs_move',
+    ] as const) {
+      const schema = schemaByName.get(toolName) as
+        | {
+            properties?: {
+              items?: {
+                minItems?: number
+              }
+            }
+            oneOf?: unknown
+            anyOf?: unknown
+            allOf?: unknown
+          }
+        | undefined
+
+      expect(schema).toBeDefined()
+      expect(schema?.properties?.items?.minItems).toBe(1)
+      expect(schema?.oneOf).toBeUndefined()
+      expect(schema?.anyOf).toBeUndefined()
+      expect(schema?.allOf).toBeUndefined()
+    }
   })
 
   it('rejects empty batch items for fs_create_file at runtime', async () => {

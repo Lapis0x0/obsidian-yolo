@@ -97,7 +97,7 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   requestTimeoutMs: 12000,
 }
 
-export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 12000
+export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 60000
 
 const notificationOptionsSchema = z
   .object({

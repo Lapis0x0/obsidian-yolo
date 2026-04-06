@@ -128,7 +128,7 @@ export const zh: TranslationKeys = {
         '当流式主请求超时或失败时，自动改用非流式再尝试一次。',
       primaryRequestTimeout: '主请求超时（秒）',
       primaryRequestTimeoutDesc:
-        '流式主请求等待多久后判定为超时。超时后如已启用自动恢复，将自动改用非流式再尝试一次。默认 12 秒。',
+        '流式主请求等待多久后判定为超时。无论是否启用自动恢复，此超时都会生效；若已启用自动恢复，超时后会自动改用非流式再尝试一次。默认 60 秒。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc:
         '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}、星期 {{current_weekday}}。',

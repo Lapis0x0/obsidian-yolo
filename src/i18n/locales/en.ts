@@ -154,7 +154,7 @@ export const en: TranslationKeys = {
         'When the streaming primary request times out or fails, retry once with a non-streaming fallback.',
       primaryRequestTimeout: 'Primary request timeout (seconds)',
       primaryRequestTimeoutDesc:
-        'How long to wait before the streaming primary request is treated as timed out. If automatic recovery is enabled, a non-streaming fallback is attempted afterward. Default: 12 seconds.',
+        'How long to wait before the streaming primary request is treated as timed out. This timeout always applies; if automatic recovery is enabled, a non-streaming fallback is attempted afterward. Default: 60 seconds.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}, weekday {{current_weekday}}.',

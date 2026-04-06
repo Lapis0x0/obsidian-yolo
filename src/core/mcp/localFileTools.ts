@@ -547,7 +547,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_create_file',
       description:
-        'Create file(s) in the vault using either path/content or items[].',
+        'Create file(s) in the vault. Use path/content for a single file or items[] for batch creation.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -583,12 +583,12 @@ export function getLocalFileTools(): McpTool[] {
               'If true, validate and preview result without applying changes.',
           },
         },
-        oneOf: [{ required: ['path', 'content'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_delete_file',
-      description: 'Delete file(s) in the vault using either path or items[].',
+      description:
+        'Delete file(s) in the vault. Use path for a single file or items[] for batch deletion.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -616,13 +616,12 @@ export function getLocalFileTools(): McpTool[] {
               'If true, validate and preview result without applying changes.',
           },
         },
-        oneOf: [{ required: ['path'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_create_dir',
       description:
-        'Create folder(s) in the vault using either path or items[].',
+        'Create folder(s) in the vault. Use path for a single folder or items[] for batch creation.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -650,13 +649,12 @@ export function getLocalFileTools(): McpTool[] {
               'If true, validate and preview result without applying changes.',
           },
         },
-        oneOf: [{ required: ['path'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_delete_dir',
       description:
-        'Delete folder(s) in the vault using either path or items[].',
+        'Delete folder(s) in the vault. Use path for a single folder or items[] for batch deletion.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -694,13 +692,12 @@ export function getLocalFileTools(): McpTool[] {
               'If true, validate and preview result without applying changes.',
           },
         },
-        oneOf: [{ required: ['path'] }, { required: ['items'] }],
       },
     },
     {
       name: 'fs_move',
       description:
-        'Move or rename file/folder path(s) in the vault using either oldPath/newPath or items[].',
+        'Move or rename file/folder path(s) in the vault. Use oldPath/newPath for a single move or items[] for batch moves.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -736,7 +733,6 @@ export function getLocalFileTools(): McpTool[] {
               'If true, validate and preview result without applying changes.',
           },
         },
-        oneOf: [{ required: ['oldPath', 'newPath'] }, { required: ['items'] }],
       },
     },
     {

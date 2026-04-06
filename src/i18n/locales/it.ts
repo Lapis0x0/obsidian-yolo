@@ -154,7 +154,7 @@ export const it: TranslationKeys = {
         'Quando la richiesta primaria in streaming scade o fallisce, esegue un secondo tentativo in modalita non streaming.',
       primaryRequestTimeout: 'Timeout richiesta primaria (secondi)',
       primaryRequestTimeoutDesc:
-        'Quanto attendere prima che la richiesta primaria in streaming venga considerata in timeout. Se il recupero automatico e attivo, dopo il timeout verra tentato un fallback non streaming. Predefinito: 12 secondi.',
+        'Quanto attendere prima che la richiesta primaria in streaming venga considerata in timeout. Questo timeout si applica sempre; se il recupero automatico e attivo, dopo il timeout verra tentato un fallback non streaming. Predefinito: 60 secondi.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.",
