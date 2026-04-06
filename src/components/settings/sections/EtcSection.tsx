@@ -14,6 +14,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
+import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
 import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
@@ -36,6 +37,7 @@ type StorageUsage = {
 
 const CHAT_SNAPSHOT_DIR = 'chat_snapshots'
 const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
+const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) {
@@ -88,19 +90,29 @@ const loadStorageUsage = async (
   const rootDir = await ensureJsonDbRootDir(app, settings)
   const chatDir = normalizePath(`${rootDir}/${CHAT_DIR}`)
 
-  const [chatHistoryBytes, promptSnapshotBytes, editReviewSnapshotBytes] =
+  const [
+    chatHistoryBytes,
+    promptSnapshotBytes,
+    editReviewSnapshotBytes,
+    timelineHeightCacheBytes,
+  ] =
     await Promise.all([
       getPathSize(app, chatDir),
       getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
       getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
+      getPathSize(app, normalizePath(`${chatDir}/${TIMELINE_HEIGHT_CACHE_DIR}`)),
     ])
 
   return {
     chatHistoryBytes: Math.max(
       0,
-      chatHistoryBytes - promptSnapshotBytes - editReviewSnapshotBytes,
+      chatHistoryBytes -
+        promptSnapshotBytes -
+        editReviewSnapshotBytes -
+        timelineHeightCacheBytes,
     ),
-    chatSnapshotBytes: promptSnapshotBytes + editReviewSnapshotBytes,
+    chatSnapshotBytes:
+      promptSnapshotBytes + editReviewSnapshotBytes + timelineHeightCacheBytes,
   }
 }
 
@@ -254,6 +266,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
         void (async () => {
           await clearAllPromptSnapshotStores(app, settings)
           await clearAllEditReviewSnapshotStores(app, settings)
+          await clearAllTimelineHeightCacheStores(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))

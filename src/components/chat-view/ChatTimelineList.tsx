@@ -14,6 +14,13 @@ import {
   type VirtuosoHandle,
 } from 'react-virtuoso'
 
+import { useApp } from '../../contexts/app-context'
+import { useSettings } from '../../contexts/settings-context'
+import {
+  flushPersistedTimelineHeightCache,
+  hydratePersistedTimelineHeightCache,
+  schedulePersistedTimelineHeightCacheFlush,
+} from '../../database/json/chat/timelineHeightCacheStore'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 import {
   buildTimelineSignature,
@@ -155,6 +162,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
 }: ChatTimelineListProps<TItem>) {
   // Reserved for phase-2 pinned rendering semantics.
   void forceRenderItemIds
+  const app = useApp()
+  const { settings } = useSettings()
 
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(
@@ -162,6 +171,9 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   )
   const lastAtBottomStateRef = useRef<boolean | null>(null)
   const [heightCacheVersion, setHeightCacheVersion] = useState(0)
+  const [hasHydratedPersistedCache, setHasHydratedPersistedCache] = useState(
+    !conversationId,
+  )
   const [cacheScopeState, setCacheScopeState] = useState<{
     widthBucket: number
     styleSignature: string
@@ -189,12 +201,40 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     conversationId,
   ])
 
+  useEffect(() => {
+    setHasHydratedPersistedCache(!conversationId)
+  }, [conversationId])
+
+  useEffect(() => {
+    if (!conversationId) {
+      return
+    }
+
+    let isCancelled = false
+
+    void hydratePersistedTimelineHeightCache({
+      app,
+      conversationId,
+      settings,
+    }).then(() => {
+      if (isCancelled) {
+        return
+      }
+      setHeightCacheVersion((currentVersion) => currentVersion + 1)
+      setHasHydratedPersistedCache(true)
+    })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [app, conversationId, settings])
+
   const cachedHeightByItemId = useMemo(() => {
     if (!cacheScope) {
       return null
     }
     return getTimelineHeightCache(cacheScope)
-  }, [cacheScope, heightCacheVersion])
+  }, [cacheScope, hasHydratedPersistedCache, heightCacheVersion])
 
   const restoreStateFrom = useMemo(() => {
     if (!isVirtualized || !cacheScope) {
@@ -217,9 +257,14 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       const changed = updateTimelineItemHeight(cacheScope, itemId, measuredHeight)
       if (changed) {
         setHeightCacheVersion((currentVersion) => currentVersion + 1)
+        schedulePersistedTimelineHeightCacheFlush({
+          app,
+          conversationId: cacheScope.conversationId,
+          settings,
+        })
       }
     },
-    [cacheScope],
+    [app, cacheScope, settings],
   )
 
   const handleScrollerRef = useCallback(
@@ -319,11 +364,21 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   ])
 
   useEffect(() => {
-    if (!isVirtualized || !cacheScope) {
+    if (!cacheScope) {
       return
     }
 
     return () => {
+      void flushPersistedTimelineHeightCache({
+        app,
+        conversationId: cacheScope.conversationId,
+        settings,
+      })
+
+      if (!isVirtualized) {
+        return
+      }
+
       const handle = virtuosoRef.current
       if (!handle) {
         return
@@ -337,7 +392,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         })
       })
     }
-  }, [cacheScope, isVirtualized, timelineSignature])
+  }, [app, cacheScope, isVirtualized, settings, timelineSignature])
 
   const heightEstimates = useMemo(
     () =>

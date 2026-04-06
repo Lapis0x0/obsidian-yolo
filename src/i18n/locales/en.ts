@@ -905,12 +905,13 @@ export const en: TranslationKeys = {
       clearChatHistoryConfirm:
         'Are you sure you want to clear all chat history without the ability to undo?',
       clearChatHistorySuccess: 'All chat history has been cleared',
-      clearChatSnapshots: 'Clear chat snapshots',
+      clearChatSnapshots: 'Clear chat snapshots and cache',
       clearChatSnapshotsDesc:
-        'Delete all conversation context snapshot files (without deleting chat messages)',
+        'Delete all conversation context snapshots, edit review snapshots, and timeline height cache files (without deleting chat messages)',
       clearChatSnapshotsConfirm:
-        'Are you sure you want to clear all chat snapshot files? This action cannot be undone and context may need to be rebuilt later.',
-      clearChatSnapshotsSuccess: 'All chat snapshot files have been cleared',
+        'Are you sure you want to clear all chat snapshot and cache files? This action cannot be undone and context and timeline heights may need to be rebuilt later.',
+      clearChatSnapshotsSuccess:
+        'All chat snapshot and cache files have been cleared',
       resetProviders: 'Reset providers and models',
       resetProvidersDesc: 'Restore default providers and model configurations',
       resetProvidersConfirm:

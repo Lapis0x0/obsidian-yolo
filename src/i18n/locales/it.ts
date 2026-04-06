@@ -888,13 +888,13 @@ export const it: TranslationKeys = {
       clearChatHistoryConfirm:
         'Sei sicuro di voler cancellare tutta la cronologia chat? Questa azione non può essere annullata.',
       clearChatHistorySuccess: 'Cronologia chat cancellata con successo.',
-      clearChatSnapshots: 'Cancella snapshot chat',
+      clearChatSnapshots: 'Cancella snapshot e cache chat',
       clearChatSnapshotsDesc:
-        'Elimina tutti i file snapshot di contesto delle conversazioni (senza eliminare i messaggi chat).',
+        'Elimina tutti i file snapshot di contesto delle conversazioni, snapshot di revisione modifiche e cache delle altezze della timeline (senza eliminare i messaggi chat).',
       clearChatSnapshotsConfirm:
-        'Sei sicuro di voler cancellare tutti i file snapshot della chat? Questa azione non può essere annullata e il contesto potrebbe dover essere ricostruito in seguito.',
+        'Sei sicuro di voler cancellare tutti i file snapshot e cache della chat? Questa azione non può essere annullata e il contesto e le altezze della timeline potrebbero dover essere ricostruiti in seguito.',
       clearChatSnapshotsSuccess:
-        'Tutti i file snapshot della chat sono stati cancellati.',
+        'Tutti i file snapshot e cache della chat sono stati cancellati.',
       resetProviders: 'Ripristina provider',
       resetProvidersDesc:
         'Ripristina tutte le configurazioni dei provider ai valori predefiniti.',

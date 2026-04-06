@@ -114,6 +114,68 @@ export const getTimelineHeightCache = (
   return heightCacheByScope.get(getScopeKey(scope))?.valueByItemId ?? null
 }
 
+export type TimelineHeightCacheSnapshot = {
+  scope: TimelineCacheScope
+  updatedAt: number
+  heights: Record<string, number>
+}
+
+export const listTimelineHeightCacheSnapshots = (
+  conversationId: string,
+): TimelineHeightCacheSnapshot[] => {
+  const snapshots: TimelineHeightCacheSnapshot[] = []
+
+  for (const [scopeKey, entry] of heightCacheByScope.entries()) {
+    if (!scopeKey.startsWith(`${conversationId}::`)) {
+      continue
+    }
+
+    const heights = Object.fromEntries(entry.valueByItemId.entries())
+    const [_, widthBucketRaw, ...styleSignatureParts] = scopeKey.split('::')
+    snapshots.push({
+      scope: {
+        conversationId,
+        widthBucket: Number(widthBucketRaw),
+        styleSignature: styleSignatureParts.join('::'),
+      },
+      updatedAt: entry.updatedAt,
+      heights,
+    })
+  }
+
+  snapshots.sort((left, right) => right.updatedAt - left.updatedAt)
+  return snapshots
+}
+
+export const hydrateTimelineHeightCache = (
+  snapshots: TimelineHeightCacheSnapshot[],
+): void => {
+  for (const snapshot of snapshots) {
+    const scopeKey = getScopeKey(snapshot.scope)
+    heightCacheByScope.set(scopeKey, {
+      updatedAt: snapshot.updatedAt,
+      valueByItemId: new Map(Object.entries(snapshot.heights)),
+    })
+  }
+  pruneOldestEntry(heightCacheByScope)
+}
+
+export const clearTimelineHeightCache = (
+  conversationId?: string,
+): void => {
+  if (!conversationId) {
+    heightCacheByScope.clear()
+    return
+  }
+
+  const scopeKeyPrefix = `${conversationId}::`
+  for (const scopeKey of heightCacheByScope.keys()) {
+    if (scopeKey.startsWith(scopeKeyPrefix)) {
+      heightCacheByScope.delete(scopeKey)
+    }
+  }
+}
+
 export const updateTimelineItemHeight = (
   scope: TimelineCacheScope,
   itemId: string,

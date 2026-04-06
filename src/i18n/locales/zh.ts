@@ -829,11 +829,12 @@ export const zh: TranslationKeys = {
       clearChatHistoryDesc: '删除所有聊天会话及消息',
       clearChatHistoryConfirm: '确定要清空所有聊天记录吗？此操作不可撤销。',
       clearChatHistorySuccess: '已清空所有聊天记录',
-      clearChatSnapshots: '清空聊天快照',
-      clearChatSnapshotsDesc: '删除所有会话的上下文快照文件（不删除聊天消息）',
+      clearChatSnapshots: '清空聊天快照与缓存',
+      clearChatSnapshotsDesc:
+        '删除所有会话的上下文快照、编辑快照与时间线高度缓存文件（不删除聊天消息）',
       clearChatSnapshotsConfirm:
-        '确定要清空所有聊天快照文件吗？此操作不可撤销，后续可能需要重新构建上下文。',
-      clearChatSnapshotsSuccess: '已清空所有聊天快照文件',
+        '确定要清空所有聊天快照与缓存文件吗？此操作不可撤销，后续可能需要重新构建上下文与时间线高度。',
+      clearChatSnapshotsSuccess: '已清空所有聊天快照与缓存文件',
       resetProviders: '重置供应商与模型',
       resetProvidersDesc: '恢复默认的供应商与模型配置',
       resetProvidersConfirm:
