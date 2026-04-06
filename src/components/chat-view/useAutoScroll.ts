@@ -11,13 +11,17 @@ type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
   bottomAnchorRef?: React.RefObject<HTMLElement>
   isStreaming?: boolean
+  contentFollowMode?: 'observer' | 'explicit'
 }
 
 export function useAutoScroll({
   scrollContainerRef,
   bottomAnchorRef,
   isStreaming = false,
+  contentFollowMode = 'observer',
 }: UseAutoScrollProps) {
+  const scrollContainerElement = scrollContainerRef.current
+  const bottomAnchorElement = bottomAnchorRef?.current ?? null
   const autoFollowRef = useRef(true)
   const [autoFollowState, setAutoFollowState] = useState(true)
   const programmaticScrollLockUntilRef = useRef<number>(0)
@@ -162,13 +166,12 @@ export function useAutoScroll({
   }, [])
 
   useEffect(() => {
-    const scrollContainer = scrollContainerRef.current
-    if (!scrollContainer) return
+    if (!scrollContainerElement) return
 
-    lastObservedScrollTopRef.current = scrollContainer.scrollTop
+    lastObservedScrollTopRef.current = scrollContainerElement.scrollTop
 
     const handleScroll = () => {
-      const currentScrollTop = scrollContainer.scrollTop
+      const currentScrollTop = scrollContainerElement.scrollTop
       const scrolledUp = currentScrollTop < lastObservedScrollTopRef.current
       lastObservedScrollTopRef.current = currentScrollTop
       const hasRecentUserScrollIntent =
@@ -197,37 +200,145 @@ export function useAutoScroll({
       }
     }
 
-    scrollContainer.addEventListener('wheel', markUserScrollIntent, {
+    scrollContainerElement.addEventListener('wheel', markUserScrollIntent, {
       passive: true,
     })
-    scrollContainer.addEventListener('touchmove', markUserScrollIntent, {
+    scrollContainerElement.addEventListener('touchmove', markUserScrollIntent, {
       passive: true,
     })
-    scrollContainer.addEventListener('pointerdown', markUserScrollIntent)
-    scrollContainer.addEventListener('scroll', handleScroll)
+    scrollContainerElement.addEventListener('pointerdown', markUserScrollIntent)
+    scrollContainerElement.addEventListener('scroll', handleScroll)
     return () => {
-      scrollContainer.removeEventListener('wheel', markUserScrollIntent)
-      scrollContainer.removeEventListener('touchmove', markUserScrollIntent)
-      scrollContainer.removeEventListener('pointerdown', markUserScrollIntent)
-      scrollContainer.removeEventListener('scroll', handleScroll)
+      scrollContainerElement.removeEventListener('wheel', markUserScrollIntent)
+      scrollContainerElement.removeEventListener(
+        'touchmove',
+        markUserScrollIntent,
+      )
+      scrollContainerElement.removeEventListener(
+        'pointerdown',
+        markUserScrollIntent,
+      )
+      scrollContainerElement.removeEventListener('scroll', handleScroll)
     }
-  }, [isNearBottom, markUserScrollIntent, scrollContainerRef, updateAutoFollow])
+  }, [
+    isNearBottom,
+    markUserScrollIntent,
+    scrollContainerElement,
+    updateAutoFollow,
+  ])
 
   useEffect(() => {
-    if (!isStreaming || !autoFollowState) {
+    if (
+      contentFollowMode !== 'observer' ||
+      !isStreaming ||
+      !autoFollowState ||
+      !scrollContainerElement
+    ) {
       return
     }
 
     requestFollow()
-  }, [autoFollowState, isStreaming, requestFollow])
+  }, [
+    autoFollowState,
+    contentFollowMode,
+    isStreaming,
+    requestFollow,
+    scrollContainerElement,
+  ])
 
   useEffect(() => {
-    if (!isStreaming) {
+    if (
+      contentFollowMode !== 'observer' ||
+      !scrollContainerElement ||
+      typeof MutationObserver === 'undefined'
+    ) {
       return
     }
 
-    requestFollow()
-  }, [isStreaming, requestFollow])
+    const observer = new MutationObserver(() => {
+      requestFollow()
+    })
+
+    observer.observe(scrollContainerElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'aria-expanded'],
+    })
+
+    const handleAnimatedLayoutChange = () => {
+      requestFollow()
+    }
+
+    scrollContainerElement.addEventListener(
+      'transitionend',
+      handleAnimatedLayoutChange,
+    )
+    scrollContainerElement.addEventListener(
+      'animationend',
+      handleAnimatedLayoutChange,
+    )
+
+    return () => {
+      observer.disconnect()
+      scrollContainerElement.removeEventListener(
+        'transitionend',
+        handleAnimatedLayoutChange,
+      )
+      scrollContainerElement.removeEventListener(
+        'animationend',
+        handleAnimatedLayoutChange,
+      )
+    }
+  }, [contentFollowMode, requestFollow, scrollContainerElement])
+
+  useEffect(() => {
+    if (
+      !scrollContainerElement ||
+      !bottomAnchorElement ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        const hasRecentUserScrollIntent =
+          Date.now() - lastUserScrollIntentRef.current <
+          USER_SCROLL_INTENT_WINDOW_MS
+
+        if (
+          entry.isIntersecting &&
+          !autoFollowRef.current &&
+          hasRecentUserScrollIntent
+        ) {
+          updateAutoFollow(true)
+          return
+        }
+
+        if (!entry.isIntersecting && autoFollowRef.current) {
+          requestFollow()
+        }
+      },
+      {
+        root: scrollContainerElement,
+        threshold: 1,
+      },
+    )
+
+    observer.observe(bottomAnchorElement)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [
+    bottomAnchorElement,
+    requestFollow,
+    scrollContainerElement,
+    updateAutoFollow,
+  ])
 
   useEffect(() => {
     return () => {
@@ -245,6 +356,10 @@ export function useAutoScroll({
     requestFollow()
   }, [requestFollow])
 
+  const notifyContentFlushed = useCallback(() => {
+    requestFollow()
+  }, [requestFollow])
+
   // Forces scroll to bottom regardless of current position
   const forceScrollToBottom = useCallback(() => {
     updateAutoFollow(true)
@@ -253,6 +368,7 @@ export function useAutoScroll({
 
   return {
     autoScrollToBottom,
+    notifyContentFlushed,
     forceScrollToBottom,
     isAutoFollowEnabled: autoFollowState,
     followOutput,
