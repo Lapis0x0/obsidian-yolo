@@ -6,12 +6,14 @@ type ChatSkillBadgeProps = {
   skill: ChatSelectedSkill
   onDelete: () => void
   isFocused?: boolean
+  showDeleteButton?: boolean
 }
 
 export default function ChatSkillBadge({
   skill,
   onDelete,
   isFocused = false,
+  showDeleteButton = true,
 }: ChatSkillBadgeProps) {
   return (
     <div
@@ -24,16 +26,18 @@ export default function ChatSkillBadge({
         />
         <span>{skill.name}</span>
       </div>
-      <button
-        type="button"
-        className="smtcmp-chat-user-input-file-badge-delete"
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete()
-        }}
-      >
-        <X size={12} />
-      </button>
+      {showDeleteButton && (
+        <button
+          type="button"
+          className="smtcmp-chat-user-input-file-badge-delete"
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
+        >
+          <X size={12} />
+        </button>
+      )}
     </div>
   )
 }

@@ -54,6 +54,7 @@ import {
   ChatToolMessage,
   ChatUserMessage,
 } from '../../../types/chat'
+import type { ChatTimelineItem } from '../../../types/chat-timeline'
 import {
   Mentionable,
   MentionableBlock,
@@ -69,12 +70,11 @@ import {
 } from '../../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
+import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { mergeCustomParameters } from '../../../utils/custom-parameters'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
-import ChatUserInput, {
-  ChatUserInputRef,
-} from '../../chat-view/chat-input/ChatUserInput'
+import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import {
@@ -83,6 +83,8 @@ import {
 } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
+import UserMessageItem from '../../chat-view/UserMessageItem'
+import { VirtualizedTimeline } from '../../chat-view/VirtualizedTimeline'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
@@ -1215,6 +1217,40 @@ export function QuickAskPanel({
     [],
   )
 
+  useEffect(() => {
+    if (!focusedUserMessageId) {
+      return
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) {
+        return
+      }
+
+      if (
+        target.closest('.smtcmp-chat-sidebar-popover') ||
+        target.closest('.smtcmp-smart-space-popover')
+      ) {
+        return
+      }
+
+      const activeMessageElement = chatAreaRef.current?.querySelector(
+        `[data-user-message-id="${focusedUserMessageId}"]`,
+      )
+      if (activeMessageElement?.contains(target)) {
+        return
+      }
+
+      setFocusedUserMessageId(null)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [focusedUserMessageId])
+
   const handleDeleteGroup = useCallback(
     (messageIds: string[]) => {
       setChatMessages((prev) => {
@@ -1734,6 +1770,28 @@ export function QuickAskPanel({
   const isResizedEmptyState = !hasMessages && !!panelSize?.height
   const groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[] =
     useMemo(() => groupAssistantAndToolMessages(chatMessages), [chatMessages])
+  const activeStreamingMessageId = useMemo(() => {
+    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+      const message = chatMessages[index]
+      if (
+        message.role === 'assistant' &&
+        message.metadata?.generationState === 'streaming'
+      ) {
+        return message.id
+      }
+    }
+
+    return null
+  }, [chatMessages])
+  const quickAskTimelineItems = useMemo(
+    () =>
+      buildMessageTimelineItems({
+        groupedChatMessages,
+        activeEditableMessageId: focusedUserMessageId,
+        activeStreamingMessageId,
+      }),
+    [activeStreamingMessageId, focusedUserMessageId, groupedChatMessages],
+  )
 
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
@@ -1934,6 +1992,160 @@ export function QuickAskPanel({
     [containerRef],
   )
 
+  const renderQuickAskTimelineItem = useCallback(
+    (timelineItem: ChatTimelineItem) => {
+      if (timelineItem.kind === 'assistant-group') {
+        return (
+          <AssistantToolMessageGroupItem
+            messages={timelineItem.messages}
+            conversationId={conversationId}
+            suppressFooter={false}
+            showInlineInfo={false}
+            showInsertAction={false}
+            showCopyAction={true}
+            showBranchAction={false}
+            showEditAction={false}
+            showDeleteAction={true}
+            isApplying={isApplying}
+            activeApplyRequestKey={activeApplyRequestKey}
+            onApply={handleApply}
+            onToolMessageUpdate={handleToolMessageUpdate}
+            onEditStart={noop}
+            onEditCancel={noop}
+            onEditSave={noop}
+            onDeleteGroup={handleDeleteGroup}
+            onBranchGroup={noop}
+            onQuoteAssistantSelection={noop}
+            onOpenEditSummaryFile={handleOpenEditSummaryFile}
+            showQuoteAction={false}
+          />
+        )
+      }
+
+      if (timelineItem.kind === 'user-message') {
+        const messageOrGroup = timelineItem.message
+        const groupedMessageIndex = groupedChatMessages.findIndex(
+          (candidate) =>
+            !Array.isArray(candidate) && candidate.id === messageOrGroup.id,
+        )
+
+        return (
+          <div
+            data-user-message-id={messageOrGroup.id}
+            className={`smtcmp-quick-ask-user-message${focusedUserMessageId === messageOrGroup.id ? ' smtcmp-quick-ask-user-message--editing' : ''}`}
+          >
+            <UserMessageItem
+              message={messageOrGroup}
+              isFocused={focusedUserMessageId === messageOrGroup.id}
+              displayMentionables={messageOrGroup.mentionables}
+              chatUserInputRef={(ref) =>
+                registerChatUserInputRef(messageOrGroup.id, ref)
+              }
+              onBlur={() => {
+                setFocusedUserMessageId(null)
+              }}
+              onInputChange={(content) => {
+                setChatMessages((prev) =>
+                  prev.map((message) =>
+                    message.role === 'user' && message.id === messageOrGroup.id
+                      ? {
+                          ...message,
+                          content,
+                          promptContent: null,
+                        }
+                      : message,
+                  ),
+                )
+              }}
+              onSubmit={(content) => {
+                if (
+                  editorStateToPlainText(content).trim() === '' &&
+                  messageOrGroup.mentionables.length === 0
+                ) {
+                  return
+                }
+
+                const baseMessages = groupedChatMessages
+                  .slice(0, groupedMessageIndex)
+                  .flatMap((group): ChatMessage[] =>
+                    Array.isArray(group) ? group : [group],
+                  )
+
+                void submitMessage(content, messageOrGroup.mentionables, {
+                  baseMessages,
+                  userMessageId: messageOrGroup.id,
+                })
+                setFocusedUserMessageId(null)
+                requestAnimationFrame(() => {
+                  contentEditableRef.current?.focus()
+                })
+              }}
+              onFocus={() => {
+                setFocusedUserMessageId(messageOrGroup.id)
+              }}
+              onMentionablesChange={(mentionables) => {
+                setChatMessages((prev) =>
+                  prev.map((message) =>
+                    message.role === 'user' && message.id === messageOrGroup.id
+                      ? {
+                          ...message,
+                          mentionables,
+                          promptContent: null,
+                        }
+                      : message,
+                  ),
+                )
+              }}
+              modelId={
+                settings.continuationOptions?.continuationModelId &&
+                settings.chatModels.some(
+                  (model) =>
+                    model.id ===
+                    settings.continuationOptions?.continuationModelId,
+                )
+                  ? settings.continuationOptions?.continuationModelId
+                  : settings.chatModelId
+              }
+              onModelChange={(modelId) => {
+                void setSettings({
+                  ...settings,
+                  continuationOptions: {
+                    ...settings.continuationOptions,
+                    continuationModelId: modelId,
+                  },
+                })
+              }}
+              showReasoningSelect={false}
+              showPlaceholder={false}
+              currentAssistantId={selectedAssistant?.id}
+              currentChatMode={mode}
+              allowAgentModeOption={false}
+            />
+          </div>
+        )
+      }
+
+      return null
+    },
+    [
+      activeApplyRequestKey,
+      conversationId,
+      focusedUserMessageId,
+      groupedChatMessages,
+      handleApply,
+      handleDeleteGroup,
+      handleOpenEditSummaryFile,
+      handleToolMessageUpdate,
+      isApplying,
+      registerChatUserInputRef,
+      selectedAssistant?.id,
+      setSettings,
+      settings,
+      submitMessage,
+      mode,
+    ],
+  )
+
   return (
     <div
       className={`smtcmp-quick-ask-panel ${hasMessages ? 'has-messages' : ''} ${isResizedEmptyState ? 'is-resized-empty' : ''} ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
@@ -2022,137 +2234,11 @@ export function QuickAskPanel({
           ref={chatAreaRef}
           style={panelSize?.height ? { maxHeight: 'none' } : undefined}
         >
-          {groupedChatMessages.map((messageOrGroup, index) => {
-            if (Array.isArray(messageOrGroup)) {
-              return (
-                <AssistantToolMessageGroupItem
-                  key={messageOrGroup.at(0)?.id}
-                  messages={messageOrGroup}
-                  conversationId={conversationId}
-                  suppressFooter={false}
-                  showInlineInfo={false}
-                  showInsertAction={false}
-                  showCopyAction={true}
-                  showBranchAction={false}
-                  showEditAction={false}
-                  showDeleteAction={true}
-                  isApplying={isApplying}
-                  activeApplyRequestKey={activeApplyRequestKey}
-                  onApply={handleApply}
-                  onToolMessageUpdate={handleToolMessageUpdate}
-                  onEditStart={noop}
-                  onEditCancel={noop}
-                  onEditSave={noop}
-                  onDeleteGroup={handleDeleteGroup}
-                  onBranchGroup={noop}
-                  onQuoteAssistantSelection={noop}
-                  onOpenEditSummaryFile={handleOpenEditSummaryFile}
-                  showQuoteAction={false}
-                />
-              )
-            }
-            return (
-              <div
-                key={messageOrGroup.id}
-                className={`smtcmp-quick-ask-user-message${focusedUserMessageId === messageOrGroup.id ? ' smtcmp-quick-ask-user-message--editing' : ''}`}
-              >
-                <ChatUserInput
-                  ref={(ref) =>
-                    registerChatUserInputRef(messageOrGroup.id, ref)
-                  }
-                  initialSerializedEditorState={messageOrGroup.content}
-                  onChange={(content) => {
-                    setChatMessages((prev) =>
-                      prev.map((message) =>
-                        message.role === 'user' &&
-                        message.id === messageOrGroup.id
-                          ? {
-                              ...message,
-                              content,
-                              promptContent: null,
-                            }
-                          : message,
-                      ),
-                    )
-                  }}
-                  onSubmit={(content) => {
-                    if (
-                      editorStateToPlainText(content).trim() === '' &&
-                      messageOrGroup.mentionables.length === 0
-                    ) {
-                      return
-                    }
-
-                    const baseMessages = groupedChatMessages
-                      .slice(0, index)
-                      .flatMap((group): ChatMessage[] =>
-                        Array.isArray(group) ? group : [group],
-                      )
-
-                    void submitMessage(content, messageOrGroup.mentionables, {
-                      baseMessages,
-                      userMessageId: messageOrGroup.id,
-                    })
-                    setFocusedUserMessageId(null)
-                    requestAnimationFrame(() => {
-                      contentEditableRef.current?.focus()
-                    })
-                  }}
-                  onFocus={() => {
-                    setFocusedUserMessageId(messageOrGroup.id)
-                  }}
-                  onBlur={() => {
-                    setFocusedUserMessageId((current) =>
-                      current === messageOrGroup.id ? null : current,
-                    )
-                  }}
-                  mentionables={messageOrGroup.mentionables ?? []}
-                  setMentionables={(nextMentionables) => {
-                    setChatMessages((prev) =>
-                      prev.map((message) =>
-                        message.role === 'user' &&
-                        message.id === messageOrGroup.id
-                          ? {
-                              ...message,
-                              mentionables: nextMentionables,
-                              promptContent: null,
-                            }
-                          : message,
-                      ),
-                    )
-                  }}
-                  compact={focusedUserMessageId !== messageOrGroup.id}
-                  onToggleCompact={() => {
-                    setFocusedUserMessageId(messageOrGroup.id)
-                    requestAnimationFrame(() => {
-                      chatUserInputRefs.current.get(messageOrGroup.id)?.focus()
-                    })
-                  }}
-                  modelId={
-                    settings.continuationOptions?.continuationModelId &&
-                    settings.chatModels.some(
-                      (m) =>
-                        m.id ===
-                        settings.continuationOptions?.continuationModelId,
-                    )
-                      ? settings.continuationOptions?.continuationModelId
-                      : settings.chatModelId
-                  }
-                  onModelChange={(modelId) => {
-                    void setSettings({
-                      ...settings,
-                      continuationOptions: {
-                        ...settings.continuationOptions,
-                        continuationModelId: modelId,
-                      },
-                    })
-                  }}
-                  showReasoningSelect={false}
-                  showPlaceholder={false}
-                />
-              </div>
-            )
-          })}
+          <VirtualizedTimeline
+            items={quickAskTimelineItems}
+            scrollContainerRef={chatAreaRef}
+            renderItem={renderQuickAskTimelineItem}
+          />
         </div>
       )}
 

@@ -47,6 +47,7 @@ import type {
   ChatUserMessage,
 } from '../../types/chat'
 import { getLatestChatConversationCompaction } from '../../types/chat'
+import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
   Mentionable,
@@ -70,6 +71,7 @@ import {
 import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
 import { readTFileContent } from '../../utils/obsidian'
 import DotLoader from '../common/DotLoader'
@@ -96,26 +98,10 @@ import type { QueryProgressState } from './QueryProgress'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
+import { VirtualizedTimeline } from './VirtualizedTimeline'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
-
-type ChatTimelineItem =
-  | {
-      type: 'message'
-      key: string
-      item: ChatUserMessage | AssistantToolMessageGroup
-    }
-  | {
-      type: 'compaction-pending'
-      key: string
-      anchorMessageId: string
-    }
-  | {
-      type: 'compaction-divider'
-      key: string
-      anchorMessageId: string
-    }
 
 const shouldShowContinueResponse = (
   messages: ChatMessage[],
@@ -1077,91 +1063,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     '正在整理上下文，稍后将从新的上下文继续。',
   )
 
-  const chatTimelineItems: ChatTimelineItem[] = useMemo(() => {
-    const items: ChatTimelineItem[] = []
-    let hasInsertedPendingItem = false
-    const compactionAnchorMessageIdSet = new Set(
-      compactionDividerAnchorMessageIds,
-    )
-    const insertPendingItem = (anchorMessageId: string) => {
-      if (
-        hasInsertedPendingItem ||
-        !pendingCompactionAnchorMessageId ||
-        anchorMessageId !== pendingCompactionAnchorMessageId
-      ) {
-        return
-      }
-
-      items.push({
-        type: 'compaction-pending',
-        key: `${pendingCompactionAnchorMessageId}-compact-pending`,
-        anchorMessageId: pendingCompactionAnchorMessageId,
-      })
-      hasInsertedPendingItem = true
-    }
-
-    groupedChatMessages.forEach((messageOrGroup) => {
-      if (!Array.isArray(messageOrGroup)) {
-        items.push({
-          type: 'message',
-          key: messageOrGroup.id,
-          item: messageOrGroup,
-        })
-        insertPendingItem(messageOrGroup.id)
-        return
-      }
-
-      let currentGroup: AssistantToolMessageGroup = []
-      let sliceIndex = 0
-      const pushCurrentGroup = () => {
-        if (currentGroup.length === 0) {
-          return
-        }
-        items.push({
-          type: 'message',
-          key: currentGroup.at(0)?.id ?? `group-${items.length}-${sliceIndex}`,
-          item: currentGroup,
-        })
-        insertPendingItem(currentGroup.at(-1)?.id ?? '')
-        currentGroup = []
-        sliceIndex += 1
-      }
-
-      for (const message of messageOrGroup) {
-        currentGroup.push(message)
-        if (!compactionAnchorMessageIdSet.has(message.id)) {
-          continue
-        }
-
-        pushCurrentGroup()
-        items.push({
-          type: 'compaction-divider',
-          key: `${message.id}-compact-divider`,
-          anchorMessageId: message.id,
-        })
-      }
-
-      pushCurrentGroup()
-    })
-
-    return items
-  }, [
-    compactionDividerAnchorMessageIds,
-    groupedChatMessages,
-    pendingCompactionAnchorMessageId,
-  ])
-
-  const latestTimelineAssistantToolGroupKey = useMemo(() => {
-    for (let index = chatTimelineItems.length - 1; index >= 0; index -= 1) {
-      const candidate = chatTimelineItems[index]
-      if (candidate.type === 'message' && Array.isArray(candidate.item)) {
-        return candidate.key
-      }
-    }
-
-    return null
-  }, [chatTimelineItems])
-
   const shouldShowAutoAttachBadge =
     settings.chatOptions.includeCurrentFileContent &&
     autoAttachCurrentFile &&
@@ -1252,7 +1153,64 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       .slice(lastUserIndex + 1)
       .some((message) => message.role === 'tool')
   }, [chatMessages, isCurrentConversationRunActive])
+  const activeStreamingMessageId = useMemo(() => {
+    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+      const message = chatMessages[index]
+      if (
+        message.role === 'assistant' &&
+        message.metadata?.generationState === 'streaming'
+      ) {
+        return message.id
+      }
+    }
 
+    return null
+  }, [chatMessages])
+  const showContinueResponseButton = useMemo(() => {
+    return shouldShowContinueResponse(
+      chatMessages,
+      isCurrentConversationRunActive,
+    )
+  }, [chatMessages, isCurrentConversationRunActive])
+  const chatTimelineItems: ChatTimelineItem[] = useMemo(
+    () =>
+      buildChatTimelineItems({
+        groupedChatMessages,
+        compactionDividerAnchorMessageIds,
+        latestCompaction: latestCompactionState,
+        pendingCompactionAnchorMessageId,
+        queryProgress,
+        showContinueResponseButton,
+        activeEditableMessageId:
+          focusedMessageId && focusedMessageId !== inputMessage.id
+            ? focusedMessageId
+            : null,
+        activeEditingAssistantMessageId: editingAssistantMessageId,
+        activeStreamingMessageId,
+      }),
+    [
+      editingAssistantMessageId,
+      activeStreamingMessageId,
+      compactionDividerAnchorMessageIds,
+      focusedMessageId,
+      groupedChatMessages,
+      inputMessage.id,
+      latestCompactionState,
+      pendingCompactionAnchorMessageId,
+      queryProgress,
+      showContinueResponseButton,
+    ],
+  )
+  const latestTimelineAssistantToolGroupKey = useMemo(() => {
+    for (let index = chatTimelineItems.length - 1; index >= 0; index -= 1) {
+      const candidate = chatTimelineItems[index]
+      if (candidate.kind === 'assistant-group') {
+        return candidate.renderKey
+      }
+    }
+
+    return null
+  }, [chatTimelineItems])
   useEffect(() => {
     const chatMessagesElement = chatMessagesRef.current
     if (!chatMessagesElement) {
@@ -1525,6 +1483,40 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatUserInputRefs.current.delete(id)
     }
   }
+
+  useEffect(() => {
+    if (!focusedMessageId || focusedMessageId === inputMessage.id) {
+      return
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) {
+        return
+      }
+
+      if (
+        target.closest('.smtcmp-chat-sidebar-popover') ||
+        target.closest('.smtcmp-smart-space-popover')
+      ) {
+        return
+      }
+
+      const activeMessageElement = chatMessagesRef.current?.querySelector(
+        `[data-user-message-id="${focusedMessageId}"]`,
+      )
+      if (activeMessageElement?.contains(target)) {
+        return
+      }
+
+      setFocusedMessageId(inputMessage.id)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [focusedMessageId, inputMessage.id])
 
   const handleLoadConversation = useCallback(
     async (conversationId: string) => {
@@ -2570,13 +2562,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const showContinueResponseButton = useMemo(() => {
-    return shouldShowContinueResponse(
-      chatMessages,
-      isCurrentConversationRunActive,
-    )
-  }, [chatMessages, isCurrentConversationRunActive])
-
   const handleContinueResponse = useCallback(() => {
     const latestMessage = chatMessages.at(-1)
     submitChatMutation.mutate({
@@ -3285,6 +3270,386 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     )
   }
 
+  const renderChatTimelineItem = useCallback(
+    (timelineItem: ChatTimelineItem) => {
+      if (timelineItem.kind === 'compaction-pending') {
+        return (
+          <div
+            className="smtcmp-chat-compaction-pending"
+            data-anchor-message-id={timelineItem.anchorMessageId}
+          >
+            <div className="smtcmp-chat-compaction-pending__loader">
+              <DotLoader text={compactionPendingTitle} />
+            </div>
+            <div className="smtcmp-chat-compaction-pending__description">
+              {compactionPendingDescription}
+            </div>
+          </div>
+        )
+      }
+
+      if (timelineItem.kind === 'compaction-divider') {
+        return (
+          <div
+            className={cx(
+              'smtcmp-chat-compaction-divider',
+              timelineItem.renderKey ===
+                `${enteringCompactionDividerAnchorMessageId}-compact-divider` &&
+                'is-entering',
+            )}
+          >
+            <div className="smtcmp-chat-compaction-divider__title">
+              {compactionDividerTitle}
+            </div>
+            <div className="smtcmp-chat-compaction-divider__line" />
+            <div className="smtcmp-chat-compaction-divider__content">
+              <div className="smtcmp-chat-compaction-divider__description">
+                {compactionDividerDescription}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      if (timelineItem.kind === 'assistant-group') {
+        const messageOrGroup = timelineItem.messages
+        const containsCompactionAnchor =
+          compactionDividerAnchorMessageId !== null &&
+          messageOrGroup.some(
+            (message) => message.id === compactionDividerAnchorMessageId,
+          )
+        const shouldSuppressCompactionAnchorFooter =
+          containsCompactionAnchor &&
+          Boolean(latestCompactionState?.triggerToolCallId)
+
+        return (
+          <AssistantToolMessageGroupItem
+            messages={messageOrGroup}
+            conversationId={currentConversationId}
+            activeBranchKey={activeBranchByUserMessageId.get(
+              getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
+            )}
+            suppressFooter={
+              shouldSuppressCompactionAnchorFooter ||
+              (isCurrentConversationRunActive &&
+                timelineItem.renderKey === latestTimelineAssistantToolGroupKey)
+            }
+            isApplying={applyMutation.isPending}
+            activeApplyRequestKey={activeApplyRequestKey}
+            onApply={handleApply}
+            onToolMessageUpdate={handleToolMessageUpdate}
+            editingAssistantMessageId={editingAssistantMessageId}
+            onEditStart={(messageId) => {
+              setEditingAssistantMessageId(messageId)
+            }}
+            onEditCancel={handleAssistantMessageEditCancel}
+            onEditSave={handleAssistantMessageEditSave}
+            onDeleteGroup={handleAssistantMessageGroupDelete}
+            onBranchGroup={handleAssistantMessageGroupBranch}
+            onActiveBranchChange={(branchKey) => {
+              const sourceUserMessageId =
+                getSourceUserMessageIdForGroup(messageOrGroup)
+              if (!sourceUserMessageId) {
+                return
+              }
+              const next = new Map(activeBranchByUserMessageIdRef.current)
+              if (!branchKey) {
+                next.delete(sourceUserMessageId)
+              } else {
+                next.set(sourceUserMessageId, branchKey)
+              }
+              activeBranchByUserMessageIdRef.current = next
+              setActiveBranchByUserMessageId(next)
+              void persistConversation(chatMessagesStateRef.current)
+            }}
+            onQuoteAssistantSelection={handleQuoteAssistantSelection}
+            onOpenEditSummaryFile={handleOpenEditSummaryFile}
+            onUndoEditSummary={handleUndoEditSummary}
+            undoingEditSummaryTarget={undoingEditSummaryTarget}
+            pendingCompactionAnchorMessageId={pendingCompactionAnchorMessageId}
+            hidePendingAssistantPlaceholders={
+              shouldHidePendingAssistantPlaceholders
+            }
+          />
+        )
+      }
+
+      if (timelineItem.kind === 'user-message') {
+        const messageOrGroup = timelineItem.message
+        const groupedMessageIndex = groupedChatMessages.findIndex(
+          (candidate) =>
+            !Array.isArray(candidate) && candidate.id === messageOrGroup.id,
+        )
+        const messageReasoningLevel =
+          messageReasoningMap.get(messageOrGroup.id) ??
+          normalizeReasoningLevel(messageOrGroup.reasoningLevel) ??
+          reasoningLevel
+
+        return (
+          <UserMessageItem
+            message={messageOrGroup}
+            isFocused={focusedMessageId === messageOrGroup.id}
+            displayMentionables={
+              messageOrGroup.id === firstUserMessageId
+                ? messageOrGroup.mentionables
+                : messageOrGroup.mentionables.filter(
+                    (mentionable) => mentionable.type !== 'current-file',
+                  )
+            }
+            chatUserInputRef={(ref) =>
+              registerChatUserInputRef(messageOrGroup.id, ref)
+            }
+            onBlur={() => {
+              if (focusedMessageId === messageOrGroup.id) {
+                setFocusedMessageId(inputMessage.id)
+              }
+            }}
+            onInputChange={(content) => {
+              setChatMessages((prevChatHistory) =>
+                prevChatHistory.map((msg) =>
+                  msg.role === 'user' && msg.id === messageOrGroup.id
+                    ? {
+                        ...msg,
+                        content,
+                        promptContent: null,
+                        similaritySearchResults: undefined,
+                      }
+                    : msg,
+                ),
+              )
+            }}
+            onSubmit={(content, useVaultSearch) => {
+              if (
+                editorStateToPlainText(content).trim() === '' &&
+                messageOrGroup.mentionables.length === 0 &&
+                (messageOrGroup.selectedSkills?.length ?? 0) === 0
+              ) {
+                return
+              }
+              const modelForThisMessage =
+                messageModelMap.get(messageOrGroup.id) ?? conversationModelId
+              const reasoningForThisMessage =
+                messageReasoningMap.get(messageOrGroup.id) ??
+                messageReasoningLevel
+              const nextMessageModelMap = new Map(messageModelMap)
+              nextMessageModelMap.set(messageOrGroup.id, modelForThisMessage)
+              const editedUserMessage: ChatUserMessage = {
+                role: 'user',
+                content,
+                promptContent: null,
+                id: messageOrGroup.id,
+                reasoningLevel: reasoningForThisMessage,
+                mentionables: messageOrGroup.mentionables,
+                selectedSkills: messageOrGroup.selectedSkills ?? [],
+                selectedModelIds: extractSelectedModelIds(
+                  messageOrGroup.mentionables,
+                ),
+              }
+              const inputChatMessages = [
+                ...groupedChatMessages
+                  .slice(0, groupedMessageIndex)
+                  .flatMap((candidate): ChatMessage[] =>
+                    !Array.isArray(candidate) ? [candidate] : candidate,
+                  ),
+                editedUserMessage,
+              ]
+              const requestChatMessages = [
+                ...groupedChatMessages
+                  .slice(0, groupedMessageIndex)
+                  .flatMap((candidate): ChatMessage[] =>
+                    !Array.isArray(candidate)
+                      ? [candidate]
+                      : getDisplayedAssistantToolMessages(
+                          candidate,
+                          activeBranchByUserMessageId.get(
+                            getSourceUserMessageIdForGroup(candidate) ?? '',
+                          ),
+                        ),
+                  ),
+                editedUserMessage,
+              ]
+              void handleUserMessageSubmit({
+                inputChatMessages,
+                requestChatMessages,
+                useVaultSearch,
+                persistedMessageModelMap: nextMessageModelMap,
+              })
+              chatUserInputRefs.current.get(inputMessage.id)?.focus()
+              setMessageModelMap(nextMessageModelMap)
+              setMessageReasoningMap((prev) => {
+                const next = new Map(prev)
+                next.set(messageOrGroup.id, reasoningForThisMessage)
+                return next
+              })
+            }}
+            onFocus={() => {
+              setFocusedMessageId(messageOrGroup.id)
+            }}
+            onMentionablesChange={(mentionables) => {
+              setChatMessages((prevChatHistory) =>
+                prevChatHistory.map((msg) => {
+                  if (msg.id !== messageOrGroup.id) return msg
+                  if (msg.role !== 'user') return msg
+                  const prevKeys = msg.mentionables.map((m) =>
+                    getMentionableKey(serializeMentionable(m)),
+                  )
+                  const nextKeys = mentionables.map((m) =>
+                    getMentionableKey(serializeMentionable(m)),
+                  )
+                  const nextKeySet = new Set(nextKeys)
+                  const isSameMentionables =
+                    prevKeys.length === nextKeys.length &&
+                    prevKeys.every((key) => nextKeySet.has(key))
+                  return {
+                    ...msg,
+                    mentionables,
+                    promptContent: isSameMentionables
+                      ? msg.promptContent
+                      : null,
+                    similaritySearchResults: isSameMentionables
+                      ? msg.similaritySearchResults
+                      : undefined,
+                  }
+                }),
+              )
+            }}
+            onSelectedSkillsChange={(selectedSkills) => {
+              setChatMessages((prevChatHistory) =>
+                prevChatHistory.map((msg) =>
+                  msg.role === 'user' && msg.id === messageOrGroup.id
+                    ? {
+                        ...msg,
+                        selectedSkills,
+                        promptContent: null,
+                        snapshotRef: undefined,
+                        similaritySearchResults: undefined,
+                      }
+                    : msg,
+                ),
+              )
+            }}
+            modelId={
+              messageModelMap.get(messageOrGroup.id) ?? conversationModelId
+            }
+            onModelChange={(id) => {
+              setMessageModelMap((prev) => {
+                const next = new Map(prev)
+                next.set(messageOrGroup.id, id)
+                return next
+              })
+              setConversationModelId(id)
+              conversationModelIdRef.current.set(currentConversationId, id)
+              const nextReasoningLevel = getReasoningLevelForModelId(id)
+              setReasoningLevel(nextReasoningLevel)
+              conversationReasoningLevelRef.current.set(
+                currentConversationId,
+                nextReasoningLevel,
+              )
+              setInputMessage((prev) => ({
+                ...prev,
+                reasoningLevel: nextReasoningLevel,
+              }))
+            }}
+            reasoningLevel={messageReasoningLevel}
+            onReasoningChange={(level) => {
+              setMessageReasoningMap((prev) => {
+                const next = new Map(prev)
+                next.set(messageOrGroup.id, level)
+                return next
+              })
+              setChatMessages((prevChatHistory) =>
+                prevChatHistory.map((msg) =>
+                  msg.role === 'user' && msg.id === messageOrGroup.id
+                    ? {
+                        ...msg,
+                        reasoningLevel: level,
+                      }
+                    : msg,
+                ),
+              )
+              setReasoningLevel(level)
+              conversationReasoningLevelRef.current.set(
+                currentConversationId,
+                level,
+              )
+              void persistReasoningLevelForModel(conversationModelId, level)
+            }}
+            currentAssistantId={conversationAssistantId}
+            currentChatMode={chatMode}
+            onSelectChatModeForConversation={handleChatModeChange}
+          />
+        )
+      }
+
+      if (timelineItem.kind === 'query-progress') {
+        return <QueryProgress state={queryProgress} />
+      }
+
+      if (timelineItem.kind === 'continue-response') {
+        return (
+          <div className="smtcmp-continue-response-button-container">
+            <button
+              type="button"
+              className="smtcmp-continue-response-button"
+              onClick={handleContinueResponse}
+            >
+              <div>Continue response</div>
+            </button>
+          </div>
+        )
+      }
+
+      return (
+        <div
+          ref={bottomAnchorRef}
+          className="smtcmp-chat-bottom-anchor"
+          aria-hidden="true"
+        />
+      )
+    },
+    [
+      activeApplyRequestKey,
+      activeBranchByUserMessageId,
+      applyMutation.isPending,
+      chatMode,
+      compactionDividerAnchorMessageId,
+      compactionDividerDescription,
+      compactionPendingDescription,
+      compactionPendingTitle,
+      compactionDividerTitle,
+      conversationAssistantId,
+      conversationModelId,
+      currentConversationId,
+      editingAssistantMessageId,
+      enteringCompactionDividerAnchorMessageId,
+      firstUserMessageId,
+      focusedMessageId,
+      groupedChatMessages,
+      handleApply,
+      handleAssistantMessageEditCancel,
+      handleAssistantMessageEditSave,
+      handleChatModeChange,
+      handleContinueResponse,
+      handleOpenEditSummaryFile,
+      handleQuoteAssistantSelection,
+      handleToolMessageUpdate,
+      handleUndoEditSummary,
+      handleUserMessageSubmit,
+      inputMessage.id,
+      isCurrentConversationRunActive,
+      latestCompactionState?.triggerToolCallId,
+      latestTimelineAssistantToolGroupKey,
+      messageModelMap,
+      messageReasoningMap,
+      pendingCompactionAnchorMessageId,
+      persistConversation,
+      queryProgress,
+      reasoningLevel,
+      shouldHidePendingAssistantPlaceholders,
+      undoingEditSummaryTarget,
+    ],
+  )
+
   const showEmptyState =
     groupedChatMessages.length === 0 && !isCurrentConversationRunActive
   const showScrollToBottomButton =
@@ -3331,345 +3696,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         </div>
       )}
       <div className="smtcmp-chat-messages" ref={chatMessagesRef}>
-        {chatTimelineItems.map((timelineItem) => {
-          if (timelineItem.type === 'compaction-pending') {
-            return (
-              <div
-                key={timelineItem.key}
-                className="smtcmp-chat-compaction-pending"
-                data-anchor-message-id={timelineItem.anchorMessageId}
-              >
-                <div className="smtcmp-chat-compaction-pending__loader">
-                  <DotLoader text={compactionPendingTitle} />
-                </div>
-                <div className="smtcmp-chat-compaction-pending__description">
-                  {compactionPendingDescription}
-                </div>
-              </div>
-            )
-          }
-
-          if (timelineItem.type === 'compaction-divider') {
-            return (
-              <div
-                key={timelineItem.key}
-                className={cx(
-                  'smtcmp-chat-compaction-divider',
-                  timelineItem.key ===
-                    `${enteringCompactionDividerAnchorMessageId}-compact-divider` &&
-                    'is-entering',
-                )}
-              >
-                <div className="smtcmp-chat-compaction-divider__title">
-                  {compactionDividerTitle}
-                </div>
-                <div className="smtcmp-chat-compaction-divider__line" />
-                <div className="smtcmp-chat-compaction-divider__content">
-                  <div className="smtcmp-chat-compaction-divider__description">
-                    {compactionDividerDescription}
-                  </div>
-                </div>
-              </div>
-            )
-          }
-
-          const messageOrGroup = timelineItem.item
-          const groupedMessageIndex = groupedChatMessages.findIndex(
-            (candidate) => candidate === messageOrGroup,
-          )
-          if (Array.isArray(messageOrGroup)) {
-            const containsCompactionAnchor =
-              compactionDividerAnchorMessageId !== null &&
-              messageOrGroup.some(
-                (message) => message.id === compactionDividerAnchorMessageId,
-              )
-            const shouldSuppressCompactionAnchorFooter =
-              containsCompactionAnchor &&
-              Boolean(latestCompactionState?.triggerToolCallId)
-
-            return (
-              <Fragment key={timelineItem.key}>
-                <AssistantToolMessageGroupItem
-                  messages={messageOrGroup}
-                  conversationId={currentConversationId}
-                  activeBranchKey={activeBranchByUserMessageId.get(
-                    getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
-                  )}
-                  suppressFooter={
-                    shouldSuppressCompactionAnchorFooter ||
-                    (isCurrentConversationRunActive &&
-                      timelineItem.key === latestTimelineAssistantToolGroupKey)
-                  }
-                  isApplying={applyMutation.isPending}
-                  activeApplyRequestKey={activeApplyRequestKey}
-                  onApply={handleApply}
-                  onToolMessageUpdate={handleToolMessageUpdate}
-                  editingAssistantMessageId={editingAssistantMessageId}
-                  onEditStart={(messageId) => {
-                    setEditingAssistantMessageId(messageId)
-                  }}
-                  onEditCancel={handleAssistantMessageEditCancel}
-                  onEditSave={handleAssistantMessageEditSave}
-                  onDeleteGroup={handleAssistantMessageGroupDelete}
-                  onBranchGroup={handleAssistantMessageGroupBranch}
-                  onActiveBranchChange={(branchKey) => {
-                    const sourceUserMessageId =
-                      getSourceUserMessageIdForGroup(messageOrGroup)
-                    if (!sourceUserMessageId) {
-                      return
-                    }
-                    const next = new Map(activeBranchByUserMessageIdRef.current)
-                    if (!branchKey) {
-                      next.delete(sourceUserMessageId)
-                    } else {
-                      next.set(sourceUserMessageId, branchKey)
-                    }
-                    activeBranchByUserMessageIdRef.current = next
-                    setActiveBranchByUserMessageId(next)
-                    void persistConversation(chatMessagesStateRef.current)
-                  }}
-                  onQuoteAssistantSelection={handleQuoteAssistantSelection}
-                  onOpenEditSummaryFile={handleOpenEditSummaryFile}
-                  onUndoEditSummary={handleUndoEditSummary}
-                  undoingEditSummaryTarget={undoingEditSummaryTarget}
-                  pendingCompactionAnchorMessageId={
-                    pendingCompactionAnchorMessageId
-                  }
-                  hidePendingAssistantPlaceholders={
-                    shouldHidePendingAssistantPlaceholders
-                  }
-                />
-              </Fragment>
-            )
-          }
-
-          const messageReasoningLevel =
-            messageReasoningMap.get(messageOrGroup.id) ??
-            normalizeReasoningLevel(messageOrGroup.reasoningLevel) ??
-            reasoningLevel
-
-          return (
-            <Fragment key={timelineItem.key}>
-              <UserMessageItem
-                message={messageOrGroup}
-                isFocused={focusedMessageId === messageOrGroup.id}
-                displayMentionables={
-                  messageOrGroup.id === firstUserMessageId
-                    ? messageOrGroup.mentionables
-                    : messageOrGroup.mentionables.filter(
-                        (mentionable) => mentionable.type !== 'current-file',
-                      )
-                }
-                chatUserInputRef={(ref) =>
-                  registerChatUserInputRef(messageOrGroup.id, ref)
-                }
-                onBlur={() => {
-                  if (focusedMessageId === messageOrGroup.id) {
-                    setFocusedMessageId(inputMessage.id)
-                  }
-                }}
-                onInputChange={(content) => {
-                  setChatMessages((prevChatHistory) =>
-                    prevChatHistory.map((msg) =>
-                      msg.role === 'user' && msg.id === messageOrGroup.id
-                        ? {
-                            ...msg,
-                            content,
-                            promptContent: null,
-                            similaritySearchResults: undefined,
-                          }
-                        : msg,
-                    ),
-                  )
-                }}
-                onSubmit={(content, useVaultSearch) => {
-                  if (
-                    editorStateToPlainText(content).trim() === '' &&
-                    messageOrGroup.mentionables.length === 0 &&
-                    (messageOrGroup.selectedSkills?.length ?? 0) === 0
-                  ) {
-                    return
-                  }
-                  const modelForThisMessage =
-                    messageModelMap.get(messageOrGroup.id) ??
-                    conversationModelId
-                  const reasoningForThisMessage =
-                    messageReasoningMap.get(messageOrGroup.id) ??
-                    messageReasoningLevel
-                  const nextMessageModelMap = new Map(messageModelMap)
-                  nextMessageModelMap.set(
-                    messageOrGroup.id,
-                    modelForThisMessage,
-                  )
-                  const editedUserMessage: ChatUserMessage = {
-                    role: 'user',
-                    content: content,
-                    promptContent: null,
-                    id: messageOrGroup.id,
-                    reasoningLevel: reasoningForThisMessage,
-                    mentionables: messageOrGroup.mentionables,
-                    selectedSkills: messageOrGroup.selectedSkills ?? [],
-                    selectedModelIds: extractSelectedModelIds(
-                      messageOrGroup.mentionables,
-                    ),
-                  }
-                  const inputChatMessages = [
-                    ...groupedChatMessages
-                      .slice(0, groupedMessageIndex)
-                      .flatMap((messageOrGroup): ChatMessage[] =>
-                        !Array.isArray(messageOrGroup)
-                          ? [messageOrGroup]
-                          : messageOrGroup,
-                      ),
-                    editedUserMessage,
-                  ]
-                  const requestChatMessages = [
-                    ...groupedChatMessages
-                      .slice(0, groupedMessageIndex)
-                      .flatMap((messageOrGroup): ChatMessage[] =>
-                        !Array.isArray(messageOrGroup)
-                          ? [messageOrGroup]
-                          : getDisplayedAssistantToolMessages(
-                              messageOrGroup,
-                              activeBranchByUserMessageId.get(
-                                getSourceUserMessageIdForGroup(
-                                  messageOrGroup,
-                                ) ?? '',
-                              ),
-                            ),
-                      ),
-                    editedUserMessage,
-                  ]
-                  void handleUserMessageSubmit({
-                    inputChatMessages,
-                    requestChatMessages,
-                    useVaultSearch,
-                    persistedMessageModelMap: nextMessageModelMap,
-                  })
-                  chatUserInputRefs.current.get(inputMessage.id)?.focus()
-                  setMessageModelMap(nextMessageModelMap)
-                  setMessageReasoningMap((prev) => {
-                    const next = new Map(prev)
-                    next.set(messageOrGroup.id, reasoningForThisMessage)
-                    return next
-                  })
-                }}
-                onFocus={() => {
-                  setFocusedMessageId(messageOrGroup.id)
-                }}
-                onMentionablesChange={(mentionables) => {
-                  setChatMessages((prevChatHistory) =>
-                    prevChatHistory.map((msg) => {
-                      if (msg.id !== messageOrGroup.id) return msg
-                      if (msg.role !== 'user') return msg
-                      const prevKeys = msg.mentionables.map((m) =>
-                        getMentionableKey(serializeMentionable(m)),
-                      )
-                      const nextKeys = mentionables.map((m) =>
-                        getMentionableKey(serializeMentionable(m)),
-                      )
-                      const nextKeySet = new Set(nextKeys)
-                      const isSameMentionables =
-                        prevKeys.length === nextKeys.length &&
-                        prevKeys.every((key) => nextKeySet.has(key))
-                      return {
-                        ...msg,
-                        mentionables,
-                        promptContent: isSameMentionables
-                          ? msg.promptContent
-                          : null,
-                        similaritySearchResults: isSameMentionables
-                          ? msg.similaritySearchResults
-                          : undefined,
-                      }
-                    }),
-                  )
-                }}
-                onSelectedSkillsChange={(selectedSkills) => {
-                  setChatMessages((prevChatHistory) =>
-                    prevChatHistory.map((msg) =>
-                      msg.role === 'user' && msg.id === messageOrGroup.id
-                        ? {
-                            ...msg,
-                            selectedSkills,
-                            promptContent: null,
-                            snapshotRef: undefined,
-                            similaritySearchResults: undefined,
-                          }
-                        : msg,
-                    ),
-                  )
-                }}
-                modelId={
-                  messageModelMap.get(messageOrGroup.id) ?? conversationModelId
-                }
-                onModelChange={(id) => {
-                  // Update both the mapping for this message and the conversation-level model
-                  setMessageModelMap((prev) => {
-                    const next = new Map(prev)
-                    next.set(messageOrGroup.id, id)
-                    return next
-                  })
-                  setConversationModelId(id)
-                  conversationModelIdRef.current.set(currentConversationId, id)
-                  const nextReasoningLevel = getReasoningLevelForModelId(id)
-                  setReasoningLevel(nextReasoningLevel)
-                  conversationReasoningLevelRef.current.set(
-                    currentConversationId,
-                    nextReasoningLevel,
-                  )
-                  setInputMessage((prev) => ({
-                    ...prev,
-                    reasoningLevel: nextReasoningLevel,
-                  }))
-                }}
-                reasoningLevel={messageReasoningLevel}
-                onReasoningChange={(level) => {
-                  setMessageReasoningMap((prev) => {
-                    const next = new Map(prev)
-                    next.set(messageOrGroup.id, level)
-                    return next
-                  })
-                  setChatMessages((prevChatHistory) =>
-                    prevChatHistory.map((msg) =>
-                      msg.role === 'user' && msg.id === messageOrGroup.id
-                        ? {
-                            ...msg,
-                            reasoningLevel: level,
-                          }
-                        : msg,
-                    ),
-                  )
-                  setReasoningLevel(level)
-                  conversationReasoningLevelRef.current.set(
-                    currentConversationId,
-                    level,
-                  )
-                  void persistReasoningLevelForModel(conversationModelId, level)
-                }}
-                currentAssistantId={conversationAssistantId}
-                currentChatMode={chatMode}
-                onSelectChatModeForConversation={handleChatModeChange}
-              />
-            </Fragment>
-          )
-        })}
-        <QueryProgress state={queryProgress} />
-        {showContinueResponseButton && (
-          <div className="smtcmp-continue-response-button-container">
-            <button
-              type="button"
-              className="smtcmp-continue-response-button"
-              onClick={handleContinueResponse}
-            >
-              <div>Continue response</div>
-            </button>
-          </div>
-        )}
-        <div
-          ref={bottomAnchorRef}
-          className="smtcmp-chat-bottom-anchor"
-          aria-hidden="true"
+        <VirtualizedTimeline
+          items={chatTimelineItems}
+          scrollContainerRef={chatMessagesRef}
+          renderItem={renderChatTimelineItem}
+          forceRenderItemIds={['bottom-anchor']}
         />
       </div>
       <div

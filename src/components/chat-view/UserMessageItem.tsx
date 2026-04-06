@@ -1,12 +1,16 @@
 import { SerializedEditorState } from 'lexical'
-import { useRef } from 'react'
+import { memo, useMemo } from 'react'
 
 import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
+import { UserMessageDisplaySnapshot } from '../../types/chat-timeline'
 import { Mentionable } from '../../types/mentionable'
+import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
-import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
+import type { ChatUserInputRef } from './chat-input/ChatUserInput'
+import EditableUserMessageItem from './EditableUserMessageItem'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
 import SimilaritySearchResults from './SimilaritySearchResults'
+import UserMessageCard from './UserMessageCard'
 
 export type UserMessageItemProps = {
   message: ChatUserMessage
@@ -23,12 +27,15 @@ export type UserMessageItemProps = {
   onModelChange?: (modelId: string) => void
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
+  showReasoningSelect?: boolean
+  showPlaceholder?: boolean
   currentAssistantId?: string
   currentChatMode?: 'chat' | 'agent'
   onSelectChatModeForConversation?: (mode: 'chat' | 'agent') => void
+  allowAgentModeOption?: boolean
 }
 
-export default function UserMessageItem({
+function UserMessageItem({
   message,
   chatUserInputRef,
   onInputChange,
@@ -43,49 +50,62 @@ export default function UserMessageItem({
   onModelChange,
   reasoningLevel,
   onReasoningChange,
+  showReasoningSelect,
+  showPlaceholder,
   currentAssistantId,
   currentChatMode,
   onSelectChatModeForConversation,
+  allowAgentModeOption,
 }: UserMessageItemProps) {
-  const localInputRef = useRef<ChatUserInputRef | null>(null)
-
-  const handleRegisterRef = (ref: ChatUserInputRef | null) => {
-    localInputRef.current = ref
-    chatUserInputRef(ref)
-  }
-
-  const handleExpand = () => {
-    if (isFocused) return
-    onFocus()
-    requestAnimationFrame(() => {
-      localInputRef.current?.focus()
-    })
-  }
+  const snapshot = useMemo<UserMessageDisplaySnapshot>(
+    () => ({
+      text: message.content ? editorStateToPlainText(message.content) : '',
+      mentionables: displayMentionables ?? message.mentionables,
+      selectedSkills: message.selectedSkills ?? [],
+      modelId,
+      reasoningLevel,
+    }),
+    [
+      displayMentionables,
+      message.content,
+      message.mentionables,
+      message.selectedSkills,
+      modelId,
+      reasoningLevel,
+    ],
+  )
 
   return (
-    <div className="smtcmp-chat-messages-user">
-      <ChatUserInput
-        ref={handleRegisterRef}
-        initialSerializedEditorState={message.content}
-        onChange={onInputChange}
-        onSubmit={onSubmit}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        mentionables={message.mentionables}
-        setMentionables={onMentionablesChange}
-        selectedSkills={message.selectedSkills ?? []}
-        setSelectedSkills={onSelectedSkillsChange}
-        displayMentionables={displayMentionables}
-        modelId={modelId}
-        onModelChange={onModelChange}
-        reasoningLevel={reasoningLevel}
-        onReasoningChange={onReasoningChange}
-        currentAssistantId={currentAssistantId}
-        currentChatMode={currentChatMode}
-        onSelectChatModeForConversation={onSelectChatModeForConversation}
-        compact={!isFocused}
-        onToggleCompact={handleExpand}
-      />
+    <div
+      className="smtcmp-chat-messages-user"
+      data-user-message-id={message.id}
+    >
+      {isFocused ? (
+        <EditableUserMessageItem
+          message={message}
+          chatUserInputRef={chatUserInputRef}
+          autoFocus
+          onInputChange={onInputChange}
+          onSubmit={onSubmit}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          onMentionablesChange={onMentionablesChange}
+          onSelectedSkillsChange={onSelectedSkillsChange}
+          displayMentionables={displayMentionables}
+          modelId={modelId}
+          onModelChange={onModelChange}
+          reasoningLevel={reasoningLevel}
+          onReasoningChange={onReasoningChange}
+          showReasoningSelect={showReasoningSelect}
+          showPlaceholder={showPlaceholder}
+          currentAssistantId={currentAssistantId}
+          currentChatMode={currentChatMode}
+          onSelectChatModeForConversation={onSelectChatModeForConversation}
+          allowAgentModeOption={allowAgentModeOption}
+        />
+      ) : (
+        <UserMessageCard snapshot={snapshot} onClick={onFocus} />
+      )}
       {message.similaritySearchResults && (
         <SimilaritySearchResults
           similaritySearchResults={message.similaritySearchResults}
@@ -94,3 +114,5 @@ export default function UserMessageItem({
     </div>
   )
 }
+
+export default memo(UserMessageItem)

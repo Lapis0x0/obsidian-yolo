@@ -788,6 +788,11 @@
   word-break: break-word;
 }
 
+.smtcmp-quick-ask-user-message .smtcmp-user-message-card {
+  width: auto;
+  max-width: 100%;
+}
+
 .smtcmp-quick-ask-user-message .smtcmp-chat-user-input-wrapper {
   width: auto;
   max-width: 100%;
