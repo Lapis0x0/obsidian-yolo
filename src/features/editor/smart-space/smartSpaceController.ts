@@ -107,7 +107,7 @@ export class SmartSpaceController {
     state.view.focus()
   }
 
-  show(editor: Editor, view: EditorView, showQuickActions = true) {
+  show(editor: Editor, view: EditorView, showQuickActions = false) {
     const selection = view.state.selection.main
     // Use the end of selection (max of head and anchor) to always position at the visual end
     // This ensures the widget appears below the selection regardless of selection direction
@@ -307,13 +307,8 @@ export class SmartSpaceController {
         if (update.docChanged) {
           state.pos = update.changes.mapPos(state.pos)
         }
-
-        if (update.selectionSet) {
-          const head = update.state.selection.main
-          if (!head.empty || head.head !== state.pos) {
-            this.close()
-          }
-        }
+        // 移除 selectionSet 关闭逻辑，与 inline suggestion 行为一致
+        // 外部点击关闭由 handlePointerDown 处理
       }),
     ]
   }

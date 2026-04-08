@@ -674,7 +674,9 @@ function SmartSpacePanelBody({
   )
 
   const shouldShowQuickActions =
-    showQuickActions && totalItems > 0 && !isMentionMenuOpen
+    (showQuickActions || instructionText.includes('#')) &&
+    totalItems > 0 &&
+    !isMentionMenuOpen
 
   useEffect(() => {
     if (!shouldShowQuickActions) return
