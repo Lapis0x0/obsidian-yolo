@@ -184,7 +184,7 @@ export const buildMessageTimelineItems = ({
   activeStreamingMessageId,
   includeBottomAnchor = false,
 }: BuildMessageTimelineItemsParams): ChatTimelineItem[] => {
-  const items = groupedChatMessages.map((messageOrGroup, index) => {
+  const items: ChatTimelineItem[] = groupedChatMessages.map((messageOrGroup, index) => {
     const previousItem = groupedChatMessages[index - 1]
     const spacingBefore =
       (index === 0 ? TIMELINE_START_SPACING : 0) +
