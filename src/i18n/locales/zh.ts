@@ -1065,6 +1065,9 @@ export const zh: TranslationKeys = {
       undoFailed: '撤销失败，请稍后重试。',
       fileMissing: '文件不存在或已被移动。',
     },
+    errorCard: {
+      title: '本次回复生成失败',
+    },
     customRewritePromptPlaceholder:
       '输入你的改写指令，例如：“语气更简洁、采用主动语态，保留 Markdown 结构”。按 Shift+回车 确认，回车换行，Esc 关闭。',
     toolCall: {

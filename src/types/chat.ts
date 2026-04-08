@@ -77,6 +77,7 @@ export type ChatAssistantMessage = {
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+    errorMessage?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string
     branchId?: string
@@ -141,6 +142,7 @@ export type SerializedChatAssistantMessage = {
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+    errorMessage?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string
     branchId?: string

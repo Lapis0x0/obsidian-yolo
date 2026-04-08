@@ -382,6 +382,9 @@ describe('AgentLlmTurnExecutor', () => {
       'streaming',
     )
     expect(observedAssistantMessages[1].metadata?.generationState).toBe('error')
+    expect(observedAssistantMessages[1].metadata?.errorMessage).toBe(
+      'network exploded',
+    )
     expect(observedAssistantMessages[1].metadata?.durationMs).toEqual(
       expect.any(Number),
     )
@@ -436,6 +439,7 @@ describe('AgentLlmTurnExecutor', () => {
     expect(observedAssistantMessages.at(-1)?.metadata?.generationState).toBe(
       'aborted',
     )
+    expect(observedAssistantMessages.at(-1)?.metadata?.errorMessage).toBeUndefined()
   })
 
   it('does not treat reasoning-only turns as completed output', async () => {

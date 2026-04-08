@@ -1143,6 +1143,9 @@ export const it: TranslationKeys = {
       undoFailed: 'Annullamento non riuscito. Riprova.',
       fileMissing: 'Il file non esiste piu o e stato spostato.',
     },
+    errorCard: {
+      title: 'Questa risposta non e stata generata',
+    },
     showMore: 'Mostra altro',
     showLess: 'Mostra meno',
     toolCall: {

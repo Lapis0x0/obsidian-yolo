@@ -966,6 +966,9 @@ export type TranslationKeys = {
       undoFailed?: string
       fileMissing?: string
     }
+    errorCard?: {
+      title?: string
+    }
     showMore?: string
     showLess?: string
     toolCall?: {

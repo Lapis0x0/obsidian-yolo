@@ -1144,6 +1144,9 @@ export const en: TranslationKeys = {
       undoFailed: 'Undo failed. Please try again.',
       fileMissing: 'The file no longer exists or has been moved.',
     },
+    errorCard: {
+      title: 'This response failed to generate',
+    },
     customRewritePromptPlaceholder:
       'Describe how to rewrite the selected text, for example: "make it concise and active voice; keep markdown structure"; press Shift+Enter to confirm, Enter for a new line, and Escape to close.',
     toolCall: {

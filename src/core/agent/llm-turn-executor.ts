@@ -215,11 +215,17 @@ export class AgentLlmTurnExecutor {
       const isAborted =
         this.input.abortSignal?.aborted ||
         (error instanceof Error && error.name === 'AbortError')
+      const errorMessage = isAborted
+        ? undefined
+        : error instanceof Error
+          ? error.message
+          : String(error ?? 'Unknown error')
 
       assistantMessage.metadata = {
         ...assistantMessage.metadata,
         durationMs: Date.now() - responseStart,
         generationState: isAborted ? 'aborted' : 'error',
+        errorMessage,
       }
       this.input.onAssistantMessage(assistantMessage)
       throw error

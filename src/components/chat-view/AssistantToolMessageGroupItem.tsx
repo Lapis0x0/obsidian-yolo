@@ -25,6 +25,7 @@ import {
 import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
 
 import AssistantEditSummary from './AssistantEditSummary'
+import AssistantErrorCard from './AssistantErrorCard'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
 import AssistantMessageContent from './AssistantMessageContent'
 import AssistantMessageEditor from './AssistantMessageEditor'
@@ -525,6 +526,8 @@ export default function AssistantToolMessageGroupItem({
           message.reasoning ||
           message.annotations ||
           message.content ||
+          (message.metadata?.generationState === 'error' &&
+            Boolean(message.metadata?.errorMessage)) ||
           (message.metadata?.generationState === 'streaming' &&
             !message.content &&
             !message.reasoning) ||
@@ -569,6 +572,12 @@ export default function AssistantToolMessageGroupItem({
                   enableSelectionQuote={showQuoteAction}
                 />
               )}
+              {message.metadata?.generationState === 'error' &&
+                message.metadata.errorMessage && (
+                  <AssistantErrorCard
+                    errorMessage={message.metadata.errorMessage}
+                  />
+                )}
             </div>
           ) : null
         ) : (

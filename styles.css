@@ -7832,6 +7832,45 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   pointer-events: auto;
 }
 
+.smtcmp-assistant-error-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--size-4-1);
+  padding: 8px 12px 10px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-red) 28%, var(--background-modifier-border));
+  border-radius: var(--radius-l);
+  background: color-mix(
+    in srgb,
+    var(--background-secondary) 88%,
+    var(--background-primary)
+  );
+}
+
+.smtcmp-assistant-error-card-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-normal);
+  font-size: calc(var(--font-ui-small) * 0.96);
+  line-height: 1.2;
+  font-weight: var(--font-medium);
+}
+
+.smtcmp-assistant-error-card-header svg {
+  flex: 0 0 auto;
+  color: var(--color-red);
+}
+
+.smtcmp-assistant-error-card-body {
+  color: var(--text-muted);
+  font-size: calc(var(--font-ui-small) * 0.96);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .smtcmp-assistant-tool-running-preview {
   margin-top: var(--size-4-1);
 }

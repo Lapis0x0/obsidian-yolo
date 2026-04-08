@@ -1,5 +1,5 @@
 import { UseMutationResult, useMutation } from '@tanstack/react-query'
-import { Notice, TFile } from 'obsidian'
+import { TFile } from 'obsidian'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -923,7 +923,6 @@ export function useChatStreamManager({
           showSettingsButton: true,
         }).open()
       } else {
-        new Notice(error.message)
         console.error('Failed to generate response', error)
       }
     },
