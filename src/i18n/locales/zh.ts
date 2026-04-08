@@ -992,7 +992,7 @@ export const zh: TranslationKeys = {
       stopApplying: '终止应用',
     },
     customContinuePromptLabel: '续写指令',
-    customContinuePromptPlaceholder: '询问 AI（输入 @ 可附加文件）',
+    customContinuePromptPlaceholder: '询问 AI（@ 附加文件，# 快捷命令）',
     customContinueHint: '⏎ 提交',
     customContinueConfirmHint: '⏎ 是否确认提交？',
     customContinueProcessing: '思考中',

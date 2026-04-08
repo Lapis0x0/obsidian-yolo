@@ -1062,7 +1062,7 @@ export const en: TranslationKeys = {
       stopApplying: 'Stop apply',
     },
     customContinuePromptLabel: 'Continuation instruction',
-    customContinuePromptPlaceholder: 'Ask AI (@ to attach files)',
+    customContinuePromptPlaceholder: 'Ask AI (@ for files, # for quick actions)',
     customContinueHint: 'Press enter (⏎) to submit',
     customContinueConfirmHint: 'Press enter (⏎) again to confirm',
     customContinueProcessing: 'Thinking',

@@ -1042,7 +1042,8 @@ export const it: TranslationKeys = {
       stopApplying: 'Interrompi applicazione',
     },
     customContinuePromptLabel: 'Come vuoi continuare?',
-    customContinuePromptPlaceholder: "Chiedi all'AI (@ per aggiungere i file)",
+    customContinuePromptPlaceholder:
+      "Chiedi all'AI (@ per i file, # per le azioni rapide)",
     customContinueHint:
       'Shift+Invio per inviare, Invio per nuova riga, Esc per chiudere',
     customContinueConfirmHint: 'Invia la tua istruzione per continuare',
