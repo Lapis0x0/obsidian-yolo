@@ -134,8 +134,6 @@ function SmartSpacePanelBody({
     useState(false)
   const [quickActionsOffset, setQuickActionsOffset] = useState<number>(0)
   const [quickActionsMaxHeight, setQuickActionsMaxHeight] = useState<number>(0)
-  const [isQuickActionsUserTriggered, setIsQuickActionsUserTriggered] =
-    useState(false)
   const [isMultilineInput, setIsMultilineInput] = useState(false)
   const [isKeyboardNavigationActive, setIsKeyboardNavigationActive] =
     useState(false)
@@ -676,7 +674,7 @@ function SmartSpacePanelBody({
   )
 
   const shouldShowQuickActions =
-    (showQuickActions || isQuickActionsUserTriggered) &&
+    (showQuickActions || instructionText.includes('#')) &&
     totalItems > 0 &&
     !isMentionMenuOpen
 
@@ -1029,12 +1027,7 @@ function SmartSpacePanelBody({
                     onChange={(state) => {
                       latestEditorStateRef.current = state
                     }}
-                    onTextContentChange={(text) => {
-                      setInstructionText(text)
-                      if (text.includes('#') && !isQuickActionsUserTriggered) {
-                        setIsQuickActionsUserTriggered(true)
-                      }
-                    }}
+                    onTextContentChange={setInstructionText}
                     onEnter={handleEditorEnter}
                     onMentionNodeMutation={handleMentionNodeMutation}
                     onMentionMenuToggle={setIsMentionMenuOpen}
