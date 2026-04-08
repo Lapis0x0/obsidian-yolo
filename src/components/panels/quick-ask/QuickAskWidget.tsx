@@ -273,7 +273,6 @@ export class QuickAskOverlay {
       this.schedulePositionUpdate(),
     )
     if (scrollDom) this.resizeObserver.observe(scrollDom)
-    this.resizeObserver.observe(overlayContainer)
   }
 
   private resolveOverlayHost(): HTMLElement {
@@ -371,6 +370,14 @@ export class QuickAskOverlay {
     if (selectionAnchor !== undefined) {
       this.selectionAnchor = selectionAnchor
     }
+
+    // Opening position is anchored once. After the panel becomes an
+    // independent floating window, document edits should no longer pull it
+    // around by the trigger line or selection.
+    if (this.dragPosition || this.isDockedTopRight) {
+      return
+    }
+
     this.schedulePositionUpdate()
   }
 
@@ -464,6 +471,22 @@ export class QuickAskOverlay {
       offsetY -
       (panelHeight ?? 0)
 
+    const resolvedLeft = Math.round(left)
+
+    if (panelHeight === null && !this.resizeSize) {
+      updateDynamicStyleClass(
+        this.overlayContainer,
+        'smtcmp-quick-ask-overlay-pos',
+        {
+          width: maxPanelWidth,
+          left: resolvedLeft,
+          top: Math.max(minTop, Math.round(preferredBelowTop)),
+        },
+      )
+      this.schedulePositionUpdate()
+      return
+    }
+
     let top = preferredBelowTop
     if (panelHeight !== null) {
       const maxTop = Math.max(minTop, hostRect.height - margin - panelHeight)
@@ -478,15 +501,22 @@ export class QuickAskOverlay {
       }
     }
 
-    top = Math.max(minTop, Math.round(top))
+    const resolvedTop = Math.max(minTop, Math.round(top))
+
+    // Lock the initial anchored placement into the floating window's own
+    // geometry state so later content growth only affects inner scrolling.
+    this.dragPosition = {
+      x: hostRect.left + resolvedLeft,
+      y: hostRect.top + resolvedTop,
+    }
 
     updateDynamicStyleClass(
       this.overlayContainer,
       'smtcmp-quick-ask-overlay-pos',
       {
         width: maxPanelWidth,
-        left: Math.round(left),
-        top,
+        left: resolvedLeft,
+        top: resolvedTop,
       },
     )
   }

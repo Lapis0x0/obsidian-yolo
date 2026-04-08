@@ -670,6 +670,7 @@ export function QuickAskPanel({
     followOutput,
     onAtBottomStateChange,
     forceScrollToBottom,
+    notifyContentFlushed,
   } =
     useAutoScroll({
       scrollContainerRef: chatAreaRef,
@@ -1740,6 +1741,20 @@ export function QuickAskPanel({
 
     return null
   }, [quickAskTimelineItems])
+
+  useEffect(() => {
+    if (!hasMessages) {
+      return
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      notifyContentFlushed()
+    })
+
+    return () => {
+      cancelAnimationFrame(frameId)
+    }
+  }, [chatMessages, hasMessages, notifyContentFlushed])
 
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
