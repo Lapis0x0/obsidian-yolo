@@ -1427,6 +1427,13 @@
   }
 }
 
+.smtcmp-assistant-pending-spacer {
+  min-height: 40px;
+  padding: 4px 0 8px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .smtcmp-toolcall-status-transition {
     animation: none;
@@ -1435,6 +1442,7 @@
   .smtcmp-toolcall-footer {
     transition: none;
   }
+
 }
 
 .smtcmp-split-button {

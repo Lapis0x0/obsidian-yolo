@@ -759,8 +759,9 @@
 
 /* Chat Area - only shown when there are messages */
 .smtcmp-quick-ask-chat-area {
-  flex: 1;
+  flex: 0 1 auto;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: calc(var(--smtcmp-quick-ask-message-top-safe-area) + 12px) 12px 12px;
   display: flex;
   flex-direction: column;
@@ -770,6 +771,11 @@
   order: 1;
   user-select: text;
   pointer-events: auto;
+}
+
+.smtcmp-quick-ask-chat-area--fill {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .smtcmp-quick-ask-user-message {
@@ -894,17 +900,8 @@
   transform-origin: center;
 }
 
-.smtcmp-quick-ask-chat-area--shared .smtcmp-assistant-tool-message-group {
-  gap: var(--size-2-3);
-  padding-bottom: var(--size-2-2);
-}
-
 .smtcmp-quick-ask-chat-area--shared .smtcmp-chat-messages-assistant {
   max-width: 100%;
-}
-
-.smtcmp-quick-ask-chat-area--shared .smtcmp-toolcall-content-section {
-  overflow: hidden;
 }
 
 .smtcmp-quick-ask-chat-area--shared .smtcmp-code-block,

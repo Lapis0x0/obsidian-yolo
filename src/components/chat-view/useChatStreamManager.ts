@@ -38,6 +38,7 @@ import {
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
 
@@ -72,7 +73,6 @@ type ActiveBranchRun = {
   branchLabel: string
 }
 
-const DEFAULT_MAX_AUTO_TOOL_ITERATIONS = 100
 const CHAT_SAFE_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'fs_search'),
   getToolName(getLocalFileToolServerName(), 'fs_read'),
@@ -536,10 +536,13 @@ export function useChatStreamManager({
       const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
       const assistantEnabledToolNames =
         getEnabledAssistantToolNames(selectedAssistant)
-      const effectiveEnableTools = selectedAssistant?.enableTools ?? true
-      const effectiveIncludeBuiltinTools = effectiveEnableTools
-        ? (selectedAssistant?.includeBuiltinTools ?? true)
-        : false
+      const chatRuntimeLoopConfig = resolveChatRuntimeLoopConfig({
+        mode: chatMode,
+        assistant: selectedAssistant,
+      })
+      const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
+      const effectiveIncludeBuiltinTools =
+        chatRuntimeLoopConfig.includeBuiltinTools
       const effectiveAllowedToolNames = effectiveEnableTools
         ? chatMode === 'agent'
           ? assistantEnabledToolNames
@@ -727,10 +730,13 @@ export function useChatStreamManager({
 
         const assistantEnabledToolNames =
           getEnabledAssistantToolNames(selectedAssistant)
-        const effectiveEnableTools = selectedAssistant?.enableTools ?? true
-        const effectiveIncludeBuiltinTools = effectiveEnableTools
-          ? (selectedAssistant?.includeBuiltinTools ?? true)
-          : false
+        const chatRuntimeLoopConfig = resolveChatRuntimeLoopConfig({
+          mode: chatMode,
+          assistant: selectedAssistant,
+        })
+        const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
+        const effectiveIncludeBuiltinTools =
+          chatRuntimeLoopConfig.includeBuiltinTools
         const effectiveAllowedToolNames = effectiveEnableTools
           ? chatMode === 'agent'
             ? assistantEnabledToolNames
@@ -742,11 +748,7 @@ export function useChatStreamManager({
 
         const mcpManager = await getMcpManager()
 
-        const loopConfig = {
-          enableTools: effectiveEnableTools,
-          maxAutoIterations: DEFAULT_MAX_AUTO_TOOL_ITERATIONS,
-          includeBuiltinTools: effectiveIncludeBuiltinTools,
-        }
+        const loopConfig = chatRuntimeLoopConfig
         const requestParams = {
           stream: shouldStreamResponse,
           temperature:

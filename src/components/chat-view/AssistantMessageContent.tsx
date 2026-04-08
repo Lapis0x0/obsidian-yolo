@@ -33,6 +33,7 @@ export default function AssistantMessageContent({
   activeApplyRequestKey,
   generationState,
   toolCallRequests,
+  showToolCallPreview = false,
   messageId,
   conversationId,
   onQuote,
@@ -48,6 +49,7 @@ export default function AssistantMessageContent({
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
+  showToolCallPreview?: boolean
   messageId: string
   conversationId: string
   onQuote: (payload: {
@@ -75,6 +77,7 @@ export default function AssistantMessageContent({
       activeApplyRequestKey={activeApplyRequestKey}
       generationState={generationState}
       toolCallRequests={toolCallRequests}
+      showToolCallPreview={showToolCallPreview}
       messageId={messageId}
       conversationId={conversationId}
       onQuote={onQuote}
@@ -91,6 +94,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   activeApplyRequestKey,
   generationState,
   toolCallRequests,
+  showToolCallPreview,
   messageId,
   conversationId,
   onQuote,
@@ -107,6 +111,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
+  showToolCallPreview: boolean
   messageId: string
   conversationId: string
   onQuote: (payload: {
@@ -127,8 +132,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
     [blocks],
   )
 
-  const runningToolText = useMemo(() => {
-    if (generationState !== 'streaming' || !toolCallRequests?.length) {
+  const toolPreviewText = useMemo(() => {
+    if (!showToolCallPreview || !toolCallRequests?.length) {
       return null
     }
     const labels = getToolLabels(t)
@@ -141,7 +146,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
       return t('chat.toolCall.status.running', 'Running')
     }
     return `${t('chat.toolCall.status.running', 'Running')}: ${toolNames.join(', ')}`
-  }, [generationState, t, toolCallRequests])
+  }, [showToolCallPreview, t, toolCallRequests])
 
   const renderedContent = (
     <>
@@ -188,7 +193,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
           </MarkdownCodeComponent>
         )
       })}
-      {runningToolText && (
+      {toolPreviewText && (
         <div className="smtcmp-toolcall-container smtcmp-assistant-tool-running-preview">
           <div className="smtcmp-toolcall">
             <div className="smtcmp-toolcall-header smtcmp-assistant-tool-running-preview-header">
@@ -197,7 +202,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
               </div>
               <div className="smtcmp-toolcall-header-content">
                 <span className="smtcmp-toolcall-header-tool-name">
-                  {runningToolText}
+                  {toolPreviewText}
                 </span>
               </div>
             </div>

@@ -22,6 +22,7 @@ import {
   collectGroupEditSummary,
   countChangedLines,
 } from '../../utils/chat/editSummary'
+import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
 
 import AssistantEditSummary from './AssistantEditSummary'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
@@ -154,6 +155,8 @@ export type AssistantToolMessageGroupItemProps = {
   undoingEditSummaryTarget?: string | null
   pendingCompactionAnchorMessageId?: string | null
   hidePendingAssistantPlaceholders?: boolean
+  showRunningToolFooter?: boolean
+  showPendingAssistantSpacer?: boolean
 }
 
 export default function AssistantToolMessageGroupItem({
@@ -186,6 +189,8 @@ export default function AssistantToolMessageGroupItem({
   undoingEditSummaryTarget,
   pendingCompactionAnchorMessageId,
   hidePendingAssistantPlaceholders = false,
+  showRunningToolFooter = true,
+  showPendingAssistantSpacer = true,
 }: AssistantToolMessageGroupItemProps) {
   const app = useApp()
   const { t } = useLanguage()
@@ -484,15 +489,36 @@ export default function AssistantToolMessageGroupItem({
           (message.reasoning ?? '').trim().length > 0
         const hasVisibleAssistantAnnotations =
           message.role === 'assistant' && Boolean(message.annotations)
+        const shouldShowAssistantToolPreview =
+          message.role === 'assistant' &&
+          shouldRenderAssistantToolPreview({
+            generationState: message.metadata?.generationState,
+            toolCallRequestCount: message.toolCallRequests?.length ?? 0,
+            hasToolMessages,
+          })
         const shouldHideAssistantPendingState =
           message.role === 'assistant' &&
           (hasToolMessages || hidePendingAssistantPlaceholders) &&
           !hasVisibleAssistantContent &&
           !hasVisibleAssistantReasoning &&
-          !hasVisibleAssistantAnnotations
+          !hasVisibleAssistantAnnotations &&
+          !shouldShowAssistantToolPreview
 
         if (shouldHideAssistantPendingState) {
-          return null
+          const shouldRenderPendingPlaceholder =
+            message.metadata?.generationState === 'streaming'
+
+          if (!shouldRenderPendingPlaceholder || !showPendingAssistantSpacer) {
+            return null
+          }
+
+          return (
+            <div
+              key={message.id}
+              className="smtcmp-chat-messages-assistant smtcmp-assistant-pending-spacer"
+              aria-hidden="true"
+            />
+          )
         }
 
         return message.role === 'assistant' ? (
@@ -502,8 +528,7 @@ export default function AssistantToolMessageGroupItem({
           (message.metadata?.generationState === 'streaming' &&
             !message.content &&
             !message.reasoning) ||
-          (message.metadata?.generationState === 'streaming' &&
-            Boolean(message.toolCallRequests?.length)) ? (
+          shouldShowAssistantToolPreview ? (
             <div key={message.id} className="smtcmp-chat-messages-assistant">
               {(message.reasoning ||
                 (message.metadata?.generationState === 'streaming' &&
@@ -539,6 +564,7 @@ export default function AssistantToolMessageGroupItem({
                   activeApplyRequestKey={activeApplyRequestKey}
                   generationState={message.metadata?.generationState}
                   toolCallRequests={message.toolCallRequests}
+                  showToolCallPreview={shouldShowAssistantToolPreview}
                   onQuote={onQuoteAssistantSelection}
                   enableSelectionQuote={showQuoteAction}
                 />
@@ -553,6 +579,7 @@ export default function AssistantToolMessageGroupItem({
               isCompactionPending={
                 message.id === pendingCompactionAnchorMessageId
               }
+              showRunningFooter={showRunningToolFooter}
               onMessageUpdate={onToolMessageUpdate}
               onRecoverToolCall={onRecoverToolCall}
             />

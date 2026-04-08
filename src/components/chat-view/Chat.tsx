@@ -100,7 +100,8 @@ import ContextUsageRing from './ContextUsageRing'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
-import { ChatTimelineList } from './ChatTimelineList'
+import { getChatSurfacePreset } from './chat-surface-presets'
+import { SharedConversationSurface } from './SharedConversationSurface'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
@@ -1187,6 +1188,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const bottomAnchorRef = useRef<HTMLDivElement>(null)
   const latexSelectionSyncFrameRef = useRef<number | null>(null)
+  const chatSurfacePreset = getChatSurfacePreset('chat')
   const hasStreamingMessages = useMemo(
     () =>
       chatMessages.some(
@@ -3606,6 +3608,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               (isCurrentConversationRunActive &&
                 timelineItem.renderKey === latestTimelineAssistantToolGroupKey)
             }
+            showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
+            showInsertAction={chatSurfacePreset.assistantActions.showInsertAction}
+            showCopyAction={chatSurfacePreset.assistantActions.showCopyAction}
+            showBranchAction={chatSurfacePreset.assistantActions.showBranchAction}
+            showEditAction={chatSurfacePreset.assistantActions.showEditAction}
+            showDeleteAction={chatSurfacePreset.assistantActions.showDeleteAction}
             isApplying={applyMutation.isPending}
             activeApplyRequestKey={activeApplyRequestKey}
             onApply={handleApply}
@@ -3643,6 +3651,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             hidePendingAssistantPlaceholders={
               shouldHidePendingAssistantPlaceholders
             }
+            showQuoteAction={chatSurfacePreset.assistantActions.showQuoteAction}
           />
         )
       }
@@ -3850,6 +3859,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             currentAssistantId={conversationAssistantId}
             currentChatMode={chatMode}
             onSelectChatModeForConversation={handleChatModeChange}
+            showReasoningSelect={
+              chatSurfacePreset.userMessage.showReasoningSelect
+            }
+            allowAgentModeOption={
+              chatSurfacePreset.userMessage.allowAgentModeOption &&
+              Platform.isDesktop
+            }
           />
         )
       }
@@ -3884,6 +3900,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       activeApplyRequestKey,
       activeBranchByUserMessageId,
       applyMutation.isPending,
+      chatSurfacePreset,
       chatMode,
       compactionDividerAnchorMessageId,
       compactionDividerDescription,
@@ -3968,7 +3985,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           </div>
         </div>
       )}
-      <ChatTimelineList
+      <SharedConversationSurface
         items={chatTimelineItems}
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}

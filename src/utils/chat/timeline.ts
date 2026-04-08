@@ -175,14 +175,16 @@ type BuildMessageTimelineItemsParams = {
   groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
   activeEditableMessageId?: string | null
   activeStreamingMessageId?: string | null
+  includeBottomAnchor?: boolean
 }
 
 export const buildMessageTimelineItems = ({
   groupedChatMessages,
   activeEditableMessageId,
   activeStreamingMessageId,
+  includeBottomAnchor = false,
 }: BuildMessageTimelineItemsParams): ChatTimelineItem[] => {
-  return groupedChatMessages.map((messageOrGroup, index) => {
+  const items = groupedChatMessages.map((messageOrGroup, index) => {
     const previousItem = groupedChatMessages[index - 1]
     const spacingBefore =
       (index === 0 ? TIMELINE_START_SPACING : 0) +
@@ -221,6 +223,18 @@ export const buildMessageTimelineItems = ({
       isPinnedForRender: messageOrGroup.id === activeEditableMessageId,
     }
   })
+
+  if (includeBottomAnchor) {
+    items.push({
+      kind: 'bottom-anchor',
+      id: 'bottom-anchor',
+      renderKey: 'bottom-anchor',
+      estimatedHeight: BOTTOM_ANCHOR_ESTIMATED_HEIGHT,
+      isPinnedForRender: true,
+    })
+  }
+
+  return items
 }
 
 type BuildChatTimelineItemsParams = {

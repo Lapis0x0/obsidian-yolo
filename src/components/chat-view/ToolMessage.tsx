@@ -638,12 +638,14 @@ const ToolMessage = memo(function ToolMessage({
   message,
   conversationId,
   isCompactionPending = false,
+  showRunningFooter = true,
   onMessageUpdate,
   onRecoverToolCall,
 }: {
   message: ChatToolMessage
   conversationId: string
   isCompactionPending?: boolean
+  showRunningFooter?: boolean
   onMessageUpdate: (message: ChatToolMessage) => void
   onRecoverToolCall?: (payload: {
     conversationId: string
@@ -667,6 +669,7 @@ const ToolMessage = memo(function ToolMessage({
             showCompactionPendingHint={
               isCompactionPending && index === message.toolCalls.length - 1
             }
+            showRunningFooter={showRunningFooter}
             onRecoverToolCall={onRecoverToolCall}
             onResponseUpdate={(response) =>
               onMessageUpdate({
@@ -689,6 +692,7 @@ function ToolCallItem({
   conversationId,
   toolMessageId,
   showCompactionPendingHint = false,
+  showRunningFooter = true,
   onRecoverToolCall,
   onResponseUpdate,
 }: {
@@ -697,6 +701,7 @@ function ToolCallItem({
   conversationId: string
   toolMessageId: string
   showCompactionPendingHint?: boolean
+  showRunningFooter?: boolean
   onRecoverToolCall?: (payload: {
     conversationId: string
     toolMessageId: string
@@ -784,9 +789,11 @@ function ToolCallItem({
     )
   const [isCompactionPendingHintExiting, setIsCompactionPendingHintExiting] =
     useState(false)
-
   useEffect(() => {
-    if (response.status !== ToolCallResponseStatus.Running) {
+    if (
+      !showRunningFooter ||
+      response.status !== ToolCallResponseStatus.Running
+    ) {
       setShowRunningActions(false)
       return
     }
@@ -798,7 +805,7 @@ function ToolCallItem({
     return () => {
       window.clearTimeout(timer)
     }
-  }, [response.status])
+  }, [response.status, showRunningFooter])
 
   useEffect(() => {
     const statusAtTransitionStart = response.status
@@ -817,7 +824,9 @@ function ToolCallItem({
   const shouldShowPendingFooter =
     response.status === ToolCallResponseStatus.PendingApproval
   const shouldShowRunningFooter =
-    response.status === ToolCallResponseStatus.Running && showRunningActions
+    showRunningFooter &&
+    response.status === ToolCallResponseStatus.Running &&
+    showRunningActions
   const footerMode: 'pending' | 'running' | null = shouldShowPendingFooter
     ? 'pending'
     : shouldShowRunningFooter

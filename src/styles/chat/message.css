@@ -675,7 +675,7 @@
 }
 
 .smtcmp-assistant-tool-running-preview {
-  margin-top: 2px;
+  margin-top: var(--size-4-1);
 }
 
 .smtcmp-assistant-tool-running-preview-header {

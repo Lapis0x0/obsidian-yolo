@@ -25,7 +25,6 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import type { FollowOutput } from 'react-virtuoso'
 import { v4 as uuidv4 } from 'uuid'
 
 import { useApp } from '../../../contexts/app-context'
@@ -43,7 +42,6 @@ import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
-import { useBufferedRunnerMessages } from '../../../hooks/useBufferedRunnerMessages'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -75,6 +73,8 @@ import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { mergeCustomParameters } from '../../../utils/custom-parameters'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
+import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
+import { resolveQuickAskRuntimeLoopConfig } from '../../chat-view/chat-runtime-profiles'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
@@ -84,16 +84,14 @@ import {
 } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
-import { ChatTimelineList } from '../../chat-view/ChatTimelineList'
+import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
+import { useAutoScroll } from '../../chat-view/useAutoScroll'
 import UserMessageItem from '../../chat-view/UserMessageItem'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 
 type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
-
-const QUICK_ASK_CHAT_MAX_ITERATIONS = 1
-const QUICK_ASK_AGENT_MAX_ITERATIONS = 100
 const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
 
 function normalizeQuickAskVisibleMode(
@@ -268,6 +266,7 @@ export function QuickAskPanel({
   onResize,
   onDockToTopRight,
 }: QuickAskPanelProps) {
+  const quickAskSurfacePreset = getChatSurfacePreset('quick-ask')
   const app = useApp()
   const { settings } = useSettings()
   const { setSettings } = useSettings()
@@ -338,10 +337,9 @@ export function QuickAskPanel({
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
+  const bottomAnchorRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
-  const shouldAutoScrollRef = useRef(true)
-  const userDisabledAutoScrollRef = useRef(false)
   const autoSendRef = useRef(false)
   const hasAppliedInitialInputRef = useRef(false)
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
@@ -490,12 +488,31 @@ export function QuickAskPanel({
       ),
     [chatMessages],
   )
+  const hasVisibleAssistantOrToolMessages = useMemo(
+    () =>
+      chatMessages.some((message) => {
+        if (message.role === 'tool') {
+          return true
+        }
+
+        if (message.role !== 'assistant') {
+          return false
+        }
+
+        return (
+          message.content.trim().length > 0 ||
+          Boolean(message.reasoning?.trim().length) ||
+          Boolean(message.toolCallRequests?.length)
+        )
+      }),
+    [chatMessages],
+  )
 
   const shouldShowInlineRunStatus =
     isStreaming &&
     !!runStatusLabel &&
     ((executionMode !== 'agent' && executionMode !== 'chat') ||
-      !hasStreamingAssistantPlaceholder)
+      (!hasStreamingAssistantPlaceholder && !hasVisibleAssistantOrToolMessages))
 
   const noop = useCallback(() => {}, [])
   const handleOpenEditSummaryFile = useCallback(
@@ -649,62 +666,17 @@ export function QuickAskPanel({
     settings,
   ])
 
-  // Track explicit user interaction intent; bottom-state recovery is delegated
-  // to Virtuoso's atBottomStateChange callback.
-  useEffect(() => {
-    const chatArea = chatAreaRef.current
-    if (!chatArea) return
-
-    const disableAutoScroll = () => {
-      userDisabledAutoScrollRef.current = true
-      shouldAutoScrollRef.current = false
-    }
-
-    chatArea.addEventListener('wheel', disableAutoScroll, { passive: true })
-    chatArea.addEventListener('touchstart', disableAutoScroll, {
-      passive: true,
-    })
-    chatArea.addEventListener('pointerdown', disableAutoScroll)
-    return () => {
-      chatArea.removeEventListener('wheel', disableAutoScroll)
-      chatArea.removeEventListener('touchstart', disableAutoScroll)
-      chatArea.removeEventListener('pointerdown', disableAutoScroll)
-    }
-  }, [])
-
-  const handleTimelineAtBottomStateChange = useCallback((atBottom: boolean) => {
-    if (!atBottom) {
-      return
-    }
-
-    userDisabledAutoScrollRef.current = false
-    shouldAutoScrollRef.current = true
-  }, [])
-
-  const quickAskFollowOutput: FollowOutput = useCallback(
-    (isAtBottom: boolean) => {
-      return shouldAutoScrollRef.current || isAtBottom ? 'auto' : false
-    },
-    [],
-  )
-
-  const autoScrollToBottom = useCallback(() => {
-    if (!chatAreaRef.current || !shouldAutoScrollRef.current) {
-      return
-    }
-
-    chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
-  }, [])
-
   const {
-    beginBufferedRunnerSession,
-    queueBufferedRunnerMessages,
-    flushBufferedRunnerMessages,
-    getLatestBufferedMessages,
-  } = useBufferedRunnerMessages({
-    setChatMessages,
-    autoScrollToBottom,
-  })
+    followOutput,
+    onAtBottomStateChange,
+    forceScrollToBottom,
+  } =
+    useAutoScroll({
+      scrollContainerRef: chatAreaRef,
+      bottomAnchorRef,
+      isStreaming,
+      contentFollowMode: 'observer',
+    })
 
   // Focus input on mount
   useEffect(() => {
@@ -978,6 +950,7 @@ export function QuickAskPanel({
       setIsStreaming(true)
       setRunStatus('requesting')
       setInputText('')
+      forceScrollToBottom()
 
       // Clear the lexical editor
       lexicalEditorRef.current?.update(() => {
@@ -1008,7 +981,6 @@ export function QuickAskPanel({
         userMessage,
       ]
       setChatMessages(newMessages)
-      beginBufferedRunnerSession(newMessages)
       void (async () => {
         try {
           await createOrUpdateConversationImmediately(
@@ -1039,12 +1011,11 @@ export function QuickAskPanel({
         const mcpManager = await getMcpManager()
 
         const isAgentMode = executionMode === 'agent'
-        const effectiveEnableTools = isAgentMode
-          ? (selectedAssistant?.enableTools ?? true)
-          : false
-        const effectiveIncludeBuiltinTools = effectiveEnableTools
-          ? (selectedAssistant?.includeBuiltinTools ?? true)
-          : false
+        const quickAskLoopConfig = resolveQuickAskRuntimeLoopConfig({
+          mode: isAgentMode ? 'agent' : 'chat',
+          assistant: selectedAssistant,
+        })
+        const effectiveEnableTools = quickAskLoopConfig.enableTools
         const effectiveModel =
           isAgentMode && selectedAssistant
             ? {
@@ -1074,24 +1045,14 @@ export function QuickAskPanel({
           conversationId,
           (state) => {
             setRunStatus(deriveAskRunStatus(state.messages))
-            queueBufferedRunnerMessages({
-              responseMessages: state.messages,
-              anchorMessageId: userMessage.id,
-              abortController,
-            })
+            setChatMessages(state.messages)
           },
           { emitCurrent: false },
         )
 
         await agentService.run({
           conversationId,
-          loopConfig: {
-            enableTools: effectiveEnableTools,
-            maxAutoIterations: isAgentMode
-              ? QUICK_ASK_AGENT_MAX_ITERATIONS
-              : QUICK_ASK_CHAT_MAX_ITERATIONS,
-            includeBuiltinTools: effectiveIncludeBuiltinTools,
-          },
+          loopConfig: quickAskLoopConfig,
           input: {
             providerClient,
             model: effectiveModel,
@@ -1117,9 +1078,7 @@ export function QuickAskPanel({
           },
         })
 
-        const finalMessages = flushBufferedRunnerMessages()
-        const persistedMessages =
-          finalMessages.length > 0 ? finalMessages : getLatestBufferedMessages()
+        const persistedMessages = agentService.getState(conversationId).messages
 
         void (async () => {
           try {
@@ -1152,17 +1111,14 @@ export function QuickAskPanel({
       conversationId,
       createOrUpdateConversationImmediately,
       deriveAskRunStatus,
-      flushBufferedRunnerMessages,
       generateConversationTitle,
-      getLatestBufferedMessages,
       getMcpManager,
       isStreaming,
       mentionables,
-      beginBufferedRunnerSession,
       executionMode,
+      forceScrollToBottom,
       model,
       plugin,
-      queueBufferedRunnerMessages,
       requestContextBuilder,
       providerClient,
       app,
@@ -1733,14 +1689,13 @@ export function QuickAskPanel({
   const clearConversation = useCallback(() => {
     setChatMessages([])
     new Notice(t('quickAsk.cleared', 'Conversation cleared'))
-    // Re-enable auto-scroll after clearing
-    shouldAutoScrollRef.current = true
-    userDisabledAutoScrollRef.current = false
+    // Re-enable follow mode after clearing.
+    forceScrollToBottom()
     // Focus input after clearing
     setTimeout(() => {
       contentEditableRef.current?.focus()
     }, 0)
-  }, [t])
+  }, [forceScrollToBottom, t])
 
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
@@ -1766,9 +1721,25 @@ export function QuickAskPanel({
         groupedChatMessages,
         activeEditableMessageId: focusedUserMessageId,
         activeStreamingMessageId,
+        includeBottomAnchor: true,
       }),
     [activeStreamingMessageId, focusedUserMessageId, groupedChatMessages],
   )
+  const quickAskChatAreaClassName = useMemo(
+    () =>
+      `smtcmp-chat-messages smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared${panelSize?.height ? ' smtcmp-quick-ask-chat-area--fill' : ''}`,
+    [panelSize?.height],
+  )
+  const latestTimelineAssistantToolGroupKey = useMemo(() => {
+    for (let index = quickAskTimelineItems.length - 1; index >= 0; index -= 1) {
+      const candidate = quickAskTimelineItems[index]
+      if (candidate.kind === 'assistant-group') {
+        return candidate.renderKey
+      }
+    }
+
+    return null
+  }, [quickAskTimelineItems])
 
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
@@ -1976,13 +1947,22 @@ export function QuickAskPanel({
           <AssistantToolMessageGroupItem
             messages={timelineItem.messages}
             conversationId={conversationId}
-            suppressFooter={false}
-            showInlineInfo={false}
-            showInsertAction={false}
-            showCopyAction={true}
-            showBranchAction={false}
-            showEditAction={false}
-            showDeleteAction={true}
+            suppressFooter={
+              isStreaming &&
+              timelineItem.renderKey === latestTimelineAssistantToolGroupKey
+            }
+            showInlineInfo={quickAskSurfacePreset.assistantActions.showInlineInfo}
+            showInsertAction={
+              quickAskSurfacePreset.assistantActions.showInsertAction
+            }
+            showCopyAction={quickAskSurfacePreset.assistantActions.showCopyAction}
+            showBranchAction={
+              quickAskSurfacePreset.assistantActions.showBranchAction
+            }
+            showEditAction={quickAskSurfacePreset.assistantActions.showEditAction}
+            showDeleteAction={
+              quickAskSurfacePreset.assistantActions.showDeleteAction
+            }
             isApplying={isApplying}
             activeApplyRequestKey={activeApplyRequestKey}
             onApply={handleApply}
@@ -1994,7 +1974,11 @@ export function QuickAskPanel({
             onBranchGroup={noop}
             onQuoteAssistantSelection={noop}
             onOpenEditSummaryFile={handleOpenEditSummaryFile}
-            showQuoteAction={false}
+            showQuoteAction={
+              quickAskSurfacePreset.assistantActions.showQuoteAction
+            }
+            showRunningToolFooter={false}
+            showPendingAssistantSpacer={false}
           />
         )
       }
@@ -2092,13 +2076,27 @@ export function QuickAskPanel({
                   },
                 })
               }}
-              showReasoningSelect={false}
+              showReasoningSelect={
+                quickAskSurfacePreset.userMessage.showReasoningSelect
+              }
               showPlaceholder={false}
               currentAssistantId={selectedAssistant?.id}
               currentChatMode={mode}
-              allowAgentModeOption={false}
+              allowAgentModeOption={
+                quickAskSurfacePreset.userMessage.allowAgentModeOption
+              }
             />
           </div>
+        )
+      }
+
+      if (timelineItem.kind === 'bottom-anchor') {
+        return (
+          <div
+            ref={bottomAnchorRef}
+            className="smtcmp-chat-bottom-anchor"
+            aria-hidden="true"
+          />
         )
       }
 
@@ -2113,7 +2111,11 @@ export function QuickAskPanel({
       handleDeleteGroup,
       handleOpenEditSummaryFile,
       handleToolMessageUpdate,
+      isStreaming,
       isApplying,
+      latestTimelineAssistantToolGroupKey,
+      quickAskChatAreaClassName,
+      quickAskSurfacePreset,
       registerChatUserInputRef,
       selectedAssistant?.id,
       setSettings,
@@ -2160,63 +2162,66 @@ export function QuickAskPanel({
       </div>
 
       {/* Top: Input row */}
-      <div className="smtcmp-quick-ask-input-row" ref={inputRowRef}>
-        <div
-          className={`smtcmp-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
-        >
-          {!isStreaming && (
-            <LexicalContentEditable
-              editorRef={lexicalEditorRef}
-              contentEditableRef={contentEditableRef}
-              onTextContentChange={setInputText}
-              onEnter={handleEnter}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault()
-                  assistantTriggerRef.current?.focus()
-                }
-              }}
-              onMentionMenuToggle={(open) => {
-                setIsMentionMenuOpen(open)
-                if (open) updateMentionMenuPlacement()
-              }}
-              onMentionNodeMutation={handleMentionNodeMutation}
-              mentionMenuContainerRef={inputRowRef}
-              mentionMenuPlacement={mentionMenuPlacement}
-              autoFocus
-              contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
-            />
-          )}
-          {inputText.length === 0 && !isStreaming && (
-            <div className="smtcmp-quick-ask-input-placeholder">
-              {t('quickAsk.inputPlaceholder', 'Ask a question...')}
-            </div>
-          )}
-          {shouldShowInlineRunStatus && (
-            <div className="smtcmp-quick-ask-run-status" aria-live="polite">
-              <span
-                className="smtcmp-quick-ask-run-status-dot"
-                aria-hidden="true"
+      {(!isStreaming || shouldShowInlineRunStatus) && (
+        <div className="smtcmp-quick-ask-input-row" ref={inputRowRef}>
+          <div
+            className={`smtcmp-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
+          >
+            {!isStreaming && (
+              <LexicalContentEditable
+                editorRef={lexicalEditorRef}
+                contentEditableRef={contentEditableRef}
+                onTextContentChange={setInputText}
+                onEnter={handleEnter}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault()
+                    assistantTriggerRef.current?.focus()
+                  }
+                }}
+                onMentionMenuToggle={(open) => {
+                  setIsMentionMenuOpen(open)
+                  if (open) updateMentionMenuPlacement()
+                }}
+                onMentionNodeMutation={handleMentionNodeMutation}
+                mentionMenuContainerRef={inputRowRef}
+                mentionMenuPlacement={mentionMenuPlacement}
+                autoFocus
+                contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
               />
-              <span>{runStatusLabel}</span>
-            </div>
-          )}
+            )}
+            {inputText.length === 0 && !isStreaming && (
+              <div className="smtcmp-quick-ask-input-placeholder">
+                {t('quickAsk.inputPlaceholder', 'Ask a question...')}
+              </div>
+            )}
+            {shouldShowInlineRunStatus && (
+              <div className="smtcmp-quick-ask-run-status" aria-live="polite">
+                <span
+                  className="smtcmp-quick-ask-run-status-dot"
+                  aria-hidden="true"
+                />
+                <span>{runStatusLabel}</span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Chat area - only shown when there are messages */}
       {hasMessages && (
-        <ChatTimelineList
+        <SharedConversationSurface
           items={quickAskTimelineItems}
           conversationId={conversationId}
           scrollContainerRef={chatAreaRef}
           renderItem={renderQuickAskTimelineItem}
-          followOutput={quickAskFollowOutput}
-          onAtBottomStateChange={handleTimelineAtBottomStateChange}
+          forceRenderItemIds={['bottom-anchor']}
+          followOutput={followOutput}
+          onAtBottomStateChange={onAtBottomStateChange}
           virtualizationThreshold={
             focusedUserMessageId ? quickAskTimelineItems.length : undefined
           }
-          scrollContainerClassName="smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared"
+          scrollContainerClassName={quickAskChatAreaClassName}
           scrollContainerStyle={
             panelSize?.height ? { maxHeight: 'none' } : undefined
           }

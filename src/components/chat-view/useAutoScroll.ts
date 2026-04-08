@@ -140,6 +140,28 @@ export function useAutoScroll({
     [scheduleFollowFrame],
   )
 
+  const syncFollowToBottom = useCallback(
+    (options?: { force?: boolean }) => {
+      const force = options?.force ?? false
+      if (!force && !autoFollowRef.current) {
+        return
+      }
+
+      scrollToBottom()
+
+      if (Math.abs(getDistanceToBottom()) <= FOLLOW_SETTLE_THRESHOLD_PX) {
+        followRemainingFramesRef.current = 0
+        if (!force) {
+          followForceRef.current = false
+        }
+        return
+      }
+
+      requestFollow({ force })
+    },
+    [getDistanceToBottom, requestFollow, scrollToBottom],
+  )
+
   const handleAtBottomStateChange = useCallback(
     (atBottom: boolean) => {
       if (atBottom) {
@@ -256,7 +278,7 @@ export function useAutoScroll({
     }
 
     const observer = new MutationObserver(() => {
-      requestFollow()
+      syncFollowToBottom()
     })
 
     observer.observe(scrollContainerElement, {
@@ -268,7 +290,7 @@ export function useAutoScroll({
     })
 
     const handleAnimatedLayoutChange = () => {
-      requestFollow()
+      syncFollowToBottom()
     }
 
     scrollContainerElement.addEventListener(
@@ -291,7 +313,7 @@ export function useAutoScroll({
         handleAnimatedLayoutChange,
       )
     }
-  }, [contentFollowMode, requestFollow, scrollContainerElement])
+  }, [contentFollowMode, scrollContainerElement, syncFollowToBottom])
 
   useEffect(() => {
     if (
@@ -357,14 +379,14 @@ export function useAutoScroll({
   }, [requestFollow])
 
   const notifyContentFlushed = useCallback(() => {
-    requestFollow()
-  }, [requestFollow])
+    syncFollowToBottom()
+  }, [syncFollowToBottom])
 
   // Forces scroll to bottom regardless of current position
   const forceScrollToBottom = useCallback(() => {
     updateAutoFollow(true)
-    requestFollow({ force: true })
-  }, [requestFollow, updateAutoFollow])
+    syncFollowToBottom({ force: true })
+  }, [syncFollowToBottom, updateAutoFollow])
 
   return {
     autoScrollToBottom,
