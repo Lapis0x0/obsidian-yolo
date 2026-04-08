@@ -1,14 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import cx from 'clsx'
-import {
-  ArrowDown,
-  Bot,
-  CircleStop,
-  History,
-  MessageCircle,
-  Plus,
-} from 'lucide-react'
+import { History, Plus } from 'lucide-react'
 import { MarkdownView, Notice, Platform, TFile } from 'obsidian'
 import type { TFolder } from 'obsidian'
 import {
@@ -101,7 +94,7 @@ import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
 import { getChatSurfacePreset } from './chat-surface-presets'
-import { SharedConversationSurface } from './SharedConversationSurface'
+import { ChatConversationPane } from './ChatConversationPane'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
@@ -3529,21 +3522,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     </div>
   )
 
-  if (activeView === 'composer') {
-    return (
-      <div
-        ref={containerRef}
-        className={containerClassName}
-        style={containerStyle}
-      >
-        {header}
-        <div className="smtcmp-chat-composer-wrapper">
-          <Composer onNavigateChat={() => onChangeView?.('chat')} />
-        </div>
-      </div>
-    )
-  }
-
   const renderChatTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
       if (timelineItem.kind === 'compaction-pending') {
@@ -3940,11 +3918,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const showEmptyState =
-    groupedChatMessages.length === 0 && !isCurrentConversationRunActive
-  const showScrollToBottomButton =
-    !showEmptyState && groupedChatMessages.length > 0 && !isAutoFollowEnabled
-
   return (
     <div
       ref={containerRef}
@@ -3952,255 +3925,232 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       style={containerStyle}
     >
       {header}
-      {showEmptyState && (
-        <div className="smtcmp-chat-empty-state-overlay" aria-hidden="true">
-          <div className="smtcmp-chat-empty-state">
-            <div
-              key={chatMode}
-              className="smtcmp-chat-empty-state-icon"
-              data-mode={chatMode}
-            >
-              {chatMode === 'agent' ? (
-                <Bot size={18} strokeWidth={2} />
-              ) : (
-                <MessageCircle size={18} strokeWidth={2} />
-              )}
-            </div>
-            <div className="smtcmp-chat-empty-state-title">
-              {chatMode === 'agent'
-                ? t('chat.emptyState.agentTitle', '让 AI 去执行')
-                : t('chat.emptyState.chatTitle', '先想清楚，再落笔')}
-            </div>
-            <div className="smtcmp-chat-empty-state-description">
-              {chatMode === 'agent'
-                ? t(
-                    'chat.emptyState.agentDescription',
-                    '启用工具链，处理搜索、读写与多步骤任务',
-                  )
-                : t(
-                    'chat.emptyState.chatDescription',
-                    '适合提问、润色与改写，专注表达本身',
-                  )}
-            </div>
-          </div>
+      {activeView === 'composer' ? (
+        <div className="smtcmp-chat-composer-wrapper">
+          <Composer onNavigateChat={() => onChangeView?.('chat')} />
         </div>
-      )}
-      <SharedConversationSurface
-        items={chatTimelineItems}
-        conversationId={currentConversationId}
-        scrollContainerRef={chatMessagesRef}
-        renderItem={renderChatTimelineItem}
-        forceRenderItemIds={['bottom-anchor']}
-        followOutput={followOutput}
-        onAtBottomStateChange={onAtBottomStateChange}
-        virtualizationThreshold={
-          editingAssistantMessageId ? chatTimelineItems.length : undefined
-        }
-        scrollContainerClassName="smtcmp-chat-messages"
-      />
-      <div
-        className={`smtcmp-chat-footer${
-          isCurrentConversationRunActive ? ' is-generating' : ''
-        }`}
-      >
-        {(isCurrentConversationRunActive || showScrollToBottomButton) && (
-          <div className="smtcmp-chat-floating-actions" aria-hidden="true">
-            {currentConversationRunSummary.isRunning && (
-              <button
-                type="button"
-                onClick={() => abortConversationRun(currentConversationId)}
-                className="smtcmp-stop-gen-btn"
-              >
-                <CircleStop size={16} />
-                <div>Stop generation</div>
-              </button>
-            )}
-            {showScrollToBottomButton && (
-              <button
-                type="button"
-                className="smtcmp-chat-scroll-to-bottom-button"
-                onClick={forceScrollToBottom}
-                aria-label={
-                  hasStreamingMessages
-                    ? t('chat.scrollToBottomWhileStreaming', '回到底部继续跟随')
-                    : t('chat.scrollToBottom', '回到底部')
-                }
-                title={
-                  hasStreamingMessages
-                    ? t('chat.scrollToBottomWhileStreaming', '回到底部继续跟随')
-                    : t('chat.scrollToBottom', '回到底部')
-                }
-              >
-                <ArrowDown size={14} strokeWidth={2.25} />
-              </button>
-            )}
-          </div>
-        )}
-        {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
-          displayMentionablesForInput.length > 0 && (
-            <div className="smtcmp-chat-user-input-files">
-              {displayMentionablesForInput.map((mentionable) => {
-                const mentionableKey = getMentionableKey(
-                  serializeMentionable(mentionable),
-                )
-                return (
-                  <MentionableBadge
-                    key={mentionableKey}
-                    mentionable={mentionable}
-                    onDelete={() => handleMentionableDeleteFromAll(mentionable)}
-                    onClick={() => {}}
-                  />
-                )
-              })}
-            </div>
+      ) : (
+        <ChatConversationPane
+          chatMode={chatMode}
+          groupedChatMessagesLength={groupedChatMessages.length}
+          isCurrentConversationRunActive={isCurrentConversationRunActive}
+          isAutoFollowEnabled={isAutoFollowEnabled}
+          currentConversationId={currentConversationId}
+          chatTimelineItems={chatTimelineItems}
+          chatMessagesRef={chatMessagesRef}
+          renderChatTimelineItem={renderChatTimelineItem}
+          followOutput={followOutput}
+          onAtBottomStateChange={onAtBottomStateChange}
+          editingAssistantMessageId={editingAssistantMessageId}
+          currentConversationRunSummaryIsRunning={
+            currentConversationRunSummary.isRunning
+          }
+          onAbortConversationRun={() =>
+            abortConversationRun(currentConversationId)
+          }
+          onForceScrollToBottom={forceScrollToBottom}
+          hasStreamingMessages={hasStreamingMessages}
+          scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
+          scrollToBottomWhileStreamingLabel={t(
+            'chat.scrollToBottomWhileStreaming',
+            '回到底部继续跟随',
           )}
-        <div className="smtcmp-chat-input-wrapper">
-          <div className="smtcmp-chat-input-settings-outer">
-            <ChatSettingsButton
-              overrides={conversationOverrides}
-              onChange={(next) => {
-                const nextOverrides = next
-                  ? {
-                      ...next,
-                      chatMode,
-                      autoAttachCurrentFile,
+          emptyStateChatTitle={t(
+            'chat.emptyState.chatTitle',
+            '先想清楚，再落笔',
+          )}
+          emptyStateAgentTitle={t(
+            'chat.emptyState.agentTitle',
+            '让 AI 去执行',
+          )}
+          emptyStateChatDescription={t(
+            'chat.emptyState.chatDescription',
+            '适合提问、润色与改写，专注表达本身',
+          )}
+          emptyStateAgentDescription={t(
+            'chat.emptyState.agentDescription',
+            '启用工具链，处理搜索、读写与多步骤任务',
+          )}
+          footerContent={
+            <>
+              {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===
+                'badge' &&
+                displayMentionablesForInput.length > 0 && (
+                  <div className="smtcmp-chat-user-input-files">
+                    {displayMentionablesForInput.map((mentionable) => {
+                      const mentionableKey = getMentionableKey(
+                        serializeMentionable(mentionable),
+                      )
+                      return (
+                        <MentionableBadge
+                          key={mentionableKey}
+                          mentionable={mentionable}
+                          onDelete={() =>
+                            handleMentionableDeleteFromAll(mentionable)
+                          }
+                          onClick={() => {}}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+              <div className="smtcmp-chat-input-wrapper">
+                <div className="smtcmp-chat-input-settings-outer">
+                  <ChatSettingsButton
+                    overrides={conversationOverrides}
+                    onChange={(next) => {
+                      const nextOverrides = next
+                        ? {
+                            ...next,
+                            chatMode,
+                            autoAttachCurrentFile,
+                          }
+                        : { chatMode, autoAttachCurrentFile }
+                      setConversationOverrides(nextOverrides)
+                      conversationOverridesRef.current.set(
+                        currentConversationId,
+                        nextOverrides,
+                      )
+                    }}
+                    currentModel={settings.chatModels?.find(
+                      (m) => m.id === conversationModelId,
+                    )}
+                  />
+                </div>
+                <ChatUserInput
+                  key={inputMessage.id}
+                  ref={(ref) => registerChatUserInputRef(inputMessage.id, ref)}
+                  initialSerializedEditorState={inputMessage.content}
+                  onChange={(content) => {
+                    setInputMessage((prevInputMessage) => ({
+                      ...prevInputMessage,
+                      content,
+                    }))
+                  }}
+                  onSubmit={(content, useVaultSearch) => {
+                    if (
+                      editorStateToPlainText(content).trim() === '' &&
+                      inputMessage.mentionables.length === 0 &&
+                      (inputMessage.selectedSkills?.length ?? 0) === 0
+                    ) {
+                      return
                     }
-                  : { chatMode, autoAttachCurrentFile }
-                setConversationOverrides(nextOverrides)
-                conversationOverridesRef.current.set(
-                  currentConversationId,
-                  nextOverrides,
-                )
-              }}
-              currentModel={settings.chatModels?.find(
-                (m) => m.id === conversationModelId,
-              )}
-            />
-          </div>
-          <ChatUserInput
-            key={inputMessage.id} // this is needed to clear the editor when the user submits a new message
-            ref={(ref) => registerChatUserInputRef(inputMessage.id, ref)}
-            initialSerializedEditorState={inputMessage.content}
-            onChange={(content) => {
-              setInputMessage((prevInputMessage) => ({
-                ...prevInputMessage,
-                content,
-              }))
-            }}
-            onSubmit={(content, useVaultSearch) => {
-              if (
-                editorStateToPlainText(content).trim() === '' &&
-                inputMessage.mentionables.length === 0 &&
-                (inputMessage.selectedSkills?.length ?? 0) === 0
-              ) {
-                return
-              }
-              const messageForSubmit = buildInputMessageForSubmit(content)
-              const nextMessageModelMap = new Map(messageModelMap)
-              nextMessageModelMap.set(inputMessage.id, conversationModelId)
-              void handleUserMessageSubmit({
-                inputChatMessages: [...chatMessages, messageForSubmit],
-                requestChatMessages: [
-                  ...displayedChatMessages,
-                  messageForSubmit,
-                ],
-                useVaultSearch,
-                persistedMessageModelMap: nextMessageModelMap,
-              })
-              // Record the model used for this just-submitted input message
-              setMessageModelMap(nextMessageModelMap)
-              setMessageReasoningMap((prev) => {
-                const next = new Map(prev)
-                next.set(inputMessage.id, reasoningLevel)
-                return next
-              })
-              setInputMessage(getNewInputMessage(reasoningLevel))
-            }}
-            onFocus={() => {
-              setFocusedMessageId(inputMessage.id)
-            }}
-            mentionables={inputMessage.mentionables}
-            setMentionables={(mentionables) => {
-              setInputMessage((prevInputMessage) => {
-                return {
-                  ...prevInputMessage,
-                  mentionables,
-                }
-              })
-            }}
-            selectedSkills={inputMessage.selectedSkills ?? []}
-            setSelectedSkills={(selectedSkills) => {
-              setInputMessage((prevInputMessage) => ({
-                ...prevInputMessage,
-                selectedSkills,
-                promptContent: null,
-                snapshotRef: undefined,
-                similaritySearchResults: undefined,
-              }))
-            }}
-            modelId={conversationModelId}
-            onModelChange={(id) => {
-              setConversationModelId(id)
-              conversationModelIdRef.current.set(currentConversationId, id)
-              const nextReasoningLevel = getReasoningLevelForModelId(id)
-              setReasoningLevel(nextReasoningLevel)
-              conversationReasoningLevelRef.current.set(
-                currentConversationId,
-                nextReasoningLevel,
-              )
-              setInputMessage((prev) => ({
-                ...prev,
-                reasoningLevel: nextReasoningLevel,
-              }))
-            }}
-            reasoningLevel={reasoningLevel}
-            onReasoningChange={(level) => {
-              setReasoningLevel(level)
-              conversationReasoningLevelRef.current.set(
-                currentConversationId,
-                level,
-              )
-              void persistReasoningLevelForModel(conversationModelId, level)
-              setInputMessage((prev) => ({
-                ...prev,
-                reasoningLevel: level,
-              }))
-            }}
-            autoFocus
-            addedBlockKey={addedBlockKey}
-            conversationOverrides={conversationOverrides}
-            onConversationOverridesChange={(next) => {
-              const nextOverrides = next
-                ? {
-                    ...next,
-                    chatMode,
-                    autoAttachCurrentFile,
+                    const messageForSubmit = buildInputMessageForSubmit(content)
+                    const nextMessageModelMap = new Map(messageModelMap)
+                    nextMessageModelMap.set(
+                      inputMessage.id,
+                      conversationModelId,
+                    )
+                    void handleUserMessageSubmit({
+                      inputChatMessages: [...chatMessages, messageForSubmit],
+                      requestChatMessages: [
+                        ...displayedChatMessages,
+                        messageForSubmit,
+                      ],
+                      useVaultSearch,
+                      persistedMessageModelMap: nextMessageModelMap,
+                    })
+                    setMessageModelMap(nextMessageModelMap)
+                    setMessageReasoningMap((prev) => {
+                      const next = new Map(prev)
+                      next.set(inputMessage.id, reasoningLevel)
+                      return next
+                    })
+                    setInputMessage(getNewInputMessage(reasoningLevel))
+                  }}
+                  onFocus={() => {
+                    setFocusedMessageId(inputMessage.id)
+                  }}
+                  mentionables={inputMessage.mentionables}
+                  setMentionables={(mentionables) => {
+                    setInputMessage((prevInputMessage) => {
+                      return {
+                        ...prevInputMessage,
+                        mentionables,
+                      }
+                    })
+                  }}
+                  selectedSkills={inputMessage.selectedSkills ?? []}
+                  setSelectedSkills={(selectedSkills) => {
+                    setInputMessage((prevInputMessage) => ({
+                      ...prevInputMessage,
+                      selectedSkills,
+                      promptContent: null,
+                      snapshotRef: undefined,
+                      similaritySearchResults: undefined,
+                    }))
+                  }}
+                  modelId={conversationModelId}
+                  onModelChange={(id) => {
+                    setConversationModelId(id)
+                    conversationModelIdRef.current.set(currentConversationId, id)
+                    const nextReasoningLevel = getReasoningLevelForModelId(id)
+                    setReasoningLevel(nextReasoningLevel)
+                    conversationReasoningLevelRef.current.set(
+                      currentConversationId,
+                      nextReasoningLevel,
+                    )
+                    setInputMessage((prev) => ({
+                      ...prev,
+                      reasoningLevel: nextReasoningLevel,
+                    }))
+                  }}
+                  reasoningLevel={reasoningLevel}
+                  onReasoningChange={(level) => {
+                    setReasoningLevel(level)
+                    conversationReasoningLevelRef.current.set(
+                      currentConversationId,
+                      level,
+                    )
+                    void persistReasoningLevelForModel(
+                      conversationModelId,
+                      level,
+                    )
+                    setInputMessage((prev) => ({
+                      ...prev,
+                      reasoningLevel: level,
+                    }))
+                  }}
+                  autoFocus
+                  addedBlockKey={addedBlockKey}
+                  conversationOverrides={conversationOverrides}
+                  onConversationOverridesChange={(next) => {
+                    const nextOverrides = next
+                      ? {
+                          ...next,
+                          chatMode,
+                          autoAttachCurrentFile,
+                        }
+                      : { chatMode, autoAttachCurrentFile }
+                    setConversationOverrides(nextOverrides)
+                    conversationOverridesRef.current.set(
+                      currentConversationId,
+                      nextOverrides,
+                    )
+                  }}
+                  showConversationSettingsButton={false}
+                  hideBadgeMentionables
+                  displayMentionables={displayMentionablesForInput}
+                  onDeleteFromAll={handleMentionableDeleteFromAll}
+                  currentAssistantId={conversationAssistantId}
+                  onSelectAssistantForConversation={
+                    handleConversationAssistantSelect
                   }
-                : { chatMode, autoAttachCurrentFile }
-              setConversationOverrides(nextOverrides)
-              conversationOverridesRef.current.set(
-                currentConversationId,
-                nextOverrides,
-              )
-            }}
-            showConversationSettingsButton={false}
-            hideBadgeMentionables
-            displayMentionables={displayMentionablesForInput}
-            onDeleteFromAll={handleMentionableDeleteFromAll}
-            currentAssistantId={conversationAssistantId}
-            onSelectAssistantForConversation={handleConversationAssistantSelect}
-            currentChatMode={chatMode}
-            onSelectChatModeForConversation={handleChatModeChange}
-            allowAgentModeOption={Platform.isDesktop}
-            enableResize
-            onRunSlashCommand={(command) => {
-              if (command.id === 'compact-context') {
-                void handleManualContextCompaction()
-              }
-            }}
-          />
-        </div>
-      </div>
+                  currentChatMode={chatMode}
+                  onSelectChatModeForConversation={handleChatModeChange}
+                  allowAgentModeOption={Platform.isDesktop}
+                  enableResize
+                  onRunSlashCommand={(command) => {
+                    if (command.id === 'compact-context') {
+                      void handleManualContextCompaction()
+                    }
+                  }}
+                />
+              </div>
+            </>
+          }
+        />
+      )}
     </div>
   )
 })
