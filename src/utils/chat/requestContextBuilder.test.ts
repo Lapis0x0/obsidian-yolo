@@ -71,14 +71,23 @@ function createMockApp({
   files,
   folders,
   fileContents,
+  frontmatters,
 }: {
   files: InstanceType<typeof TFile>[]
   folders?: InstanceType<typeof TFolder>[]
   fileContents: Map<string, string>
+  frontmatters?: Map<string, Record<string, unknown>>
 }) {
   const folderEntries = folders ?? []
+  const fileFrontmatters = frontmatters ?? new Map()
 
   return {
+    metadataCache: {
+      getFileCache: jest.fn((file: { path: string }) => {
+        const frontmatter = fileFrontmatters.get(file.path)
+        return frontmatter ? { frontmatter } : null
+      }),
+    },
     vault: {
       cachedRead: jest.fn(async (file: { path: string }) => {
         return fileContents.get(file.path) ?? ''
@@ -142,11 +151,27 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
       [folderFile.path, '## Folder Heading'],
       [textFile.path, 'plain text content'],
     ])
+    const frontmatters = new Map<string, Record<string, unknown>>([
+      [
+        explicitFile.path,
+        {
+          title: 'Explicit Title',
+          tags: ['alpha', 'beta'],
+        },
+      ],
+      [
+        folderFile.path,
+        {
+          exported_from: 'YOLO',
+        },
+      ],
+    ])
 
     const app = createMockApp({
       files: [explicitFile, currentFile, folderFile, textFile],
       folders: [folder],
       fileContents,
+      frontmatters,
     })
 
     const builder = new RequestContextBuilder(
@@ -169,11 +194,23 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     expect(textContent).toContain('## Mentioned Vault Files (outline only)')
     expect(textContent).toContain(
-      '- `notes/explicit.md`\n  - L1 # Explicit\n  - L2 ## Part A',
+      [
+        '- `notes/explicit.md`',
+        '  - Properties:',
+        '    - `title`: `Explicit Title`',
+        '    - `tags`: `["alpha","beta"]`',
+        '  - L1 # Explicit',
+        '  - L2 ## Part A',
+      ].join('\n'),
     )
     expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
     expect(textContent).toContain(
-      '- `docs/from-folder.md`\n  - L1 ## Folder Heading',
+      [
+        '- `docs/from-folder.md`',
+        '  - Properties:',
+        '    - `exported_from`: `YOLO`',
+        '  - L1 ## Folder Heading',
+      ].join('\n'),
     )
     expect(textContent).toContain('- `docs/plain.txt`')
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
@@ -260,6 +297,50 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
     expect(textContent).not.toContain('Body')
     expect(textContent).not.toContain('More')
+  })
+
+  it('includes frontmatter properties without internal metadata fields', async () => {
+    const explicitFile = createMockFile('notes/with-properties.md')
+
+    const app = createMockApp({
+      files: [explicitFile],
+      fileContents: new Map([[explicitFile.path, '# Heading']]),
+      frontmatters: new Map([
+        [
+          explicitFile.path,
+          {
+            title: '工具上下文管理详解',
+            exported_at: '2026-04-09T12:10:14.480Z',
+            draft: false,
+            position: {
+              start: { line: 0, col: 0, offset: 0 },
+              end: { line: 4, col: 3, offset: 80 },
+            },
+          },
+        ],
+      ]),
+    })
+
+    const builder = new RequestContextBuilder(
+      async () => {
+        throw new Error('RAG should not be called in this test')
+      },
+      app as never,
+      settings,
+    )
+
+    const result = await builder.compileUserMessagePrompt({
+      message: createUserMessage([{ type: 'file', file: explicitFile }]),
+    })
+
+    const textContent = getTextContent(result.promptContent)
+
+    expect(textContent).toContain('    - `title`: `工具上下文管理详解`')
+    expect(textContent).toContain(
+      '    - `exported_at`: `2026-04-09T12:10:14.480Z`',
+    )
+    expect(textContent).toContain('    - `draft`: `false`')
+    expect(textContent).not.toContain('`position`')
   })
 
   it('uses full content for files and current file in full mode while keeping folders light', async () => {

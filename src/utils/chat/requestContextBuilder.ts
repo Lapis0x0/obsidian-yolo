@@ -73,6 +73,11 @@ type MarkdownAtxHeading = {
   text: string
 }
 
+type MentionedFileProperty = {
+  key: string
+  value: string
+}
+
 type MentionedFileContextEntry = {
   file: TFile
   source: 'file' | 'current-file' | 'folder'
@@ -129,6 +134,54 @@ export function extractMarkdownAtxHeadings(
   }
 
   return headings
+}
+
+function formatMentionedFilePropertyValue(value: unknown): string | null {
+  if (value === null) {
+    return 'null'
+  }
+
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value)
+  }
+
+  if (Array.isArray(value) || typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
+function getMentionedFileProperties(
+  frontmatter: Record<string, unknown> | null | undefined,
+): MentionedFileProperty[] {
+  if (!frontmatter) {
+    return []
+  }
+
+  return Object.entries(frontmatter)
+    .filter(([key]) => key !== 'position')
+    .map(([key, value]) => {
+      const formattedValue = formatMentionedFilePropertyValue(value)
+      if (!formattedValue) {
+        return null
+      }
+
+      return {
+        key,
+        value: formattedValue,
+      }
+    })
+    .filter((property): property is MentionedFileProperty => property !== null)
 }
 
 export class RequestContextBuilder {
@@ -1074,19 +1127,35 @@ ${customInstruction}
     )
     const fileLines = await Promise.all(
       unifiedFiles.map(async ({ file }) => {
+        const frontmatter =
+          file.extension === 'md'
+            ? this.app.metadataCache.getFileCache(file)?.frontmatter
+            : null
+        const properties = getMentionedFileProperties(frontmatter)
+        const propertyLines =
+          properties.length > 0
+            ? [
+                '  - Properties:',
+                ...properties.map(
+                  ({ key, value }) => `    - \`${key}\`: \`${value}\``,
+                ),
+              ]
+            : []
+
         if (!outlinedFilePaths.has(file.path)) {
-          return `- \`${file.path}\``
+          return [`- \`${file.path}\``, ...propertyLines].join('\n')
         }
 
         try {
           const content = await readTFileContent(file, this.app.vault)
           const headings = extractMarkdownAtxHeadings(content)
           if (headings.length === 0) {
-            return `- \`${file.path}\``
+            return [`- \`${file.path}\``, ...propertyLines].join('\n')
           }
 
           return [
             `- \`${file.path}\``,
+            ...propertyLines,
             ...headings.map(
               (heading) =>
                 `  - L${heading.line} ${'#'.repeat(heading.level)} ${heading.text}`,
@@ -1098,7 +1167,7 @@ ${customInstruction}
             file.path,
             error,
           )
-          return `- \`${file.path}\``
+          return [`- \`${file.path}\``, ...propertyLines].join('\n')
         }
       }),
     )

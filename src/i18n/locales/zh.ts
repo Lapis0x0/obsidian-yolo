@@ -879,7 +879,7 @@ export const zh: TranslationKeys = {
       mentionDisplayModeBadge: '顶部徽章',
       mentionContextMode: '@ 文件上下文注入模式',
       mentionContextModeDesc:
-        '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
+        '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径、笔记属性和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
       mentionContextModeLight: '轻量模式',
       mentionContextModeFull: '全量模式',
       chatApplyMode: 'Chat 应用修改方式',

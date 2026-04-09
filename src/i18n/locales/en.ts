@@ -957,7 +957,7 @@ export const en: TranslationKeys = {
       mentionDisplayModeBadge: 'Top badges',
       mentionContextMode: '@ file context injection mode',
       mentionContextModeDesc:
-        'Control how @ files are injected into the model. In light mode, only the referenced file paths and Markdown structure are injected, encouraging the Agent to read only what is necessary.',
+        'Control how @ files are injected into the model. In light mode, only the referenced file paths, note properties, and Markdown structure are injected, encouraging the Agent to read only what is necessary.',
       mentionContextModeLight: 'Light mode',
       mentionContextModeFull: 'Full mode',
       chatApplyMode: 'Chat apply behavior',

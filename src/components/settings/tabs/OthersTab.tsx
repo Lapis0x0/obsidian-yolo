@@ -211,7 +211,7 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
               )}
               desc={t(
                 'settings.etc.mentionContextModeDesc',
-                '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
+                '控制 @ 文件注入到模型的方式，在轻量模式下将会注入引用文件的路径、笔记属性和 Markdown 结构，鼓励 Agent 只读取必要的内容。',
               )}
               className="smtcmp-settings-card"
             >

@@ -943,7 +943,7 @@ export const it: TranslationKeys = {
       mentionDisplayModeBadge: 'Badge in alto',
       mentionContextMode: 'Modalita contesto file @',
       mentionContextModeDesc:
-        'Controlla come i file con @ vengono iniettati nel modello. In modalita leggera vengono iniettati solo i percorsi dei file citati e la struttura Markdown, incoraggiando l agent a leggere solo il contenuto necessario.',
+        'Controlla come i file con @ vengono iniettati nel modello. In modalita leggera vengono iniettati solo i percorsi dei file citati, le proprieta della nota e la struttura Markdown, incoraggiando l agent a leggere solo il contenuto necessario.',
       mentionContextModeLight: 'Modalita leggera',
       mentionContextModeFull: 'Modalita completa',
       persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
