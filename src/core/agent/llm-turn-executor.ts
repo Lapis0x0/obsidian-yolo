@@ -241,7 +241,7 @@ export class AgentLlmTurnExecutor {
     assistantMessage.annotations = turnResult.annotations
     assistantMessage.metadata = {
       ...assistantMessage.metadata,
-      usage: turnResult.usage,
+      usage: turnResult.usage ?? assistantMessage.metadata?.usage,
       durationMs: Date.now() - responseStart,
       generationState: this.input.abortSignal?.aborted
         ? 'aborted'
