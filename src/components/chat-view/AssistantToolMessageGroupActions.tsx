@@ -1,4 +1,3 @@
-import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   Check,
   CopyIcon,
@@ -10,7 +9,8 @@ import {
   Trash2,
 } from 'lucide-react'
 import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode, Ref } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -20,6 +20,43 @@ import {
 } from '../../types/chat'
 
 import { getToolMessageContent } from './ToolMessage'
+
+function ActionIconButton({
+  label,
+  className = 'clickable-icon',
+  disabled = false,
+  tabIndex,
+  buttonRef,
+  onClick,
+  children,
+}: {
+  label: string
+  className?: string
+  disabled?: boolean
+  tabIndex?: number
+  buttonRef?: Ref<HTMLButtonElement>
+  onClick?: () => void
+  children: ReactNode
+}) {
+  const labelId = useId()
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      className={className}
+      aria-labelledby={labelId}
+      disabled={disabled}
+      tabIndex={tabIndex}
+    >
+      {children}
+      <span id={labelId} className="smtcmp-sr-only">
+        {label}
+      </span>
+    </button>
+  )
+}
 
 function CopyButton({ messages }: { messages: AssistantToolMessageGroup }) {
   const [copied, setCopied] = useState(false)
@@ -56,30 +93,18 @@ function CopyButton({ messages }: { messages: AssistantToolMessageGroup }) {
   }
 
   return (
-    <Tooltip.Provider delayDuration={0}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <button
-            type="button"
-            onClick={
-              copied
-                ? undefined
-                : () => {
-                    handleCopy()
-                  }
+    <ActionIconButton
+      label={t('chat.copyMessage', 'Copy message')}
+      onClick={
+        copied
+          ? undefined
+          : () => {
+              handleCopy()
             }
-            className="clickable-icon"
-          >
-            {copied ? <Check size={12} /> : <CopyIcon size={12} />}
-          </button>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content className="smtcmp-tooltip-content">
-            {t('chat.copyMessage', 'Copy message')}
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+      }
+    >
+      {copied ? <Check size={12} /> : <CopyIcon size={12} />}
+    </ActionIconButton>
   )
 }
 
@@ -174,25 +199,13 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
   }
 
   return (
-    <Tooltip.Provider delayDuration={0}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <button
-            ref={buttonRef}
-            type="button"
-            onClick={handleInsert}
-            className="clickable-icon"
-          >
-            <Import size={12} />
-          </button>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content className="smtcmp-tooltip-content">
-            {t('chat.insertAtCursor', 'Insert / Replace at cursor')}
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+    <ActionIconButton
+      label={t('chat.insertAtCursor', 'Insert / Replace at cursor')}
+      buttonRef={buttonRef}
+      onClick={handleInsert}
+    >
+      <Import size={12} />
+    </ActionIconButton>
   )
 }
 
@@ -226,6 +239,7 @@ export default function AssistantToolMessageGroupActions({
   isDisabled?: boolean
 }) {
   const { t } = useLanguage()
+  const moreActionsLabelId = useId()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [isMoreOpen, setIsMoreOpen] = useState(false)
   const retryLabel = t('chat.regenerate', 'Regenerate')
@@ -282,26 +296,13 @@ export default function AssistantToolMessageGroupActions({
       }`}
     >
       {showRetry && (
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <button
-                type="button"
-                onClick={isRetryDisabled ? undefined : onRetry}
-                className="clickable-icon"
-                aria-label={retryLabel}
-                disabled={isRetryDisabled}
-              >
-                <RotateCcw size={12} />
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content className="smtcmp-tooltip-content">
-                {retryLabel}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </Tooltip.Provider>
+        <ActionIconButton
+          label={retryLabel}
+          disabled={isRetryDisabled}
+          onClick={onRetry}
+        >
+          <RotateCcw size={12} />
+        </ActionIconButton>
       )}
       {showInsert && <InsertButton messages={messages} />}
       {showCopy && <CopyButton messages={messages} />}
@@ -315,125 +316,69 @@ export default function AssistantToolMessageGroupActions({
           >
             <div className="smtcmp-assistant-message-inline-actions-inner">
               {showBranch && (
-                <Tooltip.Provider delayDuration={0}>
-                  <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                      <button
-                        type="button"
-                        onClick={
-                          isBranchDisabled
-                            ? undefined
-                            : () => {
-                                setIsMoreOpen(false)
-                                onBranch?.()
-                              }
-                        }
-                        className="clickable-icon smtcmp-assistant-message-action-btn"
-                        aria-label={branchLabel}
-                        disabled={isBranchDisabled}
-                        tabIndex={isMoreOpen ? undefined : -1}
-                      >
-                        <GitFork size={12} />
-                      </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content className="smtcmp-tooltip-content">
-                        {branchLabel}
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                </Tooltip.Provider>
+                <ActionIconButton
+                  label={branchLabel}
+                  className="clickable-icon smtcmp-assistant-message-action-btn"
+                  disabled={isBranchDisabled}
+                  tabIndex={isMoreOpen ? undefined : -1}
+                  onClick={() => {
+                    setIsMoreOpen(false)
+                    onBranch?.()
+                  }}
+                >
+                  <GitFork size={12} />
+                </ActionIconButton>
               )}
               {showEdit && (
-                <Tooltip.Provider delayDuration={0}>
-                  <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                      <button
-                        type="button"
-                        onClick={
-                          isEditDisabled
-                            ? undefined
-                            : () => {
-                                setIsMoreOpen(false)
-                                onEdit?.()
-                              }
-                        }
-                        className="clickable-icon smtcmp-assistant-message-action-btn"
-                        aria-label={editLabel}
-                        disabled={isEditDisabled}
-                        tabIndex={isMoreOpen ? undefined : -1}
-                      >
-                        <Pencil size={12} />
-                      </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content className="smtcmp-tooltip-content">
-                        {editLabel}
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                </Tooltip.Provider>
+                <ActionIconButton
+                  label={editLabel}
+                  className="clickable-icon smtcmp-assistant-message-action-btn"
+                  disabled={isEditDisabled}
+                  tabIndex={isMoreOpen ? undefined : -1}
+                  onClick={() => {
+                    setIsMoreOpen(false)
+                    onEdit?.()
+                  }}
+                >
+                  <Pencil size={12} />
+                </ActionIconButton>
               )}
               {showDelete && (
-                <Tooltip.Provider delayDuration={0}>
-                  <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                      <button
-                        type="button"
-                        onClick={
-                          isDeleteDisabled
-                            ? undefined
-                            : () => {
-                                setIsMoreOpen(false)
-                                onDelete?.()
-                              }
-                        }
-                        className="clickable-icon smtcmp-assistant-message-action-btn"
-                        aria-label={deleteLabel}
-                        disabled={isDeleteDisabled}
-                        tabIndex={isMoreOpen ? undefined : -1}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content className="smtcmp-tooltip-content">
-                        {deleteLabel}
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                </Tooltip.Provider>
+                <ActionIconButton
+                  label={deleteLabel}
+                  className="clickable-icon smtcmp-assistant-message-action-btn"
+                  disabled={isDeleteDisabled}
+                  tabIndex={isMoreOpen ? undefined : -1}
+                  onClick={() => {
+                    setIsMoreOpen(false)
+                    onDelete?.()
+                  }}
+                >
+                  <Trash2 size={12} />
+                </ActionIconButton>
               )}
             </div>
           </div>
-          <Tooltip.Provider delayDuration={0}>
-            <Tooltip.Root>
-              <Tooltip.Trigger asChild>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isDisabled || isEditing) {
-                      return
-                    }
-                    setIsMoreOpen((current) => !current)
-                  }}
-                  className={`clickable-icon smtcmp-assistant-message-action-btn smtcmp-assistant-message-more-button${
-                    isMoreOpen ? ' is-open' : ''
-                  }`}
-                  aria-label={t('sidebar.chatList.moreActions', 'More actions')}
-                  aria-expanded={isMoreOpen ? 'true' : 'false'}
-                  disabled={isDisabled || isEditing}
-                >
-                  <Ellipsis size={12} />
-                </button>
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Content className="smtcmp-tooltip-content">
-                  {t('sidebar.chatList.moreActions', 'More actions')}
-                </Tooltip.Content>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          </Tooltip.Provider>
+          <button
+            type="button"
+            onClick={() => {
+              if (isDisabled || isEditing) {
+                return
+              }
+              setIsMoreOpen((current) => !current)
+            }}
+            className={`clickable-icon smtcmp-assistant-message-action-btn smtcmp-assistant-message-more-button${
+              isMoreOpen ? ' is-open' : ''
+            }`}
+            aria-labelledby={moreActionsLabelId}
+            aria-expanded={isMoreOpen ? 'true' : 'false'}
+            disabled={isDisabled || isEditing}
+          >
+            <Ellipsis size={12} />
+            <span id={moreActionsLabelId} className="smtcmp-sr-only">
+              {t('sidebar.chatList.moreActions', 'More actions')}
+            </span>
+          </button>
         </div>
       ) : null}
     </div>

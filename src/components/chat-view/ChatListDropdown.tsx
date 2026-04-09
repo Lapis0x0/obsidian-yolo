@@ -9,7 +9,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
@@ -106,6 +106,7 @@ function ChatListItem({
   onCloseMoreMenu: () => void
 }) {
   const { t } = useLanguage()
+  const moreActionsLabelId = useId()
   const itemRef = useRef<HTMLLIElement>(null)
   const [editingTitle, setEditingTitle] = useState(title)
 
@@ -313,11 +314,13 @@ function ChatListItem({
             className={`clickable-icon smtcmp-chat-list-dropdown-item-icon smtcmp-chat-list-more-button${
               isMoreMenuOpen ? ' is-open' : ''
             }`}
-            aria-label={t('sidebar.chatList.moreActions', 'More actions')}
-            title={t('sidebar.chatList.moreActions', 'More actions')}
+            aria-labelledby={moreActionsLabelId}
             aria-expanded={isMoreMenuOpen ? 'true' : 'false'}
           >
             <Ellipsis size={16} />
+            <span id={moreActionsLabelId} className="smtcmp-sr-only">
+              {t('sidebar.chatList.moreActions', 'More actions')}
+            </span>
           </button>
         ) : null}
       </div>
