@@ -1900,6 +1900,9 @@ export function QuickAskPanel({
             showInlineInfo={
               quickAskSurfacePreset.assistantActions.showInlineInfo
             }
+            showRetryAction={
+              quickAskSurfacePreset.assistantActions.showRetryAction
+            }
             showInsertAction={
               quickAskSurfacePreset.assistantActions.showInsertAction
             }
@@ -1923,6 +1926,7 @@ export function QuickAskPanel({
             onEditCancel={noop}
             onEditSave={noop}
             onDeleteGroup={handleDeleteGroup}
+            onRetryGroup={noop}
             onBranchGroup={noop}
             onQuoteAssistantSelection={noop}
             onOpenEditSummaryFile={handleOpenEditSummaryFile}

@@ -99,6 +99,11 @@ import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain
 import { ChatListDropdown } from './ChatListDropdown'
 import Composer from './Composer'
 import ContextUsageRing from './ContextUsageRing'
+import {
+  buildRetrySubmissionMessages,
+  getDisplayedAssistantToolMessages,
+  getSourceUserMessageIdForGroup,
+} from './chatRetry'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
@@ -336,79 +341,6 @@ const getLatestUserSelectedModelIds = (
   }
 
   return undefined
-}
-
-const getSourceUserMessageIdForGroup = (
-  messages: AssistantToolMessageGroup,
-): string | null => {
-  for (const message of messages) {
-    const sourceUserMessageId = message.metadata?.sourceUserMessageId
-    if (sourceUserMessageId) {
-      return sourceUserMessageId
-    }
-  }
-
-  return null
-}
-
-const getDisplayedAssistantToolMessages = (
-  messages: AssistantToolMessageGroup,
-  activeBranchKey?: string | null,
-): AssistantToolMessageGroup => {
-  const isBranchCompleted = (branchMessages: AssistantToolMessageGroup) => {
-    const latestMessage = branchMessages.at(-1)
-    if (latestMessage?.metadata?.branchWaitingApproval) {
-      return false
-    }
-
-    if (latestMessage?.metadata?.branchRunStatus) {
-      return latestMessage.metadata.branchRunStatus === 'completed'
-    }
-
-    return branchMessages.some(
-      (message) =>
-        message.role === 'assistant' &&
-        message.metadata?.generationState === 'completed',
-    )
-  }
-
-  const branchGroups = new Map<string, AssistantToolMessageGroup>()
-  messages.forEach((message) => {
-    const branchId = message.metadata?.branchId
-    if (!branchId) {
-      return
-    }
-
-    const existing = branchGroups.get(branchId)
-    if (existing) {
-      existing.push(message)
-      return
-    }
-
-    branchGroups.set(branchId, [message])
-  })
-
-  const groupedBranches = Array.from(branchGroups.values())
-  if (groupedBranches.length <= 1) {
-    return messages
-  }
-
-  const resolvedActiveBranchKey =
-    activeBranchKey ??
-    groupedBranches.find((branchMessages) =>
-      isBranchCompleted(branchMessages),
-    )?.[0]?.metadata?.branchId ??
-    groupedBranches[0]?.[0]?.metadata?.branchId ??
-    null
-
-  return (
-    groupedBranches.find(
-      (branchMessages) =>
-        branchMessages[0]?.metadata?.branchId === resolvedActiveBranchKey,
-    ) ??
-    groupedBranches[0] ??
-    messages
-  )
 }
 
 const serializeActiveBranchByUserMessageId = (
@@ -1310,16 +1242,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       showContinueResponseButton,
     ],
   )
-  const latestTimelineAssistantToolGroupKey = useMemo(() => {
-    for (let index = chatTimelineItems.length - 1; index >= 0; index -= 1) {
-      const candidate = chatTimelineItems[index]
-      if (candidate.kind === 'assistant-group') {
-        return candidate.renderKey
-      }
-    }
-
-    return null
-  }, [chatTimelineItems])
   useEffect(() => {
     const chatMessagesElement = chatMessagesRef.current
     if (!chatMessagesElement) {
@@ -2749,6 +2671,58 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleAssistantMessageGroupRetry = useCallback(
+    (messageIds: string[]) => {
+      const retryPayload = buildRetrySubmissionMessages({
+        sourceMessages: chatMessagesStateRef.current,
+        groupedChatMessages,
+        targetMessageIds: messageIds,
+        activeBranchByUserMessageId,
+      })
+
+      if (!retryPayload) {
+        new Notice(
+          t('chat.regenerateFailed', 'Failed to regenerate this reply'),
+        )
+        return
+      }
+
+      const {
+        sourceUserMessageId,
+        inputChatMessages,
+        requestChatMessages,
+      } = retryPayload
+      const nextAssistantGroupBoundaryMessageIds =
+        normalizeAssistantGroupBoundaryMessageIds(
+          inputChatMessages,
+          assistantGroupBoundaryMessageIds,
+        )
+
+      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
+
+      const nextActiveBranchByUserMessageId = new Map(
+        activeBranchByUserMessageIdRef.current,
+      )
+      if (nextActiveBranchByUserMessageId.delete(sourceUserMessageId)) {
+        activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
+        setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
+      }
+
+      void handleUserMessageSubmit({
+        inputChatMessages,
+        requestChatMessages,
+      })
+    },
+    [
+      activeBranchByUserMessageId,
+      assistantGroupBoundaryMessageIds,
+      groupedChatMessages,
+      handleUserMessageSubmit,
+      normalizeAssistantGroupBoundaryMessageIds,
+      t,
+    ],
+  )
+
   const applyMutation = useMutation({
     mutationFn: async ({
       blockToApply,
@@ -3448,10 +3422,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       // 从所有历史消息中删除
       const sourceMessages = chatMessagesStateRef.current
       let didChangeHistory = false
-      const nextMessages = sourceMessages.flatMap((message) => {
-        if (message.role !== 'user') {
-          return [message]
-        }
+      const nextMessages = sourceMessages.flatMap(
+        (message): ChatMessage[] => {
+          if (message.role !== 'user') {
+            return [message]
+          }
 
         const filtered = message.mentionables.filter(
           (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
@@ -3467,8 +3442,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           promptContent: null,
         }
 
-        return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
-      })
+          return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
+        },
+      )
       const nextAssistantGroupBoundaryMessageIds =
         buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
           sourceMessages,
@@ -4143,12 +4119,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             activeBranchKey={activeBranchByUserMessageId.get(
               getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
             )}
-            suppressFooter={
-              shouldSuppressCompactionAnchorFooter ||
-              (isCurrentConversationRunActive &&
-                timelineItem.renderKey === latestTimelineAssistantToolGroupKey)
-            }
+            suppressFooter={shouldSuppressCompactionAnchorFooter}
             showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
+            showRetryAction={
+              chatSurfacePreset.assistantActions.showRetryAction
+            }
             showInsertAction={
               chatSurfacePreset.assistantActions.showInsertAction
             }
@@ -4172,6 +4147,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             onEditCancel={handleAssistantMessageEditCancel}
             onEditSave={handleAssistantMessageEditSave}
             onDeleteGroup={handleAssistantMessageGroupDelete}
+            onRetryGroup={handleAssistantMessageGroupRetry}
             onBranchGroup={handleAssistantMessageGroupBranch}
             onActiveBranchChange={(branchKey) => {
               const sourceUserMessageId =
@@ -4460,7 +4436,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMessage.id,
       isCurrentConversationRunActive,
       latestCompactionState?.triggerToolCallId,
-      latestTimelineAssistantToolGroupKey,
       messageModelMap,
       messageReasoningMap,
       pendingCompactionAnchorMessageId,

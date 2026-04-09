@@ -1,5 +1,13 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Check, CopyIcon, GitFork, Import, Pencil, Trash2 } from 'lucide-react'
+import {
+  Check,
+  CopyIcon,
+  GitFork,
+  Import,
+  Pencil,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react'
 import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
 import { useMemo, useRef, useState } from 'react'
 
@@ -189,11 +197,13 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
 
 export default function AssistantToolMessageGroupActions({
   messages,
+  showRetry = true,
   showInsert = true,
   showCopy = true,
   showBranch = true,
   showEdit = true,
   showDelete = true,
+  onRetry,
   onBranch,
   onEdit,
   onDelete,
@@ -201,11 +211,13 @@ export default function AssistantToolMessageGroupActions({
   isDisabled = false,
 }: {
   messages: AssistantToolMessageGroup
+  showRetry?: boolean
   showInsert?: boolean
   showCopy?: boolean
   showBranch?: boolean
   showEdit?: boolean
   showDelete?: boolean
+  onRetry?: () => void
   onBranch?: () => void
   onEdit?: () => void
   onDelete?: () => void
@@ -213,15 +225,39 @@ export default function AssistantToolMessageGroupActions({
   isDisabled?: boolean
 }) {
   const { t } = useLanguage()
+  const retryLabel = t('chat.regenerate', 'Regenerate')
   const branchLabel = t('chat.createBranchFromHere', 'Create branch from here')
   const editLabel = t('common.edit', 'Edit')
   const deleteLabel = t('common.delete', 'Delete')
+  const isRetryDisabled = isDisabled || !onRetry || isEditing
   const isBranchDisabled = isDisabled || !onBranch
   const isEditDisabled = isDisabled || !onEdit || isEditing
   const isDeleteDisabled = isDisabled || !onDelete
 
   return (
     <div className="smtcmp-assistant-message-actions">
+      {showRetry && (
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button
+                type="button"
+                onClick={isRetryDisabled ? undefined : onRetry}
+                className="clickable-icon"
+                aria-label={retryLabel}
+                disabled={isRetryDisabled}
+              >
+                <RotateCcw size={12} />
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="smtcmp-tooltip-content">
+                {retryLabel}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      )}
       {showInsert && <InsertButton messages={messages} />}
       {showCopy && <CopyButton messages={messages} />}
       {showBranch && (

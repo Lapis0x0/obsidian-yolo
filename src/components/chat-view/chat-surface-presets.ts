@@ -1,5 +1,6 @@
 export type AssistantActionSurfacePreset = {
   showInlineInfo: boolean
+  showRetryAction: boolean
   showInsertAction: boolean
   showCopyAction: boolean
   showBranchAction: boolean
@@ -27,6 +28,7 @@ export const CHAT_SURFACE_PRESETS: Record<
     id: 'chat',
     assistantActions: {
       showInlineInfo: true,
+      showRetryAction: true,
       showInsertAction: true,
       showCopyAction: true,
       showBranchAction: true,
@@ -43,6 +45,7 @@ export const CHAT_SURFACE_PRESETS: Record<
     id: 'quick-ask',
     assistantActions: {
       showInlineInfo: false,
+      showRetryAction: false,
       showInsertAction: false,
       showCopyAction: true,
       showBranchAction: false,
@@ -60,4 +63,3 @@ export const CHAT_SURFACE_PRESETS: Record<
 export function getChatSurfacePreset(id: ChatSurfacePreset['id']) {
   return CHAT_SURFACE_PRESETS[id]
 }
-

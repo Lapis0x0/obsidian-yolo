@@ -119,6 +119,7 @@ export type AssistantToolMessageGroupItemProps = {
   activeBranchKey?: string | null
   suppressFooter?: boolean
   showInlineInfo?: boolean
+  showRetryAction?: boolean
   showInsertAction?: boolean
   showCopyAction?: boolean
   showBranchAction?: boolean
@@ -144,6 +145,7 @@ export type AssistantToolMessageGroupItemProps = {
   onEditCancel: () => void
   onEditSave: (messageId: string, content: string) => void
   onDeleteGroup: (messageIds: string[]) => void
+  onRetryGroup: (messageIds: string[]) => void
   onBranchGroup: (messageIds: string[]) => void
   onActiveBranchChange?: (branchKey: string | null) => void
   onQuoteAssistantSelection: (payload: {
@@ -166,6 +168,7 @@ export default function AssistantToolMessageGroupItem({
   activeBranchKey: controlledActiveBranchKey,
   suppressFooter = false,
   showInlineInfo = true,
+  showRetryAction = false,
   showInsertAction = true,
   showCopyAction = true,
   showBranchAction = true,
@@ -182,6 +185,7 @@ export default function AssistantToolMessageGroupItem({
   onEditCancel,
   onEditSave,
   onDeleteGroup,
+  onRetryGroup,
   onBranchGroup,
   onActiveBranchChange,
   onQuoteAssistantSelection,
@@ -632,11 +636,21 @@ export default function AssistantToolMessageGroupItem({
             )}
             <AssistantToolMessageGroupActions
               messages={displayedMessages}
+              showRetry={showRetryAction}
               showInsert={showInsertAction}
               showCopy={showCopyAction}
               showBranch={showBranchAction}
               showEdit={showEditAction}
               showDelete={showDeleteAction}
+              onRetry={
+                !isStreaming && !isEditingGroup
+                  ? () => {
+                      onRetryGroup(
+                        displayedMessages.map((message) => message.id),
+                      )
+                    }
+                  : undefined
+              }
               onBranch={
                 !isStreaming
                   ? () => {
