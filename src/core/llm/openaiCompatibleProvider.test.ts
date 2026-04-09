@@ -55,8 +55,9 @@ describe('OpenAICompatibleProvider', () => {
       embeddings: { create: obsidianCreate },
     }
 
-    await expect(provider.getEmbedding('text-embedding-3-small', 'hello')).resolves
-      .toEqual([0.1, 0.2, 0.3])
+    await expect(
+      provider.getEmbedding('text-embedding-3-small', 'hello'),
+    ).resolves.toEqual([0.1, 0.2, 0.3])
 
     expect(nodeCreate).toHaveBeenCalledWith({
       model: 'text-embedding-3-small',

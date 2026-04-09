@@ -974,8 +974,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
     new Map(),
   )
-  const [assistantGroupBoundaryMessageIds, setAssistantGroupBoundaryMessageIds] =
-    useState<string[]>([])
+  const [
+    assistantGroupBoundaryMessageIds,
+    setAssistantGroupBoundaryMessageIds,
+  ] = useState<string[]>([])
   const [activeBranchByUserMessageId, setActiveBranchByUserMessageId] =
     useState<Map<string, string>>(new Map())
   const submitMutationPendingRef = useRef(false)
@@ -1359,7 +1361,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       nextMessages: ChatMessage[],
       existingBoundaryMessageIds: readonly string[],
     ): string[] => {
-      const retainedMessageIds = new Set(nextMessages.map((message) => message.id))
+      const retainedMessageIds = new Set(
+        nextMessages.map((message) => message.id),
+      )
       const nextBoundaryMessageIds = [
         ...normalizeAssistantGroupBoundaryMessageIds(
           nextMessages,
@@ -1385,7 +1389,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           return
         }
 
-        if (lastRetainedNonUserMessageId && sawRemovedUserAfterRetainedNonUser) {
+        if (
+          lastRetainedNonUserMessageId &&
+          sawRemovedUserAfterRetainedNonUser
+        ) {
           nextBoundaryMessageIds.push(message.id)
         }
 
@@ -1427,7 +1434,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           effectiveCompactionState,
           normalizeAssistantGroupBoundaryMessageIds(
             messages,
-            assistantGroupBoundaryIdsOverride ?? assistantGroupBoundaryMessageIds,
+            assistantGroupBoundaryIdsOverride ??
+              assistantGroupBoundaryMessageIds,
           ),
         )
       } catch (error) {
@@ -1475,7 +1483,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           effectiveCompactionState,
           normalizeAssistantGroupBoundaryMessageIds(
             messages,
-            assistantGroupBoundaryIdsOverride ?? assistantGroupBoundaryMessageIds,
+            assistantGroupBoundaryIdsOverride ??
+              assistantGroupBoundaryMessageIds,
           ),
         )
         return true
@@ -1501,7 +1510,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const isUserMessageEffectivelyEmpty = useCallback(
     (
-      message: Pick<ChatUserMessage, 'content' | 'mentionables' | 'selectedSkills'>,
+      message: Pick<
+        ChatUserMessage,
+        'content' | 'mentionables' | 'selectedSkills'
+      >,
     ): boolean => {
       const textContent = message.content
         ? editorStateToPlainText(message.content).trim()
@@ -1532,7 +1544,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatMessagesStateRef.current = nextMessages
       setChatMessages(nextMessages)
       setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-      setFocusedMessageId((prev) => (prev === messageId ? inputMessage.id : prev))
+      setFocusedMessageId((prev) =>
+        prev === messageId ? inputMessage.id : prev,
+      )
       setMessageModelMap((prev) => {
         if (!prev.has(messageId)) return prev
         const next = new Map(prev)
@@ -1559,7 +1573,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
 
-      void persistConversation(nextMessages, nextAssistantGroupBoundaryMessageIds)
+      void persistConversation(
+        nextMessages,
+        nextAssistantGroupBoundaryMessageIds,
+      )
     },
     [
       assistantGroupBoundaryMessageIds,
@@ -1598,9 +1615,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         normalizeAssistantGroupBoundaryMessageIds(nextMessages, prev),
       )
     },
-    [
-      normalizeAssistantGroupBoundaryMessageIds,
-    ],
+    [normalizeAssistantGroupBoundaryMessageIds],
   )
 
   const finalizeHistoricalUserMessageEdit = useCallback(
@@ -2053,7 +2068,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatMessagesStateRef.current = nextMessages
       setChatMessages(nextMessages)
       setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-      void persistConversation(nextMessages, nextAssistantGroupBoundaryMessageIds)
+      void persistConversation(
+        nextMessages,
+        nextAssistantGroupBoundaryMessageIds,
+      )
       setEditingAssistantMessageId((prev) =>
         prev && idsToRemove.has(prev) ? null : prev,
       )
@@ -2687,11 +2705,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
 
-      const {
-        sourceUserMessageId,
-        inputChatMessages,
-        requestChatMessages,
-      } = retryPayload
+      const { sourceUserMessageId, inputChatMessages, requestChatMessages } =
+        retryPayload
       const nextAssistantGroupBoundaryMessageIds =
         normalizeAssistantGroupBoundaryMessageIds(
           inputChatMessages,
@@ -3354,7 +3369,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
         if (
           prevInputMessage.mentionables.some(
-            (m) => getMentionableKey(serializeMentionable(m)) === mentionableKey,
+            (m) =>
+              getMentionableKey(serializeMentionable(m)) === mentionableKey,
           )
         ) {
           return prevInputMessage
@@ -3422,11 +3438,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       // 从所有历史消息中删除
       const sourceMessages = chatMessagesStateRef.current
       let didChangeHistory = false
-      const nextMessages = sourceMessages.flatMap(
-        (message): ChatMessage[] => {
-          if (message.role !== 'user') {
-            return [message]
-          }
+      const nextMessages = sourceMessages.flatMap((message): ChatMessage[] => {
+        if (message.role !== 'user') {
+          return [message]
+        }
 
         const filtered = message.mentionables.filter(
           (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
@@ -3442,9 +3457,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           promptContent: null,
         }
 
-          return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
-        },
-      )
+        return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
+      })
       const nextAssistantGroupBoundaryMessageIds =
         buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
           sourceMessages,
@@ -3455,12 +3469,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (didChangeHistory) {
         chatMessagesStateRef.current = nextMessages
         setChatMessages(nextMessages)
-        setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
+        setAssistantGroupBoundaryMessageIds(
+          nextAssistantGroupBoundaryMessageIds,
+        )
       }
 
       const retainedUserMessageIds = new Set(
         nextMessages
-          .filter((message): message is ChatUserMessage => message.role === 'user')
+          .filter(
+            (message): message is ChatUserMessage => message.role === 'user',
+          )
           .map((message) => message.id),
       )
 
@@ -3510,7 +3528,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
 
-      void persistConversation(nextMessages, nextAssistantGroupBoundaryMessageIds)
+      void persistConversation(
+        nextMessages,
+        nextAssistantGroupBoundaryMessageIds,
+      )
     },
     [
       assistantGroupBoundaryMessageIds,
@@ -4121,9 +4142,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             )}
             suppressFooter={shouldSuppressCompactionAnchorFooter}
             showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
-            showRetryAction={
-              chatSurfacePreset.assistantActions.showRetryAction
-            }
+            showRetryAction={chatSurfacePreset.assistantActions.showRetryAction}
             showInsertAction={
               chatSurfacePreset.assistantActions.showInsertAction
             }
@@ -4302,7 +4321,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 return {
                   ...message,
                   mentionables,
-                  promptContent: isSameMentionables ? message.promptContent : null,
+                  promptContent: isSameMentionables
+                    ? message.promptContent
+                    : null,
                   similaritySearchResults: isSameMentionables
                     ? message.similaritySearchResults
                     : undefined,

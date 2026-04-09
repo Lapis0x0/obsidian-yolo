@@ -169,18 +169,22 @@ export const hydratePersistedTimelineHeightCache = async ({
     return
   }
 
-  const store = await readTimelineHeightCacheStore(app, conversationId, settings)
-  const snapshots: TimelineHeightCacheSnapshot[] = Object.values(store.scopes).map(
-    (scope) => ({
-      scope: {
-        conversationId,
-        widthBucket: scope.widthBucket,
-        styleSignature: scope.styleSignature,
-      },
-      updatedAt: scope.updatedAt,
-      heights: scope.heights,
-    }),
+  const store = await readTimelineHeightCacheStore(
+    app,
+    conversationId,
+    settings,
   )
+  const snapshots: TimelineHeightCacheSnapshot[] = Object.values(
+    store.scopes,
+  ).map((scope) => ({
+    scope: {
+      conversationId,
+      widthBucket: scope.widthBucket,
+      styleSignature: scope.styleSignature,
+    },
+    updatedAt: scope.updatedAt,
+    heights: scope.heights,
+  }))
   hydrateTimelineHeightCache(snapshots)
   loadedConversationIds.add(conversationId)
 }

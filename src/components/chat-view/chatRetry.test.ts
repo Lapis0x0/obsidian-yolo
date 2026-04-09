@@ -133,7 +133,11 @@ describe('chatRetry', () => {
 
     const payload = buildRetrySubmissionMessages({
       sourceMessages: [firstUserMessage, secondUserMessage, assistantMessage],
-      groupedChatMessages: [firstUserMessage, secondUserMessage, [assistantMessage]],
+      groupedChatMessages: [
+        firstUserMessage,
+        secondUserMessage,
+        [assistantMessage],
+      ],
       targetMessageIds: ['assistant-2'],
       activeBranchByUserMessageId: new Map(),
     })

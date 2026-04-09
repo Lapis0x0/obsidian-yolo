@@ -157,7 +157,9 @@ This section provides only paths and outlines. Use file tools only if you need t
     const summaryTextIndex = markdown.indexOf('Earlier history summary')
     const secondPromptIndex = markdown.indexOf('second prompt')
 
-    expect(summaryIndex).toBeGreaterThan(markdown.indexOf('conversation_id: conversation-1'))
+    expect(summaryIndex).toBeGreaterThan(
+      markdown.indexOf('conversation_id: conversation-1'),
+    )
     expect(summaryIndex).toBeGreaterThan(firstAnswerIndex)
     expect(summaryTextIndex).toBeGreaterThan(summaryIndex)
     expect(secondPromptIndex).toBeGreaterThan(summaryTextIndex)

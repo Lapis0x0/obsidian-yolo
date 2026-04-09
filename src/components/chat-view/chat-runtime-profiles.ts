@@ -76,4 +76,3 @@ export function resolveQuickAskRuntimeLoopConfig(input: {
 }) {
   return QUICK_ASK_RUNTIME_PROFILE.resolveLoopConfig(input)
 }
-

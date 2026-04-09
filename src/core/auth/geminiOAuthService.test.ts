@@ -10,10 +10,7 @@ import {
   buildAuthorizeUrl,
   generatePKCE,
 } from './geminiOAuthService'
-import {
-  GeminiOAuthCredential,
-  GeminiOAuthStore,
-} from './geminiOAuthStore'
+import { GeminiOAuthCredential, GeminiOAuthStore } from './geminiOAuthStore'
 
 const mockedRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>
 

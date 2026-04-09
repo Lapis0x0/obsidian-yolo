@@ -107,7 +107,9 @@ function TimelineRow<TItem extends ChatTimelineItem>({
       ref={rowRef}
       className={`smtcmp-chat-timeline-row smtcmp-chat-timeline-row--${item.kind}`}
       data-timeline-kind={item.kind}
-      style={item.spacingBefore ? { paddingTop: item.spacingBefore } : undefined}
+      style={
+        item.spacingBefore ? { paddingTop: item.spacingBefore } : undefined
+      }
     >
       {renderItem(item, index, { mode: 'full' })}
     </div>
@@ -171,9 +173,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   )
   const lastAtBottomStateRef = useRef<boolean | null>(null)
   const [heightCacheVersion, setHeightCacheVersion] = useState(0)
-  const [hasHydratedPersistedCache, setHasHydratedPersistedCache] = useState(
-    !conversationId,
-  )
+  const [hasHydratedPersistedCache, setHasHydratedPersistedCache] =
+    useState(!conversationId)
   const [cacheScopeState, setCacheScopeState] = useState<{
     widthBucket: number
     styleSignature: string
@@ -183,7 +184,10 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   })
 
   const isVirtualized = items.length > virtualizationThreshold
-  const timelineSignature = useMemo(() => buildTimelineSignature(items), [items])
+  const timelineSignature = useMemo(
+    () => buildTimelineSignature(items),
+    [items],
+  )
 
   const cacheScope = useMemo<TimelineCacheScope | null>(() => {
     if (!conversationId) {
@@ -254,7 +258,11 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         return
       }
 
-      const changed = updateTimelineItemHeight(cacheScope, itemId, measuredHeight)
+      const changed = updateTimelineItemHeight(
+        cacheScope,
+        itemId,
+        measuredHeight,
+      )
       if (changed) {
         setHeightCacheVersion((currentVersion) => currentVersion + 1)
         schedulePersistedTimelineHeightCacheFlush({
@@ -283,7 +291,9 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     }
 
     const syncScopeState = () => {
-      const nextWidthBucket = getTimelineWidthBucket(scrollerElement.clientWidth)
+      const nextWidthBucket = getTimelineWidthBucket(
+        scrollerElement.clientWidth,
+      )
       const nextStyleSignature = getTimelineStyleSignature(scrollerElement)
 
       setCacheScopeState((previousState) => {
@@ -410,7 +420,11 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     (range: ListRange) => {
       const heightByItemId: Record<string, number> = {}
       if (cachedHeightByItemId) {
-        for (let index = range.startIndex; index <= range.endIndex; index += 1) {
+        for (
+          let index = range.startIndex;
+          index <= range.endIndex;
+          index += 1
+        ) {
           const item = items[index]
           if (!item) {
             continue

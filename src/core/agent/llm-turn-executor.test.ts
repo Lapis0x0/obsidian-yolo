@@ -439,7 +439,9 @@ describe('AgentLlmTurnExecutor', () => {
     expect(observedAssistantMessages.at(-1)?.metadata?.generationState).toBe(
       'aborted',
     )
-    expect(observedAssistantMessages.at(-1)?.metadata?.errorMessage).toBeUndefined()
+    expect(
+      observedAssistantMessages.at(-1)?.metadata?.errorMessage,
+    ).toBeUndefined()
   })
 
   it('does not treat reasoning-only turns as completed output', async () => {

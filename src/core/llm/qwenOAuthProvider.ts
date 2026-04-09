@@ -333,10 +333,7 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
       headers.set('User-Agent', DEFAULT_QWEN_USER_AGENT)
       headers.set('X-DashScope-CacheControl', 'enable')
       // Qwen OAuth validates this header against the Qwen Code client format.
-      headers.set(
-        'X-DashScope-UserAgent',
-        DEFAULT_QWEN_DASHSCOPE_USER_AGENT,
-      )
+      headers.set('X-DashScope-UserAgent', DEFAULT_QWEN_DASHSCOPE_USER_AGENT)
       headers.set('X-DashScope-AuthType', 'qwen-oauth')
 
       const response = await baseFetch(target, {

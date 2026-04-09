@@ -52,9 +52,7 @@ describe('QwenOAuthProvider', () => {
     const headers = new Headers(init?.headers)
 
     expect(headers.get('User-Agent')).toBe('obsidian-yolo/qwen-oauth')
-    expect(headers.get('X-DashScope-UserAgent')).toBe(
-      'QwenCode/obsidian-yolo',
-    )
+    expect(headers.get('X-DashScope-UserAgent')).toBe('QwenCode/obsidian-yolo')
   })
 
   it('preserves tool parameters when generating responses', async () => {

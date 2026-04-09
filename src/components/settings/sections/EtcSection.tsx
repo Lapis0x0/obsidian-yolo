@@ -95,13 +95,12 @@ const loadStorageUsage = async (
     promptSnapshotBytes,
     editReviewSnapshotBytes,
     timelineHeightCacheBytes,
-  ] =
-    await Promise.all([
-      getPathSize(app, chatDir),
-      getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
-      getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
-      getPathSize(app, normalizePath(`${chatDir}/${TIMELINE_HEIGHT_CACHE_DIR}`)),
-    ])
+  ] = await Promise.all([
+    getPathSize(app, chatDir),
+    getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
+    getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
+    getPathSize(app, normalizePath(`${chatDir}/${TIMELINE_HEIGHT_CACHE_DIR}`)),
+  ])
 
   return {
     chatHistoryBytes: Math.max(

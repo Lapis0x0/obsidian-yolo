@@ -298,9 +298,13 @@ export class ChatView extends ItemView {
     }
 
     if (payload.prefillText !== undefined && payload.selectedBlock) {
-      chatRef.applySelectionToMainInput(payload.selectedBlock, payload.prefillText, {
-        submit: payload.autoSend,
-      })
+      chatRef.applySelectionToMainInput(
+        payload.selectedBlock,
+        payload.prefillText,
+        {
+          submit: payload.autoSend,
+        },
+      )
       return
     }
 

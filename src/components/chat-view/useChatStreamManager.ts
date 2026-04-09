@@ -771,8 +771,7 @@ export function useChatStreamManager({
           undefined
         const currentFileContextMode: 'full' | 'summary' =
           chatMode === 'agent' ? 'summary' : 'full'
-        const effectiveCompactionForRequest =
-          compactionOverride ?? compaction
+        const effectiveCompactionForRequest = compactionOverride ?? compaction
         const baseInput = {
           messages: chatMessages,
           requestContextBuilder,

@@ -1,7 +1,8 @@
 import type { ChatAssistantMessage } from '../../types/chat'
 
-type AssistantGenerationState =
-  NonNullable<ChatAssistantMessage['metadata']>['generationState']
+type AssistantGenerationState = NonNullable<
+  ChatAssistantMessage['metadata']
+>['generationState']
 
 export function shouldRenderAssistantToolPreview({
   generationState,
@@ -16,7 +17,5 @@ export function shouldRenderAssistantToolPreview({
     return false
   }
 
-  return (
-    generationState === 'streaming' || generationState === 'completed'
-  )
+  return generationState === 'streaming' || generationState === 'completed'
 }

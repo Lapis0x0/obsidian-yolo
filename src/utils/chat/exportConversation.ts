@@ -124,9 +124,7 @@ function mentionablesToMarkdownLines(
         }
         break
       case 'block':
-        lines.push(
-          `Block in \`${m.file}\` (lines ${m.startLine}–${m.endLine})`,
-        )
+        lines.push(`Block in \`${m.file}\` (lines ${m.startLine}–${m.endLine})`)
         break
       case 'vault':
         lines.push('Vault')
@@ -193,7 +191,9 @@ function getDisplayedSerializedAssistantToolGroup(
   messages: SerializedAssistantToolMessageGroup,
   activeBranchKey?: string | null,
 ): SerializedAssistantToolMessageGroup {
-  const isBranchCompleted = (branchMessages: SerializedAssistantToolMessageGroup) => {
+  const isBranchCompleted = (
+    branchMessages: SerializedAssistantToolMessageGroup,
+  ) => {
     const latestMessage = branchMessages.at(-1)
     if (latestMessage?.metadata?.branchWaitingApproval) {
       return false
@@ -321,7 +321,9 @@ function extractMentionedVaultFilesSection(body: string): {
     }
   }
 
-  const explanationIndex = trimmedBody.indexOf(MENTIONED_VAULT_FILES_EXPLANATION)
+  const explanationIndex = trimmedBody.indexOf(
+    MENTIONED_VAULT_FILES_EXPLANATION,
+  )
   if (explanationIndex === -1) {
     return {
       bodyWithoutMentionedSection: body,
@@ -329,8 +331,7 @@ function extractMentionedVaultFilesSection(body: string): {
     }
   }
 
-  const sectionEnd =
-    explanationIndex + MENTIONED_VAULT_FILES_EXPLANATION.length
+  const sectionEnd = explanationIndex + MENTIONED_VAULT_FILES_EXPLANATION.length
   const mentionedSection = trimmedBody.slice(0, sectionEnd).trim()
   const remainingBody = trimmedBody.slice(sectionEnd).trim()
 
@@ -396,20 +397,16 @@ function appendToolMessageToLines(
   }
 }
 
-function appendCompactionSummaryToLines(summary: string, lines: string[]): void {
+function appendCompactionSummaryToLines(
+  summary: string,
+  lines: string[],
+): void {
   const trimmedSummary = summary.trim()
   if (!trimmedSummary) {
     return
   }
 
-  lines.push(
-    '## Context summary',
-    '',
-    trimmedSummary,
-    '',
-    '---',
-    '',
-  )
+  lines.push('## Context summary', '', trimmedSummary, '', '---', '')
 }
 
 function appendAnchoredCompactionSummariesToLines(
@@ -434,11 +431,7 @@ export function conversationToMarkdown(
   conversation: ChatConversation,
   options: ConversationToMarkdownOptions,
 ): string {
-  const {
-    snapshotEntries,
-    exportedAtIso,
-    filterBranches = true,
-  } = options
+  const { snapshotEntries, exportedAtIso, filterBranches = true } = options
 
   const lines: string[] = []
   const title = conversation.title?.trim() || 'Chat'
@@ -455,7 +448,9 @@ export function conversationToMarkdown(
 
   let messageSequence = conversation.messages
   if (filterBranches) {
-    const grouped = groupSerializedAssistantAndToolMessages(conversation.messages)
+    const grouped = groupSerializedAssistantAndToolMessages(
+      conversation.messages,
+    )
     messageSequence = flattenSerializedForExport(
       grouped,
       conversation.activeBranchByUserMessageId,
@@ -485,13 +480,9 @@ export function conversationToMarkdown(
       const editorText = editorStateToPlainText(user.content)
       const promptText = resolveUserPromptPlainText(user, snapshotEntries)
       const body =
-        promptText.trim().length > 0
-          ? promptText.trim()
-          : editorText.trim()
-      const {
-        bodyWithoutMentionedSection,
-        mentionedSection,
-      } = extractMentionedVaultFilesSection(body)
+        promptText.trim().length > 0 ? promptText.trim() : editorText.trim()
+      const { bodyWithoutMentionedSection, mentionedSection } =
+        extractMentionedVaultFilesSection(body)
 
       lines.push('## User', '')
       if (mentionedSection) {
@@ -541,10 +532,16 @@ export function conversationToMarkdown(
     )
   }
 
-  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`
+  return `${lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd()}\n`
 }
 
-async function ensureDirectoryPathExists(app: App, path: string): Promise<void> {
+async function ensureDirectoryPathExists(
+  app: App,
+  path: string,
+): Promise<void> {
   const segments = normalizePath(path)
     .split('/')
     .filter((segment) => segment.length > 0)
@@ -619,10 +616,7 @@ export async function exportChatConversationToVault(
 
   await ensureDirectoryPathExists(app, folderPath)
 
-  const baseName = buildExportFileBaseName(
-    conversation.title,
-    new Date(),
-  )
+  const baseName = buildExportFileBaseName(conversation.title, new Date())
   const filePath = await resolveUniqueMarkdownPath(app, folderPath, baseName)
 
   await app.vault.create(filePath, markdown)

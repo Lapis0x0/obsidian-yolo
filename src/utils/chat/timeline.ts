@@ -55,8 +55,7 @@ function estimateMarkdownTextHeight(
   const explicitLineCount = trimmed.split('\n').length
   const wrappedLineCount = Math.ceil(trimmed.length / charsPerLine)
   const effectiveLineCount = Math.max(explicitLineCount, wrappedLineCount)
-  const paragraphCount =
-    countMatches(trimmed, /\n\s*\n/g) + 1
+  const paragraphCount = countMatches(trimmed, /\n\s*\n/g) + 1
   const headingCount = countMatches(trimmed, /^#{1,6}\s/gm)
   const listItemCount = countMatches(trimmed, /^\s*(?:[-*+]|\d+\.)\s/gm)
   const quoteCount = countMatches(trimmed, /^\s*>\s/gm)
@@ -136,7 +135,9 @@ function estimateToolMessageHeight(message: ChatToolMessage): number {
   })
 }
 
-function estimateAssistantGroupHeight(messages: AssistantToolMessageGroup): number {
+function estimateAssistantGroupHeight(
+  messages: AssistantToolMessageGroup,
+): number {
   const estimated = messages.reduce((sum, message) => {
     if (message.role === 'assistant') {
       return sum + estimateAssistantMessageHeight(message)
@@ -189,51 +190,53 @@ export const buildMessageTimelineItems = ({
   const assistantGroupBoundaryMessageIdSet = new Set(
     assistantGroupBoundaryMessageIds,
   )
-  const items: ChatTimelineItem[] = groupedChatMessages.map((messageOrGroup, index) => {
-    const previousItem = groupedChatMessages[index - 1]
-    const firstMessageId = Array.isArray(messageOrGroup)
-      ? (messageOrGroup.at(0)?.id ?? 'assistant-group')
-      : messageOrGroup.id
-    const spacingBefore =
-      (index === 0 ? TIMELINE_START_SPACING : 0) +
-      ((Array.isArray(messageOrGroup) &&
-        previousItem &&
-        !Array.isArray(previousItem)) ||
-      (Array.isArray(messageOrGroup) &&
-        previousItem &&
-        Array.isArray(previousItem) &&
-        assistantGroupBoundaryMessageIdSet.has(firstMessageId))
-        ? USER_TO_ASSISTANT_SPACING
-        : 0)
+  const items: ChatTimelineItem[] = groupedChatMessages.map(
+    (messageOrGroup, index) => {
+      const previousItem = groupedChatMessages[index - 1]
+      const firstMessageId = Array.isArray(messageOrGroup)
+        ? (messageOrGroup.at(0)?.id ?? 'assistant-group')
+        : messageOrGroup.id
+      const spacingBefore =
+        (index === 0 ? TIMELINE_START_SPACING : 0) +
+        ((Array.isArray(messageOrGroup) &&
+          previousItem &&
+          !Array.isArray(previousItem)) ||
+        (Array.isArray(messageOrGroup) &&
+          previousItem &&
+          Array.isArray(previousItem) &&
+          assistantGroupBoundaryMessageIdSet.has(firstMessageId))
+          ? USER_TO_ASSISTANT_SPACING
+          : 0)
 
-    if (Array.isArray(messageOrGroup)) {
-      const lastMessageId = messageOrGroup.at(-1)?.id ?? firstMessageId
-      return {
-        kind: 'assistant-group',
-        id: firstMessageId,
-        renderKey: firstMessageId,
-        estimatedHeight: estimateAssistantGroupHeight(messageOrGroup),
-        spacingBefore,
-        messages: messageOrGroup,
-        isPinnedForRender:
-          activeStreamingMessageId !== null &&
-          lastMessageId === activeStreamingMessageId,
-        isStreaming: lastMessageId === activeStreamingMessageId,
+      if (Array.isArray(messageOrGroup)) {
+        const lastMessageId = messageOrGroup.at(-1)?.id ?? firstMessageId
+        return {
+          kind: 'assistant-group',
+          id: firstMessageId,
+          renderKey: firstMessageId,
+          estimatedHeight: estimateAssistantGroupHeight(messageOrGroup),
+          spacingBefore,
+          messages: messageOrGroup,
+          isPinnedForRender:
+            activeStreamingMessageId !== null &&
+            lastMessageId === activeStreamingMessageId,
+          isStreaming: lastMessageId === activeStreamingMessageId,
+        }
       }
-    }
 
-    return {
-      kind: 'user-message',
-      id: messageOrGroup.id,
-      renderKey: messageOrGroup.id,
-      estimatedHeight: estimateUserMessageHeight(messageOrGroup),
-      spacingBefore,
-      message: messageOrGroup,
-      isEditable: true,
-      isActive: messageOrGroup.id === activeEditableMessageId,
-      isPinnedForRender: messageOrGroup.id === activeEditableMessageId,
-    }
-  })
+      return {
+        kind: 'user-message',
+        id: messageOrGroup.id,
+        renderKey: messageOrGroup.id,
+        estimatedHeight: estimateUserMessageHeight(messageOrGroup),
+        spacingBefore,
+        message: messageOrGroup,
+        isEditable: true,
+        isActive: messageOrGroup.id === activeEditableMessageId,
+        isPinnedForRender: messageOrGroup.id === activeEditableMessageId,
+      }
+    },
+  )
 
   if (includeBottomAnchor) {
     items.push({

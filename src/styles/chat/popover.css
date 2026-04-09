@@ -169,7 +169,9 @@
     background-color 120ms ease;
 }
 
-.smtcmp-popover li:is(:hover, :focus-within) .smtcmp-chat-list-dropdown-item-icon,
+.smtcmp-popover
+  li:is(:hover, :focus-within)
+  .smtcmp-chat-list-dropdown-item-icon,
 .smtcmp-popover li:is(:hover, :focus-within) .smtcmp-chat-list-pin-button {
   opacity: 1;
   transform: translateX(0) scale(1);
@@ -667,8 +669,7 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   gap: var(--size-4-1);
 }
 
-.smtcmp-chat-list-inline-actions-inner
-  > .smtcmp-chat-list-dropdown-item-icon {
+.smtcmp-chat-list-inline-actions-inner > .smtcmp-chat-list-dropdown-item-icon {
   opacity: 0;
   transform: translateX(5px) scale(0.96);
   transition:

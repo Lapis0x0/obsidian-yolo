@@ -14,9 +14,7 @@ const AssistantErrorCard = memo(function AssistantErrorCard({
     <div className="smtcmp-assistant-error-card" role="alert">
       <div className="smtcmp-assistant-error-card-header">
         <CircleAlert size={14} />
-        <span>
-          {t('chat.errorCard.title', '本次回复生成失败')}
-        </span>
+        <span>{t('chat.errorCard.title', '本次回复生成失败')}</span>
       </div>
       <div className="smtcmp-assistant-error-card-body">{errorMessage}</div>
     </div>

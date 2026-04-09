@@ -83,8 +83,7 @@ export const getTimelineStyleSignature = (
   const lineHeight = styles.lineHeight || 'na'
   const fontFamily = styles.fontFamily || 'na'
   const renderScale = styles.getPropertyValue('--render-scale').trim() || 'na'
-  const paragraphSpacing =
-    styles.getPropertyValue('--p-spacing').trim() || 'na'
+  const paragraphSpacing = styles.getPropertyValue('--p-spacing').trim() || 'na'
   const headingSpacing =
     styles.getPropertyValue('--heading-spacing').trim() || 'na'
 
@@ -160,9 +159,7 @@ export const hydrateTimelineHeightCache = (
   pruneOldestEntry(heightCacheByScope)
 }
 
-export const clearTimelineHeightCache = (
-  conversationId?: string,
-): void => {
+export const clearTimelineHeightCache = (conversationId?: string): void => {
   if (!conversationId) {
     heightCacheByScope.clear()
     return

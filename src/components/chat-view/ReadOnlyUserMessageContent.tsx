@@ -148,7 +148,9 @@ function ReadOnlyUserMessageContent({
   )
 
   return (
-    <div className="smtcmp-lexical-content-editable-root">{renderedContent}</div>
+    <div className="smtcmp-lexical-content-editable-root">
+      {renderedContent}
+    </div>
   )
 }
 

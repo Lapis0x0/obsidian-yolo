@@ -2,7 +2,10 @@ import type { CSSProperties, ReactNode, RefObject } from 'react'
 import type { FollowOutput } from 'react-virtuoso'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
-import { ChatTimelineList, type ChatTimelineRenderContext } from './ChatTimelineList'
+import {
+  ChatTimelineList,
+  type ChatTimelineRenderContext,
+} from './ChatTimelineList'
 
 type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
   items: TItem[]

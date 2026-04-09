@@ -77,7 +77,9 @@ export function ChatConversationPane({
               )}
             </div>
             <div className="smtcmp-chat-empty-state-title">
-              {chatMode === 'agent' ? emptyStateAgentTitle : emptyStateChatTitle}
+              {chatMode === 'agent'
+                ? emptyStateAgentTitle
+                : emptyStateChatTitle}
             </div>
             <div className="smtcmp-chat-empty-state-description">
               {chatMode === 'agent'
