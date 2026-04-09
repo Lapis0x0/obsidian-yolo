@@ -8722,21 +8722,29 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   cursor: pointer;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon {
-  visibility: hidden;
+.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon,
+.smtcmp-popover li .smtcmp-chat-list-pin-button {
+  visibility: visible;
+  opacity: 0;
+  transform: translateX(5px) scale(0.96);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 120ms ease,
+    background-color 120ms ease;
 }
 
-.smtcmp-popover li:hover .smtcmp-chat-list-dropdown-item-icon {
-  visibility: visible;
+.smtcmp-popover li:is(:hover, :focus-within) .smtcmp-chat-list-dropdown-item-icon,
+.smtcmp-popover li:is(:hover, :focus-within) .smtcmp-chat-list-pin-button {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
 }
 
 .smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon:hover {
   background-color: var(--background-modifier-hover);
   border-radius: var(--radius-s);
-}
-
-.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon.is-pending {
-  visibility: visible;
 }
 
 .smtcmp-chat-list-dropdown-item-icon:disabled {
@@ -9198,16 +9206,74 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 .smtcmp-chat-list-inline-actions {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transform: translateX(6px);
+  transform-origin: right center;
+  pointer-events: none;
+  transition:
+    grid-template-columns 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 150ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-chat-list-inline-actions.is-open {
+  grid-template-columns: 1fr;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.smtcmp-chat-list-inline-actions-inner {
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
+}
+
+.smtcmp-chat-list-inline-actions-inner
+  > .smtcmp-chat-list-dropdown-item-icon {
+  opacity: 0;
+  transform: translateX(5px) scale(0.96);
+  transition:
+    opacity 140ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-chat-list-inline-actions.is-open
+  .smtcmp-chat-list-inline-actions-inner
+  > .smtcmp-chat-list-dropdown-item-icon {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.smtcmp-chat-list-inline-actions.is-open
+  .smtcmp-chat-list-inline-actions-inner
+  > .smtcmp-chat-list-dropdown-item-icon:nth-child(1) {
+  transition-delay: 30ms;
+}
+
+.smtcmp-chat-list-inline-actions.is-open
+  .smtcmp-chat-list-inline-actions-inner
+  > .smtcmp-chat-list-dropdown-item-icon:nth-child(2) {
+  transition-delay: 55ms;
+}
+
+.smtcmp-chat-list-inline-actions.is-open
+  .smtcmp-chat-list-inline-actions-inner
+  > .smtcmp-chat-list-dropdown-item-icon:nth-child(3) {
+  transition-delay: 80ms;
 }
 
 .smtcmp-chat-list-dropdown-item-actions.is-more-open
   .smtcmp-chat-list-dropdown-item-icon,
 .smtcmp-chat-list-dropdown-item-actions.is-more-open
   .smtcmp-chat-list-pin-button {
-  visibility: visible;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
 }
 
 .smtcmp-chat-list-more-button.is-open {
@@ -9215,6 +9281,17 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   color: var(--text-normal);
   background: var(--background-modifier-hover);
   border-radius: var(--radius-s);
+}
+
+.smtcmp-chat-list-more-button svg {
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease;
+  transform-origin: center;
+}
+
+.smtcmp-chat-list-more-button.is-open svg {
+  transform: rotate(90deg) scale(0.96);
 }
 
 .smtcmp-chat-list-pin-button {
@@ -9225,16 +9302,11 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   fill: transparent;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-pin-button:not(.is-pinned) {
-  visibility: hidden;
-}
-
-.smtcmp-popover li:hover .smtcmp-chat-list-pin-button {
-  visibility: visible;
-}
-
 .smtcmp-chat-list-pin-button.is-pinned {
   color: var(--text-normal);
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
 }
 
 .smtcmp-chat-list-pin-button.is-pinned svg {
