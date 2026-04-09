@@ -127,6 +127,7 @@ export type UseChatStreamManager = {
       conversationId: string
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
+      compactionOverride?: ChatConversationCompactionState
     }
   >
 }
@@ -621,12 +622,14 @@ export function useChatStreamManager({
       conversationId,
       reasoningLevel,
       modelIds,
+      compactionOverride,
     }: {
       chatMessages: ChatMessage[]
       requestMessages?: ChatMessage[]
       conversationId: string
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
+      compactionOverride?: ChatConversationCompactionState
     }) => {
       const lastMessage = chatMessages.at(-1)
       if (!lastMessage) {
@@ -768,11 +771,13 @@ export function useChatStreamManager({
           undefined
         const currentFileContextMode: 'full' | 'summary' =
           chatMode === 'agent' ? 'summary' : 'full'
+        const effectiveCompactionForRequest =
+          compactionOverride ?? compaction
         const baseInput = {
           messages: chatMessages,
           requestContextBuilder,
           mcpManager,
-          compaction,
+          compaction: effectiveCompactionForRequest,
           compactionProviderClient: resolvedCompactionClient.providerClient,
           compactionModel: resolvedCompactionClient.model,
           reasoningLevel,

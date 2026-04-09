@@ -264,6 +264,18 @@ export const en: TranslationKeys = {
       historyArchiveThreshold: 'Recent conversation limit',
       historyArchiveThresholdDesc:
         'Number of latest non-pinned conversations shown before archiving the rest (20-500).',
+      autoContextCompaction: 'Automatic context compaction',
+      autoContextCompactionDesc:
+        'When the last assistant reply’s prompt token usage crosses the threshold, compact older history before your next message is sent (not during the reply).',
+      autoContextCompactionThresholdMode: 'Compaction threshold mode',
+      autoContextCompactionModeTokens: 'Absolute prompt tokens',
+      autoContextCompactionModeRatio: 'Fraction of context window',
+      autoContextCompactionThresholdTokens: 'Prompt token threshold',
+      autoContextCompactionThresholdTokensDesc:
+        'Trigger when the last reply’s reported prompt_tokens is at least this value.',
+      autoContextCompactionThresholdRatioPercent: 'Context window usage (%)',
+      autoContextCompactionThresholdRatioPercentDesc:
+        'Trigger when prompt_tokens divided by the chat model’s max context window reaches this percentage. Requires max context tokens on the model.',
     },
     assistants: {
       title: 'Assistants',
@@ -1049,6 +1061,8 @@ export const en: TranslationKeys = {
         'Wait for the current reply to finish before compacting context.',
       waitingApproval:
         'Resolve the current pending tool approval before compacting context.',
+      autoFailed:
+        'Automatic context compaction failed. Sending with the previous context.',
     },
     codeBlock: {
       showRawText: 'Show raw text',

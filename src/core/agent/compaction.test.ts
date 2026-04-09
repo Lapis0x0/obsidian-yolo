@@ -3,8 +3,12 @@ import {
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
 import type { ChatMessage } from '../../types/chat'
+import type { ChatModel } from '../../types/chat-model.types'
 
-import { getCompactionSummarySourceMessages } from './compaction'
+import {
+  getCompactionSummarySourceMessages,
+  shouldTriggerAutoContextCompaction,
+} from './compaction'
 
 describe('compaction summary source selection', () => {
   it('keeps the full visible history for manual compaction summaries', () => {
@@ -65,5 +69,221 @@ describe('compaction summary source selection', () => {
         retainLatestToolBoundary: false,
       }),
     ).toEqual(messages)
+  })
+})
+
+const baseAutoOptions = {
+  autoContextCompactionEnabled: true,
+  autoContextCompactionThresholdMode: 'tokens' as const,
+  autoContextCompactionThresholdTokens: 100,
+  autoContextCompactionThresholdRatio: 0.8,
+}
+
+const userMsg = (id: string): ChatMessage => ({
+  role: 'user',
+  id,
+  content: null,
+  promptContent: 'hi',
+  mentionables: [],
+})
+
+const assistantMsg = (
+  id: string,
+  usage?: { prompt_tokens: number },
+  model?: Pick<ChatModel, 'maxContextTokens'>,
+): ChatMessage => ({
+  role: 'assistant',
+  id,
+  content: 'ok',
+  metadata: usage
+    ? {
+        usage: {
+          prompt_tokens: usage.prompt_tokens,
+          completion_tokens: 0,
+          total_tokens: usage.prompt_tokens,
+        },
+        model: model
+          ? ({
+              providerId: 'provider',
+              id: 'model-id',
+              model: 'model-name',
+              maxContextTokens: model.maxContextTokens,
+            } satisfies ChatModel)
+          : undefined,
+      }
+    : undefined,
+})
+
+describe('shouldTriggerAutoContextCompaction', () => {
+  it('returns false when disabled', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 200 })],
+        chatOptions: { ...baseAutoOptions, autoContextCompactionEnabled: false },
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('tokens mode: below threshold', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 50 })],
+        chatOptions: baseAutoOptions,
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('tokens mode: at threshold', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 100 })],
+        chatOptions: baseAutoOptions,
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(true)
+  })
+
+  it('ratio mode: below ratio', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [
+          userMsg('u1'),
+          assistantMsg('a1', { prompt_tokens: 70 }, { maxContextTokens: 100 }),
+        ],
+        chatOptions: {
+          ...baseAutoOptions,
+          autoContextCompactionThresholdMode: 'ratio',
+          autoContextCompactionThresholdRatio: 0.8,
+        },
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('ratio mode: at ratio', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [
+          userMsg('u1'),
+          assistantMsg('a1', { prompt_tokens: 80 }, { maxContextTokens: 100 }),
+        ],
+        chatOptions: {
+          ...baseAutoOptions,
+          autoContextCompactionThresholdMode: 'ratio',
+          autoContextCompactionThresholdRatio: 0.8,
+        },
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(true)
+  })
+
+  it('ratio mode: missing maxContextTokens', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 99 })],
+        chatOptions: {
+          ...baseAutoOptions,
+          autoContextCompactionThresholdMode: 'ratio',
+        },
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('ratio mode: uses the last assistant message model instead of current chat model', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [
+          userMsg('u1'),
+          assistantMsg('a1', { prompt_tokens: 800 }, { maxContextTokens: 1000 }),
+        ],
+        chatOptions: {
+          ...baseAutoOptions,
+          autoContextCompactionThresholdMode: 'ratio',
+          autoContextCompactionThresholdRatio: 0.8,
+        },
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(true)
+  })
+
+  it('last message not assistant', () => {
+    const emptyArgs = createCompleteToolCallArguments({ value: {} })
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [
+          userMsg('u1'),
+          assistantMsg('a1', { prompt_tokens: 200 }),
+          {
+            role: 'tool',
+            id: 't1',
+            toolCalls: [
+              {
+                request: {
+                  id: 'x',
+                  name: 'y',
+                  arguments: emptyArgs,
+                },
+                response: {
+                  status: ToolCallResponseStatus.Success,
+                  data: { type: 'text', text: '{}' },
+                },
+              },
+            ],
+          },
+        ],
+        chatOptions: baseAutoOptions,
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('assistant missing prompt_tokens', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1')],
+        chatOptions: baseAutoOptions,
+        compactionState: [],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('run active', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 200 })],
+        chatOptions: baseAutoOptions,
+        compactionState: [],
+        isConversationRunActive: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('does not repeat compaction for same assistant anchor', () => {
+    expect(
+      shouldTriggerAutoContextCompaction({
+        previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 200 })],
+        chatOptions: baseAutoOptions,
+        compactionState: [
+          {
+            anchorMessageId: 'a1',
+            summary: 's',
+            compactedAt: 1,
+          },
+        ],
+        isConversationRunActive: false,
+      }),
+    ).toBe(false)
   })
 })

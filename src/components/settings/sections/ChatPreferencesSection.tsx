@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -9,6 +10,11 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 const HISTORY_ARCHIVE_THRESHOLD_MIN = 20
 const HISTORY_ARCHIVE_THRESHOLD_MAX = 500
 const HISTORY_ARCHIVE_THRESHOLD_FALLBACK = 50
+
+const AUTO_COMPACTION_TOKENS_MIN = 1
+const AUTO_COMPACTION_TOKENS_MAX = 1_000_000
+const AUTO_COMPACTION_RATIO_PERCENT_MIN = 1
+const AUTO_COMPACTION_RATIO_PERCENT_MAX = 100
 
 type ChatPreferencesSectionProps = {
   embedded?: boolean
@@ -35,6 +41,36 @@ export function ChatPreferencesSection({
       ),
     )
   }, [settings.chatOptions.historyArchiveThreshold])
+
+  const [autoCompactionTokensInput, setAutoCompactionTokensInput] = useState(
+    String(settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000),
+  )
+  const [autoCompactionRatioPercentInput, setAutoCompactionRatioPercentInput] =
+    useState(
+      String(
+        Math.round(
+          (settings.chatOptions.autoContextCompactionThresholdRatio ?? 0.8) *
+            100,
+        ),
+      ),
+    )
+
+  useEffect(() => {
+    setAutoCompactionTokensInput(
+      String(settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000),
+    )
+  }, [settings.chatOptions.autoContextCompactionThresholdTokens])
+
+  useEffect(() => {
+    setAutoCompactionRatioPercentInput(
+      String(
+        Math.round(
+          (settings.chatOptions.autoContextCompactionThresholdRatio ?? 0.8) *
+            100,
+        ),
+      ),
+    )
+  }, [settings.chatOptions.autoContextCompactionThresholdRatio])
 
   const updateChatOptions = (
     patch: Partial<typeof settings.chatOptions>,
@@ -131,6 +167,144 @@ export function ChatPreferencesSection({
           }}
         />
       </ObsidianSetting>
+
+      <ObsidianSetting
+        name={t('settings.chatPreferences.autoContextCompaction')}
+        desc={t('settings.chatPreferences.autoContextCompactionDesc')}
+        className="smtcmp-settings-card"
+      >
+        <ObsidianToggle
+          value={settings.chatOptions.autoContextCompactionEnabled ?? false}
+          onChange={(value) => {
+            updateChatOptions(
+              {
+                autoContextCompactionEnabled: value,
+              },
+              'autoContextCompactionEnabled',
+            )
+          }}
+        />
+      </ObsidianSetting>
+
+      <ObsidianSetting
+        name={t('settings.chatPreferences.autoContextCompactionThresholdMode')}
+        className="smtcmp-settings-card"
+      >
+        <ObsidianDropdown
+          value={settings.chatOptions.autoContextCompactionThresholdMode ?? 'tokens'}
+          options={{
+            tokens: t('settings.chatPreferences.autoContextCompactionModeTokens'),
+            ratio: t('settings.chatPreferences.autoContextCompactionModeRatio'),
+          }}
+          onChange={(value) => {
+            updateChatOptions(
+              {
+                autoContextCompactionThresholdMode:
+                  value === 'ratio' ? 'ratio' : 'tokens',
+              },
+              'autoContextCompactionThresholdMode',
+            )
+          }}
+          disabled={!(settings.chatOptions.autoContextCompactionEnabled ?? false)}
+        />
+      </ObsidianSetting>
+
+      {(settings.chatOptions.autoContextCompactionThresholdMode ?? 'tokens') ===
+      'tokens' ? (
+        <ObsidianSetting
+          name={t(
+            'settings.chatPreferences.autoContextCompactionThresholdTokens',
+          )}
+          desc={t(
+            'settings.chatPreferences.autoContextCompactionThresholdTokensDesc',
+          )}
+          className="smtcmp-settings-card"
+        >
+          <ObsidianTextInput
+            value={autoCompactionTokensInput}
+            type="number"
+            onChange={(value) => {
+              setAutoCompactionTokensInput(value)
+            }}
+            onBlur={(value) => {
+              const parsed = Number.parseInt(value, 10)
+              if (Number.isNaN(parsed)) {
+                setAutoCompactionTokensInput(
+                  String(
+                    settings.chatOptions.autoContextCompactionThresholdTokens ??
+                      24000,
+                  ),
+                )
+                return
+              }
+              const clamped = Math.max(
+                AUTO_COMPACTION_TOKENS_MIN,
+                Math.min(AUTO_COMPACTION_TOKENS_MAX, parsed),
+              )
+              setAutoCompactionTokensInput(String(clamped))
+              if (
+                clamped !==
+                (settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000)
+              ) {
+                updateChatOptions(
+                  {
+                    autoContextCompactionThresholdTokens: clamped,
+                  },
+                  'autoContextCompactionThresholdTokens',
+                )
+              }
+            }}
+          />
+        </ObsidianSetting>
+      ) : (
+        <ObsidianSetting
+          name={t(
+            'settings.chatPreferences.autoContextCompactionThresholdRatioPercent',
+          )}
+          desc={t(
+            'settings.chatPreferences.autoContextCompactionThresholdRatioPercentDesc',
+          )}
+          className="smtcmp-settings-card"
+        >
+          <ObsidianTextInput
+            value={autoCompactionRatioPercentInput}
+            type="number"
+            onChange={(value) => {
+              setAutoCompactionRatioPercentInput(value)
+            }}
+            onBlur={(value) => {
+              const parsed = Number.parseInt(value, 10)
+              if (Number.isNaN(parsed)) {
+                setAutoCompactionRatioPercentInput(
+                  String(
+                    Math.round(
+                      (settings.chatOptions
+                        .autoContextCompactionThresholdRatio ?? 0.8) * 100,
+                    ),
+                  ),
+                )
+                return
+              }
+              const clamped = Math.max(
+                AUTO_COMPACTION_RATIO_PERCENT_MIN,
+                Math.min(AUTO_COMPACTION_RATIO_PERCENT_MAX, parsed),
+              )
+              setAutoCompactionRatioPercentInput(String(clamped))
+              const nextRatio = clamped / 100
+              const prevRatio =
+                settings.chatOptions.autoContextCompactionThresholdRatio ?? 0.8
+              if (nextRatio !== prevRatio) {
+                updateChatOptions(
+                  {
+                    autoContextCompactionThresholdRatio: nextRatio,
+                  },
+                  'autoContextCompactionThresholdRatio',
+                )
+              }
+            }}
+          />
+        </ObsidianSetting>
+      )}
     </>
   )
 

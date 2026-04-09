@@ -154,6 +154,15 @@ export type TranslationKeys = {
       historyArchiveEnabledDesc?: string
       historyArchiveThreshold?: string
       historyArchiveThresholdDesc?: string
+      autoContextCompaction?: string
+      autoContextCompactionDesc?: string
+      autoContextCompactionThresholdMode?: string
+      autoContextCompactionModeTokens?: string
+      autoContextCompactionModeRatio?: string
+      autoContextCompactionThresholdTokens?: string
+      autoContextCompactionThresholdTokensDesc?: string
+      autoContextCompactionThresholdRatioPercent?: string
+      autoContextCompactionThresholdRatioPercentDesc?: string
     }
     assistants: {
       title: string
@@ -902,6 +911,7 @@ export type TranslationKeys = {
       empty?: string
       runActive?: string
       waitingApproval?: string
+      autoFailed?: string
     }
     codeBlock?: {
       showRawText?: string

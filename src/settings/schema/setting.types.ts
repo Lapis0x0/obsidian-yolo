@@ -335,6 +335,19 @@ export const smartComposerSettingsSchema = z.object({
       historyArchiveThreshold: z.number().int().min(20).max(500).optional(),
       // Whether the tab title should follow the current conversation title
       tabTitleFollowsConversation: z.boolean().default(true).catch(true),
+      // Auto context compaction before next user send (based on last assistant usage)
+      autoContextCompactionEnabled: z.boolean().optional(),
+      autoContextCompactionThresholdMode: z.enum(['tokens', 'ratio']).optional(),
+      autoContextCompactionThresholdTokens: z
+        .number()
+        .int()
+        .min(1)
+        .optional(),
+      autoContextCompactionThresholdRatio: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -349,6 +362,10 @@ export const smartComposerSettingsSchema = z.object({
       historyArchiveEnabled: true,
       historyArchiveThreshold: 50,
       tabTitleFollowsConversation: true,
+      autoContextCompactionEnabled: false,
+      autoContextCompactionThresholdMode: 'tokens',
+      autoContextCompactionThresholdTokens: 24000,
+      autoContextCompactionThresholdRatio: 0.8,
     }),
 
   notificationOptions: notificationOptionsSchema,

@@ -1,10 +1,12 @@
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
-import type {
-  ChatAssistantMessage,
-  ChatConversationCompaction,
-  ChatMessage,
-  ChatToolMessage,
-  ChatUserMessage,
+import {
+  getLatestChatConversationCompaction,
+  type ChatAssistantMessage,
+  type ChatConversationCompaction,
+  type ChatConversationCompactionState,
+  type ChatMessage,
+  type ChatToolMessage,
+  type ChatUserMessage,
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { RequestMessage } from '../../types/llm/request'
@@ -32,6 +34,90 @@ Rules:
 - Output plain Markdown only.`
 
 export const CONTEXT_COMPACT_TOOL_NAME = 'context_compact'
+
+export type AutoContextCompactionChatOptions = {
+  autoContextCompactionEnabled: boolean
+  autoContextCompactionThresholdMode: 'tokens' | 'ratio'
+  autoContextCompactionThresholdTokens: number
+  autoContextCompactionThresholdRatio: number
+}
+
+export const resolveAutoContextCompactionChatOptions = (chatOptions: {
+  autoContextCompactionEnabled?: boolean
+  autoContextCompactionThresholdMode?: 'tokens' | 'ratio'
+  autoContextCompactionThresholdTokens?: number
+  autoContextCompactionThresholdRatio?: number
+}): AutoContextCompactionChatOptions => {
+  return {
+    autoContextCompactionEnabled: chatOptions.autoContextCompactionEnabled ?? false,
+    autoContextCompactionThresholdMode:
+      chatOptions.autoContextCompactionThresholdMode ?? 'tokens',
+    autoContextCompactionThresholdTokens:
+      chatOptions.autoContextCompactionThresholdTokens ?? 24000,
+    autoContextCompactionThresholdRatio:
+      chatOptions.autoContextCompactionThresholdRatio ?? 0.8,
+  }
+}
+
+export type ShouldTriggerAutoContextCompactionInput = {
+  previousMessages: ChatMessage[]
+  chatOptions: AutoContextCompactionChatOptions
+  compactionState: ChatConversationCompactionState
+  isConversationRunActive: boolean
+}
+
+/**
+ * Whether to run automatic compaction before submitting the new user message.
+ * `previousMessages` must be the transcript *before* the new user turn (excludes the pending user message).
+ */
+export const shouldTriggerAutoContextCompaction = ({
+  previousMessages,
+  chatOptions,
+  compactionState,
+  isConversationRunActive,
+}: ShouldTriggerAutoContextCompactionInput): boolean => {
+  if (!chatOptions.autoContextCompactionEnabled) {
+    return false
+  }
+
+  if (isConversationRunActive) {
+    return false
+  }
+
+  const last = previousMessages.at(-1)
+  if (!last || last.role !== 'assistant') {
+    return false
+  }
+
+  const promptTokens = last.metadata?.usage?.prompt_tokens
+  if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
+    return false
+  }
+
+  const latestCompaction = getLatestChatConversationCompaction(compactionState)
+  if (latestCompaction?.anchorMessageId === last.id) {
+    return false
+  }
+
+  if (chatOptions.autoContextCompactionThresholdMode === 'tokens') {
+    return promptTokens >= chatOptions.autoContextCompactionThresholdTokens
+  }
+
+  const maxContextTokens = last.metadata?.model?.maxContextTokens
+
+  if (
+    typeof maxContextTokens !== 'number' ||
+    maxContextTokens <= 0 ||
+    !Number.isFinite(maxContextTokens)
+  ) {
+    return false
+  }
+
+  return (
+    promptTokens / maxContextTokens >=
+    chatOptions.autoContextCompactionThresholdRatio
+  )
+}
 
 const parseCompactOperationResult = (
   text: string,

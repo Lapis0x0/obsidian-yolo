@@ -24,6 +24,10 @@ import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
+import {
+  resolveAutoContextCompactionChatOptions,
+  shouldTriggerAutoContextCompaction,
+} from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
@@ -2266,6 +2270,41 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         type: 'idle',
       })
 
+      const previousMessages = inputChatMessages.slice(0, -1)
+      const autoCompactionOptions = resolveAutoContextCompactionChatOptions(
+        settings.chatOptions,
+      )
+      let compactionForSubmit = effectiveCompactionState
+      if (
+        shouldTriggerAutoContextCompaction({
+          previousMessages,
+          chatOptions: autoCompactionOptions,
+          compactionState: effectiveCompactionState,
+          isConversationRunActive:
+            currentConversationRunSummary.isRunning ||
+            currentConversationRunSummary.isWaitingApproval,
+        })
+      ) {
+        setPendingCompactionAnchorMessageId(
+          previousMessages.at(-1)?.id ?? null,
+        )
+        try {
+          const nextCompactionState =
+            await compactConversation(previousMessages)
+          setPendingCompactionAnchorMessageId(null)
+          if (nextCompactionState) {
+            compactionForSubmit = [
+              ...effectiveCompactionState,
+              nextCompactionState,
+            ]
+          }
+        } catch (error) {
+          setPendingCompactionAnchorMessageId(null)
+          new Notice(t('chat.compaction.autoFailed'))
+          console.error('Automatic context compaction failed', error)
+        }
+      }
+
       // Update the chat history to show the new user message
       setChatMessages(inputChatMessages)
       requestAnimationFrame(() => {
@@ -2348,6 +2387,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       })
 
       setChatMessages(persistedMessages)
+      plugin
+        .getAgentService()
+        .replaceConversationMessages(
+          currentConversationId,
+          persistedMessages,
+          compactionForSubmit,
+        )
+      setCompactionState(compactionForSubmit)
       void createOrUpdateConversation(
         currentConversationId,
         compiledInputMessages,
@@ -2366,7 +2413,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ),
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
-        effectiveCompactionState,
+        compactionForSubmit,
       )
       void generateConversationTitle(
         currentConversationId,
@@ -2385,6 +2432,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationId: currentConversationId,
         reasoningLevel: requestReasoningLevel,
         modelIds: requestModelIds,
+        compactionOverride: compactionForSubmit,
       })
     },
     [
@@ -2403,6 +2451,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       reasoningLevel,
       resolveReasoningLevelForMessages,
       serializeMessageModelMap,
+      settings.chatOptions,
+      compactConversation,
+      plugin,
+      currentConversationModel?.maxContextTokens,
+      currentConversationRunSummary.isRunning,
+      currentConversationRunSummary.isWaitingApproval,
+      t,
     ],
   )
 
