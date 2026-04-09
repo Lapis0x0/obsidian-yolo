@@ -620,6 +620,7 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   align-items: center;
   gap: var(--size-4-1);
   margin-left: auto;
+  position: relative;
 
   svg {
     height: var(--icon-xs);
@@ -628,66 +629,24 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   }
 }
 
-/* Match chat history popover / sidebar: avoid stark --background-primary on gray UI */
-.smtcmp-popover.smtcmp-chat-list-more-menu {
-  z-index: var(--layer-popover, 50);
-  min-width: 160px;
-  padding: var(--size-2-3) var(--size-2-2);
-  background: var(--huisede1, var(--background-secondary));
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.12),
-    0 0 0 1px
-      color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
-  transform-origin: var(
-    --radix-dropdown-menu-content-transform-origin,
-    top right
-  );
-}
-
-.smtcmp-popover.smtcmp-chat-list-more-menu[data-state='open'] {
-  animation: smtcmp-chat-list-dropdown-fade-in 0.22s
-    cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.smtcmp-popover.smtcmp-chat-list-more-menu[data-state='closed'] {
-  animation: smtcmp-chat-list-dropdown-fade-out 0.16s
-    cubic-bezier(0.4, 0, 1, 1);
-}
-
-.smtcmp-chat-list-more-menu-item {
+.smtcmp-chat-list-inline-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: var(--radius-s);
-  font-size: var(--font-ui-small);
-  cursor: pointer;
+  gap: var(--size-4-1);
+}
+
+.smtcmp-chat-list-dropdown-item-actions.is-more-open
+  .smtcmp-chat-list-dropdown-item-icon,
+.smtcmp-chat-list-dropdown-item-actions.is-more-open
+  .smtcmp-chat-list-pin-button {
+  visibility: visible;
+}
+
+.smtcmp-chat-list-more-button.is-open {
+  visibility: visible;
   color: var(--text-normal);
-  outline: none;
-}
-
-.smtcmp-chat-list-more-menu-item[data-highlighted] {
   background: var(--background-modifier-hover);
-}
-
-.smtcmp-chat-list-more-menu-item[data-disabled] {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.smtcmp-chat-list-more-menu-item svg {
-  flex-shrink: 0;
-  height: var(--icon-xs);
-  width: var(--icon-xs);
-  stroke-width: var(--icon-stroke);
-  color: var(--text-muted);
-}
-
-.smtcmp-chat-list-more-menu-item span {
-  min-width: 0;
-  text-align: left;
+  border-radius: var(--radius-s);
 }
 
 .smtcmp-chat-list-pin-button {
