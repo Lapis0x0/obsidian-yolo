@@ -65,8 +65,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ChatAssistantMessage } from '../../types/chat'
 
-import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
+import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 
 const mockedAssistantToolMessageGroupActions =
   AssistantToolMessageGroupActions as jest.MockedFunction<

@@ -1,23 +1,23 @@
 import type { App } from 'obsidian'
-import { normalizePath, TFolder } from 'obsidian'
+import { TFolder, normalizePath } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { ChatManager } from '../../database/json/chat/ChatManager'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { ChatConversation } from '../../database/json/chat/types'
 import {
-  normalizeChatConversationCompactionState,
   type SerializedChatAssistantMessage,
   type SerializedChatMessage,
   type SerializedChatToolMessage,
   type SerializedChatUserMessage,
+  normalizeChatConversationCompactionState,
 } from '../../types/chat'
-import type { SerializedMentionable } from '../../types/mentionable'
 import type { ContentPart } from '../../types/llm/request'
+import type { SerializedMentionable } from '../../types/mentionable'
 import {
-  getToolCallArgumentsText,
-  ToolCallResponseStatus,
   type ToolCallResponse,
+  ToolCallResponseStatus,
+  getToolCallArgumentsText,
 } from '../../types/tool-call.types'
 
 type YoloSettingsLike = {
@@ -476,7 +476,7 @@ export function conversationToMarkdown(
 
   for (const message of messageSequence) {
     if (message.role === 'user') {
-      const user = message as SerializedChatUserMessage
+      const user = message
       const editorText = editorStateToPlainText(user.content)
       const promptText = resolveUserPromptPlainText(user, snapshotEntries)
       const body =

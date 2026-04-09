@@ -15,6 +15,7 @@ import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { BaseLLMProvider } from './base'
 import { MistralMessageAdapter } from './mistralMessageAdapter'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -22,7 +23,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 export class MistralProvider extends BaseLLMProvider<LLMProvider> {

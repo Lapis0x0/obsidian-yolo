@@ -1,17 +1,21 @@
-import type { TFile } from 'obsidian'
+import { TFile } from 'obsidian'
 
 import type { Mentionable } from '../../types/mentionable'
+
 import {
   getDisplayOnlyCurrentFileMentionables,
   getLatestValidCurrentFileMentionable,
   normalizeMentionablesWithAutoCurrentFile,
 } from './currentFileMentionable'
 
-const createMockFile = (path: string): TFile =>
-  ({
+const createMockFile = (path: string): TFile => {
+  const file = new TFile()
+  Object.assign(file, {
     path,
     name: path.split('/').pop() ?? path,
-  }) as TFile
+  })
+  return file
+}
 
 describe('currentFileMentionable helpers', () => {
   it('returns only auto-attached current-file mentionables that are display-only', () => {

@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../settings/schema/setting.types'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMRequestBase, RequestTool } from '../../types/llm/request'
 import {
@@ -12,7 +13,6 @@ import {
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import { createToolCallArguments } from '../../utils/chat/tool-arguments'
-import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../settings/schema/setting.types'
 import { BaseLLMProvider } from '../llm/base'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
 
@@ -124,10 +124,7 @@ const isRecordArrayField = (
     return false
   }
 
-  return value.every(
-    (item) =>
-      isObjectRecord(item) && itemValidator(item as Record<string, unknown>),
-  )
+  return value.every((item) => isObjectRecord(item) && itemValidator(item))
 }
 
 const isValidFsCreateFileItem = (value: Record<string, unknown>): boolean => {

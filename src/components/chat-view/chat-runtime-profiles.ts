@@ -1,7 +1,7 @@
-import type { ChatMode } from './chat-input/ChatModeSelect'
-
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
 import type { Assistant } from '../../types/assistant.types'
+
+import type { ChatMode } from './chat-input/ChatModeSelect'
 
 type AssistantLoopOptions = Pick<
   Assistant,

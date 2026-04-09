@@ -25,6 +25,7 @@ import { LLMBaseUrlNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { applyOpenAICompatibleCapabilities } from './openaiCompatibleCapabilities'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -32,7 +33,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 type GeminiThinkingConfig = {

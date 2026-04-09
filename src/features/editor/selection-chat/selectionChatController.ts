@@ -597,11 +597,13 @@ export class SelectionChatController {
         const targetLeaf = this.plugin
           .getChatLeafSessionManager()
           .resolveTargetLeaf()
+        const activeLeaf =
+          this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? null
         if (
           selection.empty ||
           view.hasFocus ||
           !targetLeaf ||
-          this.app.workspace.activeLeaf !== targetLeaf
+          activeLeaf !== targetLeaf
         ) {
           return
         }

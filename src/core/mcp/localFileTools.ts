@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
+import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { ChatMessage } from '../../types/chat'
@@ -10,7 +11,6 @@ import {
 } from '../../types/tool-call.types'
 import { createToolEditSummary } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
-import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import {
   type TextEditOperation,

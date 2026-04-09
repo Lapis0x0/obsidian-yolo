@@ -1,7 +1,8 @@
 import { requestUrl } from 'obsidian'
 
-import { GeminiOAuthCredential, GeminiOAuthStore } from './geminiOAuthStore'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
+
+import { GeminiOAuthCredential, GeminiOAuthStore } from './geminiOAuthStore'
 
 const GOOGLE_ISSUER = 'https://accounts.google.com'
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
@@ -76,7 +77,6 @@ type RetrieveUserQuotaResponse = {
 }
 
 type CreateServer = typeof import('node:http').createServer
-type IncomingMessage = import('node:http').IncomingMessage
 type Server = import('node:http').Server
 type ServerResponse = import('node:http').ServerResponse
 
@@ -530,7 +530,9 @@ export class GeminiOAuthService {
               'node:http',
             ))
         } catch (error) {
-          reject(error)
+          reject(
+            error instanceof Error ? error : new Error(toErrorMessage(error)),
+          )
           return
         }
 

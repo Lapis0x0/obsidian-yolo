@@ -1,13 +1,13 @@
+import type { ChatMessage } from '../../types/chat'
+import type { ChatModel } from '../../types/chat-model.types'
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
-import type { ChatMessage } from '../../types/chat'
-import type { ChatModel } from '../../types/chat-model.types'
 
 import {
-  getLatestAssistantContextUsage,
   getCompactionSummarySourceMessages,
+  getLatestAssistantContextUsage,
   shouldTriggerAutoContextCompaction,
 } from './compaction'
 

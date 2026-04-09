@@ -18,6 +18,7 @@ import { formatMessages } from '../../utils/llm/request'
 import { BaseLLMProvider } from './base'
 import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
 import { LLMAPIKeyNotSetException } from './exception'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -25,7 +26,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 // deepseek doesn't support image

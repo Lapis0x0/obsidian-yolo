@@ -1,11 +1,11 @@
 import {
+  Cpu,
   FileIcon,
   FileText,
   FolderClosedIcon,
   FoldersIcon,
   ImageIcon,
   LinkIcon,
-  Cpu,
   Quote,
 } from 'lucide-react'
 

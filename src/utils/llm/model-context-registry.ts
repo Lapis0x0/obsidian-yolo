@@ -1,4 +1,5 @@
 import { ChatModel } from '../../types/chat-model.types'
+
 import { OPENROUTER_MODEL_CONTEXT_TOKENS } from './openrouter-model-contexts'
 
 const KNOWN_MODEL_CONTEXT_TOKENS: Record<string, number> = {
@@ -36,8 +37,8 @@ function getModelContextLookupCandidates(modelId: string): string[] {
   return Array.from(
     new Set([
       normalized,
-      normalized.replace(/(?<=\d)\.(?=\d)/g, '-'),
-      normalized.replace(/(?<=\d)-(?=\d)/g, '.'),
+      normalized.replace(/(\d)\.(\d)/g, '$1-$2'),
+      normalized.replace(/(\d)-(\d)/g, '$1.$2'),
     ]),
   )
 }

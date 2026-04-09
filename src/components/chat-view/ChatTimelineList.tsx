@@ -8,9 +8,9 @@ import {
   useState,
 } from 'react'
 import {
-  Virtuoso,
   type FollowOutput,
   type ListRange,
+  Virtuoso,
   type VirtuosoHandle,
 } from 'react-virtuoso'
 
@@ -23,13 +23,13 @@ import {
 } from '../../database/json/chat/timelineHeightCacheStore'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 import {
+  type TimelineCacheScope,
   buildTimelineSignature,
   getTimelineHeightCache,
   getTimelineStateSnapshot,
   getTimelineStyleSignature,
   getTimelineWidthBucket,
   setTimelineStateSnapshot,
-  type TimelineCacheScope,
   updateTimelineItemHeight,
 } from '../../utils/chat/timeline-virtualization-cache'
 

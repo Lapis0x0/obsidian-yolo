@@ -104,7 +104,6 @@ export class WriteAssistController {
 
     const notice = new Notice('正在生成改写...', 0)
     const controller = new AbortController()
-    const settings = this.deps.getSettings()
     this.deps.addAbortController(controller)
 
     try {

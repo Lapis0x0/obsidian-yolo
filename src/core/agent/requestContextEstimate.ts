@@ -8,6 +8,7 @@ import type { ChatModel } from '../../types/chat-model.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { McpManager } from '../mcp/mcpManager'
+
 import { selectAllowedTools } from './tool-selection'
 
 export const estimateContinuationRequestContextTokens = async ({

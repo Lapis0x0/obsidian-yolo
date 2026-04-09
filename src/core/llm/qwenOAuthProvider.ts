@@ -17,7 +17,6 @@ import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
-
 import { getQwenOAuthService } from '../auth/qwenOAuthRuntime'
 
 import { BaseLLMProvider } from './base'
@@ -25,6 +24,8 @@ import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { applyOpenAICompatibleCapabilities } from './openaiCompatibleCapabilities'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { QwenOAuthMessageAdapter } from './qwenOAuthMessageAdapter'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -32,8 +33,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
-import { QwenOAuthMessageAdapter } from './qwenOAuthMessageAdapter'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 type GeminiThinkingConfig = {
@@ -125,7 +124,7 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
 
     this.browserClient = new ClientCtor({
       ...clientOptions,
-      fetch: this.createAuthorizedFetch(fetch),
+      fetch: this.createAuthorizedFetch(globalThis.fetch),
     })
     this.obsidianClient = new ClientCtor({
       ...clientOptions,

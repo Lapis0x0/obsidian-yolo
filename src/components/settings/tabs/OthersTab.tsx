@@ -1,19 +1,13 @@
 import { App } from 'obsidian'
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import {
-  getYoloBaseDir,
-  getYoloSkillsDir,
-  normalizeVaultRelativeDir,
-} from '../../../core/paths/yoloPaths'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
-import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ChatPreferencesSection } from '../sections/ChatPreferencesSection'
 import { EtcSection } from '../sections/EtcSection'
@@ -26,13 +20,6 @@ type OthersTabProps = {
 export function OthersTab({ app, plugin }: OthersTabProps) {
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
-  const yoloBaseDir = getYoloBaseDir(settings)
-  const skillsDir = getYoloSkillsDir(settings)
-  const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
-
-  useEffect(() => {
-    setYoloBaseDirInput(yoloBaseDir)
-  }, [yoloBaseDir])
 
   const handleMentionDisplayModeChange = (value: string) => {
     if (value !== 'inline' && value !== 'badge') return
@@ -81,27 +68,6 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
         })
       } catch (error: unknown) {
         console.error('Failed to update chat apply mode', error)
-      }
-    })()
-  }
-
-  const handleYoloBaseDirBlur = (value: string) => {
-    const normalized = normalizeVaultRelativeDir(value)
-    setYoloBaseDirInput(normalized)
-    if (normalized === yoloBaseDir) {
-      return
-    }
-    void (async () => {
-      try {
-        await setSettings({
-          ...settings,
-          yolo: {
-            ...(settings.yolo ?? { baseDir: 'YOLO' }),
-            baseDir: normalized,
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to update YOLO base dir', error)
       }
     })()
   }

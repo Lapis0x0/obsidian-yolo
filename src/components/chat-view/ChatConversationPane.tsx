@@ -2,9 +2,10 @@ import { ArrowDown, Bot, CircleStop, MessageCircle } from 'lucide-react'
 import type { ReactNode, RefObject } from 'react'
 import type { FollowOutput } from 'react-virtuoso'
 
+import type { ChatTimelineItem } from '../../types/chat-timeline'
+
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { SharedConversationSurface } from './SharedConversationSurface'
-import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 type ChatConversationPaneProps = {
   chatMode: ChatMode

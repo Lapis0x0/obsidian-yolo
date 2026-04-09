@@ -5,7 +5,6 @@ import { Download, History, Plus } from 'lucide-react'
 import { MarkdownView, Notice, Platform, TFile } from 'obsidian'
 import type { TFolder } from 'obsidian'
 import {
-  Fragment,
   forwardRef,
   useCallback,
   useEffect,
@@ -34,6 +33,7 @@ import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
+import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
@@ -62,22 +62,21 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
-import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import {
   type GroupEditSummary,
   deriveToolEditUndoStatus,
   updateToolMessageEditSummary,
 } from '../../utils/chat/editSummary'
+import { exportChatConversationToVault } from '../../utils/chat/exportConversation'
 import {
   getBlockContentHash,
   getBlockMentionableCountInfo,
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
-import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
-import { exportChatConversationToVault } from '../../utils/chat/exportConversation'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
 import { readTFileContent } from '../../utils/obsidian'
@@ -96,19 +95,19 @@ import MentionableBadge from './chat-input/MentionableBadge'
 import { getDefaultReasoningLevel } from './chat-input/ReasoningSelect'
 import type { ReasoningLevel } from './chat-input/ReasoningSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { getChatSurfacePreset } from './chat-surface-presets'
+import { ChatConversationPane } from './ChatConversationPane'
 import { ChatListDropdown } from './ChatListDropdown'
-import Composer from './Composer'
-import ContextUsageRing from './ContextUsageRing'
 import {
   buildRetrySubmissionMessages,
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
+import Composer from './Composer'
+import ContextUsageRing from './ContextUsageRing'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
-import { getChatSurfacePreset } from './chat-surface-presets'
-import { ChatConversationPane } from './ChatConversationPane'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
@@ -2963,7 +2962,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               return
             }
 
-            const nextFiles = entry.summary.files.map((file, index) => {
+            const nextFiles = entry.summary.files.map((file) => {
               const nextStatus =
                 undoStateByPath.get(file.path) ?? file.undoStatus
 

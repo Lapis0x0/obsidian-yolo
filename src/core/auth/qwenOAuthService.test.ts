@@ -67,7 +67,7 @@ describe('QwenOAuthService', () => {
     expect(credential.resourceUrl).toBe(
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     )
-    expect(store.set).toHaveBeenCalledWith(credential)
+    expect(store.set.mock.calls).toContainEqual([credential])
   })
 
   it('refreshes and persists credential', async () => {
@@ -91,6 +91,6 @@ describe('QwenOAuthService', () => {
     expect(credential.resourceUrl).toBe(
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     )
-    expect(store.set).toHaveBeenCalledWith(credential)
+    expect(store.set.mock.calls).toContainEqual([credential])
   })
 })

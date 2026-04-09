@@ -1,3 +1,4 @@
+import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
 import type {
   AssistantToolMessageGroup,
@@ -6,9 +7,8 @@ import type {
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
-import { getToolCallArgumentsText } from '../../types/tool-call.types'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
-import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
+import { getToolCallArgumentsText } from '../../types/tool-call.types'
 
 const USER_MESSAGE_ESTIMATED_HEIGHT = 92
 const ASSISTANT_GROUP_ESTIMATED_HEIGHT = 180

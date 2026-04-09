@@ -17,6 +17,7 @@ import { BaseLLMProvider } from './base'
 import { LLMAPIKeyNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { PerplexityMessageAdapter } from './perplexityMessageAdapter'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -24,7 +25,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 export class PerplexityProvider extends BaseLLMProvider<LLMProvider> {

@@ -79,9 +79,6 @@ const createLinkedAbortController = (
   }
 }
 
-const isAbortError = (error: unknown): boolean =>
-  error instanceof Error && error.name === 'AbortError'
-
 const runWithTimeout = async <T>({
   timeoutMs,
   signal,

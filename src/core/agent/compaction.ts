@@ -1,12 +1,12 @@
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import {
-  getLatestChatConversationCompaction,
   type ChatAssistantMessage,
   type ChatConversationCompaction,
   type ChatConversationCompactionState,
   type ChatMessage,
   type ChatToolMessage,
   type ChatUserMessage,
+  getLatestChatConversationCompaction,
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { RequestMessage } from '../../types/llm/request'

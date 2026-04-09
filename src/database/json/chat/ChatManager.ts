@@ -8,8 +8,8 @@ import { AbstractJsonRepository } from '../base'
 import { CHAT_DIR } from '../constants'
 import { EmptyChatTitleException } from '../exception'
 
-import { deletePromptSnapshotStore } from './promptSnapshotStore'
 import { deleteEditReviewSnapshotStore } from './editReviewSnapshotStore'
+import { deletePromptSnapshotStore } from './promptSnapshotStore'
 import {
   CHAT_SCHEMA_VERSION,
   ChatConversation,

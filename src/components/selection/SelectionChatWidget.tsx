@@ -12,7 +12,7 @@ import type {
   SelectionActionRewriteBehavior,
 } from './SelectionActionsMenu'
 import { SelectionActionsMenu } from './SelectionActionsMenu'
-import { getIndicatorPosition, SelectionIndicator } from './SelectionIndicator'
+import { SelectionIndicator, getIndicatorPosition } from './SelectionIndicator'
 import type { SelectionInfo } from './SelectionManager'
 
 type SelectionChatWidgetProps = {

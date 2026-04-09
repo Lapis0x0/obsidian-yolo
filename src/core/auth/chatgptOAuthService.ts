@@ -1,7 +1,8 @@
 import { requestUrl } from 'obsidian'
 
-import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
+
+import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
@@ -66,7 +67,6 @@ export type IdTokenClaims = {
 }
 
 type CreateServer = typeof import('node:http').createServer
-type IncomingMessage = import('node:http').IncomingMessage
 type Server = import('node:http').Server
 type ServerResponse = import('node:http').ServerResponse
 type AddressInfo = import('node:net').AddressInfo
@@ -457,7 +457,9 @@ export class ChatGPTOAuthService {
               'node:http',
             ))
         } catch (error) {
-          reject(error)
+          reject(
+            error instanceof Error ? error : new Error(toErrorMessage(error)),
+          )
           return
         }
 

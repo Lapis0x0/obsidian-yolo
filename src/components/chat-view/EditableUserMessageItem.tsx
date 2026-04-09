@@ -3,6 +3,7 @@ import { memo, useRef } from 'react'
 
 import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
+
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
 

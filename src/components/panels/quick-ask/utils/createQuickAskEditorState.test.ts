@@ -1,4 +1,4 @@
-import type { TFile } from 'obsidian'
+import { TFile } from 'obsidian'
 
 import type { MentionableBlock } from '../../../../types/mentionable'
 import { editorStateToPlainText } from '../../../chat-view/chat-input/utils/editor-state-to-plain-text'
@@ -7,15 +7,18 @@ import { createQuickAskEditorState } from './createQuickAskEditorState'
 
 describe('createQuickAskEditorState', () => {
   it('keeps mention nodes in the serialized message content', () => {
+    const file = new TFile()
+    Object.assign(file, {
+      path: 'test.md',
+      name: 'test.md',
+      basename: 'test',
+      extension: 'md',
+    })
+
     const selectionMentionable: MentionableBlock = {
       type: 'block',
       content: '主人能指',
-      file: {
-        path: 'test.md',
-        name: 'test.md',
-        basename: 'test',
-        extension: 'md',
-      } as unknown as TFile,
+      file,
       startLine: 1,
       endLine: 1,
       source: 'selection',

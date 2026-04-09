@@ -1,10 +1,11 @@
+import type { SerializedEditorState } from 'lexical'
+
 import type {
   AssistantToolMessageGroup,
   ChatConversationCompaction,
   ChatSelectedSkill,
   ChatUserMessage,
 } from './chat'
-import type { SerializedEditorState } from 'lexical'
 import type { Mentionable } from './mentionable'
 
 export type UserMessageDisplaySnapshot = {

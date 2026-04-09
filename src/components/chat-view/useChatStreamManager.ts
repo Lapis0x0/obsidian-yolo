@@ -32,18 +32,18 @@ import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import {
   ChatConversationCompaction,
   ChatConversationCompactionState,
-  ChatToolMessage,
   ChatMessage,
+  ChatToolMessage,
 } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
-import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
+import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
@@ -208,7 +208,6 @@ export function useChatStreamManager({
   const branchStateMapRef = useRef<Map<string, AgentConversationState>>(
     new Map(),
   )
-  const branchUnsubscribeMapRef = useRef<Map<string, () => void>>(new Map())
   const baseConversationMessagesRef = useRef<ChatMessage[]>([])
   const baseCompactionStateRef = useRef<ChatConversationCompactionState>(
     compaction ?? [],
@@ -292,58 +291,6 @@ export function useChatStreamManager({
     },
     [buildVisibleConversationMessages, currentConversationId, setChatMessages],
   )
-
-  const clearBranchRunTracking = useCallback(() => {
-    branchUnsubscribeMapRef.current.forEach((unsubscribe) => {
-      unsubscribe()
-    })
-    branchUnsubscribeMapRef.current.clear()
-    branchStateMapRef.current.clear()
-    activeBranchRunsRef.current.clear()
-  }, [])
-
-  const finalizeBranchRunsIfSettled = useCallback(() => {
-    if (activeBranchRunsRef.current.size === 0) {
-      return
-    }
-
-    const branchSummaries = Array.from(
-      activeBranchRunsRef.current.values(),
-    ).map((branch) => {
-      const state = branchStateMapRef.current.get(branch.branchConversationId)
-      return state ? buildRunSummary(state) : null
-    })
-    if (
-      branchSummaries.some(
-        (summary) => summary !== null && isRunSummaryActive(summary),
-      )
-    ) {
-      syncVisibleConversationState()
-      return
-    }
-
-    const mergedMessages = buildVisibleConversationMessages(
-      baseConversationMessagesRef.current,
-    )
-    clearBranchRunTracking()
-    plugin
-      .getAgentService()
-      .replaceConversationMessages(
-        currentConversationId,
-        mergedMessages,
-        baseCompactionStateRef.current,
-        { persistState: true },
-      )
-    setCurrentConversationRunSummary(
-      plugin.getAgentService().getConversationRunSummary(currentConversationId),
-    )
-  }, [
-    buildVisibleConversationMessages,
-    clearBranchRunTracking,
-    currentConversationId,
-    plugin,
-    syncVisibleConversationState,
-  ])
 
   const handleAutoPromoteTransportMode = useCallback(
     (providerId: string, mode: 'node' | 'obsidian') => {
@@ -738,8 +685,6 @@ export function useChatStreamManager({
           assistant: selectedAssistant,
         })
         const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
-        const effectiveIncludeBuiltinTools =
-          chatRuntimeLoopConfig.includeBuiltinTools
         const effectiveAllowedToolNames = effectiveEnableTools
           ? chatMode === 'agent'
             ? assistantEnabledToolNames

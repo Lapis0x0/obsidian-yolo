@@ -17,12 +17,12 @@ import {
   ChatAssistantMessage,
   ChatToolMessage,
 } from '../../types/chat'
+import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import {
   collectGroupEditSummary,
   countChangedLines,
 } from '../../utils/chat/editSummary'
-import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
 
 import AssistantEditSummary from './AssistantEditSummary'
 import AssistantErrorCard from './AssistantErrorCard'

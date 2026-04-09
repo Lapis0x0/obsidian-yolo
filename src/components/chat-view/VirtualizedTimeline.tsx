@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from 'react'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
+
 import { ChatTimelineList } from './ChatTimelineList'
 
 type VirtualizedTimelineProps<TItem extends ChatTimelineItem> = {

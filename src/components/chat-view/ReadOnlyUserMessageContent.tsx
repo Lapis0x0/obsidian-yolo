@@ -1,8 +1,8 @@
-import { memo, ReactNode, useMemo } from 'react'
 import type { SerializedEditorState, SerializedLexicalNode } from 'lexical'
+import { ReactNode, memo, useMemo } from 'react'
 
-import { SKILL_NODE_TYPE } from './chat-input/plugins/mention/SkillNode'
 import { MENTION_NODE_TYPE } from './chat-input/plugins/mention/MentionNode'
+import { SKILL_NODE_TYPE } from './chat-input/plugins/mention/SkillNode'
 
 type ReadOnlyUserMessageContentProps = {
   content: SerializedEditorState | null

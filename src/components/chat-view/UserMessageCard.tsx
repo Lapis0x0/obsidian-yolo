@@ -9,8 +9,9 @@ import {
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
-import MentionableBadge from './chat-input/MentionableBadge'
+
 import ChatSkillBadge from './chat-input/ChatSkillBadge'
+import MentionableBadge from './chat-input/MentionableBadge'
 import ReadOnlyUserMessageContent from './ReadOnlyUserMessageContent'
 
 type UserMessageCardProps = {

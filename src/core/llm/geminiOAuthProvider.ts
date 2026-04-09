@@ -1,5 +1,4 @@
 import type {
-  Content as GeminiContent,
   GenerateContentResponse as GeminiGenerateContentResponse,
   Tool as GeminiTool,
 } from '@google/genai'
@@ -19,7 +18,6 @@ import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
-
 import { getGeminiOAuthService } from '../auth/geminiOAuthRuntime'
 
 import { BaseLLMProvider } from './base'
@@ -28,6 +26,7 @@ import {
   LLMRateLimitExceededException,
 } from './exception'
 import { GeminiProvider } from './gemini'
+import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -35,7 +34,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 type Readable = import('node:stream').Readable
@@ -52,7 +50,7 @@ type GeminiStreamingChunk = GeminiGenerateContentResponse & {
 }
 
 export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
-  private readonly browserFetch = fetch
+  private readonly browserFetch = globalThis.fetch
   private readonly requestTransportMemoryKey: string
   private readonly obsidianFetch = createObsidianFetch()
   private readonly nodeFetch = createDesktopNodeFetch()

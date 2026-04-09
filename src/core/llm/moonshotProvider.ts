@@ -2,8 +2,8 @@ import { LLMProvider } from '../../types/provider.types'
 
 import { KimiMessageAdapter } from './kimiMessageAdapter'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
-import { AutoPromotedTransportMode } from './requestTransport'
 import { ModelRequestPolicy } from './requestPolicy'
+import { AutoPromotedTransportMode } from './requestTransport'
 
 export class MoonshotProvider extends OpenAICompatibleProvider {
   constructor(

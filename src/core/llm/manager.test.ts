@@ -1,8 +1,8 @@
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 
 import { BedrockProvider } from './bedrockProvider'
-import { GeminiOAuthProvider } from './geminiOAuthProvider'
 import { GeminiProvider } from './gemini'
+import { GeminiOAuthProvider } from './geminiOAuthProvider'
 import { getProviderClient } from './manager'
 import { MoonshotProvider } from './moonshotProvider'
 import { OpenAICompatibleProvider } from './openaiCompatibleProvider'

@@ -134,7 +134,6 @@ const readMacOsProxyEnv = async (): Promise<ProxyEnv> => {
   }
 
   try {
-    // eslint-disable-next-line import/no-nodejs-modules -- Desktop transport reads macOS proxy settings via scutil
     const { execFileSync } =
       await loadDesktopNodeModule<typeof import('node:child_process')>(
         'node:child_process',
@@ -176,7 +175,6 @@ const getDesktopProxyAgent = async (): Promise<
     ...process.env,
     ...proxyEnv,
   }
-  // eslint-disable-next-line import/no-extraneous-dependencies -- Desktop transport honors proxy environment variables when present
   const [{ ProxyAgent }, { getProxyForUrl }] = await Promise.all([
     import('proxy-agent'),
     import('proxy-from-env'),
@@ -190,7 +188,6 @@ const getDesktopProxyAgent = async (): Promise<
 
 const loadNodeFetch = async (): Promise<typeof fetch> => {
   if (!nodeFetchPromise) {
-    // eslint-disable-next-line import/no-extraneous-dependencies -- Desktop transport loads node-fetch explicitly at runtime
     nodeFetchPromise = import('node-fetch/lib/index.js').then(
       (module) =>
         ((module as unknown as { default?: typeof fetch }).default ??

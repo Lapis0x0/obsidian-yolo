@@ -4,6 +4,7 @@ import type {
   Mentionable,
   MentionableCurrentFile,
 } from '../../types/mentionable'
+
 import { getMentionableKey, serializeMentionable } from './mentionable'
 
 export function getDisplayOnlyCurrentFileMentionables(

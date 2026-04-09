@@ -39,13 +39,13 @@ import {
   MentionableImage,
   SerializedMentionable,
 } from '../../../types/mentionable'
+import { getDisplayOnlyCurrentFileMentionables } from '../../../utils/chat/currentFileMentionable'
 import {
   deserializeMentionable,
   getMentionableKey,
   getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { getDisplayOnlyCurrentFileMentionables } from '../../../utils/chat/currentFileMentionable'
 import { fileToMentionableImage } from '../../../utils/llm/image'
 
 import ChatSkillBadge from './ChatSkillBadge'

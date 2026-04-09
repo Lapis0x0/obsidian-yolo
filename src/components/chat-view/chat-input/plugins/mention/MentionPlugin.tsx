@@ -32,10 +32,10 @@ import {
 import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
+import { PROVIDER_PRESET_INFO } from '../../../../../constants'
 import { useApp } from '../../../../../contexts/app-context'
 import { useLanguage } from '../../../../../contexts/language-context'
 import { useSettings } from '../../../../../contexts/settings-context'
-import { PROVIDER_PRESET_INFO } from '../../../../../constants'
 import { Assistant } from '../../../../../types/assistant.types'
 import { ChatModel } from '../../../../../types/chat-model.types'
 import {

@@ -4,11 +4,11 @@ import { memo, useMemo } from 'react'
 import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { UserMessageDisplaySnapshot } from '../../types/chat-timeline'
 import { Mentionable } from '../../types/mentionable'
-import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
-import EditableUserMessageItem from './EditableUserMessageItem'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
+import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import EditableUserMessageItem from './EditableUserMessageItem'
 import SimilaritySearchResults from './SimilaritySearchResults'
 import UserMessageCard from './UserMessageCard'
 

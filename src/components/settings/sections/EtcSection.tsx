@@ -8,12 +8,12 @@ import {
   DEFAULT_EMBEDDING_MODELS,
   DEFAULT_PROVIDERS,
 } from '../../../constants'
-import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
-import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
+import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
 import SmartComposerPlugin from '../../../main'

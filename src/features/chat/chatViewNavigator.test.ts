@@ -1,4 +1,5 @@
-import type { TFile, WorkspaceLeaf } from 'obsidian'
+import { TFile } from 'obsidian'
+import type { WorkspaceLeaf } from 'obsidian'
 
 import type SmartComposerPlugin from '../../main'
 
@@ -22,18 +23,19 @@ jest.mock('../../ChatView', () => ({
   }),
 }))
 
-const { ChatView: MockChatView } = jest.requireMock('../../ChatView') as {
-  ChatView: jest.Mock
-}
+const { ChatView: MockChatView } = jest.requireMock('../../ChatView')
 
 describe('ChatViewNavigator', () => {
+  const selectedFile = new TFile()
+  Object.assign(selectedFile, {
+    path: 'note.md',
+    basename: 'note',
+    extension: 'md',
+  })
+
   const selectedBlock = {
     content: 'Selected content',
-    file: {
-      path: 'note.md',
-      basename: 'note',
-      extension: 'md',
-    } as unknown as TFile,
+    file: selectedFile,
     startLine: 1,
     endLine: 1,
   }

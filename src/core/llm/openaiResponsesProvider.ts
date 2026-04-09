@@ -29,6 +29,7 @@ import {
   LLMAPIKeyNotSetException,
   LLMRateLimitExceededException,
 } from './exception'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -36,7 +37,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {

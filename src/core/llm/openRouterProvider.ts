@@ -19,6 +19,7 @@ import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -26,7 +27,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {

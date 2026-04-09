@@ -24,6 +24,7 @@ import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
@@ -31,7 +32,6 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import { createDesktopNodeFetch } from './sdkFetch'
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
@@ -101,7 +101,7 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
         fetch: this.createAuthorizedFetch(customFetch),
       })
 
-    this.browserClient = createClient(fetch)
+    this.browserClient = createClient(globalThis.fetch)
     this.obsidianClient = createClient(createObsidianFetch())
     this.nodeClient = createClient(createDesktopNodeFetch())
   }

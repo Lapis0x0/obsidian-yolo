@@ -71,7 +71,7 @@ describe('GeminiOAuthService', () => {
     expect(credential.refreshToken).toBe('refresh-2')
     expect(credential.email).toBe('user@example.com')
     expect(credential.managedProjectId).toBe('managed-1')
-    expect(store.set).toHaveBeenCalledWith(credential)
+    expect(store.set.mock.calls).toContainEqual([credential])
   })
 
   it('returns stored credential when still valid', async () => {
@@ -127,6 +127,6 @@ describe('GeminiOAuthService', () => {
       email: credential.email,
       managedProjectId: 'managed-project',
     })
-    expect(store.set).toHaveBeenCalledWith(next)
+    expect(store.set.mock.calls).toContainEqual([next])
   })
 })
