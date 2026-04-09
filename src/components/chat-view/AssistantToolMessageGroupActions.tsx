@@ -2,6 +2,7 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   Check,
   CopyIcon,
+  Ellipsis,
   GitFork,
   Import,
   Pencil,
@@ -9,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -225,6 +226,8 @@ export default function AssistantToolMessageGroupActions({
   isDisabled?: boolean
 }) {
   const { t } = useLanguage()
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [isMoreOpen, setIsMoreOpen] = useState(false)
   const retryLabel = t('chat.regenerate', 'Regenerate')
   const branchLabel = t('chat.createBranchFromHere', 'Create branch from here')
   const editLabel = t('common.edit', 'Edit')
@@ -233,9 +236,51 @@ export default function AssistantToolMessageGroupActions({
   const isBranchDisabled = isDisabled || !onBranch
   const isEditDisabled = isDisabled || !onEdit || isEditing
   const isDeleteDisabled = isDisabled || !onDelete
+  const hasMoreActions = showBranch || showEdit || showDelete
+
+  useEffect(() => {
+    if (!isMoreOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        containerRef.current &&
+        event.target instanceof Node &&
+        !containerRef.current.contains(event.target)
+      ) {
+        setIsMoreOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMoreOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isMoreOpen])
+
+  useEffect(() => {
+    if (!hasMoreActions || isDisabled || isEditing) {
+      setIsMoreOpen(false)
+    }
+  }, [hasMoreActions, isDisabled, isEditing])
 
   return (
-    <div className="smtcmp-assistant-message-actions">
+    <div
+      ref={containerRef}
+      className={`smtcmp-assistant-message-actions${
+        isMoreOpen ? ' is-more-open' : ''
+      }`}
+    >
       {showRetry && (
         <Tooltip.Provider delayDuration={0}>
           <Tooltip.Root>
@@ -260,72 +305,137 @@ export default function AssistantToolMessageGroupActions({
       )}
       {showInsert && <InsertButton messages={messages} />}
       {showCopy && <CopyButton messages={messages} />}
-      {showBranch && (
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <button
-                type="button"
-                onClick={isBranchDisabled ? undefined : onBranch}
-                className="clickable-icon"
-                aria-label={branchLabel}
-                disabled={isBranchDisabled}
-              >
-                <GitFork size={12} />
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content className="smtcmp-tooltip-content">
-                {branchLabel}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </Tooltip.Provider>
-      )}
-      {showEdit && (
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <button
-                type="button"
-                onClick={isEditDisabled ? undefined : onEdit}
-                className="clickable-icon"
-                aria-label={editLabel}
-                disabled={isEditDisabled}
-              >
-                <Pencil size={12} />
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content className="smtcmp-tooltip-content">
-                {editLabel}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </Tooltip.Provider>
-      )}
-      {showDelete && (
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <button
-                type="button"
-                onClick={isDeleteDisabled ? undefined : onDelete}
-                className="clickable-icon"
-                aria-label={deleteLabel}
-                disabled={isDeleteDisabled}
-              >
-                <Trash2 size={12} />
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content className="smtcmp-tooltip-content">
-                {deleteLabel}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </Tooltip.Provider>
-      )}
+      {hasMoreActions ? (
+        <div className="smtcmp-assistant-message-more-group">
+          <div
+            className={`smtcmp-assistant-message-inline-actions${
+              isMoreOpen ? ' is-open' : ''
+            }`}
+            aria-hidden={isMoreOpen ? undefined : 'true'}
+          >
+            <div className="smtcmp-assistant-message-inline-actions-inner">
+              {showBranch && (
+                <Tooltip.Provider delayDuration={0}>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                      <button
+                        type="button"
+                        onClick={
+                          isBranchDisabled
+                            ? undefined
+                            : () => {
+                                setIsMoreOpen(false)
+                                onBranch?.()
+                              }
+                        }
+                        className="clickable-icon smtcmp-assistant-message-action-btn"
+                        aria-label={branchLabel}
+                        disabled={isBranchDisabled}
+                        tabIndex={isMoreOpen ? undefined : -1}
+                      >
+                        <GitFork size={12} />
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="smtcmp-tooltip-content">
+                        {branchLabel}
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                </Tooltip.Provider>
+              )}
+              {showEdit && (
+                <Tooltip.Provider delayDuration={0}>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                      <button
+                        type="button"
+                        onClick={
+                          isEditDisabled
+                            ? undefined
+                            : () => {
+                                setIsMoreOpen(false)
+                                onEdit?.()
+                              }
+                        }
+                        className="clickable-icon smtcmp-assistant-message-action-btn"
+                        aria-label={editLabel}
+                        disabled={isEditDisabled}
+                        tabIndex={isMoreOpen ? undefined : -1}
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="smtcmp-tooltip-content">
+                        {editLabel}
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                </Tooltip.Provider>
+              )}
+              {showDelete && (
+                <Tooltip.Provider delayDuration={0}>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                      <button
+                        type="button"
+                        onClick={
+                          isDeleteDisabled
+                            ? undefined
+                            : () => {
+                                setIsMoreOpen(false)
+                                onDelete?.()
+                              }
+                        }
+                        className="clickable-icon smtcmp-assistant-message-action-btn"
+                        aria-label={deleteLabel}
+                        disabled={isDeleteDisabled}
+                        tabIndex={isMoreOpen ? undefined : -1}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="smtcmp-tooltip-content">
+                        {deleteLabel}
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                </Tooltip.Provider>
+              )}
+            </div>
+          </div>
+          <Tooltip.Provider delayDuration={0}>
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isDisabled || isEditing) {
+                      return
+                    }
+                    setIsMoreOpen((current) => !current)
+                  }}
+                  className={`clickable-icon smtcmp-assistant-message-action-btn smtcmp-assistant-message-more-button${
+                    isMoreOpen ? ' is-open' : ''
+                  }`}
+                  aria-label={t('sidebar.chatList.moreActions', 'More actions')}
+                  aria-expanded={isMoreOpen ? 'true' : 'false'}
+                  disabled={isDisabled || isEditing}
+                >
+                  <Ellipsis size={12} />
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content className="smtcmp-tooltip-content">
+                  {t('sidebar.chatList.moreActions', 'More actions')}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          </Tooltip.Provider>
+        </div>
+      ) : null}
     </div>
   )
 }
