@@ -9,6 +9,7 @@ import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
+import { formatIntegerWithGrouping } from '../../../utils/formatIntegerWithGrouping'
 import { resolveKnownMaxContextTokens } from '../../../utils/llm/model-context-registry'
 import {
   detectReasoningTypeFromModelId,
@@ -75,17 +76,6 @@ const clampTopP = (value: number): number => Math.min(1, Math.max(0, value))
 
 const clampMaxContextTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
-
-const formatIntegerWithGrouping = (value: string): string => {
-  if (value.length === 0) {
-    return ''
-  }
-
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 0,
-    useGrouping: true,
-  }).format(Number(value))
-}
 
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))

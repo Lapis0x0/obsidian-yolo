@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { formatIntegerWithGrouping } from '../../../utils/formatIntegerWithGrouping'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -22,6 +23,10 @@ export function AgentAutoContextCompactionSection() {
   const [autoCompactionTokensInput, setAutoCompactionTokensInput] = useState(
     String(settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000),
   )
+  const [
+    isAutoCompactionTokensInputFocused,
+    setIsAutoCompactionTokensInputFocused,
+  ] = useState(false)
   const [autoCompactionRatioPercentInput, setAutoCompactionRatioPercentInput] =
     useState(
       String(
@@ -34,7 +39,9 @@ export function AgentAutoContextCompactionSection() {
 
   useEffect(() => {
     setAutoCompactionTokensInput(
-      String(settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000),
+      String(
+        settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000,
+      ),
     )
   }, [settings.chatOptions.autoContextCompactionThresholdTokens])
 
@@ -96,7 +103,8 @@ export function AgentAutoContextCompactionSection() {
           >
             <ObsidianDropdown
               value={
-                settings.chatOptions.autoContextCompactionThresholdMode ?? 'tokens'
+                settings.chatOptions.autoContextCompactionThresholdMode ??
+                'tokens'
               }
               options={{
                 tokens: t('settings.agent.autoContextCompactionModeTokens'),
@@ -114,8 +122,8 @@ export function AgentAutoContextCompactionSection() {
             />
           </ObsidianSetting>
 
-          {(settings.chatOptions.autoContextCompactionThresholdMode ?? 'tokens') ===
-          'tokens' ? (
+          {(settings.chatOptions.autoContextCompactionThresholdMode ??
+            'tokens') === 'tokens' ? (
             <ObsidianSetting
               name={t('settings.agent.autoContextCompactionThresholdTokens')}
               desc={t(
@@ -124,14 +132,25 @@ export function AgentAutoContextCompactionSection() {
               className="smtcmp-settings-card"
             >
               <ObsidianTextInput
-                value={autoCompactionTokensInput}
-                type="number"
+                value={
+                  isAutoCompactionTokensInputFocused
+                    ? autoCompactionTokensInput
+                    : formatIntegerWithGrouping(autoCompactionTokensInput)
+                }
+                type="text"
+                inputMode="numeric"
+                onFocus={() => {
+                  setIsAutoCompactionTokensInputFocused(true)
+                }}
                 onChange={(value) => {
-                  setAutoCompactionTokensInput(value)
+                  const digitsOnly = value.replace(/\D/g, '')
+                  setAutoCompactionTokensInput(digitsOnly)
                 }}
                 onBlur={(value) => {
-                  const parsed = Number.parseInt(value, 10)
-                  if (Number.isNaN(parsed)) {
+                  setIsAutoCompactionTokensInputFocused(false)
+                  const digitsOnly = value.replace(/\D/g, '')
+                  const parsed = Number.parseInt(digitsOnly, 10)
+                  if (Number.isNaN(parsed) || digitsOnly === '') {
                     setAutoCompactionTokensInput(
                       String(
                         settings.chatOptions
@@ -147,8 +166,8 @@ export function AgentAutoContextCompactionSection() {
                   setAutoCompactionTokensInput(String(clamped))
                   if (
                     clamped !==
-                    (settings.chatOptions.autoContextCompactionThresholdTokens ??
-                      24000)
+                    (settings.chatOptions
+                      .autoContextCompactionThresholdTokens ?? 24000)
                   ) {
                     updateChatOptions(
                       {

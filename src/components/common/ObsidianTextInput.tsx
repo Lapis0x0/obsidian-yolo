@@ -1,5 +1,5 @@
 import { TextComponent } from 'obsidian'
-import { useEffect, useRef, useState } from 'react'
+import { type HTMLAttributes, useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'
 
@@ -8,7 +8,9 @@ type ObsidianTextInputProps = {
   placeholder?: string
   onChange: (value: string) => void
   onBlur?: (value: string) => void
+  onFocus?: () => void
   type?: 'text' | 'number'
+  inputMode?: HTMLAttributes<HTMLInputElement>['inputMode']
 }
 
 export function ObsidianTextInput({
@@ -16,13 +18,16 @@ export function ObsidianTextInput({
   placeholder,
   onChange,
   onBlur,
+  onFocus,
   type,
+  inputMode,
 }: ObsidianTextInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { setting } = useObsidianSetting()
   const [textComponent, setTextComponent] = useState<TextComponent | null>(null)
   const onChangeRef = useRef(onChange)
   const onBlurRef = useRef(onBlur)
+  const onFocusRef = useRef(onFocus)
 
   useEffect(() => {
     if (setting) {
@@ -54,6 +59,10 @@ export function ObsidianTextInput({
   }, [onBlur])
 
   useEffect(() => {
+    onFocusRef.current = onFocus
+  }, [onFocus])
+
+  useEffect(() => {
     if (!textComponent) return
     textComponent.onChange((v) => onChangeRef.current(v))
   }, [textComponent])
@@ -71,10 +80,24 @@ export function ObsidianTextInput({
 
   useEffect(() => {
     if (!textComponent) return
+    const handler = () => {
+      onFocusRef.current?.()
+    }
+    textComponent.inputEl.addEventListener('focus', handler)
+    return () => {
+      textComponent.inputEl.removeEventListener('focus', handler)
+    }
+  }, [textComponent])
+
+  useEffect(() => {
+    if (!textComponent) return
     textComponent.setValue(value)
     if (placeholder) textComponent.setPlaceholder(placeholder)
     if (type) textComponent.inputEl.type = type
-  }, [textComponent, value, placeholder, type])
+    if (inputMode !== undefined) {
+      textComponent.inputEl.inputMode = inputMode
+    }
+  }, [textComponent, value, placeholder, type, inputMode])
 
   return <div ref={containerRef} />
 }
