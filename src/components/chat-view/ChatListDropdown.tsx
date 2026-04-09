@@ -1,7 +1,9 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Popover from '@radix-ui/react-popover'
 import {
   Check,
   Download,
+  Ellipsis,
   Pencil,
   RotateCcw,
   Search,
@@ -19,6 +21,9 @@ import type { ContentPart } from '../../types/llm/request'
 import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
 
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+
+/** Hover opens; leaving trigger/menu closes after delay (bridges gap to portaled content). */
+const CHAT_LIST_MORE_MENU_CLOSE_DELAY_MS = 220
 
 function TitleInput({
   value,
@@ -98,7 +103,43 @@ function ChatListItem({
 }) {
   const { t } = useLanguage()
   const itemRef = useRef<HTMLLIElement>(null)
+  const moreMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const moreMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [editingTitle, setEditingTitle] = useState(title)
+
+  const clearMoreMenuCloseTimer = useCallback(() => {
+    if (moreMenuCloseTimerRef.current != null) {
+      clearTimeout(moreMenuCloseTimerRef.current)
+      moreMenuCloseTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleMoreMenuClose = useCallback(() => {
+    clearMoreMenuCloseTimer()
+    moreMenuCloseTimerRef.current = setTimeout(() => {
+      moreMenuCloseTimerRef.current = null
+      setMoreMenuOpen(false)
+    }, CHAT_LIST_MORE_MENU_CLOSE_DELAY_MS)
+  }, [clearMoreMenuCloseTimer])
+
+  const onMoreMenuOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next) {
+        clearMoreMenuCloseTimer()
+      }
+      setMoreMenuOpen(next)
+    },
+    [clearMoreMenuCloseTimer],
+  )
+
+  useEffect(() => {
+    return () => {
+      clearMoreMenuCloseTimer()
+    }
+  }, [clearMoreMenuCloseTimer])
 
   useEffect(() => {
     if (isFocused && shouldScrollIntoView && itemRef.current) {
@@ -170,64 +211,24 @@ function ChatListItem({
         </div>
       )}
       <div className="smtcmp-chat-list-dropdown-item-actions">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            if (isEditing) {
+        {isEditing ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
               if (isUpdatingTitle) {
                 return
               }
               onFinishEdit(editingTitle)
-              return
-            }
-            onStartEdit()
-          }}
-          className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
-          disabled={isUpdatingTitle}
-          aria-label={
-            isEditing ? t('common.save', 'Save') : t('common.edit', 'Edit')
-          }
-          title={
-            isEditing ? t('common.save', 'Save') : t('common.edit', 'Edit')
-          }
-        >
-          {isEditing ? <Check /> : <Pencil />}
-        </button>
-        <button
-          type="button"
-          disabled={isRetrying}
-          onClick={(e) => {
-            e.stopPropagation()
-            onRetryTitle()
-          }}
-          className={`clickable-icon smtcmp-chat-list-dropdown-item-icon${
-            isRetrying ? ' is-pending' : ''
-          }`}
-          aria-label={t('sidebar.chatList.retryTitle', 'Retry title')}
-          title={t('sidebar.chatList.retryTitle', 'Retry title')}
-          aria-busy={isRetrying ? 'true' : undefined}
-        >
-          <RotateCcw className={isRetrying ? 'smtcmp-spinner' : undefined} />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onExport()
-          }}
-          className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
-          aria-label={t(
-            'sidebar.chatList.exportConversation',
-            'Export conversation to vault',
-          )}
-          title={t(
-            'sidebar.chatList.exportConversation',
-            'Export conversation to vault',
-          )}
-        >
-          <Download size={16} />
-        </button>
+            }}
+            className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
+            disabled={isUpdatingTitle}
+            aria-label={t('common.save', 'Save')}
+            title={t('common.save', 'Save')}
+          >
+            <Check />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={(e) => {
@@ -250,6 +251,86 @@ function ChatListItem({
         >
           <Star />
         </button>
+        {!isEditing ? (
+          <DropdownMenu.Root
+            modal={false}
+            open={moreMenuOpen}
+            onOpenChange={onMoreMenuOpenChange}
+          >
+            <DropdownMenu.Trigger asChild>
+              <button
+                ref={moreMenuTriggerRef}
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerEnter={() => {
+                  clearMoreMenuCloseTimer()
+                  setMoreMenuOpen(true)
+                }}
+                onPointerLeave={() => {
+                  scheduleMoreMenuClose()
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
+                aria-label={t('sidebar.chatList.moreActions', 'More actions')}
+                title={t('sidebar.chatList.moreActions', 'More actions')}
+              >
+                <Ellipsis size={16} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal
+              container={getNodeBody(moreMenuTriggerRef.current)}
+            >
+              <DropdownMenu.Content
+                className="smtcmp-popover smtcmp-chat-list-more-menu"
+                side="bottom"
+                align="end"
+                sideOffset={2}
+                collisionPadding={8}
+                onPointerEnter={clearMoreMenuCloseTimer}
+                onPointerLeave={scheduleMoreMenuClose}
+              >
+                <DropdownMenu.Item
+                  className="smtcmp-chat-list-more-menu-item"
+                  onSelect={() => {
+                    onStartEdit()
+                  }}
+                >
+                  <Pencil size={16} />
+                  <span>{t('common.edit', 'Edit')}</span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className={`smtcmp-chat-list-more-menu-item${
+                    isRetrying ? ' is-pending' : ''
+                  }`}
+                  disabled={isRetrying}
+                  onSelect={() => {
+                    onRetryTitle()
+                  }}
+                >
+                  <RotateCcw
+                    size={16}
+                    className={isRetrying ? 'smtcmp-spinner' : undefined}
+                  />
+                  <span>{t('sidebar.chatList.retryTitle', 'Retry title')}</span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="smtcmp-chat-list-more-menu-item"
+                  onSelect={() => {
+                    onExport()
+                  }}
+                >
+                  <Download size={16} />
+                  <span>
+                    {t(
+                      'sidebar.chatList.exportConversation',
+                      'Export conversation to vault',
+                    )}
+                  </span>
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        ) : null}
       </div>
     </li>
   )

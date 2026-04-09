@@ -64,6 +64,7 @@ export const en: TranslationKeys = {
       archived: 'Archived',
       hideArchived: 'Hide archived',
       exportConversation: 'Export conversation to vault',
+      moreActions: 'More actions',
     },
     chat: {
       exportSuccess: 'Exported chat to {path}',
