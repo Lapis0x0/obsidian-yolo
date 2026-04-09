@@ -6,6 +6,7 @@ import type { ChatMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 
 import {
+  getLatestAssistantContextUsage,
   getCompactionSummarySourceMessages,
   shouldTriggerAutoContextCompaction,
 } from './compaction'
@@ -120,6 +121,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
       shouldTriggerAutoContextCompaction({
         previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 200 })],
         chatOptions: { ...baseAutoOptions, autoContextCompactionEnabled: false },
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: false,
       }),
@@ -131,6 +133,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
       shouldTriggerAutoContextCompaction({
         previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 50 })],
         chatOptions: baseAutoOptions,
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: false,
       }),
@@ -142,6 +145,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
       shouldTriggerAutoContextCompaction({
         previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 100 })],
         chatOptions: baseAutoOptions,
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: false,
       }),
@@ -160,6 +164,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
           autoContextCompactionThresholdMode: 'ratio',
           autoContextCompactionThresholdRatio: 0.8,
         },
+        maxContextTokens: 100,
         compactionState: [],
         isConversationRunActive: false,
       }),
@@ -178,6 +183,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
           autoContextCompactionThresholdMode: 'ratio',
           autoContextCompactionThresholdRatio: 0.8,
         },
+        maxContextTokens: 100,
         compactionState: [],
         isConversationRunActive: false,
       }),
@@ -192,13 +198,14 @@ describe('shouldTriggerAutoContextCompaction', () => {
           ...baseAutoOptions,
           autoContextCompactionThresholdMode: 'ratio',
         },
+        maxContextTokens: undefined,
         compactionState: [],
         isConversationRunActive: false,
       }),
     ).toBe(false)
   })
 
-  it('ratio mode: uses the last assistant message model instead of current chat model', () => {
+  it('ratio mode: uses the same maxContextTokens source as the header ring', () => {
     expect(
       shouldTriggerAutoContextCompaction({
         previousMessages: [
@@ -210,13 +217,14 @@ describe('shouldTriggerAutoContextCompaction', () => {
           autoContextCompactionThresholdMode: 'ratio',
           autoContextCompactionThresholdRatio: 0.8,
         },
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: false,
       }),
     ).toBe(true)
   })
 
-  it('last message not assistant', () => {
+  it('still triggers when the latest visible usage comes from an earlier assistant message', () => {
     const emptyArgs = createCompleteToolCallArguments({ value: {} })
     expect(
       shouldTriggerAutoContextCompaction({
@@ -242,10 +250,11 @@ describe('shouldTriggerAutoContextCompaction', () => {
           },
         ],
         chatOptions: baseAutoOptions,
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: false,
       }),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('assistant missing prompt_tokens', () => {
@@ -253,6 +262,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
       shouldTriggerAutoContextCompaction({
         previousMessages: [userMsg('u1'), assistantMsg('a1')],
         chatOptions: baseAutoOptions,
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: false,
       }),
@@ -264,6 +274,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
       shouldTriggerAutoContextCompaction({
         previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 200 })],
         chatOptions: baseAutoOptions,
+        maxContextTokens: 1000,
         compactionState: [],
         isConversationRunActive: true,
       }),
@@ -275,6 +286,7 @@ describe('shouldTriggerAutoContextCompaction', () => {
       shouldTriggerAutoContextCompaction({
         previousMessages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 200 })],
         chatOptions: baseAutoOptions,
+        maxContextTokens: 1000,
         compactionState: [
           {
             anchorMessageId: 'a1',
@@ -285,5 +297,30 @@ describe('shouldTriggerAutoContextCompaction', () => {
         isConversationRunActive: false,
       }),
     ).toBe(false)
+  })
+})
+
+describe('getLatestAssistantContextUsage', () => {
+  it('matches the header ring data source by using the latest assistant with prompt tokens', () => {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: [
+        userMsg('u1'),
+        assistantMsg('a1', { prompt_tokens: 100 }),
+        {
+          role: 'tool',
+          id: 't1',
+          toolCalls: [],
+        },
+      ],
+      maxContextTokens: 1000,
+    })
+
+    expect(contextUsage).toEqual(
+      expect.objectContaining({
+        promptTokens: 100,
+        maxContextTokens: 1000,
+        ratio: 0.1,
+      }),
+    )
   })
 })

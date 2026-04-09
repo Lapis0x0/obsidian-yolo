@@ -25,6 +25,7 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
+  getLatestAssistantContextUsage,
   resolveAutoContextCompactionChatOptions,
   shouldTriggerAutoContextCompaction,
 } from '../../core/agent/compaction'
@@ -852,37 +853,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     )
   }, [conversationModelId, settings.chatModels])
 
-  const latestPromptTokenUsage = useMemo(() => {
-    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
-      const message = chatMessages[index]
-      if (message.role !== 'assistant') {
-        continue
-      }
-
-      const promptTokens = message.metadata?.usage?.prompt_tokens
-      if (typeof promptTokens === 'number' && promptTokens >= 0) {
-        return promptTokens
-      }
-    }
-
-    return null
-  }, [chatMessages])
-
   const headerContextUsage = useMemo(() => {
-    const maxContextTokens = currentConversationModel?.maxContextTokens
-    if (
-      typeof latestPromptTokenUsage !== 'number' ||
-      typeof maxContextTokens !== 'number' ||
-      maxContextTokens <= 0
-    ) {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: chatMessages,
+      maxContextTokens: currentConversationModel?.maxContextTokens,
+    })
+    if (!contextUsage || contextUsage.maxContextTokens === null) {
       return null
     }
 
     return {
-      promptTokens: latestPromptTokenUsage,
-      maxContextTokens,
+      promptTokens: contextUsage.promptTokens,
+      maxContextTokens: contextUsage.maxContextTokens,
     }
-  }, [currentConversationModel?.maxContextTokens, latestPromptTokenUsage])
+  }, [chatMessages, currentConversationModel?.maxContextTokens])
 
   const getReasoningLevelForModelId = useCallback(
     (modelId?: string | null): ReasoningLevel => {
@@ -2279,6 +2263,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         shouldTriggerAutoContextCompaction({
           previousMessages,
           chatOptions: autoCompactionOptions,
+          maxContextTokens: currentConversationModel?.maxContextTokens,
           compactionState: effectiveCompactionState,
           isConversationRunActive:
             currentConversationRunSummary.isRunning ||

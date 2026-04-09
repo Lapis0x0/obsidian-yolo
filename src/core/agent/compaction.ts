@@ -62,8 +62,55 @@ export const resolveAutoContextCompactionChatOptions = (chatOptions: {
 export type ShouldTriggerAutoContextCompactionInput = {
   previousMessages: ChatMessage[]
   chatOptions: AutoContextCompactionChatOptions
+  maxContextTokens: number | undefined
   compactionState: ChatConversationCompactionState
   isConversationRunActive: boolean
+}
+
+export type LatestAssistantContextUsage = {
+  assistantMessage: ChatAssistantMessage
+  promptTokens: number
+  maxContextTokens: number | null
+  ratio: number | null
+}
+
+export const getLatestAssistantContextUsage = ({
+  messages,
+  maxContextTokens,
+}: {
+  messages: ChatMessage[]
+  maxContextTokens: number | undefined
+}): LatestAssistantContextUsage | null => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'assistant') {
+      continue
+    }
+
+    const promptTokens = message.metadata?.usage?.prompt_tokens
+    if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
+      continue
+    }
+
+    const resolvedMaxContextTokens =
+      typeof maxContextTokens === 'number' &&
+      maxContextTokens > 0 &&
+      Number.isFinite(maxContextTokens)
+        ? maxContextTokens
+        : null
+
+    return {
+      assistantMessage: message,
+      promptTokens,
+      maxContextTokens: resolvedMaxContextTokens,
+      ratio:
+        resolvedMaxContextTokens === null
+          ? null
+          : promptTokens / resolvedMaxContextTokens,
+    }
+  }
+
+  return null
 }
 
 /**
@@ -73,6 +120,7 @@ export type ShouldTriggerAutoContextCompactionInput = {
 export const shouldTriggerAutoContextCompaction = ({
   previousMessages,
   chatOptions,
+  maxContextTokens,
   compactionState,
   isConversationRunActive,
 }: ShouldTriggerAutoContextCompactionInput): boolean => {
@@ -84,18 +132,18 @@ export const shouldTriggerAutoContextCompaction = ({
     return false
   }
 
-  const last = previousMessages.at(-1)
-  if (!last || last.role !== 'assistant') {
+  const latestContextUsage = getLatestAssistantContextUsage({
+    messages: previousMessages,
+    maxContextTokens,
+  })
+  if (!latestContextUsage) {
     return false
   }
 
-  const promptTokens = last.metadata?.usage?.prompt_tokens
-  if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
-    return false
-  }
+  const { assistantMessage, promptTokens, ratio } = latestContextUsage
 
   const latestCompaction = getLatestChatConversationCompaction(compactionState)
-  if (latestCompaction?.anchorMessageId === last.id) {
+  if (latestCompaction?.anchorMessageId === assistantMessage.id) {
     return false
   }
 
@@ -103,20 +151,11 @@ export const shouldTriggerAutoContextCompaction = ({
     return promptTokens >= chatOptions.autoContextCompactionThresholdTokens
   }
 
-  const maxContextTokens = last.metadata?.model?.maxContextTokens
-
-  if (
-    typeof maxContextTokens !== 'number' ||
-    maxContextTokens <= 0 ||
-    !Number.isFinite(maxContextTokens)
-  ) {
+  if (ratio === null) {
     return false
   }
 
-  return (
-    promptTokens / maxContextTokens >=
-    chatOptions.autoContextCompactionThresholdRatio
-  )
+  return ratio >= chatOptions.autoContextCompactionThresholdRatio
 }
 
 const parseCompactOperationResult = (
