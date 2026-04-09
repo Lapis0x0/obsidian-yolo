@@ -31,6 +31,7 @@ export function ObsidianDropdown({
   const [dropdownComponent, setDropdownComponent] =
     useState<DropdownComponent | null>(null)
   const onChangeRef = useRef(onChange)
+  const isSyncingRef = useRef(false)
 
   useEffect(() => {
     if (setting) {
@@ -59,13 +60,19 @@ export function ObsidianDropdown({
 
   useEffect(() => {
     if (!dropdownComponent) return
-    dropdownComponent.onChange((v) => onChangeRef.current(v))
+    dropdownComponent.onChange((v) => {
+      if (isSyncingRef.current) {
+        return
+      }
+      onChangeRef.current(v)
+    })
   }, [dropdownComponent])
 
   useEffect(() => {
     if (!dropdownComponent) return
 
     const selectEl = dropdownComponent.selectEl
+    isSyncingRef.current = true
     selectEl.empty()
 
     if (groupedOptions && groupedOptions.length > 0) {
@@ -89,6 +96,9 @@ export function ObsidianDropdown({
 
     dropdownComponent.setValue(value)
     selectEl.disabled = !!disabled
+    queueMicrotask(() => {
+      isSyncingRef.current = false
+    })
   }, [dropdownComponent, options, groupedOptions, value, disabled])
 
   return <div ref={containerRef} />

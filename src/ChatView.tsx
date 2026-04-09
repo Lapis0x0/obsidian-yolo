@@ -178,9 +178,34 @@ export class ChatView extends ItemView {
     this.chatRef.current?.addSelectionToChat(selectedBlock)
   }
 
+  addSelectionToInput(selectedBlock: MentionableBlockData) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.addSelectionToInput(selectedBlock)
+  }
+
+  applySelectionToMainInput(
+    selectedBlock: MentionableBlockData,
+    text: string,
+    options?: {
+      submit?: boolean
+    },
+  ) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.applySelectionToMainInput(
+      selectedBlock,
+      text,
+      options,
+    )
+  }
+
   syncSelectionToChat(selectedBlock: MentionableBlockData) {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.syncSelectionToChat(selectedBlock)
+  }
+
+  syncSelectionToInput(selectedBlock: MentionableBlockData) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.syncSelectionToInput(selectedBlock)
   }
 
   clearSelectionFromChat() {
@@ -202,9 +227,29 @@ export class ChatView extends ItemView {
     this.chatRef.current?.insertTextToInput(text)
   }
 
+  appendTextToInput(text: string) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.appendTextToInput(text)
+  }
+
+  setMainInputText(text: string) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.setMainInputText(text)
+  }
+
   focusMessage() {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.focusMessage()
+  }
+
+  focusMainInput() {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.focusMainInput()
+  }
+
+  submitMainInput() {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.submitMainInput()
   }
 
   getCurrentConversationOverrides(): ConversationOverrideSettings | undefined {
@@ -252,11 +297,25 @@ export class ChatView extends ItemView {
       chatRef.addFolderToChat(payload.folderToAdd)
     }
 
-    if (payload.prefillText) {
-      chatRef.insertTextToInput(payload.prefillText)
+    if (payload.prefillText !== undefined && payload.selectedBlock) {
+      chatRef.applySelectionToMainInput(payload.selectedBlock, payload.prefillText, {
+        submit: payload.autoSend,
+      })
+      return
     }
 
-    if (payload.fileToAdd || payload.folderToAdd || payload.prefillText) {
+    if (payload.prefillText !== undefined) {
+      chatRef.setMainInputText(payload.prefillText)
+      if (payload.autoSend) {
+        chatRef.submitMainInput()
+        return
+      }
+
+      chatRef.focusMainInput()
+      return
+    }
+
+    if (payload.fileToAdd || payload.folderToAdd) {
       chatRef.focusMessage()
     }
   }

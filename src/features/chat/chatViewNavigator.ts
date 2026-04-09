@@ -44,6 +44,15 @@ export class ChatViewNavigator {
     this.plugin = deps.plugin
   }
 
+  private toPinnedSelectionBlock(
+    selectedBlock: MentionableBlockData,
+  ): MentionableBlockData {
+    return {
+      ...selectedBlock,
+      source: 'selection-pinned',
+    }
+  }
+
   async openChatView(options: OpenChatViewOptions = {}) {
     const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView)
     const editor = view?.editor
@@ -179,11 +188,12 @@ export class ChatViewNavigator {
     selectedBlock: MentionableBlockData,
     text: string,
   ) {
+    const pinnedSelection = this.toPinnedSelectionBlock(selectedBlock)
     const existingLeaf = this.resolveTargetChatLeaf()
     const targetLeaf =
       existingLeaf ??
       (await this.createChatLeaf('sidebar', {
-        selectedBlock,
+        selectedBlock: pinnedSelection,
         prefillText: text,
       }))
     if (!targetLeaf || !(targetLeaf.view instanceof ChatView)) {
@@ -194,11 +204,33 @@ export class ChatViewNavigator {
     if (!existingLeaf) {
       return
     }
-    targetLeaf.view.syncSelectionToChat(selectedBlock)
-    if (text) {
-      targetLeaf.view.insertTextToInput(text)
+    targetLeaf.view.applySelectionToMainInput(pinnedSelection, text)
+  }
+
+  async openChatWithSelectionAndSend(
+    selectedBlock: MentionableBlockData,
+    text: string,
+  ) {
+    const pinnedSelection = this.toPinnedSelectionBlock(selectedBlock)
+    const existingLeaf = this.resolveTargetChatLeaf()
+    const targetLeaf =
+      existingLeaf ??
+      (await this.createChatLeaf('sidebar', {
+        selectedBlock: pinnedSelection,
+        prefillText: text,
+        autoSend: true,
+      }))
+    if (!targetLeaf || !(targetLeaf.view instanceof ChatView)) {
+      return
     }
-    targetLeaf.view.focusMessage()
+
+    await this.activateChatLeaf(targetLeaf)
+    if (!existingLeaf) {
+      return
+    }
+    targetLeaf.view.applySelectionToMainInput(pinnedSelection, text, {
+      submit: true,
+    })
   }
 
   async addFileToChat(file: TFile) {

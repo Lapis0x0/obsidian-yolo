@@ -10,6 +10,7 @@ export type PendingChatOpenPayload = {
   selectedBlock?: MentionableBlockData
   initialConversationId?: string
   prefillText?: string
+  autoSend?: boolean
   fileToAdd?: TFile
   folderToAdd?: TFolder
   placement?: ChatLeafPlacement

@@ -1,7 +1,5 @@
 import { EditorView } from '@codemirror/view'
 import {
-  $createParagraphNode,
-  $createTextNode,
   $getRoot,
   $nodesOfType,
   LexicalEditor,
@@ -64,7 +62,6 @@ import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
   getMentionableKey,
-  getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
@@ -78,10 +75,7 @@ import { resolveQuickAskRuntimeLoopConfig } from '../../chat-view/chat-runtime-p
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
-import {
-  $createMentionNode,
-  MentionNode,
-} from '../../chat-view/chat-input/plugins/mention/MentionNode'
+import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
@@ -90,6 +84,7 @@ import UserMessageItem from '../../chat-view/UserMessageItem'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
+import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
 type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
 const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
@@ -209,39 +204,6 @@ type QuickAskPanelProps = {
   onDragOffset?: (offsetX: number, offsetY: number) => void
   onResize?: (width: number, height: number) => void
   onDockToTopRight?: () => void
-}
-
-function createPlainTextEditorState(text: string): SerializedEditorState {
-  const state = {
-    root: {
-      children: [
-        {
-          children: [
-            {
-              detail: 0,
-              format: 0,
-              mode: 'normal',
-              style: '',
-              text,
-              type: 'text',
-              version: 1,
-            },
-          ],
-          direction: 'ltr',
-          format: '',
-          indent: 0,
-          type: 'paragraph',
-          version: 1,
-        },
-      ],
-      direction: 'ltr',
-      format: '',
-      indent: 0,
-      type: 'root',
-      version: 1,
-    },
-  } as unknown
-  return state as SerializedEditorState
 }
 
 export function QuickAskPanel({
@@ -671,13 +633,12 @@ export function QuickAskPanel({
     onAtBottomStateChange,
     forceScrollToBottom,
     notifyContentFlushed,
-  } =
-    useAutoScroll({
-      scrollContainerRef: chatAreaRef,
-      bottomAnchorRef,
-      isStreaming,
-      contentFollowMode: 'observer',
-    })
+  } = useAutoScroll({
+    scrollContainerRef: chatAreaRef,
+    bottomAnchorRef,
+    isStreaming,
+    contentFollowMode: 'observer',
+  })
 
   // Focus input on mount
   useEffect(() => {
@@ -1319,26 +1280,12 @@ export function QuickAskPanel({
       }
 
       hasAppliedInitialInputRef.current = true
-      editor.update(() => {
-        const root = $getRoot()
-        root.clear()
-        const paragraph = $createParagraphNode()
-        root.append(paragraph)
-        ;(initialMentionables ?? []).forEach((mentionable) => {
-          const mentionNode = $createMentionNode(
-            getMentionableName(mentionable, {
-              unitLabel: mentionableUnitLabel,
-            }),
-            serializeMentionable(mentionable),
-          )
-          paragraph.append(mentionNode)
-          paragraph.append($createTextNode(' '))
-        })
-        if (initialInput) {
-          paragraph.append($createTextNode(initialInput))
-        }
-        paragraph.selectEnd()
+      const editorState = createQuickAskEditorState({
+        prompt: initialInput ?? '',
+        mentionables: initialMentionables ?? [],
+        mentionableUnitLabel,
       })
+      editor.setEditorState(editor.parseEditorState(editorState))
       setInputText(initialInput ?? '')
     }
 
@@ -1608,28 +1555,12 @@ export function QuickAskPanel({
         setMentionables(mentionablesToInsert)
       }
 
-      editor.update(() => {
-        const root = $getRoot()
-        root.clear()
-        const paragraph = $createParagraphNode()
-        root.append(paragraph)
-
-        mentionablesToInsert.forEach((mentionable) => {
-          const mentionNode = $createMentionNode(
-            getMentionableName(mentionable, {
-              unitLabel: mentionableUnitLabel,
-            }),
-            serializeMentionable(mentionable),
-          )
-          paragraph.append(mentionNode)
-          paragraph.append($createTextNode(' '))
-        })
-
-        paragraph.append($createTextNode(prompt))
-        paragraph.selectEnd()
+      const editorState = createQuickAskEditorState({
+        prompt,
+        mentionables: mentionablesToInsert,
+        mentionableUnitLabel,
       })
-
-      const editorState = createPlainTextEditorState(prompt)
+      editor.setEditorState(editor.parseEditorState(editorState))
       void submitMessage(editorState, mentionablesToInsert)
     }
 
@@ -1966,15 +1897,21 @@ export function QuickAskPanel({
               isStreaming &&
               timelineItem.renderKey === latestTimelineAssistantToolGroupKey
             }
-            showInlineInfo={quickAskSurfacePreset.assistantActions.showInlineInfo}
+            showInlineInfo={
+              quickAskSurfacePreset.assistantActions.showInlineInfo
+            }
             showInsertAction={
               quickAskSurfacePreset.assistantActions.showInsertAction
             }
-            showCopyAction={quickAskSurfacePreset.assistantActions.showCopyAction}
+            showCopyAction={
+              quickAskSurfacePreset.assistantActions.showCopyAction
+            }
             showBranchAction={
               quickAskSurfacePreset.assistantActions.showBranchAction
             }
-            showEditAction={quickAskSurfacePreset.assistantActions.showEditAction}
+            showEditAction={
+              quickAskSurfacePreset.assistantActions.showEditAction
+            }
             showDeleteAction={
               quickAskSurfacePreset.assistantActions.showDeleteAction
             }

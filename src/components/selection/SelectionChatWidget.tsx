@@ -163,6 +163,7 @@ export class SelectionChatWidget {
         selection: SelectionInfo,
         instruction: string,
         mode: SelectionActionMode,
+        rewriteBehavior?: SelectionActionRewriteBehavior,
       ) => void | Promise<void>
     },
   ) {

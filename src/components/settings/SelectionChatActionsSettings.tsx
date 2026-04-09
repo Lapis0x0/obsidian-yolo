@@ -37,7 +37,7 @@ type SelectionChatAction = {
   rewriteBehavior?: SelectionChatActionRewriteBehavior
 }
 
-type SelectionChatActionMode = 'ask' | 'rewrite' | 'chat-input'
+type SelectionChatActionMode = 'ask' | 'rewrite' | 'chat-input' | 'chat-send'
 type SelectionChatActionRewriteBehavior = 'custom' | 'preset'
 
 type TranslateFn = (key: string, fallback?: string) => string
@@ -86,6 +86,12 @@ const resolveSelectionActionMode = (
   if (action.id === 'rewrite' || action.id === 'custom-rewrite') {
     return 'rewrite'
   }
+  if (action.id === 'chat-send') {
+    return 'chat-send'
+  }
+  if (action.id === 'chat-input' || action.id === 'add-to-sidebar') {
+    return 'chat-input'
+  }
   return 'ask'
 }
 
@@ -97,6 +103,13 @@ const resolveRewriteBehavior = (
   if (action.rewriteBehavior) return action.rewriteBehavior
   if (action.id === 'custom-rewrite') return 'custom'
   return 'preset'
+}
+
+const normalizeActionMode = (value: string): SelectionChatActionMode => {
+  if (value === 'rewrite') return 'rewrite'
+  if (value === 'chat-input') return 'chat-input'
+  if (value === 'chat-send') return 'chat-send'
+  return 'ask'
 }
 
 const generateId = () => {
@@ -134,7 +147,7 @@ export function SelectionChatActionsSettings({
     getDefaultSelectionChatActions(t)
   const actionsCountLabel = t(
     'settings.selectionChat.actionsCount',
-    '已配置 {count} 个快捷选项',
+    '已配置 {count} 个快捷指令',
   ).replace(
     '{count}',
     String(
@@ -153,7 +166,7 @@ export function SelectionChatActionsSettings({
         <div className="smtcmp-smart-space-settings-row">
           <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
           <ObsidianButton
-            text={t('settings.selectionChat.configureActions', '配置快捷选项')}
+            text={t('settings.selectionChat.configureActions', '配置快捷指令')}
             onClick={handleOpenModal}
           />
         </div>
@@ -166,17 +179,17 @@ export function SelectionChatActionsSettings({
       <ObsidianSetting
         name={t(
           'settings.selectionChat.quickActionsTitle',
-          'Cursor Chat 快捷选项',
+          'Cursor Chat 快捷指令',
         )}
         desc={t(
           'settings.selectionChat.quickActionsDesc',
-          '自定义选中文本后显示的快捷选项和提示词',
+          '自定义选中文本后显示的快捷指令和提示词',
         )}
         className="smtcmp-settings-card"
       >
         <div className="smtcmp-settings-desc">{actionsCountLabel}</div>
         <ObsidianButton
-          text={t('settings.selectionChat.configureActions', '配置快捷选项')}
+          text={t('settings.selectionChat.configureActions', '配置快捷指令')}
           onClick={handleOpenModal}
         />
       </ObsidianSetting>
@@ -192,12 +205,16 @@ export function SelectionChatActionsSettingsContent() {
     useState<SelectionChatAction | null>(null)
   const [isAddingAction, setIsAddingAction] = useState(false)
   const actionModeOptions: Record<SelectionChatActionMode, string> = {
-    ask: t('settings.selectionChat.actionModeAsk', '问答（Quick Ask）'),
+    ask: t('settings.selectionChat.actionModeAsk', 'Quick Ask 问答'),
+    rewrite: t('settings.selectionChat.actionModeRewrite', 'Quick Ask 改写'),
     'chat-input': t(
       'settings.selectionChat.actionModeChatInput',
       '添加到对话框',
     ),
-    rewrite: t('settings.selectionChat.actionModeRewrite', '改写（生成预览）'),
+    'chat-send': t(
+      'settings.selectionChat.actionModeChatSend',
+      '添加到对话框并发送',
+    ),
   }
   const actionRewriteTypeOptions: Record<
     SelectionChatActionRewriteBehavior,
@@ -433,7 +450,7 @@ export function SelectionChatActionsSettingsContent() {
       ),
       message: t(
         'settings.selectionChat.confirmReset',
-        '确定要恢复默认的快捷选项吗？这将删除所有自定义设置。',
+        '确定要恢复默认的快捷指令吗？这将删除所有自定义设置。',
       ),
       ctaText: t('common.confirm'),
       onConfirm: () => {
@@ -464,11 +481,11 @@ export function SelectionChatActionsSettingsContent() {
       <ObsidianSetting
         name={t(
           'settings.selectionChat.quickActionsTitle',
-          'Cursor Chat 快捷选项',
+          'Cursor Chat 快捷指令',
         )}
         desc={t(
           'settings.selectionChat.quickActionsDesc',
-          '自定义选中文本后显示的快捷选项和提示词',
+          '自定义选中文本后显示的快捷指令和提示词',
         )}
       >
         <ObsidianButton
@@ -487,7 +504,7 @@ export function SelectionChatActionsSettingsContent() {
             name={t('settings.selectionChat.actionLabel', '选项名称')}
             desc={t(
               'settings.selectionChat.actionLabelDesc',
-              '显示在快捷选项中的文本',
+              '显示在快捷指令中的文本',
             )}
           >
             <ObsidianTextInput
@@ -497,7 +514,14 @@ export function SelectionChatActionsSettingsContent() {
                 '例如：深入解释',
               )}
               onChange={(value) =>
-                setEditingAction({ ...editingAction, label: value })
+                setEditingAction((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        label: value,
+                      }
+                    : prev,
+                )
               }
             />
           </ObsidianSetting>
@@ -506,26 +530,25 @@ export function SelectionChatActionsSettingsContent() {
             name={t('settings.selectionChat.actionMode', '执行方式')}
             desc={t(
               'settings.selectionChat.actionModeDesc',
-              '问答会打开 Quick Ask 并自动发送；添加到对话框会打开 Chat 并预填输入框；改写会打开 Quick Ask 编辑模式生成预览。',
+              '前两项调用 Quick Ask：问答会自动发送，改写会进入预览模式；后两项调用 Chat：可选择仅填入对话框，或直接发送。',
             )}
           >
             <ObsidianDropdown
               value={editingAction.mode ?? 'ask'}
               options={actionModeOptions}
               onChange={(value) =>
-                setEditingAction({
-                  ...editingAction,
-                  mode:
-                    value === 'rewrite'
-                      ? 'rewrite'
-                      : value === 'chat-input'
-                        ? 'chat-input'
-                        : 'ask',
-                  rewriteBehavior:
-                    value === 'rewrite'
-                      ? (editingAction.rewriteBehavior ?? 'preset')
-                      : editingAction.rewriteBehavior,
-                })
+                setEditingAction((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        mode: normalizeActionMode(value),
+                        rewriteBehavior:
+                          value === 'rewrite'
+                            ? (prev.rewriteBehavior ?? 'preset')
+                            : prev.rewriteBehavior,
+                      }
+                    : prev,
+                )
               }
             />
           </ObsidianSetting>
@@ -542,10 +565,15 @@ export function SelectionChatActionsSettingsContent() {
                 value={editingAction.rewriteBehavior ?? 'preset'}
                 options={actionRewriteTypeOptions}
                 onChange={(value) =>
-                  setEditingAction({
-                    ...editingAction,
-                    rewriteBehavior: value === 'custom' ? 'custom' : 'preset',
-                  })
+                  setEditingAction((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          rewriteBehavior:
+                            value === 'custom' ? 'custom' : 'preset',
+                        }
+                      : prev,
+                  )
                 }
               />
             </ObsidianSetting>
@@ -563,7 +591,14 @@ export function SelectionChatActionsSettingsContent() {
                 editingAction.mode ?? 'ask',
               )}
               onChange={(value) =>
-                setEditingAction({ ...editingAction, instruction: value })
+                setEditingAction((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        instruction: value,
+                      }
+                    : prev,
+                )
               }
             />
           </ObsidianSetting>
@@ -734,7 +769,7 @@ function QuickActionItem({
             name={t('settings.selectionChat.actionLabel', '选项名称')}
             desc={t(
               'settings.selectionChat.actionLabelDesc',
-              '显示在快捷选项中的文本',
+              '显示在快捷指令中的文本',
             )}
           >
             <ObsidianTextInput
@@ -744,10 +779,14 @@ function QuickActionItem({
                 '例如：深入解释',
               )}
               onChange={(value) =>
-                setEditingAction({
-                  ...currentEditing,
-                  label: value,
-                })
+                setEditingAction((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        label: value,
+                      }
+                    : prev,
+                )
               }
             />
           </ObsidianSetting>
@@ -756,26 +795,25 @@ function QuickActionItem({
             name={t('settings.selectionChat.actionMode', '执行方式')}
             desc={t(
               'settings.selectionChat.actionModeDesc',
-              '问答会打开 Quick Ask 并自动发送；添加到对话框会打开 Chat 并预填输入框；改写会打开 Quick Ask 编辑模式生成预览。',
+              '前两项调用 Quick Ask：问答会自动发送，改写会进入预览模式；后两项调用 Chat：可选择仅填入对话框，或直接发送。',
             )}
           >
             <ObsidianDropdown
               value={currentEditing.mode ?? 'ask'}
               options={actionModeOptions}
               onChange={(value) =>
-                setEditingAction({
-                  ...currentEditing,
-                  mode:
-                    value === 'rewrite'
-                      ? 'rewrite'
-                      : value === 'chat-input'
-                        ? 'chat-input'
-                        : 'ask',
-                  rewriteBehavior:
-                    value === 'rewrite'
-                      ? (currentEditing.rewriteBehavior ?? 'preset')
-                      : currentEditing.rewriteBehavior,
-                })
+                setEditingAction((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        mode: normalizeActionMode(value),
+                        rewriteBehavior:
+                          value === 'rewrite'
+                            ? (prev.rewriteBehavior ?? 'preset')
+                            : prev.rewriteBehavior,
+                      }
+                    : prev,
+                )
               }
             />
           </ObsidianSetting>
@@ -792,10 +830,15 @@ function QuickActionItem({
                 value={currentEditing.rewriteBehavior ?? 'preset'}
                 options={actionRewriteTypeOptions}
                 onChange={(value) =>
-                  setEditingAction({
-                    ...currentEditing,
-                    rewriteBehavior: value === 'custom' ? 'custom' : 'preset',
-                  })
+                  setEditingAction((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          rewriteBehavior:
+                            value === 'custom' ? 'custom' : 'preset',
+                        }
+                      : prev,
+                  )
                 }
               />
             </ObsidianSetting>
@@ -813,10 +856,14 @@ function QuickActionItem({
                 currentEditing.mode ?? 'ask',
               )}
               onChange={(value) =>
-                setEditingAction({
-                  ...currentEditing,
-                  instruction: value,
-                })
+                setEditingAction((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        instruction: value,
+                      }
+                    : prev,
+                )
               }
             />
           </ObsidianSetting>

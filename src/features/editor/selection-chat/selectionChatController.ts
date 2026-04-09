@@ -66,6 +66,10 @@ type SelectionChatControllerDeps = {
   addSelectionToSidebarChat: (
     selectedBlock: MentionableBlockData,
   ) => Promise<void>
+  openChatWithSelectionAndSend: (
+    selectedBlock: MentionableBlockData,
+    text: string,
+  ) => Promise<void>
   isSmartSpaceOpen: () => boolean
   pinSelectionHighlight: (view: EditorView) => void
   clearSelectionHighlight: (view?: EditorView) => void
@@ -107,6 +111,10 @@ export class SelectionChatController {
   private readonly addSelectionToSidebarChat: (
     selectedBlock: MentionableBlockData,
   ) => Promise<void>
+  private readonly openChatWithSelectionAndSend: (
+    selectedBlock: MentionableBlockData,
+    text: string,
+  ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
   private readonly pinSelectionHighlight: (view: EditorView) => void
   private readonly clearSelectionHighlight: (view?: EditorView) => void
@@ -129,6 +137,7 @@ export class SelectionChatController {
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
+    this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
     this.pinSelectionHighlight = deps.pinSelectionHighlight
     this.clearSelectionHighlight = deps.clearSelectionHighlight
@@ -326,6 +335,11 @@ export class SelectionChatController {
       return
     }
 
+    if (mode === 'chat-send') {
+      await this.addToChatAndSend(editor, instruction)
+      return
+    }
+
     const prompt = instruction.trim()
     if (!prompt) {
       await this.openCustomAsk(editor)
@@ -510,8 +524,7 @@ export class SelectionChatController {
     }
 
     const editorView = this.getEditorView(editor)
-    const resolvedPrompt =
-      prompt?.trim() || this.t('selection.actions.explain', '请深入解释')
+    const resolvedPrompt = prompt?.trim() ?? ''
     await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
 
     if (editorView) {
@@ -533,6 +546,27 @@ export class SelectionChatController {
     }
 
     await this.addSelectionToSidebarChat(data)
+
+    const editorView = this.getEditorView(editor)
+    if (editorView) {
+      this.deferSelectionHighlightTakeover(editorView)
+    }
+  }
+
+  private async addToChatAndSend(editor: Editor, prompt?: string) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!editor || !view) {
+      new Notice('无法获取当前编辑器')
+      return
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      new Notice('无法创建选区数据')
+      return
+    }
+
+    await this.openChatWithSelectionAndSend(data, prompt?.trim() ?? '')
 
     const editorView = this.getEditorView(editor)
     if (editorView) {

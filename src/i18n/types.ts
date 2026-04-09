@@ -826,6 +826,7 @@ export type TranslationKeys = {
       actionModeDesc: string
       actionModeAsk: string
       actionModeChatInput: string
+      actionModeChatSend: string
       actionModeRewrite: string
       actionRewriteType: string
       actionRewriteTypeDesc: string

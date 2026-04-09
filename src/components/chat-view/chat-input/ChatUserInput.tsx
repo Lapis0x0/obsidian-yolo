@@ -76,6 +76,9 @@ import { SubmitButton } from './SubmitButton'
 export type ChatUserInputRef = {
   focus: () => void
   insertText: (text: string) => void
+  appendText: (text: string) => void
+  replaceText: (text: string) => void
+  submit: () => void
 }
 
 export type ChatUserInputProps = {
@@ -368,23 +371,65 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       insertText: (text: string) => {
         if (!editorRef.current) return
 
-        editorRef.current.update(() => {
-          const selection = $getSelection()
-          if ($isRangeSelection(selection)) {
-            selection.insertText(text)
-          } else {
-            // If no selection, insert at the end
-            const root = $getRoot()
-            root.selectEnd()
-            const newSelection = $getSelection()
-            if ($isRangeSelection(newSelection)) {
-              newSelection.insertText(text)
+        editorRef.current.update(
+          () => {
+            const selection = $getSelection()
+            if ($isRangeSelection(selection)) {
+              selection.insertText(text)
+            } else {
+              // If no selection, insert at the end
+              const root = $getRoot()
+              root.selectEnd()
+              const newSelection = $getSelection()
+              if ($isRangeSelection(newSelection)) {
+                newSelection.insertText(text)
+              }
             }
-          }
-        })
+          },
+          { discrete: true },
+        )
 
         // Focus the editor after inserting
         contentEditableRef.current?.focus()
+      },
+      appendText: (text: string) => {
+        if (!editorRef.current) return
+
+        editorRef.current.update(
+          () => {
+            const root = $getRoot()
+            root.selectEnd()
+            const selection = $getSelection()
+            if ($isRangeSelection(selection)) {
+              selection.insertText(text)
+            }
+          },
+          { discrete: true },
+        )
+
+        contentEditableRef.current?.focus()
+      },
+      replaceText: (text: string) => {
+        if (!editorRef.current) return
+
+        editorRef.current.update(
+          () => {
+            const root = $getRoot()
+            root.clear()
+            const paragraph = $createParagraphNode()
+            if (text) {
+              paragraph.append($createTextNode(text))
+            }
+            root.append(paragraph)
+            paragraph.selectEnd()
+          },
+          { discrete: true },
+        )
+
+        contentEditableRef.current?.focus()
+      },
+      submit: () => {
+        handleSubmit()
       },
     }))
 

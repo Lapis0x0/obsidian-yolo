@@ -17,7 +17,10 @@ export class SelectionChatActionsModal extends ReactModal<SelectionChatActionsMo
       Component: SelectionChatActionsModalComponentWrapper,
       props: { plugin },
       options: {
-        title: 'Cursor chat quick actions',
+        title: plugin.t(
+          'settings.selectionChat.quickActionsTitle',
+          'Cursor Chat quick actions',
+        ),
       },
       plugin: plugin,
     })

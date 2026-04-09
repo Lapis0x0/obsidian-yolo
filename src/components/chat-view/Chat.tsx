@@ -15,6 +15,7 @@ import {
   useState,
 } from 'react'
 import type { CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
 
 import { DEFAULT_UNTITLED_CONVERSATION_TITLE } from '../../constants'
@@ -493,12 +494,25 @@ export type ChatRef = {
   openNewChat: (selectedBlock?: MentionableBlockData) => void
   loadConversation: (conversationId: string) => Promise<void>
   addSelectionToChat: (selectedBlock: MentionableBlockData) => void
+  addSelectionToInput: (selectedBlock: MentionableBlockData) => void
+  applySelectionToMainInput: (
+    selectedBlock: MentionableBlockData,
+    text: string,
+    options?: {
+      submit?: boolean
+    },
+  ) => void
   syncSelectionToChat: (selectedBlock: MentionableBlockData) => void
+  syncSelectionToInput: (selectedBlock: MentionableBlockData) => void
   clearSelectionFromChat: () => void
   addFileToChat: (file: TFile) => void
   addFolderToChat: (folder: TFolder) => void
   insertTextToInput: (text: string) => void
+  appendTextToInput: (text: string) => void
+  setMainInputText: (text: string) => void
   focusMessage: () => void
+  focusMainInput: () => void
+  submitMainInput: () => void
   getCurrentConversationOverrides: () =>
     | ConversationOverrideSettings
     | undefined
@@ -2300,9 +2314,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             currentConversationRunSummary.isWaitingApproval,
         })
       ) {
-        setPendingCompactionAnchorMessageId(
-          previousMessages.at(-1)?.id ?? null,
-        )
+        setPendingCompactionAnchorMessageId(previousMessages.at(-1)?.id ?? null)
         try {
           const nextCompactionState =
             await compactConversation(previousMessages)
@@ -3045,6 +3057,84 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const syncSelectionMentionableToInput = useCallback(
+    (selectedBlock: MentionableBlockData) => {
+      const mentionable = buildSelectionMentionable(selectedBlock)
+      const mentionableKey = getMentionableKey(
+        serializeMentionable(mentionable),
+      )
+
+      flushSync(() => {
+        setInputMessage((prevInputMessage) => {
+          const existingSelection = prevInputMessage.mentionables.find(
+            (m) => m.type === 'block' && isSyncSelectionMentionable(m),
+          )
+          if (existingSelection) {
+            const existingKey = getMentionableKey(
+              serializeMentionable(existingSelection),
+            )
+            if (existingKey === mentionableKey) {
+              return prevInputMessage
+            }
+          }
+
+          return {
+            ...prevInputMessage,
+            mentionables: [
+              ...removeSelectionMentionable(prevInputMessage.mentionables),
+              mentionable,
+            ],
+            promptContent: null,
+          }
+        })
+      })
+    },
+    [buildSelectionMentionable, removeSelectionMentionable],
+  )
+
+  const upsertSelectionMentionableInMainInput = useCallback(
+    (mentionable: MentionableBlock) => {
+      setInputMessage((prevInputMessage) => {
+        const mentionableKey = getMentionableKey(
+          serializeMentionable(mentionable),
+        )
+        let changed = false
+        const nextMentionables = prevInputMessage.mentionables.map((m) => {
+          const key = getMentionableKey(serializeMentionable(m))
+          if (key !== mentionableKey) return m
+          if (m.type === 'block' && isSyncSelectionMentionable(m)) {
+            changed = true
+            return mentionable
+          }
+          return m
+        })
+
+        if (changed) {
+          return {
+            ...prevInputMessage,
+            mentionables: nextMentionables,
+            promptContent: null,
+          }
+        }
+
+        if (
+          prevInputMessage.mentionables.some(
+            (m) => getMentionableKey(serializeMentionable(m)) === mentionableKey,
+          )
+        ) {
+          return prevInputMessage
+        }
+
+        return {
+          ...prevInputMessage,
+          mentionables: [...prevInputMessage.mentionables, mentionable],
+          promptContent: null,
+        }
+      })
+    },
+    [],
+  )
+
   const clearSelectionMentionable = useCallback(() => {
     if (!focusedMessageId) return
 
@@ -3224,8 +3314,49 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
       }
     },
+    addSelectionToInput: (selectedBlock: MentionableBlockData) => {
+      const mentionable = createSelectionBlockMentionable({
+        ...selectedBlock,
+        source: 'selection-pinned',
+      })
+
+      setAddedBlockKey(null)
+      upsertSelectionMentionableInMainInput(mentionable)
+    },
+    applySelectionToMainInput: (
+      selectedBlock: MentionableBlockData,
+      text: string,
+      options?: {
+        submit?: boolean
+      },
+    ) => {
+      const mentionable = createSelectionBlockMentionable({
+        ...selectedBlock,
+        source: 'selection-pinned',
+      })
+
+      setAddedBlockKey(null)
+      flushSync(() => {
+        upsertSelectionMentionableInMainInput(mentionable)
+      })
+
+      const inputRef = chatUserInputRefs.current.get(inputMessage.id)
+      if (text) {
+        inputRef?.appendText(text)
+      }
+
+      if (options?.submit) {
+        inputRef?.submit()
+        return
+      }
+
+      inputRef?.focus()
+    },
     syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
       syncSelectionMentionable(selectedBlock)
+    },
+    syncSelectionToInput: (selectedBlock: MentionableBlockData) => {
+      syncSelectionMentionableToInput(selectedBlock)
     },
     clearSelectionFromChat: () => {
       clearSelectionMentionable()
@@ -3345,9 +3476,22 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         inputRef.insertText(text)
       }
     },
+    appendTextToInput: (text: string) => {
+      if (!text) return
+      chatUserInputRefs.current.get(inputMessage.id)?.appendText(text)
+    },
+    setMainInputText: (text: string) => {
+      chatUserInputRefs.current.get(inputMessage.id)?.replaceText(text)
+    },
     focusMessage: () => {
       if (!focusedMessageId) return
       chatUserInputRefs.current.get(focusedMessageId)?.focus()
+    },
+    focusMainInput: () => {
+      chatUserInputRefs.current.get(inputMessage.id)?.focus()
+    },
+    submitMainInput: () => {
+      chatUserInputRefs.current.get(inputMessage.id)?.submit()
     },
     getCurrentConversationOverrides: () => {
       if (conversationOverrides) {
@@ -3673,11 +3817,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 timelineItem.renderKey === latestTimelineAssistantToolGroupKey)
             }
             showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
-            showInsertAction={chatSurfacePreset.assistantActions.showInsertAction}
+            showInsertAction={
+              chatSurfacePreset.assistantActions.showInsertAction
+            }
             showCopyAction={chatSurfacePreset.assistantActions.showCopyAction}
-            showBranchAction={chatSurfacePreset.assistantActions.showBranchAction}
+            showBranchAction={
+              chatSurfacePreset.assistantActions.showBranchAction
+            }
             showEditAction={chatSurfacePreset.assistantActions.showEditAction}
-            showDeleteAction={chatSurfacePreset.assistantActions.showDeleteAction}
+            showDeleteAction={
+              chatSurfacePreset.assistantActions.showDeleteAction
+            }
             isApplying={applyMutation.isPending}
             activeApplyRequestKey={activeApplyRequestKey}
             onApply={handleApply}
@@ -4045,10 +4195,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chat.emptyState.chatTitle',
             '先想清楚，再落笔',
           )}
-          emptyStateAgentTitle={t(
-            'chat.emptyState.agentTitle',
-            '让 AI 去执行',
-          )}
+          emptyStateAgentTitle={t('chat.emptyState.agentTitle', '让 AI 去执行')}
           emptyStateChatDescription={t(
             'chat.emptyState.chatDescription',
             '适合提问、润色与改写，专注表达本身',
@@ -4169,7 +4316,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   modelId={conversationModelId}
                   onModelChange={(id) => {
                     setConversationModelId(id)
-                    conversationModelIdRef.current.set(currentConversationId, id)
+                    conversationModelIdRef.current.set(
+                      currentConversationId,
+                      id,
+                    )
                     const nextReasoningLevel = getReasoningLevelForModelId(id)
                     setReasoningLevel(nextReasoningLevel)
                     conversationReasoningLevelRef.current.set(

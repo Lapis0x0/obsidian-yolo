@@ -337,17 +337,11 @@ export const smartComposerSettingsSchema = z.object({
       tabTitleFollowsConversation: z.boolean().default(true).catch(true),
       // Auto context compaction before next user send (based on last assistant usage)
       autoContextCompactionEnabled: z.boolean().optional(),
-      autoContextCompactionThresholdMode: z.enum(['tokens', 'ratio']).optional(),
-      autoContextCompactionThresholdTokens: z
-        .number()
-        .int()
-        .min(1)
+      autoContextCompactionThresholdMode: z
+        .enum(['tokens', 'ratio'])
         .optional(),
-      autoContextCompactionThresholdRatio: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional(),
+      autoContextCompactionThresholdTokens: z.number().int().min(1).optional(),
+      autoContextCompactionThresholdRatio: z.number().min(0).max(1).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -436,7 +430,9 @@ export const smartComposerSettingsSchema = z.object({
             id: z.string(),
             label: z.string(),
             instruction: z.string(),
-            mode: z.enum(['ask', 'rewrite', 'chat-input']).optional(),
+            mode: z
+              .enum(['ask', 'rewrite', 'chat-input', 'chat-send'])
+              .optional(),
             rewriteBehavior: z.enum(['custom', 'preset']).optional(),
             enabled: z.boolean().default(true),
           }),

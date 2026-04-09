@@ -6,7 +6,7 @@ import { useSettings } from '../../contexts/settings-context'
 
 import type { SelectionInfo } from './SelectionManager'
 
-export type SelectionActionMode = 'ask' | 'rewrite' | 'chat-input'
+export type SelectionActionMode = 'ask' | 'rewrite' | 'chat-input' | 'chat-send'
 export type SelectionActionRewriteBehavior = 'custom' | 'preset'
 
 export type SelectionAction = {
@@ -106,7 +106,11 @@ export function SelectionActionsMenu({
               action.mode ??
               (action.id === 'rewrite' || action.id === 'custom-rewrite'
                 ? 'rewrite'
-                : 'ask'),
+                : action.id === 'chat-send'
+                  ? 'chat-send'
+                  : action.id === 'chat-input' || action.id === 'add-to-sidebar'
+                    ? 'chat-input'
+                    : 'ask'),
             rewriteBehavior: action.rewriteBehavior,
           }))
       : defaultActions
@@ -128,7 +132,11 @@ export function SelectionActionsMenu({
         action.mode ??
         (action.id === 'rewrite' || action.id === 'custom-rewrite'
           ? 'rewrite'
-          : 'ask')
+          : action.id === 'chat-send'
+            ? 'chat-send'
+            : action.id === 'chat-input' || action.id === 'add-to-sidebar'
+              ? 'chat-input'
+              : 'ask')
       const rewriteBehavior: SelectionActionRewriteBehavior | undefined =
         mode === 'rewrite'
           ? (action.rewriteBehavior ??
@@ -136,7 +144,10 @@ export function SelectionActionsMenu({
           : undefined
       const rawInstruction = action.instruction?.trim() || ''
       const resolvedInstruction =
-        mode === 'rewrite' || action.id === 'custom-ask'
+        mode === 'rewrite' ||
+        action.id === 'custom-ask' ||
+        mode === 'chat-input' ||
+        mode === 'chat-send'
           ? rawInstruction
           : rawInstruction || label || action.id
       return {
@@ -214,10 +225,7 @@ export function SelectionActionsMenu({
     }
 
     if (top + menuHeight > viewportHeight - 8) {
-      top = Math.max(
-        8,
-        indicatorPosition.top + indicatorHeight - menuHeight,
-      )
+      top = Math.max(8, indicatorPosition.top + indicatorHeight - menuHeight)
     }
     if (top < 8) {
       top = 8
