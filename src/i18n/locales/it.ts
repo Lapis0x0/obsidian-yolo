@@ -933,10 +933,6 @@ export const it: TranslationKeys = {
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
-      chatExportFolder: 'Cartella esportazione chat',
-      chatExportFolderDesc:
-        'Percorso relativo al vault in cui salvare i file Markdown esportati (senza / iniziale).',
-      chatExportFolderPlaceholder: 'YOLO Exports',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",

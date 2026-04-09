@@ -1778,8 +1778,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             chatManager,
             conversationId,
             settings,
-            chatExportFolder:
-              settings.chatOptions.chatExportFolder ?? 'YOLO Exports',
           })
           new Notice(
             t('sidebar.chat.exportSuccess', 'Exported chat to {path}').replace(

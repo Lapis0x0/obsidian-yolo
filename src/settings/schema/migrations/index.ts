@@ -36,7 +36,6 @@ import { migrateFrom39To40 } from './39_to_40'
 import { migrateFrom40To41 } from './40_to_41'
 import { migrateFrom41To42 } from './41_to_42'
 import { migrateFrom42To43 } from './42_to_43'
-import { migrateFrom43To44 } from './43_to_44'
 import { migrateFrom3To4 } from './3_to_4'
 import { migrateFrom4To5 } from './4_to_5'
 import { migrateFrom5To6 } from './5_to_6'
@@ -45,7 +44,7 @@ import { migrateFrom7To8 } from './7_to_8'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
-export const SETTINGS_SCHEMA_VERSION = 44
+export const SETTINGS_SCHEMA_VERSION = 43
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {
@@ -262,10 +261,5 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 42,
     toVersion: 43,
     migrate: migrateFrom42To43,
-  },
-  {
-    fromVersion: 43,
-    toVersion: 44,
-    migrate: migrateFrom43To44,
   },
 ]

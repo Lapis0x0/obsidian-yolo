@@ -1,6 +1,20 @@
-import { conversationToMarkdown } from './exportConversation'
+import {
+  conversationToMarkdown,
+  getChatExportFolderPath,
+} from './exportConversation'
 
 describe('conversationToMarkdown', () => {
+  it('uses the yolo base directory for exported chat files', () => {
+    expect(getChatExportFolderPath()).toBe('YOLO/Exports')
+    expect(
+      getChatExportFolderPath({
+        yolo: {
+          baseDir: 'Config/YOLO',
+        },
+      }),
+    ).toBe('Config/YOLO/Exports')
+  })
+
   it('renders assistant thinking before the final response content', () => {
     const markdown = conversationToMarkdown(
       {

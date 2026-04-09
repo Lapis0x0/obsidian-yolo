@@ -583,7 +583,13 @@ export type ExportChatConversationParams = {
   chatManager: ChatManager
   conversationId: string
   settings?: YoloSettingsLike | null
-  chatExportFolder?: string
+}
+
+export function getChatExportFolderPath(
+  settings?: YoloSettingsLike | null,
+): string {
+  const baseDir = settings?.yolo?.baseDir?.trim() || 'YOLO'
+  return normalizePath(`${baseDir.replace(/^\/+/, '')}/Exports`)
 }
 
 /**
@@ -593,10 +599,7 @@ export async function exportChatConversationToVault(
   params: ExportChatConversationParams,
 ): Promise<{ path: string }> {
   const { app, chatManager, conversationId, settings } = params
-  const folderSetting =
-    params.chatExportFolder?.trim() ||
-    'YOLO Exports'
-  const folderPath = normalizePath(folderSetting.replace(/^\/+/, ''))
+  const folderPath = getChatExportFolderPath(settings)
 
   const conversation = await chatManager.findById(conversationId)
   if (!conversation) {

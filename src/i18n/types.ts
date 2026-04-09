@@ -727,9 +727,6 @@ export type TranslationKeys = {
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
-      chatExportFolder?: string
-      chatExportFolderDesc?: string
-      chatExportFolderPlaceholder?: string
       mentionDisplayMode?: string
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string

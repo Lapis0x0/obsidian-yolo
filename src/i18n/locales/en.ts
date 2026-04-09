@@ -948,10 +948,6 @@ export const en: TranslationKeys = {
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
-      chatExportFolder: 'Chat export folder',
-      chatExportFolderDesc:
-        'Vault-relative folder where exported chat Markdown files are saved (no leading /).',
-      chatExportFolderPlaceholder: 'YOLO Exports',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
         'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',

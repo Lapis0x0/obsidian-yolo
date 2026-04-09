@@ -130,22 +130,15 @@ export function EtcSection({ app, className }: EtcSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const yoloBaseDir = settings.yolo?.baseDir ?? 'YOLO'
-  const chatExportFolder = settings.chatOptions.chatExportFolder ?? 'YOLO Exports'
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({
     chatHistoryBytes: null,
     chatSnapshotBytes: null,
   })
   const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
-  const [chatExportFolderInput, setChatExportFolderInput] =
-    useState(chatExportFolder)
 
   useEffect(() => {
     setYoloBaseDirInput(yoloBaseDir)
   }, [yoloBaseDir])
-
-  useEffect(() => {
-    setChatExportFolderInput(chatExportFolder)
-  }, [chatExportFolder])
 
   const refreshStorageUsage = useCallback(() => {
     let cancelled = false
@@ -183,21 +176,6 @@ export function EtcSection({ app, className }: EtcSectionProps) {
       yolo: {
         ...(settings.yolo ?? { baseDir: 'YOLO' }),
         baseDir: normalized,
-      },
-    })
-  }
-
-  const handleChatExportFolderBlur = (value: string) => {
-    const normalized =
-      normalizePath(value.trim()).replace(/^\/+/, '') || 'YOLO Exports'
-    setChatExportFolderInput(normalized)
-    if (normalized === chatExportFolder) return
-
-    void setSettings({
-      ...settings,
-      chatOptions: {
-        ...settings.chatOptions,
-        chatExportFolder: normalized,
       },
     })
   }
@@ -351,25 +329,6 @@ export function EtcSection({ app, className }: EtcSectionProps) {
               placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
               onChange={setYoloBaseDirInput}
               onBlur={handleYoloBaseDirBlur}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.etc.chatExportFolder', 'Chat export folder')}
-            desc={t(
-              'settings.etc.chatExportFolderDesc',
-              'Vault-relative folder where exported chat Markdown files are saved (no leading /).',
-            )}
-            className="smtcmp-settings-card"
-          >
-            <ObsidianTextInput
-              value={chatExportFolderInput}
-              placeholder={t(
-                'settings.etc.chatExportFolderPlaceholder',
-                'YOLO Exports',
-              )}
-              onChange={setChatExportFolderInput}
-              onBlur={handleChatExportFolderBlur}
             />
           </ObsidianSetting>
 
