@@ -154,15 +154,6 @@ export type TranslationKeys = {
       historyArchiveEnabledDesc?: string
       historyArchiveThreshold?: string
       historyArchiveThresholdDesc?: string
-      autoContextCompaction?: string
-      autoContextCompactionDesc?: string
-      autoContextCompactionThresholdMode?: string
-      autoContextCompactionModeTokens?: string
-      autoContextCompactionModeRatio?: string
-      autoContextCompactionThresholdTokens?: string
-      autoContextCompactionThresholdTokensDesc?: string
-      autoContextCompactionThresholdRatioPercent?: string
-      autoContextCompactionThresholdRatioPercentDesc?: string
     }
     assistants: {
       title: string
@@ -317,6 +308,16 @@ export type TranslationKeys = {
       skillLoadAlways?: string
       skillLoadLazy?: string
       skillDisabledGlobally?: string
+      autoContextCompactionBlockTitle?: string
+      autoContextCompaction?: string
+      autoContextCompactionDesc?: string
+      autoContextCompactionThresholdMode?: string
+      autoContextCompactionModeTokens?: string
+      autoContextCompactionModeRatio?: string
+      autoContextCompactionThresholdTokens?: string
+      autoContextCompactionThresholdTokensDesc?: string
+      autoContextCompactionThresholdRatioPercent?: string
+      autoContextCompactionThresholdRatioPercentDesc?: string
     }
     providers: {
       title: string

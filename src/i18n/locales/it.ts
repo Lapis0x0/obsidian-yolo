@@ -265,18 +265,6 @@ export const it: TranslationKeys = {
       historyArchiveThreshold: 'Limite conversazioni recenti',
       historyArchiveThresholdDesc:
         'Numero di conversazioni non appuntate recenti da mostrare prima di archiviare le altre (20-500).',
-      autoContextCompaction: 'Compattazione automatica del contesto',
-      autoContextCompactionDesc:
-        'Quando l’uso dei token di prompt dell’ultima risposta dell’assistente supera la soglia, comprimi la cronologia precedente prima che il messaggio utente successivo venga inviato (non durante la generazione).',
-      autoContextCompactionThresholdMode: 'Modalita soglia',
-      autoContextCompactionModeTokens: 'Token di prompt assoluti',
-      autoContextCompactionModeRatio: 'Quota della finestra di contesto',
-      autoContextCompactionThresholdTokens: 'Soglia token di prompt',
-      autoContextCompactionThresholdTokensDesc:
-        'Attiva quando i prompt_tokens segnalati dall’ultima risposta raggiungono almeno questo valore.',
-      autoContextCompactionThresholdRatioPercent: 'Uso finestra di contesto (%)',
-      autoContextCompactionThresholdRatioPercentDesc:
-        'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
     },
     assistants: {
       title: 'Assistenti',
@@ -433,6 +421,19 @@ export const it: TranslationKeys = {
       skillLoadAlways: 'Iniezione completa',
       skillLoadLazy: 'Su richiesta',
       skillDisabledGlobally: 'Disabilitata globalmente',
+      autoContextCompactionBlockTitle: 'Compattazione contesto',
+      autoContextCompaction: 'Compattazione automatica del contesto',
+      autoContextCompactionDesc:
+        'Quando l’uso dei token di prompt dell’ultima risposta dell’assistente supera la soglia, comprimi la cronologia precedente prima che il messaggio utente successivo venga inviato (non durante la generazione).',
+      autoContextCompactionThresholdMode: 'Modalita soglia',
+      autoContextCompactionModeTokens: 'Token di prompt assoluti',
+      autoContextCompactionModeRatio: 'Quota della finestra di contesto',
+      autoContextCompactionThresholdTokens: 'Soglia token di prompt',
+      autoContextCompactionThresholdTokensDesc:
+        'Attiva quando i prompt_tokens segnalati dall’ultima risposta raggiungono almeno questo valore.',
+      autoContextCompactionThresholdRatioPercent: 'Uso finestra di contesto (%)',
+      autoContextCompactionThresholdRatioPercentDesc:
+        'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
     },
     providers: {
       title: 'Provider',

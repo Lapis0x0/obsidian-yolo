@@ -229,18 +229,6 @@ export const zh: TranslationKeys = {
       historyArchiveThreshold: '近期会话数量',
       historyArchiveThresholdDesc:
         '超过该数量的未置顶会话会进入归档（20-500）。',
-      autoContextCompaction: '自动压缩上下文',
-      autoContextCompactionDesc:
-        '当上一轮助手回复的 prompt 占用达到阈值时，在你下次发送用户消息、正式提交模型之前自动压缩更早历史（不会在助手生成过程中打断）。',
-      autoContextCompactionThresholdMode: '阈值模式',
-      autoContextCompactionModeTokens: '绝对 prompt tokens',
-      autoContextCompactionModeRatio: '上下文窗口比例',
-      autoContextCompactionThresholdTokens: 'Prompt token 阈值',
-      autoContextCompactionThresholdTokensDesc:
-        '当上一轮回复报告的 prompt_tokens 大于等于该值时触发。',
-      autoContextCompactionThresholdRatioPercent: '上下文窗口占用（%）',
-      autoContextCompactionThresholdRatioPercentDesc:
-        '当 prompt_tokens 除以当前聊天模型配置的最大上下文窗口达到该比例时触发（需在模型中填写 max context）。',
     },
     assistants: {
       title: '助手',
@@ -401,6 +389,19 @@ export const zh: TranslationKeys = {
       skillLoadAlways: '全量注入',
       skillLoadLazy: '按需加载',
       skillDisabledGlobally: '已全局禁用',
+      autoContextCompactionBlockTitle: '上下文压缩',
+      autoContextCompaction: '自动压缩上下文',
+      autoContextCompactionDesc:
+        '当上一轮助手回复的 prompt 占用达到阈值时，在你下次发送用户消息、正式提交模型之前自动压缩更早历史（不会在助手生成过程中打断）。',
+      autoContextCompactionThresholdMode: '阈值模式',
+      autoContextCompactionModeTokens: '绝对 prompt tokens',
+      autoContextCompactionModeRatio: '上下文窗口比例',
+      autoContextCompactionThresholdTokens: 'Prompt token 阈值',
+      autoContextCompactionThresholdTokensDesc:
+        '当上一轮回复报告的 prompt_tokens 大于等于该值时触发。',
+      autoContextCompactionThresholdRatioPercent: '上下文窗口占用（%）',
+      autoContextCompactionThresholdRatioPercentDesc:
+        '当 prompt_tokens 除以当前聊天模型配置的最大上下文窗口达到该比例时触发（需在模型中填写 max context）。',
     },
     providers: {
       title: '提供商',
