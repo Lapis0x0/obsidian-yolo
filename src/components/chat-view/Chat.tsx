@@ -41,6 +41,7 @@ import { useChatManager } from '../../hooks/useJsonManagers'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
+  ChatAssistantMessage,
   ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
@@ -1041,14 +1042,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
     new Map(),
   )
+  const [assistantGroupBoundaryMessageIds, setAssistantGroupBoundaryMessageIds] =
+    useState<string[]>([])
   const [activeBranchByUserMessageId, setActiveBranchByUserMessageId] =
     useState<Map<string, string>>(new Map())
   const submitMutationPendingRef = useRef(false)
 
   const groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[] =
     useMemo(() => {
-      return groupAssistantAndToolMessages(chatMessages)
-    }, [chatMessages])
+      return groupAssistantAndToolMessages(
+        chatMessages,
+        assistantGroupBoundaryMessageIds,
+      )
+    }, [assistantGroupBoundaryMessageIds, chatMessages])
 
   const displayedChatMessages = useMemo(() => {
     return groupedChatMessages.flatMap((messageOrGroup): ChatMessage[] => {
@@ -1277,6 +1283,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () =>
       buildChatTimelineItems({
         groupedChatMessages,
+        assistantGroupBoundaryMessageIds,
         compactionDividerAnchorMessageIds,
         latestCompaction: latestCompactionState,
         pendingCompactionAnchorMessageId,
@@ -1292,6 +1299,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [
       editingAssistantMessageId,
       activeStreamingMessageId,
+      assistantGroupBoundaryMessageIds,
       compactionDividerAnchorMessageIds,
       focusedMessageId,
       groupedChatMessages,
@@ -1402,8 +1410,80 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [messageModelMap],
   )
 
+  const normalizeAssistantGroupBoundaryMessageIds = useCallback(
+    (messages: ChatMessage[], sourceIds: readonly string[]): string[] => {
+      const availableNonUserMessageIds = new Set(
+        messages
+          .filter(
+            (message): message is ChatAssistantMessage | ChatToolMessage =>
+              message.role === 'assistant' || message.role === 'tool',
+          )
+          .map((message) => message.id),
+      )
+
+      return sourceIds.filter((messageId, index) => {
+        return (
+          availableNonUserMessageIds.has(messageId) &&
+          sourceIds.indexOf(messageId) === index
+        )
+      })
+    },
+    [],
+  )
+
+  const buildAssistantGroupBoundaryMessageIdsAfterUserRemoval = useCallback(
+    (
+      sourceMessages: ChatMessage[],
+      nextMessages: ChatMessage[],
+      existingBoundaryMessageIds: readonly string[],
+    ): string[] => {
+      const retainedMessageIds = new Set(nextMessages.map((message) => message.id))
+      const nextBoundaryMessageIds = [
+        ...normalizeAssistantGroupBoundaryMessageIds(
+          nextMessages,
+          existingBoundaryMessageIds,
+        ),
+      ]
+      let lastRetainedNonUserMessageId: string | null = null
+      let sawRemovedUserAfterRetainedNonUser = false
+
+      sourceMessages.forEach((message) => {
+        const isRetained = retainedMessageIds.has(message.id)
+
+        if (!isRetained) {
+          if (message.role === 'user' && lastRetainedNonUserMessageId) {
+            sawRemovedUserAfterRetainedNonUser = true
+          }
+          return
+        }
+
+        if (message.role === 'user') {
+          lastRetainedNonUserMessageId = null
+          sawRemovedUserAfterRetainedNonUser = false
+          return
+        }
+
+        if (lastRetainedNonUserMessageId && sawRemovedUserAfterRetainedNonUser) {
+          nextBoundaryMessageIds.push(message.id)
+        }
+
+        lastRetainedNonUserMessageId = message.id
+        sawRemovedUserAfterRetainedNonUser = false
+      })
+
+      return normalizeAssistantGroupBoundaryMessageIds(
+        nextMessages,
+        nextBoundaryMessageIds,
+      )
+    },
+    [normalizeAssistantGroupBoundaryMessageIds],
+  )
+
   const persistConversation = useCallback(
-    async (messages: ChatMessage[]) => {
+    async (
+      messages: ChatMessage[],
+      assistantGroupBoundaryIdsOverride?: readonly string[],
+    ) => {
       if (messages.length === 0) return
       try {
         const effectiveOverrides = {
@@ -1423,6 +1503,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
           effectiveCompactionState,
+          normalizeAssistantGroupBoundaryMessageIds(
+            messages,
+            assistantGroupBoundaryIdsOverride ?? assistantGroupBoundaryMessageIds,
+          ),
         )
       } catch (error) {
         new Notice('Failed to save chat history')
@@ -1437,12 +1521,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       currentConversationId,
       effectiveCompactionState,
       reasoningLevel,
+      normalizeAssistantGroupBoundaryMessageIds,
+      assistantGroupBoundaryMessageIds,
       serializeMessageModelMap,
     ],
   )
 
   const persistConversationImmediately = useCallback(
-    async (messages: ChatMessage[]): Promise<boolean> => {
+    async (
+      messages: ChatMessage[],
+      assistantGroupBoundaryIdsOverride?: readonly string[],
+    ): Promise<boolean> => {
       if (messages.length === 0) return false
       try {
         const effectiveOverrides = {
@@ -1462,6 +1551,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationReasoningLevelRef.current.get(currentConversationId) ??
             reasoningLevel,
           effectiveCompactionState,
+          normalizeAssistantGroupBoundaryMessageIds(
+            messages,
+            assistantGroupBoundaryIdsOverride ?? assistantGroupBoundaryMessageIds,
+          ),
         )
         return true
       } catch (error) {
@@ -1478,8 +1571,133 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       currentConversationId,
       effectiveCompactionState,
       reasoningLevel,
+      normalizeAssistantGroupBoundaryMessageIds,
+      assistantGroupBoundaryMessageIds,
       serializeMessageModelMap,
     ],
+  )
+
+  const isUserMessageEffectivelyEmpty = useCallback(
+    (
+      message: Pick<ChatUserMessage, 'content' | 'mentionables' | 'selectedSkills'>,
+    ): boolean => {
+      const textContent = message.content
+        ? editorStateToPlainText(message.content).trim()
+        : ''
+
+      return (
+        textContent.length === 0 &&
+        message.mentionables.length === 0 &&
+        (message.selectedSkills?.length ?? 0) === 0
+      )
+    },
+    [],
+  )
+
+  const removeHistoricalUserMessage = useCallback(
+    (messageId: string) => {
+      const sourceMessages = chatMessagesStateRef.current
+      const nextMessages = sourceMessages.filter(
+        (message) => !(message.role === 'user' && message.id === messageId),
+      )
+      const nextAssistantGroupBoundaryMessageIds =
+        buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
+          sourceMessages,
+          nextMessages,
+          assistantGroupBoundaryMessageIds,
+        )
+
+      chatMessagesStateRef.current = nextMessages
+      setChatMessages(nextMessages)
+      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
+      setFocusedMessageId((prev) => (prev === messageId ? inputMessage.id : prev))
+      setMessageModelMap((prev) => {
+        if (!prev.has(messageId)) return prev
+        const next = new Map(prev)
+        next.delete(messageId)
+        return next
+      })
+      setMessageReasoningMap((prev) => {
+        if (!prev.has(messageId)) return prev
+        const next = new Map(prev)
+        next.delete(messageId)
+        return next
+      })
+
+      const nextActiveBranchByUserMessageId = new Map(
+        activeBranchByUserMessageIdRef.current,
+      )
+      if (nextActiveBranchByUserMessageId.delete(messageId)) {
+        activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
+        setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
+      }
+
+      if (nextMessages.length === 0) {
+        void deleteConversation(currentConversationId)
+        return
+      }
+
+      void persistConversation(nextMessages, nextAssistantGroupBoundaryMessageIds)
+    },
+    [
+      assistantGroupBoundaryMessageIds,
+      buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
+      currentConversationId,
+      deleteConversation,
+      inputMessage.id,
+      persistConversation,
+    ],
+  )
+
+  const updateHistoricalUserMessage = useCallback(
+    (
+      messageId: string,
+      updater: (message: ChatUserMessage) => ChatUserMessage,
+    ) => {
+      const nextMessages = chatMessagesStateRef.current.map((message) => {
+        if (message.role !== 'user' || message.id !== messageId) {
+          return message
+        }
+
+        return updater(message)
+      })
+
+      const updatedMessage = nextMessages.find(
+        (message): message is ChatUserMessage =>
+          message.role === 'user' && message.id === messageId,
+      )
+      if (!updatedMessage) {
+        return
+      }
+
+      chatMessagesStateRef.current = nextMessages
+      setChatMessages(nextMessages)
+      setAssistantGroupBoundaryMessageIds((prev) =>
+        normalizeAssistantGroupBoundaryMessageIds(nextMessages, prev),
+      )
+    },
+    [
+      normalizeAssistantGroupBoundaryMessageIds,
+    ],
+  )
+
+  const finalizeHistoricalUserMessageEdit = useCallback(
+    (messageId: string) => {
+      const message = chatMessagesStateRef.current.find(
+        (candidate): candidate is ChatUserMessage =>
+          candidate.role === 'user' && candidate.id === messageId,
+      )
+      if (!message) {
+        return
+      }
+
+      if (!isUserMessageEffectivelyEmpty(message)) {
+        return
+      }
+
+      removeHistoricalUserMessage(messageId)
+    },
+    [isUserMessageEffectivelyEmpty, removeHistoricalUserMessage],
   )
 
   const handleManualContextCompaction = useCallback(async () => {
@@ -1545,6 +1763,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
         nextCompactionHistory,
+        normalizeAssistantGroupBoundaryMessageIds(
+          chatMessages,
+          assistantGroupBoundaryMessageIds,
+        ),
       )
       new Notice(
         t(
@@ -1570,6 +1792,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     effectiveCompactionState,
     plugin,
     reasoningLevel,
+    assistantGroupBoundaryMessageIds,
+    normalizeAssistantGroupBoundaryMessageIds,
     serializeMessageModelMap,
     t,
   ])
@@ -1610,6 +1834,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
 
+      finalizeHistoricalUserMessageEdit(focusedMessageId)
       setFocusedMessageId(inputMessage.id)
     }
 
@@ -1617,7 +1842,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown, true)
     }
-  }, [focusedMessageId, inputMessage.id])
+  }, [finalizeHistoricalUserMessageEdit, focusedMessageId, inputMessage.id])
 
   const handleLoadConversation = useCallback(
     async (conversationId: string) => {
@@ -1631,6 +1856,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
         setCurrentConversationId(conversationId)
         setChatMessages(normalizedConversation.messages)
+        setAssistantGroupBoundaryMessageIds(
+          normalizeAssistantGroupBoundaryMessageIds(
+            normalizedConversation.messages,
+            conversation.assistantGroupBoundaryMessageIds ?? [],
+          ),
+        )
         setCompactionState(conversation.compaction ?? [])
         setPendingCompactionAnchorMessageId(null)
         plugin
@@ -1732,6 +1963,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             conversation.activeBranchByUserMessageId,
             conversation.reasoningLevel,
             conversation.compaction,
+            normalizeAssistantGroupBoundaryMessageIds(
+              normalizedConversation.messages,
+              conversation.assistantGroupBoundaryMessageIds ?? [],
+            ),
           )
         }
       } catch (error) {
@@ -1748,6 +1983,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settings.chatOptions.chatMode,
       settings.assistants,
       getReasoningLevelForModelId,
+      normalizeAssistantGroupBoundaryMessageIds,
       normalizeReasoningLevel,
     ],
   )
@@ -1834,6 +2070,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setReasoningLevel(defaultReasoningLevel)
     conversationReasoningLevelRef.current.set(newId, defaultReasoningLevel)
     setMessageModelMap(new Map())
+    setAssistantGroupBoundaryMessageIds([])
     activeBranchByUserMessageIdRef.current = new Map()
     setActiveBranchByUserMessageId(new Map())
     setMessageReasoningMap(new Map())
@@ -1883,18 +2120,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleAssistantMessageGroupDelete = useCallback(
     (messageIds: string[]) => {
       const idsToRemove = new Set(messageIds)
-      setChatMessages((prevChatHistory) => {
-        const nextMessages = prevChatHistory.filter(
-          (message) => !idsToRemove.has(message.id),
+      const nextMessages = chatMessagesStateRef.current.filter(
+        (message) => !idsToRemove.has(message.id),
+      )
+      const nextAssistantGroupBoundaryMessageIds =
+        normalizeAssistantGroupBoundaryMessageIds(
+          nextMessages,
+          assistantGroupBoundaryMessageIds,
         )
-        void persistConversation(nextMessages)
-        return nextMessages
-      })
+      chatMessagesStateRef.current = nextMessages
+      setChatMessages(nextMessages)
+      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
+      void persistConversation(nextMessages, nextAssistantGroupBoundaryMessageIds)
       setEditingAssistantMessageId((prev) =>
         prev && idsToRemove.has(prev) ? null : prev,
       )
     },
-    [persistConversation],
+    [
+      assistantGroupBoundaryMessageIds,
+      normalizeAssistantGroupBoundaryMessageIds,
+      persistConversation,
+    ],
   )
 
   const handleAssistantMessageGroupBranch = useCallback(
@@ -1971,6 +2217,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           retainedUserMessageIds.has(messageId),
         ),
       )
+      const nextAssistantGroupBoundaryMessageIds =
+        normalizeAssistantGroupBoundaryMessageIds(
+          nextMessages,
+          assistantGroupBoundaryMessageIds,
+        )
       const nextActiveBranchByUserMessageId = new Map(
         Array.from(activeBranchByUserMessageIdRef.current.entries()).filter(
           ([messageId]) => retainedUserMessageIds.has(messageId),
@@ -2020,6 +2271,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
       setMessageModelMap(nextMessageModelMap)
       setMessageReasoningMap(nextMessageReasoningMap)
+      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
       activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
       setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
 
@@ -2045,6 +2297,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ),
           resolvedReasoningLevel,
           branchedCompactionState,
+          nextAssistantGroupBoundaryMessageIds,
         )
         await updateConversationTitle(newConversationId, branchTitle)
         new Notice(t('chat.branchCreated', 'Branch created'))
@@ -2064,6 +2317,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       effectiveCompactionState,
       messageModelMap,
       messageReasoningMap,
+      assistantGroupBoundaryMessageIds,
+      normalizeAssistantGroupBoundaryMessageIds,
       reasoningLevel,
       serializeMessageModelMap,
       settings.chatModelId,
@@ -2441,6 +2696,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationReasoningLevelRef.current.get(currentConversationId) ??
           reasoningLevel,
         compactionForSubmit,
+        normalizeAssistantGroupBoundaryMessageIds(
+          compiledInputMessages,
+          assistantGroupBoundaryMessageIds,
+        ),
       )
       void generateConversationTitle(
         currentConversationId,
@@ -2470,11 +2729,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       requestContextBuilder,
       abortConversationRun,
       forceScrollToBottom,
+      assistantGroupBoundaryMessageIds,
       createOrUpdateConversation,
       effectiveCompactionState,
       generateConversationTitle,
       chatMode,
       messageModelMap,
+      normalizeAssistantGroupBoundaryMessageIds,
       reasoningLevel,
       resolveReasoningLevelForMessages,
       serializeMessageModelMap,
@@ -3155,25 +3416,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return
     }
 
-    setChatMessages((prevChatHistory) =>
-      prevChatHistory.map((message) => {
-        if (message.id === focusedMessageId && message.role === 'user') {
-          const nextMentionables = removeSelectionMentionable(
-            message.mentionables,
-          )
-          if (nextMentionables.length === message.mentionables.length) {
-            return message
-          }
-          return {
-            ...message,
-            mentionables: nextMentionables,
-            promptContent: null,
-          }
-        }
+    updateHistoricalUserMessage(focusedMessageId, (message) => {
+      const nextMentionables = removeSelectionMentionable(message.mentionables)
+      if (nextMentionables.length === message.mentionables.length) {
         return message
-      }),
-    )
-  }, [focusedMessageId, inputMessage.id, removeSelectionMentionable])
+      }
+
+      return {
+        ...message,
+        mentionables: nextMentionables,
+        promptContent: null,
+      }
+    })
+  }, [
+    focusedMessageId,
+    inputMessage.id,
+    removeSelectionMentionable,
+    updateHistoricalUserMessage,
+  ])
 
   // 从所有消息中删除指定的 mentionable，并清空 promptContent 以便重新编译
   const handleMentionableDeleteFromAll = useCallback(
@@ -3186,24 +3446,77 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       // 从所有历史消息中删除
-      setChatMessages((prevMessages) =>
-        prevMessages.map((message) => {
-          if (message.role !== 'user') return message
-          const filtered = message.mentionables.filter(
-            (m) =>
-              getMentionableKey(serializeMentionable(m)) !== mentionableKey,
-          )
-          // 如果 mentionables 变化了，清空 promptContent 以便下次重新编译
-          if (filtered.length !== message.mentionables.length) {
-            return {
-              ...message,
-              mentionables: filtered,
-              promptContent: null,
-            }
-          }
-          return message
-        }),
+      const sourceMessages = chatMessagesStateRef.current
+      let didChangeHistory = false
+      const nextMessages = sourceMessages.flatMap((message) => {
+        if (message.role !== 'user') {
+          return [message]
+        }
+
+        const filtered = message.mentionables.filter(
+          (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
+        )
+        if (filtered.length === message.mentionables.length) {
+          return [message]
+        }
+        didChangeHistory = true
+
+        const nextMessage: ChatUserMessage = {
+          ...message,
+          mentionables: filtered,
+          promptContent: null,
+        }
+
+        return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
+      })
+      const nextAssistantGroupBoundaryMessageIds =
+        buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
+          sourceMessages,
+          nextMessages,
+          assistantGroupBoundaryMessageIds,
+        )
+
+      if (didChangeHistory) {
+        chatMessagesStateRef.current = nextMessages
+        setChatMessages(nextMessages)
+        setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
+      }
+
+      const retainedUserMessageIds = new Set(
+        nextMessages
+          .filter((message): message is ChatUserMessage => message.role === 'user')
+          .map((message) => message.id),
       )
+
+      setFocusedMessageId((prev) =>
+        prev && !retainedUserMessageIds.has(prev) && prev !== inputMessage.id
+          ? inputMessage.id
+          : prev,
+      )
+      setMessageModelMap(
+        (prev) =>
+          new Map(
+            Array.from(prev.entries()).filter(([messageId]) =>
+              retainedUserMessageIds.has(messageId),
+            ),
+          ),
+      )
+      setMessageReasoningMap(
+        (prev) =>
+          new Map(
+            Array.from(prev.entries()).filter(([messageId]) =>
+              retainedUserMessageIds.has(messageId),
+            ),
+          ),
+      )
+
+      const nextActiveBranchByUserMessageId = new Map(
+        Array.from(activeBranchByUserMessageIdRef.current.entries()).filter(
+          ([messageId]) => retainedUserMessageIds.has(messageId),
+        ),
+      )
+      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
+      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
 
       // 从当前输入消息中删除
       setInputMessage((prev) => ({
@@ -3212,8 +3525,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
         ),
       }))
+      if (!didChangeHistory) {
+        return
+      }
+
+      if (nextMessages.length === 0) {
+        void deleteConversation(currentConversationId)
+        return
+      }
+
+      void persistConversation(nextMessages, nextAssistantGroupBoundaryMessageIds)
     },
-    [updateAutoAttachCurrentFile],
+    [
+      assistantGroupBoundaryMessageIds,
+      buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
+      currentConversationId,
+      deleteConversation,
+      inputMessage.id,
+      isUserMessageEffectivelyEmpty,
+      persistConversation,
+      updateAutoAttachCurrentFile,
+    ],
   )
 
   useImperativeHandle(ref, () => ({
@@ -3897,22 +4229,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             }
             onBlur={() => {
               if (focusedMessageId === messageOrGroup.id) {
+                finalizeHistoricalUserMessageEdit(messageOrGroup.id)
                 setFocusedMessageId(inputMessage.id)
               }
             }}
             onInputChange={(content) => {
-              setChatMessages((prevChatHistory) =>
-                prevChatHistory.map((msg) =>
-                  msg.role === 'user' && msg.id === messageOrGroup.id
-                    ? {
-                        ...msg,
-                        content,
-                        promptContent: null,
-                        similaritySearchResults: undefined,
-                      }
-                    : msg,
-                ),
-              )
+              updateHistoricalUserMessage(messageOrGroup.id, (message) => ({
+                ...message,
+                content,
+                promptContent: null,
+                similaritySearchResults: undefined,
+              }))
             }}
             onSubmit={(content, useVaultSearch) => {
               if (
@@ -3920,6 +4247,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 messageOrGroup.mentionables.length === 0 &&
                 (messageOrGroup.selectedSkills?.length ?? 0) === 0
               ) {
+                finalizeHistoricalUserMessageEdit(messageOrGroup.id)
+                chatUserInputRefs.current.get(inputMessage.id)?.focus()
                 return
               }
               const modelForThisMessage =
@@ -3982,47 +4311,36 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               setFocusedMessageId(messageOrGroup.id)
             }}
             onMentionablesChange={(mentionables) => {
-              setChatMessages((prevChatHistory) =>
-                prevChatHistory.map((msg) => {
-                  if (msg.id !== messageOrGroup.id) return msg
-                  if (msg.role !== 'user') return msg
-                  const prevKeys = msg.mentionables.map((m) =>
-                    getMentionableKey(serializeMentionable(m)),
-                  )
-                  const nextKeys = mentionables.map((m) =>
-                    getMentionableKey(serializeMentionable(m)),
-                  )
-                  const nextKeySet = new Set(nextKeys)
-                  const isSameMentionables =
-                    prevKeys.length === nextKeys.length &&
-                    prevKeys.every((key) => nextKeySet.has(key))
-                  return {
-                    ...msg,
-                    mentionables,
-                    promptContent: isSameMentionables
-                      ? msg.promptContent
-                      : null,
-                    similaritySearchResults: isSameMentionables
-                      ? msg.similaritySearchResults
-                      : undefined,
-                  }
-                }),
-              )
+              updateHistoricalUserMessage(messageOrGroup.id, (message) => {
+                const prevKeys = message.mentionables.map((m) =>
+                  getMentionableKey(serializeMentionable(m)),
+                )
+                const nextKeys = mentionables.map((m) =>
+                  getMentionableKey(serializeMentionable(m)),
+                )
+                const nextKeySet = new Set(nextKeys)
+                const isSameMentionables =
+                  prevKeys.length === nextKeys.length &&
+                  prevKeys.every((key) => nextKeySet.has(key))
+
+                return {
+                  ...message,
+                  mentionables,
+                  promptContent: isSameMentionables ? message.promptContent : null,
+                  similaritySearchResults: isSameMentionables
+                    ? message.similaritySearchResults
+                    : undefined,
+                }
+              })
             }}
             onSelectedSkillsChange={(selectedSkills) => {
-              setChatMessages((prevChatHistory) =>
-                prevChatHistory.map((msg) =>
-                  msg.role === 'user' && msg.id === messageOrGroup.id
-                    ? {
-                        ...msg,
-                        selectedSkills,
-                        promptContent: null,
-                        snapshotRef: undefined,
-                        similaritySearchResults: undefined,
-                      }
-                    : msg,
-                ),
-              )
+              updateHistoricalUserMessage(messageOrGroup.id, (message) => ({
+                ...message,
+                selectedSkills,
+                promptContent: null,
+                snapshotRef: undefined,
+                similaritySearchResults: undefined,
+              }))
             }}
             modelId={
               messageModelMap.get(messageOrGroup.id) ?? conversationModelId
@@ -4151,6 +4469,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       reasoningLevel,
       shouldHidePendingAssistantPlaceholders,
       undoingEditSummaryTarget,
+      updateHistoricalUserMessage,
+      finalizeHistoricalUserMessageEdit,
     ],
   )
 

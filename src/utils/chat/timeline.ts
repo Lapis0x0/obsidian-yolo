@@ -173,6 +173,7 @@ export const getDefaultTimelineEstimatedHeight = (
 
 type BuildMessageTimelineItemsParams = {
   groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
+  assistantGroupBoundaryMessageIds?: readonly string[]
   activeEditableMessageId?: string | null
   activeStreamingMessageId?: string | null
   includeBottomAnchor?: boolean
@@ -180,22 +181,32 @@ type BuildMessageTimelineItemsParams = {
 
 export const buildMessageTimelineItems = ({
   groupedChatMessages,
+  assistantGroupBoundaryMessageIds = [],
   activeEditableMessageId,
   activeStreamingMessageId,
   includeBottomAnchor = false,
 }: BuildMessageTimelineItemsParams): ChatTimelineItem[] => {
+  const assistantGroupBoundaryMessageIdSet = new Set(
+    assistantGroupBoundaryMessageIds,
+  )
   const items: ChatTimelineItem[] = groupedChatMessages.map((messageOrGroup, index) => {
     const previousItem = groupedChatMessages[index - 1]
+    const firstMessageId = Array.isArray(messageOrGroup)
+      ? (messageOrGroup.at(0)?.id ?? 'assistant-group')
+      : messageOrGroup.id
     const spacingBefore =
       (index === 0 ? TIMELINE_START_SPACING : 0) +
+      ((Array.isArray(messageOrGroup) &&
+        previousItem &&
+        !Array.isArray(previousItem)) ||
       (Array.isArray(messageOrGroup) &&
-      previousItem &&
-      !Array.isArray(previousItem)
+        previousItem &&
+        Array.isArray(previousItem) &&
+        assistantGroupBoundaryMessageIdSet.has(firstMessageId))
         ? USER_TO_ASSISTANT_SPACING
         : 0)
 
     if (Array.isArray(messageOrGroup)) {
-      const firstMessageId = messageOrGroup.at(0)?.id ?? 'assistant-group'
       const lastMessageId = messageOrGroup.at(-1)?.id ?? firstMessageId
       return {
         kind: 'assistant-group',
@@ -239,6 +250,7 @@ export const buildMessageTimelineItems = ({
 
 type BuildChatTimelineItemsParams = {
   groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
+  assistantGroupBoundaryMessageIds?: readonly string[]
   compactionDividerAnchorMessageIds: string[]
   latestCompaction: ChatConversationCompaction | null
   pendingCompactionAnchorMessageId?: string | null
@@ -251,6 +263,7 @@ type BuildChatTimelineItemsParams = {
 
 export const buildChatTimelineItems = ({
   groupedChatMessages,
+  assistantGroupBoundaryMessageIds = [],
   compactionDividerAnchorMessageIds,
   latestCompaction,
   pendingCompactionAnchorMessageId = null,
@@ -267,6 +280,7 @@ export const buildChatTimelineItems = ({
   )
   const messageItems = buildMessageTimelineItems({
     groupedChatMessages,
+    assistantGroupBoundaryMessageIds,
     activeEditableMessageId,
     activeStreamingMessageId,
   })

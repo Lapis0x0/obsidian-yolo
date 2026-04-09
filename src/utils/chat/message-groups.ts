@@ -6,7 +6,9 @@ import {
 
 export function groupAssistantAndToolMessages(
   messages: ChatMessage[],
+  assistantGroupBoundaryMessageIds: readonly string[] = [],
 ): (ChatUserMessage | AssistantToolMessageGroup)[] {
+  const breakBeforeMessageIdSet = new Set(assistantGroupBoundaryMessageIds)
   return messages.reduce(
     (
       acc: (ChatUserMessage | AssistantToolMessageGroup)[],
@@ -22,7 +24,8 @@ export function groupAssistantAndToolMessages(
         // If last item is an array (a group), and current message is an assistant or tool message, add to group
         if (
           Array.isArray(lastItem) &&
-          (message.role === 'assistant' || message.role === 'tool')
+          (message.role === 'assistant' || message.role === 'tool') &&
+          !breakBeforeMessageIdSet.has(message.id)
         ) {
           lastItem.push(message)
         } else {

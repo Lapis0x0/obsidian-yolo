@@ -81,6 +81,7 @@ type UseChatHistory = {
     activeBranchByUserMessageId?: Record<string, string>,
     reasoningLevel?: string,
     compaction?: ChatConversationCompactionState,
+    assistantGroupBoundaryMessageIds?: string[],
   ) => Promise<void> | undefined
   createOrUpdateConversationImmediately: (
     id: string,
@@ -91,6 +92,7 @@ type UseChatHistory = {
     activeBranchByUserMessageId?: Record<string, string>,
     reasoningLevel?: string,
     compaction?: ChatConversationCompactionState,
+    assistantGroupBoundaryMessageIds?: string[],
   ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
@@ -100,6 +102,7 @@ type UseChatHistory = {
     conversationModelId?: string
     messageModelMap?: Record<string, string>
     activeBranchByUserMessageId?: Record<string, string>
+    assistantGroupBoundaryMessageIds?: string[]
     reasoningLevel?: string
     compaction?: ChatConversationCompactionState
   } | null>
@@ -177,6 +180,7 @@ export function useChatHistory(): UseChatHistory {
       activeBranchByUserMessageId?: Record<string, string>,
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionLike | null,
+      assistantGroupBoundaryMessageIds?: string[],
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
@@ -213,6 +217,10 @@ export function useChatHistory(): UseChatHistory {
             existingConversation.activeBranchByUserMessageId ?? null,
             activeBranchByUserMessageId ?? null,
           ) &&
+          isEqual(
+            existingConversation.assistantGroupBoundaryMessageIds ?? null,
+            assistantGroupBoundaryMessageIds ?? null,
+          ) &&
           existingConversation.reasoningLevel === reasoningLevel &&
           isEqual(existingCompaction, normalizedCompaction)
         ) {
@@ -236,6 +244,10 @@ export function useChatHistory(): UseChatHistory {
             activeBranchByUserMessageId === undefined
               ? existingConversation.activeBranchByUserMessageId
               : activeBranchByUserMessageId,
+          assistantGroupBoundaryMessageIds:
+            assistantGroupBoundaryMessageIds === undefined
+              ? existingConversation.assistantGroupBoundaryMessageIds
+              : assistantGroupBoundaryMessageIds,
           reasoningLevel,
           compaction:
             compaction === undefined
@@ -254,6 +266,7 @@ export function useChatHistory(): UseChatHistory {
           conversationModelId,
           messageModelMap,
           activeBranchByUserMessageId,
+          assistantGroupBoundaryMessageIds,
           reasoningLevel,
           compaction: normalizedCompaction,
         })
@@ -290,6 +303,7 @@ export function useChatHistory(): UseChatHistory {
       activeBranchByUserMessageId?: Record<string, string>,
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionState,
+      assistantGroupBoundaryMessageIds?: string[],
     ): Promise<void> | undefined =>
       debouncedCreateOrUpdateConversation(
         id,
@@ -300,6 +314,7 @@ export function useChatHistory(): UseChatHistory {
         activeBranchByUserMessageId,
         reasoningLevel,
         compaction,
+        assistantGroupBoundaryMessageIds,
       ),
     [debouncedCreateOrUpdateConversation],
   )
@@ -314,6 +329,7 @@ export function useChatHistory(): UseChatHistory {
       activeBranchByUserMessageId?: Record<string, string>,
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionState,
+      assistantGroupBoundaryMessageIds?: string[],
     ): Promise<void> => {
       debouncedCreateOrUpdateConversation.cancel()
       await persistConversationInternal(
@@ -325,6 +341,7 @@ export function useChatHistory(): UseChatHistory {
         activeBranchByUserMessageId,
         reasoningLevel,
         compaction,
+        assistantGroupBoundaryMessageIds,
       )
     },
     [debouncedCreateOrUpdateConversation, persistConversationInternal],
@@ -361,6 +378,7 @@ export function useChatHistory(): UseChatHistory {
       conversationModelId?: string
       messageModelMap?: Record<string, string>
       activeBranchByUserMessageId?: Record<string, string>
+      assistantGroupBoundaryMessageIds?: string[]
       reasoningLevel?: string
       compaction?: ChatConversationCompactionState
     } | null> => {
@@ -374,6 +392,8 @@ export function useChatHistory(): UseChatHistory {
         conversationModelId: conversation.conversationModelId,
         messageModelMap: conversation.messageModelMap,
         activeBranchByUserMessageId: conversation.activeBranchByUserMessageId,
+        assistantGroupBoundaryMessageIds:
+          conversation.assistantGroupBoundaryMessageIds,
         reasoningLevel: conversation.reasoningLevel,
         compaction: normalizeChatConversationCompactionState(
           conversation.compaction,

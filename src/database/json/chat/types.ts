@@ -20,6 +20,7 @@ export type ChatConversation = {
   conversationModelId?: string
   messageModelMap?: Record<string, string>
   activeBranchByUserMessageId?: Record<string, string>
+  assistantGroupBoundaryMessageIds?: string[]
   reasoningLevel?: string
   compaction?: ChatConversationCompactionLike | null
 }
