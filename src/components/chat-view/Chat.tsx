@@ -1,7 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import cx from 'clsx'
-import { History, Plus } from 'lucide-react'
+import { Download, History, Plus } from 'lucide-react'
 import { MarkdownView, Notice, Platform, TFile } from 'obsidian'
 import type { TFolder } from 'obsidian'
 import {
@@ -36,6 +36,7 @@ import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
+import { useChatManager } from '../../hooks/useJsonManagers'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
@@ -74,6 +75,7 @@ import {
 import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { exportChatConversationToVault } from '../../utils/chat/exportConversation'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
 import { readTFileContent } from '../../utils/obsidian'
@@ -536,6 +538,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     generateConversationTitle,
     chatList,
   } = useChatHistory()
+  const chatManager = useChatManager()
   const [conversationAssistantId, setConversationAssistantId] =
     useState<string>(settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID)
   const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
@@ -1765,6 +1768,35 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentConversationId,
     props.onConversationContextChange,
   ])
+
+  const handleExportChatToVault = useCallback(
+    (conversationId: string) => {
+      void (async () => {
+        try {
+          const { path } = await exportChatConversationToVault({
+            app,
+            chatManager,
+            conversationId,
+            settings,
+            chatExportFolder:
+              settings.chatOptions.chatExportFolder ?? 'YOLO Exports',
+          })
+          new Notice(
+            t('sidebar.chat.exportSuccess', 'Exported chat to {path}').replace(
+              '{path}',
+              path,
+            ),
+          )
+        } catch (error) {
+          console.error('Failed to export conversation', error)
+          new Notice(
+            t('sidebar.chat.exportError', 'Could not export conversation'),
+          )
+        }
+      })()
+    },
+    [app, chatManager, settings, t],
+  )
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
     const newId = uuidv4()
@@ -3499,6 +3531,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             >
               <Plus size={18} />
             </button>
+            <button
+              type="button"
+              onClick={() => handleExportChatToVault(currentConversationId)}
+              className="clickable-icon"
+              aria-label={t(
+                'sidebar.chatList.exportConversation',
+                'Export conversation to vault',
+              )}
+              title={t(
+                'sidebar.chatList.exportConversation',
+                'Export conversation to vault',
+              )}
+            >
+              <Download size={18} />
+            </button>
             <ChatListDropdown
               chatList={chatList}
               currentConversationId={currentConversationId}
@@ -3553,6 +3600,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   },
                 )
               }}
+              onExportConversation={handleExportChatToVault}
             >
               <History size={18} />
             </ChatListDropdown>

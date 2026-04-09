@@ -47,6 +47,7 @@ describe('parseSmartComposerSettings', () => {
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},
       tabTitleFollowsConversation: true,
+      chatExportFolder: 'YOLO Exports',
     })
 
     expect(result.notificationOptions).toMatchObject({

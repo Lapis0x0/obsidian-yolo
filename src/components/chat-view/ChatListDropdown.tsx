@@ -1,13 +1,21 @@
 import * as Popover from '@radix-ui/react-popover'
-import { Check, Pencil, RotateCcw, Search, Star, Trash2 } from 'lucide-react'
+import {
+  Check,
+  Download,
+  Pencil,
+  RotateCcw,
+  Search,
+  Star,
+  Trash2,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import { ChatConversationMetadata } from '../../database/json/chat/types'
+import type { ChatConversationMetadata } from '../../database/json/chat/types'
 import { useChatManager } from '../../hooks/useJsonManagers'
-import { SerializedChatMessage } from '../../types/chat'
-import { ContentPart } from '../../types/llm/request'
+import type { SerializedChatMessage } from '../../types/chat'
+import type { ContentPart } from '../../types/llm/request'
 import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
 
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
@@ -67,6 +75,7 @@ function ChatListItem({
   onDelete,
   onTogglePinned,
   onRetryTitle,
+  onExport,
   onStartEdit,
   onFinishEdit,
 }: {
@@ -83,6 +92,7 @@ function ChatListItem({
   onDelete: () => void
   onTogglePinned: () => void
   onRetryTitle: () => void
+  onExport: () => void
   onStartEdit: () => void
   onFinishEdit: (title: string) => void
 }) {
@@ -204,6 +214,24 @@ function ChatListItem({
           type="button"
           onClick={(e) => {
             e.stopPropagation()
+            onExport()
+          }}
+          className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
+          aria-label={t(
+            'sidebar.chatList.exportConversation',
+            'Export conversation to vault',
+          )}
+          title={t(
+            'sidebar.chatList.exportConversation',
+            'Export conversation to vault',
+          )}
+        >
+          <Download size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
             onDelete()
           }}
           className="clickable-icon smtcmp-chat-list-dropdown-item-icon"
@@ -271,6 +299,7 @@ export function ChatListDropdown({
   onUpdateTitle,
   onTogglePinned,
   onRetryTitle,
+  onExportConversation,
   children,
 }: {
   chatList: ChatConversationMetadata[]
@@ -286,6 +315,7 @@ export function ChatListDropdown({
   ) => void | Promise<void>
   onTogglePinned: (conversationId: string) => void | Promise<void>
   onRetryTitle: (conversationId: string) => void | Promise<void>
+  onExportConversation: (conversationId: string) => void | Promise<void>
   children: React.ReactNode
 }) {
   const { t } = useLanguage()
@@ -762,6 +792,13 @@ export function ChatListDropdown({
                           console.error('Failed to toggle pin', error)
                         },
                       )
+                    }}
+                    onExport={() => {
+                      void Promise.resolve(
+                        onExportConversation(chat.id),
+                      ).catch((error) => {
+                        console.error('Failed to export conversation', error)
+                      })
                     }}
                     onStartEdit={() => {
                       setEditingId(chat.id)

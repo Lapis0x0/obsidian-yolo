@@ -348,6 +348,8 @@ export const smartComposerSettingsSchema = z.object({
         .min(0)
         .max(1)
         .optional(),
+      // Vault-relative folder for exported chat Markdown notes
+      chatExportFolder: z.string().optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -366,6 +368,7 @@ export const smartComposerSettingsSchema = z.object({
       autoContextCompactionThresholdMode: 'tokens',
       autoContextCompactionThresholdTokens: 24000,
       autoContextCompactionThresholdRatio: 0.8,
+      chatExportFolder: 'YOLO Exports',
     }),
 
   notificationOptions: notificationOptionsSchema,
