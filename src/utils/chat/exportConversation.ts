@@ -293,9 +293,6 @@ function appendAssistantMessageToLines(
   lines: string[],
 ): void {
   lines.push('## Assistant', '')
-  if (message.content?.trim()) {
-    lines.push(message.content.trim(), '')
-  }
   if (message.reasoning?.trim()) {
     lines.push(
       '> [!note]- Thinking',
@@ -303,6 +300,74 @@ function appendAssistantMessageToLines(
       '',
     )
   }
+  if (message.content?.trim()) {
+    lines.push(message.content.trim(), '')
+  }
+}
+
+const MENTIONED_VAULT_FILES_HEADING = '## Mentioned Vault Files (outline only)'
+const MENTIONED_VAULT_FILES_EXPLANATION =
+  'This section provides only paths and outlines. Use file tools only if you need the full contents or a specific line range.'
+
+function extractMentionedVaultFilesSection(body: string): {
+  bodyWithoutMentionedSection: string
+  mentionedSection: string | null
+} {
+  const trimmedBody = body.trim()
+  if (!trimmedBody.startsWith(MENTIONED_VAULT_FILES_HEADING)) {
+    return {
+      bodyWithoutMentionedSection: body,
+      mentionedSection: null,
+    }
+  }
+
+  const explanationIndex = trimmedBody.indexOf(MENTIONED_VAULT_FILES_EXPLANATION)
+  if (explanationIndex === -1) {
+    return {
+      bodyWithoutMentionedSection: body,
+      mentionedSection: null,
+    }
+  }
+
+  const sectionEnd =
+    explanationIndex + MENTIONED_VAULT_FILES_EXPLANATION.length
+  const mentionedSection = trimmedBody.slice(0, sectionEnd).trim()
+  const remainingBody = trimmedBody.slice(sectionEnd).trim()
+
+  return {
+    bodyWithoutMentionedSection: remainingBody,
+    mentionedSection,
+  }
+}
+
+function appendMentionedVaultFilesCalloutToLines(
+  mentionedSection: string,
+  lines: string[],
+): void {
+  const normalizedLines = mentionedSection
+    .split('\n')
+    .filter((line, index, allLines) => {
+      if (index === 0 && line.trim() === MENTIONED_VAULT_FILES_HEADING) {
+        return false
+      }
+
+      const previousLine = allLines[index - 1]
+      return !(
+        line.trim() === '' &&
+        typeof previousLine === 'string' &&
+        previousLine.trim() === ''
+      )
+    })
+
+  if (normalizedLines.length === 0) {
+    return
+  }
+
+  lines.push(
+    '> [!info]- Mentioned vault files',
+    ...normalizedLines.map((line) => (line.length > 0 ? `> ${line}` : '>')),
+    '',
+  )
 }
 
 function appendToolMessageToLines(
@@ -423,10 +488,17 @@ export function conversationToMarkdown(
         promptText.trim().length > 0
           ? promptText.trim()
           : editorText.trim()
+      const {
+        bodyWithoutMentionedSection,
+        mentionedSection,
+      } = extractMentionedVaultFilesSection(body)
 
       lines.push('## User', '')
-      if (body) {
-        lines.push(body, '')
+      if (mentionedSection) {
+        appendMentionedVaultFilesCalloutToLines(mentionedSection, lines)
+      }
+      if (bodyWithoutMentionedSection) {
+        lines.push(bodyWithoutMentionedSection, '')
       }
       if (user.mentionables?.length) {
         const refs = mentionablesToMarkdownLines(user.mentionables)

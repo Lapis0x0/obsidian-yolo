@@ -1,6 +1,73 @@
 import { conversationToMarkdown } from './exportConversation'
 
 describe('conversationToMarkdown', () => {
+  it('renders assistant thinking before the final response content', () => {
+    const markdown = conversationToMarkdown(
+      {
+        schemaVersion: 1,
+        id: 'conversation-1',
+        title: 'Export test',
+        createdAt: 0,
+        updatedAt: 0,
+        messages: [
+          {
+            role: 'assistant',
+            id: 'assistant-1',
+            content: 'final answer',
+            reasoning: 'reasoning trace',
+          },
+        ],
+      },
+      {
+        snapshotEntries: {},
+        exportedAtIso: '2026-04-09T00:00:00.000Z',
+      },
+    )
+
+    expect(markdown.indexOf('> [!note]- Thinking')).toBeGreaterThan(
+      markdown.indexOf('## Assistant'),
+    )
+    expect(markdown.indexOf('reasoning trace')).toBeLessThan(
+      markdown.indexOf('final answer'),
+    )
+  })
+
+  it('renders mentioned vault files as a collapsed callout in user messages', () => {
+    const markdown = conversationToMarkdown(
+      {
+        schemaVersion: 1,
+        id: 'conversation-1',
+        title: 'Export test',
+        createdAt: 0,
+        updatedAt: 0,
+        messages: [
+          {
+            role: 'user',
+            id: 'user-1',
+            content: null,
+            promptContent: `## Mentioned Vault Files (outline only)
+- \`Folder/Test.md\`
+  - L1 # Intro
+
+This section provides only paths and outlines. Use file tools only if you need the full contents or a specific line range.
+
+@Folder/Test.md 看一下`,
+            mentionables: [],
+          },
+        ],
+      },
+      {
+        snapshotEntries: {},
+        exportedAtIso: '2026-04-09T00:00:00.000Z',
+      },
+    )
+
+    expect(markdown).toContain('> [!info]- Mentioned vault files')
+    expect(markdown).toContain('> - `Folder/Test.md`')
+    expect(markdown).toContain('@Folder/Test.md 看一下')
+    expect(markdown).not.toContain('## Mentioned Vault Files (outline only)')
+  })
+
   it('does not include a blank line or title heading after frontmatter', () => {
     const markdown = conversationToMarkdown(
       {
