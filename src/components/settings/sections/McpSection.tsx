@@ -83,7 +83,7 @@ export function McpSection({ app, plugin, embedded = false }: McpSectionProps) {
         <strong>Warning:</strong> {t('settings.mcp.warning')}
       </div>
 
-      {mcpManager?.disabled ? (
+      {mcpManager?.remoteMcpDisabled ? (
         <div className="smtcmp-settings-sub-header-container">
           <div className="smtcmp-settings-sub-header">
             {t('settings.mcp.notSupportedOnMobile')}

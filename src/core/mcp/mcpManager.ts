@@ -45,7 +45,7 @@ export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
 export class McpManager {
   static readonly TOOL_NAME_DELIMITER = '__' // Delimiter for tool name construction (serverName__toolName)
 
-  public readonly disabled = !Platform.isDesktop // MCP should be disabled on mobile since it doesn't support node.js
+  public readonly remoteMcpDisabled = !Platform.isDesktop // Remote MCP should be disabled on mobile since it doesn't support node.js
 
   private readonly app: App
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
@@ -134,7 +134,7 @@ export class McpManager {
   }
 
   public async initialize() {
-    if (this.disabled) {
+    if (this.remoteMcpDisabled) {
       return
     }
 
@@ -275,7 +275,7 @@ export class McpManager {
   private async connectServer(
     serverConfig: McpServerConfig,
   ): Promise<McpServerState> {
-    if (this.disabled) {
+    if (this.remoteMcpDisabled) {
       throw new McpNotAvailableException()
     }
 
@@ -447,39 +447,39 @@ export class McpManager {
   }: {
     includeBuiltinTools?: boolean
   } = {}): Promise<McpTool[]> {
-    if (this.disabled) {
-      return []
-    }
-
     const cacheKey = this.getAvailableToolsCacheKey(includeBuiltinTools)
     const cached = this.availableToolsCache.get(cacheKey)
     if (cached) {
       return cached
     }
 
-    const availableTools = (
-      await Promise.all(
-        this.servers.map(async (server): Promise<McpTool[]> => {
-          if (server.status !== McpServerStatus.Connected) {
-            return []
-          }
-          try {
-            const toolList = await server.client.listTools()
-            return toolList.tools
-              .filter((tool) => !server.config.toolOptions[tool.name]?.disabled)
-              .map((tool) => ({
-                ...tool,
-                name: getToolName(server.name, tool.name),
-              }))
-          } catch (error) {
-            console.error(
-              `Failed to list tools for MCP server ${server.name}: ${error instanceof Error ? error.message : String(error)}`,
-            )
-            return []
-          }
-        }),
-      )
-    ).flat()
+    const availableTools = this.remoteMcpDisabled
+      ? []
+      : (
+          await Promise.all(
+            this.servers.map(async (server): Promise<McpTool[]> => {
+              if (server.status !== McpServerStatus.Connected) {
+                return []
+              }
+              try {
+                const toolList = await server.client.listTools()
+                return toolList.tools
+                  .filter(
+                    (tool) => !server.config.toolOptions[tool.name]?.disabled,
+                  )
+                  .map((tool) => ({
+                    ...tool,
+                    name: getToolName(server.name, tool.name),
+                  }))
+              } catch (error) {
+                console.error(
+                  `Failed to list tools for MCP server ${server.name}: ${error instanceof Error ? error.message : String(error)}`,
+                )
+                return []
+              }
+            }),
+          )
+        ).flat()
 
     const nextTools = includeBuiltinTools
       ? [
@@ -584,10 +584,6 @@ export class McpManager {
     signal?: AbortSignal
     requireReview?: boolean
   }): Promise<ToolCallResponse> {
-    if (this.disabled) {
-      throw new McpNotAvailableException()
-    }
-
     const toolAbortController = new AbortController()
     if (id !== undefined) {
       const existingAbortController = this.activeToolCalls.get(id)
@@ -646,6 +642,10 @@ export class McpManager {
           status: ToolCallResponseStatus.Error,
           error: localResult.error,
         }
+      }
+
+      if (this.remoteMcpDisabled) {
+        throw new McpNotAvailableException()
       }
 
       const server = this.servers.find((server) => server.name === serverName)
@@ -710,9 +710,6 @@ export class McpManager {
   }
 
   public abortToolCall(id: string): boolean {
-    if (this.disabled) {
-      return false
-    }
     const toolAbortController = this.activeToolCalls.get(id)
     if (toolAbortController) {
       toolAbortController.abort()

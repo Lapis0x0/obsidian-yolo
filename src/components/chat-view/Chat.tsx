@@ -775,9 +775,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     useState<ConversationOverrideSettings | null>(null)
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
     const defaultMode = settings.chatOptions.chatMode ?? 'chat'
-    if (!Platform.isDesktop && defaultMode === 'agent') {
-      return 'chat'
-    }
     return defaultMode
   })
 
@@ -1836,11 +1833,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           loadedChatModeRaw === 'agent' || loadedChatModeRaw === 'chat'
             ? loadedChatModeRaw
             : (settings.chatOptions.chatMode ?? 'chat')
-        setChatMode(
-          !Platform.isDesktop && loadedChatMode === 'agent'
-            ? 'chat'
-            : loadedChatMode,
-        )
+        setChatMode(loadedChatMode)
         if (conversation.overrides) {
           conversationOverridesRef.current.set(
             conversationId,
@@ -1991,11 +1984,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setAutoAttachCurrentFile(true)
     setConversationOverrides(null)
     const defaultChatMode = chatMode
-    setChatMode(
-      !Platform.isDesktop && defaultChatMode === 'agent'
-        ? 'chat'
-        : defaultChatMode,
-    )
+    setChatMode(defaultChatMode)
     const defaultConversationModelId =
       selectedAssistant?.modelId ?? settings.chatModelId
     conversationModelIdRef.current.set(newId, defaultConversationModelId)
@@ -2122,10 +2111,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         rawNextChatMode === 'agent' || rawNextChatMode === 'chat'
           ? rawNextChatMode
           : chatMode
-      const nextChatMode =
-        !Platform.isDesktop && resolvedNextChatMode === 'agent'
-          ? 'chat'
-          : resolvedNextChatMode
+      const nextChatMode = resolvedNextChatMode
       const storedAutoAttach = nextOverrides?.autoAttachCurrentFile
       const resolvedAutoAttach =
         typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
@@ -3859,8 +3845,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleChatModeChange = useCallback(
     (nextMode: ChatMode) => {
-      const resolvedMode =
-        !Platform.isDesktop && nextMode === 'agent' ? 'chat' : nextMode
+      const resolvedMode = nextMode
 
       if (
         resolvedMode === 'agent' &&
@@ -4391,8 +4376,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               chatSurfacePreset.userMessage.showReasoningSelect
             }
             allowAgentModeOption={
-              chatSurfacePreset.userMessage.allowAgentModeOption &&
-              Platform.isDesktop
+              chatSurfacePreset.userMessage.allowAgentModeOption
             }
           />
         )
@@ -4689,7 +4673,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   }
                   currentChatMode={chatMode}
                   onSelectChatModeForConversation={handleChatModeChange}
-                  allowAgentModeOption={Platform.isDesktop}
+                  allowAgentModeOption={true}
                   enableResize
                   onRunSlashCommand={(command) => {
                     if (command.id === 'compact-context') {

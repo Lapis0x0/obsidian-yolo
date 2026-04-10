@@ -737,14 +737,14 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   fill: transparent;
 }
 
-.smtcmp-chat-list-pin-button.is-pinned {
+.smtcmp-popover li .smtcmp-chat-list-pin-button.is-pinned {
   color: var(--text-normal);
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
 }
 
-.smtcmp-chat-list-pin-button.is-pinned svg {
+.smtcmp-popover li .smtcmp-chat-list-pin-button.is-pinned svg {
   fill: currentColor;
 }
 
