@@ -6,6 +6,7 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { SharedConversationSurface } from './SharedConversationSurface'
+import { UpdateBanner } from './UpdateBanner'
 
 type ChatConversationPaneProps = {
   chatMode: ChatMode
@@ -63,6 +64,7 @@ export function ChatConversationPane({
 
   return (
     <>
+      <UpdateBanner />
       <SharedConversationSurface
         items={chatTimelineItems}
         conversationId={currentConversationId}
@@ -77,28 +79,30 @@ export function ChatConversationPane({
         containerClassName="smtcmp-chat-conversation-surface"
         overlaySlot={
           showEmptyState ? (
-            <div className="smtcmp-chat-empty-state-overlay" aria-hidden="true">
-              <div className="smtcmp-chat-empty-state">
-                <div
-                  key={chatMode}
-                  className="smtcmp-chat-empty-state-icon"
-                  data-mode={chatMode}
-                >
-                  {chatMode === 'agent' ? (
-                    <Bot size={18} strokeWidth={2} />
-                  ) : (
-                    <MessageCircle size={18} strokeWidth={2} />
-                  )}
-                </div>
-                <div className="smtcmp-chat-empty-state-title">
-                  {chatMode === 'agent'
-                    ? emptyStateAgentTitle
-                    : emptyStateChatTitle}
-                </div>
-                <div className="smtcmp-chat-empty-state-description">
-                  {chatMode === 'agent'
-                    ? emptyStateAgentDescription
-                    : emptyStateChatDescription}
+            <div className="smtcmp-chat-empty-state-overlay">
+              <div className="smtcmp-chat-empty-state-overlay-inner">
+                <div className="smtcmp-chat-empty-state">
+                  <div
+                    key={chatMode}
+                    className="smtcmp-chat-empty-state-icon"
+                    data-mode={chatMode}
+                  >
+                    {chatMode === 'agent' ? (
+                      <Bot size={18} strokeWidth={2} />
+                    ) : (
+                      <MessageCircle size={18} strokeWidth={2} />
+                    )}
+                  </div>
+                  <div className="smtcmp-chat-empty-state-title">
+                    {chatMode === 'agent'
+                      ? emptyStateAgentTitle
+                      : emptyStateChatTitle}
+                  </div>
+                  <div className="smtcmp-chat-empty-state-description">
+                    {chatMode === 'agent'
+                      ? emptyStateAgentDescription
+                      : emptyStateChatDescription}
+                  </div>
                 </div>
               </div>
             </div>

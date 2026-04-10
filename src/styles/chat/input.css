@@ -1378,6 +1378,122 @@
   pointer-events: none;
 }
 
+.smtcmp-chat-empty-state-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.smtcmp-update-banner {
+  pointer-events: auto;
+  width: min(560px, calc(100% - var(--size-4-4)));
+  margin: 0 auto var(--size-4-3);
+  padding: var(--size-4-3);
+  border-radius: var(--radius-l);
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 8%,
+    var(--background-secondary)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+  box-shadow: 0 8px 24px
+    color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent);
+  text-align: left;
+}
+
+.smtcmp-update-banner-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+
+.smtcmp-update-banner-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+
+.smtcmp-update-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.smtcmp-update-banner-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  margin-bottom: var(--size-2-1);
+}
+
+.smtcmp-update-banner-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: var(--size-2-2);
+}
+
+.smtcmp-update-banner-notes {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  line-height: 1.45;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.smtcmp-update-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-s);
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+  appearance: none;
+  color: var(--text-muted);
+  cursor: var(--cursor);
+}
+
+.smtcmp-update-banner-dismiss:hover {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-normal);
+}
+
+.smtcmp-update-banner-dismiss:focus,
+.smtcmp-update-banner-dismiss:focus-visible,
+.smtcmp-update-banner-dismiss:active {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.smtcmp-update-banner-actions {
+  margin-top: var(--size-4-2);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
 .smtcmp-chat-empty-state-icon {
   width: 34px;
   height: 34px;

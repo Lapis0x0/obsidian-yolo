@@ -1296,4 +1296,11 @@ export const zh: TranslationKeys = {
     high: '高',
     extraHigh: '超高',
   },
+
+  update: {
+    newVersionAvailable: '新版本 {version} 已发布',
+    currentVersion: '当前版本',
+    viewDetails: '前往检查更新',
+    dismiss: '关闭',
+  },
 }

@@ -40,6 +40,10 @@ import { relocateYoloManagedData } from './core/paths/yoloManagedData'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
+import {
+  checkForUpdate,
+  type UpdateCheckResult,
+} from './core/update/updateChecker'
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
@@ -87,6 +91,10 @@ import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLe
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
   settingsChangeListeners: ((newSettings: SmartComposerSettings) => void)[] = []
+  updateCheckResult: UpdateCheckResult | null = null
+  private hasCheckedForUpdate = false
+  private updateBannerDismissed = false
+  private updateCheckListeners: (() => void)[] = []
   mcpManager: McpManager | null = null
   dbManager: DatabaseManager | null = null
   private dbManagerInitPromise: Promise<DatabaseManager> | null = null
@@ -1681,6 +1689,44 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         (l) => l !== listener,
       )
     }
+  }
+
+  isUpdateBannerDismissed(): boolean {
+    return this.updateBannerDismissed
+  }
+
+  addUpdateCheckListener(listener: () => void): () => void {
+    this.updateCheckListeners.push(listener)
+    return () => {
+      this.updateCheckListeners = this.updateCheckListeners.filter(
+        (l) => l !== listener,
+      )
+    }
+  }
+
+  private notifyUpdateCheckListeners(): void {
+    for (const listener of this.updateCheckListeners) {
+      listener()
+    }
+  }
+
+  dismissUpdateBanner(): void {
+    this.updateBannerDismissed = true
+    this.notifyUpdateCheckListeners()
+  }
+
+  checkForUpdateOnce(): void {
+    if (this.hasCheckedForUpdate) {
+      return
+    }
+    this.hasCheckedForUpdate = true
+    void (async () => {
+      const fetched = await checkForUpdate(this.manifest.version)
+      if (fetched?.hasUpdate) {
+        this.updateCheckResult = fetched
+        this.notifyUpdateCheckListeners()
+      }
+    })()
   }
 
   async openChatView(options?: {

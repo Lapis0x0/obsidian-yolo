@@ -73,6 +73,8 @@ export class ChatView extends ItemView {
     await this.applyDeferredPayload(pendingPayload)
 
     this.initialChatProps = undefined
+
+    void this.plugin.checkForUpdateOnce()
   }
 
   onClose(): Promise<void> {

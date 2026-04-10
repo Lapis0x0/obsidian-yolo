@@ -1387,4 +1387,11 @@ export const it: TranslationKeys = {
     high: 'Alto',
     extraHigh: 'Extra alto',
   },
+
+  update: {
+    newVersionAvailable: 'Nuova versione {version} disponibile',
+    currentVersion: 'Attuale',
+    viewDetails: 'Controlla aggiornamenti',
+    dismiss: 'Chiudi',
+  },
 }

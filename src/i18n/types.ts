@@ -1195,4 +1195,12 @@ export type TranslationKeys = {
     high?: string
     extraHigh?: string
   }
+
+  // Plugin update banner (GitHub release check)
+  update: {
+    newVersionAvailable: string
+    currentVersion: string
+    viewDetails: string
+    dismiss: string
+  }
 }
