@@ -272,6 +272,7 @@
   position: relative;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
 }
 
 .smtcmp-chat-container--sidebar {
@@ -302,6 +303,10 @@
   margin-inline-end: calc(var(--smtcmp-chat-sidebar-inline-padding) * -1);
 }
 
+.smtcmp-chat-container--sidebar > .smtcmp-chat-conversation-surface {
+  margin-inline-end: calc(var(--smtcmp-chat-sidebar-inline-padding) * -1);
+}
+
 .smtcmp-chat-container--centered > .smtcmp-chat-footer,
 .smtcmp-chat-container--centered > .smtcmp-chat-user-input-files,
 .smtcmp-chat-container--centered > .smtcmp-chat-input-wrapper {
@@ -319,6 +324,10 @@
 }
 
 .smtcmp-chat-container--centered > .smtcmp-chat-messages {
+  margin-inline: calc(var(--smtcmp-chat-host-inline-padding) * -1);
+}
+
+.smtcmp-chat-container--centered > .smtcmp-chat-conversation-surface {
   margin-inline: calc(var(--smtcmp-chat-host-inline-padding) * -1);
 }
 
@@ -1078,8 +1087,18 @@
   );
 }
 
+.smtcmp-chat-conversation-surface {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: hidden;
+}
+
 .smtcmp-chat-messages {
-  flex-grow: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   user-select: text;
   display: flex;
