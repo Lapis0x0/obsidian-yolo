@@ -66,15 +66,21 @@ export class DatabaseManager {
   ): Promise<DatabaseManager> {
     const dbPath = await ensureVectorDbPath(app, settings)
     const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
+    let createdNewDatabase = false
     void pluginDir
     try {
       dbManager.db = await dbManager.loadExistingDatabase()
     } catch (loadErr) {
       throw loadErr
     }
+    const migrationStateBefore =
+      dbManager.db && !createdNewDatabase
+        ? await dbManager.getMigrationState()
+        : null
     if (!dbManager.db) {
       try {
         dbManager.db = await dbManager.createNewDatabase()
+        createdNewDatabase = true
       } catch (createErr) {
         throw createErr;
       }
@@ -84,7 +90,16 @@ export class DatabaseManager {
     } catch (migrateErr) {
       throw migrateErr;
     }
-    await dbManager.save()
+    const migrationStateAfter =
+      dbManager.db && !createdNewDatabase
+        ? await dbManager.getMigrationState()
+        : null
+    const shouldSaveAfterInit =
+      createdNewDatabase || migrationStateBefore !== migrationStateAfter
+
+    if (shouldSaveAfterInit) {
+      await dbManager.save()
+    }
 
     // WeakMap setup
     const managers = { vectorManager: new VectorManager(app, dbManager.db) }
@@ -278,6 +293,35 @@ export class DatabaseManager {
     } catch (error) {
       console.error('Error migrating database:', error)
       throw error
+    }
+  }
+
+  private async getMigrationState(): Promise<string> {
+    if (!this.pgClient) {
+      return 'pgClient-unavailable'
+    }
+
+    try {
+      const migrationTableExists = await this.pgClient.query(
+        `SELECT to_regclass('public.drizzle_migrations') AS table_name`,
+      )
+      const tableName = (migrationTableExists.rows?.[0] as {
+        table_name?: string | null
+      } | undefined)?.table_name
+      if (!tableName) {
+        return 'missing'
+      }
+      const result = await this.pgClient.query(
+        `SELECT count(*)::text AS count, COALESCE(MAX(created_at)::text, '') AS latest_created_at FROM drizzle_migrations`,
+      )
+      const row = (result.rows?.[0] ?? {}) as {
+        count?: string
+        latest_created_at?: string
+      }
+      return `${row.count ?? '0'}:${row.latest_created_at ?? ''}`
+    } catch (error) {
+      console.warn('[YOLO] Failed to inspect drizzle_migrations', error)
+      return 'unknown'
     }
   }
 
