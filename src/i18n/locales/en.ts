@@ -1312,6 +1312,18 @@ export const en: TranslationKeys = {
     agentStatusRunning: 'Running',
     agentStatusWaitingApproval: 'Awaiting approval',
     agentStatusFallbackConversationTitle: 'Running conversation',
+    backgroundStatusAriaLabel:
+      'Background task status, click to inspect details',
+    backgroundStatusPanelTitle: 'Background tasks',
+    backgroundStatusPanelEmpty: 'There are no running background tasks',
+    backgroundTasksRunning: 'There are currently {count} background tasks running',
+    backgroundTasksNeedAttention: 'A background task needs attention',
+    ragAutoUpdateRunning: 'Knowledge base updating in background',
+    ragAutoUpdateRunningDetail:
+      'Incrementally synchronizing the knowledge base index.',
+    ragAutoUpdateFailed: 'Knowledge base auto-update failed',
+    ragAutoUpdateFailedDetail:
+      'The latest background sync failed. Please retry later.',
   },
 
   errors: {

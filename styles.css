@@ -9005,14 +9005,16 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   }
 }
 
-.smtcmp-agent-status-bar {
+.smtcmp-agent-status-bar,
+.smtcmp-background-activity-status-bar {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.smtcmp-agent-status-bar-ring {
+.smtcmp-agent-status-bar-ring,
+.smtcmp-background-activity-status-bar-ring {
   flex-shrink: 0;
   width: 14px;
   height: 14px;
@@ -9025,11 +9027,23 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
 }
 
-.smtcmp-agent-status-bar-label {
+.smtcmp-background-activity-status-bar-ring.is-waiting {
+  border-color: color-mix(in srgb, var(--color-orange) 20%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
+}
+
+.smtcmp-background-activity-status-bar-ring.is-failed {
+  border-color: color-mix(in srgb, var(--color-red) 22%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-red) 82%, white 8%);
+}
+
+.smtcmp-agent-status-bar-label,
+.smtcmp-background-activity-status-bar-label {
   min-width: 0;
 }
 
-.smtcmp-agent-status-panel {
+.smtcmp-agent-status-panel,
+.smtcmp-background-activity-status-panel {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
@@ -9055,31 +9069,36 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   pointer-events: none;
 }
 
-.smtcmp-agent-status-panel.is-open {
+.smtcmp-agent-status-panel.is-open,
+.smtcmp-background-activity-status-panel.is-open {
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
 }
 
-.smtcmp-agent-status-panel-header {
+.smtcmp-agent-status-panel-header,
+.smtcmp-background-activity-status-panel-header {
   font-size: var(--font-ui-small);
   font-weight: 600;
   color: var(--text-muted);
 }
 
-.smtcmp-agent-status-panel-list {
+.smtcmp-agent-status-panel-list,
+.smtcmp-background-activity-status-panel-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
 }
 
-.smtcmp-agent-status-panel-empty {
+.smtcmp-agent-status-panel-empty,
+.smtcmp-background-activity-status-panel-empty {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
 }
 
-.smtcmp-agent-status-panel-item {
+.smtcmp-agent-status-panel-item,
+.smtcmp-background-activity-status-panel-item {
   padding: 8px 10px;
   border-radius: 8px;
   background: transparent;
@@ -9090,25 +9109,46 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 }
 
 .smtcmp-agent-status-panel-item:hover,
-.smtcmp-agent-status-panel-item:focus-visible {
+.smtcmp-agent-status-panel-item:focus-visible,
+.smtcmp-background-activity-status-panel-item:hover,
+.smtcmp-background-activity-status-panel-item:focus-visible {
   outline: none;
   transform: translateY(-1px);
   background: var(--background-modifier-hover);
 }
 
-.smtcmp-agent-status-panel-item-row {
+.smtcmp-agent-status-panel-item-row,
+.smtcmp-background-activity-status-panel-item-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.smtcmp-agent-status-panel-item-title {
+.smtcmp-background-activity-status-panel-item-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.smtcmp-agent-status-panel-item-title,
+.smtcmp-background-activity-status-panel-item-title {
   flex: 1 1 auto;
   min-width: 0;
   font-size: var(--font-ui-small);
   font-weight: 400;
   color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smtcmp-background-activity-status-panel-item-detail {
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9120,7 +9160,8 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   color: var(--text-muted);
 }
 
-.smtcmp-agent-status-panel-item-indicator {
+.smtcmp-agent-status-panel-item-indicator,
+.smtcmp-background-activity-status-panel-item-indicator {
   flex-shrink: 0;
   width: 12px;
   height: 12px;
@@ -9133,9 +9174,15 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   animation: smtcmp-chat-list-run-spin 0.9s linear infinite;
 }
 
-.smtcmp-agent-status-panel-item-indicator.is-waiting-approval {
+.smtcmp-agent-status-panel-item-indicator.is-waiting-approval,
+.smtcmp-background-activity-status-panel-item-indicator.is-waiting {
   border-color: color-mix(in srgb, var(--color-orange) 20%, transparent);
   border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
+}
+
+.smtcmp-background-activity-status-panel-item-indicator.is-failed {
+  border-color: color-mix(in srgb, var(--color-red) 22%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-red) 82%, white 8%);
 }
 
 input[type='text'].smtcmp-chat-list-dropdown-item-title-input {

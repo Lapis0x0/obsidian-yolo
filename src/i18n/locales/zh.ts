@@ -1220,6 +1220,15 @@ export const zh: TranslationKeys = {
     agentStatusRunning: '运行中',
     agentStatusWaitingApproval: '待审批',
     agentStatusFallbackConversationTitle: '运行中的对话',
+    backgroundStatusAriaLabel: '后台任务状态，点击查看详情',
+    backgroundStatusPanelTitle: '后台任务',
+    backgroundStatusPanelEmpty: '当前没有正在运行的后台任务',
+    backgroundTasksRunning: '当前有 {count} 个后台任务正在运行',
+    backgroundTasksNeedAttention: '有后台任务需要关注',
+    ragAutoUpdateRunning: '知识库正在后台更新',
+    ragAutoUpdateRunningDetail: '正在增量同步知识库索引。',
+    ragAutoUpdateFailed: '知识库自动更新失败',
+    ragAutoUpdateFailedDetail: '最近一次后台同步失败，请稍后重试。',
   },
 
   errors: {

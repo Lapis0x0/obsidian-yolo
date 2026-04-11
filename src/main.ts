@@ -18,6 +18,11 @@ import { createAgentConversationPersistence } from './core/agent/conversationPer
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
 import {
+  BackgroundActivity,
+  BackgroundActivityAction,
+  BackgroundActivityRegistry,
+} from './core/background/backgroundActivityRegistry'
+import {
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
@@ -124,22 +129,21 @@ export default class SmartComposerPlugin extends Plugin {
   private agentService: AgentService | null = null
   private agentNotificationCoordinator: AgentNotificationCoordinator | null =
     null
-  private agentStatusBarItem: HTMLElement | null = null
-  private agentStatusBarRing: HTMLElement | null = null
-  private agentStatusBarLabel: HTMLElement | null = null
-  private agentStatusPanel: HTMLElement | null = null
-  private agentStatusPanelList: HTMLElement | null = null
-  private agentStatusPanelEmpty: HTMLElement | null = null
-  private latestAgentRunSummaries = new Map<
-    string,
-    AgentConversationRunSummary
-  >()
-  private agentStatusPanelRenderVersion = 0
-  private agentStatusPanelItems = new Map<
+  private backgroundActivityRegistry: BackgroundActivityRegistry | null = null
+  private backgroundStatusBarItem: HTMLElement | null = null
+  private backgroundStatusBarRing: HTMLElement | null = null
+  private backgroundStatusBarLabel: HTMLElement | null = null
+  private backgroundStatusPanel: HTMLElement | null = null
+  private backgroundStatusPanelList: HTMLElement | null = null
+  private backgroundStatusPanelEmpty: HTMLElement | null = null
+  private latestBackgroundActivities = new Map<string, BackgroundActivity>()
+  private backgroundStatusPanelRenderVersion = 0
+  private backgroundStatusPanelItems = new Map<
     string,
     {
       item: HTMLElement
       title: HTMLElement
+      detail: HTMLElement
       indicator: HTMLElement
     }
   >()
@@ -549,9 +553,17 @@ export default class SmartComposerPlugin extends Plugin {
         setSettings: (settings) => this.setSettings(settings),
         getRagEngine: () => this.getRagCoordinator().getRagEngine(),
         t: (key, fallback) => this.t(key, fallback),
+        activityRegistry: this.getBackgroundActivityRegistry(),
       })
     }
     return this.ragAutoUpdateService
+  }
+
+  private getBackgroundActivityRegistry(): BackgroundActivityRegistry {
+    if (!this.backgroundActivityRegistry) {
+      this.backgroundActivityRegistry = new BackgroundActivityRegistry()
+    }
+    return this.backgroundActivityRegistry
   }
 
   private getRagCoordinator(): RagCoordinator {
@@ -702,248 +714,375 @@ export default class SmartComposerPlugin extends Plugin {
     return this.agentNotificationCoordinator
   }
 
-  private setupAgentStatusBar(): void {
+  private setupBackgroundActivityStatusBar(): void {
     const statusBarItem = this.addStatusBarItem()
     statusBarItem.addClass('mod-clickable')
-    statusBarItem.addClass('smtcmp-agent-status-bar')
+    statusBarItem.addClass('smtcmp-background-activity-status-bar')
     statusBarItem.hide()
 
     const ring = document.createElement('span')
-    ring.className = 'smtcmp-agent-status-bar-ring'
+    ring.className = 'smtcmp-background-activity-status-bar-ring'
 
     const label = document.createElement('span')
-    label.className = 'smtcmp-agent-status-bar-label'
+    label.className = 'smtcmp-background-activity-status-bar-label'
 
     const panel = document.createElement('div')
-    panel.className = 'smtcmp-agent-status-panel'
+    panel.className = 'smtcmp-background-activity-status-panel'
     panel.setAttribute('aria-hidden', 'true')
     panel.hidden = true
 
     const panelHeader = document.createElement('div')
-    panelHeader.className = 'smtcmp-agent-status-panel-header'
+    panelHeader.className = 'smtcmp-background-activity-status-panel-header'
     panelHeader.setText(
-      this.t('statusBar.agentStatusPanelTitle', '正在进行的 Agent 对话'),
+      this.t('statusBar.backgroundStatusPanelTitle', '后台任务'),
     )
 
     const panelList = document.createElement('div')
-    panelList.className = 'smtcmp-agent-status-panel-list'
+    panelList.className = 'smtcmp-background-activity-status-panel-list'
 
     const panelEmpty = document.createElement('div')
-    panelEmpty.className = 'smtcmp-agent-status-panel-empty'
+    panelEmpty.className = 'smtcmp-background-activity-status-panel-empty'
     panelEmpty.setText(
-      this.t('statusBar.agentStatusPanelEmpty', '当前没有可切换的运行中对话'),
+      this.t(
+        'statusBar.backgroundStatusPanelEmpty',
+        '当前没有正在运行的后台任务',
+      ),
     )
 
     panel.append(panelHeader, panelList, panelEmpty)
     statusBarItem.append(label, ring, panel)
 
-    this.agentStatusBarItem = statusBarItem
-    this.agentStatusBarRing = ring
-    this.agentStatusBarLabel = label
-    this.agentStatusPanel = panel
-    this.agentStatusPanelList = panelList
-    this.agentStatusPanelEmpty = panelEmpty
+    this.backgroundStatusBarItem = statusBarItem
+    this.backgroundStatusBarRing = ring
+    this.backgroundStatusBarLabel = label
+    this.backgroundStatusPanel = panel
+    this.backgroundStatusPanelList = panelList
+    this.backgroundStatusPanelEmpty = panelEmpty
 
     this.registerDomEvent(statusBarItem, 'click', (event) => {
       if (
-        this.agentStatusPanel &&
+        this.backgroundStatusPanel &&
         event.target instanceof Node &&
-        this.agentStatusPanel.contains(event.target)
+        this.backgroundStatusPanel.contains(event.target)
       ) {
         return
       }
-      void this.toggleAgentStatusPanel()
+      void this.toggleBackgroundStatusPanel()
     })
 
     this.registerDomEvent(document, 'click', (event) => {
       if (
-        !this.isAgentStatusPanelOpen() ||
-        !this.agentStatusBarItem ||
+        !this.isBackgroundStatusPanelOpen() ||
+        !this.backgroundStatusBarItem ||
         !(event.target instanceof Node)
       ) {
         return
       }
 
-      if (!this.agentStatusBarItem.contains(event.target)) {
-        this.closeAgentStatusPanel()
+      if (!this.backgroundStatusBarItem.contains(event.target)) {
+        this.closeBackgroundStatusPanel()
       }
     })
 
     this.registerDomEvent(document, 'keydown', (event) => {
       if (event.key === 'Escape') {
-        this.closeAgentStatusPanel()
+        this.closeBackgroundStatusPanel()
       }
     })
 
-    const unsubscribe = this.getAgentService().subscribeToRunSummaries(
-      (summaries) => {
-        this.updateAgentStatusBar(summaries)
+    const unsubscribeActivities = this.getBackgroundActivityRegistry().subscribe(
+      (activities) => {
+        this.updateBackgroundStatusBar(activities)
       },
     )
+    const unsubscribeAgentSummaries =
+      this.getAgentService().subscribeToRunSummaries((summaries) => {
+        this.syncAgentBackgroundActivities(summaries)
+      })
 
     this.register(() => {
-      unsubscribe()
-      this.agentStatusBarItem = null
-      this.agentStatusBarRing = null
-      this.agentStatusBarLabel = null
-      this.agentStatusPanel = null
-      this.agentStatusPanelList = null
-      this.agentStatusPanelEmpty = null
-      this.agentStatusPanelRenderVersion += 1
-      this.agentStatusPanelItems.clear()
+      unsubscribeActivities()
+      unsubscribeAgentSummaries()
+      this.backgroundStatusBarItem = null
+      this.backgroundStatusBarRing = null
+      this.backgroundStatusBarLabel = null
+      this.backgroundStatusPanel = null
+      this.backgroundStatusPanelList = null
+      this.backgroundStatusPanelEmpty = null
+      this.backgroundStatusPanelRenderVersion += 1
+      this.backgroundStatusPanelItems.clear()
+      this.latestBackgroundActivities.clear()
+      this.backgroundActivityRegistry?.clear()
+      this.backgroundActivityRegistry = null
     })
   }
 
-  private updateAgentStatusBar(
+  private syncAgentBackgroundActivities(
     summaries: Map<string, AgentConversationRunSummary>,
   ): void {
+    const registry = this.getBackgroundActivityRegistry()
+    const nextActivityIds = new Set<string>()
+
+    for (const summary of summaries.values()) {
+      if (!summary.isRunning && !summary.isWaitingApproval) {
+        continue
+      }
+
+      const id = `agent:${summary.conversationId}`
+      nextActivityIds.add(id)
+      registry.upsert({
+        id,
+        kind: 'agent',
+        title: this.t(
+          'statusBar.agentStatusFallbackConversationTitle',
+          '运行中的对话',
+        ),
+        detail: summary.isWaitingApproval
+          ? this.t('statusBar.agentStatusWaitingApproval', '待审批')
+          : this.t('statusBar.agentStatusRunning', '运行中'),
+        status: summary.isWaitingApproval ? 'waiting' : 'running',
+        updatedAt: Date.now(),
+        action: {
+          type: 'open-agent-conversation',
+          conversationId: summary.conversationId,
+        },
+      })
+    }
+
+    for (const activityId of this.latestBackgroundActivities.keys()) {
+      if (!activityId.startsWith('agent:')) {
+        continue
+      }
+      if (nextActivityIds.has(activityId)) {
+        continue
+      }
+      registry.remove(activityId)
+    }
+  }
+
+  private updateBackgroundStatusBar(
+    activities: Map<string, BackgroundActivity>,
+  ): void {
     if (
-      !this.agentStatusBarItem ||
-      !this.agentStatusBarRing ||
-      !this.agentStatusBarLabel
+      !this.backgroundStatusBarItem ||
+      !this.backgroundStatusBarRing ||
+      !this.backgroundStatusBarLabel
     ) {
       return
     }
 
-    this.latestAgentRunSummaries = new Map(summaries)
+    this.latestBackgroundActivities = new Map(activities)
+    const visibleActivities = Array.from(activities.values()).filter(
+      (activity) =>
+        activity.status === 'running' ||
+        activity.status === 'waiting' ||
+        activity.status === 'failed',
+    )
 
-    let runningCount = 0
-    let waitingApprovalCount = 0
-
-    for (const summary of summaries.values()) {
-      if (summary.isRunning) {
-        runningCount += 1
-      }
-      if (summary.isWaitingApproval) {
-        waitingApprovalCount += 1
-      }
-    }
-
-    if (runningCount === 0 && waitingApprovalCount === 0) {
-      this.clearAgentStatusPanelItems()
-      this.closeAgentStatusPanel()
-      this.agentStatusBarItem.hide()
-      this.agentStatusBarLabel.setText('')
-      this.agentStatusBarItem.removeAttribute('aria-label')
-      this.agentStatusBarItem.removeAttribute('title')
+    if (visibleActivities.length === 0) {
+      this.clearBackgroundStatusPanelItems()
+      this.closeBackgroundStatusPanel()
+      this.backgroundStatusBarItem.hide()
+      this.backgroundStatusBarLabel.setText('')
+      this.backgroundStatusBarItem.removeAttribute('aria-label')
+      this.backgroundStatusBarItem.removeAttribute('title')
       return
     }
 
-    const label =
-      waitingApprovalCount > 0
+    const label = this.buildBackgroundStatusBarLabel(visibleActivities)
+    const statusBarTone = visibleActivities.some(
+      (activity) =>
+        activity.status === 'running' || activity.status === 'waiting',
+    )
+      ? visibleActivities.some((activity) => activity.status === 'waiting') &&
+          !visibleActivities.some((activity) => activity.status === 'running')
+        ? 'is-waiting'
+        : 'is-running'
+      : 'is-failed'
+
+    this.backgroundStatusBarLabel.setText(label)
+    this.backgroundStatusBarItem.removeAttribute('title')
+    this.backgroundStatusBarItem.setAttribute(
+      'aria-label',
+      this.t(
+        'statusBar.backgroundStatusAriaLabel',
+        '后台任务状态，点击查看详情',
+      ),
+    )
+    this.backgroundStatusBarRing.classList.remove(
+      'is-running',
+      'is-waiting',
+      'is-failed',
+    )
+    this.backgroundStatusBarRing.classList.add(statusBarTone)
+    this.backgroundStatusBarItem.show()
+
+    if (this.isBackgroundStatusPanelOpen()) {
+      void this.renderBackgroundStatusPanel()
+    }
+  }
+
+  private buildBackgroundStatusBarLabel(
+    activities: BackgroundActivity[],
+  ): string {
+    const runningActivities = activities.filter(
+      (activity) =>
+        activity.status === 'running' || activity.status === 'waiting',
+    )
+    const failedActivities = activities.filter(
+      (activity) => activity.status === 'failed',
+    )
+    const agentActivities = runningActivities.filter(
+      (activity) => activity.kind === 'agent',
+    )
+    const waitingApprovalCount = runningActivities.filter(
+      (activity) => activity.status === 'waiting',
+    ).length
+
+    if (
+      runningActivities.length > 0 &&
+      agentActivities.length === runningActivities.length
+    ) {
+      return waitingApprovalCount > 0
         ? this.t(
             'statusBar.agentRunningWithApproval',
             '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',
           )
-            .replace('{count}', String(runningCount))
+            .replace('{count}', String(agentActivities.length))
             .replace('{approvalCount}', String(waitingApprovalCount))
         : this.t(
             'statusBar.agentRunning',
             '当前有 {count} 个 agent 正在运行',
-          ).replace('{count}', String(runningCount))
-
-    this.agentStatusBarLabel.setText(label)
-    this.agentStatusBarItem.removeAttribute('aria-label')
-    this.agentStatusBarItem.removeAttribute('title')
-    this.agentStatusBarItem.show()
-
-    if (this.isAgentStatusPanelOpen()) {
-      void this.renderAgentStatusPanel()
+          ).replace('{count}', String(agentActivities.length))
     }
+
+    if (runningActivities.length === 1 && failedActivities.length === 0) {
+      const [activity] = runningActivities
+      if (activity.kind === 'rag-index') {
+        return this.t(
+          'statusBar.ragAutoUpdateRunning',
+          '知识库正在后台更新',
+        )
+      }
+    }
+
+    if (runningActivities.length > 0) {
+      return this.t(
+        'statusBar.backgroundTasksRunning',
+        '当前有 {count} 个后台任务正在运行',
+      ).replace('{count}', String(runningActivities.length))
+    }
+
+    return this.t(
+      'statusBar.backgroundTasksNeedAttention',
+      '有后台任务需要关注',
+    )
   }
 
-  private isAgentStatusPanelOpen(): boolean {
-    return this.agentStatusPanel?.hidden === false
+  private isBackgroundStatusPanelOpen(): boolean {
+    return this.backgroundStatusPanel?.hidden === false
   }
 
-  private openAgentStatusPanel(): void {
-    if (!this.agentStatusPanel || this.isAgentStatusPanelOpen()) {
+  private openBackgroundStatusPanel(): void {
+    if (!this.backgroundStatusPanel || this.isBackgroundStatusPanelOpen()) {
       return
     }
 
-    this.agentStatusPanel.hidden = false
-    this.agentStatusPanel.setAttribute('aria-hidden', 'false')
+    this.backgroundStatusPanel.hidden = false
+    this.backgroundStatusPanel.setAttribute('aria-hidden', 'false')
 
     window.requestAnimationFrame(() => {
-      this.agentStatusPanel?.addClass('is-open')
+      this.backgroundStatusPanel?.addClass('is-open')
     })
   }
 
-  private closeAgentStatusPanel(): void {
-    if (!this.agentStatusPanel || !this.isAgentStatusPanelOpen()) {
+  private closeBackgroundStatusPanel(): void {
+    if (!this.backgroundStatusPanel || !this.isBackgroundStatusPanelOpen()) {
       return
     }
 
-    this.agentStatusPanel.removeClass('is-open')
-    this.agentStatusPanel.setAttribute('aria-hidden', 'true')
+    this.backgroundStatusPanel.removeClass('is-open')
+    this.backgroundStatusPanel.setAttribute('aria-hidden', 'true')
     window.setTimeout(() => {
-      if (this.agentStatusPanel?.hasClass('is-open')) {
+      if (this.backgroundStatusPanel?.hasClass('is-open')) {
         return
       }
-      if (this.agentStatusPanel) {
-        this.agentStatusPanel.hidden = true
+      if (this.backgroundStatusPanel) {
+        this.backgroundStatusPanel.hidden = true
       }
     }, 180)
   }
 
-  private async toggleAgentStatusPanel(): Promise<void> {
-    if (this.isAgentStatusPanelOpen()) {
-      this.closeAgentStatusPanel()
+  private async toggleBackgroundStatusPanel(): Promise<void> {
+    if (this.isBackgroundStatusPanelOpen()) {
+      this.closeBackgroundStatusPanel()
       return
     }
 
-    const hasEntries = await this.renderAgentStatusPanel()
+    const hasEntries = await this.renderBackgroundStatusPanel()
     if (!hasEntries) {
-      await this.openChatView({ placement: 'sidebar' })
       return
     }
 
-    this.openAgentStatusPanel()
+    this.openBackgroundStatusPanel()
   }
 
-  private async renderAgentStatusPanel(): Promise<boolean> {
-    if (!this.agentStatusPanelList || !this.agentStatusPanelEmpty) {
+  private async renderBackgroundStatusPanel(): Promise<boolean> {
+    if (!this.backgroundStatusPanelList || !this.backgroundStatusPanelEmpty) {
       return false
     }
 
-    const renderVersion = ++this.agentStatusPanelRenderVersion
-    const summaries = Array.from(this.latestAgentRunSummaries.values()).sort(
-      (left, right) => {
-        const leftPriority = left.isWaitingApproval ? 0 : 1
-        const rightPriority = right.isWaitingApproval ? 0 : 1
-        if (leftPriority !== rightPriority) {
-          return leftPriority - rightPriority
+    const renderVersion = ++this.backgroundStatusPanelRenderVersion
+    const activities = Array.from(this.latestBackgroundActivities.values())
+      .filter(
+        (activity) =>
+          activity.status === 'running' ||
+          activity.status === 'waiting' ||
+          activity.status === 'failed',
+      )
+      .sort((left, right) => {
+        const priority = (activity: BackgroundActivity) => {
+          if (activity.status === 'waiting') return 0
+          if (activity.status === 'running') return 1
+          if (activity.status === 'failed') return 2
+          return 3
         }
-        return left.conversationId.localeCompare(right.conversationId)
-      },
-    )
+        const priorityDelta = priority(left) - priority(right)
+        if (priorityDelta !== 0) {
+          return priorityDelta
+        }
+        return left.id.localeCompare(right.id)
+      })
 
-    if (summaries.length === 0) {
-      this.clearAgentStatusPanelItems()
-      this.agentStatusPanelEmpty.hidden = false
+    if (activities.length === 0) {
+      this.clearBackgroundStatusPanelItems()
+      this.backgroundStatusPanelEmpty.hidden = false
       return false
     }
 
     const chatManager = new ChatManager(this.app, this.settings)
     const metadataList = await chatManager.listChats()
     if (
-      renderVersion !== this.agentStatusPanelRenderVersion ||
-      !this.agentStatusPanelList ||
-      !this.agentStatusPanelEmpty
+      renderVersion !== this.backgroundStatusPanelRenderVersion ||
+      !this.backgroundStatusPanelList ||
+      !this.backgroundStatusPanelEmpty
     ) {
-      return this.latestAgentRunSummaries.size > 0
+      return this.latestBackgroundActivities.size > 0
     }
-    const metadataById = new Map(metadataList.map((item) => [item.id, item]))
-    const nextConversationIds = new Set<string>()
-    let insertBeforeNode = this.agentStatusPanelList.firstChild
 
-    for (const summary of summaries) {
-      nextConversationIds.add(summary.conversationId)
-      const metadata = metadataById.get(summary.conversationId)
-      const title = this.resolveAgentConversationTitle(metadata?.title)
+    const metadataById = new Map<string, { title?: string }>(
+      metadataList.map((item) => [item.id, { title: item.title }]),
+    )
+    const nextActivityIds = new Set<string>()
+    let insertBeforeNode = this.backgroundStatusPanelList.firstChild
+
+    for (const activity of activities) {
+      nextActivityIds.add(activity.id)
+      const title = this.resolveBackgroundActivityTitle(activity, metadataById)
+      const detail = this.resolveBackgroundActivityDetail(activity)
       const itemRecord =
-        this.agentStatusPanelItems.get(summary.conversationId) ??
-        this.createAgentStatusPanelItem(summary.conversationId)
+        this.backgroundStatusPanelItems.get(activity.id) ??
+        this.createBackgroundStatusPanelItem(activity.id, activity.action)
 
       if (itemRecord.title.getText() !== title) {
         itemRecord.title.setText(title)
@@ -951,13 +1090,19 @@ export default class SmartComposerPlugin extends Plugin {
       if (itemRecord.title.getAttribute('title') !== title) {
         itemRecord.title.setAttribute('title', title)
       }
-      itemRecord.indicator.toggleClass(
-        'is-waiting-approval',
-        summary.isWaitingApproval,
+      if (itemRecord.detail.getText() !== detail) {
+        itemRecord.detail.setText(detail)
+      }
+      itemRecord.detail.hidden = detail.length === 0
+      itemRecord.indicator.classList.remove(
+        'is-running',
+        'is-waiting',
+        'is-failed',
       )
+      itemRecord.indicator.classList.add(`is-${activity.status}`)
 
       if (itemRecord.item !== insertBeforeNode) {
-        this.agentStatusPanelList.insertBefore(
+        this.backgroundStatusPanelList.insertBefore(
           itemRecord.item,
           insertBeforeNode,
         )
@@ -965,73 +1110,118 @@ export default class SmartComposerPlugin extends Plugin {
       insertBeforeNode = itemRecord.item.nextSibling
     }
 
-    for (const [conversationId, itemRecord] of this.agentStatusPanelItems) {
-      if (nextConversationIds.has(conversationId)) {
+    for (const [activityId, itemRecord] of this.backgroundStatusPanelItems) {
+      if (nextActivityIds.has(activityId)) {
         continue
       }
       itemRecord.item.remove()
-      this.agentStatusPanelItems.delete(conversationId)
+      this.backgroundStatusPanelItems.delete(activityId)
     }
 
-    this.agentStatusPanelEmpty.hidden = true
+    this.backgroundStatusPanelEmpty.hidden = true
     return true
   }
 
-  private createAgentStatusPanelItem(conversationId: string): {
+  private createBackgroundStatusPanelItem(
+    activityId: string,
+    action?: BackgroundActivityAction,
+  ): {
     item: HTMLElement
     title: HTMLElement
+    detail: HTMLElement
     indicator: HTMLElement
   } {
     const item = createDiv({
-      cls: 'smtcmp-agent-status-panel-item',
+      cls: 'smtcmp-background-activity-status-panel-item',
     })
     item.setAttribute('role', 'button')
     item.setAttribute('tabindex', '0')
 
     const row = item.createDiv({
-      cls: 'smtcmp-agent-status-panel-item-row',
+      cls: 'smtcmp-background-activity-status-panel-item-row',
     })
-    const title = row.createDiv({
-      cls: 'smtcmp-agent-status-panel-item-title',
+    const copy = row.createDiv({
+      cls: 'smtcmp-background-activity-status-panel-item-copy',
+    })
+    const title = copy.createDiv({
+      cls: 'smtcmp-background-activity-status-panel-item-title',
+    })
+    const detail = copy.createDiv({
+      cls: 'smtcmp-background-activity-status-panel-item-detail',
     })
     const indicator = row.createDiv({
-      cls: 'smtcmp-agent-status-panel-item-indicator',
+      cls: 'smtcmp-background-activity-status-panel-item-indicator',
     })
 
-    const openConversation = () => {
-      this.closeAgentStatusPanel()
-      void this.openChatView({
-        placement: 'split',
-        initialConversationId: conversationId,
-        forceNewLeaf: true,
-      })
+    const openAction = () => {
+      this.closeBackgroundStatusPanel()
+      if (!action) {
+        return
+      }
+      if (action.type === 'open-agent-conversation') {
+        void this.openChatView({
+          placement: 'split',
+          initialConversationId: action.conversationId,
+          forceNewLeaf: true,
+        })
+        return
+      }
+      if (action.type === 'open-knowledge-settings') {
+        this.openKnowledgeSettings()
+      }
     }
 
     this.registerDomEvent(item, 'click', (event) => {
       event.stopPropagation()
-      openConversation()
+      openAction()
     })
 
     this.registerDomEvent(item, 'keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
         event.stopPropagation()
-        openConversation()
+        openAction()
       }
     })
 
     const record = {
       item,
       title,
+      detail,
       indicator,
     }
-    this.agentStatusPanelItems.set(conversationId, record)
+    this.backgroundStatusPanelItems.set(activityId, record)
     return record
   }
 
-  private clearAgentStatusPanelItems(): void {
-    this.agentStatusPanelList?.empty()
-    this.agentStatusPanelItems.clear()
+  private clearBackgroundStatusPanelItems(): void {
+    this.backgroundStatusPanelList?.empty()
+    this.backgroundStatusPanelItems.clear()
+  }
+
+  private resolveBackgroundActivityTitle(
+    activity: BackgroundActivity,
+    metadataById: Map<string, { title?: string }>,
+  ): string {
+    if (
+      activity.action?.type === 'open-agent-conversation' &&
+      activity.action.conversationId
+    ) {
+      const metadata = metadataById.get(activity.action.conversationId)
+      return this.resolveAgentConversationTitle(metadata?.title)
+    }
+    return activity.title
+  }
+
+  private resolveBackgroundActivityDetail(activity: BackgroundActivity): string {
+    return activity.detail?.trim() ?? ''
+  }
+
+  private openKnowledgeSettings(): void {
+    // @ts-expect-error: setting property exists in Obsidian's App but is not typed
+    this.app.setting.open()
+    // @ts-expect-error: setting property exists in Obsidian's App but is not typed
+    this.app.setting.openTabById(this.manifest.id)
   }
 
   private resolveAgentConversationTitle(title: string | undefined): string {
@@ -1273,7 +1463,7 @@ export default class SmartComposerPlugin extends Plugin {
       void this.openChatView({ placement: 'sidebar' })
     })
 
-    this.setupAgentStatusBar()
+    this.setupBackgroundActivityStatusBar()
     this.getAgentNotificationCoordinator().start()
     this.register(() => {
       this.agentNotificationCoordinator?.stop()
@@ -1419,26 +1609,32 @@ export default class SmartComposerPlugin extends Plugin {
     // Auto update: listen to vault file changes and schedule incremental index updates
     this.registerEvent(
       this.app.vault.on('create', (file) =>
-        this.getRagAutoUpdateService().onVaultFileChanged(file),
+        this.getRagAutoUpdateService().onVaultFileChanged(file, 'create'),
       ),
     )
     this.registerEvent(
       this.app.vault.on('modify', (file) =>
-        this.getRagAutoUpdateService().onVaultFileChanged(file),
+        this.getRagAutoUpdateService().onVaultFileChanged(file, 'modify'),
       ),
     )
     this.registerEvent(
       this.app.vault.on('delete', (file) =>
-        this.getRagAutoUpdateService().onVaultFileChanged(file),
+        this.getRagAutoUpdateService().onVaultFileChanged(file, 'delete'),
       ),
     )
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
         const service = this.getRagAutoUpdateService()
-        service.onVaultFileChanged(file)
-        if (oldPath) service.onVaultPathChanged(oldPath)
+        service.onVaultFileChanged(file, 'rename')
+        if (oldPath)
+          service.onVaultPathChanged(oldPath, {
+            requiresFullScan: file instanceof TFolder,
+          })
       }),
     )
+    this.registerDomEvent(window, 'blur', () => {
+      this.getRagAutoUpdateService().onWindowBlur()
+    })
 
     this.addCommand({
       id: 'rebuild-vault-index',

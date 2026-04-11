@@ -1313,6 +1313,23 @@ export const it: TranslationKeys = {
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
+    backgroundStatusAriaLabel:
+      'Stato delle attivita in background, clicca per vedere i dettagli',
+    backgroundStatusPanelTitle: 'Attivita in background',
+    backgroundStatusPanelEmpty:
+      'Non ci sono attivita in background in esecuzione',
+    backgroundTasksRunning:
+      'Al momento ci sono {count} attivita in background in esecuzione',
+    backgroundTasksNeedAttention:
+      "Un'attivita in background richiede attenzione",
+    ragAutoUpdateRunning:
+      'La knowledge base si sta aggiornando in background',
+    ragAutoUpdateRunningDetail:
+      "Sincronizzazione incrementale dell'indice della knowledge base in corso.",
+    ragAutoUpdateFailed:
+      "Aggiornamento automatico della knowledge base non riuscito",
+    ragAutoUpdateFailedDetail:
+      "L'ultima sincronizzazione in background non e riuscita. Riprova piu tardi.",
   },
 
   errors: {

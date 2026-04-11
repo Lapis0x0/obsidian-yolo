@@ -486,7 +486,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       '打开知识库设置',
                     )}
                     onClick={() => {
+                      // @ts-expect-error: setting property exists in Obsidian's App but is not typed
                       app.setting.open()
+                      // @ts-expect-error: setting property exists in Obsidian's App but is not typed
                       app.setting.openTabById(plugin.manifest.id)
                     }}
                   />

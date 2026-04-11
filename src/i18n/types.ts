@@ -1115,6 +1115,15 @@ export type TranslationKeys = {
     agentStatusRunning?: string
     agentStatusWaitingApproval?: string
     agentStatusFallbackConversationTitle?: string
+    backgroundStatusAriaLabel?: string
+    backgroundStatusPanelTitle?: string
+    backgroundStatusPanelEmpty?: string
+    backgroundTasksRunning?: string
+    backgroundTasksNeedAttention?: string
+    ragAutoUpdateRunning?: string
+    ragAutoUpdateRunningDetail?: string
+    ragAutoUpdateFailed?: string
+    ragAutoUpdateFailedDetail?: string
   }
 
   // Errors
