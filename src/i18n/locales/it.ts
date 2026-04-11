@@ -728,6 +728,11 @@ export const it: TranslationKeys = {
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',
+      waitingRateLimit: 'In attesa del reset del limite di frequenza...',
+      preparingProgress: 'Preparazione indicizzazione...',
+      notIndexedYet: 'Non ancora indicizzato',
+      indexComplete: 'Indicizzazione completata',
+      indexIncomplete: 'Ultima indicizzazione non completata',
     },
     mcp: {
       title: 'Strumenti personalizzati (MCP)',

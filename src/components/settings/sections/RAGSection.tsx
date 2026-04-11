@@ -1,4 +1,3 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import { App, Notice } from 'obsidian'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -22,11 +21,11 @@ import {
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { IndexProgressRing } from '../IndexProgressRing'
 import { FolderSelectionList } from '../inputs/FolderSelectionList'
 import { EmbeddingDbManageModal } from '../modals/EmbeddingDbManageModal'
 import { ExcludedFilesModal } from '../modals/ExcludedFilesModal'
 import { IncludedFilesModal } from '../modals/IncludedFilesModal'
-import { RAGIndexProgress } from '../RAGIndexProgress'
 
 type RAGSectionProps = {
   app: App
@@ -106,13 +105,21 @@ function RAGCard({
 }
 
 export function RAGSection({ app, plugin }: RAGSectionProps) {
+  const FILE_SWITCH_ANIMATION_MS = 120
+  const FILE_SWITCH_MIN_INTERVAL_MS = 90
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
   const [persistedProgress, setPersistedProgress] =
     useState<IndexProgress | null>(null)
   const [isIndexing, setIsIndexing] = useState(false)
-  const [isProgressOpen, setIsProgressOpen] = useState(false)
+  const [displayedCurrentFile, setDisplayedCurrentFile] = useState<
+    string | null
+  >(null)
+  const [leavingCurrentFile, setLeavingCurrentFile] = useState<string | null>(
+    null,
+  )
+  const [fileAnimationKey, setFileAnimationKey] = useState(0)
   const [indexAbortController, setIndexAbortController] =
     useState<AbortController | null>(null)
   const [isCheckingPgliteResources, setIsCheckingPgliteResources] =
@@ -121,7 +128,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const [pgliteResourceStatus, setPgliteResourceStatus] =
     useState<PGliteRuntimeStatus | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
-  const effectiveProgress = indexProgress ?? persistedProgress
+  /** During an active index job, only live `indexProgress` should drive the UI (not stale persisted). */
+  const progressSource: IndexProgress | null = isIndexing
+    ? indexProgress
+    : (indexProgress ?? persistedProgress)
   const ragUpdateError = 'Failed to update RAG settings.'
   const [chunkSizeInput, setChunkSizeInput] = useState(
     String(settings.ragOptions.chunkSize),
@@ -143,6 +153,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const scheduledIndexJobRef = useRef<IndexJob | null>(null)
   const queuedIndexJobRef = useRef<IndexJob | null>(null)
   const scheduledIndexJobTimerRef = useRef<number | null>(null)
+  const fileAnimationTimerRef = useRef<number | null>(null)
+  const fileSwitchTimerRef = useRef<number | null>(null)
+  const pendingCurrentFileRef = useRef<string | null>(null)
+  const lastFileSwitchAtRef = useRef(0)
 
   useEffect(() => {
     setChunkSizeInput(String(settings.ragOptions.chunkSize))
@@ -271,16 +285,175 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     setPersistedProgress(indexProgress)
   }, [app, indexProgress])
 
-  const headerPercent = useMemo(() => {
-    if (effectiveProgress && effectiveProgress.totalChunks > 0) {
-      const pct = Math.round(
-        (effectiveProgress.completedChunks / effectiveProgress.totalChunks) *
-          100,
-      )
-      return Math.max(0, Math.min(100, pct))
+  useEffect(() => {
+    const applyDisplayedFile = (nextFile: string) => {
+      if (fileAnimationTimerRef.current !== null) {
+        window.clearTimeout(fileAnimationTimerRef.current)
+        fileAnimationTimerRef.current = null
+      }
+
+      setLeavingCurrentFile(displayedCurrentFile)
+      setDisplayedCurrentFile(nextFile)
+      setFileAnimationKey((prev) => prev + 1)
+      lastFileSwitchAtRef.current = Date.now()
+
+      if (!displayedCurrentFile) {
+        return
+      }
+
+      fileAnimationTimerRef.current = window.setTimeout(() => {
+        fileAnimationTimerRef.current = null
+        setLeavingCurrentFile(null)
+      }, FILE_SWITCH_ANIMATION_MS)
     }
-    return null
-  }, [effectiveProgress])
+
+    if (!isIndexing) {
+      if (fileAnimationTimerRef.current !== null) {
+        window.clearTimeout(fileAnimationTimerRef.current)
+        fileAnimationTimerRef.current = null
+      }
+      if (fileSwitchTimerRef.current !== null) {
+        window.clearTimeout(fileSwitchTimerRef.current)
+        fileSwitchTimerRef.current = null
+      }
+      pendingCurrentFileRef.current = null
+      lastFileSwitchAtRef.current = 0
+      setDisplayedCurrentFile(null)
+      setLeavingCurrentFile(null)
+      return
+    }
+
+    const nextFile = progressSource?.currentFile?.trim()
+    if (!nextFile) {
+      return
+    }
+
+    if (nextFile === displayedCurrentFile) {
+      return
+    }
+
+    const elapsed = Date.now() - lastFileSwitchAtRef.current
+    const shouldDelay =
+      displayedCurrentFile !== null && elapsed < FILE_SWITCH_MIN_INTERVAL_MS
+
+    if (shouldDelay) {
+      pendingCurrentFileRef.current = nextFile
+      if (fileSwitchTimerRef.current !== null) {
+        return
+      }
+      fileSwitchTimerRef.current = window.setTimeout(() => {
+        fileSwitchTimerRef.current = null
+        const pendingFile = pendingCurrentFileRef.current
+        pendingCurrentFileRef.current = null
+        if (!pendingFile || pendingFile === displayedCurrentFile) {
+          return
+        }
+        applyDisplayedFile(pendingFile)
+      }, FILE_SWITCH_MIN_INTERVAL_MS - elapsed)
+      return
+    }
+
+    pendingCurrentFileRef.current = null
+    if (fileSwitchTimerRef.current !== null) {
+      window.clearTimeout(fileSwitchTimerRef.current)
+      fileSwitchTimerRef.current = null
+    }
+    applyDisplayedFile(nextFile)
+  }, [
+    FILE_SWITCH_ANIMATION_MS,
+    FILE_SWITCH_MIN_INTERVAL_MS,
+    displayedCurrentFile,
+    isIndexing,
+    progressSource,
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (fileAnimationTimerRef.current !== null) {
+        window.clearTimeout(fileAnimationTimerRef.current)
+      }
+      if (fileSwitchTimerRef.current !== null) {
+        window.clearTimeout(fileSwitchTimerRef.current)
+      }
+    }
+  }, [])
+
+  const ringPercent = useMemo(() => {
+    if (!progressSource || progressSource.totalChunks <= 0) {
+      return 0
+    }
+    const pct = Math.round(
+      (progressSource.completedChunks / progressSource.totalChunks) * 100,
+    )
+    return Math.max(0, Math.min(100, pct))
+  }, [progressSource])
+
+  const maintenanceStatusLine = useMemo(() => {
+    if (isIndexing) {
+      if (!progressSource) {
+        return t('settings.rag.preparingProgress', 'Preparing index...')
+      }
+      if (progressSource.waitingForRateLimit) {
+        return t(
+          'settings.rag.waitingRateLimit',
+          'Waiting for rate limit to reset...',
+        )
+      }
+      if (displayedCurrentFile) {
+        return displayedCurrentFile
+      }
+      if (!progressSource.totalChunks) {
+        return t('settings.rag.preparingProgress', 'Preparing index...')
+      }
+      return `${ringPercent}% ${t('settings.rag.indexing', 'Indexing...')}`
+    }
+    if (!persistedProgress) {
+      return t('settings.rag.notIndexedYet', 'Not indexed yet')
+    }
+    if (ringPercent >= 100) {
+      return `${ringPercent}% ${t('settings.rag.indexComplete', 'Index complete')}`
+    }
+    if (ringPercent > 0) {
+      return `${ringPercent}% ${t(
+        'settings.rag.indexIncomplete',
+        'Last index did not finish',
+      )}`
+    }
+    return t('settings.rag.notIndexedYet', 'Not indexed yet')
+  }, [
+    isIndexing,
+    displayedCurrentFile,
+    persistedProgress,
+    progressSource,
+    ringPercent,
+    t,
+  ])
+
+  const maintenanceStatusKey = useMemo(() => {
+    if (isIndexing) {
+      if (!progressSource) {
+        return 'preparing'
+      }
+      if (progressSource.waitingForRateLimit) {
+        return 'rate-limit'
+      }
+      if (displayedCurrentFile) {
+        return displayedCurrentFile
+      }
+      return 'indexing'
+    }
+    return `idle-${ringPercent}`
+  }, [
+    isIndexing,
+    displayedCurrentFile,
+    progressSource,
+    ringPercent,
+  ])
+
+  const isAnimatingCurrentFile = Boolean(isIndexing && displayedCurrentFile)
+  const maintenanceStatusPrefix = isAnimatingCurrentFile
+    ? `${ringPercent}%`
+    : null
 
   const includeFolders = useMemo(
     () => includePatternsToFolderPaths(settings.ragOptions.includePatterns),
@@ -734,9 +907,45 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             <>
               <ObsidianSetting
                 name={t('settings.rag.maintenanceActions', '维护操作')}
-                className="smtcmp-settings-card"
+                nameExtra={
+                  <div className="smtcmp-index-inline-status">
+                    <IndexProgressRing percent={ringPercent} />
+                    {isAnimatingCurrentFile ? (
+                      <span
+                        className="smtcmp-index-current-file"
+                        title={`${maintenanceStatusPrefix} ${maintenanceStatusLine}`}
+                      >
+                        <span className="smtcmp-index-current-file-prefix">
+                          {maintenanceStatusPrefix}
+                        </span>
+                        <span className="smtcmp-index-current-file-viewport">
+                          {leavingCurrentFile ? (
+                            <span className="smtcmp-index-current-file-text is-leaving">
+                              {leavingCurrentFile}
+                            </span>
+                          ) : null}
+                          <span
+                            key={fileAnimationKey}
+                            className={`smtcmp-index-current-file-text${leavingCurrentFile ? ' is-entering' : ''}`}
+                          >
+                            {maintenanceStatusLine}
+                          </span>
+                        </span>
+                      </span>
+                    ) : (
+                      <span
+                        key={maintenanceStatusKey}
+                        className="smtcmp-index-current-file"
+                        title={maintenanceStatusLine}
+                      >
+                        {maintenanceStatusLine}
+                      </span>
+                    )}
+                  </div>
+                }
+                className="smtcmp-settings-card smtcmp-rag-maintenance-setting"
               >
-                <div className="smtcmp-flex-row-gap-8">
+                <div className="smtcmp-flex-row-gap-8 smtcmp-rag-maintenance-actions">
                   <ObsidianButton
                     text={t('settings.rag.manage')}
                     disabled={!canUseIndexMaintenance}
@@ -769,71 +978,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   )}
                 </div>
               </ObsidianSetting>
-
-              <div className="smtcmp-provider-section">
-                <div
-                  className="smtcmp-provider-header smtcmp-clickable"
-                  onClick={() => setIsProgressOpen((v) => !v)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setIsProgressOpen((v) => !v)
-                    }
-                  }}
-                >
-                  <div className="smtcmp-provider-expand-btn">
-                    {isProgressOpen ? (
-                      <ChevronDown size={16} />
-                    ) : (
-                      <ChevronRight size={16} />
-                    )}
-                  </div>
-
-                  <div className="smtcmp-provider-info">
-                    <span className="smtcmp-provider-id">
-                      {t(
-                        'settings.rag.indexProgressTitle',
-                        'RAG Index Progress',
-                      )}
-                    </span>
-                    {headerPercent !== null ? (
-                      <span className="smtcmp-provider-type">
-                        {headerPercent}%
-                      </span>
-                    ) : (
-                      <span className="smtcmp-provider-type">
-                        {isIndexing
-                          ? t('settings.rag.indexing', 'In progress')
-                          : t('settings.rag.notStarted', 'Not started')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {isProgressOpen && (
-                  <div className="smtcmp-provider-models">
-                    <RAGIndexProgress
-                      progress={effectiveProgress}
-                      isIndexing={isIndexing}
-                      getMarkdownFilesInFolder={(folderPath: string) => {
-                        const files = plugin.app.vault.getMarkdownFiles()
-                        const paths = files.map((f) => f.path)
-                        if (folderPath === '') {
-                          return paths.filter((p) => !p.includes('/'))
-                        }
-                        const prefix = folderPath + '/'
-                        return paths.filter(
-                          (p) =>
-                            p.startsWith(prefix) &&
-                            !p.slice(prefix.length).includes('/'),
-                        )
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
             </>
           )}
         </RAGCard>
@@ -847,95 +991,99 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 '选择哪些文件夹应参与知识库索引，哪些应被排除。',
               )}
             >
-              <ObsidianSetting
-                name={t('settings.rag.includePatterns')}
-                desc={t('settings.rag.includePatternsDesc')}
-                className="smtcmp-settings-card"
-              >
-                <ObsidianButton
-                  text={t('settings.rag.testPatterns')}
-                  onClick={() => {
-                    void (async () => {
-                      const patterns = settings.ragOptions.includePatterns
-                      const includedFiles = await findFilesMatchingPatterns(
-                        patterns,
-                        plugin.app.vault,
-                      )
-                      new IncludedFilesModal(
-                        app,
-                        includedFiles,
-                        patterns,
-                      ).open()
-                    })().catch((error) => {
-                      console.error('Failed to test include patterns', error)
-                    })
-                  }}
-                />
-              </ObsidianSetting>
+              <div className="smtcmp-rag-scope-group">
+                <ObsidianSetting
+                  name={t('settings.rag.includePatterns')}
+                  desc={t('settings.rag.includePatternsDesc')}
+                  className="smtcmp-rag-scope-group-setting"
+                >
+                  <ObsidianButton
+                    text={t('settings.rag.testPatterns')}
+                    onClick={() => {
+                      void (async () => {
+                        const patterns = settings.ragOptions.includePatterns
+                        const includedFiles = await findFilesMatchingPatterns(
+                          patterns,
+                          plugin.app.vault,
+                        )
+                        new IncludedFilesModal(
+                          app,
+                          includedFiles,
+                          patterns,
+                        ).open()
+                      })().catch((error) => {
+                        console.error('Failed to test include patterns', error)
+                      })
+                    }}
+                  />
+                </ObsidianSetting>
 
-              <ObsidianSetting className="smtcmp-settings-plain">
-                <FolderSelectionList
-                  app={app}
-                  vault={plugin.app.vault}
-                  title={t('settings.rag.selectedFolders', '已选择的文件夹')}
-                  value={includeFolders}
-                  onChange={(folders: string[]) => {
-                    const patterns = folderPathsToIncludePatterns(folders)
-                    applySettingsUpdate({
-                      ...settings,
-                      ragOptions: {
-                        ...settings.ragOptions,
-                        includePatterns: patterns,
-                      },
-                    })
-                  }}
-                />
-              </ObsidianSetting>
+                <div className="smtcmp-rag-scope-group-body">
+                  <FolderSelectionList
+                    app={app}
+                    vault={plugin.app.vault}
+                    title={t('settings.rag.selectedFolders', '已选择的文件夹')}
+                    value={includeFolders}
+                    onChange={(folders: string[]) => {
+                      const patterns = folderPathsToIncludePatterns(folders)
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          includePatterns: patterns,
+                        },
+                      })
+                    }}
+                  />
+                </div>
+              </div>
 
-              <ObsidianSetting
-                name={t('settings.rag.excludePatterns')}
-                desc={t('settings.rag.excludePatternsDesc')}
-                className="smtcmp-settings-card"
-              >
-                <ObsidianButton
-                  text={t('settings.rag.testPatterns')}
-                  onClick={() => {
-                    void (async () => {
-                      const patterns = settings.ragOptions.excludePatterns
-                      const excludedFiles = await findFilesMatchingPatterns(
-                        patterns,
-                        plugin.app.vault,
-                      )
-                      new ExcludedFilesModal(app, excludedFiles).open()
-                    })().catch((error) => {
-                      console.error('Failed to test exclude patterns', error)
-                    })
-                  }}
-                />
-              </ObsidianSetting>
+              <div className="smtcmp-rag-scope-group">
+                <ObsidianSetting
+                  name={t('settings.rag.excludePatterns')}
+                  desc={t('settings.rag.excludePatternsDesc')}
+                  className="smtcmp-rag-scope-group-setting"
+                >
+                  <ObsidianButton
+                    text={t('settings.rag.testPatterns')}
+                    onClick={() => {
+                      void (async () => {
+                        const patterns = settings.ragOptions.excludePatterns
+                        const excludedFiles = await findFilesMatchingPatterns(
+                          patterns,
+                          plugin.app.vault,
+                        )
+                        new ExcludedFilesModal(app, excludedFiles).open()
+                      })().catch((error) => {
+                        console.error('Failed to test exclude patterns', error)
+                      })
+                    }}
+                  />
+                </ObsidianSetting>
 
-              <ObsidianSetting className="smtcmp-settings-plain">
-                <FolderSelectionList
-                  app={app}
-                  vault={plugin.app.vault}
-                  title={t('settings.rag.excludedFolders', '已排除的文件夹')}
-                  placeholder={t(
-                    'settings.rag.selectExcludeFoldersPlaceholder',
-                    '点击此处选择要排除的文件夹（留空则不排除）',
-                  )}
-                  value={excludeFolders}
-                  onChange={(folders: string[]) => {
-                    const patterns = folderPathsToIncludePatterns(folders)
-                    applySettingsUpdate({
-                      ...settings,
-                      ragOptions: {
-                        ...settings.ragOptions,
-                        excludePatterns: patterns,
-                      },
-                    })
-                  }}
-                />
-              </ObsidianSetting>
+                <div className="smtcmp-rag-scope-group-body">
+                  <FolderSelectionList
+                    app={app}
+                    vault={plugin.app.vault}
+                    title={t('settings.rag.excludedFolders', '已排除的文件夹')}
+                    placeholder={t(
+                      'settings.rag.selectExcludeFoldersPlaceholder',
+                      '点击此处选择要排除的文件夹（留空则不排除）',
+                    )}
+                    value={excludeFolders}
+                    onChange={(folders: string[]) => {
+                      const patterns = folderPathsToIncludePatterns(folders)
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          excludePatterns: patterns,
+                        },
+                      })
+                    }}
+                  />
+                </div>
+              </div>
 
               {(includeFolders.length === 0 ||
                 conflictInfo.exactConflicts.length > 0 ||

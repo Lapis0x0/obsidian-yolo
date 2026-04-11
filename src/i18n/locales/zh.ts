@@ -684,6 +684,11 @@ export const zh: TranslationKeys = {
       indexProgressTitle: 'RAG 索引进度',
       indexing: '进行中',
       notStarted: '未开始',
+      waitingRateLimit: '等待速率限制重置...',
+      preparingProgress: '正在准备索引...',
+      notIndexedYet: '尚未索引',
+      indexComplete: '索引已完成',
+      indexIncomplete: '上次索引未完成',
     },
     mcp: {
       title: '自定义工具 (MCP)',

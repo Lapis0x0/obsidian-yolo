@@ -320,6 +320,25 @@ export class VectorManager {
     })
 
     let completedChunks = 0
+    const embeddingFileBoundaries: Array<{ path: string; endChunk: number }> = []
+    let embeddingFileCursor = 0
+    let cumulativeChunks = 0
+    let lastReportedEmbeddingFile: string | null = null
+
+    for (const chunk of contentChunks) {
+      cumulativeChunks += 1
+      const lastBoundary =
+        embeddingFileBoundaries[embeddingFileBoundaries.length - 1]
+      if (lastBoundary && lastBoundary.path === chunk.path) {
+        lastBoundary.endChunk = cumulativeChunks
+      } else {
+        embeddingFileBoundaries.push({
+          path: chunk.path,
+          endChunk: cumulativeChunks,
+        })
+      }
+    }
+
     const batchChunks = chunkArray(contentChunks, 100)
     const failedChunks: {
       path: string
@@ -330,6 +349,49 @@ export class VectorManager {
     // 增量保存：降低整库 dump 频率（仍于 finally 再保存一次）
     const INCREMENTAL_SAVE_THRESHOLD = 1500
     let chunksSinceLastSave = 0
+
+    const buildProgressPayload = ({
+      currentFile,
+      waitingForRateLimit,
+    }: {
+      currentFile?: string
+      waitingForRateLimit?: boolean
+    } = {}) => ({
+      completedChunks,
+      totalChunks: contentChunks.length,
+      totalFiles: filesToIndex.length,
+      completedFiles: completedFilesCount,
+      folderProgress: folderProgress,
+      newFilesCount,
+      updatedFilesCount,
+      removedFilesCount,
+      ...(currentFile ? { currentFile } : {}),
+      ...(typeof waitingForRateLimit === 'boolean'
+        ? { waitingForRateLimit }
+        : {}),
+    })
+
+    const getCurrentEmbeddingFile = () => {
+      if (embeddingFileBoundaries.length === 0) {
+        return undefined
+      }
+      while (
+        embeddingFileCursor < embeddingFileBoundaries.length - 1 &&
+        completedChunks > embeddingFileBoundaries[embeddingFileCursor].endChunk
+      ) {
+        embeddingFileCursor += 1
+      }
+      return embeddingFileBoundaries[embeddingFileCursor]?.path
+    }
+
+    const getNextReportedFile = () => {
+      const currentFile = getCurrentEmbeddingFile()
+      if (!currentFile || currentFile === lastReportedEmbeddingFile) {
+        return undefined
+      }
+      lastReportedEmbeddingFile = currentFile
+      return currentFile
+    }
 
     try {
       for (const batchChunk of batchChunks) {
@@ -377,17 +439,9 @@ export class VectorManager {
                     chunk.content,
                   )
                   completedChunks += 1
+                  const currentFile = getNextReportedFile()
 
-                  updateProgress?.({
-                    completedChunks,
-                    totalChunks: contentChunks.length,
-                    totalFiles: filesToIndex.length,
-                    completedFiles: completedFilesCount,
-                    folderProgress: folderProgress,
-                    newFilesCount,
-                    updatedFilesCount,
-                    removedFilesCount,
-                  })
+                  updateProgress?.(buildProgressPayload({ currentFile }))
 
                   return {
                     path: chunk.path,
@@ -414,17 +468,14 @@ export class VectorManager {
                       error instanceof LLMRateLimitExceededException ||
                       error.status === 429
                     ) {
-                      updateProgress?.({
-                        completedChunks,
-                        totalChunks: contentChunks.length,
-                        totalFiles: filesToIndex.length,
-                        completedFiles: completedFilesCount,
-                        folderProgress: folderProgress,
-                        newFilesCount,
-                        updatedFilesCount,
-                        removedFilesCount,
-                        waitingForRateLimit: true,
-                      })
+                      const currentFile = getCurrentEmbeddingFile() ?? chunk.path
+                      lastReportedEmbeddingFile = currentFile
+                      updateProgress?.(
+                        buildProgressPayload({
+                          currentFile,
+                          waitingForRateLimit: true,
+                        }),
+                      )
                       return true
                     }
                     return false
@@ -489,17 +540,7 @@ export class VectorManager {
         }
 
         // 更新进度
-        updateProgress?.({
-          completedChunks,
-          totalChunks: contentChunks.length,
-          totalFiles: filesToIndex.length,
-          completedFiles: completedFilesCount,
-          folderProgress: folderProgress,
-          newFilesCount,
-          updatedFilesCount,
-          removedFilesCount,
-          waitingForRateLimit: false,
-        })
+        updateProgress?.(buildProgressPayload({ waitingForRateLimit: false }))
       }
     } catch (error) {
       // 如果是用户取消操作，直接重新抛出，不显示错误弹窗

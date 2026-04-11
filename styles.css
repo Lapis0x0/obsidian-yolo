@@ -2477,6 +2477,34 @@
   padding-bottom: 0;
 }
 
+.smtcmp-rag-scope-group {
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(
+    in srgb,
+    var(--background-primary) 72%,
+    var(--background-secondary) 28%
+  );
+  margin-bottom: var(--size-4-3);
+  overflow: hidden;
+}
+
+.smtcmp-rag-scope-group:last-of-type {
+  margin-bottom: var(--size-4-3);
+}
+
+.smtcmp-rag-scope-group-setting.setting-item {
+  border: none !important;
+  background: transparent !important;
+  margin-bottom: 0;
+  padding: var(--size-4-3) !important;
+}
+
+.smtcmp-rag-scope-group-body {
+  padding: 0 var(--size-4-3) var(--size-4-3);
+}
+
 .smtcmp-rag-resource-summary {
   display: flex;
   flex-wrap: wrap;
@@ -2563,342 +2591,144 @@
   transition: width 160ms ease;
 }
 
-/* RAG index progress */
+/* RAG maintenance row: title + inline status + actions */
 
-.smtcmp-rag-progress {
-  margin-top: 1em;
-  padding: 12px;
-  background-color: var(--background-secondary);
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+.smtcmp-rag-maintenance-setting .setting-item-info {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.smtcmp-rag-progress .setting-item-heading {
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-normal);
-}
-
-.smtcmp-rag-progress-summary {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.smtcmp-rag-progress-stats {
+.smtcmp-rag-maintenance-setting .setting-item-name.smtcmp-setting-name-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-muted);
+  gap: var(--size-4-3);
+  width: 100%;
+  min-width: 0;
 }
 
-.smtcmp-rag-progress-separator {
-  color: var(--text-faint);
-}
-
-.smtcmp-rag-progress-file-stats {
+.smtcmp-rag-maintenance-setting
+  .setting-item-name.smtcmp-setting-name-row
+  .smtcmp-setting-name-extra {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  gap: 12px;
-  margin-top: 6px;
-  font-size: 12px;
+  justify-content: flex-end;
 }
 
-.smtcmp-rag-progress-file-stats .mod-success {
-  color: var(--text-success);
+.smtcmp-rag-maintenance-setting .setting-item-control {
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
-.smtcmp-rag-progress-file-stats .mod-warning {
-  color: var(--text-warning);
+.smtcmp-index-inline-status {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.smtcmp-rag-progress-file-stats .mod-error {
-  color: var(--text-error);
+.smtcmp-rag-maintenance-actions {
+  flex: 0 0 auto;
 }
 
-.smtcmp-rag-progress-current {
-  margin-bottom: 12px;
-  padding: 8px;
-  background-color: var(--background-primary);
-  border-radius: 4px;
-  border-left: 3px solid var(--interactive-accent);
+.smtcmp-index-ring {
+  flex-shrink: 0;
 }
 
-.smtcmp-rag-progress-current-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.smtcmp-index-ring svg {
+  display: block;
 }
 
-.smtcmp-rag-progress-current-file {
-  font-size: 13px;
-  color: var(--text-normal);
+.smtcmp-index-ring-track {
+  stroke: var(--background-modifier-border);
+}
+
+.smtcmp-index-ring-fill {
+  stroke: var(--interactive-accent);
+}
+
+.smtcmp-index-current-file {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
   font-family: var(--font-monospace);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.smtcmp-rag-progress-folders {
-  margin-top: 12px;
-}
-
-.smtcmp-rag-progress-folders-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-}
-
-.smtcmp-rag-progress-folders-header {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.smtcmp-rag-progress-folder {
-  margin-bottom: 10px;
-  padding: 10px;
-  background-color: var(--background-primary);
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition:
-    background 0.15s ease,
-    transform 0.15s ease;
-}
-
-.smtcmp-rag-progress-folder.is-active {
-  background-color: var(--background-primary-alt);
-  border-left: 2px solid var(--interactive-accent);
-  padding-left: 6px;
-}
-
-.smtcmp-rag-progress-folder:hover {
-  background-color: var(--background-primary-alt);
-}
-
-.smtcmp-rag-progress-folder-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.smtcmp-rag-progress-folder-header {
-  width: 100%;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 0;
-  text-align: left;
-  color: var(--text-normal);
-  cursor: pointer;
-}
-
-.smtcmp-rag-progress-folder-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-normal);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 60%;
-}
-
-.smtcmp-rag-progress-folder-count {
-  font-size: 11px;
+.smtcmp-index-current-file-prefix {
+  flex: 0 0 4ch;
+  width: 4ch;
+  text-align: right;
   color: var(--text-muted);
 }
 
-.smtcmp-rag-progress-bar {
+.smtcmp-index-current-file-viewport {
   position: relative;
-  height: 14px;
-  background-color: var(--background-modifier-border);
-  border-radius: 999px;
+  flex: 0 0 clamp(18ch, 24vw, 30ch);
+  width: clamp(18ch, 24vw, 30ch);
+  min-width: clamp(18ch, 24vw, 30ch);
+  max-width: clamp(18ch, 24vw, 30ch);
+  height: 1.35em;
   overflow: hidden;
 }
 
-.smtcmp-rag-progress-bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--interactive-accent),
-    var(--interactive-accent-hover)
-  );
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
-
-.smtcmp-rag-progress-bar-text {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-normal);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.smtcmp-rag-progress-folder-files {
-  margin-top: 8px;
-  padding-left: 14px;
-  list-style: disc;
-  max-height: 180px;
-  overflow: auto;
-}
-
-.smtcmp-rag-progress-folder-files li {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
+.smtcmp-index-current-file-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
-  overflow: hidden;
+  white-space: nowrap;
 }
 
-.smtcmp-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--background-modifier-hover);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 999px;
-  padding: 2px 8px;
+.smtcmp-index-current-file-text.is-entering,
+.smtcmp-index-current-file-text.is-leaving {
+  position: absolute;
+  inset: 0;
 }
 
-@keyframes smtcmp-rag-pulse {
-  0% {
+.smtcmp-index-current-file-text.is-entering {
+  animation: smtcmp-index-file-enter 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.smtcmp-index-current-file-text.is-leaving {
+  animation: smtcmp-index-file-leave 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes smtcmp-index-file-enter {
+  from {
+    opacity: 0.35;
+    transform: translateY(5px);
+    filter: blur(1px);
+  }
+
+  to {
     opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
   }
-  50% {
-    opacity: 0.6;
-  }
-  100% {
+}
+
+@keyframes smtcmp-index-file-leave {
+  from {
     opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
   }
-}
 
-.smtcmp-rag-progress-folder.is-active .smtcmp-rag-progress-folder-name {
-  animation: smtcmp-rag-pulse 2s infinite;
-}
-
-.theme-dark .smtcmp-rag-progress {
-  background-color: var(--background-secondary);
-}
-
-.theme-dark .smtcmp-rag-progress-current,
-.theme-dark .smtcmp-rag-progress-folder {
-  background-color: var(--background-primary);
-}
-
-.theme-dark .smtcmp-rag-progress-bar {
-  background-color: var(--background-modifier-border-hover);
-}
-
-@media (max-width: 768px) {
-  .smtcmp-rag-progress-folder-name {
-    max-width: 50%;
+  to {
+    opacity: 0;
+    transform: translateY(-5px);
+    filter: blur(1px);
   }
-}
-
-.smtcmp-rag-collapse {
-  margin-top: 8px;
-  border-top: 1px solid var(--background-modifier-border);
-}
-
-.smtcmp-rag-collapse-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  appearance: none;
-  padding: 8px 0;
-  color: var(--text-normal);
-  cursor: pointer;
-}
-
-.smtcmp-rag-collapse-header:hover {
-  color: var(--text-accent);
-}
-
-.smtcmp-rag-collapse-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-}
-
-.smtcmp-rag-collapse-title {
-  font-weight: 600;
-}
-
-.smtcmp-rag-collapse-spacer {
-  flex: 1 1 auto;
-}
-
-.smtcmp-rag-collapse-summary {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.smtcmp-rag-collapse-content {
-  padding: 8px 0 0 20px;
-}
-
-.smtcmp-rag-minimal-root {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin-top: 6px;
-}
-
-.smtcmp-rag-minimal-root .smtcmp-rag-progress-summary {
-  margin: 0 0 6px 0;
-  padding: 0;
-  font-size: 14px;
-  color: var(--text-normal);
-}
-
-.smtcmp-rag-progress-folders-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.smtcmp-rag-minimal {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
-
-.smtcmp-rag-minimal .smtcmp-rag-progress-folder-header {
-  padding: 0;
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.smtcmp-rag-minimal .smtcmp-rag-progress-folder-header:hover {
-  color: var(--text-normal);
 }
 
 @media (max-width: 900px) {
@@ -2907,6 +2737,34 @@
   }
 
   .smtcmp-rag-card-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .smtcmp-rag-maintenance-setting .setting-item {
+    align-items: flex-start;
+  }
+
+  .smtcmp-rag-maintenance-setting .setting-item-name.smtcmp-setting-name-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .smtcmp-rag-maintenance-setting
+    .setting-item-name.smtcmp-setting-name-row
+    .smtcmp-setting-name-extra {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .smtcmp-index-current-file-viewport {
+    flex: 1 1 auto;
+    width: min(100%, 30ch);
+    min-width: 0;
+    max-width: min(100%, 30ch);
+  }
+
+  .smtcmp-rag-maintenance-setting .setting-item-control {
     width: 100%;
     justify-content: flex-start;
   }

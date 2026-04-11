@@ -746,6 +746,11 @@ export const en: TranslationKeys = {
       indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',
       notStarted: 'Not started',
+      waitingRateLimit: 'Waiting for rate limit to reset...',
+      preparingProgress: 'Preparing index...',
+      notIndexedYet: 'Not indexed yet',
+      indexComplete: 'Index complete',
+      indexIncomplete: 'Last index did not finish',
     },
     mcp: {
       title: 'Custom tools (MCP)',
