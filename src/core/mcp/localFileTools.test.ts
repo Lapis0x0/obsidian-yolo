@@ -2,6 +2,8 @@ jest.mock('obsidian')
 
 import { App, TFile, TFolder } from 'obsidian'
 
+import type { RAGEngine } from '../rag/ragEngine'
+import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
@@ -425,6 +427,222 @@ describe('local fs tool action helpers', () => {
         'Semantic search is not available in this context.',
       )
     }
+  })
+
+  it('matches keyword file search by whitespace-separated tokens instead of full query string', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const files = [
+      Object.assign(new TFile(), {
+        path: '2.工作/3.工作流专项/1月/✅ 0109 Workflow 体系总览.md',
+        stat: { size: 20 },
+      }),
+      Object.assign(new TFile(), {
+        path: '2.工作/3.工作流专项/2月/✅ 0210 工作流复盘模块项目规划.md',
+        stat: { size: 20 },
+      }),
+      Object.assign(new TFile(), {
+        path: '2.工作/普通项目/普通笔记.md',
+        stat: { size: 20 },
+      }),
+    ]
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getFiles: jest.fn().mockReturnValue(files),
+          getAllLoadedFiles: jest.fn().mockReturnValue([root]),
+          getMarkdownFiles: jest.fn().mockReturnValue(files),
+        },
+      } as unknown as App,
+      toolName: 'fs_search',
+      args: {
+        mode: 'keyword',
+        scope: 'files',
+        query: 'workflow 工作流程 工作流',
+        maxResults: 10,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'fs_search',
+      requestedMode: 'keyword',
+      effectiveMode: 'keyword',
+      scope: 'files',
+      query: 'workflow 工作流程 工作流',
+      path: '',
+      results: [
+        {
+          kind: 'file',
+          path: '2.工作/3.工作流专项/1月/✅ 0109 Workflow 体系总览.md',
+          source: 'keyword',
+        },
+        {
+          kind: 'file',
+          path: '2.工作/3.工作流专项/2月/✅ 0210 工作流复盘模块项目规划.md',
+          source: 'keyword',
+        },
+      ],
+    })
+  })
+
+  it('ranks keyword content hits by matched token count before file path', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const fileA = Object.assign(new TFile(), {
+      path: 'a.md',
+      stat: { size: 200 },
+    })
+    const fileB = Object.assign(new TFile(), {
+      path: 'b.md',
+      stat: { size: 200 },
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getFiles: jest.fn().mockReturnValue([fileA, fileB]),
+          getAllLoadedFiles: jest.fn().mockReturnValue([root]),
+          getMarkdownFiles: jest.fn().mockReturnValue([fileA, fileB]),
+          read: jest.fn().mockImplementation(async (file: TFile) =>
+            file.path === 'a.md'
+              ? 'workflow 工作流 双命中'
+              : '只有 workflow 单命中'
+          ),
+        },
+      } as unknown as App,
+      toolName: 'fs_search',
+      args: {
+        mode: 'keyword',
+        scope: 'content',
+        query: 'workflow 工作流',
+        maxResults: 10,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toMatchObject({
+      results: [
+        {
+          kind: 'content_group',
+          path: 'a.md',
+          hitCount: 1,
+        },
+        {
+          kind: 'content_group',
+          path: 'b.md',
+          hitCount: 1,
+        },
+      ],
+    })
+  })
+
+  it('aggregates hybrid content hits by file and keeps top snippets', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const fileA = Object.assign(new TFile(), {
+      path: 'workflow-a.md',
+      stat: { size: 200 },
+    })
+    const fileB = Object.assign(new TFile(), {
+      path: 'workflow-b.md',
+      stat: { size: 200 },
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getFiles: jest.fn().mockReturnValue([fileA, fileB]),
+          getAllLoadedFiles: jest.fn().mockReturnValue([root]),
+          getMarkdownFiles: jest.fn().mockReturnValue([fileA, fileB]),
+          read: jest
+            .fn()
+            .mockImplementation(async (file: TFile) =>
+              file.path === 'workflow-a.md'
+                ? 'workflow intro\nother line\nworkflow appendix'
+                : 'nothing relevant here',
+            ),
+        },
+      } as unknown as App,
+      settings: {
+        ragOptions: {
+          enabled: true,
+          limit: 10,
+        },
+        embeddingModelId: 'test-embedding',
+      } as unknown as SmartComposerSettings,
+      getRagEngine: async () =>
+        ({
+          processQuery: jest.fn().mockResolvedValue([
+            {
+              path: 'workflow-a.md',
+              content: 'workflow intro chunk',
+              metadata: { startLine: 1, endLine: 2 },
+              similarity: 0.91,
+            },
+            {
+              path: 'workflow-b.md',
+              content: 'workflow b chunk',
+              metadata: { startLine: 3, endLine: 4 },
+              similarity: 0.89,
+            },
+            {
+              path: 'workflow-a.md',
+              content: 'workflow appendix chunk',
+              metadata: { startLine: 10, endLine: 12 },
+              similarity: 0.82,
+            },
+          ]),
+        }) as unknown as RAGEngine,
+      toolName: 'fs_search',
+      args: {
+        mode: 'hybrid',
+        query: 'workflow',
+        maxResults: 10,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toMatchObject({
+      tool: 'fs_search',
+      requestedMode: 'hybrid',
+      effectiveMode: 'hybrid',
+      scope: 'content',
+      query: 'workflow',
+      path: '',
+      results: [
+        {
+          kind: 'content_group',
+          path: 'workflow-a.md',
+          source: 'hybrid',
+          hitCount: 2,
+          snippets: [
+            { startLine: 1, endLine: 2 },
+            { startLine: 10, endLine: 12 },
+          ],
+        },
+        {
+          kind: 'content_group',
+          path: 'workflow-b.md',
+          source: 'hybrid',
+          hitCount: 1,
+          snippets: [{ startLine: 3, endLine: 4 }],
+        },
+      ],
+    })
   })
 
   it('supports context prune tool results for any successful text tool output', async () => {

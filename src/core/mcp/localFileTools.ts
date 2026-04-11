@@ -26,6 +26,7 @@ import {
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
 import { fuseRrfHybrid, type SuperSearchResult } from '../search/hybridSearch'
+import { aggregateSearchResults } from '../search/searchResultAggregation'
 import { getLiteSkillDocument } from '../skills/liteSkills'
 
 export { recoverLikelyEscapedBackslashSequences }
@@ -365,7 +366,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_search',
       description:
-        'Search the vault. By default, prefer hybrid search: keyword path/content matching plus semantic (RAG) retrieval fused with RRF. Use keyword for exact filenames, paths, or literal terms; use rag only when you explicitly want semantic-only retrieval without keyword matching. For deep reading, follow up with fs_read.',
+        'Search the vault. By default, prefer hybrid search: keyword path/content matching plus semantic (RAG) retrieval fused with RRF. Content results are grouped by file and include the most relevant snippets. Use keyword for exact filenames, paths, or literal terms; use rag only when you explicitly want semantic-only retrieval without keyword matching. For deep reading, follow up with fs_read.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -394,7 +395,7 @@ export function getLocalFileTools(): McpTool[] {
           maxResults: {
             type: 'integer',
             description:
-              'Maximum results to return. Defaults to 20, range 1-300.',
+              'Maximum top-level results to return. For content search, this means grouped file results. Defaults to 20, range 1-300.',
           },
           caseSensitive: {
             type: 'boolean',
@@ -1196,12 +1197,70 @@ const collectKeywordFsSearchResults = async ({
   signal?: AbortSignal
 }): Promise<LegacyFsSearchItem[]> => {
   const queryForMatch = caseSensitive ? query : query.toLowerCase()
-  const matchPath = (path: string): boolean => {
+  const queryTokens = Array.from(
+    new Set(
+      queryForMatch
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 0),
+    ),
+  )
+  const effectiveTokens =
+    queryTokens.length > 0 ? queryTokens : queryForMatch ? [queryForMatch] : []
+
+  const getTokenMatchSummary = (
+    sourceText: string,
+  ): {
+    matchedTokenCount: number
+    firstMatchIndex: number
+    bestMatchLength: number
+  } | null => {
     if (!query) {
-      return true
+      return {
+        matchedTokenCount: 0,
+        firstMatchIndex: 0,
+        bestMatchLength: 0,
+      }
     }
-    const source = caseSensitive ? path : path.toLowerCase()
-    return source.includes(queryForMatch)
+
+    let matchedTokenCount = 0
+    let firstMatchIndex = Number.MAX_SAFE_INTEGER
+    let bestMatchLength = 0
+
+    for (const token of effectiveTokens) {
+      const matchIndex = sourceText.indexOf(token)
+      if (matchIndex === -1) {
+        continue
+      }
+      matchedTokenCount += 1
+      if (matchIndex < firstMatchIndex) {
+        firstMatchIndex = matchIndex
+        bestMatchLength = token.length
+      }
+    }
+
+    if (matchedTokenCount === 0) {
+      return null
+    }
+
+    return {
+      matchedTokenCount,
+      firstMatchIndex,
+      bestMatchLength,
+    }
+  }
+
+  const getPathMatchSummary = (path: string) => {
+    if (!query) {
+      return {
+        matchedTokenCount: 0,
+        firstMatchIndex: 0,
+        bestMatchLength: 0,
+      }
+    }
+
+    const sourceText = caseSensitive ? path : path.toLowerCase()
+    return getTokenMatchSummary(sourceText)
   }
 
   const includeFiles = scope === 'files' || scope === 'all'
@@ -1220,12 +1279,35 @@ const collectKeywordFsSearchResults = async ({
         isPathWithinFolder(file.path, scopeFolder.normalizedPath),
       )
       .map((file) => file.path)
-      .filter((path) => matchPath(path))
-      .sort((a, b) => a.localeCompare(b))
+      .map((path) => ({
+        path,
+        match: getPathMatchSummary(path),
+      }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          path: string
+          match: {
+            matchedTokenCount: number
+            firstMatchIndex: number
+            bestMatchLength: number
+          }
+        } => entry.match !== null,
+      )
+      .sort((a, b) => {
+        if (a.match.matchedTokenCount !== b.match.matchedTokenCount) {
+          return b.match.matchedTokenCount - a.match.matchedTokenCount
+        }
+        if (a.match.firstMatchIndex !== b.match.firstMatchIndex) {
+          return a.match.firstMatchIndex - b.match.firstMatchIndex
+        }
+        return a.path.localeCompare(b.path)
+      })
 
-    for (const filePath of files) {
+    for (const fileEntry of files) {
       if (results.length >= maxResults) break
-      results.push({ kind: 'file', path: filePath })
+      results.push({ kind: 'file', path: fileEntry.path })
     }
   }
 
@@ -1238,12 +1320,35 @@ const collectKeywordFsSearchResults = async ({
         isPathWithinFolder(folder.path, scopeFolder.normalizedPath),
       )
       .map((folder) => folder.path)
-      .filter((path) => matchPath(path))
-      .sort((a, b) => a.localeCompare(b))
+      .map((path) => ({
+        path,
+        match: getPathMatchSummary(path),
+      }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          path: string
+          match: {
+            matchedTokenCount: number
+            firstMatchIndex: number
+            bestMatchLength: number
+          }
+        } => entry.match !== null,
+      )
+      .sort((a, b) => {
+        if (a.match.matchedTokenCount !== b.match.matchedTokenCount) {
+          return b.match.matchedTokenCount - a.match.matchedTokenCount
+        }
+        if (a.match.firstMatchIndex !== b.match.firstMatchIndex) {
+          return a.match.firstMatchIndex - b.match.firstMatchIndex
+        }
+        return a.path.localeCompare(b.path)
+      })
 
-    for (const dirPath of dirs) {
+    for (const dirEntry of dirs) {
       if (results.length >= maxResults) break
-      results.push({ kind: 'dir', path: dirPath })
+      results.push({ kind: 'dir', path: dirEntry.path })
     }
   }
 
@@ -1254,9 +1359,16 @@ const collectKeywordFsSearchResults = async ({
         isPathWithinFolder(file.path, scopeFolder.normalizedPath),
       )
       .sort((a, b) => a.path.localeCompare(b.path))
+    const contentMatches: Array<{
+      kind: 'content_match'
+      path: string
+      line: number
+      snippet: string
+      matchedTokenCount: number
+      firstMatchIndex: number
+    }> = []
 
     for (const file of searchableFiles) {
-      if (results.length >= maxResults) break
       if (signal?.aborted) {
         break
       }
@@ -1266,24 +1378,47 @@ const collectKeywordFsSearchResults = async ({
 
       const content = await app.vault.read(file)
       const source = caseSensitive ? content : content.toLowerCase()
-      const matchIndex = source.indexOf(queryForMatch)
-      if (matchIndex === -1) {
+      const match = getTokenMatchSummary(source)
+      if (!match) {
         continue
       }
 
+      const matchIndex = match.firstMatchIndex
       const line = content.slice(0, matchIndex).split('\n').length
       const snippet = makeContentSnippet({
         content,
         matchIndex,
-        matchLength: query.length,
+        matchLength: match.bestMatchLength,
       })
-      results.push({
+      contentMatches.push({
         kind: 'content_match',
         path: file.path,
         line,
         snippet,
+        matchedTokenCount: match.matchedTokenCount,
+        firstMatchIndex: match.firstMatchIndex,
       })
     }
+
+    contentMatches
+      .sort((a, b) => {
+        if (a.matchedTokenCount !== b.matchedTokenCount) {
+          return b.matchedTokenCount - a.matchedTokenCount
+        }
+        if (a.firstMatchIndex !== b.firstMatchIndex) {
+          return a.firstMatchIndex - b.firstMatchIndex
+        }
+        if (a.line !== b.line) {
+          return a.line - b.line
+        }
+        return a.path.localeCompare(b.path)
+      })
+      .slice(0, Math.max(maxResults - results.length, 0))
+      .forEach(({ matchedTokenCount: _matchedTokenCount, firstMatchIndex: _firstMatchIndex, ...item }) => {
+        void _matchedTokenCount
+        void _firstMatchIndex
+        results.push(item)
+      })
   }
 
   return results
@@ -2320,7 +2455,7 @@ export async function callLocalFileTool({
               scope,
               query,
               path: scopeFolder.normalizedPath,
-              results,
+              results: aggregateSearchResults({ results, maxResults }),
             }),
           }
         }
@@ -2377,7 +2512,7 @@ export async function callLocalFileTool({
               scope: effectiveScope,
               query,
               path: scopeFolder.normalizedPath,
-              results,
+              results: aggregateSearchResults({ results, maxResults }),
             }),
           }
         }
@@ -2434,14 +2569,14 @@ export async function callLocalFileTool({
         })
         return {
           status: ToolCallResponseStatus.Success,
-            text: formatJsonResult({
-              tool: 'fs_search',
-              requestedMode,
-              effectiveMode: 'hybrid',
-              scope: 'content',
-              query,
-              path: scopeFolder.normalizedPath,
-              results: fused,
+          text: formatJsonResult({
+            tool: 'fs_search',
+            requestedMode,
+            effectiveMode: 'hybrid',
+            scope: 'content',
+            query,
+            path: scopeFolder.normalizedPath,
+            results: aggregateSearchResults({ results: fused, maxResults }),
           }),
         }
       }

@@ -315,7 +315,8 @@ export const zh: TranslationKeys = {
       builtinFsListLabel: '浏览目录',
       builtinFsListDesc: '列出库内目录结构，便于快速了解工作区。',
       builtinFsSearchLabel: '搜索',
-      builtinFsSearchDesc: '使用关键词、语义（RAG）或混合检索搜索知识库。',
+      builtinFsSearchDesc:
+        '使用关键词、语义（RAG）或混合检索搜索知识库，并按文件聚合内容结果，附带最相关片段。',
       builtinFsReadLabel: '读取',
       builtinFsReadDesc: '按路径读取库内文件，支持全文或按行范围两种模式。',
       builtinContextPruneToolResultsLabel: '裁剪工具调用结果',
