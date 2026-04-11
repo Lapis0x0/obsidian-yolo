@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { App, Notice } from 'obsidian'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
@@ -70,6 +70,12 @@ const saveAppLocalStorage = async (
   }
 }
 
+type IndexJob = {
+  reindexAll: boolean
+  successNotice?: string
+  failureNotice: string
+}
+
 function RAGCard({
   title,
   description,
@@ -126,10 +132,17 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const [limitInput, setLimitInput] = useState(
     String(settings.ragOptions.limit),
   )
-  const [autoUpdateIntervalInput, setAutoUpdateIntervalInput] = useState(
-    String(settings.ragOptions.autoUpdateIntervalHours ?? 0),
-  )
   const [showAdvancedRagSettings, setShowAdvancedRagSettings] = useState(false)
+  const syncInputsRef = useRef<{
+    enabled: boolean
+    embeddingModelId: string
+    chunkSize: number
+    includePatternsKey: string
+    excludePatternsKey: string
+  } | null>(null)
+  const scheduledIndexJobRef = useRef<IndexJob | null>(null)
+  const queuedIndexJobRef = useRef<IndexJob | null>(null)
+  const scheduledIndexJobTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     setChunkSizeInput(String(settings.ragOptions.chunkSize))
@@ -142,12 +155,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   useEffect(() => {
     setLimitInput(String(settings.ragOptions.limit))
   }, [settings.ragOptions.limit])
-
-  useEffect(() => {
-    setAutoUpdateIntervalInput(
-      String(settings.ragOptions.autoUpdateIntervalHours ?? 0),
-    )
-  }, [settings.ragOptions.autoUpdateIntervalHours])
 
   const applySettingsUpdate = useCallback(
     (nextSettings: typeof settings, errorMessage: string = ragUpdateError) => {
@@ -403,6 +410,155 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     setIndexProgress(progress)
   }, [])
 
+  const runIndexJob = useCallback(
+    async ({ reindexAll, successNotice, failureNotice }: IndexJob) => {
+      const abortController = new AbortController()
+      setIndexAbortController(abortController)
+      setIsIndexing(true)
+      setIndexProgress(null)
+
+      try {
+        const ragEngine = await plugin.getRAGEngine()
+        await ragEngine.updateVaultIndex(
+          { reindexAll, signal: abortController.signal },
+          (queryProgress) => {
+            if (queryProgress.type === 'indexing') {
+              handleIndexProgress(queryProgress.indexProgress)
+            }
+          },
+        )
+        await plugin.setSettings({
+          ...plugin.settings,
+          ragOptions: {
+            ...plugin.settings.ragOptions,
+            lastAutoUpdateAt: Date.now(),
+          },
+        })
+        if (successNotice) {
+          new Notice(successNotice)
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          new Notice(t('notices.indexCancelled', '索引已取消'))
+        } else {
+          console.error('Failed to update knowledge base index:', error)
+          new Notice(failureNotice)
+        }
+      } finally {
+        setIsIndexing(false)
+        setIndexAbortController(null)
+        setTimeout(() => setIndexProgress(null), 3000)
+      }
+    },
+    [handleIndexProgress, plugin, t],
+  )
+
+  const scheduleIndexJob = useCallback(
+    (job: IndexJob, delayMs = 800) => {
+      scheduledIndexJobRef.current = job
+      if (scheduledIndexJobTimerRef.current !== null) {
+        window.clearTimeout(scheduledIndexJobTimerRef.current)
+      }
+      scheduledIndexJobTimerRef.current = window.setTimeout(() => {
+        scheduledIndexJobTimerRef.current = null
+        const scheduledJob = scheduledIndexJobRef.current
+        scheduledIndexJobRef.current = null
+        if (!scheduledJob) return
+        if (isIndexing) {
+          queuedIndexJobRef.current = scheduledJob
+          return
+        }
+        void runIndexJob(scheduledJob)
+      }, delayMs)
+    },
+    [isIndexing, runIndexJob],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (scheduledIndexJobTimerRef.current !== null) {
+        window.clearTimeout(scheduledIndexJobTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isIndexing) return
+    const queuedJob = queuedIndexJobRef.current
+    if (!queuedJob) return
+    queuedIndexJobRef.current = null
+    void runIndexJob(queuedJob)
+  }, [isIndexing, runIndexJob])
+
+  useEffect(() => {
+    const nextSyncInputs = {
+      enabled: isRagEnabled,
+      embeddingModelId: settings.embeddingModelId,
+      chunkSize: settings.ragOptions.chunkSize,
+      includePatternsKey: JSON.stringify(settings.ragOptions.includePatterns),
+      excludePatternsKey: JSON.stringify(settings.ragOptions.excludePatterns),
+    }
+    const previousSyncInputs = syncInputsRef.current
+    syncInputsRef.current = nextSyncInputs
+
+    if (!previousSyncInputs) {
+      return
+    }
+
+    if (!nextSyncInputs.enabled || !nextSyncInputs.embeddingModelId) {
+      scheduledIndexJobRef.current = null
+      queuedIndexJobRef.current = null
+      if (scheduledIndexJobTimerRef.current !== null) {
+        window.clearTimeout(scheduledIndexJobTimerRef.current)
+        scheduledIndexJobTimerRef.current = null
+      }
+      return
+    }
+
+    if (
+      !previousSyncInputs.enabled &&
+      nextSyncInputs.enabled &&
+      nextSyncInputs.embeddingModelId
+    ) {
+      scheduleIndexJob({
+        reindexAll: false,
+        failureNotice: t('notices.indexUpdateFailed'),
+      })
+      return
+    }
+
+    if (
+      previousSyncInputs.embeddingModelId !== nextSyncInputs.embeddingModelId
+    ) {
+      scheduleIndexJob({
+        reindexAll: false,
+        failureNotice: t('notices.indexUpdateFailed'),
+      })
+      return
+    }
+
+    if (
+      previousSyncInputs.chunkSize !== nextSyncInputs.chunkSize ||
+      previousSyncInputs.includePatternsKey !==
+        nextSyncInputs.includePatternsKey ||
+      previousSyncInputs.excludePatternsKey !==
+        nextSyncInputs.excludePatternsKey
+    ) {
+      scheduleIndexJob({
+        reindexAll: true,
+        failureNotice: t('notices.rebuildFailed'),
+      })
+    }
+  }, [
+    isRagEnabled,
+    scheduleIndexJob,
+    settings.embeddingModelId,
+    settings.ragOptions.chunkSize,
+    settings.ragOptions.excludePatterns,
+    settings.ragOptions.includePatterns,
+    t,
+  ])
+
   const conflictInfo = useMemo(() => {
     const inc = includeFolders
     const exc = excludeFolders
@@ -460,14 +616,64 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
   return (
     <div className="smtcmp-settings-section">
-      <div className="smtcmp-settings-header">{t('settings.rag.title')}</div>
-
       <div className="smtcmp-rag-layout">
         <RAGCard
-          title={t('settings.rag.basicCardTitle', 'RAG Basics')}
+          title={t('settings.rag.resourceCardTitle', 'PGlite 资源')}
+          description={t(
+            'settings.rag.resourceCardDesc',
+            '管理知识库运行所需的数据库运行时资源。',
+          )}
+          actions={
+            <ObsidianButton
+              text={pglitePrimaryActionLabel}
+              onClick={() => runPgliteAction()}
+              disabled={
+                isCheckingPgliteResources ||
+                isRunningPgliteAction ||
+                pgliteResourceStatus?.kind === 'downloading'
+              }
+            />
+          }
+        >
+          <div className="smtcmp-rag-resource-summary">
+            <span className={`smtcmp-rag-status-pill ${pgliteStatusTone}`}>
+              {pgliteStatusLabel}
+            </span>
+          </div>
+
+          {pgliteDownloadDetail ? (
+            <div className="smtcmp-rag-inline-status">
+              <div className="smtcmp-rag-inline-status-text">
+                {pgliteDownloadDetail}
+              </div>
+              <div className="smtcmp-rag-inline-progress" aria-hidden="true">
+                <div
+                  className="smtcmp-rag-inline-progress-bar"
+                  style={{ width: `${pgliteDownloadProgress ?? 0}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {pgliteFailureReason ? (
+            <div className="smtcmp-rag-inline-status smtcmp-rag-inline-status--error">
+              <div className="smtcmp-rag-inline-status-title">
+                {t('settings.rag.pgliteInlineErrorTitle', '下载失败')}
+              </div>
+              <div className="smtcmp-rag-inline-status-text">
+                {pgliteFailureReason}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="smtcmp-muted-note">{pgliteSummaryText}</div>
+        </RAGCard>
+
+        <RAGCard
+          title={t('settings.rag.basicCardTitle', '知识库')}
           description={t(
             'settings.rag.basicCardDesc',
-            'Control the retrieval entry point and base embedding model.',
+            '控制知识库索引的启用状态、嵌入模型与相关维护操作。',
           )}
         >
           <ObsidianSetting
@@ -478,6 +684,15 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             <ObsidianToggle
               value={isRagEnabled}
               onChange={(value) => {
+                if (value && !settings.embeddingModelId) {
+                  new Notice(
+                    t(
+                      'settings.rag.selectEmbeddingModelFirst',
+                      '请先选择嵌入模型，再启用知识库索引。',
+                    ),
+                  )
+                  return
+                }
                 applySettingsUpdate({
                   ...settings,
                   ragOptions: {
@@ -489,93 +704,147 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
+          <ObsidianSetting
+            name={t('settings.rag.embeddingModel')}
+            desc={t('settings.rag.embeddingModelDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianDropdown
+              value={settings.embeddingModelId}
+              groupedOptions={embeddingModelOptionGroups}
+              onChange={(value) => {
+                applySettingsUpdate({
+                  ...settings,
+                  embeddingModelId: value,
+                })
+              }}
+            />
+          </ObsidianSetting>
+
+          {!canUseIndexMaintenance && isRagEnabled && (
+            <div className="smtcmp-muted-note">
+              {t(
+                'settings.rag.maintenanceUnavailableHint',
+                '请先在上方准备好 PGlite 资源，再执行索引维护或嵌入数据库管理。',
+              )}
+            </div>
+          )}
+
           {isRagEnabled && (
-            <ObsidianSetting
-              name={t('settings.rag.embeddingModel')}
-              desc={t('settings.rag.embeddingModelDesc')}
-              className="smtcmp-settings-card"
-            >
-              <ObsidianDropdown
-                value={settings.embeddingModelId}
-                groupedOptions={embeddingModelOptionGroups}
-                onChange={(value) => {
-                  applySettingsUpdate({
-                    ...settings,
-                    embeddingModelId: value,
-                  })
-                }}
-              />
-            </ObsidianSetting>
+            <>
+              <ObsidianSetting
+                name={t('settings.rag.maintenanceActions', '维护操作')}
+                className="smtcmp-settings-card"
+              >
+                <div className="smtcmp-flex-row-gap-8">
+                  <ObsidianButton
+                    text={t('settings.rag.manage')}
+                    disabled={!canUseIndexMaintenance}
+                    onClick={() => {
+                      new EmbeddingDbManageModal(app, plugin).open()
+                    }}
+                  />
+                  <ObsidianButton
+                    text={t('settings.rag.rebuildIndex', '重建索引')}
+                    disabled={isIndexing || !canUseIndexMaintenance}
+                    onClick={() => {
+                      void runIndexJob({
+                        reindexAll: true,
+                        successNotice: t('notices.rebuildComplete'),
+                        failureNotice: t('notices.rebuildFailed'),
+                      })
+                    }}
+                  />
+                  {isIndexing && indexAbortController && (
+                    <ObsidianButton
+                      text={t('settings.rag.cancelIndex', '取消')}
+                      onClick={() => {
+                        console.debug('[YOLO] Cancel button clicked')
+                        indexAbortController.abort()
+                        new Notice(
+                          t('notices.indexCancelling', '正在取消索引...'),
+                        )
+                      }}
+                    />
+                  )}
+                </div>
+              </ObsidianSetting>
+
+              <div className="smtcmp-provider-section">
+                <div
+                  className="smtcmp-provider-header smtcmp-clickable"
+                  onClick={() => setIsProgressOpen((v) => !v)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setIsProgressOpen((v) => !v)
+                    }
+                  }}
+                >
+                  <div className="smtcmp-provider-expand-btn">
+                    {isProgressOpen ? (
+                      <ChevronDown size={16} />
+                    ) : (
+                      <ChevronRight size={16} />
+                    )}
+                  </div>
+
+                  <div className="smtcmp-provider-info">
+                    <span className="smtcmp-provider-id">
+                      {t(
+                        'settings.rag.indexProgressTitle',
+                        'RAG Index Progress',
+                      )}
+                    </span>
+                    {headerPercent !== null ? (
+                      <span className="smtcmp-provider-type">
+                        {headerPercent}%
+                      </span>
+                    ) : (
+                      <span className="smtcmp-provider-type">
+                        {isIndexing
+                          ? t('settings.rag.indexing', 'In progress')
+                          : t('settings.rag.notStarted', 'Not started')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {isProgressOpen && (
+                  <div className="smtcmp-provider-models">
+                    <RAGIndexProgress
+                      progress={effectiveProgress}
+                      isIndexing={isIndexing}
+                      getMarkdownFilesInFolder={(folderPath: string) => {
+                        const files = plugin.app.vault.getMarkdownFiles()
+                        const paths = files.map((f) => f.path)
+                        if (folderPath === '') {
+                          return paths.filter((p) => !p.includes('/'))
+                        }
+                        const prefix = folderPath + '/'
+                        return paths.filter(
+                          (p) =>
+                            p.startsWith(prefix) &&
+                            !p.slice(prefix.length).includes('/'),
+                        )
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </RAGCard>
 
         {isRagEnabled && (
           <>
             <RAGCard
-              title={t('settings.rag.resourceCardTitle', 'PGlite Resources')}
-              description={t(
-                'settings.rag.resourceCardDesc',
-                'Manage the database runtime resources required by the knowledge base.',
-              )}
-              actions={
-                <>
-                  <ObsidianButton
-                    text={pglitePrimaryActionLabel}
-                    onClick={() => runPgliteAction()}
-                    disabled={
-                      isCheckingPgliteResources ||
-                      isRunningPgliteAction ||
-                      pgliteResourceStatus?.kind === 'downloading'
-                    }
-                  />
-                </>
-              }
-            >
-              <div className="smtcmp-rag-resource-summary">
-                <span className={`smtcmp-rag-status-pill ${pgliteStatusTone}`}>
-                  {pgliteStatusLabel}
-                </span>
-              </div>
-
-              {pgliteDownloadDetail ? (
-                <div className="smtcmp-rag-inline-status">
-                  <div className="smtcmp-rag-inline-status-text">
-                    {pgliteDownloadDetail}
-                  </div>
-                  <div
-                    className="smtcmp-rag-inline-progress"
-                    aria-hidden="true"
-                  >
-                    <div
-                      className="smtcmp-rag-inline-progress-bar"
-                      style={{ width: `${pgliteDownloadProgress ?? 0}%` }}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {pgliteFailureReason ? (
-                <div className="smtcmp-rag-inline-status smtcmp-rag-inline-status--error">
-                  <div className="smtcmp-rag-inline-status-title">
-                    {t(
-                      'settings.rag.pgliteInlineErrorTitle',
-                      'Download failed',
-                    )}
-                  </div>
-                  <div className="smtcmp-rag-inline-status-text">
-                    {pgliteFailureReason}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="smtcmp-muted-note">{pgliteSummaryText}</div>
-            </RAGCard>
-
-            <RAGCard
-              title={t('settings.rag.scopeCardTitle', 'Retrieval Scope')}
+              title={t('settings.rag.scopeCardTitle', '索引范围')}
               description={t(
                 'settings.rag.scopeCardDesc',
-                'Choose which folders should be included in or excluded from indexing.',
+                '选择哪些文件夹应参与知识库索引，哪些应被排除。',
               )}
             >
               <ObsidianSetting
@@ -724,245 +993,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               )}
             </RAGCard>
 
-            <RAGCard
-              title={t(
-                'settings.rag.maintenanceCardTitle',
-                'Index Maintenance',
-              )}
-              description={t(
-                'settings.rag.maintenanceCardDesc',
-                'Manage auto updates, incremental updates, rebuilds, and index progress.',
-              )}
-            >
-              {!canUseIndexMaintenance && (
-                <div className="smtcmp-muted-note">
-                  {t(
-                    'settings.rag.maintenanceUnavailableHint',
-                    'Prepare PGlite resources above before running index maintenance or embedding database management.',
-                  )}
-                </div>
-              )}
-
-              <ObsidianSetting
-                name={t('settings.rag.autoUpdate', '自动更新索引')}
-                desc={t(
-                  'settings.rag.autoUpdateDesc',
-                  '当包含模式下的文件夹内容有变化时，按设定的最小间隔自动执行增量更新；默认每日一次。',
-                )}
-                className="smtcmp-settings-card"
-              >
-                <ObsidianToggle
-                  value={!!settings.ragOptions.autoUpdateEnabled}
-                  onChange={(value) => {
-                    applySettingsUpdate({
-                      ...settings,
-                      ragOptions: {
-                        ...settings.ragOptions,
-                        autoUpdateEnabled: value,
-                      },
-                    })
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.manualUpdateNow', '立即更新索引')}
-                desc={t(
-                  'settings.rag.manualUpdateNowDesc',
-                  '手动执行一次增量更新，并记录最近更新时间。',
-                )}
-                className="smtcmp-settings-card"
-              >
-                <ObsidianButton
-                  text={t('settings.rag.manualUpdateNow', '立即更新')}
-                  disabled={isIndexing || !canUseIndexMaintenance}
-                  onClick={() => {
-                    void (async () => {
-                      const abortController = new AbortController()
-                      setIndexAbortController(abortController)
-                      setIsIndexing(true)
-                      setIndexProgress(null)
-                      try {
-                        const ragEngine = await plugin.getRAGEngine()
-                        await ragEngine.updateVaultIndex(
-                          { reindexAll: false, signal: abortController.signal },
-                          (queryProgress) => {
-                            if (queryProgress.type === 'indexing') {
-                              handleIndexProgress(queryProgress.indexProgress)
-                            }
-                          },
-                        )
-                        await plugin.setSettings({
-                          ...plugin.settings,
-                          ragOptions: {
-                            ...plugin.settings.ragOptions,
-                            lastAutoUpdateAt: Date.now(),
-                          },
-                        })
-                        new Notice(t('notices.indexUpdated'))
-                      } catch (error) {
-                        if (
-                          error instanceof DOMException &&
-                          error.name === 'AbortError'
-                        ) {
-                          new Notice(t('notices.indexCancelled', '索引已取消'))
-                        } else {
-                          console.error('Failed to update index:', error)
-                          new Notice(t('notices.indexUpdateFailed'))
-                        }
-                      } finally {
-                        setIsIndexing(false)
-                        setIndexAbortController(null)
-                        setTimeout(() => setIndexProgress(null), 3000)
-                      }
-                    })()
-                  }}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.rag.manageEmbeddingDatabase')}
-                className="smtcmp-settings-card"
-              >
-                <div className="smtcmp-flex-row-gap-8">
-                  <ObsidianButton
-                    text={t('settings.rag.manage')}
-                    disabled={!canUseIndexMaintenance}
-                    onClick={() => {
-                      new EmbeddingDbManageModal(app, plugin).open()
-                    }}
-                  />
-                  <ObsidianButton
-                    text={t('settings.rag.rebuildIndex', '重建索引')}
-                    disabled={isIndexing || !canUseIndexMaintenance}
-                    onClick={() => {
-                      void (async () => {
-                        const abortController = new AbortController()
-                        setIndexAbortController(abortController)
-                        setIsIndexing(true)
-                        setIndexProgress(null)
-                        try {
-                          const ragEngine = await plugin.getRAGEngine()
-                          await ragEngine.updateVaultIndex(
-                            {
-                              reindexAll: true,
-                              signal: abortController.signal,
-                            },
-                            (queryProgress) => {
-                              if (queryProgress.type === 'indexing') {
-                                handleIndexProgress(queryProgress.indexProgress)
-                              }
-                            },
-                          )
-                          new Notice(t('notices.rebuildComplete'))
-                          await plugin.setSettings({
-                            ...plugin.settings,
-                            ragOptions: {
-                              ...plugin.settings.ragOptions,
-                              lastAutoUpdateAt: Date.now(),
-                            },
-                          })
-                        } catch (error) {
-                          if (
-                            error instanceof DOMException &&
-                            error.name === 'AbortError'
-                          ) {
-                            new Notice(
-                              t('notices.indexCancelled', '索引已取消'),
-                            )
-                          } else {
-                            console.error('Failed to rebuild index:', error)
-                            new Notice(t('notices.rebuildFailed'))
-                          }
-                        } finally {
-                          setIsIndexing(false)
-                          setIndexAbortController(null)
-                          setTimeout(() => setIndexProgress(null), 3000)
-                        }
-                      })()
-                    }}
-                  />
-                  {isIndexing && indexAbortController && (
-                    <ObsidianButton
-                      text={t('settings.rag.cancelIndex', '取消')}
-                      onClick={() => {
-                        console.debug('[YOLO] Cancel button clicked')
-                        indexAbortController.abort()
-                        new Notice(
-                          t('notices.indexCancelling', '正在取消索引...'),
-                        )
-                      }}
-                    />
-                  )}
-                </div>
-              </ObsidianSetting>
-
-              <div className="smtcmp-provider-section">
-                <div
-                  className="smtcmp-provider-header smtcmp-clickable"
-                  onClick={() => setIsProgressOpen((v) => !v)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setIsProgressOpen((v) => !v)
-                    }
-                  }}
-                >
-                  <div className="smtcmp-provider-expand-btn">
-                    {isProgressOpen ? (
-                      <ChevronDown size={16} />
-                    ) : (
-                      <ChevronRight size={16} />
-                    )}
-                  </div>
-
-                  <div className="smtcmp-provider-info">
-                    <span className="smtcmp-provider-id">
-                      {t(
-                        'settings.rag.indexProgressTitle',
-                        'RAG Index Progress',
-                      )}
-                    </span>
-                    {headerPercent !== null ? (
-                      <span className="smtcmp-provider-type">
-                        {headerPercent}%
-                      </span>
-                    ) : (
-                      <span className="smtcmp-provider-type">
-                        {isIndexing
-                          ? t('settings.rag.indexing', 'In progress')
-                          : t('settings.rag.notStarted', 'Not started')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {isProgressOpen && (
-                  <div className="smtcmp-provider-models">
-                    <RAGIndexProgress
-                      progress={effectiveProgress}
-                      isIndexing={isIndexing}
-                      getMarkdownFilesInFolder={(folderPath: string) => {
-                        const files = plugin.app.vault.getMarkdownFiles()
-                        const paths = files.map((f) => f.path)
-                        if (folderPath === '') {
-                          return paths.filter((p) => !p.includes('/'))
-                        }
-                        const prefix = folderPath + '/'
-                        return paths.filter(
-                          (p) =>
-                            p.startsWith(prefix) &&
-                            !p.slice(prefix.length).includes('/'),
-                        )
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </RAGCard>
-
             <RAGCard title={t('settings.rag.advanced', '高级设置')}>
               <div
                 className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
@@ -1074,48 +1104,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         const limit = parseIntegerInput(limitInput)
                         if (limit === null) {
                           setLimitInput(String(settings.ragOptions.limit))
-                        }
-                      }}
-                    />
-                  </ObsidianSetting>
-
-                  <ObsidianSetting
-                    name={t(
-                      'settings.rag.autoUpdateInterval',
-                      '最小间隔(小时)',
-                    )}
-                    desc={t(
-                      'settings.rag.autoUpdateIntervalDesc',
-                      '到达该间隔才会触发自动更新；用于避免频繁重建。',
-                    )}
-                    className="smtcmp-settings-card"
-                  >
-                    <ObsidianTextInput
-                      value={autoUpdateIntervalInput}
-                      placeholder="24"
-                      onChange={(value) => {
-                        setAutoUpdateIntervalInput(value)
-                        const intervalHours = parseIntegerInput(value)
-                        if (intervalHours !== null && intervalHours > 0) {
-                          applySettingsUpdate({
-                            ...settings,
-                            ragOptions: {
-                              ...settings.ragOptions,
-                              autoUpdateIntervalHours: intervalHours,
-                            },
-                          })
-                        }
-                      }}
-                      onBlur={() => {
-                        const intervalHours = parseIntegerInput(
-                          autoUpdateIntervalInput,
-                        )
-                        if (intervalHours === null || intervalHours <= 0) {
-                          setAutoUpdateIntervalInput(
-                            String(
-                              settings.ragOptions.autoUpdateIntervalHours ?? 0,
-                            ),
-                          )
                         }
                       }}
                     />

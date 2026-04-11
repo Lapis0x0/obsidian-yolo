@@ -606,10 +606,10 @@ export const en: TranslationKeys = {
       noEmbeddingModelsConfigured: 'No embedding models configured',
     },
     rag: {
-      title: 'Retrieval-augmented generation (rag)',
-      enableRag: 'Show retrieval-augmented generation settings',
+      title: 'Knowledge base',
+      enableRag: 'Enable knowledge base indexing',
       enableRagDesc:
-        'Toggle visibility of the retrieval-augmented generation options below.',
+        'Build indexes for the selected scope and keep them updated automatically in the background.',
       embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
@@ -661,20 +661,44 @@ export const en: TranslationKeys = {
       manualUpdateNowDesc:
         'Run an incremental update immediately and record the last updated time.',
       advanced: 'Advanced settings',
-      basicCardTitle: 'RAG Basics',
+      basicCardTitle: 'Knowledge base',
       basicCardDesc:
-        'Control the retrieval entry point and base embedding model.',
+        'Control knowledge base indexing, the embedding model, and related maintenance actions.',
       resourceCardTitle: 'PGlite Resources',
       resourceCardDesc:
         'Manage the database runtime resources required by the knowledge base.',
-      scopeCardTitle: 'Retrieval Scope',
+      scopeCardTitle: 'Index scope',
       scopeCardDesc:
         'Choose which folders should be included in or excluded from indexing.',
-      maintenanceCardTitle: 'Index Maintenance',
+      maintenanceCardTitle: 'Status & maintenance',
       maintenanceCardDesc:
-        'Manage auto updates, incremental updates, rebuilds, and index progress.',
+        'Review the current knowledge base status and run maintenance actions when needed.',
       maintenanceUnavailableHint:
         'Prepare PGlite resources above before running index maintenance or embedding database management.',
+      currentStatus: 'Current status',
+      currentStatusDesc:
+        'Once enabled, the knowledge base keeps its index updated automatically in the background.',
+      lastIndexedAt: 'Last synced',
+      lastIndexedAtDesc:
+        'The most recent time indexing or a background sync completed successfully.',
+      maintenanceActions: 'Maintenance actions',
+      deleteIndex: 'Delete current index',
+      deleteIndexConfirm:
+        'Delete all index data for the currently selected embedding model?',
+      deleteIndexSuccess: 'The current index has been deleted.',
+      deleteIndexFailed: 'Failed to delete the current index.',
+      statusDisabled: 'Disabled',
+      statusSyncing: 'Background sync in progress',
+      statusRuntimeRequired: 'Waiting for database resources',
+      statusReady: 'Enabled',
+      statusEmpty: 'No index has been built yet',
+      selectEmbeddingModelFirst:
+        'Select an embedding model before enabling knowledge base indexing.',
+      openKnowledgeSettings: 'Open knowledge base settings',
+      openKnowledgeSettingsDesc:
+        'Go to settings to manage indexing, scope, status, and advanced options.',
+      composerEntryDesc:
+        'Knowledge base indexing is now managed from the settings page, and this view keeps a quick shortcut.',
       pgliteStatusCurrent: 'Current status',
       pgliteStatusSource: 'Resource source',
       pgliteStatusPath: 'Resource path',

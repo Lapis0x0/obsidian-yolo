@@ -53,20 +53,9 @@ export class RagAutoUpdateService {
 
   onVaultPathChanged(path: string) {
     const settings = this.getSettings()
-    if (!settings?.ragOptions?.autoUpdateEnabled) return
+    if (!settings?.ragOptions?.enabled) return
     if (!this.isPathSelectedByIncludeExclude(path, settings)) return
     this.pendingDirtyPaths.add(path)
-
-    // 0 = no minimum gap between runs (only debounce below); larger values throttle
-    const intervalHours = settings.ragOptions.autoUpdateIntervalHours ?? 0
-    if (intervalHours > 0) {
-      const intervalMs = intervalHours * 60 * 60 * 1000
-      const last = settings.ragOptions.lastAutoUpdateAt ?? 0
-      const now = Date.now()
-      if (now - last < intervalMs) {
-        return
-      }
-    }
 
     if (this.autoUpdateTimer) clearTimeout(this.autoUpdateTimer)
     this.autoUpdateTimer = setTimeout(

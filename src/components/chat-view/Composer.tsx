@@ -1,7 +1,6 @@
 import { Notice } from 'obsidian'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../constants'
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
@@ -13,25 +12,13 @@ import {
   type TabCompletionTrigger,
 } from '../../settings/schema/setting.types'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
-import { findFilesMatchingPatterns } from '../../utils/glob-utils'
 import { getModelDisplayName } from '../../utils/model-id-utils'
-import {
-  folderPathsToIncludePatterns,
-  includePatternsToFolderPaths,
-} from '../../utils/rag-utils'
 import { ObsidianButton } from '../common/ObsidianButton'
-import {
-  ObsidianDropdown,
-  type ObsidianDropdownOptionGroup,
-} from '../common/ObsidianDropdown'
+import { ObsidianDropdown } from '../common/ObsidianDropdown'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ObsidianToggle } from '../common/ObsidianToggle'
 import { SimpleSelect } from '../common/SimpleSelect'
-import { FolderSelectionList } from '../settings/inputs/FolderSelectionList'
-import { EmbeddingDbManageModal } from '../settings/modals/EmbeddingDbManageModal'
-import { ExcludedFilesModal } from '../settings/modals/ExcludedFilesModal'
-import { IncludedFilesModal } from '../settings/modals/IncludedFilesModal'
 import { SelectionChatActionsSettings } from '../settings/SelectionChatActionsSettings'
 import { SmartSpaceQuickActionsSettings } from '../settings/SmartSpaceQuickActionsSettings'
 
@@ -53,11 +40,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   const composerRef = useRef<HTMLDivElement>(null)
 
   const [activeTab, setActiveTab] = useState<SparkleTab>('smart-space')
-  const [showRagAdvanced, setShowRagAdvanced] = useState(false)
   const [showTabAdvanced, setShowTabAdvanced] = useState(false)
-  const [isIndexing, setIsIndexing] = useState(false)
-  const [indexAbortController, setIndexAbortController] =
-    useState<AbortController | null>(null)
 
   const orderedEnabledModels = useMemo(() => {
     const enabledModels = settings.chatModels.filter(
@@ -139,16 +122,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     [setSettings],
   )
 
-  const isRagEnabled = settings.ragOptions.enabled ?? true
-  const includeFolders = useMemo(
-    () => includePatternsToFolderPaths(settings.ragOptions.includePatterns),
-    [settings.ragOptions.includePatterns],
-  )
-  const excludeFolders = useMemo(
-    () => includePatternsToFolderPaths(settings.ragOptions.excludePatterns),
-    [settings.ragOptions.excludePatterns],
-  )
-
   const parseIntegerInput = (value: string) => {
     const trimmed = value.trim()
     if (trimmed.length === 0) return null
@@ -171,70 +144,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     const parsed = Number(trimmed)
     return Number.isFinite(parsed) ? parsed : null
   }
-
-  const [ragNumberInputs, setRagNumberInputs] = useState<NumberInputState>({
-    chunkSize: String(settings.ragOptions.chunkSize),
-    minSimilarity: String(settings.ragOptions.minSimilarity),
-    limit: String(settings.ragOptions.limit),
-    autoUpdateIntervalHours: String(
-      settings.ragOptions.autoUpdateIntervalHours ?? 0,
-    ),
-  })
-
-  useEffect(() => {
-    setRagNumberInputs((prev) => ({
-      ...prev,
-      chunkSize: String(settings.ragOptions.chunkSize),
-      minSimilarity: String(settings.ragOptions.minSimilarity),
-      limit: String(settings.ragOptions.limit),
-      autoUpdateIntervalHours: String(
-        settings.ragOptions.autoUpdateIntervalHours ?? 0,
-      ),
-    }))
-  }, [
-    settings.ragOptions.chunkSize,
-    settings.ragOptions.minSimilarity,
-    settings.ragOptions.limit,
-    settings.ragOptions.autoUpdateIntervalHours,
-  ])
-
-  const embeddingModelOptionGroups = useMemo<
-    ObsidianDropdownOptionGroup[]
-  >(() => {
-    const providerOrder = settings.providers.map((p) => p.id)
-    const providerIdsInModels = Array.from(
-      new Set(settings.embeddingModels.map((model) => model.providerId)),
-    )
-    const orderedProviderIds = [
-      ...providerOrder.filter((id) => providerIdsInModels.includes(id)),
-      ...providerIdsInModels.filter((id) => !providerOrder.includes(id)),
-    ]
-    const recommendedBadge =
-      t('settings.defaults.recommendedBadge', '(Recommended)') ??
-      '(Recommended)'
-
-    return orderedProviderIds
-      .map<ObsidianDropdownOptionGroup | null>((providerId) => {
-        const groupModels = settings.embeddingModels.filter(
-          (model) => model.providerId === providerId,
-        )
-        if (groupModels.length === 0) return null
-        return {
-          label: providerId,
-          options: groupModels.map((model) => {
-            const baseLabel = model.name || model.model || model.id
-            const badge = RECOMMENDED_MODELS_FOR_EMBEDDING.includes(model.id)
-              ? ` ${recommendedBadge}`
-              : ''
-            return {
-              value: model.id,
-              label: `${baseLabel}${badge}`.trim(),
-            }
-          }),
-        }
-      })
-      .filter((group): group is ObsidianDropdownOptionGroup => group !== null)
-  }, [settings.embeddingModels, settings.providers, t])
 
   const enableSmartSpace = settings.continuationOptions.enableSmartSpace ?? true
   const smartSpaceTriggerMode =
@@ -364,56 +273,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     settings.continuationOptions.continuationModelId ??
     orderedEnabledModels[0]?.id ??
     ''
-
-  const handleRagUpdate = (reindexAll: boolean) => {
-    void (async () => {
-      const abortController = new AbortController()
-      setIndexAbortController(abortController)
-      setIsIndexing(true)
-
-      try {
-        const ragEngine = await plugin.getRAGEngine()
-        await ragEngine.updateVaultIndex(
-          { reindexAll, signal: abortController.signal },
-          () => {
-            return
-          },
-        )
-
-        await plugin.setSettings({
-          ...plugin.settings,
-          ragOptions: {
-            ...plugin.settings.ragOptions,
-            lastAutoUpdateAt: Date.now(),
-          },
-        })
-
-        new Notice(
-          reindexAll ? t('notices.rebuildComplete') : t('notices.indexUpdated'),
-        )
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          new Notice(t('notices.indexCancelled', '索引已取消'))
-        } else {
-          console.error('Failed to update index:', error)
-          new Notice(
-            reindexAll
-              ? t('notices.rebuildFailed')
-              : t('notices.indexUpdateFailed'),
-          )
-        }
-      } finally {
-        setIsIndexing(false)
-        setIndexAbortController(null)
-      }
-    })()
-  }
-
-  const handleCancelIndex = () => {
-    if (!indexAbortController) return
-    indexAbortController.abort()
-    new Notice(t('notices.indexCancelling', '正在取消索引...'))
-  }
 
   return (
     <div className="smtcmp-composer-container" ref={composerRef}>
@@ -598,12 +457,12 @@ const Composer: React.FC<ComposerProps> = (_props) => {
             <section className="smtcmp-composer-section">
               <header className="smtcmp-composer-heading">
                 <div className="smtcmp-composer-heading-title">
-                  {t('settings.rag.title', 'RAG 索引')}
+                  {t('settings.rag.title', '知识库')}
                 </div>
                 <div className="smtcmp-composer-heading-desc">
                   {t(
-                    'settings.rag.enableRagDesc',
-                    '为 Sparkle 提供知识库检索与上下文增强。',
+                    'settings.rag.composerEntryDesc',
+                    '知识库索引已经迁移到设置页统一管理，这里提供快捷入口。',
                   )}
                 </div>
               </header>
@@ -611,546 +470,28 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               <div className="smtcmp-composer-option">
                 <div className="smtcmp-composer-option-info">
                   <div className="smtcmp-composer-option-title">
-                    {t('settings.rag.enableRag', '启用 RAG')}
+                    {t('settings.rag.openKnowledgeSettings', '打开知识库设置')}
                   </div>
                   <div className="smtcmp-composer-option-desc">
                     {t(
-                      'settings.rag.enableRagDesc',
-                      '开启后将使用向量检索增强回答。',
+                      'settings.rag.openKnowledgeSettingsDesc',
+                      '前往设置页配置知识库索引、范围、状态与高级参数。',
                     )}
                   </div>
                 </div>
                 <div className="smtcmp-composer-option-control">
-                  <ObsidianToggle
-                    value={isRagEnabled}
-                    onChange={(value) => {
-                      applySettingsUpdate(
-                        {
-                          ...settings,
-                          ragOptions: {
-                            ...settings.ragOptions,
-                            enabled: value,
-                          },
-                        },
-                        t(
-                          'notices.indexUpdateFailed',
-                          'Failed to update RAG settings.',
-                        ),
-                      )
+                  <ObsidianButton
+                    text={t(
+                      'settings.rag.openKnowledgeSettings',
+                      '打开知识库设置',
+                    )}
+                    onClick={() => {
+                      app.setting.open()
+                      app.setting.openTabById(plugin.manifest.id)
                     }}
                   />
                 </div>
               </div>
-
-              {isRagEnabled && (
-                <>
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t('settings.rag.embeddingModel', 'Embedding 模型')}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.rag.embeddingModelDesc',
-                          '用于生成向量索引的模型。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control smtcmp-composer-option-control--fluid">
-                      <div className="smtcmp-simple-select-wrapper">
-                        <SimpleSelect
-                          value={settings.embeddingModelId}
-                          groupedOptions={embeddingModelOptionGroups.map(
-                            (group) => ({
-                              label: group.label,
-                              options: group.options.map((option) => ({
-                                value: option.value,
-                                label: option.label,
-                              })),
-                            }),
-                          )}
-                          onChange={(value) => {
-                            applySettingsUpdate(
-                              {
-                                ...settings,
-                                embeddingModelId: value,
-                              },
-                              t(
-                                'notices.indexUpdateFailed',
-                                'Failed to update embedding model.',
-                              ),
-                            )
-                          }}
-                          align="end"
-                          side="bottom"
-                          sideOffset={6}
-                          collisionBoundary={composerRef.current}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t('settings.rag.includePatterns', '包含的文件夹')}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.rag.includePatternsDesc',
-                          '只索引这些目录；留空表示全库。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianButton
-                        text={t('settings.rag.testPatterns', '测试规则')}
-                        onClick={() => {
-                          void (async () => {
-                            const patterns = settings.ragOptions.includePatterns
-                            const includedFiles =
-                              await findFilesMatchingPatterns(
-                                patterns,
-                                plugin.app.vault,
-                              )
-                            new IncludedFilesModal(
-                              app,
-                              includedFiles,
-                              patterns,
-                            ).open()
-                          })().catch((error) => {
-                            console.error(
-                              'Failed to test include patterns',
-                              error,
-                            )
-                          })
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="smtcmp-composer-context-picker">
-                    <FolderSelectionList
-                      app={app}
-                      vault={plugin.app.vault}
-                      title={t(
-                        'settings.rag.selectedFolders',
-                        '已选择的文件夹',
-                      )}
-                      value={includeFolders}
-                      onChange={(folders: string[]) => {
-                        const patterns = folderPathsToIncludePatterns(folders)
-                        applySettingsUpdate(
-                          {
-                            ...settings,
-                            ragOptions: {
-                              ...settings.ragOptions,
-                              includePatterns: patterns,
-                            },
-                          },
-                          t(
-                            'notices.indexUpdateFailed',
-                            'Failed to update include patterns.',
-                          ),
-                        )
-                      }}
-                    />
-                  </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t('settings.rag.excludePatterns', '排除的文件夹')}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.rag.excludePatternsDesc',
-                          '这些目录不会参与索引。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianButton
-                        text={t('settings.rag.testPatterns', '测试规则')}
-                        onClick={() => {
-                          void (async () => {
-                            const patterns = settings.ragOptions.excludePatterns
-                            const excludedFiles =
-                              await findFilesMatchingPatterns(
-                                patterns,
-                                plugin.app.vault,
-                              )
-                            new ExcludedFilesModal(app, excludedFiles).open()
-                          })().catch((error) => {
-                            console.error(
-                              'Failed to test exclude patterns',
-                              error,
-                            )
-                          })
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="smtcmp-composer-context-picker">
-                    <FolderSelectionList
-                      app={app}
-                      vault={plugin.app.vault}
-                      title={t(
-                        'settings.rag.excludedFolders',
-                        '已排除的文件夹',
-                      )}
-                      placeholder={t(
-                        'settings.rag.selectExcludeFoldersPlaceholder',
-                        '点击此处选择要排除的文件夹（留空则不排除）',
-                      )}
-                      value={excludeFolders}
-                      onChange={(folders: string[]) => {
-                        const patterns = folderPathsToIncludePatterns(folders)
-                        applySettingsUpdate(
-                          {
-                            ...settings,
-                            ragOptions: {
-                              ...settings.ragOptions,
-                              excludePatterns: patterns,
-                            },
-                          },
-                          t(
-                            'notices.indexUpdateFailed',
-                            'Failed to update exclude patterns.',
-                          ),
-                        )
-                      }}
-                    />
-                  </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t('settings.rag.autoUpdate', '自动更新索引')}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.rag.autoUpdateDesc',
-                          '文件变更后按最小间隔增量更新索引。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianToggle
-                        value={!!settings.ragOptions.autoUpdateEnabled}
-                        onChange={(value) => {
-                          applySettingsUpdate(
-                            {
-                              ...settings,
-                              ragOptions: {
-                                ...settings.ragOptions,
-                                autoUpdateEnabled: value,
-                              },
-                            },
-                            t(
-                              'notices.indexUpdateFailed',
-                              'Failed to update auto update settings.',
-                            ),
-                          )
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t('settings.rag.manualUpdateNow', '立即更新索引')}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.rag.manualUpdateNowDesc',
-                          '手动执行一次增量更新。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control smtcmp-composer-option-control--stack">
-                      <ObsidianButton
-                        text={t('settings.rag.manualUpdateNow', '立即更新')}
-                        disabled={isIndexing}
-                        onClick={() => handleRagUpdate(false)}
-                      />
-                      <ObsidianButton
-                        text={t('settings.rag.rebuildIndex', '重建索引')}
-                        disabled={isIndexing}
-                        onClick={() => handleRagUpdate(true)}
-                      />
-                      {isIndexing && indexAbortController && (
-                        <ObsidianButton
-                          text={t('settings.rag.cancelIndex', '取消')}
-                          onClick={() => handleCancelIndex()}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="smtcmp-composer-option">
-                    <div className="smtcmp-composer-option-info">
-                      <div className="smtcmp-composer-option-title">
-                        {t(
-                          'settings.rag.manageEmbeddingDatabase',
-                          '管理索引数据',
-                        )}
-                      </div>
-                      <div className="smtcmp-composer-option-desc">
-                        {t(
-                          'settings.rag.manageEmbeddingDatabaseDesc',
-                          '查看向量库占用并管理索引。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="smtcmp-composer-option-control">
-                      <ObsidianButton
-                        text={t('settings.rag.manage', '管理')}
-                        onClick={() => {
-                          const modal = new EmbeddingDbManageModal(app, plugin)
-                          modal.open()
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={`smtcmp-settings-advanced-toggle smtcmp-clickable${
-                      showRagAdvanced ? ' is-expanded' : ''
-                    }`}
-                    onClick={() => setShowRagAdvanced((prev) => !prev)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        setShowRagAdvanced((prev) => !prev)
-                      }
-                    }}
-                  >
-                    <span className="smtcmp-settings-advanced-toggle-icon">
-                      ▶
-                    </span>
-                    {t('settings.rag.advanced', '高级设置')}
-                  </div>
-
-                  {showRagAdvanced && (
-                    <>
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t('settings.rag.chunkSize', 'Chunk 大小')}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.rag.chunkSizeDesc',
-                              '单次切分的字符数。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={ragNumberInputs.chunkSize}
-                            onChange={(value) => {
-                              setRagNumberInputs((prev) => ({
-                                ...prev,
-                                chunkSize: value,
-                              }))
-                              const chunkSize = parseIntegerInput(value)
-                              if (chunkSize === null) return
-                              applySettingsUpdate(
-                                {
-                                  ...settings,
-                                  ragOptions: {
-                                    ...settings.ragOptions,
-                                    chunkSize,
-                                  },
-                                },
-                                t(
-                                  'notices.indexUpdateFailed',
-                                  'Failed to update chunk size.',
-                                ),
-                              )
-                            }}
-                            onBlur={(value) => {
-                              const chunkSize = parseIntegerInput(value)
-                              if (chunkSize === null) {
-                                setRagNumberInputs((prev) => ({
-                                  ...prev,
-                                  chunkSize: String(
-                                    settings.ragOptions.chunkSize,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t('settings.rag.minSimilarity', '最小相似度')}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.rag.minSimilarityDesc',
-                              '低于该相似度的结果将被过滤。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={ragNumberInputs.minSimilarity}
-                            onChange={(value) => {
-                              setRagNumberInputs((prev) => ({
-                                ...prev,
-                                minSimilarity: value,
-                              }))
-                              const minSimilarity = parseFloatInput(value)
-                              if (minSimilarity === null) return
-                              applySettingsUpdate(
-                                {
-                                  ...settings,
-                                  ragOptions: {
-                                    ...settings.ragOptions,
-                                    minSimilarity,
-                                  },
-                                },
-                                t(
-                                  'notices.indexUpdateFailed',
-                                  'Failed to update min similarity.',
-                                ),
-                              )
-                            }}
-                            onBlur={(value) => {
-                              const minSimilarity = parseFloatInput(value)
-                              if (minSimilarity === null) {
-                                setRagNumberInputs((prev) => ({
-                                  ...prev,
-                                  minSimilarity: String(
-                                    settings.ragOptions.minSimilarity,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t('settings.rag.limit', '返回条数')}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.rag.limitDesc',
-                              '每次检索返回的候选数量。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={ragNumberInputs.limit}
-                            onChange={(value) => {
-                              setRagNumberInputs((prev) => ({
-                                ...prev,
-                                limit: value,
-                              }))
-                              const limit = parseIntegerInput(value)
-                              if (limit === null) return
-                              applySettingsUpdate(
-                                {
-                                  ...settings,
-                                  ragOptions: {
-                                    ...settings.ragOptions,
-                                    limit,
-                                  },
-                                },
-                                t(
-                                  'notices.indexUpdateFailed',
-                                  'Failed to update limit.',
-                                ),
-                              )
-                            }}
-                            onBlur={(value) => {
-                              const limit = parseIntegerInput(value)
-                              if (limit === null) {
-                                setRagNumberInputs((prev) => ({
-                                  ...prev,
-                                  limit: String(settings.ragOptions.limit),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="smtcmp-composer-option">
-                        <div className="smtcmp-composer-option-info">
-                          <div className="smtcmp-composer-option-title">
-                            {t(
-                              'settings.rag.autoUpdateInterval',
-                              '最小更新间隔(小时)',
-                            )}
-                          </div>
-                          <div className="smtcmp-composer-option-desc">
-                            {t(
-                              'settings.rag.autoUpdateIntervalDesc',
-                              '控制自动更新的最低频率。',
-                            )}
-                          </div>
-                        </div>
-                        <div className="smtcmp-composer-option-control">
-                          <ObsidianTextInput
-                            type="number"
-                            value={ragNumberInputs.autoUpdateIntervalHours}
-                            onChange={(value) => {
-                              setRagNumberInputs((prev) => ({
-                                ...prev,
-                                autoUpdateIntervalHours: value,
-                              }))
-                              const n = parseIntegerInput(value)
-                              if (n === null || n <= 0) return
-                              applySettingsUpdate(
-                                {
-                                  ...settings,
-                                  ragOptions: {
-                                    ...settings.ragOptions,
-                                    autoUpdateIntervalHours: n,
-                                  },
-                                },
-                                t(
-                                  'notices.indexUpdateFailed',
-                                  'Failed to update interval.',
-                                ),
-                              )
-                            }}
-                            onBlur={(value) => {
-                              const n = parseIntegerInput(value)
-                              if (n === null || n <= 0) {
-                                setRagNumberInputs((prev) => ({
-                                  ...prev,
-                                  autoUpdateIntervalHours: String(
-                                    settings.ragOptions
-                                      .autoUpdateIntervalHours ?? 0,
-                                  ),
-                                }))
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
             </section>
           </>
         )}

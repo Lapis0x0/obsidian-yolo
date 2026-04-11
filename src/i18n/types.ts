@@ -510,6 +510,24 @@ export type TranslationKeys = {
       maintenanceCardTitle?: string
       maintenanceCardDesc?: string
       maintenanceUnavailableHint?: string
+      currentStatus?: string
+      currentStatusDesc?: string
+      lastIndexedAt?: string
+      lastIndexedAtDesc?: string
+      maintenanceActions?: string
+      deleteIndex?: string
+      deleteIndexConfirm?: string
+      deleteIndexSuccess?: string
+      deleteIndexFailed?: string
+      statusDisabled?: string
+      statusSyncing?: string
+      statusRuntimeRequired?: string
+      statusReady?: string
+      statusEmpty?: string
+      selectEmbeddingModelFirst?: string
+      openKnowledgeSettings?: string
+      openKnowledgeSettingsDesc?: string
+      composerEntryDesc?: string
       pgliteStatusCurrent?: string
       pgliteStatusSource?: string
       pgliteStatusPath?: string

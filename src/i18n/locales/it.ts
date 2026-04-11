@@ -644,20 +644,44 @@ export const it: TranslationKeys = {
       manualUpdateNowDesc:
         "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
       advanced: 'Impostazioni avanzate',
-      basicCardTitle: 'Base RAG',
+      basicCardTitle: 'Knowledge base',
       basicCardDesc:
-        "Controlla l'accesso alla ricerca e il modello base per gli embedding.",
+        "Controlla l'indicizzazione della knowledge base, il modello di embedding e le relative azioni di manutenzione.",
       resourceCardTitle: 'Risorse PGlite',
       resourceCardDesc:
         'Gestisce le risorse runtime del database necessarie alla base di conoscenza.',
       scopeCardTitle: 'Ambito di ricerca',
       scopeCardDesc:
         "Specifica quali cartelle includere o escludere dall'indicizzazione.",
-      maintenanceCardTitle: "Manutenzione dell'indice",
+      maintenanceCardTitle: 'Stato e manutenzione',
       maintenanceCardDesc:
-        "Gestisce aggiornamenti automatici, aggiornamenti incrementali, ricostruzione e avanzamento dell'indice.",
+        'Mostra lo stato corrente della knowledge base e consente le operazioni di manutenzione necessarie.',
       maintenanceUnavailableHint:
         "Prepara prima le risorse PGlite qui sopra per usare la manutenzione dell'indice o il database embedding.",
+      currentStatus: 'Stato corrente',
+      currentStatusDesc:
+        "Quando la knowledge base è attiva, l'indice viene mantenuto automaticamente in background.",
+      lastIndexedAt: 'Ultima sincronizzazione',
+      lastIndexedAtDesc:
+        "L'ultima volta in cui l'indicizzazione o una sincronizzazione in background è terminata con successo.",
+      maintenanceActions: 'Azioni di manutenzione',
+      deleteIndex: 'Elimina indice corrente',
+      deleteIndexConfirm:
+        "Vuoi eliminare tutti i dati d'indice per il modello di embedding attualmente selezionato?",
+      deleteIndexSuccess: "L'indice corrente è stato eliminato.",
+      deleteIndexFailed: "Impossibile eliminare l'indice corrente.",
+      statusDisabled: 'Disattivato',
+      statusSyncing: 'Sincronizzazione in background',
+      statusRuntimeRequired: 'In attesa delle risorse database',
+      statusReady: 'Attivo',
+      statusEmpty: 'Nessun indice disponibile',
+      selectEmbeddingModelFirst:
+        "Seleziona prima un modello di embedding, poi attiva l'indicizzazione della knowledge base.",
+      openKnowledgeSettings: 'Apri impostazioni knowledge base',
+      openKnowledgeSettingsDesc:
+        'Vai alle impostazioni per gestire indice, ambito, stato e opzioni avanzate.',
+      composerEntryDesc:
+        'L’indicizzazione della knowledge base ora è gestita nella pagina impostazioni; qui resta solo un accesso rapido.',
       pgliteStatusCurrent: 'Stato attuale',
       pgliteStatusSource: 'Origine risorsa',
       pgliteStatusPath: 'Percorso risorsa',
