@@ -1,7 +1,7 @@
 import { App, normalizePath } from 'obsidian'
 
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
-import { countChangedLines } from '../../../utils/chat/editSummary'
+import { countFileChangeStats } from '../../../utils/chat/editSummary'
 import { CHAT_DIR } from '../constants'
 
 export type EditReviewSnapshot = {
@@ -10,6 +10,8 @@ export type EditReviewSnapshot = {
   filePath: string
   beforeContent: string
   afterContent: string
+  beforeExists: boolean
+  afterExists: boolean
   addedLines: number
   removedLines: number
   createdAt: number
@@ -83,9 +85,20 @@ const readSnapshotStore = async (
       return EMPTY_STORE
     }
 
+    const snapshots = Object.fromEntries(
+      Object.entries(parsed.snapshots).map(([key, snapshot]) => [
+        key,
+        {
+          ...snapshot,
+          beforeExists: snapshot.beforeExists ?? true,
+          afterExists: snapshot.afterExists ?? true,
+        },
+      ]),
+    ) as Record<string, EditReviewSnapshot>
+
     return {
       schemaVersion: 1,
-      snapshots: parsed.snapshots,
+      snapshots,
     }
   } catch (error) {
     console.error('[YOLO] Failed to read edit review snapshots', error)
@@ -146,6 +159,8 @@ export const upsertEditReviewSnapshot = async ({
   filePath,
   beforeContent,
   afterContent,
+  beforeExists = true,
+  afterExists = true,
   settings,
 }: {
   app: App
@@ -154,6 +169,8 @@ export const upsertEditReviewSnapshot = async ({
   filePath: string
   beforeContent: string
   afterContent: string
+  beforeExists?: boolean
+  afterExists?: boolean
   settings?: YoloSettingsLike | null
 }): Promise<EditReviewSnapshot> => {
   return withConversationWriteLock(conversationId, async () => {
@@ -162,7 +179,13 @@ export const upsertEditReviewSnapshot = async ({
     const existing = store.snapshots[key]
     const now = Date.now()
     const snapshotBeforeContent = existing?.beforeContent ?? beforeContent
-    const counts = countChangedLines(snapshotBeforeContent, afterContent)
+    const snapshotBeforeExists = existing?.beforeExists ?? beforeExists
+    const counts = countFileChangeStats({
+      beforeContent: snapshotBeforeContent,
+      afterContent,
+      beforeExists: snapshotBeforeExists,
+      afterExists,
+    })
 
     const snapshot: EditReviewSnapshot = {
       conversationId,
@@ -170,6 +193,8 @@ export const upsertEditReviewSnapshot = async ({
       filePath,
       beforeContent: snapshotBeforeContent,
       afterContent,
+      beforeExists: snapshotBeforeExists,
+      afterExists,
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
       createdAt: existing?.createdAt ?? now,

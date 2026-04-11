@@ -1186,6 +1186,8 @@ export const it: TranslationKeys = {
     },
     editSummary: {
       filesChanged: '{count} file modificati',
+      operationCreate: 'Creato',
+      operationDelete: 'Eliminato',
       undo: 'Annulla',
       undoFile: 'Annulla modifica file',
       undone: 'Annullato',
@@ -1196,6 +1198,7 @@ export const it: TranslationKeys = {
       undoUnavailable:
         'Il contenuto dei file e cambiato e questo turno non puo essere annullato in sicurezza.',
       undoFailed: 'Annullamento non riuscito. Riprova.',
+      fileDeleted: 'Questo file e stato eliminato. Usa annulla per ripristinarlo.',
       fileMissing: 'Il file non esiste piu o e stato spostato.',
     },
     errorCard: {

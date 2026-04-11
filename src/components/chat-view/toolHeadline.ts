@@ -75,8 +75,12 @@ export const getToolHeadlineText = ({
     typeof headlineParts.addedLines === 'number' &&
     typeof headlineParts.removedLines === 'number'
   ) {
-    segments.push(`+${headlineParts.addedLines}`)
-    segments.push(`-${headlineParts.removedLines}`)
+    if (headlineParts.addedLines > 0) {
+      segments.push(`+${headlineParts.addedLines}`)
+    }
+    if (headlineParts.removedLines > 0) {
+      segments.push(`-${headlineParts.removedLines}`)
+    }
   }
 
   return segments.join(' ')

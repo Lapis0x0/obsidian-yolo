@@ -1187,6 +1187,8 @@ export const en: TranslationKeys = {
     },
     editSummary: {
       filesChanged: '{count} file(s) changed',
+      operationCreate: 'Created',
+      operationDelete: 'Deleted',
       undo: 'Undo',
       undoFile: 'Undo file change',
       undone: 'Undone',
@@ -1196,6 +1198,7 @@ export const en: TranslationKeys = {
       undoUnavailable:
         'File contents have changed, so this turn cannot be safely undone.',
       undoFailed: 'Undo failed. Please try again.',
+      fileDeleted: 'This file was deleted. Use undo to restore it.',
       fileMissing: 'The file no longer exists or has been moved.',
     },
     errorCard: {

@@ -644,13 +644,33 @@
     color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
 }
 
+.smtcmp-agent-edit-summary-item-trailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-right: 10px;
+}
+
+.smtcmp-agent-edit-summary-deltas {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  text-align: right;
+}
+
 .smtcmp-agent-edit-summary-item:last-child {
   padding-bottom: 0;
 }
 
 .smtcmp-agent-edit-summary-path {
   all: unset;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
   margin: 0 !important;
@@ -672,6 +692,34 @@
   cursor: pointer;
 }
 
+.smtcmp-agent-edit-summary-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: calc(var(--font-ui-smaller) * 0.96);
+  line-height: 1.4;
+}
+
+.smtcmp-agent-edit-summary-badge--create {
+  border-color: color-mix(in srgb, var(--color-green) 24%, transparent);
+  background: color-mix(in srgb, var(--color-green) 14%, transparent);
+  color: color-mix(in srgb, var(--color-green) 78%, var(--text-normal));
+}
+
+.smtcmp-agent-edit-summary-badge--delete {
+  border-color: color-mix(in srgb, var(--color-red) 24%, transparent);
+  background: color-mix(in srgb, var(--color-red) 14%, transparent);
+  color: color-mix(in srgb, var(--color-red) 78%, var(--text-normal));
+}
+
+.smtcmp-agent-edit-summary-path-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .smtcmp-agent-edit-summary-path:hover,
 .smtcmp-agent-edit-summary-path:focus-visible {
   color: var(--interactive-accent);
@@ -679,9 +727,14 @@
   background-image: none !important;
   box-shadow: none !important;
   border-color: transparent !important;
+  outline: none;
+}
+
+.smtcmp-agent-edit-summary-path:hover .smtcmp-agent-edit-summary-path-text,
+.smtcmp-agent-edit-summary-path:focus-visible
+  .smtcmp-agent-edit-summary-path-text {
   text-decoration-line: underline;
   text-underline-offset: 2px;
-  outline: none;
 }
 
 .smtcmp-agent-edit-summary-added {
@@ -690,6 +743,10 @@
 
 .smtcmp-agent-edit-summary-removed {
   color: var(--color-red);
+}
+
+.smtcmp-agent-edit-summary-neutral {
+  color: var(--text-faint);
 }
 
 .smtcmp-agent-edit-summary-undo {
@@ -744,7 +801,8 @@
 
 .smtcmp-agent-edit-summary-undo-icon {
   flex: 0 0 auto;
-  margin-left: 4px !important;
+  padding: 2px !important;
+  gap: 0;
   opacity: 0;
   pointer-events: none;
   transition:

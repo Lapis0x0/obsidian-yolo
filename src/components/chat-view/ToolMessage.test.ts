@@ -83,8 +83,28 @@ describe('ToolMessage headline helpers', () => {
         },
       }),
     ).toBe(
-      'Text editing: Folder/Internal Transaction Closed-loop Design Schedule.md +8 -0',
+      'Text editing: Folder/Internal Transaction Closed-loop Design Schedule.md +8',
     )
+  })
+
+  it('omits zero edit deltas from headline text', () => {
+    expect(
+      getToolHeadlineText({
+        status: ToolCallResponseStatus.Success,
+        displayInfo: {
+          displayName: 'Text editing',
+          summaryText: 'schedule.md',
+        },
+        labels,
+        editSummary: {
+          files: [],
+          totalFiles: 1,
+          totalAddedLines: 0,
+          totalRemovedLines: 4,
+          undoStatus: 'available',
+        },
+      }),
+    ).toBe('Text editing: schedule.md -4')
   })
 
   it('separates title, path, and deltas for header layout', () => {

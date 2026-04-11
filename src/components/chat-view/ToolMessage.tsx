@@ -922,14 +922,20 @@ function ToolCallItem({
               </>
             )}
             {typeof headlineParts.addedLines === 'number' &&
-              typeof headlineParts.removedLines === 'number' && (
+              typeof headlineParts.removedLines === 'number' &&
+              (headlineParts.addedLines > 0 ||
+                headlineParts.removedLines > 0) && (
                 <span className="smtcmp-toolcall-header-edit-deltas">
-                  <span className="smtcmp-toolcall-header-edit-added">
-                    +{headlineParts.addedLines}
-                  </span>
-                  <span className="smtcmp-toolcall-header-edit-removed">
-                    -{headlineParts.removedLines}
-                  </span>
+                  {headlineParts.addedLines > 0 && (
+                    <span className="smtcmp-toolcall-header-edit-added">
+                      +{headlineParts.addedLines}
+                    </span>
+                  )}
+                  {headlineParts.removedLines > 0 && (
+                    <span className="smtcmp-toolcall-header-edit-removed">
+                      -{headlineParts.removedLines}
+                    </span>
+                  )}
                 </span>
               )}
           </span>

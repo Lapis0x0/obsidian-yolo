@@ -9,6 +9,7 @@ import type {
 } from '../../types/chat'
 import type {
   ToolCallResponse,
+  ToolEditOperation,
   ToolEditSummary,
   ToolEditSummaryFile,
   ToolEditUndoStatus,
@@ -27,6 +28,7 @@ export type GroupEditSummaryPathItem = {
   path: string
   addedLines: number
   removedLines: number
+  operation: ToolEditOperation
   undoStatus: ToolEditUndoStatus
   firstRoundId: string
   latestRoundId: string
@@ -75,6 +77,58 @@ export const countChangedLines = (
   )
 }
 
+const countContentLines = (content: string): number => {
+  return content.length === 0 ? 0 : content.split('\n').length
+}
+
+export const countFileChangeStats = ({
+  beforeContent,
+  afterContent,
+  beforeExists = true,
+  afterExists = true,
+}: {
+  beforeContent: string
+  afterContent: string
+  beforeExists?: boolean
+  afterExists?: boolean
+}) => {
+  if (!beforeExists && !afterExists) {
+    return { addedLines: 0, removedLines: 0 }
+  }
+
+  if (!beforeExists) {
+    return {
+      addedLines: countContentLines(afterContent),
+      removedLines: 0,
+    }
+  }
+
+  if (!afterExists) {
+    return {
+      addedLines: 0,
+      removedLines: countContentLines(beforeContent),
+    }
+  }
+
+  return countChangedLines(beforeContent, afterContent)
+}
+
+const deriveToolEditOperation = ({
+  beforeExists,
+  afterExists,
+}: {
+  beforeExists: boolean
+  afterExists: boolean
+}): ToolEditOperation => {
+  if (!beforeExists && afterExists) {
+    return 'create'
+  }
+  if (beforeExists && !afterExists) {
+    return 'delete'
+  }
+  return 'edit'
+}
+
 export const deriveToolEditUndoStatus = (
   files: Array<Pick<ToolEditSummaryFile, 'undoStatus'>>,
 ): ToolEditUndoStatus => {
@@ -94,27 +148,37 @@ export const createToolEditSummary = ({
   path,
   beforeContent,
   afterContent,
+  beforeExists = true,
+  afterExists = true,
   reviewRoundId,
 }: {
   path: string
   beforeContent: string
   afterContent: string
+  beforeExists?: boolean
+  afterExists?: boolean
   reviewRoundId?: string
 }): ToolEditSummary | undefined => {
-  if (beforeContent === afterContent) {
+  if (
+    beforeExists === afterExists &&
+    beforeContent === afterContent
+  ) {
     return undefined
   }
 
-  const { addedLines, removedLines } = countChangedLines(
+  const { addedLines, removedLines } = countFileChangeStats({
     beforeContent,
     afterContent,
-  )
+    beforeExists,
+    afterExists,
+  })
 
   const files: ToolEditSummaryFile[] = [
     {
       path,
       addedLines,
       removedLines,
+      operation: deriveToolEditOperation({ beforeExists, afterExists }),
       undoStatus: 'available',
       reviewRoundId,
     },
@@ -188,6 +252,7 @@ export const collectGroupEditSummary = (
       firstToolCallId: string
       addedLines: number
       removedLines: number
+      operation: ToolEditOperation
       statuses: ToolEditUndoStatus[]
       latestToolCallId: string
       firstRoundId: string
@@ -205,6 +270,7 @@ export const collectGroupEditSummary = (
           firstToolCallId: entry.toolCallId,
           addedLines: file.addedLines,
           removedLines: file.removedLines,
+          operation: file.operation,
           statuses: [file.undoStatus],
           latestToolCallId: entry.toolCallId,
           firstRoundId: roundId,
@@ -215,6 +281,7 @@ export const collectGroupEditSummary = (
 
       existing.addedLines = file.addedLines
       existing.removedLines = file.removedLines
+      existing.operation = file.operation
       existing.statuses.push(file.undoStatus)
       existing.latestToolCallId = entry.toolCallId
       existing.latestRoundId = roundId
@@ -229,19 +296,29 @@ export const collectGroupEditSummary = (
     )
     const counts =
       firstSnapshot && latestSnapshot
-        ? countChangedLines(
-            firstSnapshot.beforeContent,
-            latestSnapshot.afterContent,
-          )
+        ? countFileChangeStats({
+            beforeContent: firstSnapshot.beforeContent,
+            afterContent: latestSnapshot.afterContent,
+            beforeExists: firstSnapshot.beforeExists,
+            afterExists: latestSnapshot.afterExists,
+          })
         : {
             addedLines: value.addedLines,
             removedLines: value.removedLines,
           }
+    const operation =
+      firstSnapshot && latestSnapshot
+        ? deriveToolEditOperation({
+            beforeExists: firstSnapshot.beforeExists,
+            afterExists: latestSnapshot.afterExists,
+          })
+        : value.operation
 
     return {
       path,
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
+      operation,
       undoStatus: aggregateUndoStatus(value.statuses),
       firstRoundId: value.firstRoundId,
       latestRoundId: value.latestRoundId,

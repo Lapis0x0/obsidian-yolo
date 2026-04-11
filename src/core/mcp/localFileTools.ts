@@ -9,7 +9,10 @@ import {
   ToolCallResponseStatus,
   type ToolEditSummary,
 } from '../../types/tool-call.types'
-import { createToolEditSummary } from '../../utils/chat/editSummary'
+import {
+  createToolEditSummary,
+  deriveToolEditUndoStatus,
+} from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import {
@@ -1689,18 +1692,26 @@ export function parseLocalFsActionFromToolArgs({
 
 const executeFsFileOps = async ({
   app,
+  settings,
   action,
   items,
   dryRun,
   signal,
   tool,
+  conversationId,
+  roundId,
+  toolCallId,
 }: {
   app: App
+  settings?: SmartComposerSettings
   action: FsFileOpAction
   items: Record<string, unknown>[]
   dryRun: boolean
   signal?: AbortSignal
   tool: string
+  conversationId?: string
+  roundId?: string
+  toolCallId?: string
 }): Promise<LocalToolCallResult> => {
   if (items.length === 0) {
     throw new Error('items cannot be empty.')
@@ -1712,6 +1723,10 @@ const executeFsFileOps = async ({
   }
 
   const results: FsResultItem[] = []
+  let summaryFiles: ToolEditSummary['files'] = []
+  let totalAddedLines = 0
+  let totalRemovedLines = 0
+  const appliedAt = Date.now()
 
   for (const item of items) {
     if (signal?.aborted) {
@@ -1734,6 +1749,60 @@ const executeFsFileOps = async ({
           await app.vault.create(path, content)
         }
 
+        if (!dryRun) {
+          let editSummary = createToolEditSummary({
+            path,
+            beforeContent: '',
+            afterContent: content,
+            beforeExists: false,
+            afterExists: true,
+            reviewRoundId: roundId,
+          })
+
+          if (toolCallId && editSummary) {
+            editUndoSnapshotStore.set({
+              toolCallId,
+              path,
+              beforeContent: '',
+              afterContent: content,
+              beforeExists: false,
+              afterExists: true,
+              appliedAt,
+            })
+          }
+
+          if (conversationId && roundId && editSummary) {
+            const snapshot = await upsertEditReviewSnapshot({
+              app,
+              conversationId,
+              roundId,
+              filePath: path,
+              beforeContent: '',
+              afterContent: content,
+              beforeExists: false,
+              afterExists: true,
+              settings,
+            })
+            editSummary = {
+              ...editSummary,
+              files: editSummary.files.map((file) => ({
+                ...file,
+                addedLines: snapshot.addedLines,
+                removedLines: snapshot.removedLines,
+                reviewRoundId: roundId,
+              })),
+              totalAddedLines: snapshot.addedLines,
+              totalRemovedLines: snapshot.removedLines,
+            }
+          }
+
+          if (editSummary) {
+            summaryFiles = [...summaryFiles, ...editSummary.files]
+            totalAddedLines += editSummary.totalAddedLines
+            totalRemovedLines += editSummary.totalRemovedLines
+          }
+        }
+
         results.push({
           ok: true,
           action,
@@ -1749,9 +1818,64 @@ const executeFsFileOps = async ({
         if (!existing || !(existing instanceof TFile)) {
           throw new Error(`File not found: ${path}`)
         }
+        const content = await app.vault.read(existing)
 
         if (!dryRun) {
           await app.fileManager.trashFile(existing)
+        }
+
+        if (!dryRun) {
+          let editSummary = createToolEditSummary({
+            path,
+            beforeContent: content,
+            afterContent: '',
+            beforeExists: true,
+            afterExists: false,
+            reviewRoundId: roundId,
+          })
+
+          if (toolCallId && editSummary) {
+            editUndoSnapshotStore.set({
+              toolCallId,
+              path,
+              beforeContent: content,
+              afterContent: '',
+              beforeExists: true,
+              afterExists: false,
+              appliedAt,
+            })
+          }
+
+          if (conversationId && roundId && editSummary) {
+            const snapshot = await upsertEditReviewSnapshot({
+              app,
+              conversationId,
+              roundId,
+              filePath: path,
+              beforeContent: content,
+              afterContent: '',
+              beforeExists: true,
+              afterExists: false,
+              settings,
+            })
+            editSummary = {
+              ...editSummary,
+              files: editSummary.files.map((file) => ({
+                ...file,
+                addedLines: snapshot.addedLines,
+                removedLines: snapshot.removedLines,
+                reviewRoundId: roundId,
+              })),
+              totalAddedLines: snapshot.addedLines,
+              totalRemovedLines: snapshot.removedLines,
+            }
+          }
+
+          if (editSummary) {
+            summaryFiles = [...summaryFiles, ...editSummary.files]
+            totalAddedLines += editSummary.totalAddedLines
+            totalRemovedLines += editSummary.totalRemovedLines
+          }
         }
 
         results.push({
@@ -1871,6 +1995,19 @@ const executeFsFileOps = async ({
       dryRun,
       results,
     }),
+    metadata:
+      dryRun || summaryFiles.length === 0
+        ? undefined
+        : {
+            editSummary: {
+              files: summaryFiles,
+              totalFiles: summaryFiles.length,
+              totalAddedLines,
+              totalRemovedLines,
+              undoStatus: deriveToolEditUndoStatus(summaryFiles),
+            },
+            appliedAt,
+          },
   }
 }
 
@@ -2254,6 +2391,8 @@ export async function callLocalFileTool({
             path,
             beforeContent: content,
             afterContent: appliedContent,
+            beforeExists: true,
+            afterExists: true,
             appliedAt,
           })
         }
@@ -2266,6 +2405,8 @@ export async function callLocalFileTool({
             filePath: path,
             beforeContent: content,
             afterContent: appliedContent,
+            beforeExists: true,
+            afterExists: true,
             settings,
           })
           editSummary = {
@@ -2309,6 +2450,7 @@ export async function callLocalFileTool({
         const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
         return executeFsFileOps({
           app,
+          settings,
           action: 'create_file',
           items: getFsFileOpItems({
             args,
@@ -2320,6 +2462,9 @@ export async function callLocalFileTool({
           dryRun,
           signal,
           tool: 'fs_create_file',
+          conversationId,
+          roundId,
+          toolCallId,
         })
       }
 
@@ -2327,6 +2472,7 @@ export async function callLocalFileTool({
         const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
         return executeFsFileOps({
           app,
+          settings,
           action: 'delete_file',
           items: getFsFileOpItems({
             args,
@@ -2335,6 +2481,9 @@ export async function callLocalFileTool({
           dryRun,
           signal,
           tool: 'fs_delete_file',
+          conversationId,
+          roundId,
+          toolCallId,
         })
       }
 

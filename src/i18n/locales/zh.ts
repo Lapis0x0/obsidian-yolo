@@ -1105,6 +1105,8 @@ export const zh: TranslationKeys = {
     },
     editSummary: {
       filesChanged: '{count} 个文件已更改',
+      operationCreate: '新建',
+      operationDelete: '删除',
       undo: '撤销',
       undoFile: '撤销该文件修改',
       undone: '已撤销',
@@ -1112,6 +1114,7 @@ export const zh: TranslationKeys = {
       undoPartial: '部分文件已撤销，另一些文件因后续变更未覆盖。',
       undoUnavailable: '文件内容已变化，无法安全撤销本轮修改。',
       undoFailed: '撤销失败，请稍后重试。',
+      fileDeleted: '文件已被删除，可使用撤销进行恢复。',
       fileMissing: '文件不存在或已被移动。',
     },
     errorCard: {

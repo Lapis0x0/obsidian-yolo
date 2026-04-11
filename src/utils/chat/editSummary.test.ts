@@ -3,6 +3,7 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import {
   collectGroupEditSummary,
+  countFileChangeStats,
   createToolEditSummary,
   deriveToolEditUndoStatus,
 } from './editSummary'
@@ -25,7 +26,23 @@ describe('editSummary helpers', () => {
       totalAddedLines: 2,
       totalRemovedLines: 2,
       undoStatus: 'available',
-      files: [{ reviewRoundId: undefined }],
+      files: [{ operation: 'edit', reviewRoundId: undefined }],
+    })
+  })
+
+  it('tracks created files as additions instead of line diffs against empty text', () => {
+    const summary = createToolEditSummary({
+      path: 'note.md',
+      beforeContent: '',
+      afterContent: ['one', 'two'].join('\n'),
+      beforeExists: false,
+      afterExists: true,
+    })
+
+    expect(summary).toMatchObject({
+      totalAddedLines: 2,
+      totalRemovedLines: 0,
+      files: [{ operation: 'create' }],
     })
   })
 
@@ -114,6 +131,8 @@ describe('editSummary helpers', () => {
       path: 'note.md',
       beforeContent: 'hello',
       afterContent: ['hello', 'world'].join('\n'),
+      beforeExists: true,
+      afterExists: true,
       appliedAt: 1,
     })
     editUndoSnapshotStore.set({
@@ -121,6 +140,8 @@ describe('editSummary helpers', () => {
       path: 'note.md',
       beforeContent: ['hello', 'world'].join('\n'),
       afterContent: ['hello', 'world!'].join('\n'),
+      beforeExists: true,
+      afterExists: true,
       appliedAt: 2,
     })
 
@@ -177,5 +198,19 @@ describe('editSummary helpers', () => {
         { undoStatus: 'unavailable' },
       ]),
     ).toBe('partial')
+  })
+
+  it('counts deleted files by removed content lines', () => {
+    expect(
+      countFileChangeStats({
+        beforeContent: ['one', 'two'].join('\n'),
+        afterContent: '',
+        beforeExists: true,
+        afterExists: false,
+      }),
+    ).toEqual({
+      addedLines: 0,
+      removedLines: 2,
+    })
   })
 })

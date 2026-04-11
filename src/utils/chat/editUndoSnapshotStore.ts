@@ -3,6 +3,8 @@ type EditUndoSnapshot = {
   path: string
   beforeContent: string
   afterContent: string
+  beforeExists: boolean
+  afterExists: boolean
   appliedAt: number
 }
 

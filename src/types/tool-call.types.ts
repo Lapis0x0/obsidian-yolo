@@ -64,10 +64,13 @@ export type ToolEditUndoStatus =
   | 'partial'
   | 'unavailable'
 
+export type ToolEditOperation = 'edit' | 'create' | 'delete'
+
 export type ToolEditSummaryFile = {
   path: string
   addedLines: number
   removedLines: number
+  operation: ToolEditOperation
   undoStatus: Exclude<ToolEditUndoStatus, 'partial'>
   reviewRoundId?: string
 }

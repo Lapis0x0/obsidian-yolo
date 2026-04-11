@@ -1000,6 +1000,8 @@ export type TranslationKeys = {
     }
     editSummary?: {
       filesChanged?: string
+      operationCreate?: string
+      operationDelete?: string
       undo?: string
       undoFile?: string
       undone?: string
@@ -1007,6 +1009,7 @@ export type TranslationKeys = {
       undoPartial?: string
       undoUnavailable?: string
       undoFailed?: string
+      fileDeleted?: string
       fileMissing?: string
     }
     errorCard?: {

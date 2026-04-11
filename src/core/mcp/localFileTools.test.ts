@@ -227,6 +227,88 @@ describe('local fs tool action helpers', () => {
     })
   })
 
+  it('returns edit summary metadata for fs_create_file', async () => {
+    const create = jest.fn()
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(null),
+          create,
+          createFolder: jest.fn(),
+        },
+      } as unknown as App,
+      toolCallId: 'tool-call-create-1',
+      toolName: 'fs_create_file',
+      args: {
+        path: 'note.md',
+        content: ['one', 'two'].join('\n'),
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(create).toHaveBeenCalledWith('note.md', ['one', 'two'].join('\n'))
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    expect(result.metadata?.editSummary).toMatchObject({
+      totalFiles: 1,
+      totalAddedLines: 2,
+      totalRemovedLines: 0,
+      files: [{ operation: 'create' }],
+    })
+    expect(
+      editUndoSnapshotStore.get('tool-call-create-1', 'note.md'),
+    ).toMatchObject({
+      beforeExists: false,
+      afterExists: true,
+    })
+  })
+
+  it('returns edit summary metadata for fs_delete_file', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const read = jest.fn().mockResolvedValue(['one', 'two'].join('\n'))
+    const trashFile = jest.fn()
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+        fileManager: {
+          trashFile,
+        },
+      } as unknown as App,
+      toolCallId: 'tool-call-delete-1',
+      toolName: 'fs_delete_file',
+      args: {
+        path: 'note.md',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(trashFile).toHaveBeenCalledWith(file)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    expect(result.metadata?.editSummary).toMatchObject({
+      totalFiles: 1,
+      totalAddedLines: 0,
+      totalRemovedLines: 2,
+      files: [{ operation: 'delete' }],
+    })
+    expect(
+      editUndoSnapshotStore.get('tool-call-delete-1', 'note.md'),
+    ).toMatchObject({
+      beforeExists: true,
+      afterExists: false,
+    })
+  })
+
   it('supports fs_read full operation', async () => {
     const file = Object.assign(new TFile(), {
       path: 'note.md',

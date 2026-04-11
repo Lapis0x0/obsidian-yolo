@@ -21,7 +21,7 @@ import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantTool
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import {
   collectGroupEditSummary,
-  countChangedLines,
+  countFileChangeStats,
 } from '../../utils/chat/editSummary'
 
 import AssistantEditSummary from './AssistantEditSummary'
@@ -404,10 +404,12 @@ export default function AssistantToolMessageGroupItem({
             return file
           }
 
-          const counts = countChangedLines(
-            firstSnapshot.beforeContent,
-            latestSnapshot.afterContent,
-          )
+          const counts = countFileChangeStats({
+            beforeContent: firstSnapshot.beforeContent,
+            afterContent: latestSnapshot.afterContent,
+            beforeExists: firstSnapshot.beforeExists,
+            afterExists: latestSnapshot.afterExists,
+          })
 
           return {
             ...file,

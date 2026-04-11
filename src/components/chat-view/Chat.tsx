@@ -2,8 +2,7 @@ import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import cx from 'clsx'
 import { Download, History, Plus } from 'lucide-react'
-import { MarkdownView, Notice, Platform, TFile } from 'obsidian'
-import type { TFolder } from 'obsidian'
+import { MarkdownView, Notice, Platform, TFile, TFolder, normalizePath } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -114,6 +113,28 @@ import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
+
+const ensureDirectoryPathExists = async (
+  app: ReturnType<typeof useApp>,
+  path: string,
+): Promise<void> => {
+  const segments = normalizePath(path)
+    .split('/')
+    .filter((segment) => segment.length > 0)
+
+  let currentPath = ''
+  for (const segment of segments) {
+    currentPath = currentPath.length > 0 ? `${currentPath}/${segment}` : segment
+    const existing = app.vault.getAbstractFileByPath(currentPath)
+    if (!existing) {
+      await app.vault.createFolder(currentPath)
+      continue
+    }
+    if (!(existing instanceof TFolder)) {
+      throw new Error(`Path exists and is not a folder: ${currentPath}`)
+    }
+  }
+}
 
 const shouldShowContinueResponse = (
   messages: ChatMessage[],
@@ -2893,12 +2914,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const undoStateByPath = new Map<string, 'applied' | 'unavailable'>()
 
         for (const fileGroup of summary.files) {
-          const targetFile = app.vault.getAbstractFileByPath(fileGroup.path)
-          if (!(targetFile instanceof TFile)) {
-            undoStateByPath.set(fileGroup.path, 'unavailable')
-            continue
-          }
-
           const [firstSnapshot, latestSnapshot] = await Promise.all([
             readEditReviewSnapshot({
               app,
@@ -2916,20 +2931,52 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             }),
           ])
 
-          const currentContent = await app.vault.read(targetFile)
-          if (
-            !firstSnapshot ||
-            !latestSnapshot ||
-            currentContent !== latestSnapshot.afterContent
-          ) {
+          if (!firstSnapshot || !latestSnapshot) {
+            undoStateByPath.set(fileGroup.path, 'unavailable')
+            continue
+          }
+
+          const targetFile = app.vault.getAbstractFileByPath(fileGroup.path)
+          const currentFile = targetFile instanceof TFile ? targetFile : null
+
+          if (latestSnapshot.afterExists) {
+            if (!currentFile) {
+              undoStateByPath.set(fileGroup.path, 'unavailable')
+              continue
+            }
+
+            const currentContent = await app.vault.read(currentFile)
+            if (currentContent !== latestSnapshot.afterContent) {
+              undoStateByPath.set(fileGroup.path, 'unavailable')
+              continue
+            }
+          } else if (targetFile) {
             undoStateByPath.set(fileGroup.path, 'unavailable')
             continue
           }
 
           undoStateByPath.set(fileGroup.path, 'applied')
-          if (currentContent !== firstSnapshot.beforeContent) {
-            await app.vault.modify(targetFile, firstSnapshot.beforeContent)
+
+          if (!firstSnapshot.beforeExists) {
+            if (currentFile) {
+              await app.fileManager.trashFile(currentFile)
+            }
+            continue
           }
+
+          if (currentFile) {
+            const currentContent = await app.vault.read(currentFile)
+            if (currentContent !== firstSnapshot.beforeContent) {
+              await app.vault.modify(currentFile, firstSnapshot.beforeContent)
+            }
+            continue
+          }
+
+          const parentPath = fileGroup.path.split('/').slice(0, -1).join('/')
+          if (parentPath.length > 0) {
+            await ensureDirectoryPathExists(app, parentPath)
+          }
+          await app.vault.create(fileGroup.path, firstSnapshot.beforeContent)
         }
 
         const appliedCount = summary.files.filter(
@@ -3025,13 +3072,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       firstRoundId,
       latestRoundId,
     }: GroupEditSummary['files'][number]) => {
-      const targetFile = app.vault.getAbstractFileByPath(path)
-      if (!(targetFile instanceof TFile)) {
-        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
-        return
-      }
+      const targetEntry = app.vault.getAbstractFileByPath(path)
+      const targetFile = targetEntry instanceof TFile ? targetEntry : null
 
       if (!currentConversationId) {
+        if (!targetFile) {
+          new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+          return
+        }
         const leaf = app.workspace.getLeaf(false)
         void leaf.openFile(targetFile)
         return
@@ -3055,6 +3103,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ])
 
       if (firstSnapshot && latestSnapshot) {
+        if (!latestSnapshot.afterExists) {
+          new Notice(
+            t(
+              'chat.editSummary.fileDeleted',
+              '文件已被删除，可使用撤销进行恢复。',
+            ),
+          )
+          return
+        }
+
+        if (!targetFile) {
+          new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+          return
+        }
+
         const currentContent = await app.vault.read(targetFile)
         if (currentContent !== latestSnapshot.afterContent) {
           const leaf = app.workspace.getLeaf(false)
@@ -3075,6 +3138,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           viewMode: 'revert-review',
           reviewMode: 'full',
         })
+        return
+      }
+
+      if (!targetFile) {
+        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
         return
       }
 
