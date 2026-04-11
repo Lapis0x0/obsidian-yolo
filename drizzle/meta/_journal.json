@@ -71,6 +71,13 @@
       "when": 1738720225813,
       "tag": "0009_support_more_dimension_for_indexing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1744348800000,
+      "tag": "0010_hnsw_params_and_content_hash",
+      "breakpoints": true
     }
   ]
 }

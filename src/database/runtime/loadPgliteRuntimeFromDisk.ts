@@ -2,7 +2,10 @@ import { App, normalizePath } from 'obsidian'
 
 type DiskPgliteResources = {
   fsBundle: Blob
-  wasmModule: WebAssembly.Module
+  pgliteWasmModule: WebAssembly.Module
+  initdbWasmModule: WebAssembly.Module
+  /** Raw gzip bytes for passing to PGlite worker (URL extensions not allowed on main thread). */
+  vectorExtensionBlob: Blob
   vectorExtensionBundlePath: URL
 }
 
@@ -11,28 +14,33 @@ export const loadPgliteRuntimeFromDisk = async (
   runtimeDir: string,
 ): Promise<DiskPgliteResources> => {
   const normalizedRuntimeDir = normalizePath(runtimeDir)
-  const postgresDataPath = normalizePath(
-    `${normalizedRuntimeDir}/postgres.data`,
-  )
-  const postgresWasmPath = normalizePath(
-    `${normalizedRuntimeDir}/postgres.wasm`,
-  )
+  const pgliteDataPath = normalizePath(`${normalizedRuntimeDir}/pglite.data`)
+  const pgliteWasmPath = normalizePath(`${normalizedRuntimeDir}/pglite.wasm`)
+  const initdbWasmPath = normalizePath(`${normalizedRuntimeDir}/initdb.wasm`)
   const vectorTarPath = normalizePath(`${normalizedRuntimeDir}/vector.tar.gz`)
 
-  const [postgresData, postgresWasm, vectorTar] = await Promise.all([
-    app.vault.adapter.readBinary(postgresDataPath),
-    app.vault.adapter.readBinary(postgresWasmPath),
+  const [pgliteData, pgliteWasm, initdbWasm, vectorTar] = await Promise.all([
+    app.vault.adapter.readBinary(pgliteDataPath),
+    app.vault.adapter.readBinary(pgliteWasmPath),
+    app.vault.adapter.readBinary(initdbWasmPath),
     app.vault.adapter.readBinary(vectorTarPath),
   ])
 
-  const fsBundle = new Blob([postgresData], {
+  const fsBundle = new Blob([pgliteData], {
     type: 'application/octet-stream',
   })
-  const wasmModule = await WebAssembly.compile(postgresWasm)
+  const pgliteWasmModule = await WebAssembly.compile(pgliteWasm)
+  const initdbWasmModule = await WebAssembly.compile(initdbWasm)
   const vectorBlob = new Blob([vectorTar], {
     type: 'application/gzip',
   })
   const vectorExtensionBundlePath = new URL(URL.createObjectURL(vectorBlob))
 
-  return { fsBundle, wasmModule, vectorExtensionBundlePath }
+  return {
+    fsBundle,
+    pgliteWasmModule,
+    initdbWasmModule,
+    vectorExtensionBlob: vectorBlob,
+    vectorExtensionBundlePath,
+  }
 }

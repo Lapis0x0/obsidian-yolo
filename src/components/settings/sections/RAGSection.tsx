@@ -127,7 +127,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     String(settings.ragOptions.limit),
   )
   const [autoUpdateIntervalInput, setAutoUpdateIntervalInput] = useState(
-    String(settings.ragOptions.autoUpdateIntervalHours ?? 24),
+    String(settings.ragOptions.autoUpdateIntervalHours ?? 0),
   )
   const [showAdvancedRagSettings, setShowAdvancedRagSettings] = useState(false)
 
@@ -145,7 +145,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
   useEffect(() => {
     setAutoUpdateIntervalInput(
-      String(settings.ragOptions.autoUpdateIntervalHours ?? 24),
+      String(settings.ragOptions.autoUpdateIntervalHours ?? 0),
     )
   }, [settings.ragOptions.autoUpdateIntervalHours])
 
@@ -1113,7 +1113,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         if (intervalHours === null || intervalHours <= 0) {
                           setAutoUpdateIntervalInput(
                             String(
-                              settings.ragOptions.autoUpdateIntervalHours ?? 24,
+                              settings.ragOptions.autoUpdateIntervalHours ?? 0,
                             ),
                           )
                         }

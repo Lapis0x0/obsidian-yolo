@@ -1,6 +1,7 @@
 export type PGliteRuntimeFileName =
-  | 'postgres.data'
-  | 'postgres.wasm'
+  | 'pglite.data'
+  | 'pglite.wasm'
+  | 'initdb.wasm'
   | 'vector.tar.gz'
 
 export type PGliteRuntimeManifestFile = {
@@ -15,23 +16,33 @@ export type PGliteRuntimeManifest = {
   files: PGliteRuntimeManifestFile[]
 }
 
-export const PGLITE_RUNTIME_VERSION = 'pglite-runtime-0.2.12-r1'
+/** Bump when shipping new @electric-sql/pglite WASM bundles (see releases on origin repo). */
+export const PGLITE_RUNTIME_VERSION = 'pglite-runtime-0.4.4-r1'
 
 const RUNTIME_FILE_SPECS: Omit<PGliteRuntimeManifestFile, 'url'>[] = [
   {
-    name: 'postgres.data',
-    size: 2987805,
-    sha256: '8bbecccbe044329462c8fd5148019ba0f82daa95e7f7737e2e71f9ce1f8c9528',
+    name: 'pglite.data',
+    size: 5289109,
+    sha256:
+      '4507d476e23421aab8201ee9d58059c53736db40e1bfe5d14bb86124e59a116d',
   },
   {
-    name: 'postgres.wasm',
-    size: 10551538,
-    sha256: '6999f4a272f2c7a3ec9be4268f5c184dec973145ff0a3735b0f459a1a906e451',
+    name: 'pglite.wasm',
+    size: 8739902,
+    sha256:
+      '551cf9bcfb34e4b0ea118b8e658b5e3e85b20d620a6f365239ce02f32ffc20e9',
+  },
+  {
+    name: 'initdb.wasm',
+    size: 169969,
+    sha256:
+      '13ed8475e33d092d03e2378d6b78d52da0c4d497b1df2c2a62d33fe32ceb67e2',
   },
   {
     name: 'vector.tar.gz',
-    size: 43910,
-    sha256: 'd04da95473fd2706f2fe6147c260e2ed087fbe282791d0301a19ae89dcc5d5e1',
+    size: 46052,
+    sha256:
+      '3d968eee93191a2a0073b8c18a773c8aa315f4d4b4734cf5ff5e1fe6d100485b',
   },
 ]
 

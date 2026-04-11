@@ -21,7 +21,12 @@ import {
   EmbeddingModelClient,
 } from '../../../types/embedding'
 import { DatabaseNotInitializedException } from '../../exception'
-import { InsertEmbedding, SelectEmbedding, embeddingTable } from '../../schema'
+import {
+  InsertEmbedding,
+  SelectEmbedding,
+  VectorMetaData,
+  embeddingTable,
+} from '../../schema'
 
 export class VectorRepository {
   private app: App
@@ -44,7 +49,89 @@ export class VectorRepository {
       })
       .from(embeddingTable)
       .where(eq(embeddingTable.model, embeddingModel.id))
-    return indexedFiles.map((row) => row.path)
+    return [...new Set(indexedFiles.map((row) => row.path))]
+  }
+
+  /** Chunk metadata without embedding column (lighter for incremental diff). */
+  async getChunkMetaForFile(
+    filePath: string,
+    embeddingModel: EmbeddingModelClient,
+  ): Promise<
+    {
+      id: number
+      mtime: number
+      content: string
+      content_hash: string | null
+      metadata: VectorMetaData
+    }[]
+  > {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    return await this.db
+      .select({
+        id: embeddingTable.id,
+        mtime: embeddingTable.mtime,
+        content: embeddingTable.content,
+        content_hash: embeddingTable.content_hash,
+        metadata: embeddingTable.metadata,
+      })
+      .from(embeddingTable)
+      .where(
+        and(
+          eq(embeddingTable.path, filePath),
+          eq(embeddingTable.model, embeddingModel.id),
+        ),
+      )
+  }
+
+  async deleteVectorsByIds(ids: number[]): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (ids.length === 0) {
+      return
+    }
+    await this.db
+      .delete(embeddingTable)
+      .where(inArray(embeddingTable.id, ids))
+  }
+
+  async updateVectorsMtimeByIds(
+    ids: number[],
+    mtime: number,
+  ): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (ids.length === 0) {
+      return
+    }
+    await this.db
+      .update(embeddingTable)
+      .set({ mtime })
+      .where(inArray(embeddingTable.id, ids))
+  }
+
+  async updateVectorMetadataById(
+    id: number,
+    updates: {
+      mtime: number
+      metadata: VectorMetaData
+      path?: string
+    },
+  ): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    await this.db
+      .update(embeddingTable)
+      .set({
+        mtime: updates.mtime,
+        metadata: updates.metadata,
+        ...(updates.path ? { path: updates.path } : {}),
+      })
+      .where(eq(embeddingTable.id, id))
   }
 
   async getVectorsByFilePath(
@@ -181,6 +268,11 @@ export class VectorRepository {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
+    const dbWithClient = this.db as PgliteDatabase & {
+      $client?: { exec: (sql: string) => Promise<unknown> }
+    }
+    await dbWithClient.$client?.exec('SET hnsw.ef_search = 100')
+
     const similarity = sql<number>`1 - (${cosineDistance(embeddingTable.embedding, queryVector)})`
     const similarityCondition = gt(similarity, options.minSimilarity)
 

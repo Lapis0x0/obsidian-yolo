@@ -13,6 +13,8 @@ type RagAutoUpdateServiceDeps = {
 }
 
 export class RagAutoUpdateService {
+  private static readonly EDIT_IDLE_WINDOW_MS = 60 * 1000
+
   private readonly getSettings: () => SmartComposerSettings
   private readonly setSettings: (
     settings: SmartComposerSettings,
@@ -22,6 +24,7 @@ export class RagAutoUpdateService {
 
   private autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
   private isAutoUpdating = false
+  private pendingDirtyPaths = new Set<string>()
 
   constructor(deps: RagAutoUpdateServiceDeps) {
     this.getSettings = deps.getSettings
@@ -35,6 +38,7 @@ export class RagAutoUpdateService {
       clearTimeout(this.autoUpdateTimer)
       this.autoUpdateTimer = null
     }
+    this.pendingDirtyPaths.clear()
   }
 
   onVaultFileChanged(file: TAbstractFile) {
@@ -51,17 +55,24 @@ export class RagAutoUpdateService {
     const settings = this.getSettings()
     if (!settings?.ragOptions?.autoUpdateEnabled) return
     if (!this.isPathSelectedByIncludeExclude(path, settings)) return
+    this.pendingDirtyPaths.add(path)
 
-    const intervalMs =
-      (settings.ragOptions.autoUpdateIntervalHours ?? 24) * 60 * 60 * 1000
-    const last = settings.ragOptions.lastAutoUpdateAt ?? 0
-    const now = Date.now()
-    if (now - last < intervalMs) {
-      return
+    // 0 = no minimum gap between runs (only debounce below); larger values throttle
+    const intervalHours = settings.ragOptions.autoUpdateIntervalHours ?? 0
+    if (intervalHours > 0) {
+      const intervalMs = intervalHours * 60 * 60 * 1000
+      const last = settings.ragOptions.lastAutoUpdateAt ?? 0
+      const now = Date.now()
+      if (now - last < intervalMs) {
+        return
+      }
     }
 
     if (this.autoUpdateTimer) clearTimeout(this.autoUpdateTimer)
-    this.autoUpdateTimer = setTimeout(() => void this.runAutoUpdate(), 3000)
+    this.autoUpdateTimer = setTimeout(
+      () => void this.runAutoUpdate(),
+      RagAutoUpdateService.EDIT_IDLE_WINDOW_MS,
+    )
   }
 
   private isPathSelectedByIncludeExclude(
@@ -77,8 +88,10 @@ export class RagAutoUpdateService {
 
   private async runAutoUpdate() {
     if (this.isAutoUpdating) return
+    if (this.pendingDirtyPaths.size === 0) return
     this.isAutoUpdating = true
     try {
+      this.pendingDirtyPaths.clear()
       const ragEngine = await this.getRagEngine()
       await ragEngine.updateVaultIndex({ reindexAll: false }, undefined)
       const settings = this.getSettings()
@@ -96,6 +109,12 @@ export class RagAutoUpdateService {
     } finally {
       this.isAutoUpdating = false
       this.autoUpdateTimer = null
+      if (this.pendingDirtyPaths.size > 0) {
+        this.autoUpdateTimer = setTimeout(
+          () => void this.runAutoUpdate(),
+          RagAutoUpdateService.EDIT_IDLE_WINDOW_MS,
+        )
+      }
     }
   }
 }

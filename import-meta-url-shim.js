@@ -6,9 +6,13 @@
  */
 
 const import_meta_url =
-  typeof document === 'undefined'
-    ? require('url').pathToFileURL(__filename).href
-    : (document.currentScript && document.currentScript.src) ||
-      new URL('main.js', document.baseURI).href
+  typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope
+    ? 'https://pglite-worker.local/worker.js'
+    : typeof document !== 'undefined'
+      ? (document.currentScript && document.currentScript.src) ||
+        new URL('main.js', document.baseURI).href
+      : require('url').pathToFileURL(__filename).href
+
+var _scriptName = import_meta_url
 
 export { import_meta_url }

@@ -1776,6 +1776,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             this.app,
             runtime.dir,
             this.settings,
+            this.manifest.dir
+              ? normalizePath(this.manifest.dir)
+              : undefined,
           )
           return this.dbManager
         } catch (error) {

@@ -177,7 +177,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     minSimilarity: String(settings.ragOptions.minSimilarity),
     limit: String(settings.ragOptions.limit),
     autoUpdateIntervalHours: String(
-      settings.ragOptions.autoUpdateIntervalHours ?? 24,
+      settings.ragOptions.autoUpdateIntervalHours ?? 0,
     ),
   })
 
@@ -188,7 +188,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
       minSimilarity: String(settings.ragOptions.minSimilarity),
       limit: String(settings.ragOptions.limit),
       autoUpdateIntervalHours: String(
-        settings.ragOptions.autoUpdateIntervalHours ?? 24,
+        settings.ragOptions.autoUpdateIntervalHours ?? 0,
       ),
     }))
   }, [
@@ -1139,7 +1139,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                                   ...prev,
                                   autoUpdateIntervalHours: String(
                                     settings.ragOptions
-                                      .autoUpdateIntervalHours ?? 24,
+                                      .autoUpdateIntervalHours ?? 0,
                                   ),
                                 }))
                               }

@@ -36,7 +36,7 @@ const ragOptionsSchema = z.object({
   includePatterns: z.array(z.string()).catch([]),
   // auto update options
   autoUpdateEnabled: z.boolean().catch(false),
-  autoUpdateIntervalHours: z.number().catch(24),
+  autoUpdateIntervalHours: z.number().catch(0),
   lastAutoUpdateAt: z.number().catch(0),
 })
 
@@ -268,7 +268,7 @@ export const smartComposerSettingsSchema = z.object({
     excludePatterns: [],
     includePatterns: [],
     autoUpdateEnabled: false,
-    autoUpdateIntervalHours: 24,
+    autoUpdateIntervalHours: 0,
     lastAutoUpdateAt: 0,
   }),
 

@@ -30,7 +30,7 @@ describe('parseSmartComposerSettings', () => {
       minSimilarity: 0.0,
       limit: 10,
       autoUpdateEnabled: false,
-      autoUpdateIntervalHours: 24,
+      autoUpdateIntervalHours: 0,
       lastAutoUpdateAt: 0,
     })
 
@@ -154,6 +154,19 @@ describe('parseSmartComposerSettings', () => {
         }),
       ]),
     )
+  })
+
+  it('migrates legacy rag auto update interval 24 hours to 0', () => {
+    const result = parseSmartComposerSettings({
+      version: 43,
+      ragOptions: {
+        autoUpdateEnabled: true,
+        autoUpdateIntervalHours: 24,
+      },
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.ragOptions.autoUpdateIntervalHours).toBe(0)
   })
 
   it('keeps valid providers when one provider entry is invalid', () => {

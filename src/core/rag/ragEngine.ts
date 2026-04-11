@@ -91,9 +91,8 @@ export class RAGEngine {
     if (!this.embeddingModel) {
       throw new Error('Embedding model is not set')
     }
-    // TODO: Decide the vault index update strategy.
-    // Current approach: Update on every query.
-    await this.updateVaultIndex({ reindexAll: false }, onQueryProgressChange)
+    // Index updates are handled by RagAutoUpdateService (vault events), manual
+    // re-index commands, and settings UI — not on every query — to keep search fast.
     const queryEmbedding = await this.getQueryEmbedding(query)
     onQueryProgressChange?.({
       type: 'querying',

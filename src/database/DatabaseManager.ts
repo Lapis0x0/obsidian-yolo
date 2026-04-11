@@ -1,6 +1,8 @@
 import { PGlite } from '@electric-sql/pglite'
+import { PGliteWorker } from '@electric-sql/pglite/worker'
 import { PgliteDatabase, drizzle } from 'drizzle-orm/pglite'
 import { App, normalizePath } from 'obsidian'
+import pgliteWorkerScript from 'virtual:pglite-worker-script'
 
 import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import { yieldToMain } from '../utils/common/yield-to-main'
@@ -21,6 +23,9 @@ type DrizzleMigratableDatabase = PgliteDatabase & {
   session: unknown
 }
 
+/** PGlite 0.4+ main thread or worker client */
+type PgliteClientInstance = PGlite | Awaited<ReturnType<typeof PGliteWorker.create>>
+
 const hasDrizzleMigrationSupport = (
   database: PgliteDatabase,
 ): database is DrizzleMigratableDatabase => {
@@ -35,7 +40,7 @@ export class DatabaseManager {
   private app: App
   private dbPath: string
   private runtimeDir: string
-  private pgClient: PGlite | null = null
+  private pgClient: PgliteClientInstance | null = null
   private db: PgliteDatabase | null = null
   // WeakMap to prevent circular references
   private static managers = new WeakMap<
@@ -57,14 +62,28 @@ export class DatabaseManager {
         baseDir?: string
       }
     } | null,
+    pluginDir?: string,
   ): Promise<DatabaseManager> {
     const dbPath = await ensureVectorDbPath(app, settings)
     const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
-    dbManager.db = await dbManager.loadExistingDatabase()
-    if (!dbManager.db) {
-      dbManager.db = await dbManager.createNewDatabase()
+    void pluginDir
+    try {
+      dbManager.db = await dbManager.loadExistingDatabase()
+    } catch (loadErr) {
+      throw loadErr
     }
-    await dbManager.migrateDatabase()
+    if (!dbManager.db) {
+      try {
+        dbManager.db = await dbManager.createNewDatabase()
+      } catch (createErr) {
+        throw createErr;
+      }
+    }
+    try {
+      await dbManager.migrateDatabase()
+    } catch (migrateErr) {
+      throw migrateErr;
+    }
     await dbManager.save()
 
     // WeakMap setup
@@ -110,21 +129,74 @@ export class DatabaseManager {
     if (!this.pgClient) {
       return
     }
-    await this.pgClient.query('VACUUM FULL;')
+    await this.pgClient.exec('VACUUM FULL;')
+  }
+
+  private async tryCreateWithWorker(
+    options: Record<string, unknown>,
+  ): Promise<PgliteClientInstance | null> {
+    if (
+      typeof Worker === 'undefined' ||
+      typeof Blob === 'undefined' ||
+      typeof URL === 'undefined'
+    ) {
+      return null
+    }
+    const workerBlob = new Blob([pgliteWorkerScript], {
+      type: 'application/javascript',
+    })
+    const workerUrl = URL.createObjectURL(workerBlob)
+    let worker: Worker | null = null
+    try {
+      worker = new Worker(workerUrl)
+      const result = await PGliteWorker.create(worker, options)
+      const SMOKE_TIMEOUT_MS = 30000
+      const smokeResult = await Promise.race([
+        result.exec('SELECT 1 as ok;').then(() => 'ok' as const),
+        new Promise<'timeout'>((resolve) =>
+          setTimeout(() => resolve('timeout'), SMOKE_TIMEOUT_MS),
+        ),
+      ])
+      if (smokeResult === 'timeout') {
+        worker?.terminate()
+        throw new Error('PGlite worker smoke test timed out')
+      }
+      return result
+    } catch (error) {
+      worker?.terminate()
+      console.warn(
+        '[YOLO] PGlite Worker unavailable, falling back to main thread',
+        error,
+      )
+      return null
+    } finally {
+      URL.revokeObjectURL(workerUrl)
+    }
   }
 
   private async createNewDatabase() {
     try {
-      const { fsBundle, wasmModule, vectorExtensionBundlePath } =
-        await this.loadPGliteResources()
-      this.pgClient = await PGlite.create({
-        fsBundle: fsBundle,
-        wasmModule: wasmModule,
-        extensions: {
-          vector: vectorExtensionBundlePath,
-        },
-      })
-      const db = drizzle(this.pgClient)
+      const resources = await this.loadPGliteResources()
+      const baseOpts = {
+        fsBundle: resources.fsBundle,
+        pgliteWasmModule: resources.pgliteWasmModule,
+        initdbWasmModule: resources.initdbWasmModule,
+        _vectorExtensionBlob: resources.vectorExtensionBlob,
+      }
+      const workerClient = await this.tryCreateWithWorker(baseOpts)
+      if (workerClient) {
+        this.pgClient = workerClient
+      } else {
+        this.pgClient = await PGlite.create({
+          fsBundle: resources.fsBundle,
+          pgliteWasmModule: resources.pgliteWasmModule,
+          initdbWasmModule: resources.initdbWasmModule,
+          extensions: {
+            vector: resources.vectorExtensionBundlePath,
+          },
+        })
+      }
+      const db = drizzle(this.pgClient as PGlite)
       return db
     } catch (error) {
       console.error('createNewDatabase error', error)
@@ -151,17 +223,29 @@ export class DatabaseManager {
       }
       const fileBuffer = await this.app.vault.adapter.readBinary(this.dbPath)
       const fileBlob = new Blob([fileBuffer], { type: 'application/x-gzip' })
-      const { fsBundle, wasmModule, vectorExtensionBundlePath } =
-        await this.loadPGliteResources()
-      this.pgClient = await PGlite.create({
+      const resources = await this.loadPGliteResources()
+      const baseOpts = {
         loadDataDir: fileBlob,
-        fsBundle: fsBundle,
-        wasmModule: wasmModule,
-        extensions: {
-          vector: vectorExtensionBundlePath,
-        },
-      })
-      return drizzle(this.pgClient)
+        fsBundle: resources.fsBundle,
+        pgliteWasmModule: resources.pgliteWasmModule,
+        initdbWasmModule: resources.initdbWasmModule,
+        _vectorExtensionBlob: resources.vectorExtensionBlob,
+      }
+      const workerClient = await this.tryCreateWithWorker(baseOpts)
+      if (workerClient) {
+        this.pgClient = workerClient
+      } else {
+        this.pgClient = await PGlite.create({
+          loadDataDir: fileBlob,
+          fsBundle: resources.fsBundle,
+          pgliteWasmModule: resources.pgliteWasmModule,
+          initdbWasmModule: resources.initdbWasmModule,
+          extensions: {
+            vector: resources.vectorExtensionBundlePath,
+          },
+        })
+      }
+      return drizzle(this.pgClient as PGlite)
     } catch (error) {
       console.error('loadExistingDatabase error', error)
       if (
@@ -231,11 +315,9 @@ export class DatabaseManager {
     this.db = null
   }
 
-  private async loadPGliteResources(): Promise<{
-    fsBundle: Blob
-    wasmModule: WebAssembly.Module
-    vectorExtensionBundlePath: URL
-  }> {
+  private async loadPGliteResources(): Promise<
+    Awaited<ReturnType<typeof loadPgliteRuntimeFromDisk>>
+  > {
     try {
       return await loadPgliteRuntimeFromDisk(this.app, this.runtimeDir)
     } catch (error) {

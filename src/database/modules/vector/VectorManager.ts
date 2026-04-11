@@ -22,6 +22,7 @@ import {
   EmbeddingModelClient,
 } from '../../../types/embedding'
 import { chunkArray } from '../../../utils/common/chunk-array'
+import { sha256HexPrefix16 } from '../../../utils/common/content-hash'
 import {
   createYieldController,
   yieldToMain,
@@ -134,14 +135,7 @@ export class VectorManager {
       filesToIndex = result.files
       newFilesCount = result.newCount
       updatedFilesCount = result.updatedCount
-
-      // 批量删除需要重新索引的文件的向量
-      if (filesToIndex.length > 0) {
-        await this.repository.deleteVectorsForMultipleFiles(
-          filesToIndex.map((file) => file.path),
-          embeddingModel,
-        )
-      }
+      // 增量模式：按 chunk 内容 hash 删除/保留，不在此处整文件删除
     }
 
     if (filesToIndex.length === 0) {
@@ -214,7 +208,7 @@ export class VectorManager {
     const failedFiles: { path: string; error: string }[] = []
     let completedFilesCount = 0
 
-    // 处理文件并生成chunks
+    // 处理文件并生成待嵌入的 chunks（增量模式下仅包含变更 chunk）
     const contentChunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
 
     // 创建让步控制器，每处理 10 个文件让步一次给主线程
@@ -250,36 +244,22 @@ export class VectorManager {
       })
 
       try {
-        const fileContent = await this.app.vault.cachedRead(file)
-        // Remove null bytes from the content
-        const sanitizedContent = fileContent.split('\u0000').join('')
-
-        const fileDocuments = await textSplitter.createDocuments([
-          sanitizedContent,
-        ])
-
-        const fileChunks = fileDocuments.map(
-          (chunk): Omit<InsertEmbedding, 'model' | 'dimension'> => {
-            return {
-              path: file.path,
-              mtime: file.stat.mtime,
-              content: chunk.pageContent,
-              metadata: {
-                startLine: chunk.metadata.loc.lines.from as number,
-                endLine: chunk.metadata.loc.lines.to as number,
-              },
-            }
-          },
-        )
+        const { chunks: fileChunks, totalChunkLines } =
+          await this.collectChunksForFile(
+            file,
+            textSplitter,
+            embeddingModel,
+            Boolean(options.reindexAll),
+          )
 
         contentChunks.push(...fileChunks)
 
         // 更新文件夹进度（自身 + 父级聚合）
         folderProgress[currentFolder].completedFiles++
-        folderProgress[currentFolder].totalChunks += fileChunks.length
+        folderProgress[currentFolder].totalChunks += totalChunkLines
         for (const anc of getSelfAndAncestors(currentFolder).slice(1)) {
           if (folderProgress[anc]) {
-            folderProgress[anc].totalChunks += fileChunks.length
+            folderProgress[anc].totalChunks += totalChunkLines
           }
         }
         completedFilesCount++
@@ -310,6 +290,10 @@ export class VectorManager {
     }
 
     if (contentChunks.length === 0) {
+      if (completedFilesCount > 0) {
+        await this.requestSave()
+        return
+      }
       const hasExistingVectors =
         await this.repository.hasVectorsForModel(embeddingModel)
       if (!hasExistingVectors) {
@@ -343,8 +327,8 @@ export class VectorManager {
       error: string
     }[] = []
 
-    // 增量保存：每处理 500 个 chunks 保存一次，防止中断时丢失进度
-    const INCREMENTAL_SAVE_THRESHOLD = 500
+    // 增量保存：降低整库 dump 频率（仍于 finally 再保存一次）
+    const INCREMENTAL_SAVE_THRESHOLD = 1500
     let chunksSinceLastSave = 0
 
     try {
@@ -409,6 +393,7 @@ export class VectorManager {
                     path: chunk.path,
                     mtime: chunk.mtime,
                     content: chunk.content,
+                    content_hash: chunk.content_hash,
                     model: embeddingModel.id,
                     dimension: embeddingModel.dimension,
                     embedding,
@@ -561,18 +546,141 @@ Please report this issue to the developer if it persists.`,
     await this.requestSave()
   }
 
+  /**
+   * 全量：为每个 chunk 计算 content_hash 并全部嵌入。
+   * 增量：按行范围 + hash 跳过未变 chunk，仅删除/更新必要行。
+   */
+  private async collectChunksForFile(
+    file: TFile,
+    textSplitter: RecursiveCharacterTextSplitter,
+    embeddingModel: EmbeddingModelClient,
+    reindexAll: boolean,
+  ): Promise<{
+    chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
+    totalChunkLines: number
+  }> {
+    const fileContent = await this.app.vault.cachedRead(file)
+    const sanitizedContent = fileContent.split('\u0000').join('')
+    const fileDocuments = await textSplitter.createDocuments([sanitizedContent])
+
+    if (reindexAll) {
+      const chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
+      for (const chunk of fileDocuments) {
+        const content = chunk.pageContent
+        const startLine = chunk.metadata.loc.lines.from as number
+        const endLine = chunk.metadata.loc.lines.to as number
+        const content_hash = await sha256HexPrefix16(content)
+        chunks.push({
+          path: file.path,
+          mtime: file.stat.mtime,
+          content,
+          content_hash,
+          metadata: { startLine, endLine },
+        })
+      }
+      return { chunks, totalChunkLines: fileDocuments.length }
+    }
+
+    const existing = await this.repository.getChunkMetaForFile(
+      file.path,
+      embeddingModel,
+    )
+    const existingByLine = new Map<
+      string,
+      Awaited<ReturnType<VectorRepository['getChunkMetaForFile']>>[0]
+    >()
+    for (const row of existing) {
+      const k = `${row.metadata.startLine}:${row.metadata.endLine}`
+      existingByLine.set(k, row)
+    }
+
+    const existingByHash = new Map<
+      string,
+      Awaited<ReturnType<VectorRepository['getChunkMetaForFile']>>
+    >()
+    for (const row of existing) {
+      const rowHash = row.content_hash ?? (await sha256HexPrefix16(row.content))
+      const bucket = existingByHash.get(rowHash) ?? []
+      bucket.push(row)
+      existingByHash.set(rowHash, bucket)
+    }
+
+    const idsToDelete: number[] = []
+    const idsMtimeOnly: number[] = []
+    const chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
+    const reusedIds = new Set<number>()
+
+    for (const chunk of fileDocuments) {
+      const content = chunk.pageContent
+      const startLine = chunk.metadata.loc.lines.from as number
+      const endLine = chunk.metadata.loc.lines.to as number
+      const key = `${startLine}:${endLine}`
+      const content_hash = await sha256HexPrefix16(content)
+      const prev = existingByLine.get(key)
+      if (
+        prev &&
+        (prev.content_hash ?? (await sha256HexPrefix16(prev.content))) ===
+          content_hash &&
+        !reusedIds.has(prev.id)
+      ) {
+        idsMtimeOnly.push(prev.id)
+        reusedIds.add(prev.id)
+        continue
+      }
+      const reusableByHash = (existingByHash.get(content_hash) ?? []).find(
+        (row) => !reusedIds.has(row.id),
+      )
+      if (reusableByHash) {
+        if (prev && prev.id !== reusableByHash.id && !reusedIds.has(prev.id)) {
+          idsToDelete.push(prev.id)
+        }
+        await this.repository.updateVectorMetadataById(reusableByHash.id, {
+          mtime: file.stat.mtime,
+          metadata: { startLine, endLine },
+        })
+        reusedIds.add(reusableByHash.id)
+        continue
+      }
+      if (prev) {
+        idsToDelete.push(prev.id)
+      }
+      chunks.push({
+        path: file.path,
+        mtime: file.stat.mtime,
+        content,
+        content_hash,
+        metadata: { startLine, endLine },
+      })
+    }
+
+    for (const row of existing) {
+      if (!reusedIds.has(row.id)) {
+        idsToDelete.push(row.id)
+      }
+    }
+
+    await this.repository.deleteVectorsByIds([...new Set(idsToDelete)])
+    await this.repository.updateVectorsMtimeByIds(
+      idsMtimeOnly,
+      file.stat.mtime,
+    )
+
+    return { chunks, totalChunkLines: fileDocuments.length }
+  }
+
   private async deleteVectorsForDeletedFiles(
     embeddingModel: EmbeddingModelClient,
   ) {
     const indexedFilePaths =
       await this.repository.getIndexedFilePaths(embeddingModel)
-    for (const filePath of indexedFilePaths) {
-      if (!this.app.vault.getAbstractFileByPath(filePath)) {
-        await this.repository.deleteVectorsForMultipleFiles(
-          [filePath],
-          embeddingModel,
-        )
-      }
+    const deletedPaths = indexedFilePaths.filter(
+      (filePath) => !this.app.vault.getAbstractFileByPath(filePath),
+    )
+    if (deletedPaths.length > 0) {
+      await this.repository.deleteVectorsForMultipleFiles(
+        deletedPaths,
+        embeddingModel,
+      )
     }
   }
 
