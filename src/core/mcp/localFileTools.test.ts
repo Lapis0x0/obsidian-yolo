@@ -363,6 +363,70 @@ describe('local fs tool action helpers', () => {
     }
   })
 
+  it('defaults fs_search to hybrid and falls back to keyword with explicit reason', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getFiles: jest.fn().mockReturnValue([file]),
+          getAllLoadedFiles: jest.fn().mockReturnValue([root]),
+          getMarkdownFiles: jest.fn().mockReturnValue([file]),
+        },
+      } as unknown as App,
+      toolName: 'fs_search',
+      args: {
+        scope: 'files',
+        query: 'note',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    expect(JSON.parse(result.text)).toEqual({
+      tool: 'fs_search',
+      requestedMode: 'hybrid',
+      effectiveMode: 'keyword',
+      fallbackReason: 'Semantic search is not available in this context.',
+      scope: 'files',
+      query: 'note',
+      path: '',
+      results: [{ kind: 'file', path: 'note.md', source: 'keyword' }],
+    })
+  })
+
+  it('keeps explicit rag strict when semantic search is unavailable', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+        },
+      } as unknown as App,
+      toolName: 'fs_search',
+      args: {
+        mode: 'rag',
+        query: 'note',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain(
+        'Semantic search is not available in this context.',
+      )
+    }
+  })
+
   it('supports context prune tool results for any successful text tool output', async () => {
     const result = await callLocalFileTool({
       app: {

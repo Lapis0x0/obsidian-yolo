@@ -365,7 +365,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_search',
       description:
-        'Search the vault using keyword matching, semantic (RAG) retrieval over indexed chunks, or hybrid (parallel keyword + RAG with RRF fusion). Use keyword for exact terms or filenames; rag for natural-language questions; hybrid when you want both precision and semantic coverage. For deep reading, follow up with fs_read.',
+        'Search the vault. By default, prefer hybrid search: keyword path/content matching plus semantic (RAG) retrieval fused with RRF. Use keyword for exact filenames, paths, or literal terms; use rag only when you explicitly want semantic-only retrieval without keyword matching. For deep reading, follow up with fs_read.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -373,7 +373,7 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             enum: ['keyword', 'rag', 'hybrid'],
             description:
-              'Search mode. keyword: path/content string match (default). rag: vector similarity over indexed chunks. hybrid: parallel keyword content search + RAG, fused with RRF.',
+              'Search mode. Default is hybrid and it should be preferred for most queries. hybrid: combines keyword path/content search with RAG using fused ranking. keyword: exact path/content string matching only. rag: semantic retrieval only.',
           },
           scope: {
             type: 'string',
@@ -1305,7 +1305,7 @@ const getFsSearchScope = (args: Record<string, unknown>): FsSearchScope => {
 const getFsSearchMode = (args: Record<string, unknown>): FsSearchMode => {
   const value = args.mode
   if (value === undefined) {
-    return 'keyword'
+    return 'hybrid'
   }
   if (value !== 'keyword' && value !== 'rag' && value !== 'hybrid') {
     throw new Error('mode must be one of: keyword, rag, hybrid.')
@@ -1321,6 +1321,25 @@ const getOptionalFsSearchScope = (
     return defaultScope
   }
   return getFsSearchScope(args)
+}
+
+const getSemanticSearchUnavailableReason = ({
+  settings,
+  getRagEngine,
+}: {
+  settings?: SmartComposerSettings
+  getRagEngine?: () => Promise<RAGEngine>
+}): string | null => {
+  if (!getRagEngine || !settings) {
+    return 'Semantic search is not available in this context.'
+  }
+  if (!settings.ragOptions.enabled) {
+    return 'RAG is not enabled. Fell back to keyword search.'
+  }
+  if (!settings.embeddingModelId?.trim()) {
+    return 'No embedding model configured. Fell back to keyword search.'
+  }
+  return null
 }
 
 const getContextPruneMode = (
@@ -2237,7 +2256,7 @@ export async function callLocalFileTool({
       }
 
       case 'fs_search': {
-        const mode = getFsSearchMode(args)
+        const requestedMode = getFsSearchMode(args)
         const query = (getOptionalTextArg(args, 'query') ?? '').trim()
         const maxResults = getOptionalIntegerArg({
           args,
@@ -2264,8 +2283,16 @@ export async function callLocalFileTool({
           min: 1,
           max: RAG_FETCH_LIMIT_MAX,
         })
+        const semanticUnavailableReason =
+          requestedMode === 'keyword'
+            ? null
+            : getSemanticSearchUnavailableReason({ settings, getRagEngine })
+        const effectiveMode: FsSearchMode =
+          requestedMode === 'hybrid' && semanticUnavailableReason
+            ? 'keyword'
+            : requestedMode
 
-        if (mode === 'keyword') {
+        if (effectiveMode === 'keyword') {
           const scope = getOptionalFsSearchScope(args, 'all')
           const legacy = await collectKeywordFsSearchResults({
             app,
@@ -2284,7 +2311,12 @@ export async function callLocalFileTool({
             status: ToolCallResponseStatus.Success,
             text: formatJsonResult({
               tool: 'fs_search',
-              mode,
+              requestedMode,
+              effectiveMode,
+              fallbackReason:
+                requestedMode !== effectiveMode
+                  ? semanticUnavailableReason
+                  : undefined,
               scope,
               query,
               path: scopeFolder.normalizedPath,
@@ -2293,24 +2325,19 @@ export async function callLocalFileTool({
           }
         }
 
-        if (!getRagEngine) {
-          throw new Error('Semantic search is not available in this context.')
-        }
-        if (!settings) {
-          throw new Error('Semantic search is not available in this context.')
-        }
-        if (!settings.ragOptions.enabled) {
+        if (semanticUnavailableReason) {
           throw new Error(
-            'RAG is not enabled. Enable it in settings to use semantic search.',
-          )
-        }
-        if (!settings.embeddingModelId?.trim()) {
-          throw new Error(
-            'No embedding model configured. Set one in settings to use semantic search.',
+            semanticUnavailableReason.replace(
+              ' Fell back to keyword search.',
+              '',
+            ),
           )
         }
         if (!query) {
           throw new Error('query is required for rag/hybrid mode.')
+        }
+        if (!getRagEngine || !settings) {
+          throw new Error('Semantic search is not available in this context.')
         }
 
         const rawScope = args.scope
@@ -2337,7 +2364,7 @@ export async function callLocalFileTool({
 
         const ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
 
-        if (mode === 'rag') {
+        if (effectiveMode === 'rag') {
           const effectiveScope: FsSearchScope =
             rawScope === undefined ? 'content' : (rawScope as FsSearchScope)
           const results = ragMapped.slice(0, maxResults)
@@ -2345,7 +2372,8 @@ export async function callLocalFileTool({
             status: ToolCallResponseStatus.Success,
             text: formatJsonResult({
               tool: 'fs_search',
-              mode: 'rag',
+              requestedMode,
+              effectiveMode: 'rag',
               scope: effectiveScope,
               query,
               path: scopeFolder.normalizedPath,
@@ -2406,13 +2434,14 @@ export async function callLocalFileTool({
         })
         return {
           status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'fs_search',
-            mode: 'hybrid',
-            scope: 'content',
-            query,
-            path: scopeFolder.normalizedPath,
-            results: fused,
+            text: formatJsonResult({
+              tool: 'fs_search',
+              requestedMode,
+              effectiveMode: 'hybrid',
+              scope: 'content',
+              query,
+              path: scopeFolder.normalizedPath,
+              results: fused,
           }),
         }
       }
