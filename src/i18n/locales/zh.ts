@@ -30,6 +30,8 @@ export const zh: TranslationKeys = {
     delete: '删除',
     edit: '编辑',
     add: '添加',
+    adding: '添加中...',
+    probingDimension: '探测维度中...',
     clear: '清空',
     remove: '移除',
     confirm: '确认',

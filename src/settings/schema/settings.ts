@@ -13,9 +13,20 @@ export function normalizeSmartComposerSettingsReferences(
   const chatModels = settings.chatModels.filter((model) =>
     validProviderIds.has(model.providerId),
   )
-  const embeddingModels = settings.embeddingModels.filter((model) =>
-    validProviderIds.has(model.providerId),
-  )
+  const seenEmbeddingModelKeys = new Set<string>()
+  const embeddingModels = settings.embeddingModels.filter((model) => {
+    if (!validProviderIds.has(model.providerId)) {
+      return false
+    }
+
+    const dedupeKey = `${model.providerId}::${model.model}`
+    if (seenEmbeddingModelKeys.has(dedupeKey)) {
+      return false
+    }
+
+    seenEmbeddingModelKeys.add(dedupeKey)
+    return true
+  })
   const validChatModelIds = new Set(chatModels.map((model) => model.id))
   const validEmbeddingModelIds = new Set(
     embeddingModels.map((model) => model.id),

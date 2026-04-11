@@ -5,7 +5,6 @@ import React from 'react'
 import { DEFAULT_PROVIDERS, PROVIDER_TYPES_INFO } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { getEmbeddingModelClient } from '../../../core/rag/embedding'
 import SmartComposerPlugin from '../../../main'
 import { LLMProvider } from '../../../types/provider.types'
 import { ConfirmModal } from '../../modals/ConfirmModal'
@@ -49,22 +48,11 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
             const vectorManager = await plugin.tryGetVectorManager()
 
             if (vectorManager) {
-              const embeddingStats = await vectorManager.getEmbeddingStats()
-
-              // Clear embeddings for each associated embedding model
-              for (const embeddingModel of associatedEmbeddingModels) {
-                const embeddingStat = embeddingStats.find(
-                  (v) => v.model === embeddingModel.id,
-                )
-
-                if (embeddingStat?.rowCount && embeddingStat.rowCount > 0) {
-                  // only clear when there's data
-                  const embeddingModelClient = getEmbeddingModelClient({
-                    settings,
-                    embeddingModelId: embeddingModel.id,
-                  })
-                  await vectorManager.clearAllVectors(embeddingModelClient)
-                }
+              const embeddingModelIds = associatedEmbeddingModels.map(
+                (embeddingModel) => embeddingModel.id,
+              )
+              if (embeddingModelIds.length > 0) {
+                await vectorManager.clearVectorsByModelIds(embeddingModelIds)
               }
             } else {
               console.warn(

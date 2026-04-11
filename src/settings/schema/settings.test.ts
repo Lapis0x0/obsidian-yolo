@@ -347,4 +347,45 @@ describe('parseSmartComposerSettings', () => {
     expect(result.continuationOptions.continuationModelId).toBe('')
     expect(result.continuationOptions.tabCompletionModelId).toBe('')
   })
+
+  it('deduplicates embedding models with the same provider and model', () => {
+    const result = parseSmartComposerSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      embeddingModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/text-embedding-3-large',
+          model: 'text-embedding-3-large',
+          name: 'text-embedding-3-large',
+          dimension: 3072,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/text-embedding-3-large-2',
+          model: 'text-embedding-3-large',
+          name: 'text-embedding-3-large',
+          dimension: 3072,
+        },
+      ],
+      embeddingModelId: 'openai/text-embedding-3-large-2',
+    })
+
+    expect(result.embeddingModels).toEqual([
+      {
+        providerId: 'openai',
+        id: 'openai/text-embedding-3-large',
+        model: 'text-embedding-3-large',
+        name: 'text-embedding-3-large',
+        dimension: 3072,
+      },
+    ])
+    expect(result.embeddingModelId).toBe('openai/text-embedding-3-large')
+  })
 })

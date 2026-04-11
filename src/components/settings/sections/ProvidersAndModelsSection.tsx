@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Edit,
   GripVertical,
+  Loader2,
   Settings,
   Trash2,
 } from 'lucide-react'
@@ -65,6 +66,7 @@ type ProviderSectionItemProps = {
   onConfirmDeleteProvider: (provider: LLMProvider) => void
   handleDeleteChatModel: (modelId: string) => void
   handleDeleteEmbeddingModel: (modelId: string) => void
+  deletingEmbeddingModelIds: Set<string>
   handleToggleEnableChatModel: (modelId: string, value: boolean) => void
   handleChatModelDragEnd: (event: DragEndEvent) => void
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
@@ -508,6 +510,7 @@ function ProviderSectionItem({
   onConfirmDeleteProvider,
   handleDeleteChatModel,
   handleDeleteEmbeddingModel,
+  deletingEmbeddingModelIds,
   handleToggleEnableChatModel,
   handleChatModelDragEnd,
   handleEmbeddingModelDragEnd,
@@ -696,6 +699,7 @@ function ProviderSectionItem({
             sensors={modelSensors}
             onDragEnd={handleEmbeddingModelDragEnd}
             onDelete={handleDeleteEmbeddingModel}
+            deletingModelIds={deletingEmbeddingModelIds}
           />
         </div>
       )}
@@ -803,6 +807,7 @@ type EmbeddingModelsTableProps = {
   sensors: ReturnType<typeof useSensors>
   onDragEnd: (event: DragEndEvent) => void
   onDelete: (modelId: string) => void
+  deletingModelIds: Set<string>
 }
 
 function EmbeddingModelsTable({
@@ -814,6 +819,7 @@ function EmbeddingModelsTable({
   sensors,
   onDragEnd,
   onDelete,
+  deletingModelIds,
 }: EmbeddingModelsTableProps) {
   const items = models.map((model) => model.id)
   const embeddingSupported = providerSupportsEmbedding(provider)
@@ -870,6 +876,7 @@ function EmbeddingModelsTable({
                     plugin={plugin}
                     t={t}
                     onDelete={onDelete}
+                    isDeleting={deletingModelIds.has(model.id)}
                   />
                 ))}
               </tbody>
@@ -979,6 +986,7 @@ type EmbeddingModelRowProps = {
   plugin: SmartComposerPlugin
   t: Translator
   onDelete: (modelId: string) => void
+  isDeleting: boolean
 }
 
 function EmbeddingModelRow({
@@ -988,6 +996,7 @@ function EmbeddingModelRow({
   plugin,
   t,
   onDelete,
+  isDeleting,
 }: EmbeddingModelRowProps) {
   const {
     attributes,
@@ -1034,6 +1043,7 @@ function EmbeddingModelRow({
             }
             className="clickable-icon"
             title="Edit model"
+            disabled={isDeleting}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <Edit />
@@ -1042,9 +1052,10 @@ function EmbeddingModelRow({
             type="button"
             onClick={() => onDelete(model.id)}
             className="clickable-icon"
+            disabled={isDeleting}
             onPointerDown={(event) => event.stopPropagation()}
           >
-            <Trash2 />
+            {isDeleting ? <Loader2 className="smtcmp-spinner" /> : <Trash2 />}
           </button>
         </div>
       </td>
@@ -1063,6 +1074,9 @@ export function ProvidersAndModelsSection({
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(
     new Set(),
   )
+  const [deletingEmbeddingModelIds, setDeletingEmbeddingModelIds] = useState<
+    Set<string>
+  >(new Set())
   const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<
     string | null
   >(null)
@@ -1367,21 +1381,9 @@ export function ProvidersAndModelsSection({
           const vectorManager = await plugin.tryGetVectorManager()
 
           if (vectorManager) {
-            const embeddingStats = await vectorManager.getEmbeddingStats()
-
-            for (const embeddingModel of associatedEmbeddingModels) {
-              const embeddingStat = embeddingStats.find(
-                (v) => v.model === embeddingModel.id,
-              )
-
-              if (embeddingStat?.rowCount && embeddingStat.rowCount > 0) {
-                const embeddingModelClient = getEmbeddingModelClient({
-                  settings,
-                  embeddingModelId: embeddingModel.id,
-                })
-                await vectorManager.clearAllVectors(embeddingModelClient)
-              }
-            }
+            await vectorManager.clearVectorsByModelIds(
+              associatedEmbeddingModels.map((embeddingModel) => embeddingModel.id),
+            )
           } else {
             console.warn(
               '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
@@ -1446,21 +1448,20 @@ export function ProvidersAndModelsSection({
       return
     }
 
+    if (deletingEmbeddingModelIds.has(modelId)) {
+      return
+    }
+
     void (async () => {
+      setDeletingEmbeddingModelIds((prev) => new Set(prev).add(modelId))
       try {
         const vectorManager = await plugin.tryGetVectorManager()
         if (vectorManager) {
-          const embeddingStats = await vectorManager.getEmbeddingStats()
-          const embeddingStat = embeddingStats.find((v) => v.model === modelId)
-          const rowCount = embeddingStat?.rowCount || 0
-
-          if (rowCount > 0) {
-            const embeddingModelClient = getEmbeddingModelClient({
-              settings,
-              embeddingModelId: modelId,
-            })
-            await vectorManager.clearAllVectors(embeddingModelClient)
-          }
+          const embeddingModelClient = getEmbeddingModelClient({
+            settings,
+            embeddingModelId: modelId,
+          })
+          await vectorManager.clearAllVectors(embeddingModelClient)
         } else {
           console.warn(
             '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
@@ -1475,6 +1476,12 @@ export function ProvidersAndModelsSection({
       } catch (error) {
         console.error('[YOLO] Failed to delete embedding model:', error)
         new Notice('Failed to delete embedding model.')
+      } finally {
+        setDeletingEmbeddingModelIds((prev) => {
+          const next = new Set(prev)
+          next.delete(modelId)
+          return next
+        })
       }
     })()
   }
@@ -1587,6 +1594,7 @@ export function ProvidersAndModelsSection({
                     onConfirmDeleteProvider={handleConfirmDeleteProvider}
                     handleDeleteChatModel={handleDeleteChatModel}
                     handleDeleteEmbeddingModel={handleDeleteEmbeddingModel}
+                    deletingEmbeddingModelIds={deletingEmbeddingModelIds}
                     handleToggleEnableChatModel={handleToggleEnableChatModel}
                     handleChatModelDragEnd={(event) =>
                       void handleChatModelDragEnd(provider.id, event)

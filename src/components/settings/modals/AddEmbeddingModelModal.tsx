@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
 import { App, Notice, requestUrl } from 'obsidian'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockEmbeddingModelIds } from '../../../core/llm/bedrockCatalog'
@@ -106,6 +106,8 @@ function AddEmbeddingModelModalComponent({
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState<boolean>(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const isSubmittingRef = useRef(false)
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -267,11 +269,32 @@ function AddEmbeddingModelModalComponent({
 
   const handleSubmit = () => {
     const run = async () => {
+      if (isSubmittingRef.current) {
+        return
+      }
+
+      if (!formData.model || formData.model.trim().length === 0) {
+        throw new Error('Model ID is required')
+      }
+
+      isSubmittingRef.current = true
+      setIsSubmitting(true)
+
       // Generate internal id (provider/model) and ensure uniqueness by suffix if needed
       const baseInternalId = generateModelId(
         formData.providerId,
         formData.model,
       )
+      const duplicatedModel = plugin.settings.embeddingModels.find(
+        (model) =>
+          model.providerId === formData.providerId &&
+          model.model === formData.model,
+      )
+
+      if (duplicatedModel) {
+        throw new Error('This embedding model has already been added')
+      }
+
       const existingIds = plugin.settings.embeddingModels.map((m) => m.id)
       const modelIdWithPrefix = ensureUniqueModelId(existingIds, baseInternalId)
 
@@ -341,11 +364,19 @@ function AddEmbeddingModelModalComponent({
       new Notice(
         error instanceof Error ? error.message : 'An unknown error occurred',
       )
+    }).finally(() => {
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
     })
   }
 
   return (
-    <>
+    <div
+      aria-busy={isSubmitting}
+      style={{
+        opacity: isSubmitting ? 0.7 : 1,
+      }}
+    >
       {/* Available models dropdown (moved above other fields) */}
       <ObsidianSetting
         name={
@@ -370,7 +401,9 @@ function AddEmbeddingModelModalComponent({
               name: value, // Always update display name with the selected model
             }))
           }}
-          disabled={loadingModels || availableModels.length === 0}
+          disabled={
+            isSubmitting || loadingModels || availableModels.length === 0
+          }
           loading={loadingModels}
           placeholder={t('settings.models.searchModels') || 'Search models...'}
         />
@@ -381,6 +414,7 @@ function AddEmbeddingModelModalComponent({
         <ObsidianTextInput
           value={formData.name ?? ''}
           placeholder={t('settings.models.modelNamePlaceholder')}
+          disabled={isSubmitting}
           onChange={(value: string) =>
             setFormData((prev) => ({ ...prev, name: value }))
           }
@@ -396,6 +430,7 @@ function AddEmbeddingModelModalComponent({
         <ObsidianTextInput
           value={formData.model}
           placeholder={t('settings.models.modelIdPlaceholder')}
+          disabled={isSubmitting}
           onChange={(value: string) =>
             setFormData((prev) => ({ ...prev, model: value }))
           }
@@ -403,9 +438,18 @@ function AddEmbeddingModelModalComponent({
       </ObsidianSetting>
 
       <ObsidianSetting>
-        <ObsidianButton text={t('common.add')} onClick={handleSubmit} cta />
-        <ObsidianButton text={t('common.cancel')} onClick={onClose} />
+        <ObsidianButton
+          text={isSubmitting ? t('common.probingDimension') : t('common.add')}
+          onClick={handleSubmit}
+          cta
+          disabled={isSubmitting}
+        />
+        <ObsidianButton
+          text={t('common.cancel')}
+          onClick={onClose}
+          disabled={isSubmitting}
+        />
       </ObsidianSetting>
-    </>
+    </div>
   )
 }

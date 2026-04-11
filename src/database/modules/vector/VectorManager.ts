@@ -546,6 +546,12 @@ Please report this issue to the developer if it persists.`,
     await this.requestSave()
   }
 
+  async clearVectorsByModelIds(modelIds: string[]) {
+    await this.repository.clearVectorsByModelIds(modelIds)
+    await this.requestVacuum()
+    await this.requestSave()
+  }
+
   /**
    * 全量：为每个 chunk 计算 content_hash 并全部嵌入。
    * 增量：按行范围 + hash 跳过未变 chunk，仅删除/更新必要行。

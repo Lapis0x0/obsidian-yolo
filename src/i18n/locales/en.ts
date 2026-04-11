@@ -30,6 +30,8 @@ export const en: TranslationKeys = {
     delete: 'Delete',
     edit: 'Edit',
     add: 'Add',
+    adding: 'Adding...',
+    probingDimension: 'Detecting dimensions...',
     clear: 'Clear',
     remove: 'Remove',
     confirm: 'Confirm',

@@ -11,6 +11,7 @@ type ObsidianTextInputProps = {
   onFocus?: () => void
   type?: 'text' | 'number'
   inputMode?: HTMLAttributes<HTMLInputElement>['inputMode']
+  disabled?: boolean
 }
 
 export function ObsidianTextInput({
@@ -21,6 +22,7 @@ export function ObsidianTextInput({
   onFocus,
   type,
   inputMode,
+  disabled,
 }: ObsidianTextInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { setting } = useObsidianSetting()
@@ -97,7 +99,8 @@ export function ObsidianTextInput({
     if (inputMode !== undefined) {
       textComponent.inputEl.inputMode = inputMode
     }
-  }, [textComponent, value, placeholder, type, inputMode])
+    textComponent.setDisabled(!!disabled)
+  }, [textComponent, value, placeholder, type, inputMode, disabled])
 
   return <div ref={containerRef} />
 }

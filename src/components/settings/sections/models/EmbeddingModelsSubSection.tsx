@@ -40,19 +40,11 @@ export function EmbeddingModelsSubSection({
           const vectorManager = await plugin.tryGetVectorManager()
 
           if (vectorManager) {
-            const embeddingStats = await vectorManager.getEmbeddingStats()
-            const embeddingStat = embeddingStats.find(
-              (v) => v.model === modelId,
-            )
-
-            if (embeddingStat?.rowCount && embeddingStat.rowCount > 0) {
-              // only clear when there's data
-              const embeddingModelClient = getEmbeddingModelClient({
-                settings,
-                embeddingModelId: modelId,
-              })
-              await vectorManager.clearAllVectors(embeddingModelClient)
-            }
+            const embeddingModelClient = getEmbeddingModelClient({
+              settings,
+              embeddingModelId: modelId,
+            })
+            await vectorManager.clearAllVectors(embeddingModelClient)
           } else {
             console.warn(
               '[YOLO] Skip clearing embeddings because vector manager is unavailable.',

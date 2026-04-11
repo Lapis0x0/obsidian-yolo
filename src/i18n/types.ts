@@ -32,6 +32,8 @@ export type TranslationKeys = {
     delete: string
     edit: string
     add: string
+    adding: string
+    probingDimension: string
     clear: string
     remove: string
     confirm: string

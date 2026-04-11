@@ -30,6 +30,8 @@ export const it: TranslationKeys = {
     delete: 'Elimina',
     edit: 'Modifica',
     add: 'Aggiungi',
+    adding: 'Aggiunta in corso...',
+    probingDimension: 'Rilevamento dimensioni...',
     clear: 'Cancella',
     remove: 'Rimuovi',
     confirm: 'Conferma',
