@@ -24,6 +24,8 @@ import {
   memoryDelete,
   memoryUpdate,
 } from '../memory/memoryManager'
+import type { RAGEngine } from '../rag/ragEngine'
+import { fuseRrfHybrid, type SuperSearchResult } from '../search/hybridSearch'
 import { getLiteSkillDocument } from '../skills/liteSkills'
 
 export { recoverLikelyEscapedBackslashSequences }
@@ -37,6 +39,8 @@ const MAX_READ_MAX_LINES = 2000
 const MAX_READ_LINE_INDEX = 1_000_000
 const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
 const MAX_BATCH_WRITE_ITEMS = 50
+const MAX_RAG_SNIPPET_CHARS = 500
+const RAG_FETCH_LIMIT_MAX = 300
 
 const getContextPrunableToolCallIds = (
   messages: ChatMessage[] | undefined,
@@ -90,6 +94,11 @@ type LocalFileToolName =
   | 'memory_delete'
   | 'open_skill'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
+type FsSearchMode = 'keyword' | 'rag' | 'hybrid'
+type LegacyFsSearchItem =
+  | { kind: 'file'; path: string }
+  | { kind: 'dir'; path: string }
+  | { kind: 'content_match'; path: string; line: number; snippet: string }
 type FsListScope = 'files' | 'dirs' | 'all'
 type FsReadOperation =
   | {
@@ -356,20 +365,26 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_search',
       description:
-        'Search files, folders, or markdown content in vault. Scope controls target type.',
+        'Search the vault using keyword matching, semantic (RAG) retrieval over indexed chunks, or hybrid (parallel keyword + RAG with RRF fusion). Use keyword for exact terms or filenames; rag for natural-language questions; hybrid when you want both precision and semantic coverage. For deep reading, follow up with fs_read.',
       inputSchema: {
         type: 'object',
         properties: {
+          mode: {
+            type: 'string',
+            enum: ['keyword', 'rag', 'hybrid'],
+            description:
+              'Search mode. keyword: path/content string match (default). rag: vector similarity over indexed chunks. hybrid: parallel keyword content search + RAG, fused with RRF.',
+          },
           scope: {
             type: 'string',
             enum: ['files', 'dirs', 'content', 'all'],
             description:
-              'Search scope. content/all reads markdown contents; files/dirs only match paths.',
+              'Search scope for keyword mode (defaults to all). For rag, use content or all, or omit; files/dirs are not supported for rag. Hybrid uses keyword content search plus RAG.',
           },
           query: {
             type: 'string',
             description:
-              'Keyword to search. Optional for files/dirs listing. Required when scope includes content.',
+              'Search query. Optional for keyword files/dirs listing. Required when keyword scope includes content, and required for rag/hybrid.',
           },
           path: {
             type: 'string',
@@ -386,8 +401,17 @@ export function getLocalFileTools(): McpTool[] {
             description:
               'Whether matching should be case-sensitive. Mainly useful for content scope.',
           },
+          ragMinSimilarity: {
+            type: 'number',
+            description:
+              'Optional minimum similarity threshold (0-1) for rag/hybrid; defaults to settings.',
+          },
+          ragLimit: {
+            type: 'integer',
+            description:
+              'Optional max RAG chunks to retrieve for rag/hybrid; defaults to settings, range 1-300.',
+          },
         },
-        required: ['scope'],
       },
     },
     {
@@ -927,6 +951,25 @@ const getOptionalBoundedIntegerArg = ({
   return value
 }
 
+const getOptionalBoundedFloatArg = (
+  args: Record<string, unknown>,
+  key: string,
+  min: number,
+  max: number,
+): number | undefined => {
+  const value = args[key]
+  if (value === undefined) {
+    return undefined
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${key} must be a number.`)
+  }
+  if (value < min || value > max) {
+    throw new Error(`${key} must be between ${min} and ${max}.`)
+  }
+  return value
+}
+
 const getOptionalBooleanArg = (
   args: Record<string, unknown>,
   key: string,
@@ -1072,6 +1115,180 @@ const makeContentSnippet = ({
   return `${prefix}${snippet}${suffix}`
 }
 
+const truncateRagSnippet = (text: string): string => {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= MAX_RAG_SNIPPET_CHARS) {
+    return normalized
+  }
+  return `${normalized.slice(0, MAX_RAG_SNIPPET_CHARS)}...`
+}
+
+const legacyFsSearchItemsToSuper = (
+  items: LegacyFsSearchItem[],
+  source: 'keyword' | 'rag',
+): SuperSearchResult[] => {
+  return items.map((item) => {
+    if (item.kind === 'file') {
+      return { kind: 'file', path: item.path, source }
+    }
+    if (item.kind === 'dir') {
+      return { kind: 'dir', path: item.path, source }
+    }
+    return {
+      kind: 'content',
+      path: item.path,
+      line: item.line,
+      startLine: item.line,
+      endLine: item.line,
+      snippet: item.snippet,
+      source,
+    }
+  })
+}
+
+type RagEmbeddingRow = {
+  path: string
+  content: string
+  metadata: { startLine: number; endLine: number }
+  similarity: number
+}
+
+const mapRagRowsToSuper = (
+  rows: RagEmbeddingRow[],
+  source: 'rag',
+): SuperSearchResult[] => {
+  return rows.map((row) => ({
+    kind: 'content' as const,
+    path: row.path,
+    line: row.metadata.startLine,
+    startLine: row.metadata.startLine,
+    endLine: row.metadata.endLine,
+    snippet: truncateRagSnippet(row.content),
+    similarity: row.similarity,
+    source,
+  }))
+}
+
+const pathFolderToRagScope = (
+  normalizedFolderPath: string,
+): { files: string[]; folders: string[] } | undefined => {
+  if (!normalizedFolderPath) {
+    return undefined
+  }
+  return { files: [], folders: [normalizedFolderPath] }
+}
+
+const collectKeywordFsSearchResults = async ({
+  app,
+  scopeFolder,
+  scope,
+  query,
+  maxResults,
+  caseSensitive,
+  signal,
+}: {
+  app: App
+  scopeFolder: { folder: TFolder; normalizedPath: string }
+  scope: FsSearchScope
+  query: string
+  maxResults: number
+  caseSensitive: boolean
+  signal?: AbortSignal
+}): Promise<LegacyFsSearchItem[]> => {
+  const queryForMatch = caseSensitive ? query : query.toLowerCase()
+  const matchPath = (path: string): boolean => {
+    if (!query) {
+      return true
+    }
+    const source = caseSensitive ? path : path.toLowerCase()
+    return source.includes(queryForMatch)
+  }
+
+  const includeFiles = scope === 'files' || scope === 'all'
+  const includeDirs = scope === 'dirs' || scope === 'all'
+  const includeContent = scope === 'content' || scope === 'all'
+
+  if (includeContent && !query) {
+    throw new Error('query is required when scope includes content.')
+  }
+
+  const results: LegacyFsSearchItem[] = []
+  if (includeFiles) {
+    const files = app.vault
+      .getFiles()
+      .filter((file) =>
+        isPathWithinFolder(file.path, scopeFolder.normalizedPath),
+      )
+      .map((file) => file.path)
+      .filter((path) => matchPath(path))
+      .sort((a, b) => a.localeCompare(b))
+
+    for (const filePath of files) {
+      if (results.length >= maxResults) break
+      results.push({ kind: 'file', path: filePath })
+    }
+  }
+
+  if (includeDirs && results.length < maxResults) {
+    const dirs = app.vault
+      .getAllLoadedFiles()
+      .filter((entry): entry is TFolder => entry instanceof TFolder)
+      .filter((folder) => folder.path.length > 0)
+      .filter((folder) =>
+        isPathWithinFolder(folder.path, scopeFolder.normalizedPath),
+      )
+      .map((folder) => folder.path)
+      .filter((path) => matchPath(path))
+      .sort((a, b) => a.localeCompare(b))
+
+    for (const dirPath of dirs) {
+      if (results.length >= maxResults) break
+      results.push({ kind: 'dir', path: dirPath })
+    }
+  }
+
+  if (includeContent && results.length < maxResults) {
+    const searchableFiles = app.vault
+      .getMarkdownFiles()
+      .filter((file) =>
+        isPathWithinFolder(file.path, scopeFolder.normalizedPath),
+      )
+      .sort((a, b) => a.path.localeCompare(b.path))
+
+    for (const file of searchableFiles) {
+      if (results.length >= maxResults) break
+      if (signal?.aborted) {
+        break
+      }
+      if (file.stat.size > MAX_FILE_SIZE_BYTES) {
+        continue
+      }
+
+      const content = await app.vault.read(file)
+      const source = caseSensitive ? content : content.toLowerCase()
+      const matchIndex = source.indexOf(queryForMatch)
+      if (matchIndex === -1) {
+        continue
+      }
+
+      const line = content.slice(0, matchIndex).split('\n').length
+      const snippet = makeContentSnippet({
+        content,
+        matchIndex,
+        matchLength: query.length,
+      })
+      results.push({
+        kind: 'content_match',
+        path: file.path,
+        line,
+        snippet,
+      })
+    }
+  }
+
+  return results
+}
+
 const getFsSearchScope = (args: Record<string, unknown>): FsSearchScope => {
   const value = args.scope
   if (
@@ -1083,6 +1300,27 @@ const getFsSearchScope = (args: Record<string, unknown>): FsSearchScope => {
     throw new Error('scope must be one of: files, dirs, content, all.')
   }
   return value
+}
+
+const getFsSearchMode = (args: Record<string, unknown>): FsSearchMode => {
+  const value = args.mode
+  if (value === undefined) {
+    return 'keyword'
+  }
+  if (value !== 'keyword' && value !== 'rag' && value !== 'hybrid') {
+    throw new Error('mode must be one of: keyword, rag, hybrid.')
+  }
+  return value
+}
+
+const getOptionalFsSearchScope = (
+  args: Record<string, unknown>,
+  defaultScope: FsSearchScope,
+): FsSearchScope => {
+  if (args.scope === undefined) {
+    return defaultScope
+  }
+  return getFsSearchScope(args)
 }
 
 const getContextPruneMode = (
@@ -1486,6 +1724,7 @@ export async function callLocalFileTool({
   app,
   settings,
   openApplyReview,
+  getRagEngine,
   conversationId,
   conversationMessages,
   roundId,
@@ -1498,6 +1737,7 @@ export async function callLocalFileTool({
   app: App
   settings?: SmartComposerSettings
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
+  getRagEngine?: () => Promise<RAGEngine>
   conversationId?: string
   conversationMessages?: ChatMessage[]
   roundId?: string
@@ -1997,7 +2237,7 @@ export async function callLocalFileTool({
       }
 
       case 'fs_search': {
-        const scope = getFsSearchScope(args)
+        const mode = getFsSearchMode(args)
         const query = (getOptionalTextArg(args, 'query') ?? '').trim()
         const maxResults = getOptionalIntegerArg({
           args,
@@ -2012,115 +2252,167 @@ export async function callLocalFileTool({
           app,
           getOptionalTextArg(args, 'path'),
         )
+        const ragMinSimilarity = getOptionalBoundedFloatArg(
+          args,
+          'ragMinSimilarity',
+          0,
+          1,
+        )
+        const ragLimitArg = getOptionalBoundedIntegerArg({
+          args,
+          key: 'ragLimit',
+          min: 1,
+          max: RAG_FETCH_LIMIT_MAX,
+        })
 
-        const queryForMatch = caseSensitive ? query : query.toLowerCase()
-        const matchPath = (path: string): boolean => {
-          if (!query) {
-            return true
+        if (mode === 'keyword') {
+          const scope = getOptionalFsSearchScope(args, 'all')
+          const legacy = await collectKeywordFsSearchResults({
+            app,
+            scopeFolder,
+            scope,
+            query,
+            maxResults,
+            caseSensitive,
+            signal,
+          })
+          if (signal?.aborted) {
+            return { status: ToolCallResponseStatus.Aborted }
           }
-          const source = caseSensitive ? path : path.toLowerCase()
-          return source.includes(queryForMatch)
-        }
-
-        const includeFiles = scope === 'files' || scope === 'all'
-        const includeDirs = scope === 'dirs' || scope === 'all'
-        const includeContent = scope === 'content' || scope === 'all'
-
-        if (includeContent && !query) {
-          throw new Error('query is required when scope includes content.')
-        }
-
-        const results: Array<
-          | { kind: 'file'; path: string }
-          | { kind: 'dir'; path: string }
-          | {
-              kind: 'content_match'
-              path: string
-              line: number
-              snippet: string
-            }
-        > = []
-        if (includeFiles) {
-          const files = app.vault
-            .getFiles()
-            .filter((file) =>
-              isPathWithinFolder(file.path, scopeFolder.normalizedPath),
-            )
-            .map((file) => file.path)
-            .filter((path) => matchPath(path))
-            .sort((a, b) => a.localeCompare(b))
-
-          for (const filePath of files) {
-            if (results.length >= maxResults) break
-            results.push({ kind: 'file', path: filePath })
+          const results = legacyFsSearchItemsToSuper(legacy, 'keyword')
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'fs_search',
+              mode,
+              scope,
+              query,
+              path: scopeFolder.normalizedPath,
+              results,
+            }),
           }
         }
 
-        if (includeDirs && results.length < maxResults) {
-          const dirs = app.vault
-            .getAllLoadedFiles()
-            .filter((entry): entry is TFolder => entry instanceof TFolder)
-            .filter((folder) => folder.path.length > 0)
-            .filter((folder) =>
-              isPathWithinFolder(folder.path, scopeFolder.normalizedPath),
-            )
-            .map((folder) => folder.path)
-            .filter((path) => matchPath(path))
-            .sort((a, b) => a.localeCompare(b))
+        if (!getRagEngine) {
+          throw new Error('Semantic search is not available in this context.')
+        }
+        if (!settings) {
+          throw new Error('Semantic search is not available in this context.')
+        }
+        if (!settings.ragOptions.enabled) {
+          throw new Error(
+            'RAG is not enabled. Enable it in settings to use semantic search.',
+          )
+        }
+        if (!settings.embeddingModelId?.trim()) {
+          throw new Error(
+            'No embedding model configured. Set one in settings to use semantic search.',
+          )
+        }
+        if (!query) {
+          throw new Error('query is required for rag/hybrid mode.')
+        }
 
-          for (const dirPath of dirs) {
-            if (results.length >= maxResults) break
-            results.push({ kind: 'dir', path: dirPath })
+        const rawScope = args.scope
+        if (rawScope === 'files' || rawScope === 'dirs') {
+          throw new Error(
+            'rag mode only supports content search. Use keyword or hybrid for file/dir search.',
+          )
+        }
+
+        const ragEngine = await getRagEngine()
+        const ragScope = pathFolderToRagScope(scopeFolder.normalizedPath)
+
+        const effectiveRagLimit = Math.min(
+          ragLimitArg ?? settings.ragOptions.limit,
+          RAG_FETCH_LIMIT_MAX,
+        )
+
+        const ragRows = await ragEngine.processQuery({
+          query,
+          scope: ragScope,
+          minSimilarity: ragMinSimilarity,
+          limit: effectiveRagLimit,
+        })
+
+        const ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+
+        if (mode === 'rag') {
+          const effectiveScope: FsSearchScope =
+            rawScope === undefined ? 'content' : (rawScope as FsSearchScope)
+          const results = ragMapped.slice(0, maxResults)
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'fs_search',
+              mode: 'rag',
+              scope: effectiveScope,
+              query,
+              path: scopeFolder.normalizedPath,
+              results,
+            }),
           }
         }
 
-        if (includeContent && results.length < maxResults) {
-          const searchableFiles = app.vault
-            .getMarkdownFiles()
-            .filter((file) =>
-              isPathWithinFolder(file.path, scopeFolder.normalizedPath),
-            )
-            .sort((a, b) => a.path.localeCompare(b.path))
-
-          for (const file of searchableFiles) {
-            if (results.length >= maxResults) break
-            if (signal?.aborted) {
-              return { status: ToolCallResponseStatus.Aborted }
-            }
-            if (file.stat.size > MAX_FILE_SIZE_BYTES) {
-              continue
-            }
-
-            const content = await app.vault.read(file)
-            const source = caseSensitive ? content : content.toLowerCase()
-            const matchIndex = source.indexOf(queryForMatch)
-            if (matchIndex === -1) {
-              continue
-            }
-
-            const line = content.slice(0, matchIndex).split('\n').length
-            const snippet = makeContentSnippet({
-              content,
-              matchIndex,
-              matchLength: query.length,
-            })
-            results.push({
-              kind: 'content_match',
-              path: file.path,
-              line,
-              snippet,
-            })
-          }
+        const keywordLegacy = await collectKeywordFsSearchResults({
+          app,
+          scopeFolder,
+          scope: 'content',
+          query,
+          maxResults,
+          caseSensitive,
+          signal,
+        })
+        if (signal?.aborted) {
+          return { status: ToolCallResponseStatus.Aborted }
         }
-
+        const keywordSuper = legacyFsSearchItemsToSuper(
+          keywordLegacy,
+          'keyword',
+        )
+        const pathLegacyFiles = await collectKeywordFsSearchResults({
+          app,
+          scopeFolder,
+          scope: 'files',
+          query,
+          maxResults,
+          caseSensitive,
+          signal,
+        })
+        if (signal?.aborted) {
+          return { status: ToolCallResponseStatus.Aborted }
+        }
+        const pathLegacyDirs = await collectKeywordFsSearchResults({
+          app,
+          scopeFolder,
+          scope: 'dirs',
+          query,
+          maxResults,
+          caseSensitive,
+          signal,
+        })
+        if (signal?.aborted) {
+          return { status: ToolCallResponseStatus.Aborted }
+        }
+        const pathSuper = legacyFsSearchItemsToSuper(
+          [...pathLegacyFiles, ...pathLegacyDirs],
+          'keyword',
+        )
+        const fused = fuseRrfHybrid({
+          pathResults: pathSuper,
+          keywordResults: keywordSuper,
+          ragResults: ragMapped,
+          maxResults,
+        })
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
             tool: 'fs_search',
-            scope,
+            mode: 'hybrid',
+            scope: 'content',
             query,
             path: scopeFolder.normalizedPath,
-            results,
+            results: fused,
           }),
         }
       }

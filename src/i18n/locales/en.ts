@@ -350,7 +350,7 @@ export const en: TranslationKeys = {
         'List directory structure under a vault path. Useful for workspace orientation.',
       builtinFsSearchLabel: 'Search Vault',
       builtinFsSearchDesc:
-        'Search files, folders, or markdown content in vault.',
+        'Search the vault using keyword, semantic (RAG), or hybrid retrieval.',
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc:
         'Read vault files by path with either full-file or targeted line-range operations.',
@@ -1215,7 +1215,7 @@ export const en: TranslationKeys = {
       },
       displayName: {
         fs_list: 'List files',
-        fs_search: 'Search files',
+        fs_search: 'Search vault',
         fs_read: 'Read files',
         fs_edit: 'Text editing',
         fs_file_ops: 'File Operation Toolset',

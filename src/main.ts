@@ -587,6 +587,7 @@ export default class SmartComposerPlugin extends Plugin {
         registerSettingsListener: (
           listener: (settings: SmartComposerSettings) => void,
         ) => this.addSettingsChangeListener(listener),
+        getRagEngine: () => this.getRAGEngine(),
       })
     }
     return this.mcpCoordinator

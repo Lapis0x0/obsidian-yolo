@@ -20,7 +20,8 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelKey: 'settings.agent.builtinFsSearchLabel',
     descKey: 'settings.agent.builtinFsSearchDesc',
     labelFallback: 'Search Vault',
-    descFallback: 'Search files, folders, or markdown content in vault.',
+    descFallback:
+      'Search the vault using keyword matching, semantic (RAG) retrieval, or hybrid (parallel keyword + RAG with RRF fusion).',
   },
   fs_read: {
     labelKey: 'settings.agent.builtinFsReadLabel',

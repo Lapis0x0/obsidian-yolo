@@ -8,12 +8,33 @@ import { EmbeddingModelClient } from '../../types/embedding'
 
 import { getEmbeddingModelClient } from './embedding'
 
+type RagQueryResult = Omit<SelectEmbedding, 'embedding'> & {
+  similarity: number
+}
+
+export const dedupeRagQueryResults = (
+  rows: RagQueryResult[],
+): RagQueryResult[] => {
+  const deduped = new Map<string, RagQueryResult>()
+
+  for (const row of rows) {
+    const key = `${row.path}:${row.metadata.startLine}:${row.metadata.endLine}`
+    const existing = deduped.get(key)
+    if (!existing || row.similarity > existing.similarity) {
+      deduped.set(key, row)
+    }
+  }
+
+  return [...deduped.values()]
+}
+
 // TODO: do we really need this class? It seems like unnecessary abstraction.
 export class RAGEngine {
   private app: App
   private settings: SmartComposerSettings
   private vectorManager: VectorManager | null = null
   private embeddingModel: EmbeddingModelClient | null = null
+  private indexUpdateQueue: Promise<void> = Promise.resolve()
 
   constructor(
     app: App,
@@ -51,30 +72,41 @@ export class RAGEngine {
     },
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void,
   ): Promise<void> {
-    if (!this.embeddingModel) {
-      throw new Error('Embedding model is not set')
+    const run = async () => {
+      if (!this.embeddingModel) {
+        throw new Error('Embedding model is not set')
+      }
+      await this.vectorManager?.updateVaultIndex(
+        this.embeddingModel,
+        {
+          chunkSize: this.settings.ragOptions.chunkSize,
+          excludePatterns: this.settings.ragOptions.excludePatterns,
+          includePatterns: this.settings.ragOptions.includePatterns,
+          reindexAll: options.reindexAll,
+          signal: options.signal,
+        },
+        (indexProgress) => {
+          onQueryProgressChange?.({
+            type: 'indexing',
+            indexProgress,
+          })
+        },
+      )
     }
-    await this.vectorManager?.updateVaultIndex(
-      this.embeddingModel,
-      {
-        chunkSize: this.settings.ragOptions.chunkSize,
-        excludePatterns: this.settings.ragOptions.excludePatterns,
-        includePatterns: this.settings.ragOptions.includePatterns,
-        reindexAll: options.reindexAll,
-        signal: options.signal,
-      },
-      (indexProgress) => {
-        onQueryProgressChange?.({
-          type: 'indexing',
-          indexProgress,
-        })
-      },
+
+    const queuedRun = this.indexUpdateQueue.catch(() => undefined).then(run)
+    this.indexUpdateQueue = queuedRun.then(
+      () => undefined,
+      () => undefined,
     )
+    await queuedRun
   }
 
   async processQuery({
     query,
     scope,
+    minSimilarity: minSimilarityOverride,
+    limit: limitOverride,
     onQueryProgressChange,
   }: {
     query: string
@@ -82,11 +114,13 @@ export class RAGEngine {
       files: string[]
       folders: string[]
     }
+    /** Override settings.ragOptions.minSimilarity when set */
+    minSimilarity?: number
+    /** Override settings.ragOptions.limit when set */
+    limit?: number
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void
   }): Promise<
-    (Omit<SelectEmbedding, 'embedding'> & {
-      similarity: number
-    })[]
+    RagQueryResult[]
   > {
     if (!this.embeddingModel) {
       throw new Error('Embedding model is not set')
@@ -102,16 +136,18 @@ export class RAGEngine {
         queryEmbedding,
         this.embeddingModel,
         {
-          minSimilarity: this.settings.ragOptions.minSimilarity,
-          limit: this.settings.ragOptions.limit,
+          minSimilarity:
+            minSimilarityOverride ?? this.settings.ragOptions.minSimilarity,
+          limit: limitOverride ?? this.settings.ragOptions.limit,
           scope,
         },
       )) ?? []
+    const dedupedQueryResult = dedupeRagQueryResults(queryResult)
     onQueryProgressChange?.({
       type: 'querying-done',
-      queryResult,
+      queryResult: dedupedQueryResult,
     })
-    return queryResult
+    return dedupedQueryResult
   }
 
   private async getQueryEmbedding(query: string): Promise<number[]> {

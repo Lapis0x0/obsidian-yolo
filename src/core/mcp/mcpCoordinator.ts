@@ -3,6 +3,8 @@ import { App } from 'obsidian'
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 
+import type { RAGEngine } from '../rag/ragEngine'
+
 import { McpManager } from './mcpManager'
 
 type McpCoordinatorDeps = {
@@ -12,6 +14,7 @@ type McpCoordinatorDeps = {
   registerSettingsListener: (
     listener: (settings: SmartComposerSettings) => void,
   ) => () => void
+  getRagEngine?: () => Promise<RAGEngine>
 }
 
 export class McpCoordinator {
@@ -21,6 +24,7 @@ export class McpCoordinator {
   private readonly registerSettingsListener: (
     listener: (settings: SmartComposerSettings) => void,
   ) => () => void
+  private readonly getRagEngine?: () => Promise<RAGEngine>
 
   private mcpManager: McpManager | null = null
   private mcpManagerInitPromise: Promise<McpManager> | null = null
@@ -30,6 +34,7 @@ export class McpCoordinator {
     this.getSettings = deps.getSettings
     this.openApplyReview = deps.openApplyReview
     this.registerSettingsListener = deps.registerSettingsListener
+    this.getRagEngine = deps.getRagEngine
   }
 
   async getMcpManager(): Promise<McpManager> {
@@ -45,6 +50,7 @@ export class McpCoordinator {
             settings: this.getSettings(),
             openApplyReview: this.openApplyReview,
             registerSettingsListener: this.registerSettingsListener,
+            getRagEngine: this.getRagEngine,
           })
           await this.mcpManager.initialize()
           return this.mcpManager

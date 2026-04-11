@@ -1,6 +1,8 @@
 import isEqual from 'lodash.isequal'
 import { App, Platform } from 'obsidian'
 
+import type { RAGEngine } from '../rag/ragEngine'
+
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { ChatMessage } from '../../types/chat'
@@ -49,6 +51,7 @@ export class McpManager {
 
   private readonly app: App
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
+  private readonly getRagEngine?: () => Promise<RAGEngine>
   private settings: SmartComposerSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
@@ -115,6 +118,7 @@ export class McpManager {
     settings,
     openApplyReview,
     registerSettingsListener,
+    getRagEngine,
   }: {
     app: App
     settings: SmartComposerSettings
@@ -122,9 +126,11 @@ export class McpManager {
     registerSettingsListener: (
       listener: (settings: SmartComposerSettings) => void,
     ) => () => void
+    getRagEngine?: () => Promise<RAGEngine>
   }) {
     this.app = app
     this.openApplyReview = openApplyReview
+    this.getRagEngine = getRagEngine
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -609,6 +615,7 @@ export class McpManager {
           app: this.app,
           settings: this.settings,
           openApplyReview: this.openApplyReview,
+          getRagEngine: this.getRagEngine,
           conversationId,
           conversationMessages,
           roundId,

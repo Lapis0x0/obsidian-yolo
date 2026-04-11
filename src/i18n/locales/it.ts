@@ -358,7 +358,7 @@ export const it: TranslationKeys = {
         'Elenca la struttura delle directory del vault per orientarsi rapidamente.',
       builtinFsSearchLabel: 'Cerca nel vault',
       builtinFsSearchDesc:
-        'Cerca file, cartelle o contenuti Markdown nel vault.',
+        'Cerca nel vault con parole chiave, semantica (RAG) o ricerca ibrida.',
       builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc:
         'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
@@ -1215,7 +1215,7 @@ export const it: TranslationKeys = {
       },
       displayName: {
         fs_list: 'Elenca file',
-        fs_search: 'Cerca file',
+        fs_search: 'Cerca nel vault',
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
         fs_file_ops: 'Set operazioni file',
