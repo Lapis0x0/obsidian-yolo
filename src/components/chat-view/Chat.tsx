@@ -4214,6 +4214,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <AssistantToolMessageGroupItem
             messages={messageOrGroup}
             conversationId={currentConversationId}
+            conversationRunSummary={currentConversationRunSummary}
             activeBranchKey={activeBranchByUserMessageId.get(
               getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
             )}

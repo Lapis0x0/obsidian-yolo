@@ -11,6 +11,7 @@ import {
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
+import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
@@ -113,9 +114,56 @@ const isBranchCompleted = (messages: AssistantToolMessageGroup): boolean => {
   return getBranchTabState(messages) === 'completed'
 }
 
+const getMessageGroupRunState = ({
+  messages,
+  conversationRunSummary,
+}: {
+  messages: AssistantToolMessageGroup
+  conversationRunSummary?: AgentConversationRunSummary
+}): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
+  const latestMessage = messages.at(-1)
+  const latestMetadata = latestMessage?.metadata
+
+  if (latestMetadata?.branchWaitingApproval) {
+    return 'waiting-approval'
+  }
+
+  switch (latestMetadata?.branchRunStatus) {
+    case 'running':
+      return 'streaming'
+    case 'completed':
+      return 'completed'
+    case 'aborted':
+      return 'aborted'
+    case 'error':
+      return 'error'
+  }
+
+  if (conversationRunSummary?.isWaitingApproval) {
+    return 'waiting-approval'
+  }
+
+  switch (conversationRunSummary?.status) {
+    case 'running':
+      return 'streaming'
+    case 'completed':
+      return 'completed'
+    case 'aborted':
+      return 'aborted'
+    case 'error':
+      return 'error'
+  }
+
+  const assistantMessage = messages.find(
+    (message): message is ChatAssistantMessage => message.role === 'assistant',
+  )
+  return assistantMessage?.metadata?.generationState ?? 'completed'
+}
+
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
   conversationId: string
+  conversationRunSummary?: AgentConversationRunSummary
   activeBranchKey?: string | null
   suppressFooter?: boolean
   showInlineInfo?: boolean
@@ -165,6 +213,7 @@ export type AssistantToolMessageGroupItemProps = {
 export default function AssistantToolMessageGroupItem({
   messages,
   conversationId,
+  conversationRunSummary,
   activeBranchKey: controlledActiveBranchKey,
   suppressFooter = false,
   showInlineInfo = true,
@@ -348,11 +397,12 @@ export default function AssistantToolMessageGroupItem({
   const isEditingGroup = displayedMessages.some(
     (message) => message.id === editingAssistantMessageId,
   )
-  const isStreaming = displayedMessages.some(
-    (message) =>
-      message.role === 'assistant' &&
-      message.metadata?.generationState === 'streaming',
-  )
+  const groupRunState = getMessageGroupRunState({
+    messages: displayedMessages,
+    conversationRunSummary,
+  })
+  const isRunActive =
+    groupRunState === 'streaming' || groupRunState === 'waiting-approval'
   const hasToolMessages = displayedMessages.some(
     (message) => message.role === 'tool',
   )
@@ -604,7 +654,7 @@ export default function AssistantToolMessageGroupItem({
       {groupEditSummary &&
         !suppressFooter &&
         !hasPendingAssistantShell &&
-        !isStreaming && (
+        !isRunActive && (
           <AssistantEditSummary
             summary={groupEditSummary}
             undoingTargetKey={
@@ -630,7 +680,7 @@ export default function AssistantToolMessageGroupItem({
         )}
       {displayedMessages.length > 0 &&
         !hasPendingAssistantShell &&
-        !isStreaming &&
+        !isRunActive &&
         !suppressFooter && (
           <div className="smtcmp-assistant-message-footer">
             {showInlineInfo && (
@@ -645,7 +695,7 @@ export default function AssistantToolMessageGroupItem({
               showEdit={showEditAction}
               showDelete={showDeleteAction}
               onRetry={
-                !isStreaming && !isEditingGroup
+                !isRunActive && !isEditingGroup
                   ? () => {
                       onRetryGroup(
                         displayedMessages.map((message) => message.id),
@@ -654,7 +704,7 @@ export default function AssistantToolMessageGroupItem({
                   : undefined
               }
               onBranch={
-                !isStreaming
+                !isRunActive
                   ? () => {
                       onBranchGroup(
                         displayedMessages.map((message) => message.id),
@@ -663,14 +713,14 @@ export default function AssistantToolMessageGroupItem({
                   : undefined
               }
               onEdit={
-                editableAssistantMessageId && !isStreaming
+                editableAssistantMessageId && !isRunActive
                   ? () => {
                       onEditStart(editableAssistantMessageId)
                     }
                   : undefined
               }
               onDelete={
-                !isStreaming
+                !isRunActive
                   ? () => {
                       onDeleteGroup(
                         displayedMessages.map((message) => message.id),
@@ -679,7 +729,7 @@ export default function AssistantToolMessageGroupItem({
                   : undefined
               }
               isEditing={isEditingGroup}
-              isDisabled={isStreaming}
+              isDisabled={isRunActive}
             />
           </div>
         )}
