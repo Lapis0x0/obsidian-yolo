@@ -4,6 +4,7 @@ import type { FollowOutput } from 'react-virtuoso'
 const PROGRAMMATIC_SCROLL_LOCK_MS = 180
 const USER_SCROLL_INTENT_WINDOW_MS = 280
 const NEAR_BOTTOM_THRESHOLD = 24
+const REATTACH_BOTTOM_THRESHOLD = 96
 const FOLLOW_MAX_FRAMES = 6
 const FOLLOW_SETTLE_THRESHOLD_PX = 2
 
@@ -189,9 +190,8 @@ export function useAutoScroll({
   const handleAtBottomStateChange = useCallback(
     (atBottom: boolean) => {
       if (atBottom) {
-        if (autoFollowRef.current || hasRecentUserScrollIntent()) {
-          updateAutoFollow(true)
-        }
+        updateAutoFollow(true)
+        requestFollow()
         return
       }
 
@@ -199,7 +199,7 @@ export function useAutoScroll({
         updateAutoFollow(false)
       }
     },
-    [hasRecentUserScrollIntent, updateAutoFollow],
+    [hasRecentUserScrollIntent, requestFollow, updateAutoFollow],
   )
 
   const followOutput: FollowOutput = useCallback((isAtBottom: boolean) => {
@@ -218,6 +218,7 @@ export function useAutoScroll({
     const handleScroll = () => {
       const currentScrollTop = scrollContainerElement.scrollTop
       const scrolledUp = currentScrollTop < lastObservedScrollTopRef.current
+      const scrolledDown = currentScrollTop > lastObservedScrollTopRef.current
       lastObservedScrollTopRef.current = currentScrollTop
 
       const userIntent = hasRecentUserScrollIntent()
@@ -236,12 +237,21 @@ export function useAutoScroll({
       }
 
       if (!userIntent) {
-        return
+        if (!scrolledDown || autoFollowRef.current) {
+          return
+        }
       }
 
-      const nearBottom = isNearBottom()
-      if (nearBottom) {
+      const distanceToBottom = getDistanceToBottom()
+      const nearBottom = distanceToBottom <= NEAR_BOTTOM_THRESHOLD
+      const withinReattachRange =
+        distanceToBottom <= REATTACH_BOTTOM_THRESHOLD
+      if (
+        nearBottom ||
+        (!autoFollowRef.current && scrolledDown && withinReattachRange)
+      ) {
         updateAutoFollow(true)
+        requestFollow()
       }
     }
 
@@ -318,8 +328,9 @@ export function useAutoScroll({
     }
   }, [
     hasRecentUserScrollIntent,
-    isNearBottom,
+    getDistanceToBottom,
     markUserScrollIntent,
+    requestFollow,
     scrollContainerElement,
     stopAutoFollow,
     updateAutoFollow,
