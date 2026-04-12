@@ -603,8 +603,7 @@ export const zh: TranslationKeys = {
       conflictRule: '当包含与排除重叠时，以排除为准。',
       // Auto update
       autoUpdate: '自动更新索引',
-      autoUpdateDesc:
-        '开启后会在文档发生变化时于后台自动增量更新索引。',
+      autoUpdateDesc: '开启后会在文档发生变化时于后台自动增量更新索引。',
       autoUpdateInterval: '最小间隔(小时)',
       autoUpdateIntervalDesc: '到达该间隔才会触发自动更新；用于避免频繁重建。',
       manualUpdateNow: '立即更新',

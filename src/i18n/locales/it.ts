@@ -1198,7 +1198,8 @@ export const it: TranslationKeys = {
       undoUnavailable:
         'Il contenuto dei file e cambiato e questo turno non puo essere annullato in sicurezza.',
       undoFailed: 'Annullamento non riuscito. Riprova.',
-      fileDeleted: 'Questo file e stato eliminato. Usa annulla per ripristinarlo.',
+      fileDeleted:
+        'Questo file e stato eliminato. Usa annulla per ripristinarlo.',
       fileMissing: 'Il file non esiste piu o e stato spostato.',
     },
     errorCard: {
@@ -1325,12 +1326,11 @@ export const it: TranslationKeys = {
       'Al momento ci sono {count} attivita in background in esecuzione',
     backgroundTasksNeedAttention:
       "Un'attivita in background richiede attenzione",
-    ragAutoUpdateRunning:
-      'La knowledge base si sta aggiornando in background',
+    ragAutoUpdateRunning: 'La knowledge base si sta aggiornando in background',
     ragAutoUpdateRunningDetail:
       "Sincronizzazione incrementale dell'indice della knowledge base in corso.",
     ragAutoUpdateFailed:
-      "Aggiornamento automatico della knowledge base non riuscito",
+      'Aggiornamento automatico della knowledge base non riuscito',
     ragAutoUpdateFailedDetail:
       "L'ultima sincronizzazione in background non e riuscita. Riprova piu tardi.",
   },

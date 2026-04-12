@@ -608,8 +608,7 @@ export const en: TranslationKeys = {
     rag: {
       title: 'Knowledge base',
       enableRag: 'Enable knowledge base indexing',
-      enableRagDesc:
-        'Build indexes for documents within the selected scope.',
+      enableRagDesc: 'Build indexes for documents within the selected scope.',
       embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
@@ -1319,7 +1318,8 @@ export const en: TranslationKeys = {
       'Background task status, click to inspect details',
     backgroundStatusPanelTitle: 'Background tasks',
     backgroundStatusPanelEmpty: 'There are no running background tasks',
-    backgroundTasksRunning: 'There are currently {count} background tasks running',
+    backgroundTasksRunning:
+      'There are currently {count} background tasks running',
     backgroundTasksNeedAttention: 'A background task needs attention',
     ragAutoUpdateRunning: 'Knowledge base updating in background',
     ragAutoUpdateRunningDetail:

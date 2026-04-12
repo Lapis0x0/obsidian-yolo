@@ -444,12 +444,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       return 'indexing'
     }
     return `idle-${ringPercent}`
-  }, [
-    isIndexing,
-    displayedCurrentFile,
-    progressSource,
-    ringPercent,
-  ])
+  }, [isIndexing, displayedCurrentFile, progressSource, ringPercent])
 
   const isAnimatingCurrentFile = Boolean(isIndexing && displayedCurrentFile)
   const maintenanceStatusPrefix = isAnimatingCurrentFile

@@ -170,7 +170,8 @@ export class RagAutoUpdateService {
 
     if (
       this.lastRunFinishedAt !== null &&
-      Date.now() - this.lastRunFinishedAt < RagAutoUpdateService.SUCCESS_COOLDOWN_MS
+      Date.now() - this.lastRunFinishedAt <
+        RagAutoUpdateService.SUCCESS_COOLDOWN_MS
     ) {
       this.scheduleAutoUpdate(
         RagAutoUpdateService.SUCCESS_COOLDOWN_MS -
@@ -225,15 +226,15 @@ export class RagAutoUpdateService {
 
     const detail =
       status === 'failed'
-          ? this.lastRunError ??
-            this.t(
-              'statusBar.ragAutoUpdateFailedDetail',
-              '最近一次后台同步失败，请稍后重试。',
-            )
-          : this.t(
-              'statusBar.ragAutoUpdateRunningDetail',
-              '正在增量同步知识库索引。',
-            )
+        ? (this.lastRunError ??
+          this.t(
+            'statusBar.ragAutoUpdateFailedDetail',
+            '最近一次后台同步失败，请稍后重试。',
+          ))
+        : this.t(
+            'statusBar.ragAutoUpdateRunningDetail',
+            '正在增量同步知识库索引。',
+          )
 
     this.activityRegistry.upsert({
       id: RagAutoUpdateService.ACTIVITY_ID,
