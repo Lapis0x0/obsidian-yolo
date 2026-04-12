@@ -27,6 +27,7 @@ describe('RagAutoUpdateService', () => {
     const settings = {
       ragOptions: {
         enabled: true,
+        autoUpdateEnabled: true,
         includePatterns: [],
         excludePatterns: [],
         lastAutoUpdateAt: 0,
@@ -98,6 +99,18 @@ describe('RagAutoUpdateService', () => {
     const { service, settings, updateVaultIndex, cleanup } = createService()
 
     settings.ragOptions.enabled = false
+    service.onVaultPathChanged('foo.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(updateVaultIndex).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it('does not run when auto update is disabled', async () => {
+    const { service, settings, updateVaultIndex, cleanup } = createService()
+
+    settings.ragOptions.autoUpdateEnabled = false
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()

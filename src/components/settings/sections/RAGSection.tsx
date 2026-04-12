@@ -128,6 +128,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const [pgliteResourceStatus, setPgliteResourceStatus] =
     useState<PGliteRuntimeStatus | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
+  const isAutoUpdateEnabled = settings.ragOptions.autoUpdateEnabled ?? true
   /** During an active index job, only live `indexProgress` should drive the UI (not stale persisted). */
   const progressSource: IndexProgress | null = isIndexing
     ? indexProgress
@@ -871,6 +872,28 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   ragOptions: {
                     ...settings.ragOptions,
                     enabled: value,
+                  },
+                })
+              }}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name={t('settings.rag.autoUpdate', '自动更新索引')}
+            desc={t(
+              'settings.rag.autoUpdateDesc',
+              '开启后会在文档发生变化时于后台自动增量更新索引。',
+            )}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={isAutoUpdateEnabled}
+              onChange={(value) => {
+                applySettingsUpdate({
+                  ...settings,
+                  ragOptions: {
+                    ...settings.ragOptions,
+                    autoUpdateEnabled: value,
                   },
                 })
               }}

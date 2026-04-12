@@ -104,9 +104,15 @@ export class RagAutoUpdateService {
     this.scheduleAutoUpdate(0)
   }
 
+  private isAutoUpdateEnabled(settings: SmartComposerSettings): boolean {
+    return Boolean(
+      settings?.ragOptions?.enabled && settings?.ragOptions?.autoUpdateEnabled,
+    )
+  }
+
   private markDirty(path: string, options?: { requiresFullScan?: boolean }) {
     const settings = this.getSettings()
-    if (!settings?.ragOptions?.enabled) return
+    if (!this.isAutoUpdateEnabled(settings)) return
     if (
       !options?.requiresFullScan &&
       !this.isPathSelectedByIncludeExclude(path, settings)

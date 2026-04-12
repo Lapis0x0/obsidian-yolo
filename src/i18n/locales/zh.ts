@@ -563,7 +563,7 @@ export const zh: TranslationKeys = {
     rag: {
       title: '知识库',
       enableRag: '启用知识库索引',
-      enableRagDesc: '开启后会为所选范围建立索引，并在后台自动维护更新。',
+      enableRagDesc: '开启后会为所选范围内的文档建立索引。',
       embeddingModel: '嵌入模型',
       embeddingModelDesc: '选择你想用于嵌入的模型',
       chunkSize: '分块大小',
@@ -604,7 +604,7 @@ export const zh: TranslationKeys = {
       // Auto update
       autoUpdate: '自动更新索引',
       autoUpdateDesc:
-        '当包含模式下的文件夹内容有变化时，按设定的最小间隔自动执行增量更新；默认每日一次。',
+        '开启后会在文档发生变化时于后台自动增量更新索引。',
       autoUpdateInterval: '最小间隔(小时)',
       autoUpdateIntervalDesc: '到达该间隔才会触发自动更新；用于避免频繁重建。',
       manualUpdateNow: '立即更新',
@@ -621,7 +621,7 @@ export const zh: TranslationKeys = {
       maintenanceUnavailableHint:
         '请先在上方准备好 PGlite 资源，再执行索引维护或嵌入数据库管理。',
       currentStatus: '当前状态',
-      currentStatusDesc: '知识库启用后，系统会在后台自动维护索引。',
+      currentStatusDesc: '知识库启用后，系统会根据自动更新设置在后台维护索引。',
       lastIndexedAt: '最近同步',
       lastIndexedAtDesc: '最近一次成功完成知识库索引或后台同步的时间。',
       maintenanceActions: '维护操作',

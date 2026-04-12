@@ -609,7 +609,7 @@ export const en: TranslationKeys = {
       title: 'Knowledge base',
       enableRag: 'Enable knowledge base indexing',
       enableRagDesc:
-        'Build indexes for the selected scope and keep them updated automatically in the background.',
+        'Build indexes for documents within the selected scope.',
       embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
@@ -653,7 +653,7 @@ export const en: TranslationKeys = {
       // Auto update
       autoUpdate: 'Auto update index',
       autoUpdateDesc:
-        'When files within the included folders change, perform incremental updates automatically based on the minimum interval; default once per day.',
+        'When enabled, incrementally update the index in the background after documents change.',
       autoUpdateInterval: 'Minimum interval (hours)',
       autoUpdateIntervalDesc:
         'Only trigger auto update after this interval to avoid frequent re-indexing.',
@@ -677,7 +677,7 @@ export const en: TranslationKeys = {
         'Prepare PGlite resources above before running index maintenance or embedding database management.',
       currentStatus: 'Current status',
       currentStatusDesc:
-        'Once enabled, the knowledge base keeps its index updated automatically in the background.',
+        'Once enabled, the knowledge base maintains its index in the background according to the auto-update setting.',
       lastIndexedAt: 'Last synced',
       lastIndexedAtDesc:
         'The most recent time indexing or a background sync completed successfully.',

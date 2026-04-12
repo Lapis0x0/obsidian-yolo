@@ -600,7 +600,7 @@ export const it: TranslationKeys = {
       title: 'RAG (Retrieval Augmented Generation)',
       enableRag: 'Abilita RAG',
       enableRagDesc:
-        "Permetti all'AI di cercare nel tuo vault note rilevanti per migliorare le risposte.",
+        "Crea l'indice per i documenti inclusi nell'ambito selezionato.",
       embeddingModel: 'Modello embedding',
       embeddingModelDesc:
         'Modello usato per generare embeddings per la ricerca semantica.',
@@ -636,7 +636,7 @@ export const it: TranslationKeys = {
       conflictRule: 'Regola di conflitto',
       autoUpdate: 'Aggiornamento automatico',
       autoUpdateDesc:
-        "Aggiorna automaticamente l'indice quando i file vengono modificati.",
+        "Quando è attivo, aggiorna incrementalmente l'indice in background dopo le modifiche ai documenti.",
       autoUpdateInterval: 'Intervallo aggiornamento automatico',
       autoUpdateIntervalDesc:
         "Tempo di attesa (in millisecondi) dopo che un file viene modificato prima di aggiornare l'indice.",
@@ -660,7 +660,7 @@ export const it: TranslationKeys = {
         "Prepara prima le risorse PGlite qui sopra per usare la manutenzione dell'indice o il database embedding.",
       currentStatus: 'Stato corrente',
       currentStatusDesc:
-        "Quando la knowledge base è attiva, l'indice viene mantenuto automaticamente in background.",
+        "Quando la knowledge base è attiva, l'indice viene mantenuto in background in base all'impostazione di aggiornamento automatico.",
       lastIndexedAt: 'Ultima sincronizzazione',
       lastIndexedAtDesc:
         "L'ultima volta in cui l'indicizzazione o una sincronizzazione in background è terminata con successo.",
