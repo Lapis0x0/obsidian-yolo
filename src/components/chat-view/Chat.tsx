@@ -1898,7 +1898,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           }
         })
         setMessageReasoningMap(nextMessageReasoningMap)
+        const preservedInput = inputMessageRef.current
         const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
+        newInputMessage.content = preservedInput.content
+        newInputMessage.mentionables = [...preservedInput.mentionables]
         setInputMessage(newInputMessage)
         setFocusedMessageId(newInputMessage.id)
         setEditingAssistantMessageId(null)
@@ -2027,6 +2030,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setPendingCompactionAnchorMessageId(null)
     setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(defaultReasoningLevel)
+    newInputMessage.content = inputMessage.content
+    newInputMessage.mentionables = [...inputMessage.mentionables]
     if (selectedBlock) {
       const mentionableBlock = createSelectionBlockMentionable(selectedBlock)
       newInputMessage.mentionables = [

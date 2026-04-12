@@ -161,9 +161,12 @@ export default function LexicalContentEditable({
     if (autoFocus) {
       requestAnimationFrame(() => {
         contentEditableRef.current?.focus()
+        editorRef.current?.update(() => {
+          $getRoot().selectEnd()
+        })
       })
     }
-  }, [autoFocus, contentEditableRef])
+  }, [autoFocus, contentEditableRef, editorRef])
 
   useEffect(() => {
     const handleActiveLeafChange = () => {
