@@ -1,8 +1,18 @@
 import type {
   AssistantToolMessageGroup,
+  ChatAssistantMessage,
   ChatMessage,
+  ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
+
+type AssistantOrToolMessage = ChatAssistantMessage | ChatToolMessage
+
+const isAssistantOrToolMessage = (
+  message: ChatMessage,
+): message is AssistantOrToolMessage => {
+  return message.role === 'assistant' || message.role === 'tool'
+}
 
 export const getSourceUserMessageIdForGroup = (
   messages: AssistantToolMessageGroup,
@@ -91,6 +101,11 @@ export const buildRetrySubmissionMessages = ({
   sourceUserMessageId: string
   inputChatMessages: ChatMessage[]
   requestChatMessages: ChatMessage[]
+  branchTarget?: {
+    branchId: string
+    branchModelId?: string
+    branchLabel?: string
+  }
 } | null => {
   if (targetMessageIds.length === 0) {
     return null
@@ -106,21 +121,23 @@ export const buildRetrySubmissionMessages = ({
     return null
   }
 
-  let sourceUserMessageId: string | null = null
+  let targetMessage: AssistantOrToolMessage | null = null
   for (const message of sourceMessages) {
     if (!targetIds.has(message.id)) {
       continue
     }
 
-    if (message.role === 'user') {
+    if (!isAssistantOrToolMessage(message)) {
       continue
     }
 
-    sourceUserMessageId = message.metadata?.sourceUserMessageId ?? null
-    if (sourceUserMessageId) {
+    targetMessage = message
+    if (targetMessage.metadata?.sourceUserMessageId) {
       break
     }
   }
+
+  let sourceUserMessageId = targetMessage?.metadata?.sourceUserMessageId ?? null
 
   if (!sourceUserMessageId) {
     for (let index = targetGroupIndex - 1; index >= 0; index -= 1) {
@@ -136,6 +153,15 @@ export const buildRetrySubmissionMessages = ({
   if (!sourceUserMessageId) {
     return null
   }
+
+  const targetBranchId = targetMessage?.metadata?.branchId?.trim() || null
+  const branchTarget = targetBranchId
+    ? {
+        branchId: targetBranchId,
+        branchModelId: targetMessage?.metadata?.branchModelId,
+        branchLabel: targetMessage?.metadata?.branchLabel,
+      }
+    : undefined
 
   const sourceUserMessageIndex = sourceMessages.findIndex(
     (message) => message.role === 'user' && message.id === sourceUserMessageId,
@@ -154,7 +180,23 @@ export const buildRetrySubmissionMessages = ({
 
   return {
     sourceUserMessageId,
-    inputChatMessages: sourceMessages.slice(0, sourceUserMessageIndex + 1),
+    inputChatMessages: branchTarget
+      ? (() => {
+          let branchGroupEndIndex = sourceUserMessageIndex + 1
+          while (branchGroupEndIndex < sourceMessages.length) {
+            const candidate = sourceMessages[branchGroupEndIndex]
+            if (!isAssistantOrToolMessage(candidate)) {
+              break
+            }
+            if (candidate.metadata?.sourceUserMessageId !== sourceUserMessageId) {
+              break
+            }
+            branchGroupEndIndex += 1
+          }
+
+          return sourceMessages.slice(0, branchGroupEndIndex)
+        })()
+      : sourceMessages.slice(0, sourceUserMessageIndex + 1),
     requestChatMessages: groupedChatMessages
       .slice(0, groupedMessageIndex + 1)
       .flatMap((candidate): ChatMessage[] =>
@@ -167,5 +209,6 @@ export const buildRetrySubmissionMessages = ({
               ),
             ),
       ),
+    branchTarget,
   }
 }

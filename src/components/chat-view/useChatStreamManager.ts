@@ -73,6 +73,13 @@ type ActiveBranchRun = {
   branchLabel: string
 }
 
+type BranchRetryTarget = {
+  branchId: string
+  sourceUserMessageId: string
+  branchModelId?: string
+  branchLabel?: string
+}
+
 const CHAT_SAFE_TOOL_NAMES = [
   getToolName(getLocalFileToolServerName(), 'fs_search'),
   getToolName(getLocalFileToolServerName(), 'fs_read'),
@@ -127,6 +134,7 @@ export type UseChatStreamManager = {
       conversationId: string
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
+      branchTarget?: BranchRetryTarget
       compactionOverride?: ChatConversationCompactionState
     }
   >
@@ -569,6 +577,7 @@ export function useChatStreamManager({
       conversationId,
       reasoningLevel,
       modelIds,
+      branchTarget,
       compactionOverride,
     }: {
       chatMessages: ChatMessage[]
@@ -576,6 +585,7 @@ export function useChatStreamManager({
       conversationId: string
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
+      branchTarget?: BranchRetryTarget
       compactionOverride?: ChatConversationCompactionState
     }) => {
       const lastMessage = chatMessages.at(-1)
@@ -584,6 +594,7 @@ export function useChatStreamManager({
           aborted: false,
         }
       }
+      const requestLastMessage = (requestMessages ?? chatMessages).at(-1)
 
       abortConversationRun(conversationId)
 
@@ -605,7 +616,11 @@ export function useChatStreamManager({
         const requestedModelId =
           modelId || selectedAssistant?.modelId || settings.chatModelId
         const targetModelIds =
-          modelIds && modelIds.length > 0 ? modelIds : [requestedModelId]
+          branchTarget?.branchModelId?.trim()
+            ? [branchTarget.branchModelId]
+            : modelIds && modelIds.length > 0
+              ? modelIds
+              : [requestedModelId]
 
         const resolveClientForModelId = (
           requestedId: string,
@@ -742,7 +757,43 @@ export function useChatStreamManager({
           },
         }
 
-        if (targetModelIds.length <= 1 || lastMessage.role !== 'user') {
+        if (branchTarget && requestLastMessage?.role === 'user') {
+          const branchRunMessages = requestMessages ?? chatMessages
+          baseConversationMessagesRef.current = chatMessages
+          plugin
+            .getAgentService()
+            .replaceConversationMessages(
+              conversationId,
+              chatMessages,
+              effectiveCompactionForRequest,
+              { persistState: true },
+            )
+
+          await plugin.getAgentService().run({
+            conversationId,
+            persistState: true,
+            loopConfig,
+            input: {
+              ...baseInput,
+              messages: branchRunMessages,
+              requestMessages,
+              providerClient: resolvedClient.providerClient,
+              model: effectiveModel,
+              conversationId,
+              branchId: branchTarget.branchId,
+              sourceUserMessageId: branchTarget.sourceUserMessageId,
+              branchLabel:
+                branchTarget.branchLabel ??
+                effectiveModel.name ??
+                effectiveModel.model ??
+                effectiveModel.id,
+              abortSignal: abortController.signal,
+            },
+          })
+        } else if (
+          targetModelIds.length <= 1 ||
+          requestLastMessage?.role !== 'user'
+        ) {
           await plugin.getAgentService().run({
             conversationId,
             loopConfig,

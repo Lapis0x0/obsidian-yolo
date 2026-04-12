@@ -205,4 +205,102 @@ describe('AgentService abort handling', () => {
     runtime.resolveRun()
     await runPromise
   })
+
+  it('keeps the existing branch in place while a branch retry is starting', async () => {
+    const service = new AgentService()
+    const userMessage: ChatMessage = {
+      role: 'user',
+      id: 'user-1',
+      content: null,
+      promptContent: 'hello',
+      mentionables: [],
+    }
+    const branchAResponse: ChatMessage = {
+      role: 'assistant',
+      id: 'assistant-a',
+      content: 'branch a',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchId: 'branch-a',
+      },
+    }
+    const branchBResponse: ChatMessage = {
+      role: 'assistant',
+      id: 'assistant-b-old',
+      content: 'branch b old',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchId: 'branch-b',
+      },
+    }
+
+    service.replaceConversationMessages('conversation-3', [
+      userMessage,
+      branchAResponse,
+      branchBResponse,
+    ])
+
+    const runPromise = service.run({
+      conversationId: 'conversation-3',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conversation-3',
+        branchId: 'branch-b',
+        sourceUserMessageId: 'user-1',
+        messages: [userMessage],
+        requestMessages: [userMessage],
+      } as never,
+    })
+
+    expect(service.getState('conversation-3').messages).toEqual([
+      userMessage,
+      branchAResponse,
+      {
+        ...branchBResponse,
+        metadata: {
+          ...branchBResponse.metadata,
+          branchRunStatus: 'running',
+          branchWaitingApproval: false,
+        },
+      },
+    ])
+
+    const runtime = runtimeInstances[0]
+    runtime.emitSnapshot([
+      {
+        role: 'assistant',
+        id: 'assistant-b-new',
+        content: 'branch b new',
+        metadata: {
+          generationState: 'streaming',
+          sourceUserMessageId: 'user-1',
+          branchId: 'branch-b',
+        },
+      },
+    ])
+
+    expect(service.getState('conversation-3').messages).toEqual([
+      userMessage,
+      branchAResponse,
+      {
+        role: 'assistant',
+        id: 'assistant-b-new',
+        content: 'branch b new',
+        metadata: {
+          generationState: 'streaming',
+          sourceUserMessageId: 'user-1',
+          branchId: 'branch-b',
+        },
+      },
+    ])
+
+    runtime.resolveRun()
+    await runPromise
+  })
 })

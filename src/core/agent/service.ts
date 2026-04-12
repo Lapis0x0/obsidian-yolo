@@ -243,13 +243,33 @@ const getRunKey = (conversationId: string, branchId?: string): string => {
   return `${conversationId}::${branchId ?? DEFAULT_BRANCH_ID}`
 }
 
+const isAssistantOrToolMessage = (
+  message: ChatMessage,
+): message is Extract<ChatMessage, { role: 'assistant' | 'tool' }> => {
+  return message.role === 'assistant' || message.role === 'tool'
+}
+
+const matchesBranchMessage = (
+  message: ChatMessage,
+  sourceUserMessageId: string,
+  branchId: string,
+): boolean => {
+  return (
+    isAssistantOrToolMessage(message) &&
+    message.metadata?.sourceUserMessageId === sourceUserMessageId &&
+    message.metadata?.branchId === branchId
+  )
+}
+
 const buildBranchAggregateMessages = ({
   baseMessages,
   branchState,
+  branchId,
   sourceUserMessageId,
 }: {
   baseMessages: ChatMessage[]
   branchState: AgentConversationState
+  branchId: string
   sourceUserMessageId?: string
 }): ChatMessage[] => {
   if (!sourceUserMessageId) {
@@ -270,9 +290,9 @@ const buildBranchAggregateMessages = ({
     return [...baseMessages, ...responseMessages]
   }
 
-  let insertIndex = userIndex + 1
-  while (insertIndex < baseMessages.length) {
-    const currentMessage = baseMessages[insertIndex]
+  let groupEndIndex = userIndex + 1
+  while (groupEndIndex < baseMessages.length) {
+    const currentMessage = baseMessages[groupEndIndex]
     if (currentMessage.role === 'user') {
       break
     }
@@ -283,13 +303,61 @@ const buildBranchAggregateMessages = ({
     if (currentSourceUserMessageId !== sourceUserMessageId) {
       break
     }
-    insertIndex += 1
+    groupEndIndex += 1
   }
 
+  if (branchId === DEFAULT_BRANCH_ID) {
+    return [
+      ...baseMessages.slice(0, groupEndIndex),
+      ...responseMessages,
+      ...baseMessages.slice(groupEndIndex),
+    ]
+  }
+
+  const existingGroupMessages = baseMessages.slice(userIndex + 1, groupEndIndex)
+  const targetBranchStartIndex = existingGroupMessages.findIndex((message) =>
+    matchesBranchMessage(message, sourceUserMessageId, branchId),
+  )
+
+  if (responseMessages.length === 0) {
+    const branchWaitingApproval = hasPendingApproval(branchState.messages)
+    return [
+      ...baseMessages.slice(0, userIndex + 1),
+      ...existingGroupMessages.map((message) => {
+        if (
+          !isAssistantOrToolMessage(message) ||
+          !matchesBranchMessage(message, sourceUserMessageId, branchId)
+        ) {
+          return message
+        }
+
+        return {
+          ...message,
+          metadata: {
+            ...message.metadata,
+            branchRunStatus: branchState.status,
+            branchWaitingApproval,
+          },
+        }
+      }),
+      ...baseMessages.slice(groupEndIndex),
+    ]
+  }
+
+  const preservedGroupMessages = existingGroupMessages.filter(
+    (message) => !matchesBranchMessage(message, sourceUserMessageId, branchId),
+  )
+  const insertionIndex =
+    targetBranchStartIndex >= 0
+      ? Math.min(targetBranchStartIndex, preservedGroupMessages.length)
+      : preservedGroupMessages.length
+
   return [
-    ...baseMessages.slice(0, insertIndex),
+    ...baseMessages.slice(0, userIndex + 1),
+    ...preservedGroupMessages.slice(0, insertionIndex),
     ...responseMessages,
-    ...baseMessages.slice(insertIndex),
+    ...preservedGroupMessages.slice(insertionIndex),
+    ...baseMessages.slice(groupEndIndex),
   ]
 }
 
@@ -770,6 +838,7 @@ export class AgentService {
         return buildBranchAggregateMessages({
           baseMessages: messages,
           branchState: runEntry.state,
+          branchId: runEntry.branchId,
           sourceUserMessageId: runEntry.sourceUserMessageId,
         })
       },

@@ -12,7 +12,7 @@ import {
 } from './chatRetry'
 
 describe('chatRetry', () => {
-  it('builds retry payload from the currently displayed branch only', () => {
+  it('builds branch retry payload without removing sibling model replies', () => {
     const userMessage: ChatUserMessage = {
       role: 'user',
       id: 'user-1',
@@ -49,6 +49,8 @@ describe('chatRetry', () => {
         generationState: 'completed',
         sourceUserMessageId: 'user-1',
         branchId: 'branch-b',
+        branchModelId: 'deepseek-reasoner',
+        branchLabel: 'deepseek-reasoner',
       },
     }
 
@@ -68,8 +70,92 @@ describe('chatRetry', () => {
 
     expect(payload).toEqual({
       sourceUserMessageId: 'user-1',
-      inputChatMessages: [userMessage],
+      inputChatMessages: [userMessage, branchAAssistant, branchATool, branchBAssistant],
       requestChatMessages: [userMessage],
+      branchTarget: {
+        branchId: 'branch-b',
+        branchModelId: 'deepseek-reasoner',
+        branchLabel: 'deepseek-reasoner',
+      },
+    })
+  })
+
+  it('drops later rounds when retrying a branch from the middle of the conversation', () => {
+    const firstUserMessage: ChatUserMessage = {
+      role: 'user',
+      id: 'user-1',
+      content: 'question 1' as unknown as ChatUserMessage['content'],
+      promptContent: null,
+      mentionables: [],
+      selectedSkills: [],
+      selectedModelIds: [],
+    }
+    const branchAAssistant: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-a',
+      content: 'answer a',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchId: 'branch-a',
+      },
+    }
+    const branchBAssistant: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-b',
+      content: 'answer b',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchId: 'branch-b',
+      },
+    }
+    const secondUserMessage: ChatUserMessage = {
+      role: 'user',
+      id: 'user-2',
+      content: 'question 2' as unknown as ChatUserMessage['content'],
+      promptContent: null,
+      mentionables: [],
+      selectedSkills: [],
+      selectedModelIds: [],
+    }
+    const secondAssistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-2',
+      content: 'answer 2',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-2',
+      },
+    }
+
+    const payload = buildRetrySubmissionMessages({
+      sourceMessages: [
+        firstUserMessage,
+        branchAAssistant,
+        branchBAssistant,
+        secondUserMessage,
+        secondAssistantMessage,
+      ],
+      groupedChatMessages: [
+        firstUserMessage,
+        [branchAAssistant, branchBAssistant],
+        secondUserMessage,
+        [secondAssistantMessage],
+      ],
+      targetMessageIds: ['assistant-b'],
+      activeBranchByUserMessageId: new Map([['user-1', 'branch-b']]),
+    })
+
+    expect(payload).toEqual({
+      sourceUserMessageId: 'user-1',
+      inputChatMessages: [firstUserMessage, branchAAssistant, branchBAssistant],
+      requestChatMessages: [firstUserMessage],
+      branchTarget: {
+        branchId: 'branch-b',
+        branchModelId: undefined,
+        branchLabel: undefined,
+      },
     })
   })
 

@@ -2486,11 +2486,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     async ({
       inputChatMessages,
       requestChatMessages,
+      retryBranchTarget,
       useVaultSearch,
       persistedMessageModelMap,
     }: {
       inputChatMessages: ChatMessage[]
       requestChatMessages?: ChatMessage[]
+      retryBranchTarget?: {
+        branchId: string
+        sourceUserMessageId: string
+        branchModelId?: string
+        branchLabel?: string
+      }
       useVaultSearch?: boolean
       persistedMessageModelMap?: Map<string, string>
     }) => {
@@ -2664,6 +2671,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationId: currentConversationId,
         reasoningLevel: requestReasoningLevel,
         modelIds: requestModelIds,
+        branchTarget: retryBranchTarget,
         compactionOverride: compactionForSubmit,
       })
     },
@@ -2674,6 +2682,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversationOverrides,
       requestContextBuilder,
       abortConversationRun,
+      activeBranchByUserMessageIdRef,
       forceScrollToBottom,
       assistantGroupBoundaryMessageIds,
       createOrUpdateConversation,
@@ -2711,8 +2720,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
 
-      const { sourceUserMessageId, inputChatMessages, requestChatMessages } =
-        retryPayload
+      const {
+        sourceUserMessageId,
+        inputChatMessages,
+        requestChatMessages,
+        branchTarget,
+      } = retryPayload
       const nextAssistantGroupBoundaryMessageIds =
         normalizeAssistantGroupBoundaryMessageIds(
           inputChatMessages,
@@ -2724,14 +2737,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const nextActiveBranchByUserMessageId = new Map(
         activeBranchByUserMessageIdRef.current,
       )
-      if (nextActiveBranchByUserMessageId.delete(sourceUserMessageId)) {
-        activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
-        setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
+      if (branchTarget) {
+        nextActiveBranchByUserMessageId.set(
+          sourceUserMessageId,
+          branchTarget.branchId,
+        )
+      } else {
+        nextActiveBranchByUserMessageId.delete(sourceUserMessageId)
       }
+      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
+      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
 
       void handleUserMessageSubmit({
         inputChatMessages,
         requestChatMessages,
+        retryBranchTarget: branchTarget
+          ? {
+              ...branchTarget,
+              sourceUserMessageId,
+            }
+          : undefined,
       })
     },
     [
