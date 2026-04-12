@@ -1666,10 +1666,15 @@ export function QuickAskPanel({
   )
   const hideScrollbarWhileFollowing =
     isStreaming && isAutoFollowEnabled && hasMessages
+  const quickAskChatShellClassName = useMemo(
+    () =>
+      `smtcmp-quick-ask-chat-shell${panelSize?.height ? ' smtcmp-quick-ask-chat-shell--fill' : ''}`,
+    [panelSize?.height],
+  )
   const quickAskChatAreaClassName = useMemo(
     () =>
-      `smtcmp-chat-messages smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared${panelSize?.height ? ' smtcmp-quick-ask-chat-area--fill' : ''}${hideScrollbarWhileFollowing ? ' smtcmp-quick-ask-chat-area--hide-scrollbar' : ''}`,
-    [hideScrollbarWhileFollowing, panelSize?.height],
+      `smtcmp-chat-messages smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared${hideScrollbarWhileFollowing ? ' smtcmp-quick-ask-chat-area--hide-scrollbar' : ''}`,
+    [hideScrollbarWhileFollowing],
   )
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
     for (let index = quickAskTimelineItems.length - 1; index >= 0; index -= 1) {
@@ -2185,6 +2190,7 @@ export function QuickAskPanel({
           conversationId={conversationId}
           scrollContainerRef={chatAreaRef}
           onScrollContainerChange={setChatAreaElement}
+          containerClassName={quickAskChatShellClassName}
           renderItem={renderQuickAskTimelineItem}
           forceRenderItemIds={['bottom-anchor']}
           followOutput={followOutput}
@@ -2194,9 +2200,6 @@ export function QuickAskPanel({
           }
           onVirtualizationChange={setTimelineIsVirtualized}
           scrollContainerClassName={quickAskChatAreaClassName}
-          scrollContainerStyle={
-            panelSize?.height ? { maxHeight: 'none' } : undefined
-          }
         />
       )}
 
