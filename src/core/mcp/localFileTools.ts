@@ -41,7 +41,6 @@ const DEFAULT_READ_START_LINE = 1
 const DEFAULT_READ_MAX_LINES = 50
 const MAX_READ_MAX_LINES = 2000
 const MAX_READ_LINE_INDEX = 1_000_000
-const DEFAULT_MAX_BATCH_CHARS_PER_FILE = 20_000
 const MAX_BATCH_WRITE_ITEMS = 50
 const MAX_RAG_SNIPPET_CHARS = 500
 const RAG_FETCH_LIMIT_MAX = 300
@@ -456,10 +455,6 @@ export function getLocalFileTools(): McpTool[] {
               },
             },
             required: ['type'],
-          },
-          maxCharsPerFile: {
-            type: 'integer',
-            description: `Safety cap for returned chars per file after line slicing. Defaults to ${DEFAULT_MAX_BATCH_CHARS_PER_FILE}, range 100-200000.`,
           },
         },
         required: ['paths', 'operation'],
@@ -2131,14 +2126,6 @@ export async function callLocalFileTool({
         }
         const operation = getFsReadOperation(args)
 
-        const maxCharsPerFile = getOptionalIntegerArg({
-          args,
-          key: 'maxCharsPerFile',
-          defaultValue: DEFAULT_MAX_BATCH_CHARS_PER_FILE,
-          min: 100,
-          max: 200000,
-        })
-
         const results: Array<
           | {
               path: string
@@ -2153,7 +2140,6 @@ export async function callLocalFileTool({
               hasMoreBelow: boolean
               nextStartLine: number | null
               content: string
-              truncated: boolean
             }
           | {
               path: string
@@ -2223,11 +2209,6 @@ export async function callLocalFileTool({
             nextStartLine = hasMoreBelow ? endExclusive + 1 : null
           }
 
-          const truncated = outputContent.length > maxCharsPerFile
-          if (truncated) {
-            outputContent = `${outputContent.slice(0, maxCharsPerFile)}\n... (truncated at ${maxCharsPerFile} chars)`
-          }
-
           results.push({
             path,
             ok: true,
@@ -2241,7 +2222,6 @@ export async function callLocalFileTool({
             hasMoreBelow,
             nextStartLine,
             content: outputContent,
-            truncated,
           })
         }
 
@@ -2260,7 +2240,6 @@ export async function callLocalFileTool({
                 operation.type === 'lines' && operation.endLine === undefined
                   ? operation.maxLines
                   : null,
-              maxCharsPerFile,
             },
             results,
           }),

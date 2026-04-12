@@ -358,6 +358,50 @@ describe('local fs tool action helpers', () => {
     })
   })
 
+  it('returns full fs_read content without internal character truncation', async () => {
+    const longLine = 'a'.repeat(25_000)
+    const file = Object.assign(new TFile(), {
+      path: 'long-note.md',
+      stat: { size: longLine.length },
+    })
+    const read = jest.fn().mockResolvedValue(longLine)
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['long-note.md'],
+        operation: {
+          type: 'full',
+        },
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    const payload = JSON.parse(result.text) as {
+      requestedOperation: { type: string }
+      results: Array<{
+        ok: boolean
+        content: string
+      }>
+    }
+
+    expect(payload.requestedOperation).toMatchObject({ type: 'full' })
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      content: `1|${longLine}`,
+    })
+  })
+
   it('supports fs_read lines operation with numbered output', async () => {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
