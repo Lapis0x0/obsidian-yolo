@@ -13091,6 +13091,15 @@ button.smtcmp-chat-input-model-select {
   min-height: 0;
 }
 
+.smtcmp-quick-ask-chat-area.smtcmp-quick-ask-chat-area--hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.smtcmp-quick-ask-chat-area.smtcmp-quick-ask-chat-area--hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .smtcmp-quick-ask-user-message {
   align-self: flex-end;
   width: auto;

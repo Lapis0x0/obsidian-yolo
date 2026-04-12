@@ -120,6 +120,7 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   items: TItem[]
   conversationId?: string
   scrollContainerRef: RefObject<HTMLElement>
+  onScrollContainerChange?: (element: HTMLElement | null) => void
   renderItem: (
     item: TItem,
     index: number,
@@ -152,6 +153,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   items,
   conversationId,
   scrollContainerRef,
+  onScrollContainerChange,
   renderItem,
   overscanPx = DEFAULT_OVERSCAN_PX,
   virtualizationThreshold = DEFAULT_VIRTUALIZATION_THRESHOLD,
@@ -285,11 +287,12 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   const handleScrollerRef = useCallback(
     (element: HTMLElement | null) => {
       setScrollContainerRef(scrollContainerRef, element)
+      onScrollContainerChange?.(element)
       setScrollerElement((previousElement) =>
         previousElement === element ? previousElement : element,
       )
     },
-    [scrollContainerRef],
+    [onScrollContainerChange, scrollContainerRef],
   )
 
   useLayoutEffect(() => {

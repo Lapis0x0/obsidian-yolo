@@ -299,6 +299,9 @@ export function QuickAskPanel({
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
+  const [chatAreaElement, setChatAreaElement] = useState<HTMLElement | null>(
+    null,
+  )
   const bottomAnchorRef = useRef<HTMLDivElement>(null)
   const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -630,15 +633,18 @@ export function QuickAskPanel({
   ])
 
   const {
+    autoScrollToBottom,
     followOutput,
     onAtBottomStateChange,
     forceScrollToBottom,
-    notifyContentFlushed,
+    isAutoFollowEnabled,
   } = useAutoScroll({
     scrollContainerRef: chatAreaRef,
+    scrollContainerElement: chatAreaElement,
     bottomAnchorRef,
     isStreaming,
     contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
+    followFromReactCommitsOnly: !timelineIsVirtualized,
   })
 
   // Focus input on mount
@@ -1658,10 +1664,12 @@ export function QuickAskPanel({
       }),
     [activeStreamingMessageId, focusedUserMessageId, groupedChatMessages],
   )
+  const hideScrollbarWhileFollowing =
+    isStreaming && isAutoFollowEnabled && hasMessages
   const quickAskChatAreaClassName = useMemo(
     () =>
-      `smtcmp-chat-messages smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared${panelSize?.height ? ' smtcmp-quick-ask-chat-area--fill' : ''}`,
-    [panelSize?.height],
+      `smtcmp-chat-messages smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared${panelSize?.height ? ' smtcmp-quick-ask-chat-area--fill' : ''}${hideScrollbarWhileFollowing ? ' smtcmp-quick-ask-chat-area--hide-scrollbar' : ''}`,
+    [hideScrollbarWhileFollowing, panelSize?.height],
   )
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
     for (let index = quickAskTimelineItems.length - 1; index >= 0; index -= 1) {
@@ -1674,19 +1682,24 @@ export function QuickAskPanel({
     return null
   }, [quickAskTimelineItems])
 
-  useEffect(() => {
-    if (!hasMessages) {
+  useLayoutEffect(() => {
+    if (timelineIsVirtualized) {
       return
     }
 
-    const frameId = requestAnimationFrame(() => {
-      notifyContentFlushed()
-    })
-
-    return () => {
-      cancelAnimationFrame(frameId)
+    if (chatMessages.length === 0 || !isStreaming) {
+      return
     }
-  }, [chatMessages, hasMessages, notifyContentFlushed])
+
+    autoScrollToBottom()
+  }, [
+    activeStreamingMessageId,
+    autoScrollToBottom,
+    chatMessages,
+    isAutoFollowEnabled,
+    isStreaming,
+    timelineIsVirtualized,
+  ])
 
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
@@ -2171,6 +2184,7 @@ export function QuickAskPanel({
           items={quickAskTimelineItems}
           conversationId={conversationId}
           scrollContainerRef={chatAreaRef}
+          onScrollContainerChange={setChatAreaElement}
           renderItem={renderQuickAskTimelineItem}
           forceRenderItemIds={['bottom-anchor']}
           followOutput={followOutput}
