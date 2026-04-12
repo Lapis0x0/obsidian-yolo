@@ -340,9 +340,10 @@ export function useChatStreamManager({
         return
       }
 
+      const visibleMessages = buildVisibleConversationMessages(state.messages)
       if (
-        buildVisibleConversationMessages(state.messages).length > 0 &&
-        !buildVisibleConversationMessages(state.messages).some(
+        visibleMessages.length > 0 &&
+        !visibleMessages.some(
           (message) =>
             message.role === 'assistant' &&
             message.metadata?.generationState === 'streaming',

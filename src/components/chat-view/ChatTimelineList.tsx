@@ -138,6 +138,7 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   followOutput?: FollowOutput
   atBottomThreshold?: number
   onAtBottomStateChange?: (atBottom: boolean) => void
+  onVirtualizationChange?: (isVirtualized: boolean) => void
 }
 
 function setScrollContainerRef(
@@ -161,6 +162,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   followOutput,
   atBottomThreshold = DEFAULT_AT_BOTTOM_THRESHOLD,
   onAtBottomStateChange,
+  onVirtualizationChange,
 }: ChatTimelineListProps<TItem>) {
   // Reserved for phase-2 pinned rendering semantics.
   void forceRenderItemIds
@@ -184,6 +186,11 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   })
 
   const isVirtualized = items.length > virtualizationThreshold
+
+  useLayoutEffect(() => {
+    onVirtualizationChange?.(isVirtualized)
+  }, [isVirtualized, onVirtualizationChange])
+
   const timelineSignature = useMemo(
     () => buildTimelineSignature(items),
     [items],

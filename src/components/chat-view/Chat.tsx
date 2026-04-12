@@ -1142,6 +1142,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const bottomAnchorRef = useRef<HTMLDivElement>(null)
+  const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
   const latexSelectionSyncFrameRef = useRef<number | null>(null)
   const chatSurfacePreset = getChatSurfacePreset('chat')
   const hasStreamingMessages = useMemo(
@@ -1164,6 +1165,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     scrollContainerRef: chatMessagesRef,
     bottomAnchorRef,
     isStreaming: hasStreamingMessages,
+    contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
   })
 
   const {
@@ -4597,6 +4599,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chat.emptyState.agentDescription',
             '启用工具链，处理搜索、读写与多步骤任务',
           )}
+          onTimelineVirtualizationChange={setTimelineIsVirtualized}
           footerContent={
             <>
               {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===

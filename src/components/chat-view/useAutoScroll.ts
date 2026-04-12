@@ -35,6 +35,13 @@ export function useAutoScroll({
     lastUserScrollIntentRef.current = Date.now()
   }, [])
 
+  const hasRecentUserScrollIntent = useCallback(() => {
+    return (
+      Date.now() - lastUserScrollIntentRef.current <
+      USER_SCROLL_INTENT_WINDOW_MS
+    )
+  }, [])
+
   const updateAutoFollow = useCallback((nextValue: boolean) => {
     autoFollowRef.current = nextValue
     setAutoFollowState((previousValue) =>
@@ -48,20 +55,12 @@ export function useAutoScroll({
       return 0
     }
 
-    const bottomAnchor = bottomAnchorRef?.current
-    if (bottomAnchor) {
-      const anchorBottom = bottomAnchor.offsetTop + bottomAnchor.offsetHeight
-      const viewportBottom =
-        scrollContainer.scrollTop + scrollContainer.clientHeight
-      return anchorBottom - viewportBottom
-    }
-
     return (
       scrollContainer.scrollHeight -
       scrollContainer.scrollTop -
       scrollContainer.clientHeight
     )
-  }, [bottomAnchorRef, scrollContainerRef])
+  }, [scrollContainerRef])
 
   const isNearBottom = useCallback(() => {
     return getDistanceToBottom() <= NEAR_BOTTOM_THRESHOLD
@@ -73,22 +72,17 @@ export function useAutoScroll({
       return
     }
 
-    const bottomAnchor = bottomAnchorRef?.current
-    const targetScrollTop = bottomAnchor
-      ? Math.max(
-          0,
-          bottomAnchor.offsetTop +
-            bottomAnchor.offsetHeight -
-            scrollContainer.clientHeight,
-        )
-      : Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight)
+    const targetScrollTop = Math.max(
+      0,
+      scrollContainer.scrollHeight - scrollContainer.clientHeight,
+    )
 
     if (Math.abs(scrollContainer.scrollTop - targetScrollTop) > 1) {
       programmaticScrollLockUntilRef.current =
         Date.now() + PROGRAMMATIC_SCROLL_LOCK_MS
       scrollContainer.scrollTop = targetScrollTop
     }
-  }, [bottomAnchorRef, scrollContainerRef])
+  }, [scrollContainerRef])
 
   const scheduleFollowFrame = useCallback(() => {
     if (followFrameRef.current !== null) {
@@ -169,14 +163,11 @@ export function useAutoScroll({
         return
       }
 
-      const hasRecentUserScrollIntent =
-        Date.now() - lastUserScrollIntentRef.current <
-        USER_SCROLL_INTENT_WINDOW_MS
-      if (hasRecentUserScrollIntent) {
+      if (hasRecentUserScrollIntent()) {
         updateAutoFollow(false)
       }
     },
-    [updateAutoFollow],
+    [hasRecentUserScrollIntent, updateAutoFollow],
   )
 
   const followOutput: FollowOutput = useCallback((isAtBottom: boolean) => {
@@ -196,18 +187,12 @@ export function useAutoScroll({
       const currentScrollTop = scrollContainerElement.scrollTop
       const scrolledUp = currentScrollTop < lastObservedScrollTopRef.current
       lastObservedScrollTopRef.current = currentScrollTop
-      const hasRecentUserScrollIntent =
-        Date.now() - lastUserScrollIntentRef.current <
-        USER_SCROLL_INTENT_WINDOW_MS
 
-      if (
-        Date.now() < programmaticScrollLockUntilRef.current &&
-        !hasRecentUserScrollIntent
-      ) {
+      if (Date.now() < programmaticScrollLockUntilRef.current) {
         return
       }
 
-      if (!hasRecentUserScrollIntent) {
+      if (!hasRecentUserScrollIntent()) {
         return
       }
 
@@ -243,6 +228,7 @@ export function useAutoScroll({
       scrollContainerElement.removeEventListener('scroll', handleScroll)
     }
   }, [
+    hasRecentUserScrollIntent,
     isNearBottom,
     markUserScrollIntent,
     scrollContainerElement,
@@ -285,8 +271,6 @@ export function useAutoScroll({
       childList: true,
       subtree: true,
       characterData: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'aria-expanded'],
     })
 
     const handleAnimatedLayoutChange = () => {
@@ -327,14 +311,14 @@ export function useAutoScroll({
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0]
-        const hasRecentUserScrollIntent =
+        const hasRecentIntent =
           Date.now() - lastUserScrollIntentRef.current <
           USER_SCROLL_INTENT_WINDOW_MS
 
         if (
           entry.isIntersecting &&
           !autoFollowRef.current &&
-          hasRecentUserScrollIntent
+          hasRecentIntent
         ) {
           updateAutoFollow(true)
           return

@@ -31,6 +31,7 @@ type ChatConversationPaneProps = {
   emptyStateChatDescription: string
   emptyStateAgentDescription: string
   footerContent: ReactNode
+  onTimelineVirtualizationChange?: (isVirtualized: boolean) => void
 }
 
 export function ChatConversationPane({
@@ -56,6 +57,7 @@ export function ChatConversationPane({
   emptyStateChatDescription,
   emptyStateAgentDescription,
   footerContent,
+  onTimelineVirtualizationChange,
 }: ChatConversationPaneProps) {
   const showEmptyState =
     groupedChatMessagesLength === 0 && !isCurrentConversationRunActive
@@ -109,6 +111,7 @@ export function ChatConversationPane({
           ) : undefined
         }
         scrollContainerClassName="smtcmp-chat-messages"
+        onVirtualizationChange={onTimelineVirtualizationChange}
       />
       <div
         className={`smtcmp-chat-footer${

@@ -300,6 +300,7 @@ export function QuickAskPanel({
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
   const bottomAnchorRef = useRef<HTMLDivElement>(null)
+  const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
   const autoSendRef = useRef(false)
@@ -637,7 +638,7 @@ export function QuickAskPanel({
     scrollContainerRef: chatAreaRef,
     bottomAnchorRef,
     isStreaming,
-    contentFollowMode: 'observer',
+    contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
   })
 
   // Focus input on mount
@@ -2177,6 +2178,7 @@ export function QuickAskPanel({
           virtualizationThreshold={
             focusedUserMessageId ? quickAskTimelineItems.length : undefined
           }
+          onVirtualizationChange={setTimelineIsVirtualized}
           scrollContainerClassName={quickAskChatAreaClassName}
           scrollContainerStyle={
             panelSize?.height ? { maxHeight: 'none' } : undefined

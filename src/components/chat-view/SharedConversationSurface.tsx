@@ -23,6 +23,7 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
   forceRenderItemIds?: string[]
   overscanPx?: number
   atBottomThreshold?: number
+  onVirtualizationChange?: (isVirtualized: boolean) => void
   onRenderStateChange?: (state: {
     visibleStartIndex: number
     visibleEndIndex: number
@@ -48,6 +49,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
   forceRenderItemIds,
   overscanPx,
   atBottomThreshold,
+  onVirtualizationChange,
   onRenderStateChange,
   scrollContainerClassName,
   scrollContainerStyle,
@@ -69,6 +71,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
       forceRenderItemIds={forceRenderItemIds}
       overscanPx={overscanPx}
       atBottomThreshold={atBottomThreshold}
+      onVirtualizationChange={onVirtualizationChange}
       onRenderStateChange={onRenderStateChange}
       scrollContainerClassName={scrollContainerClassName}
       scrollContainerStyle={scrollContainerStyle}
