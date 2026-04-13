@@ -23,6 +23,9 @@
 
 ## Novita recenti
 
+- `1.5.5`: Motore della knowledge base rinnovato, ricerca ibrida e indicizzazione completamente aggiornate, con risultati di ricerca piu intelligenti.
+- `1.5.4`: Per sessioni lunghe e compiti complessi—introduzione di potatura e compressione del contesto, conversazioni multi-modello, timeline virtualizzata per chat lunghe e compressione automatica.
+- `1.5.3`: Chat multi-finestra nativa e Agent in background per un'automazione piu scorrevole.
 - `1.5.2`: Il nuovo sistema di memoria e ora disponibile e permette a YOLO di ricordare in modo piu naturale le tue preferenze, abitudini e il contesto a lungo termine tra conversazioni diverse.
 - `1.5.1`: YOLO introduce una nuovissima modalita Agent: l'AI non si limita piu a rispondere, ma puo usare strumenti, organizzare passaggi e partecipare davvero al lavoro da svolgere.
 

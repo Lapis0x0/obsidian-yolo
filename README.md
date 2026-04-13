@@ -23,6 +23,9 @@
 
 ## What's New
 
+- `1.5.5`: Refreshed knowledge-base foundations with fully upgraded hybrid search and indexing—and smarter, more relevant results.
+- `1.5.4`: Built for long chats and complex tasks: smarter context pruning and compression, multi-model branches, a virtualized chat timeline, and automatic compression to keep agents running smoothly.
+- `1.5.3`: Native multi-window chat plus background Agents—automation that stays out of your way.
 - `1.5.2`: The new memory system is now live, allowing YOLO to more naturally remember your preferences, habits, and long-term context across conversations.
 - `1.5.1`: YOLO introduced an all-new Agent mode, turning AI from a chat assistant into something that can call tools, organize steps, and actively help get real work done.
 
