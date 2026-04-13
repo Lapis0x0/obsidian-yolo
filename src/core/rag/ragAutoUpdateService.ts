@@ -1,40 +1,41 @@
 import { minimatch } from 'minimatch'
 import { TAbstractFile, TFile, TFolder } from 'obsidian'
 
-import {
-  BackgroundActivityRegistry,
-  type BackgroundActivityStatus,
-} from '../background/backgroundActivityRegistry'
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
-
-import { RAGEngine } from './ragEngine'
+import { classifyRagIndexError } from './ragIndexErrors'
 
 type RagAutoUpdateServiceDeps = {
   getSettings: () => SmartComposerSettings
   setSettings: (settings: SmartComposerSettings) => Promise<void>
-  getRagEngine: () => Promise<RAGEngine>
-  t: (key: string, fallback?: string) => string
-  activityRegistry: BackgroundActivityRegistry
+  runIndex: () => Promise<void>
+  markRetryScheduled: (input: {
+    retryAt: number
+    failureMessage?: string
+  }) => Promise<void>
+  clearRetryScheduled: () => Promise<void>
 }
 
 export class RagAutoUpdateService {
   private static readonly EDIT_IDLE_WINDOW_MS = 5 * 60 * 1000
   private static readonly WINDOW_BLUR_GRACE_MS = 15 * 1000
   private static readonly SUCCESS_COOLDOWN_MS = 2 * 60 * 1000
-  private static readonly ACTIVITY_ID = 'rag:auto-update'
+  private static readonly FAILURE_RETRY_DELAY_MS = 5 * 60 * 1000
 
   private readonly getSettings: () => SmartComposerSettings
   private readonly setSettings: (
     settings: SmartComposerSettings,
   ) => Promise<void>
-  private readonly getRagEngine: () => Promise<RAGEngine>
-  private readonly t: (key: string, fallback?: string) => string
-  private readonly activityRegistry: BackgroundActivityRegistry
+  private readonly runIndex: () => Promise<void>
+  private readonly markRetryScheduled: (
+    input: { retryAt: number; failureMessage?: string },
+  ) => Promise<void>
+  private readonly clearRetryScheduled: () => Promise<void>
 
   private autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
   private isAutoUpdating = false
   private pendingDirtyPaths = new Set<string>()
   private hasPendingChangesDuringRun = false
+  private hasRecoveredRetry = false
   private requiresFullScan = false
   private lastRelevantEditAt: number | null = null
   private lastRunFinishedAt: number | null = null
@@ -43,9 +44,9 @@ export class RagAutoUpdateService {
   constructor(deps: RagAutoUpdateServiceDeps) {
     this.getSettings = deps.getSettings
     this.setSettings = deps.setSettings
-    this.getRagEngine = deps.getRagEngine
-    this.t = deps.t
-    this.activityRegistry = deps.activityRegistry
+    this.runIndex = deps.runIndex
+    this.markRetryScheduled = deps.markRetryScheduled
+    this.clearRetryScheduled = deps.clearRetryScheduled
   }
 
   cleanup() {
@@ -55,8 +56,18 @@ export class RagAutoUpdateService {
     }
     this.pendingDirtyPaths.clear()
     this.hasPendingChangesDuringRun = false
+    this.hasRecoveredRetry = false
     this.requiresFullScan = false
-    this.activityRegistry.remove(RagAutoUpdateService.ACTIVITY_ID)
+  }
+
+  restoreRetryScheduled(retryAt?: number): void {
+    const settings = this.getSettings()
+    if (!this.isAutoUpdateEnabled(settings)) return
+
+    this.hasRecoveredRetry = true
+    const delayMs =
+      retryAt === undefined ? 0 : Math.max(0, retryAt - Date.now())
+    this.scheduleAutoUpdate(delayMs)
   }
 
   onVaultFileChanged(
@@ -163,8 +174,11 @@ export class RagAutoUpdateService {
 
   private async runAutoUpdate() {
     if (this.isAutoUpdating) return
-    if (this.pendingDirtyPaths.size === 0 && !this.requiresFullScan) {
-      this.activityRegistry.remove(RagAutoUpdateService.ACTIVITY_ID)
+    if (
+      this.pendingDirtyPaths.size === 0 &&
+      !this.requiresFullScan &&
+      !this.hasRecoveredRetry
+    ) {
       return
     }
 
@@ -181,14 +195,18 @@ export class RagAutoUpdateService {
     }
 
     this.isAutoUpdating = true
-    this.publishActivity('running')
+    const pendingSnapshot = new Set(this.pendingDirtyPaths)
+    const requiresFullScanSnapshot = this.requiresFullScan
+    const recoveredRetrySnapshot = this.hasRecoveredRetry
+    let hasScheduledTransientRetry = false
 
     try {
       this.pendingDirtyPaths.clear()
       this.requiresFullScan = false
       this.hasPendingChangesDuringRun = false
-      const ragEngine = await this.getRagEngine()
-      await ragEngine.updateVaultIndex({ reindexAll: false }, undefined)
+      this.hasRecoveredRetry = false
+      await this.clearRetryScheduled()
+      await this.runIndex()
       const settings = this.getSettings()
       await this.setSettings({
         ...settings,
@@ -199,51 +217,41 @@ export class RagAutoUpdateService {
       })
       this.lastRunFinishedAt = Date.now()
       this.lastRunError = null
-      this.activityRegistry.remove(RagAutoUpdateService.ACTIVITY_ID)
     } catch (e) {
       console.error('Auto update index failed:', e)
       this.lastRunFinishedAt = Date.now()
       this.lastRunError = e instanceof Error ? e.message : String(e)
-      this.publishActivity('failed')
+      for (const path of pendingSnapshot) {
+        this.pendingDirtyPaths.add(path)
+      }
+      this.requiresFullScan = this.requiresFullScan || requiresFullScanSnapshot
+
+      if (classifyRagIndexError(e) === 'transient') {
+        const retryAt = Date.now() + RagAutoUpdateService.FAILURE_RETRY_DELAY_MS
+        this.hasRecoveredRetry =
+          recoveredRetrySnapshot &&
+          pendingSnapshot.size === 0 &&
+          !requiresFullScanSnapshot
+        await this.markRetryScheduled({
+          retryAt,
+          failureMessage: this.lastRunError,
+        })
+        this.scheduleAutoUpdate(RagAutoUpdateService.FAILURE_RETRY_DELAY_MS)
+        hasScheduledTransientRetry = true
+      }
     } finally {
       this.isAutoUpdating = false
-      this.autoUpdateTimer = null
+      if (!hasScheduledTransientRetry) {
+        this.autoUpdateTimer = null
+      }
       if (
-        this.hasPendingChangesDuringRun ||
-        this.pendingDirtyPaths.size > 0 ||
-        this.requiresFullScan
+        !hasScheduledTransientRetry &&
+        (this.hasPendingChangesDuringRun ||
+          this.pendingDirtyPaths.size > 0 ||
+          this.requiresFullScan)
       ) {
         this.scheduleAutoUpdate(RagAutoUpdateService.EDIT_IDLE_WINDOW_MS)
       }
     }
-  }
-
-  private publishActivity(status: BackgroundActivityStatus) {
-    const title =
-      status === 'failed'
-        ? this.t('statusBar.ragAutoUpdateFailed', '知识库自动更新失败')
-        : this.t('statusBar.ragAutoUpdateRunning', '知识库正在后台更新')
-
-    const detail =
-      status === 'failed'
-        ? (this.lastRunError ??
-          this.t(
-            'statusBar.ragAutoUpdateFailedDetail',
-            '最近一次后台同步失败，请稍后重试。',
-          ))
-        : this.t(
-            'statusBar.ragAutoUpdateRunningDetail',
-            '正在增量同步知识库索引。',
-          )
-
-    this.activityRegistry.upsert({
-      id: RagAutoUpdateService.ACTIVITY_ID,
-      kind: 'rag-index',
-      title,
-      detail,
-      status,
-      updatedAt: Date.now(),
-      action: { type: 'open-knowledge-settings' },
-    })
   }
 }

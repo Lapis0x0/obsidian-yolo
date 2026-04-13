@@ -4,7 +4,6 @@ jest.mock('obsidian', () => ({
   TFolder: class {},
 }))
 
-import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 
 import { RagAutoUpdateService } from './ragAutoUpdateService'
@@ -33,52 +32,48 @@ describe('RagAutoUpdateService', () => {
         lastAutoUpdateAt: 0,
       },
     } as unknown as SmartComposerSettings
-    const updateVaultIndex = jest.fn().mockResolvedValue(undefined)
-    const getRagEngine = jest.fn().mockResolvedValue({ updateVaultIndex })
+    const runIndex = jest.fn().mockResolvedValue(undefined)
     const setSettings = jest.fn().mockResolvedValue(undefined)
-    const activityRegistry = new BackgroundActivityRegistry()
-    let latestActivities = new Map()
-    const unsubscribe = activityRegistry.subscribe((activities) => {
-      latestActivities = activities
-    })
+    const markRetryScheduled = jest.fn().mockResolvedValue(undefined)
+    const clearRetryScheduled = jest.fn().mockResolvedValue(undefined)
 
     const service = new RagAutoUpdateService({
       getSettings: () => settings,
       setSettings,
-      getRagEngine,
-      t: (key) => key,
-      activityRegistry,
+      runIndex,
+      markRetryScheduled,
+      clearRetryScheduled,
     })
 
     return {
       service,
       settings,
-      updateVaultIndex,
-      getRagEngine,
+      runIndex,
       setSettings,
-      latestActivities: () => latestActivities,
-      cleanup: () => unsubscribe(),
+      markRetryScheduled,
+      clearRetryScheduled,
+      cleanup: () => undefined,
     }
   }
 
   it('waits for five minutes of idle time before running auto update', async () => {
-    const { service, updateVaultIndex, cleanup } = createService()
+    const { service, runIndex, cleanup } = createService()
 
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(299_000)
     await flushAsync()
 
-    expect(updateVaultIndex).not.toHaveBeenCalled()
+    expect(runIndex).not.toHaveBeenCalled()
 
     jest.advanceTimersByTime(1_000)
     await flushAsync()
 
-    expect(updateVaultIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledTimes(1)
     cleanup()
   })
 
   it('coalesces repeated edits into a single auto update run', async () => {
-    const { service, updateVaultIndex, cleanup } = createService()
+    const { service, runIndex, cleanup } = createService()
 
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(30_000)
@@ -86,54 +81,52 @@ describe('RagAutoUpdateService', () => {
     jest.advanceTimersByTime(299_000)
     await flushAsync()
 
-    expect(updateVaultIndex).not.toHaveBeenCalled()
+    expect(runIndex).not.toHaveBeenCalled()
 
     jest.advanceTimersByTime(1_000)
     await flushAsync()
 
-    expect(updateVaultIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledTimes(1)
     cleanup()
   })
 
   it('does not run when knowledge base indexing is disabled', async () => {
-    const { service, settings, updateVaultIndex, cleanup } = createService()
+    const { service, settings, runIndex, cleanup } = createService()
 
     settings.ragOptions.enabled = false
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(updateVaultIndex).not.toHaveBeenCalled()
+    expect(runIndex).not.toHaveBeenCalled()
     cleanup()
   })
 
   it('does not run when auto update is disabled', async () => {
-    const { service, settings, updateVaultIndex, cleanup } = createService()
+    const { service, settings, runIndex, cleanup } = createService()
 
     settings.ragOptions.autoUpdateEnabled = false
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(updateVaultIndex).not.toHaveBeenCalled()
+    expect(runIndex).not.toHaveBeenCalled()
     cleanup()
   })
 
   it('does not schedule updates for non-markdown paths', async () => {
-    const { service, updateVaultIndex, latestActivities, cleanup } =
-      createService()
+    const { service, runIndex, cleanup } = createService()
 
     service.onVaultPathChanged('foo.png')
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(updateVaultIndex).not.toHaveBeenCalled()
-    expect(latestActivities().size).toBe(0)
+    expect(runIndex).not.toHaveBeenCalled()
     cleanup()
   })
 
   it('runs sooner when the window blurs after a short grace period', async () => {
-    const { service, updateVaultIndex, cleanup } = createService()
+    const { service, runIndex, cleanup } = createService()
 
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(15_000)
@@ -141,7 +134,44 @@ describe('RagAutoUpdateService', () => {
     jest.advanceTimersByTime(0)
     await flushAsync()
 
-    expect(updateVaultIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
+
+  it('restores dirty paths and schedules retry after transient failure', async () => {
+    const transientError = new Error('network timeout')
+    const {
+      service,
+      runIndex,
+      markRetryScheduled,
+      clearRetryScheduled,
+      cleanup,
+    } = createService()
+    runIndex.mockRejectedValueOnce(transientError).mockResolvedValueOnce(undefined)
+
+    service.onVaultPathChanged('foo.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    expect(clearRetryScheduled).toHaveBeenCalledTimes(1)
+    expect(markRetryScheduled).toHaveBeenCalledTimes(1)
+
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(2)
+    cleanup()
+  })
+
+  it('restores persisted retry schedule on startup', async () => {
+    const { service, runIndex, cleanup } = createService()
+
+    service.restoreRetryScheduled(Date.now() + 5 * 60_000)
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
     cleanup()
   })
 })

@@ -6,6 +6,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import type { PGliteRuntimeStatus } from '../../../database/runtime/PGliteRuntimeManager'
 import { PGLITE_RUNTIME_VERSION } from '../../../database/runtime/pgliteRuntimeMetadata'
+import { RagIndexBusyError, type RagIndexRunSnapshot } from '../../../core/rag/ragIndexService'
 import SmartComposerPlugin from '../../../main'
 import { findFilesMatchingPatterns } from '../../../utils/glob-utils'
 import {
@@ -32,47 +33,31 @@ type RAGSectionProps = {
   plugin: SmartComposerPlugin
 }
 
-type AppWithLocalStorage = App & {
-  loadLocalStorage?: (key: string) => string | null | Promise<string | null>
-  saveLocalStorage?: (key: string, value: string) => void | Promise<void>
-}
-
-const isPromiseLike = <T,>(value: T | Promise<T>): value is Promise<T> =>
-  typeof value === 'object' &&
-  value !== null &&
-  'then' in (value as Record<string, unknown>) &&
-  typeof (value as { then?: unknown }).then === 'function'
-
-const loadAppLocalStorage = async (
-  app: App,
-  key: string,
-): Promise<string | null> => {
-  const appWithLocalStorage = app as AppWithLocalStorage
-  if (typeof appWithLocalStorage.loadLocalStorage === 'function') {
-    const result = appWithLocalStorage.loadLocalStorage(key)
-    return isPromiseLike(result) ? await result : result
-  }
-  return null
-}
-
-const saveAppLocalStorage = async (
-  app: App,
-  key: string,
-  value: string,
-): Promise<void> => {
-  const appWithLocalStorage = app as AppWithLocalStorage
-  if (typeof appWithLocalStorage.saveLocalStorage === 'function') {
-    const result = appWithLocalStorage.saveLocalStorage(key, value)
-    if (isPromiseLike(result)) {
-      await result
-    }
-  }
-}
-
 type IndexJob = {
   reindexAll: boolean
   successNotice?: string
   failureNotice: string
+}
+
+const snapshotToProgress = (
+  snapshot: RagIndexRunSnapshot,
+): IndexProgress | null => {
+  if (
+    snapshot.totalFiles === undefined &&
+    snapshot.totalChunks === undefined &&
+    !snapshot.currentFile
+  ) {
+    return null
+  }
+
+  return {
+    completedChunks: snapshot.completedChunks ?? 0,
+    totalChunks: snapshot.totalChunks ?? 0,
+    totalFiles: snapshot.totalFiles ?? 0,
+    completedFiles: snapshot.completedFiles ?? 0,
+    currentFile: snapshot.currentFile,
+    waitingForRateLimit: snapshot.waitingForRateLimit,
+  }
 }
 
 function RAGCard({
@@ -109,10 +94,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const FILE_SWITCH_MIN_INTERVAL_MS = 90
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
-  const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null)
-  const [persistedProgress, setPersistedProgress] =
-    useState<IndexProgress | null>(null)
-  const [isIndexing, setIsIndexing] = useState(false)
+  const [indexRunSnapshot, setIndexRunSnapshot] = useState<RagIndexRunSnapshot>(
+    () => plugin.getRagIndexSnapshot(),
+  )
   const [displayedCurrentFile, setDisplayedCurrentFile] = useState<
     string | null
   >(null)
@@ -120,8 +104,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     null,
   )
   const [fileAnimationKey, setFileAnimationKey] = useState(0)
-  const [indexAbortController, setIndexAbortController] =
-    useState<AbortController | null>(null)
   const [isCheckingPgliteResources, setIsCheckingPgliteResources] =
     useState(false)
   const [isRunningPgliteAction, setIsRunningPgliteAction] = useState(false)
@@ -129,10 +111,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     useState<PGliteRuntimeStatus | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
   const isAutoUpdateEnabled = settings.ragOptions.autoUpdateEnabled ?? true
-  /** During an active index job, only live `indexProgress` should drive the UI (not stale persisted). */
-  const progressSource: IndexProgress | null = isIndexing
-    ? indexProgress
-    : (indexProgress ?? persistedProgress)
+  const isIndexing = indexRunSnapshot.status === 'running'
+  const progressSource = useMemo(
+    () => snapshotToProgress(indexRunSnapshot),
+    [indexRunSnapshot],
+  )
   const ragUpdateError = 'Failed to update RAG settings.'
   const [chunkSizeInput, setChunkSizeInput] = useState(
     String(settings.ragOptions.chunkSize),
@@ -257,34 +240,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   }
 
   useEffect(() => {
-    let cancelled = false
-
-    void (async () => {
-      try {
-        const raw = await loadAppLocalStorage(app, 'smtcmp_rag_last_progress')
-        if (!raw || cancelled) return
-        const parsed = JSON.parse(raw) as IndexProgress
-        setPersistedProgress(parsed)
-      } catch (error: unknown) {
-        console.warn('Failed to load cached RAG progress', error)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [app])
-
-  useEffect(() => {
-    if (!indexProgress) return
-    const json = JSON.stringify(indexProgress)
-    void saveAppLocalStorage(app, 'smtcmp_rag_last_progress', json).catch(
-      (error: unknown) => {
-        console.warn('Failed to persist RAG progress', error)
-      },
-    )
-    setPersistedProgress(indexProgress)
-  }, [app, indexProgress])
+    return plugin.subscribeToRagIndexRuns((snapshot) => {
+      setIndexRunSnapshot(snapshot)
+    })
+  }, [plugin])
 
   useEffect(() => {
     const applyDisplayedFile = (nextFile: string) => {
@@ -408,7 +367,16 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       }
       return `${ringPercent}% ${t('settings.rag.indexing', 'Indexing...')}`
     }
-    if (!persistedProgress) {
+    if (indexRunSnapshot.status === 'retry_scheduled') {
+      return t('settings.rag.waitingRateLimit', '等待重试中...')
+    }
+    if (indexRunSnapshot.status === 'failed') {
+      return (
+        indexRunSnapshot.failureMessage ??
+        t('settings.rag.indexIncomplete', 'Last index did not finish')
+      )
+    }
+    if (!progressSource) {
       return t('settings.rag.notIndexedYet', 'Not indexed yet')
     }
     if (ringPercent >= 100) {
@@ -422,9 +390,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     }
     return t('settings.rag.notIndexedYet', 'Not indexed yet')
   }, [
+    indexRunSnapshot.failureMessage,
+    indexRunSnapshot.status,
     isIndexing,
     displayedCurrentFile,
-    persistedProgress,
     progressSource,
     ringPercent,
     t,
@@ -443,8 +412,14 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       }
       return 'indexing'
     }
+    if (indexRunSnapshot.status === 'retry_scheduled') {
+      return 'retry-scheduled'
+    }
+    if (indexRunSnapshot.status === 'failed') {
+      return 'failed'
+    }
     return `idle-${ringPercent}`
-  }, [isIndexing, displayedCurrentFile, progressSource, ringPercent])
+  }, [indexRunSnapshot.status, isIndexing, displayedCurrentFile, progressSource, ringPercent])
 
   const isAnimatingCurrentFile = Boolean(isIndexing && displayedCurrentFile)
   const maintenanceStatusPrefix = isAnimatingCurrentFile
@@ -575,27 +550,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     })()
   }, [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t])
 
-  const handleIndexProgress = useCallback((progress: IndexProgress) => {
-    setIndexProgress(progress)
-  }, [])
-
   const runIndexJob = useCallback(
     async ({ reindexAll, successNotice, failureNotice }: IndexJob) => {
-      const abortController = new AbortController()
-      setIndexAbortController(abortController)
-      setIsIndexing(true)
-      setIndexProgress(null)
-
       try {
-        const ragEngine = await plugin.getRAGEngine()
-        await ragEngine.updateVaultIndex(
-          { reindexAll, signal: abortController.signal },
-          (queryProgress) => {
-            if (queryProgress.type === 'indexing') {
-              handleIndexProgress(queryProgress.indexProgress)
-            }
-          },
-        )
+        await plugin.runRagIndex({
+          reindexAll,
+          trigger: 'manual',
+        })
         await plugin.setSettings({
           ...plugin.settings,
           ragOptions: {
@@ -607,19 +568,17 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
           new Notice(successNotice)
         }
       } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
+        if (error instanceof RagIndexBusyError) {
+          new Notice(t('statusBar.ragAutoUpdateRunning', '知识库索引正在运行'))
+        } else if (error instanceof DOMException && error.name === 'AbortError') {
           new Notice(t('notices.indexCancelled', '索引已取消'))
         } else {
           console.error('Failed to update knowledge base index:', error)
           new Notice(failureNotice)
         }
-      } finally {
-        setIsIndexing(false)
-        setIndexAbortController(null)
-        setTimeout(() => setIndexProgress(null), 3000)
       }
     },
-    [handleIndexProgress, plugin, t],
+    [plugin, t],
   )
 
   const scheduleIndexJob = useCallback(
@@ -982,12 +941,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       })
                     }}
                   />
-                  {isIndexing && indexAbortController && (
+                  {isIndexing && (
                     <ObsidianButton
                       text={t('settings.rag.cancelIndex', '取消')}
                       onClick={() => {
                         console.debug('[YOLO] Cancel button clicked')
-                        indexAbortController.abort()
+                        plugin.cancelRagIndex()
                         new Notice(
                           t('notices.indexCancelling', '正在取消索引...'),
                         )

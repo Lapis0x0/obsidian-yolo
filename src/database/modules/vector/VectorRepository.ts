@@ -219,12 +219,23 @@ export class VectorRepository {
   }
 
   async clearAllVectors(embeddingModel: EmbeddingModelClient): Promise<void> {
+    await this.clearVectorsByModelId(embeddingModel.id)
+  }
+
+  async clearVectorsByModelId(modelId: string): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    await this.db.delete(embeddingTable).where(eq(embeddingTable.model, modelId))
+  }
+
+  async clearStagingVectorsForModel(baseModelId: string): Promise<void> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
     await this.db
       .delete(embeddingTable)
-      .where(eq(embeddingTable.model, embeddingModel.id))
+      .where(sql`${embeddingTable.model} LIKE ${`${baseModelId}::staging:%`}`)
   }
 
   async clearVectorsByModelIds(modelIds: string[]): Promise<void> {
@@ -242,16 +253,53 @@ export class VectorRepository {
   async hasVectorsForModel(
     embeddingModel: EmbeddingModelClient,
   ): Promise<boolean> {
+    return this.hasVectorsForModelId(embeddingModel.id)
+  }
+
+  async hasVectorsForModelId(modelId: string): Promise<boolean> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
     const result = await this.db
       .select({ value: count() })
       .from(embeddingTable)
-      .where(eq(embeddingTable.model, embeddingModel.id))
+      .where(eq(embeddingTable.model, modelId))
       .limit(1)
     const countValue = result[0]?.value ?? 0
     return countValue > 0
+  }
+
+  async replaceModelContents(input: {
+    activeModelId: string
+    stagingModelId: string
+  }): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+
+    const dbWithClient = this.db as PgliteDatabase & {
+      $client?: { exec: (query: string) => Promise<unknown> }
+    }
+    const client = dbWithClient.$client
+    if (!client) {
+      throw new Error('PGlite client is unavailable')
+    }
+
+    const escapeSqlText = (value: string) => value.replace(/'/g, "''")
+    const activeModelId = escapeSqlText(input.activeModelId)
+    const stagingModelId = escapeSqlText(input.stagingModelId)
+
+    await client.exec('BEGIN')
+    try {
+      await client.exec(`DELETE FROM embeddings WHERE model = '${activeModelId}'`)
+      await client.exec(
+        `UPDATE embeddings SET model = '${activeModelId}' WHERE model = '${stagingModelId}'`,
+      )
+      await client.exec('COMMIT')
+    } catch (error) {
+      await client.exec('ROLLBACK')
+      throw error
+    }
   }
 
   async insertVectors(data: InsertEmbedding[]): Promise<void> {
@@ -350,6 +398,7 @@ export class VectorRepository {
         ),
       })
       .from(embeddingTable)
+      .where(sql`${embeddingTable.model} NOT LIKE '%::staging:%'`)
       .groupBy(embeddingTable.model)
       .orderBy(embeddingTable.model)
 

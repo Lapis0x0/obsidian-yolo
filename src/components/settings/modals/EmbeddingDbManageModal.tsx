@@ -127,6 +127,7 @@ function EmbeddingDbManageModalComponent({
             excludePatterns: settings.ragOptions.excludePatterns,
             includePatterns: settings.ragOptions.includePatterns,
             reindexAll: true,
+            indexRunId: `manage-${Date.now()}`,
           },
           (progress) => {
             setIndexProgressMap((prev) => {

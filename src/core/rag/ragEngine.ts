@@ -67,7 +67,11 @@ export class RAGEngine {
   // TODO: Implement automatic vault re-indexing when settings are changed.
   // Currently, users must manually re-index the vault.
   async updateVaultIndex(
-    options: { reindexAll: boolean; signal?: AbortSignal } = {
+    options: {
+      reindexAll: boolean
+      signal?: AbortSignal
+      indexRunId?: string
+    } = {
       reindexAll: false,
     },
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void,
@@ -84,6 +88,7 @@ export class RAGEngine {
           includePatterns: this.settings.ragOptions.includePatterns,
           reindexAll: options.reindexAll,
           signal: options.signal,
+          indexRunId: options.indexRunId,
         },
         (indexProgress) => {
           onQueryProgressChange?.({

@@ -10,8 +10,10 @@ import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
   LLMBaseUrlNotSetException,
-  LLMRateLimitExceededException,
 } from '../../../core/llm/exception'
+import {
+  isTransientRagIndexError,
+} from '../../../core/rag/ragIndexErrors'
 import {
   InsertEmbedding,
   SelectEmbedding,
@@ -21,7 +23,6 @@ import {
   EmbeddingDbStats,
   EmbeddingModelClient,
 } from '../../../types/embedding'
-import { chunkArray } from '../../../utils/common/chunk-array'
 import { sha256HexPrefix16 } from '../../../utils/common/content-hash'
 import {
   createYieldController,
@@ -29,6 +30,9 @@ import {
 } from '../../../utils/common/yield-to-main'
 
 import { VectorRepository } from './VectorRepository'
+
+const createStagingModelId = (embeddingModelId: string, indexRunId: string) =>
+  `${embeddingModelId}::staging:${indexRunId}`
 
 export class VectorManager {
   private app: App
@@ -53,6 +57,7 @@ export class VectorManager {
           showReportBugButton: true,
         },
       ).open()
+      throw error instanceof Error ? error : new Error(String(error))
     }
   }
 
@@ -73,6 +78,18 @@ export class VectorManager {
 
   setVacuumCallback(callback: () => Promise<void>) {
     this.vacuumCallback = callback
+  }
+
+  private async promoteStagingModel(
+    activeModelId: string,
+    stagingModelId: string,
+  ): Promise<void> {
+    await this.repository.replaceModelContents({
+      activeModelId,
+      stagingModelId,
+    })
+    await this.requestVacuum()
+    await this.requestSave()
   }
 
   async performSimilaritySearch(
@@ -106,10 +123,16 @@ export class VectorManager {
       includePatterns: string[]
       reindexAll?: boolean
       signal?: AbortSignal
+      indexRunId?: string
     },
     updateProgress?: (indexProgress: IndexProgress) => void,
   ): Promise<void> {
     const { signal } = options
+    const stagingModelId =
+      options.reindexAll && options.indexRunId
+        ? createStagingModelId(embeddingModel.id, options.indexRunId)
+        : null
+    const targetModelId = stagingModelId ?? embeddingModel.id
     let filesToIndex: TFile[]
     let newFilesCount = 0
     let updatedFilesCount = 0
@@ -120,7 +143,11 @@ export class VectorManager {
         options.excludePatterns,
         options.includePatterns,
       )
-      await this.repository.clearAllVectors(embeddingModel)
+      if (stagingModelId) {
+        await this.repository.clearStagingVectorsForModel(embeddingModel.id)
+      } else {
+        await this.repository.clearAllVectors(embeddingModel)
+      }
       newFilesCount = filesToIndex.length // 全量重建时都算新文件
     } else {
       await this.deleteVectorsForDeletedFiles(embeddingModel)
@@ -139,6 +166,9 @@ export class VectorManager {
     }
 
     if (filesToIndex.length === 0) {
+      if (stagingModelId) {
+        await this.promoteStagingModel(embeddingModel.id, stagingModelId)
+      }
       return
     }
 
@@ -291,8 +321,18 @@ export class VectorManager {
 
     if (contentChunks.length === 0) {
       if (completedFilesCount > 0) {
-        await this.requestSave()
+        if (stagingModelId) {
+          await this.promoteStagingModel(embeddingModel.id, stagingModelId)
+        } else {
+          await this.requestSave()
+        }
         return
+      }
+      if (stagingModelId) {
+        await this.requestSave()
+        throw new Error(
+          'All files failed to process. Stopping indexing process.',
+        )
       }
       const hasExistingVectors =
         await this.repository.hasVectorsForModel(embeddingModel)
@@ -339,7 +379,6 @@ export class VectorManager {
       }
     }
 
-    const batchChunks = chunkArray(contentChunks, 100)
     const failedChunks: {
       path: string
       metadata: VectorMetaData
@@ -393,8 +432,108 @@ export class VectorManager {
       return currentFile
     }
 
+    let currentBatchSize = 24
+    const MIN_BATCH_SIZE = 10
+    const MAX_BATCH_SIZE = 24
+    let shouldPromoteStaging = false
+    const embedBatchChunk = async (
+      chunk: Omit<InsertEmbedding, 'model' | 'dimension'>,
+    ): Promise<InsertEmbedding | null> => {
+      if (signal?.aborted) {
+        return null
+      }
+
+      try {
+        return await backOff(
+          async () => {
+            if (signal?.aborted) {
+              throw new DOMException('Indexing cancelled by user', 'AbortError')
+            }
+
+            if (chunk.content.length === 0) {
+              throw new Error(`Chunk content is empty in file: ${chunk.path}`)
+            }
+            if (chunk.content.includes('\x00')) {
+              throw new Error(
+                `Chunk content contains null bytes in file: ${chunk.path}`,
+              )
+            }
+
+            const embedding = await embeddingModel.getEmbedding(chunk.content)
+            completedChunks += 1
+            const currentFile = getNextReportedFile()
+
+            updateProgress?.(buildProgressPayload({ currentFile }))
+
+            return {
+              path: chunk.path,
+              mtime: chunk.mtime,
+              content: chunk.content,
+              content_hash: chunk.content_hash,
+              model: targetModelId,
+              dimension: embeddingModel.dimension,
+              embedding,
+              metadata: chunk.metadata,
+            }
+          },
+          {
+            numOfAttempts: 6,
+            startingDelay: 1500,
+            timeMultiple: 2,
+            maxDelay: 30000,
+            retry: (error) => {
+              if (signal?.aborted) {
+                return false
+              }
+              if (!isTransientRagIndexError(error)) {
+                return false
+              }
+              const status =
+                typeof error === 'object' &&
+                error !== null &&
+                'status' in error &&
+                typeof (error as { status?: unknown }).status === 'number'
+                  ? (error as { status: number }).status
+                  : undefined
+              const message =
+                error instanceof Error ? error.message.toLowerCase() : ''
+              const waitingForRateLimit =
+                status === 429 || message.includes('rate limit')
+              if (waitingForRateLimit) {
+                const currentFile = getCurrentEmbeddingFile() ?? chunk.path
+                lastReportedEmbeddingFile = currentFile
+                updateProgress?.(
+                  buildProgressPayload({
+                    currentFile,
+                    waitingForRateLimit: true,
+                  }),
+                )
+              }
+              return true
+            },
+          },
+        )
+      } catch (error) {
+        failedChunks.push({
+          path: chunk.path,
+          metadata: chunk.metadata,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })
+
+        return null
+      }
+    }
+
     try {
-      for (const batchChunk of batchChunks) {
+      for (
+        let batchStart = 0;
+        batchStart < contentChunks.length;
+        batchStart += currentBatchSize
+      ) {
+        const batchChunk = contentChunks.slice(
+          batchStart,
+          batchStart + currentBatchSize,
+        )
         // 检查是否被取消
         if (signal?.aborted) {
           // 保存已完成的工作后退出
@@ -404,99 +543,42 @@ export class VectorManager {
 
         // 每个批次开始前让步给主线程，防止 UI 冻结
         await yieldToMain()
+        let validEmbeddingChunks: InsertEmbedding[] = []
+        let batchAttempt = 0
 
-        const embeddingChunks: (InsertEmbedding | null)[] = await Promise.all(
-          batchChunk.map(async (chunk) => {
-            // 在每个 chunk 处理前检查取消信号
-            if (signal?.aborted) {
-              return null
-            }
-
-            try {
-              return await backOff(
-                async () => {
-                  // 在 backOff 执行函数中也检查取消信号
-                  if (signal?.aborted) {
-                    throw new DOMException(
-                      'Indexing cancelled by user',
-                      'AbortError',
-                    )
-                  }
-
-                  if (chunk.content.length === 0) {
-                    throw new Error(
-                      `Chunk content is empty in file: ${chunk.path}`,
-                    )
-                  }
-                  if (chunk.content.includes('\x00')) {
-                    // this should never happen because we remove null bytes from the content
-                    throw new Error(
-                      `Chunk content contains null bytes in file: ${chunk.path}`,
-                    )
-                  }
-
-                  const embedding = await embeddingModel.getEmbedding(
-                    chunk.content,
-                  )
-                  completedChunks += 1
-                  const currentFile = getNextReportedFile()
-
-                  updateProgress?.(buildProgressPayload({ currentFile }))
-
-                  return {
-                    path: chunk.path,
-                    mtime: chunk.mtime,
-                    content: chunk.content,
-                    content_hash: chunk.content_hash,
-                    model: embeddingModel.id,
-                    dimension: embeddingModel.dimension,
-                    embedding,
-                    metadata: chunk.metadata,
-                  }
-                },
-                {
-                  numOfAttempts: 8,
-                  startingDelay: 2000,
-                  timeMultiple: 2,
-                  maxDelay: 60000,
-                  retry: (error) => {
-                    // 如果已取消，不再重试
-                    if (signal?.aborted) {
-                      return false
-                    }
-                    if (
-                      error instanceof LLMRateLimitExceededException ||
-                      error.status === 429
-                    ) {
-                      const currentFile = getCurrentEmbeddingFile() ?? chunk.path
-                      lastReportedEmbeddingFile = currentFile
-                      updateProgress?.(
-                        buildProgressPayload({
-                          currentFile,
-                          waitingForRateLimit: true,
-                        }),
-                      )
-                      return true
-                    }
-                    return false
-                  },
-                },
+        while (batchAttempt < 2) {
+          batchAttempt += 1
+          const embeddingChunks = await Promise.all(
+            batchChunk.map((chunk) => embedBatchChunk(chunk)),
+          )
+          validEmbeddingChunks = embeddingChunks.filter(
+            (chunk): chunk is InsertEmbedding => chunk !== null,
+          )
+          if (validEmbeddingChunks.length > 0) {
+            if (
+              validEmbeddingChunks.length !== batchChunk.length &&
+              currentBatchSize > MIN_BATCH_SIZE
+            ) {
+              currentBatchSize = Math.max(
+                MIN_BATCH_SIZE,
+                Math.floor(currentBatchSize / 2),
               )
-            } catch (error) {
-              failedChunks.push({
-                path: chunk.path,
-                metadata: chunk.metadata,
-                error: error instanceof Error ? error.message : 'Unknown error',
-              })
-
-              return null
+            } else if (
+              validEmbeddingChunks.length === batchChunk.length &&
+              currentBatchSize < MAX_BATCH_SIZE
+            ) {
+              currentBatchSize = Math.min(MAX_BATCH_SIZE, currentBatchSize + 4)
             }
-          }),
-        )
-
-        const validEmbeddingChunks = embeddingChunks.filter(
-          (chunk) => chunk !== null,
-        )
+            break
+          }
+          if (batchAttempt < 2) {
+            currentBatchSize = Math.max(
+              MIN_BATCH_SIZE,
+              Math.floor(currentBatchSize / 2),
+            )
+            await yieldToMain()
+          }
+        }
 
         // 如果是因为取消导致的，保存已完成的工作并退出
         if (signal?.aborted) {
@@ -541,7 +623,10 @@ export class VectorManager {
 
         // 更新进度
         updateProgress?.(buildProgressPayload({ waitingForRateLimit: false }))
+
+        batchStart += batchChunk.length - currentBatchSize
       }
+      shouldPromoteStaging = Boolean(stagingModelId)
     } catch (error) {
       // 如果是用户取消操作，直接重新抛出，不显示错误弹窗
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -578,6 +663,10 @@ Please report this issue to the developer if it persists.`,
       throw error
     } finally {
       await this.requestSave()
+    }
+
+    if (shouldPromoteStaging && stagingModelId) {
+      await this.promoteStagingModel(embeddingModel.id, stagingModelId)
     }
   }
 

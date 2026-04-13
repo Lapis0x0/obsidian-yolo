@@ -44,6 +44,11 @@ import { NotificationService } from './core/notifications/notificationService'
 import { relocateYoloManagedData } from './core/paths/yoloManagedData'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
+import {
+  RagIndexBusyError,
+  RagIndexRunSnapshot,
+  RagIndexService,
+} from './core/rag/ragIndexService'
 import type { RAGEngine } from './core/rag/ragEngine'
 import {
   checkForUpdate,
@@ -119,6 +124,7 @@ export default class SmartComposerPlugin extends Plugin {
   private newTabEmptyStateEnhancer: NewTabEmptyStateEnhancer | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
+  private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private writeAssistController: WriteAssistController | null = null
   // Model list cache for provider model fetching
@@ -551,12 +557,33 @@ export default class SmartComposerPlugin extends Plugin {
       this.ragAutoUpdateService = new RagAutoUpdateService({
         getSettings: () => this.settings,
         setSettings: (settings) => this.setSettings(settings),
-        getRagEngine: () => this.getRagCoordinator().getRagEngine(),
-        t: (key, fallback) => this.t(key, fallback),
-        activityRegistry: this.getBackgroundActivityRegistry(),
+        runIndex: () =>
+          this.getRagIndexService().runIndex({
+            reindexAll: false,
+            trigger: 'auto',
+          }),
+        markRetryScheduled: (input) =>
+          this.getRagIndexService().markRetryScheduled({
+            reindexAll: false,
+            retryAt: input.retryAt,
+            failureMessage: input.failureMessage,
+          }),
+        clearRetryScheduled: () => this.getRagIndexService().clearRetryScheduled(),
       })
     }
     return this.ragAutoUpdateService
+  }
+
+  private getRagIndexService(): RagIndexService {
+    if (!this.ragIndexService) {
+      this.ragIndexService = new RagIndexService({
+        app: this.app,
+        getRagEngine: () => this.getRagCoordinator().getRagEngine(),
+        activityRegistry: this.getBackgroundActivityRegistry(),
+        t: (key, fallback) => this.t(key, fallback),
+      })
+    }
+    return this.ragIndexService
   }
 
   private getBackgroundActivityRegistry(): BackgroundActivityRegistry {
@@ -1446,6 +1473,16 @@ export default class SmartComposerPlugin extends Plugin {
 
     await this.loadSettings()
     this.syncOAuthRuntimesFromSettings()
+    await this.getRagIndexService().initialize()
+    const initialRagIndexSnapshot = this.getRagIndexSnapshot()
+    if (
+      initialRagIndexSnapshot.status === 'retry_scheduled' &&
+      initialRagIndexSnapshot.trigger === 'auto'
+    ) {
+      this.getRagAutoUpdateService().restoreRetryScheduled(
+        initialRagIndexSnapshot.retryAt,
+      )
+    }
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
 
@@ -1643,27 +1680,29 @@ export default class SmartComposerPlugin extends Plugin {
       callback: async () => {
         const notice = new Notice(this.t('notices.rebuildingIndex'), 0)
         try {
-          const ragEngine = await this.getRAGEngine()
-          await ragEngine.updateVaultIndex(
-            { reindexAll: true },
-            (queryProgress) => {
-              if (queryProgress.type === 'indexing') {
-                const { completedChunks, totalChunks } =
-                  queryProgress.indexProgress
-                notice.setMessage(
-                  `Indexing chunks: ${completedChunks} / ${totalChunks}${
-                    queryProgress.indexProgress.waitingForRateLimit
-                      ? '\n(waiting for rate limit to reset)'
-                      : ''
-                  }`,
-                )
-              }
+          await this.getRagIndexService().runIndex({
+            reindexAll: true,
+            trigger: 'manual',
+            onProgress: (progress) => {
+              notice.setMessage(
+                `Indexing chunks: ${progress.completedChunks} / ${progress.totalChunks}${
+                  progress.waitingForRateLimit
+                    ? '\n(waiting for rate limit to reset)'
+                    : ''
+                }`,
+              )
             },
-          )
+          })
           notice.setMessage(this.t('notices.rebuildComplete'))
         } catch (error) {
-          console.error(error)
-          notice.setMessage(this.t('notices.rebuildFailed'))
+          if (error instanceof RagIndexBusyError) {
+            notice.setMessage(
+              this.t('statusBar.ragAutoUpdateRunning', '知识库索引正在运行'),
+            )
+          } else {
+            console.error(error)
+            notice.setMessage(this.t('notices.rebuildFailed'))
+          }
         } finally {
           this.registerTimeout(() => {
             notice.hide()
@@ -1678,27 +1717,29 @@ export default class SmartComposerPlugin extends Plugin {
       callback: async () => {
         const notice = new Notice(this.t('notices.updatingIndex'), 0)
         try {
-          const ragEngine = await this.getRAGEngine()
-          await ragEngine.updateVaultIndex(
-            { reindexAll: false },
-            (queryProgress) => {
-              if (queryProgress.type === 'indexing') {
-                const { completedChunks, totalChunks } =
-                  queryProgress.indexProgress
-                notice.setMessage(
-                  `Indexing chunks: ${completedChunks} / ${totalChunks}${
-                    queryProgress.indexProgress.waitingForRateLimit
-                      ? '\n(waiting for rate limit to reset)'
-                      : ''
-                  }`,
-                )
-              }
+          await this.getRagIndexService().runIndex({
+            reindexAll: false,
+            trigger: 'manual',
+            onProgress: (progress) => {
+              notice.setMessage(
+                `Indexing chunks: ${progress.completedChunks} / ${progress.totalChunks}${
+                  progress.waitingForRateLimit
+                    ? '\n(waiting for rate limit to reset)'
+                    : ''
+                }`,
+              )
             },
-          )
+          })
           notice.setMessage(this.t('notices.indexUpdated'))
         } catch (error) {
-          console.error(error)
-          notice.setMessage(this.t('notices.indexUpdateFailed'))
+          if (error instanceof RagIndexBusyError) {
+            notice.setMessage(
+              this.t('statusBar.ragAutoUpdateRunning', '知识库索引正在运行'),
+            )
+          } else {
+            console.error(error)
+            notice.setMessage(this.t('notices.indexUpdateFailed'))
+          }
         } finally {
           this.registerTimeout(() => {
             notice.hide()
@@ -1770,6 +1811,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.timeoutIds = []
 
     // RagEngine cleanup
+    this.ragIndexService?.cleanup()
+    this.ragIndexService = null
     this.ragCoordinator?.cleanup()
     this.ragCoordinator = null
 
@@ -2007,6 +2050,28 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
   async getRAGEngine(): Promise<RAGEngine> {
     return this.getRagCoordinator().getRagEngine()
+  }
+
+  async runRagIndex(options: {
+    reindexAll: boolean
+    trigger: 'manual' | 'auto'
+    onProgress?: (progress: import('./components/chat-view/QueryProgress').IndexProgress) => void
+  }): Promise<void> {
+    await this.getRagIndexService().runIndex(options)
+  }
+
+  subscribeToRagIndexRuns(
+    listener: (snapshot: RagIndexRunSnapshot) => void,
+  ): () => void {
+    return this.getRagIndexService().subscribe(listener)
+  }
+
+  getRagIndexSnapshot(): RagIndexRunSnapshot {
+    return this.getRagIndexService().getSnapshot()
+  }
+
+  cancelRagIndex(): void {
+    this.getRagIndexService().cancelActiveRun()
   }
 
   async getMcpManager(): Promise<McpManager> {
