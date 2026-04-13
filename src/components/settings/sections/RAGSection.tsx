@@ -556,6 +556,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         await plugin.runRagIndex({
           reindexAll,
           trigger: 'manual',
+          retryPolicy: reindexAll ? 'transient' : 'none',
         })
         await plugin.setSettings({
           ...plugin.settings,

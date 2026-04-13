@@ -19,10 +19,19 @@ export type RagIndexRunStatus =
   | 'completed'
 
 export type RagIndexRunTrigger = 'manual' | 'auto'
+export type RagIndexRetryPolicy = 'none' | 'transient'
+
+type RagIndexRunOptions = {
+  reindexAll: boolean
+  trigger: RagIndexRunTrigger
+  retryPolicy: RagIndexRetryPolicy
+  onProgress?: (progress: IndexProgress) => void
+}
 
 export type RagIndexRunSnapshot = {
   runId: string | null
   trigger: RagIndexRunTrigger | null
+  retryPolicy: RagIndexRetryPolicy
   mode: 'full' | 'incremental' | null
   status: RagIndexRunStatus
   startedAt: number | null
@@ -51,6 +60,8 @@ type RagIndexSubscriber = (snapshot: RagIndexRunSnapshot) => void
 
 const STORAGE_KEY = 'smtcmp_rag_index_run'
 const RETRY_ACTIVITY_ID = 'rag:index'
+const TRANSIENT_RETRY_DELAY_MS = 5 * 60 * 1000
+const INTERRUPTED_RETRY_DELAY_MS = 15 * 1000
 
 const isPromiseLike = <T,>(value: T | Promise<T>): value is Promise<T> =>
   typeof value === 'object' &&
@@ -61,6 +72,7 @@ const isPromiseLike = <T,>(value: T | Promise<T>): value is Promise<T> =>
 const defaultSnapshot = (): RagIndexRunSnapshot => ({
   runId: null,
   trigger: null,
+  retryPolicy: 'none',
   mode: null,
   status: 'idle',
   startedAt: null,
@@ -112,6 +124,7 @@ export class RagIndexService {
   private readonly subscribers = new Set<RagIndexSubscriber>()
   private currentAbortController: AbortController | null = null
   private initPromise: Promise<void> | null = null
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(deps: RagIndexServiceDeps) {
     this.app = deps.app
@@ -134,10 +147,17 @@ export class RagIndexService {
             ...parsed,
           }
           if (this.snapshot.status === 'running') {
+            const shouldRecover =
+              this.snapshot.retryPolicy === 'transient' &&
+              this.snapshot.mode !== null &&
+              this.snapshot.trigger !== null
             this.snapshot = {
               ...this.snapshot,
-              status: 'failed',
-              failureKind: 'unknown',
+              status: shouldRecover ? 'retry_scheduled' : 'failed',
+              retryAt: shouldRecover
+                ? Date.now() + INTERRUPTED_RETRY_DELAY_MS
+                : undefined,
+              failureKind: shouldRecover ? 'transient' : 'unknown',
               failureMessage: this.t(
                 'settings.rag.previousRunInterrupted',
                 '上次索引未正常完成。',
@@ -176,15 +196,29 @@ export class RagIndexService {
     this.currentAbortController?.abort()
   }
 
-  async runIndex(options: {
-    reindexAll: boolean
-    trigger: RagIndexRunTrigger
-    onProgress?: (progress: IndexProgress) => void
-  }): Promise<void> {
+  restoreRetryScheduledRun(): void {
+    if (
+      this.snapshot.status !== 'retry_scheduled' ||
+      this.snapshot.trigger !== 'manual' ||
+      this.snapshot.retryPolicy !== 'transient' ||
+      this.snapshot.mode === null
+    ) {
+      return
+    }
+
+    this.scheduleRetry({
+      reindexAll: this.snapshot.mode === 'full',
+      trigger: this.snapshot.trigger,
+      retryPolicy: this.snapshot.retryPolicy,
+    })
+  }
+
+  async runIndex(options: RagIndexRunOptions): Promise<void> {
     await this.initialize()
     if (this.currentAbortController) {
       throw new RagIndexBusyError()
     }
+    this.clearRetryTimer()
 
     const runId = createRunId()
     const controller = new AbortController()
@@ -194,6 +228,7 @@ export class RagIndexService {
     this.snapshot = {
       runId,
       trigger: options.trigger,
+      retryPolicy: options.retryPolicy,
       mode: options.reindexAll ? 'full' : 'incremental',
       status: 'running',
       startedAt,
@@ -249,15 +284,31 @@ export class RagIndexService {
       await this.persistSnapshot()
     } catch (error) {
       const failureKind = classifyRagIndexError(error)
+      const shouldScheduleRetry =
+        failureKind === 'transient' && options.retryPolicy === 'transient'
       this.snapshot = {
         ...this.snapshot,
-        status: failureKind === 'aborted' ? 'idle' : 'failed',
+        status:
+          failureKind === 'aborted'
+            ? 'idle'
+            : shouldScheduleRetry
+              ? 'retry_scheduled'
+              : 'failed',
         updatedAt: Date.now(),
         failureKind,
         failureMessage: error instanceof Error ? error.message : String(error),
         waitingForRateLimit: false,
+        retryCount: shouldScheduleRetry
+          ? this.snapshot.retryCount + 1
+          : this.snapshot.retryCount,
+        retryAt: shouldScheduleRetry
+          ? Date.now() + TRANSIENT_RETRY_DELAY_MS
+          : undefined,
       }
       await this.persistSnapshot()
+      if (shouldScheduleRetry && options.trigger === 'manual') {
+        this.scheduleRetry(options)
+      }
       throw error
     } finally {
       this.currentAbortController = null
@@ -276,6 +327,7 @@ export class RagIndexService {
       ...this.snapshot,
       mode: input.reindexAll ? 'full' : 'incremental',
       trigger: 'auto',
+      retryPolicy: 'transient',
       status: 'retry_scheduled',
       retryAt: input.retryAt,
       updatedAt: Date.now(),
@@ -291,6 +343,7 @@ export class RagIndexService {
     if (this.snapshot.status !== 'retry_scheduled') {
       return
     }
+    this.clearRetryTimer()
     this.snapshot = {
       ...this.snapshot,
       status: 'idle',
@@ -304,6 +357,7 @@ export class RagIndexService {
   }
 
   cleanup(): void {
+    this.clearRetryTimer()
     this.currentAbortController?.abort()
     this.currentAbortController = null
     this.subscribers.clear()
@@ -314,6 +368,29 @@ export class RagIndexService {
     await writeLocalStorage(this.app, STORAGE_KEY, JSON.stringify(this.snapshot))
     this.publishActivity()
     this.emit()
+  }
+
+  private scheduleRetry(options: {
+    reindexAll: boolean
+    trigger: RagIndexRunTrigger
+    retryPolicy: RagIndexRetryPolicy
+  }): void {
+    this.clearRetryTimer()
+    const delayMs = Math.max(0, (this.snapshot.retryAt ?? Date.now()) - Date.now())
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      void this.runIndex(options).catch((error: unknown) => {
+        console.error('[YOLO] Failed to rerun scheduled RAG index:', error)
+      })
+    }, delayMs)
+  }
+
+  private clearRetryTimer(): void {
+    if (!this.retryTimer) {
+      return
+    }
+    clearTimeout(this.retryTimer)
+    this.retryTimer = null
   }
 
   private publishActivity(): void {

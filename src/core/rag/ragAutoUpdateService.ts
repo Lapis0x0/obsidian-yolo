@@ -199,6 +199,7 @@ export class RagAutoUpdateService {
     const requiresFullScanSnapshot = this.requiresFullScan
     const recoveredRetrySnapshot = this.hasRecoveredRetry
     let hasScheduledTransientRetry = false
+    let shouldRescheduleDirtyWork = false
 
     try {
       this.pendingDirtyPaths.clear()
@@ -225,8 +226,9 @@ export class RagAutoUpdateService {
         this.pendingDirtyPaths.add(path)
       }
       this.requiresFullScan = this.requiresFullScan || requiresFullScanSnapshot
+      const failureKind = classifyRagIndexError(e)
 
-      if (classifyRagIndexError(e) === 'transient') {
+      if (failureKind === 'transient') {
         const retryAt = Date.now() + RagAutoUpdateService.FAILURE_RETRY_DELAY_MS
         this.hasRecoveredRetry =
           recoveredRetrySnapshot &&
@@ -238,6 +240,8 @@ export class RagAutoUpdateService {
         })
         this.scheduleAutoUpdate(RagAutoUpdateService.FAILURE_RETRY_DELAY_MS)
         hasScheduledTransientRetry = true
+      } else if (failureKind === 'aborted') {
+        shouldRescheduleDirtyWork = true
       }
     } finally {
       this.isAutoUpdating = false
@@ -246,9 +250,7 @@ export class RagAutoUpdateService {
       }
       if (
         !hasScheduledTransientRetry &&
-        (this.hasPendingChangesDuringRun ||
-          this.pendingDirtyPaths.size > 0 ||
-          this.requiresFullScan)
+        (shouldRescheduleDirtyWork || this.hasPendingChangesDuringRun)
       ) {
         this.scheduleAutoUpdate(RagAutoUpdateService.EDIT_IDLE_WINDOW_MS)
       }

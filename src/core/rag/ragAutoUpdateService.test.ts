@@ -174,4 +174,32 @@ describe('RagAutoUpdateService', () => {
     expect(runIndex).toHaveBeenCalledTimes(1)
     cleanup()
   })
+
+  it('does not keep retrying after permanent failure', async () => {
+    const permanentError = Object.assign(new Error('invalid api key'), {
+      status: 401,
+    })
+    const {
+      service,
+      runIndex,
+      markRetryScheduled,
+      clearRetryScheduled,
+      cleanup,
+    } = createService()
+    runIndex.mockRejectedValueOnce(permanentError)
+
+    service.onVaultPathChanged('foo.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    expect(clearRetryScheduled).toHaveBeenCalledTimes(1)
+    expect(markRetryScheduled).not.toHaveBeenCalled()
+
+    jest.advanceTimersByTime(10 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    cleanup()
+  })
 })

@@ -561,6 +561,7 @@ export default class SmartComposerPlugin extends Plugin {
           this.getRagIndexService().runIndex({
             reindexAll: false,
             trigger: 'auto',
+            retryPolicy: 'transient',
           }),
         markRetryScheduled: (input) =>
           this.getRagIndexService().markRetryScheduled({
@@ -1477,11 +1478,15 @@ export default class SmartComposerPlugin extends Plugin {
     const initialRagIndexSnapshot = this.getRagIndexSnapshot()
     if (
       initialRagIndexSnapshot.status === 'retry_scheduled' &&
-      initialRagIndexSnapshot.trigger === 'auto'
+      initialRagIndexSnapshot.retryPolicy === 'transient'
     ) {
-      this.getRagAutoUpdateService().restoreRetryScheduled(
-        initialRagIndexSnapshot.retryAt,
-      )
+      if (initialRagIndexSnapshot.trigger === 'auto') {
+        this.getRagAutoUpdateService().restoreRetryScheduled(
+          initialRagIndexSnapshot.retryAt,
+        )
+      } else if (initialRagIndexSnapshot.trigger === 'manual') {
+        this.getRagIndexService().restoreRetryScheduledRun()
+      }
     }
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
@@ -1683,6 +1688,7 @@ export default class SmartComposerPlugin extends Plugin {
           await this.getRagIndexService().runIndex({
             reindexAll: true,
             trigger: 'manual',
+            retryPolicy: 'transient',
             onProgress: (progress) => {
               notice.setMessage(
                 `Indexing chunks: ${progress.completedChunks} / ${progress.totalChunks}${
@@ -1720,6 +1726,7 @@ export default class SmartComposerPlugin extends Plugin {
           await this.getRagIndexService().runIndex({
             reindexAll: false,
             trigger: 'manual',
+            retryPolicy: 'none',
             onProgress: (progress) => {
               notice.setMessage(
                 `Indexing chunks: ${progress.completedChunks} / ${progress.totalChunks}${
@@ -2055,6 +2062,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   async runRagIndex(options: {
     reindexAll: boolean
     trigger: 'manual' | 'auto'
+    retryPolicy: 'none' | 'transient'
     onProgress?: (progress: import('./components/chat-view/QueryProgress').IndexProgress) => void
   }): Promise<void> {
     await this.getRagIndexService().runIndex(options)
