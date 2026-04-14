@@ -1485,7 +1485,9 @@ export default class SmartComposerPlugin extends Plugin {
           initialRagIndexSnapshot.retryAt,
         )
       } else if (initialRagIndexSnapshot.trigger === 'manual') {
-        this.getRagIndexService().restoreRetryScheduledRun()
+        this.getRagIndexService().restoreRetryScheduledRun(
+          this.computeRagStagingFingerprint(),
+        )
       }
     }
 
@@ -2063,9 +2065,39 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     reindexAll: boolean
     trigger: 'manual' | 'auto'
     retryPolicy: 'none' | 'transient'
+    fromScratch?: boolean
     onProgress?: (progress: import('./components/chat-view/QueryProgress').IndexProgress) => void
   }): Promise<void> {
-    await this.getRagIndexService().runIndex(options)
+    await this.getRagIndexService().runIndex({
+      ...options,
+      stagingConfigFingerprint: options.reindexAll
+        ? this.computeRagStagingFingerprint()
+        : undefined,
+    })
+  }
+
+  /**
+   * Fingerprint identifying the embedding/chunking config. Used to decide
+   * whether a paused rebuild can resume its staging namespace or must start
+   * fresh. Changing embedding model or chunk size invalidates staging.
+   */
+  private computeRagStagingFingerprint(): string {
+    const modelId = this.settings.embeddingModelId ?? ''
+    const chunkSize = this.settings.ragOptions?.chunkSize ?? 0
+    return `${modelId}|${chunkSize}`
+  }
+
+  /** Resume a failed or retry-scheduled rebuild from its existing staging. */
+  async retryRagIndex(): Promise<void> {
+    const snapshot = this.getRagIndexSnapshot()
+    if (snapshot.mode === null) {
+      return
+    }
+    await this.runRagIndex({
+      reindexAll: snapshot.mode === 'full',
+      trigger: 'manual',
+      retryPolicy: 'transient',
+    })
   }
 
   subscribeToRagIndexRuns(

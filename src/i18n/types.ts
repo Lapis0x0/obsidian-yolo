@@ -571,6 +571,12 @@ export type TranslationKeys = {
       notIndexedYet?: string
       indexComplete?: string
       indexIncomplete?: string
+      retryNow?: string
+      continueIndex?: string
+      rebuildFromScratch?: string
+      rebuildFromScratchConfirm?: string
+      waitingRetry?: string
+      cancelIndex?: string
     }
     mcp: {
       title: string

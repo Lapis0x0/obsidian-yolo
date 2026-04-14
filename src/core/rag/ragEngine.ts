@@ -69,6 +69,7 @@ export class RAGEngine {
   async updateVaultIndex(
     options: {
       reindexAll: boolean
+      fromScratch?: boolean
       signal?: AbortSignal
       indexRunId?: string
     } = {
@@ -87,6 +88,7 @@ export class RAGEngine {
           excludePatterns: this.settings.ragOptions.excludePatterns,
           includePatterns: this.settings.ragOptions.includePatterns,
           reindexAll: options.reindexAll,
+          fromScratch: options.fromScratch,
           signal: options.signal,
           indexRunId: options.indexRunId,
         },

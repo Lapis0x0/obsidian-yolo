@@ -733,6 +733,13 @@ export const it: TranslationKeys = {
       notIndexedYet: 'Non ancora indicizzato',
       indexComplete: 'Indicizzazione completata',
       indexIncomplete: 'Ultima indicizzazione non completata',
+      retryNow: 'Riprova ora',
+      continueIndex: 'Continua indicizzazione',
+      rebuildFromScratch: 'Ricostruisci da zero',
+      rebuildFromScratchConfirm:
+        'Questa operazione scarterà il progresso parziale e ricostruirà l\'indice da zero. Continuare?',
+      waitingRetry: 'In attesa di un nuovo tentativo...',
+      cancelIndex: 'Annulla',
     },
     mcp: {
       title: 'Strumenti personalizzati (MCP)',

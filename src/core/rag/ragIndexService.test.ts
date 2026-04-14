@@ -251,4 +251,42 @@ describe('RagIndexService', () => {
       status: 'completed',
     })
   })
+
+  it('preserves resumable full rebuild cursor after a successful incremental run', async () => {
+    const updateVaultIndex = jest.fn().mockResolvedValue(undefined)
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(
+          JSON.stringify({
+            runId: 'failed-full-run',
+            status: 'failed',
+            mode: 'full',
+            trigger: 'manual',
+            retryPolicy: 'transient',
+            stagingRunId: 'failed-full-run-staging',
+            stagingConfigFingerprint: 'embed-a|1000',
+          }),
+        ),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+
+    await service.runIndex({
+      reindexAll: false,
+      trigger: 'manual',
+      retryPolicy: 'none',
+    })
+
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'completed',
+      mode: 'incremental',
+      stagingRunId: 'failed-full-run-staging',
+      stagingConfigFingerprint: 'embed-a|1000',
+    })
+  })
 })

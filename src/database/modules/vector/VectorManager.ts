@@ -122,6 +122,12 @@ export class VectorManager {
       excludePatterns: string[]
       includePatterns: string[]
       reindexAll?: boolean
+      /**
+       * When true, wipe staging before starting the rebuild (fresh start).
+       * When false (default), resume: keep any chunks already embedded into
+       * staging from a prior attempt and skip them this run.
+       */
+      fromScratch?: boolean
       signal?: AbortSignal
       indexRunId?: string
     },
@@ -137,6 +143,11 @@ export class VectorManager {
     let newFilesCount = 0
     let updatedFilesCount = 0
     const removedFilesCount = 0
+    let stagingFingerprints: Map<string, Set<string>> | null = null
+    // Resumed-chunk count: chunks already embedded in staging from a prior
+    // attempt. Added to both numerator and denominator of the progress ring
+    // so a 5%-resumed rebuild visibly continues from 5% rather than from 0%.
+    let resumedChunks = 0
 
     if (options.reindexAll) {
       filesToIndex = this.getFilteredMarkdownFiles(
@@ -144,7 +155,21 @@ export class VectorManager {
         options.includePatterns,
       )
       if (stagingModelId) {
-        await this.repository.clearStagingVectorsForModel(embeddingModel.id)
+        if (options.fromScratch) {
+          await this.repository.clearStagingVectorsForModel(embeddingModel.id)
+        } else {
+          // Scope-shrink guard: drop staging rows whose path is no longer
+          // in-scope so promotion doesn't leak them into active.
+          await this.repository.deleteStagingRowsOutsideScope(
+            stagingModelId,
+            filesToIndex.map((f) => f.path),
+          )
+          stagingFingerprints =
+            await this.repository.getStagingFingerprints(stagingModelId)
+          for (const set of stagingFingerprints.values()) {
+            resumedChunks += set.size
+          }
+        }
       } else {
         await this.repository.clearAllVectors(embeddingModel)
       }
@@ -280,6 +305,8 @@ export class VectorManager {
             textSplitter,
             embeddingModel,
             Boolean(options.reindexAll),
+            stagingModelId,
+            stagingFingerprints?.get(file.path),
           )
 
         contentChunks.push(...fileChunks)
@@ -349,8 +376,8 @@ export class VectorManager {
 
     // 初始进度更新，包含文件夹信息
     updateProgress?.({
-      completedChunks: 0,
-      totalChunks: contentChunks.length,
+      completedChunks: resumedChunks,
+      totalChunks: contentChunks.length + resumedChunks,
       totalFiles: filesToIndex.length,
       completedFiles: completedFilesCount,
       folderProgress: folderProgress,
@@ -396,8 +423,8 @@ export class VectorManager {
       currentFile?: string
       waitingForRateLimit?: boolean
     } = {}) => ({
-      completedChunks,
-      totalChunks: contentChunks.length,
+      completedChunks: completedChunks + resumedChunks,
+      totalChunks: contentChunks.length + resumedChunks,
       totalFiles: filesToIndex.length,
       completedFiles: completedFilesCount,
       folderProgress: folderProgress,
@@ -691,6 +718,8 @@ Please report this issue to the developer if it persists.`,
     textSplitter: RecursiveCharacterTextSplitter,
     embeddingModel: EmbeddingModelClient,
     reindexAll: boolean,
+    stagingModelId?: string | null,
+    stagedFingerprints?: Set<string>,
   ): Promise<{
     chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
     totalChunkLines: number
@@ -700,12 +729,25 @@ Please report this issue to the developer if it persists.`,
     const fileDocuments = await textSplitter.createDocuments([sanitizedContent])
 
     if (reindexAll) {
+      const desiredFingerprints: string[] = []
       const chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
       for (const chunk of fileDocuments) {
         const content = chunk.pageContent
         const startLine = chunk.metadata.loc.lines.from as number
         const endLine = chunk.metadata.loc.lines.to as number
         const content_hash = await sha256HexPrefix16(content)
+        desiredFingerprints.push(`${startLine}:${endLine}:${content_hash}`)
+        // Resumed rebuilds must remove stale staging chunks for this file before
+        // promoting, otherwise outdated rows leak into active on success.
+        // Do this after we know the file's full current fingerprint set.
+        //
+        // The delete runs once per file because the full fingerprint set is only
+        // known after chunking.
+        // Resumable rebuild: skip chunks already embedded into staging from
+        // a prior attempt (matched by line range + content hash).
+        if (stagedFingerprints?.has(`${startLine}:${endLine}:${content_hash}`)) {
+          continue
+        }
         chunks.push({
           path: file.path,
           mtime: file.stat.mtime,
@@ -714,7 +756,14 @@ Please report this issue to the developer if it persists.`,
           metadata: { startLine, endLine },
         })
       }
-      return { chunks, totalChunkLines: fileDocuments.length }
+      if (stagingModelId) {
+        await this.repository.deleteStagingRowsForFileExceptFingerprints(
+          stagingModelId,
+          file.path,
+          desiredFingerprints,
+        )
+      }
+      return { chunks, totalChunkLines: chunks.length }
     }
 
     const existing = await this.repository.getChunkMetaForFile(

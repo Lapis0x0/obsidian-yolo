@@ -35,6 +35,7 @@ type RAGSectionProps = {
 
 type IndexJob = {
   reindexAll: boolean
+  fromScratch?: boolean
   successNotice?: string
   failureNotice: string
 }
@@ -368,12 +369,19 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       return `${ringPercent}% ${t('settings.rag.indexing', 'Indexing...')}`
     }
     if (indexRunSnapshot.status === 'retry_scheduled') {
-      return t('settings.rag.waitingRateLimit', '等待重试中...')
+      const base = t('settings.rag.waitingRetry', '等待重试中...')
+      return indexRunSnapshot.failureMessage
+        ? `${base} · ${indexRunSnapshot.failureMessage}`
+        : base
     }
     if (indexRunSnapshot.status === 'failed') {
+      const prefix = indexRunSnapshot.failureHttpStatus
+        ? `HTTP ${indexRunSnapshot.failureHttpStatus} · `
+        : ''
       return (
-        indexRunSnapshot.failureMessage ??
-        t('settings.rag.indexIncomplete', 'Last index did not finish')
+        prefix +
+          (indexRunSnapshot.failureMessage ??
+            t('settings.rag.indexIncomplete', 'Last index did not finish'))
       )
     }
     if (!progressSource) {
@@ -390,6 +398,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     }
     return t('settings.rag.notIndexedYet', 'Not indexed yet')
   }, [
+    indexRunSnapshot.failureHttpStatus,
     indexRunSnapshot.failureMessage,
     indexRunSnapshot.status,
     isIndexing,
@@ -551,10 +560,16 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   }, [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t])
 
   const runIndexJob = useCallback(
-    async ({ reindexAll, successNotice, failureNotice }: IndexJob) => {
+    async ({
+      reindexAll,
+      fromScratch,
+      successNotice,
+      failureNotice,
+    }: IndexJob) => {
       try {
         await plugin.runRagIndex({
           reindexAll,
+          fromScratch,
           trigger: 'manual',
           retryPolicy: reindexAll ? 'transient' : 'none',
         })
@@ -931,17 +946,60 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       new EmbeddingDbManageModal(app, plugin).open()
                     }}
                   />
-                  <ObsidianButton
-                    text={t('settings.rag.rebuildIndex', '重建索引')}
-                    disabled={isIndexing || !canUseIndexMaintenance}
-                    onClick={() => {
-                      void runIndexJob({
-                        reindexAll: true,
-                        successNotice: t('notices.rebuildComplete'),
-                        failureNotice: t('notices.rebuildFailed'),
-                      })
-                    }}
-                  />
+                  {(() => {
+                    const hasStaging = Boolean(indexRunSnapshot.stagingRunId)
+                    const status = indexRunSnapshot.status
+                    let label: string
+                    if (status === 'retry_scheduled') {
+                      label = t('settings.rag.retryNow', '立即重试')
+                    } else if (status === 'failed') {
+                      label = hasStaging
+                        ? t('settings.rag.continueIndex', '继续索引')
+                        : t('common.retry', '重试')
+                    } else if (hasStaging) {
+                      label = t('settings.rag.continueIndex', '继续索引')
+                    } else {
+                      label = t('settings.rag.rebuildIndex', '重建索引')
+                    }
+                    return (
+                      <ObsidianButton
+                        text={label}
+                        disabled={isIndexing || !canUseIndexMaintenance}
+                        onClick={() => {
+                          void runIndexJob({
+                            reindexAll: true,
+                            successNotice: t('notices.rebuildComplete'),
+                            failureNotice: t('notices.rebuildFailed'),
+                          })
+                        }}
+                      />
+                    )
+                  })()}
+                  {indexRunSnapshot.stagingRunId &&
+                    !isIndexing &&
+                    canUseIndexMaintenance && (
+                      <ObsidianButton
+                        text={t(
+                          'settings.rag.rebuildFromScratch',
+                          '从头重建',
+                        )}
+                        onClick={() => {
+                          const confirmed = window.confirm(
+                            t(
+                              'settings.rag.rebuildFromScratchConfirm',
+                              '这将丢弃上次未完成的进度并从零开始重建索引，确定继续吗？',
+                            ),
+                          )
+                          if (!confirmed) return
+                          void runIndexJob({
+                            reindexAll: true,
+                            fromScratch: true,
+                            successNotice: t('notices.rebuildComplete'),
+                            failureNotice: t('notices.rebuildFailed'),
+                          })
+                        }}
+                      />
+                    )}
                   {isIndexing && (
                     <ObsidianButton
                       text={t('settings.rag.cancelIndex', '取消')}

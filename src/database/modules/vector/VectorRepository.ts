@@ -238,6 +238,116 @@ export class VectorRepository {
       .where(sql`${embeddingTable.model} LIKE ${`${baseModelId}::staging:%`}`)
   }
 
+  /**
+   * Build a fingerprint map of chunks already embedded in the given staging
+   * namespace. Key is file path; value is the set of `startLine:endLine:hash`
+   * fingerprints. Used to skip already-embedded chunks when resuming a rebuild.
+   */
+  async getStagingFingerprints(
+    stagingModelId: string,
+  ): Promise<Map<string, Set<string>>> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    const rows = await this.db
+      .select({
+        path: embeddingTable.path,
+        content_hash: embeddingTable.content_hash,
+        metadata: embeddingTable.metadata,
+      })
+      .from(embeddingTable)
+      .where(eq(embeddingTable.model, stagingModelId))
+
+    const result = new Map<string, Set<string>>()
+    for (const row of rows) {
+      if (!row.content_hash) continue
+      const fp = `${row.metadata.startLine}:${row.metadata.endLine}:${row.content_hash}`
+      let bucket = result.get(row.path)
+      if (!bucket) {
+        bucket = new Set<string>()
+        result.set(row.path, bucket)
+      }
+      bucket.add(fp)
+    }
+    return result
+  }
+
+  /** Count chunks in the given staging namespace (for UI progress resume hint). */
+  async getStagingChunkCount(stagingModelId: string): Promise<number> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    const result = await this.db
+      .select({ value: count() })
+      .from(embeddingTable)
+      .where(eq(embeddingTable.model, stagingModelId))
+    return result[0]?.value ?? 0
+  }
+
+  /** Delete staging rows whose path is not in `keepPaths` (scope-shrink guard). */
+  async deleteStagingRowsOutsideScope(
+    stagingModelId: string,
+    keepPaths: string[],
+  ): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (keepPaths.length === 0) {
+      await this.db
+        .delete(embeddingTable)
+        .where(eq(embeddingTable.model, stagingModelId))
+      return
+    }
+    await this.db
+      .delete(embeddingTable)
+      .where(
+        and(
+          eq(embeddingTable.model, stagingModelId),
+          sql`${embeddingTable.path} NOT IN (${sql.join(
+            keepPaths.map((p) => sql`${p}`),
+            sql`, `,
+          )})`,
+        ),
+      )
+  }
+
+  /**
+   * Delete staging rows for one file that no longer match the current chunk
+   * fingerprint set. Used by resumable full rebuilds after a file changed.
+   */
+  async deleteStagingRowsForFileExceptFingerprints(
+    stagingModelId: string,
+    filePath: string,
+    keepFingerprints: string[],
+  ): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (keepFingerprints.length === 0) {
+      await this.db
+        .delete(embeddingTable)
+        .where(
+          and(
+            eq(embeddingTable.model, stagingModelId),
+            eq(embeddingTable.path, filePath),
+          ),
+        )
+      return
+    }
+    await this.db
+      .delete(embeddingTable)
+      .where(
+        and(
+          eq(embeddingTable.model, stagingModelId),
+          eq(embeddingTable.path, filePath),
+          sql`(COALESCE((${embeddingTable.metadata}::jsonb ->> 'startLine'), '') || ':' || COALESCE((${embeddingTable.metadata}::jsonb ->> 'endLine'), '') || ':' || COALESCE(${embeddingTable.content_hash}, '')) NOT IN (${sql.join(
+            keepFingerprints.map((fp) => sql`${fp}`),
+            sql`, `,
+          )})`,
+        ),
+      )
+  }
+
   async clearVectorsByModelIds(modelIds: string[]): Promise<void> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()

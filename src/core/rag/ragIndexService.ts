@@ -3,7 +3,11 @@ import { App } from 'obsidian'
 import { IndexProgress } from '../../components/chat-view/QueryProgress'
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 
-import { classifyRagIndexError, type RagIndexFailureKind } from './ragIndexErrors'
+import {
+  classifyRagIndexError,
+  describeRagIndexError,
+  type RagIndexFailureKind,
+} from './ragIndexErrors'
 import { RAGEngine } from './ragEngine'
 
 type AppWithLocalStorage = App & {
@@ -25,6 +29,18 @@ type RagIndexRunOptions = {
   reindexAll: boolean
   trigger: RagIndexRunTrigger
   retryPolicy: RagIndexRetryPolicy
+  /**
+   * Stable fingerprint of the embedding config (model + chunkSize + ...) for
+   * the current rebuild. When set, RagIndexService will resume an existing
+   * staging namespace iff the snapshot's fingerprint matches; otherwise it
+   * starts a fresh staging run. Applies to `reindexAll` only.
+   */
+  stagingConfigFingerprint?: string
+  /**
+   * When true, force a fresh rebuild: wipe any existing staging rows for the
+   * current embedding model before running. Applies to `reindexAll` only.
+   */
+  fromScratch?: boolean
   onProgress?: (progress: IndexProgress) => void
 }
 
@@ -47,6 +63,11 @@ export type RagIndexRunSnapshot = {
   retryAt?: number
   failureKind?: RagIndexFailureKind
   failureMessage?: string
+  failureHttpStatus?: number
+  /** Stable id seed used to derive the staging model id across retries. */
+  stagingRunId?: string | null
+  /** Config fingerprint the current staging rows were built under. */
+  stagingConfigFingerprint?: string | null
 }
 
 type RagIndexServiceDeps = {
@@ -196,7 +217,7 @@ export class RagIndexService {
     this.currentAbortController?.abort()
   }
 
-  restoreRetryScheduledRun(): void {
+  restoreRetryScheduledRun(stagingConfigFingerprint?: string): void {
     if (
       this.snapshot.status !== 'retry_scheduled' ||
       this.snapshot.trigger !== 'manual' ||
@@ -210,6 +231,7 @@ export class RagIndexService {
       reindexAll: this.snapshot.mode === 'full',
       trigger: this.snapshot.trigger,
       retryPolicy: this.snapshot.retryPolicy,
+      stagingConfigFingerprint,
     })
   }
 
@@ -224,8 +246,37 @@ export class RagIndexService {
     const controller = new AbortController()
     this.currentAbortController = controller
 
+    // Resumable rebuild: derive a stable stagingRunId when the prior snapshot
+    // carried one with a matching config fingerprint. Otherwise mint a fresh
+    // staging run and mark it as "from scratch" so VectorManager wipes any
+    // orphaned staging rows for the current embedding model.
+    let stagingRunId: string | null = null
+    let effectiveFromScratch = options.fromScratch ?? false
+    if (options.reindexAll) {
+      const canResume =
+        !effectiveFromScratch &&
+        typeof this.snapshot.stagingRunId === 'string' &&
+        this.snapshot.stagingRunId.length > 0 &&
+        typeof options.stagingConfigFingerprint === 'string' &&
+        this.snapshot.stagingConfigFingerprint ===
+          options.stagingConfigFingerprint
+      if (canResume) {
+        stagingRunId = this.snapshot.stagingRunId ?? null
+      } else {
+        stagingRunId = `${runId}-staging`
+        if (
+          this.snapshot.stagingConfigFingerprint &&
+          this.snapshot.stagingConfigFingerprint !==
+            options.stagingConfigFingerprint
+        ) {
+          effectiveFromScratch = true
+        }
+      }
+    }
+
     const startedAt = Date.now()
     this.snapshot = {
+      ...this.snapshot,
       runId,
       trigger: options.trigger,
       retryPolicy: options.retryPolicy,
@@ -233,6 +284,14 @@ export class RagIndexService {
       status: 'running',
       startedAt,
       updatedAt: startedAt,
+      stagingRunId: options.reindexAll ? stagingRunId : this.snapshot.stagingRunId,
+      stagingConfigFingerprint: options.reindexAll
+        ? options.stagingConfigFingerprint ?? null
+        : this.snapshot.stagingConfigFingerprint,
+      failureKind: undefined,
+      failureMessage: undefined,
+      failureHttpStatus: undefined,
+      retryAt: undefined,
       retryCount:
         options.trigger === 'auto' && this.snapshot.trigger === 'auto'
           ? this.snapshot.retryCount
@@ -245,8 +304,9 @@ export class RagIndexService {
       await ragEngine.updateVaultIndex(
         {
           reindexAll: options.reindexAll,
+          fromScratch: effectiveFromScratch,
           signal: controller.signal,
-          indexRunId: runId,
+          indexRunId: stagingRunId ?? runId,
         },
         (queryProgress) => {
           if (queryProgress.type !== 'indexing') {
@@ -278,12 +338,20 @@ export class RagIndexService {
         updatedAt: Date.now(),
         failureKind: undefined,
         failureMessage: undefined,
+        failureHttpStatus: undefined,
         retryAt: undefined,
         waitingForRateLimit: false,
+        // Staging only exists for full rebuilds. Keep it across incremental
+        // success so an unfinished full rebuild can still resume later.
+        stagingRunId: options.reindexAll ? null : this.snapshot.stagingRunId,
+        stagingConfigFingerprint: options.reindexAll
+          ? null
+          : this.snapshot.stagingConfigFingerprint,
       }
       await this.persistSnapshot()
     } catch (error) {
-      const failureKind = classifyRagIndexError(error)
+      const failure = describeRagIndexError(error)
+      const failureKind = failure.kind
       const shouldScheduleRetry =
         failureKind === 'transient' && options.retryPolicy === 'transient'
       this.snapshot = {
@@ -296,7 +364,8 @@ export class RagIndexService {
               : 'failed',
         updatedAt: Date.now(),
         failureKind,
-        failureMessage: error instanceof Error ? error.message : String(error),
+        failureMessage: failure.message,
+        failureHttpStatus: failure.httpStatus,
         waitingForRateLimit: false,
         retryCount: shouldScheduleRetry
           ? this.snapshot.retryCount + 1
@@ -304,6 +373,8 @@ export class RagIndexService {
         retryAt: shouldScheduleRetry
           ? Date.now() + TRANSIENT_RETRY_DELAY_MS
           : undefined,
+        // Intentionally preserve stagingRunId / stagingConfigFingerprint so the
+        // next run (manual Retry Now or scheduled retry) can resume.
       }
       await this.persistSnapshot()
       if (shouldScheduleRetry && options.trigger === 'manual') {
@@ -374,6 +445,8 @@ export class RagIndexService {
     reindexAll: boolean
     trigger: RagIndexRunTrigger
     retryPolicy: RagIndexRetryPolicy
+    stagingConfigFingerprint?: string
+    fromScratch?: boolean
   }): void {
     this.clearRetryTimer()
     const delayMs = Math.max(0, (this.snapshot.retryAt ?? Date.now()) - Date.now())

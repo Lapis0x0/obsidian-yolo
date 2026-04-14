@@ -107,6 +107,11 @@ describe('VectorManager incremental chunk reuse', () => {
       insertVectors: jest.fn().mockResolvedValue(undefined),
       replaceModelContents: jest.fn().mockResolvedValue(undefined),
       hasVectorsForModelId: jest.fn().mockResolvedValue(false),
+      deleteStagingRowsOutsideScope: jest.fn().mockResolvedValue(undefined),
+      deleteStagingRowsForFileExceptFingerprints: jest
+        .fn()
+        .mockResolvedValue(undefined),
+      getStagingFingerprints: jest.fn().mockResolvedValue(new Map()),
     }
     ;(
       manager as unknown as {
@@ -162,8 +167,11 @@ describe('VectorManager incremental chunk reuse', () => {
       },
     )
 
-    expect(repository.clearStagingVectorsForModel).toHaveBeenCalledWith(
-      'test-model',
+    // Resumable rebuild: default path scope-filters staging and does NOT wipe it.
+    expect(repository.clearStagingVectorsForModel).not.toHaveBeenCalled()
+    expect(repository.deleteStagingRowsOutsideScope).toHaveBeenCalledWith(
+      'test-model::staging:run-123',
+      ['foo.md'],
     )
     expect(repository.insertVectors).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -174,6 +182,76 @@ describe('VectorManager incremental chunk reuse', () => {
       activeModelId: 'test-model',
       stagingModelId: 'test-model::staging:run-123',
     })
+  })
+
+  it('drops stale staging chunks for changed files before promoting a resumed rebuild', async () => {
+    const app = {
+      vault: {
+        cachedRead: jest.fn().mockResolvedValue('updated content'),
+      },
+    }
+    const manager = new VectorManager(app as never, {} as never)
+    const repository = {
+      deleteStagingRowsForFileExceptFingerprints: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    }
+    ;(manager as unknown as { repository: typeof repository }).repository =
+      repository
+
+    const splitter = {
+      createDocuments: jest.fn().mockResolvedValue([
+        {
+          pageContent: 'updated content',
+          metadata: { loc: { lines: { from: 1, to: 1 } } },
+        },
+      ]),
+    }
+
+    const result = await (
+      manager as unknown as {
+        collectChunksForFile: (
+          file: { path: string; stat: { mtime: number } },
+          textSplitter: {
+            createDocuments: () => Promise<
+              Array<{
+                pageContent: string
+                metadata: { loc: { lines: { from: number; to: number } } }
+              }>
+            >
+          },
+          embeddingModel: { id: string; dimension: number },
+          reindexAll: boolean,
+          stagingModelId?: string | null,
+          stagedFingerprints?: Set<string>,
+        ) => Promise<{
+          chunks: Array<{ content: string }>
+          totalChunkLines: number
+        }>
+      }
+    ).collectChunksForFile(
+      {
+        path: 'foo.md',
+        stat: { mtime: 4 },
+      },
+      splitter,
+      {
+        id: 'test-model',
+        dimension: 3,
+      },
+      true,
+      'test-model::staging:run-123',
+      new Set(['1:1:oldhash']),
+    )
+
+    expect(
+      repository.deleteStagingRowsForFileExceptFingerprints,
+    ).toHaveBeenCalledWith('test-model::staging:run-123', 'foo.md', [
+      expect.stringMatching(/^1:1:/),
+    ])
+    expect(result.chunks).toEqual([
+      expect.objectContaining({ content: 'updated content' }),
+    ])
   })
 
   it('promotes an empty staging rebuild when there are no markdown files', async () => {
@@ -187,6 +265,11 @@ describe('VectorManager incremental chunk reuse', () => {
       clearStagingVectorsForModel: jest.fn().mockResolvedValue(undefined),
       clearAllVectors: jest.fn().mockResolvedValue(undefined),
       replaceModelContents: jest.fn().mockResolvedValue(undefined),
+      deleteStagingRowsOutsideScope: jest.fn().mockResolvedValue(undefined),
+      deleteStagingRowsForFileExceptFingerprints: jest
+        .fn()
+        .mockResolvedValue(undefined),
+      getStagingFingerprints: jest.fn().mockResolvedValue(new Map()),
     }
     ;(
       manager as unknown as {
@@ -217,8 +300,11 @@ describe('VectorManager incremental chunk reuse', () => {
       },
     )
 
-    expect(repository.clearStagingVectorsForModel).toHaveBeenCalledWith(
-      'test-model',
+    // Empty-scope rebuild: default path scope-filters (with empty list) and promotes.
+    expect(repository.clearStagingVectorsForModel).not.toHaveBeenCalled()
+    expect(repository.deleteStagingRowsOutsideScope).toHaveBeenCalledWith(
+      'test-model::staging:run-empty',
+      [],
     )
     expect(repository.replaceModelContents).toHaveBeenCalledWith({
       activeModelId: 'test-model',

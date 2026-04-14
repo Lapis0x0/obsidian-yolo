@@ -112,3 +112,28 @@ export const classifyRagIndexError = (error: unknown): RagIndexFailureKind => {
 
 export const isTransientRagIndexError = (error: unknown): boolean =>
   classifyRagIndexError(error) === 'transient'
+
+export type RagIndexFailureInfo = {
+  kind: RagIndexFailureKind
+  httpStatus?: number
+  message: string
+}
+
+const extractStatus = (error: unknown): number | undefined => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof (error as { status?: unknown }).status === 'number'
+  ) {
+    return (error as { status: number }).status
+  }
+  return undefined
+}
+
+export const describeRagIndexError = (error: unknown): RagIndexFailureInfo => {
+  const kind = classifyRagIndexError(error)
+  const httpStatus = extractStatus(error)
+  const message = error instanceof Error ? error.message : String(error)
+  return { kind, httpStatus, message }
+}
