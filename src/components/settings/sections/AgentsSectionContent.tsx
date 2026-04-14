@@ -46,7 +46,6 @@ import {
   Assistant,
   AssistantSkillLoadMode,
   AssistantToolApprovalMode,
-  AssistantToolPreference,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
 import {
@@ -66,6 +65,10 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SimpleSelect } from '../../common/SimpleSelect'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
+import {
+  normalizeToolPreferencesForPersistence,
+  normalizeToolSelectionForPersistence,
+} from './agentToolPersistence'
 
 type AgentsSectionContentProps = {
   app: App
@@ -269,29 +272,6 @@ function toDraftAgent(
     maxContextMessages: assistant.maxContextMessages,
     customParameters: assistant.customParameters ?? [],
   }
-}
-
-function normalizeToolPreferences(
-  toolPreferences: Record<string, AssistantToolPreference> | undefined,
-  availableTools: McpTool[],
-): Record<string, AssistantToolPreference> {
-  const available = new Set(availableTools.map((tool) => tool.name))
-  const entries = Object.entries(toolPreferences ?? {}).filter(([toolName]) =>
-    available.has(toolName),
-  )
-
-  return Object.fromEntries(entries)
-}
-
-function normalizeToolSelection(
-  enabledToolNames: string[] | undefined,
-  availableTools: McpTool[],
-): string[] {
-  if (!enabledToolNames || enabledToolNames.length === 0) {
-    return []
-  }
-  const available = new Set(availableTools.map((tool) => tool.name))
-  return enabledToolNames.filter((toolName) => available.has(toolName))
 }
 
 function updateDraftToolPreferences(
@@ -589,11 +569,11 @@ export function AgentsSectionContent({
         sanitizedCustomParameters.length > 0
           ? sanitizedCustomParameters
           : undefined,
-      toolPreferences: normalizeToolPreferences(
+      toolPreferences: normalizeToolPreferencesForPersistence(
         draftAgent.toolPreferences,
         availableTools,
       ),
-      enabledToolNames: normalizeToolSelection(
+      enabledToolNames: normalizeToolSelectionForPersistence(
         getEnabledAssistantToolNames(draftAgent),
         availableTools,
       ),
