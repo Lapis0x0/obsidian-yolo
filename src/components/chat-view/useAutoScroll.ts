@@ -66,8 +66,7 @@ export function useAutoScroll({
     )
   }, [])
 
-  const stopAutoFollow = useCallback(
-    () => {
+  const stopAutoFollow = useCallback(() => {
     programmaticScrollLockUntilRef.current = 0
     if (followFrameRef.current !== null) {
       cancelAnimationFrame(followFrameRef.current)
@@ -76,9 +75,7 @@ export function useAutoScroll({
     followRemainingFramesRef.current = 0
     followForceRef.current = false
     updateAutoFollow(false)
-    },
-    [updateAutoFollow],
-  )
+  }, [updateAutoFollow])
 
   const getDistanceToBottom = useCallback(() => {
     const scrollContainer = getScrollContainer()
@@ -244,8 +241,7 @@ export function useAutoScroll({
 
       const distanceToBottom = getDistanceToBottom()
       const nearBottom = distanceToBottom <= NEAR_BOTTOM_THRESHOLD
-      const withinReattachRange =
-        distanceToBottom <= REATTACH_BOTTOM_THRESHOLD
+      const withinReattachRange = distanceToBottom <= REATTACH_BOTTOM_THRESHOLD
       if (
         nearBottom ||
         (!autoFollowRef.current && scrolledDown && withinReattachRange)
@@ -304,18 +300,9 @@ export function useAutoScroll({
     scrollContainerElement.addEventListener('scroll', handleScroll)
     return () => {
       scrollContainerElement.removeEventListener('wheel', handleWheel)
-      scrollContainerElement.removeEventListener(
-        'touchstart',
-        handleTouchStart,
-      )
-      scrollContainerElement.removeEventListener(
-        'touchmove',
-        handleTouchMove,
-      )
-      scrollContainerElement.removeEventListener(
-        'touchend',
-        resetTouchTracking,
-      )
+      scrollContainerElement.removeEventListener('touchstart', handleTouchStart)
+      scrollContainerElement.removeEventListener('touchmove', handleTouchMove)
+      scrollContainerElement.removeEventListener('touchend', resetTouchTracking)
       scrollContainerElement.removeEventListener(
         'touchcancel',
         resetTouchTracking,
@@ -356,7 +343,17 @@ export function useAutoScroll({
   ])
 
   useEffect(() => {
-    if (contentFollowMode !== 'observer' || !scrollContainerElement) {
+    // Content-driven follow (DOM mutations + CSS transitions/animations) exists solely to
+    // keep up with streaming output as it grows at the bottom. Outside of streaming these
+    // signals pick up unrelated noise — Obsidian's async markdown rendering (embeds,
+    // transclusions, MathJax, image loads), theme transitions, or even selection-induced
+    // character-data changes — and would otherwise yank the user back to the bottom while
+    // they read or try to select history. Gate the whole block on `isStreaming`.
+    if (
+      contentFollowMode !== 'observer' ||
+      !isStreaming ||
+      !scrollContainerElement
+    ) {
       return
     }
 
@@ -410,6 +407,7 @@ export function useAutoScroll({
   }, [
     contentFollowMode,
     followFromReactCommitsOnly,
+    isStreaming,
     requestFollow,
     scrollContainerElement,
     syncFollowToBottom,
@@ -435,11 +433,7 @@ export function useAutoScroll({
           Date.now() - lastUserScrollIntentRef.current <
           USER_SCROLL_INTENT_WINDOW_MS
 
-        if (
-          entry.isIntersecting &&
-          !autoFollowRef.current &&
-          hasRecentIntent
-        ) {
+        if (entry.isIntersecting && !autoFollowRef.current && hasRecentIntent) {
           updateAutoFollow(true)
           return
         }
