@@ -1451,5 +1451,9 @@ export const it: TranslationKeys = {
     currentVersion: 'Attuale',
     viewDetails: 'Controlla aggiornamenti',
     dismiss: 'Chiudi',
+    installationIncompleteTitle: 'Installazione del plugin incompleta',
+    installationIncompleteMeta: 'main.js {bakedVersion} · manifest {manifestVersion}',
+    installationIncompleteNotes:
+      'Di solito main.js non è stato scaricato completamente durante l’aggiornamento. Esegui il backup di data.json, rimuovi il plugin e reinstallalo.',
   },
 }

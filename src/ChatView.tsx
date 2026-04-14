@@ -75,6 +75,7 @@ export class ChatView extends ItemView {
     this.initialChatProps = undefined
 
     void this.plugin.checkForUpdateOnce()
+    this.plugin.refreshInstallationIncompleteBanner()
   }
 
   onClose(): Promise<void> {

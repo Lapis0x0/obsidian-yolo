@@ -5,6 +5,7 @@ import type { FollowOutput } from 'react-virtuoso'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
+import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
 import { SharedConversationSurface } from './SharedConversationSurface'
 import { UpdateBanner } from './UpdateBanner'
 
@@ -66,6 +67,7 @@ export function ChatConversationPane({
 
   return (
     <>
+      <InstallationIncompleteBanner />
       <UpdateBanner />
       <SharedConversationSurface
         items={chatTimelineItems}

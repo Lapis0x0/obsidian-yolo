@@ -1348,5 +1348,9 @@ export const zh: TranslationKeys = {
     currentVersion: '当前版本',
     viewDetails: '前往检查更新',
     dismiss: '关闭',
+    installationIncompleteTitle: '插件安装不完整',
+    installationIncompleteMeta: '主程序 {bakedVersion} · manifest {manifestVersion}',
+    installationIncompleteNotes:
+      '这通常是更新时 main.js 未能完整下载所致。建议备份 data.json 后，删除插件并重新安装。',
   },
 }

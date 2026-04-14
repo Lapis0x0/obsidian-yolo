@@ -14,6 +14,7 @@ import { getLanguage } from 'obsidian'
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { CHAT_VIEW_TYPE } from './constants'
+import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
@@ -105,6 +106,12 @@ export default class SmartComposerPlugin extends Plugin {
   private hasCheckedForUpdate = false
   private updateBannerDismissed = false
   private updateCheckListeners: (() => void)[] = []
+  installationIncompleteDetail: {
+    bakedVersion: string
+    manifestVersion: string
+  } | null = null
+  private installationIncompleteBannerDismissed = false
+  private installationIncompleteListeners: (() => void)[] = []
   mcpManager: McpManager | null = null
   dbManager: DatabaseManager | null = null
   private dbManagerInitPromise: Promise<DatabaseManager> | null = null
@@ -694,6 +701,51 @@ export default class SmartComposerPlugin extends Plugin {
     if (rawLanguage.startsWith('zh')) return 'zh'
     if (rawLanguage.startsWith('it')) return 'it'
     return 'en'
+  }
+
+  private warnIfInstallationIncomplete() {
+    const baked = BAKED_PLUGIN_VERSION
+    const runtime = this.manifest.version
+    if (baked && runtime && baked !== runtime) {
+      console.error(
+        `[Smart Composer] Version mismatch: main.js=${baked}, manifest=${runtime}. ` +
+          `Likely an incomplete update download.`,
+      )
+      this.installationIncompleteDetail = {
+        bakedVersion: baked,
+        manifestVersion: runtime,
+      }
+      this.notifyInstallationIncompleteListeners()
+    }
+  }
+
+  isInstallationIncompleteBannerDismissed(): boolean {
+    return this.installationIncompleteBannerDismissed
+  }
+
+  dismissInstallationIncompleteBanner(): void {
+    this.installationIncompleteBannerDismissed = true
+    this.notifyInstallationIncompleteListeners()
+  }
+
+  addInstallationIncompleteListener(listener: () => void): () => void {
+    this.installationIncompleteListeners.push(listener)
+    return () => {
+      this.installationIncompleteListeners = this.installationIncompleteListeners.filter(
+        (l) => l !== listener,
+      )
+    }
+  }
+
+  private notifyInstallationIncompleteListeners(): void {
+    for (const listener of this.installationIncompleteListeners) {
+      listener()
+    }
+  }
+
+  /** Re-notify banner subscribers when chat opens (aligned with checkForUpdateOnce). */
+  refreshInstallationIncompleteBanner(): void {
+    this.notifyInstallationIncompleteListeners()
   }
 
   get t() {
@@ -1473,6 +1525,7 @@ export default class SmartComposerPlugin extends Plugin {
     ensureBufferByteLengthCompat()
 
     await this.loadSettings()
+    this.warnIfInstallationIncomplete()
     this.syncOAuthRuntimesFromSettings()
     await this.getRagIndexService().initialize()
     const initialRagIndexSnapshot = this.getRagIndexSnapshot()

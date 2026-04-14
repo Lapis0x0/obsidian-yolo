@@ -1494,6 +1494,134 @@
   gap: var(--size-4-2);
 }
 
+/* Installation incomplete — same layout as update banner, red / error emphasis */
+.smtcmp-installation-incomplete-banner {
+  pointer-events: auto;
+  width: min(560px, calc(100% - var(--size-4-4)));
+  margin: 0 auto var(--size-4-3);
+  padding: var(--size-4-3);
+  border-radius: var(--radius-l);
+  background: color-mix(
+    in srgb,
+    var(--text-error) 10%,
+    var(--background-secondary)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--text-error) 28%, transparent);
+  box-shadow: 0 8px 24px
+    color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent);
+  text-align: left;
+}
+
+.smtcmp-installation-incomplete-banner-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+
+.smtcmp-installation-incomplete-banner-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-error);
+  background: color-mix(in srgb, var(--text-error) 16%, transparent);
+}
+
+.smtcmp-installation-incomplete-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.smtcmp-installation-incomplete-banner-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  margin-bottom: var(--size-2-1);
+}
+
+.smtcmp-installation-incomplete-banner-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: var(--size-2-2);
+}
+
+.smtcmp-installation-incomplete-banner-notes {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  line-height: 1.45;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.smtcmp-installation-incomplete-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-s);
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+  appearance: none;
+  color: var(--text-muted);
+  cursor: var(--cursor);
+}
+
+.smtcmp-installation-incomplete-banner-dismiss:hover {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-normal);
+}
+
+.smtcmp-installation-incomplete-banner-dismiss:focus,
+.smtcmp-installation-incomplete-banner-dismiss:focus-visible,
+.smtcmp-installation-incomplete-banner-dismiss:active {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.smtcmp-installation-incomplete-banner-actions {
+  margin-top: var(--size-4-2);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
+.smtcmp-installation-incomplete-banner-cta.mod-cta {
+  background-color: color-mix(
+    in srgb,
+    var(--text-error) 92%,
+    var(--background-primary)
+  ) !important;
+  background-image: none !important;
+  color: var(--background-primary) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.smtcmp-installation-incomplete-banner-cta.mod-cta:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--text-error) 100%,
+    var(--background-primary)
+  ) !important;
+  background-image: none !important;
+  color: var(--background-primary) !important;
+}
+
 .smtcmp-chat-empty-state-icon {
   width: 34px;
   height: 34px;

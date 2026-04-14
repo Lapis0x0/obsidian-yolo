@@ -1245,5 +1245,8 @@ export type TranslationKeys = {
     currentVersion: string
     viewDetails: string
     dismiss: string
+    installationIncompleteTitle: string
+    installationIncompleteMeta: string
+    installationIncompleteNotes: string
   }
 }

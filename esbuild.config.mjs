@@ -4,6 +4,8 @@ import process from 'process'
 import builtins from 'builtin-modules'
 import fs from 'fs'
 
+const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'))
+
 const nodeBuiltins = [...builtins, ...builtins.map((mod) => `node:${mod}`)]
 
 /**
@@ -110,6 +112,7 @@ const context = await esbuild.context({
   define: {
     'import.meta.url': 'import_meta_url',
     'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
+    '__PLUGIN_BAKED_VERSION__': JSON.stringify(manifest.version),
   },
   target: 'es2020',
   logLevel: 'info', // 'debug' for more detailed output

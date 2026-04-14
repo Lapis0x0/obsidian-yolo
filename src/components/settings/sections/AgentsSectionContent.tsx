@@ -45,6 +45,7 @@ import {
   AgentPersona,
   Assistant,
   AssistantSkillLoadMode,
+  AssistantToolPreference,
   AssistantToolApprovalMode,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
