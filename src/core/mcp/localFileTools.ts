@@ -1569,24 +1569,45 @@ const parseTextEditOperation = (
   )
 }
 
-const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
-  const operation = args.operation
-  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
-    throw new Error('operation must be an object.')
+const coerceOperationObject = (
+  operation: unknown,
+): Record<string, unknown> => {
+  if (typeof operation === 'string') {
+    const trimmed = operation.trim()
+    if (trimmed.length > 0) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>
+        }
+      } catch {
+        // fall through to the standard error below
+      }
+    }
+    throw new Error(
+      'operation must be a nested JSON object, not a string. Pass it directly as { "type": "...", ... } — do not wrap it in quotes or call JSON.stringify on it.',
+    )
   }
 
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+    throw new Error(
+      'operation must be a nested JSON object like { "type": "...", ... }.',
+    )
+  }
+
+  return operation as Record<string, unknown>
+}
+
+const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
+  const operation = coerceOperationObject(args.operation)
+
   return {
-    operations: [parseTextEditOperation(operation as Record<string, unknown>)],
+    operations: [parseTextEditOperation(operation)],
   }
 }
 
 const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
-  const operation = args.operation
-  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
-    throw new Error('operation must be an object.')
-  }
-
-  const parsedOperation = operation as Record<string, unknown>
+  const parsedOperation = coerceOperationObject(args.operation)
   const type = asOptionalString(parsedOperation.type).trim().toLowerCase()
 
   if (type === 'full') {
