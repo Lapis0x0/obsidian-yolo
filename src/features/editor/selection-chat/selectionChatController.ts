@@ -125,6 +125,9 @@ export class SelectionChatController {
   private enableSelectionChat = true
   private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null
   private lastActiveLeafWasMarkdown = false
+  // 自行跟踪当前激活 leaf，避免使用 workspace.activeLeaf（已标记 deprecated）
+  // 以及 getActiveViewOfType(...)?.leaf（语义不同，见 deferSelectionHighlightTakeover 注释）
+  private currentActiveLeaf: WorkspaceLeaf | null = null
   private highlightTakeoverToken = 0
 
   constructor(deps: SelectionChatControllerDeps) {
@@ -221,6 +224,7 @@ export class SelectionChatController {
     const nextType = leaf?.getViewState().type ?? null
     const nextIsMarkdown = !!(leaf?.view instanceof MarkdownView)
 
+    this.currentActiveLeaf = leaf
     this.lastActiveLeafWasMarkdown = nextIsMarkdown
     if (nextIsMarkdown && leaf) {
       this.lastActiveMarkdownLeaf = leaf
@@ -435,7 +439,7 @@ export class SelectionChatController {
 
   private async rewriteSelection(
     editor: Editor,
-    selection: SelectionInfo,
+    _selection: SelectionInfo,
     instruction: string,
     rewriteBehavior?: SelectionActionRewriteBehavior,
   ) {
@@ -597,13 +601,21 @@ export class SelectionChatController {
         const targetLeaf = this.plugin
           .getChatLeafSessionManager()
           .resolveTargetLeaf()
-        const activeLeaf =
-          this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? null
+        // 判断 Chat 面板是否为当前激活 leaf。
+        // ⚠️ 这里故意用自行跟踪的 currentActiveLeaf（在 handleActiveLeafChange
+        // 中同步维护），不要替换成以下"看似等价"的写法：
+        //   - workspace.activeLeaf：语义正确但已标记 deprecated；
+        //   - getActiveViewOfType(MarkdownView)?.leaf：语义相反，返回的是
+        //     "最近活跃的 Markdown leaf"，焦点移到 Chat 后仍指向原编辑器，
+        //     会让条件永远短路（历史多次踩坑：d741d65 修过、a6e6fd7 refactor
+        //     又回归）；
+        //   - DOM activeElement 判定：点击 Chat 空白区域时 activeElement
+        //     会落到 body，无法识别"leaf 已激活但未聚焦输入框"。
         if (
           selection.empty ||
           view.hasFocus ||
           !targetLeaf ||
-          activeLeaf !== targetLeaf
+          this.currentActiveLeaf !== targetLeaf
         ) {
           return
         }
