@@ -4165,6 +4165,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     </div>
   )
 
+  const lastAssistantGroupRenderKey = useMemo(() => {
+    for (let i = chatTimelineItems.length - 1; i >= 0; i--) {
+      const item = chatTimelineItems[i]
+      if (item.kind === 'assistant-group') {
+        return item.renderKey
+      }
+    }
+    return null
+  }, [chatTimelineItems])
+
   const renderChatTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
       if (timelineItem.kind === 'compaction-pending') {
@@ -4221,7 +4231,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <AssistantToolMessageGroupItem
             messages={messageOrGroup}
             conversationId={currentConversationId}
-            conversationRunSummary={currentConversationRunSummary}
+            conversationRunSummary={
+              timelineItem.renderKey === lastAssistantGroupRenderKey
+                ? currentConversationRunSummary
+                : undefined
+            }
             activeBranchKey={activeBranchByUserMessageId.get(
               getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
             )}
@@ -4540,6 +4554,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       handleUserMessageSubmit,
       inputMessage.id,
       isCurrentConversationRunActive,
+      lastAssistantGroupRenderKey,
       latestCompactionState?.triggerToolCallId,
       messageModelMap,
       messageReasoningMap,
