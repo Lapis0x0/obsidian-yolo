@@ -9,6 +9,7 @@ import type {
   SerializedChatMessage,
 } from '../../types/chat'
 import { normalizeChatConversationCompactionState } from '../../types/chat'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { serializeMentionable } from '../../utils/chat/mentionable'
 
 const DEFAULT_UNTITLED_CONVERSATION_TITLE = '新对话'
@@ -42,7 +43,19 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
     case 'tool':
       return {
         role: 'tool',
-        toolCalls: message.toolCalls,
+        toolCalls: message.toolCalls.map((tc) => ({
+          ...tc,
+          response:
+            tc.response.status === ToolCallResponseStatus.Success
+              ? {
+                  ...tc.response,
+                  data: {
+                    ...tc.response.data,
+                    contentParts: undefined,
+                  },
+                }
+              : tc.response,
+        })),
         id: message.id,
         metadata: message.metadata,
       }

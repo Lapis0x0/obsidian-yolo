@@ -4,6 +4,7 @@ import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSna
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { ChatMessage } from '../../types/chat'
+import type { ContentPart } from '../../types/llm/request'
 import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallResponseStatus,
@@ -21,6 +22,7 @@ import {
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
 } from '../edits/textEditEngine'
+import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
   type MemoryScope,
   memoryAdd,
@@ -126,6 +128,7 @@ type LocalToolCallResult =
   | {
       status: ToolCallResponseStatus.Success
       text: string
+      contentParts?: ContentPart[]
       metadata?: {
         editSummary?: ToolEditSummary
         appliedAt?: number
@@ -2169,6 +2172,11 @@ export async function callLocalFileTool({
             }
         > = []
 
+        const perFileImageParts: Array<{
+          path: string
+          parts: ContentPart[]
+        }> = []
+
         for (const path of paths) {
           if (signal?.aborted) {
             return { status: ToolCallResponseStatus.Aborted }
@@ -2244,26 +2252,89 @@ export async function callLocalFileTool({
             nextStartLine,
             content: outputContent,
           })
+
+          // Extract images from markdown files using the outputContent
+          // (which is the line-numbered text that was actually returned)
+          if (path.endsWith('.md') && outputContent.length > 0) {
+            const imageResult = await extractMarkdownImages(
+              app,
+              outputContent,
+              path,
+            )
+            if (imageResult.contentParts) {
+              perFileImageParts.push({ path, parts: imageResult.contentParts })
+            }
+          }
+        }
+
+        const textResult = formatJsonResult({
+          tool: 'fs_read',
+          toolCallId: toolCallId ?? null,
+          requestedOperation: {
+            type: operation.type,
+            startLine:
+              operation.type === 'lines' ? operation.startLine : null,
+            endLine:
+              operation.type === 'lines' ? (operation.endLine ?? null) : null,
+            maxLines:
+              operation.type === 'lines' && operation.endLine === undefined
+                ? operation.maxLines
+                : null,
+          },
+          results,
+        })
+
+        // Build multimodal contentParts if any images were extracted.
+        // contentParts replaces the JSON blob with a clean structure:
+        // brief metadata header + interleaved text/images per file.
+        // No duplication with the JSON (which stays in `text` for
+        // UI display, compaction, and pruning consumers).
+        let contentParts: ContentPart[] | undefined
+        if (perFileImageParts.length > 0) {
+          const imageFilePathSet = new Set(
+            perFileImageParts.map((p) => p.path),
+          )
+          contentParts = []
+
+          for (const result of results) {
+            if (!result.ok) {
+              contentParts.push({
+                type: 'text',
+                text: `[${result.path}] Error: ${result.error}`,
+              })
+              continue
+            }
+
+            const fileParts = imageFilePathSet.has(result.path)
+              ? perFileImageParts.find((p) => p.path === result.path)
+              : null
+
+            const rangeInfo =
+              result.returnedRange.startLine != null
+                ? ` | lines ${result.returnedRange.startLine}-${result.returnedRange.endLine} of ${result.totalLines}`
+                : ''
+
+            if (fileParts) {
+              // File with images: metadata header + interleaved content
+              contentParts.push({
+                type: 'text',
+                text: `[${result.path}${rangeInfo}]\n`,
+              })
+              contentParts.push(...fileParts.parts)
+            } else {
+              // File without images: metadata header + plain text
+              contentParts.push({
+                type: 'text',
+                text: `[${result.path}${rangeInfo}]\n${result.content}`,
+              })
+            }
+          }
         }
 
         return {
           status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'fs_read',
-            toolCallId: toolCallId ?? null,
-            requestedOperation: {
-              type: operation.type,
-              startLine:
-                operation.type === 'lines' ? operation.startLine : null,
-              endLine:
-                operation.type === 'lines' ? (operation.endLine ?? null) : null,
-              maxLines:
-                operation.type === 'lines' && operation.endLine === undefined
-                  ? operation.maxLines
-                  : null,
-            },
-            results,
-          }),
+          text: textResult,
+          contentParts,
         }
       }
 

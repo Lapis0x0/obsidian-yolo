@@ -662,51 +662,75 @@ ${message.annotations
     message: ChatToolMessage
     prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
-    return filterContextPrunedToolCalls(
+    const toolMessages: RequestMessage[] = []
+    const collectedImageParts: ContentPart[] = []
+
+    for (const toolCall of filterContextPrunedToolCalls(
       message.toolCalls,
       prunedToolCallIds ?? new Set<string>(),
-    ).flatMap((toolCall): RequestMessage[] => {
+    )) {
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
         case ToolCallResponseStatus.Running:
           // Skip incomplete tool calls to avoid confusing the next planning step.
-          return []
+          break
         case ToolCallResponseStatus.Aborted:
-          return [
-            {
-              role: 'tool',
-              tool_call: toolCall.request,
-              content: `Tool call ${toolCall.request.id} is aborted`,
-            },
-          ]
+          toolMessages.push({
+            role: 'tool',
+            tool_call: toolCall.request,
+            content: `Tool call ${toolCall.request.id} is aborted`,
+          })
+          break
         case ToolCallResponseStatus.Rejected:
-          return [
-            {
-              role: 'tool',
-              tool_call: toolCall.request,
-              content: `Tool call ${toolCall.request.id} is rejected`,
-            },
-          ]
-        case ToolCallResponseStatus.Success:
-          return [
-            {
-              role: 'tool',
-              tool_call: toolCall.request,
-              content: toolCall.response.data.text,
-            },
-          ]
+          toolMessages.push({
+            role: 'tool',
+            tool_call: toolCall.request,
+            content: `Tool call ${toolCall.request.id} is rejected`,
+          })
+          break
+        case ToolCallResponseStatus.Success: {
+          toolMessages.push({
+            role: 'tool',
+            tool_call: toolCall.request,
+            content: toolCall.response.data.text,
+          })
+          // Collect image parts for a follow-up user message after
+          // all tool messages, so the message sequence stays valid.
+          const parts = toolCall.response.data.contentParts
+          if (parts) {
+            const imageParts = parts.filter((p) => p.type === 'image_url')
+            if (imageParts.length > 0) {
+              collectedImageParts.push(
+                {
+                  type: 'text',
+                  text: `[Images from tool call: ${toolCall.request.name}]`,
+                },
+                ...imageParts,
+              )
+            }
+          }
+          break
+        }
         case ToolCallResponseStatus.Error:
-          return [
-            {
-              role: 'tool',
-              tool_call: toolCall.request,
-              content: `Error: ${toolCall.response.error}`,
-            },
-          ]
-        default:
-          return []
+          toolMessages.push({
+            role: 'tool',
+            tool_call: toolCall.request,
+            content: `Error: ${toolCall.response.error}`,
+          })
+          break
       }
-    })
+    }
+
+    // Append a single user message with all collected images after the
+    // tool block, preserving the required tool → user message ordering.
+    if (collectedImageParts.length > 0) {
+      toolMessages.push({
+        role: 'user',
+        content: collectedImageParts,
+      })
+    }
+
+    return toolMessages
   }
 
   public async compileUserMessagePrompt({

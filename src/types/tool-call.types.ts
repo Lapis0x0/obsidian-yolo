@@ -1,3 +1,5 @@
+import type { ContentPart } from './llm/request'
+
 export type ToolCallArguments =
   | {
       kind: 'partial'
@@ -104,6 +106,7 @@ export type ToolCallResponse =
       data: {
         type: 'text'
         text: string
+        contentParts?: ContentPart[]
         metadata?: {
           editSummary?: ToolEditSummary
           appliedAt?: number

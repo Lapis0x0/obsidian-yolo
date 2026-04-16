@@ -631,6 +631,7 @@ export class McpManager {
             data: {
               type: 'text',
               text: localResult.text,
+              contentParts: localResult.contentParts,
               metadata: localResult.metadata,
             },
           }
