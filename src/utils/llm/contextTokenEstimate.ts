@@ -12,9 +12,20 @@ const getSharedEncoding = () => {
   return sharedEncoding
 }
 
+// Rough per-image token estimate used when replacing base64 data URLs.
+// Real cost varies by provider and resolution, but ~1000 is a reasonable middle ground.
+const ESTIMATED_IMAGE_TOKENS = 1000
+const BASE64_DATA_URL_RE = /^data:image\/[^;]+;base64,/
+
+let strippedImageCount = 0
+
 const normalizeJsonValue = (value: unknown): unknown => {
   if (value === null) {
     return null
+  }
+  if (typeof value === 'string' && BASE64_DATA_URL_RE.test(value)) {
+    strippedImageCount++
+    return '<image>'
   }
   if (Array.isArray(value)) {
     return value.map((item) => normalizeJsonValue(item))
@@ -43,15 +54,18 @@ export const estimateTextTokens = (text: string): number => {
 }
 
 export const estimateJsonTokens = (value: unknown): number => {
+  strippedImageCount = 0
   const serialized = JSON.stringify(normalizeJsonValue(value))
+  const imageCount = strippedImageCount
+
   const cached = jsonTokenCache.get(serialized)
   if (cached !== undefined) {
-    return cached
+    return cached + imageCount * ESTIMATED_IMAGE_TOKENS
   }
 
-  const count = estimateTextTokens(serialized)
-  jsonTokenCache.set(serialized, count)
-  return count
+  const textTokens = estimateTextTokens(serialized)
+  jsonTokenCache.set(serialized, textTokens)
+  return textTokens + imageCount * ESTIMATED_IMAGE_TOKENS
 }
 
 export const formatTokenCount = (count: number): string => {
