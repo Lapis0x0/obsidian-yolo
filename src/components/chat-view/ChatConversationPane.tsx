@@ -121,7 +121,7 @@ export function ChatConversationPane({
         }`}
       >
         {(isCurrentConversationRunActive || showScrollToBottomButton) && (
-          <div className="smtcmp-chat-floating-actions" aria-hidden="true">
+          <div className="smtcmp-chat-floating-actions">
             {currentConversationRunSummaryIsRunning && (
               <button
                 type="button"
