@@ -514,6 +514,8 @@ export const en: TranslationKeys = {
       chatgptOAuthStreamingNotice:
         'ChatGPT OAuth supports streaming. Obsidian requestUrl buffers the response, while desktop Node fetch can stream it in real time.',
       chatgptOAuthPendingCode: 'Current device code:',
+      oauthDesktopOnly:
+        'OAuth login is only available on desktop. Please connect on desktop first.',
       geminiOAuthTitle: 'Gemini OAuth',
       geminiOAuthConnect: 'Connect',
       geminiOAuthDisconnect: 'Disconnect',

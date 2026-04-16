@@ -22,7 +22,7 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice, Platform } from 'obsidian'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -183,7 +183,7 @@ function ChatGPTOAuthPanel({
             type="button"
             onClick={handleConnect}
             className="smtcmp-add-model-btn"
-            disabled={isConnecting}
+            disabled={isConnecting || !Platform.isDesktop}
           >
             {isConnecting
               ? t('settings.providers.chatgptOAuthConnecting', 'Connecting...')
@@ -201,17 +201,22 @@ function ChatGPTOAuthPanel({
         )}
       </div>
       <div className="smtcmp-no-models">
-        {loading
+        {!Platform.isDesktop && !connected
           ? t(
-              'settings.providers.chatgptOAuthLoadingStatus',
-              'Loading ChatGPT OAuth status...',
+              'settings.providers.oauthDesktopOnly',
+              'OAuth login is only available on desktop. Please connect on desktop first.',
             )
-          : connected
-            ? `${t('settings.providers.chatgptOAuthConnected', 'Connected')}${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · ${t('settings.providers.chatgptOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
-            : t(
-                'settings.providers.chatgptOAuthDisconnectedHelp',
-                'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
-              )}
+          : loading
+            ? t(
+                'settings.providers.chatgptOAuthLoadingStatus',
+                'Loading ChatGPT OAuth status...',
+              )
+            : connected
+              ? `${t('settings.providers.chatgptOAuthConnected', 'Connected')}${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · ${t('settings.providers.chatgptOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
+              : t(
+                  'settings.providers.chatgptOAuthDisconnectedHelp',
+                  'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
+                )}
         {pendingCode
           ? ` ${t('settings.providers.chatgptOAuthPendingCode', 'Current device code:')} ${pendingCode}`
           : ''}
@@ -319,7 +324,7 @@ function GeminiOAuthPanel({
             type="button"
             onClick={handleConnect}
             className="smtcmp-add-model-btn"
-            disabled={isConnecting}
+            disabled={isConnecting || !Platform.isDesktop}
           >
             {isConnecting
               ? t('settings.providers.geminiOAuthConnecting', 'Connecting...')
@@ -337,17 +342,22 @@ function GeminiOAuthPanel({
         )}
       </div>
       <div className="smtcmp-no-models">
-        {loading
+        {!Platform.isDesktop && !connected
           ? t(
-              'settings.providers.geminiOAuthLoadingStatus',
-              'Loading Gemini OAuth status...',
+              'settings.providers.oauthDesktopOnly',
+              'OAuth login is only available on desktop. Please connect on desktop first.',
             )
-          : connected
-            ? `${t('settings.providers.geminiOAuthConnected', 'Connected')}${email ? ` · ${email}` : ''}${projectId ? ` · ${t('settings.providers.geminiOAuthProject', 'project')} ${projectId}` : ''}${expiresAt ? ` · ${t('settings.providers.geminiOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
-            : t(
-                'settings.providers.geminiOAuthDisconnectedHelp',
-                'Not connected. Connect to use Gemini quota from your Google account.',
-              )}
+          : loading
+            ? t(
+                'settings.providers.geminiOAuthLoadingStatus',
+                'Loading Gemini OAuth status...',
+              )
+            : connected
+              ? `${t('settings.providers.geminiOAuthConnected', 'Connected')}${email ? ` · ${email}` : ''}${projectId ? ` · ${t('settings.providers.geminiOAuthProject', 'project')} ${projectId}` : ''}${expiresAt ? ` · ${t('settings.providers.geminiOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
+              : t(
+                  'settings.providers.geminiOAuthDisconnectedHelp',
+                  'Not connected. Connect to use Gemini quota from your Google account.',
+                )}
       </div>
       <div className="smtcmp-chatgpt-oauth-note">
         {t(
@@ -454,7 +464,7 @@ function QwenOAuthPanel({
             type="button"
             onClick={handleConnect}
             className="smtcmp-add-model-btn"
-            disabled={isConnecting}
+            disabled={isConnecting || !Platform.isDesktop}
           >
             {isConnecting
               ? t('settings.providers.qwenOAuthConnecting', 'Connecting...')
@@ -472,17 +482,22 @@ function QwenOAuthPanel({
         )}
       </div>
       <div className="smtcmp-no-models">
-        {loading
+        {!Platform.isDesktop && !connected
           ? t(
-              'settings.providers.qwenOAuthLoadingStatus',
-              'Loading Qwen OAuth status...',
+              'settings.providers.oauthDesktopOnly',
+              'OAuth login is only available on desktop. Please connect on desktop first.',
             )
-          : connected
-            ? `${t('settings.providers.qwenOAuthConnected', 'Connected')}${resourceUrl ? ` · ${resourceUrl}` : ''}${expiresAt ? ` · ${t('settings.providers.qwenOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
-            : t(
-                'settings.providers.qwenOAuthDisconnectedHelp',
-                'Not connected. Connect to use models from your Qwen account.',
-              )}
+          : loading
+            ? t(
+                'settings.providers.qwenOAuthLoadingStatus',
+                'Loading Qwen OAuth status...',
+              )
+            : connected
+              ? `${t('settings.providers.qwenOAuthConnected', 'Connected')}${resourceUrl ? ` · ${resourceUrl}` : ''}${expiresAt ? ` · ${t('settings.providers.qwenOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
+              : t(
+                  'settings.providers.qwenOAuthDisconnectedHelp',
+                  'Not connected. Connect to use models from your Qwen account.',
+                )}
       </div>
       <div className="smtcmp-chatgpt-oauth-note">
         {t(

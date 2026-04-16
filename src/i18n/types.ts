@@ -379,6 +379,7 @@ export type TranslationKeys = {
       chatgptOAuthDisconnectedHelp: string
       chatgptOAuthStreamingNotice: string
       chatgptOAuthPendingCode?: string
+      oauthDesktopOnly?: string
       geminiOAuthTitle?: string
       geminiOAuthConnect?: string
       geminiOAuthDisconnect?: string
