@@ -403,9 +403,6 @@ export default function AssistantToolMessageGroupItem({
   })
   const isRunActive =
     groupRunState === 'streaming' || groupRunState === 'waiting-approval'
-  const hasToolMessages = displayedMessages.some(
-    (message) => message.role === 'tool',
-  )
   const hasPendingAssistantShell = assistantMessages.some(
     (message) =>
       message.metadata?.generationState === 'streaming' &&
@@ -538,7 +535,7 @@ export default function AssistantToolMessageGroupItem({
           })}
         </div>
       )}
-      {displayedMessages.map((message) => {
+      {displayedMessages.map((message, messageIndex) => {
         const hasVisibleAssistantContent =
           message.role === 'assistant' && message.content.trim().length > 0
         const hasVisibleAssistantReasoning =
@@ -546,16 +543,19 @@ export default function AssistantToolMessageGroupItem({
           (message.reasoning ?? '').trim().length > 0
         const hasVisibleAssistantAnnotations =
           message.role === 'assistant' && Boolean(message.annotations)
+        const hasToolResponseForThis =
+          message.role === 'assistant' &&
+          displayedMessages[messageIndex + 1]?.role === 'tool'
         const shouldShowAssistantToolPreview =
           message.role === 'assistant' &&
           shouldRenderAssistantToolPreview({
             generationState: message.metadata?.generationState,
             toolCallRequestCount: message.toolCallRequests?.length ?? 0,
-            hasToolMessages,
+            hasToolMessages: hasToolResponseForThis,
           })
         const shouldHideAssistantPendingState =
           message.role === 'assistant' &&
-          (hasToolMessages || hidePendingAssistantPlaceholders) &&
+          (hasToolResponseForThis || hidePendingAssistantPlaceholders) &&
           !hasVisibleAssistantContent &&
           !hasVisibleAssistantReasoning &&
           !hasVisibleAssistantAnnotations &&
