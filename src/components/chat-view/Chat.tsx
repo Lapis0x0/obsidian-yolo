@@ -781,12 +781,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ? ' smtcmp-chat-container--workspace-wide-header'
       : ''
   }`
-  const containerStyle =
-    !isSidebarPlacement && isWorkspaceWideHeader
-      ? ({
+  const fontScale = settings.chatOptions.chatFontScale
+  const containerStyle = {
+    ...(!isSidebarPlacement && isWorkspaceWideHeader
+      ? {
           '--smtcmp-chat-workspace-header-height': `${workspaceWideHeaderHeight}px`,
-        } as CSSProperties)
-      : undefined
+        }
+      : {}),
+    ...(fontScale != null ? { zoom: fontScale } : {}),
+  } as CSSProperties
 
   // Per-conversation override settings (temperature, top_p, context, stream)
   const conversationOverridesRef = useRef<

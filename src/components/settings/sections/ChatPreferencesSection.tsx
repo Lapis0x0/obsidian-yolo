@@ -5,6 +5,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { FontScaleSlider } from './FontScaleSlider'
 
 const HISTORY_ARCHIVE_THRESHOLD_MIN = 20
 const HISTORY_ARCHIVE_THRESHOLD_MAX = 500
@@ -57,6 +58,22 @@ export function ChatPreferencesSection({
 
   const settingsContent = (
     <>
+      <ObsidianSetting
+        name={t('settings.chatPreferences.chatFontScale')}
+        desc={t('settings.chatPreferences.chatFontScaleDesc')}
+        className="smtcmp-settings-card"
+      >
+        <FontScaleSlider
+          value={settings.chatOptions.chatFontScale ?? 1}
+          onChange={(value) => {
+            updateChatOptions(
+              { chatFontScale: value === 1 ? undefined : value },
+              'chatFontScale',
+            )
+          }}
+        />
+      </ObsidianSetting>
+
       <ObsidianSetting
         name={t('settings.chatPreferences.includeCurrentFile')}
         desc={t('settings.chatPreferences.includeCurrentFileDesc')}

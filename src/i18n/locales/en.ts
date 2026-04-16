@@ -264,6 +264,9 @@ export const en: TranslationKeys = {
     },
     chatPreferences: {
       title: 'Chat preferences',
+      chatFontScale: 'Chat UI scale',
+      chatFontScaleDesc:
+        'Adjust the overall scale of the chat interface (default 100%).',
       includeCurrentFile: 'Auto-include current page',
       includeCurrentFileDesc:
         'Automatically include the content of your current file in chats.',

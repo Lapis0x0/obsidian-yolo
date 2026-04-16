@@ -265,6 +265,9 @@ export const it: TranslationKeys = {
     },
     chatPreferences: {
       title: 'Preferenze chat',
+      chatFontScale: 'Scala interfaccia chat',
+      chatFontScaleDesc:
+        "Regola la scala complessiva dell'interfaccia chat (predefinito 100%).",
       includeCurrentFile: 'Includi file corrente',
       includeCurrentFileDesc:
         'Include automaticamente il file correntemente aperto nel contesto della chat.',

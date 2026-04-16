@@ -342,6 +342,8 @@ export const smartComposerSettingsSchema = z.object({
         .optional(),
       autoContextCompactionThresholdTokens: z.number().int().min(1).optional(),
       autoContextCompactionThresholdRatio: z.number().min(0).max(1).optional(),
+      // Font scale factor for chat messages (1 = default)
+      chatFontScale: z.number().min(0.7).max(1.5).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -360,6 +362,7 @@ export const smartComposerSettingsSchema = z.object({
       autoContextCompactionThresholdMode: 'tokens',
       autoContextCompactionThresholdTokens: 24000,
       autoContextCompactionThresholdRatio: 0.8,
+      chatFontScale: undefined,
     }),
 
   notificationOptions: notificationOptionsSchema,

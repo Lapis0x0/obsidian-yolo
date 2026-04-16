@@ -231,6 +231,8 @@ export const zh: TranslationKeys = {
     },
     chatPreferences: {
       title: '聊天偏好',
+      chatFontScale: '聊天界面缩放',
+      chatFontScaleDesc: '调整聊天界面的整体缩放比例（默认 100%）。',
       includeCurrentFile: '自动添加当前页面文件',
       includeCurrentFileDesc: '自动在聊天中包含当前文件的内容。',
       historyArchiveEnabled: '启用历史归档分组',

@@ -156,6 +156,8 @@ export type TranslationKeys = {
     }
     chatPreferences: {
       title: string
+      chatFontScale?: string
+      chatFontScaleDesc?: string
       includeCurrentFile: string
       includeCurrentFileDesc: string
       historyArchiveEnabled?: string
