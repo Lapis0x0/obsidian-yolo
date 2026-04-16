@@ -30,6 +30,7 @@ import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
+import { AgentImageReadingSection } from './AgentImageReadingSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
@@ -511,6 +512,15 @@ export function AgentSection({ app }: AgentSectionProps) {
             </div>
           </article>
         </div>
+      </section>
+
+      <section className="smtcmp-agent-block">
+        <div className="smtcmp-agent-block-head">
+          <div className="smtcmp-settings-sub-header">
+            {t('settings.agent.imageReadingBlockTitle')}
+          </div>
+        </div>
+        <AgentImageReadingSection />
       </section>
 
       <section className="smtcmp-agent-block">

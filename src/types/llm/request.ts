@@ -57,6 +57,7 @@ type ImageContentPart = {
   type: 'image_url'
   image_url: {
     url: string // URL or base64 encoded image data
+    cacheKey?: string // Global image cache key (stripped before sending to LLM)
   }
 }
 

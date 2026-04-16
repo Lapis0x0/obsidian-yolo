@@ -401,6 +401,16 @@ export const zh: TranslationKeys = {
       skillLoadAlways: '全量注入',
       skillLoadLazy: '按需加载',
       skillDisabledGlobally: '已全局禁用',
+      imageReadingBlockTitle: '图片读取',
+      imageReadingEnabled: '图片读取',
+      imageReadingEnabledDesc:
+        '读取 Markdown 文件时自动提取内嵌图片，以多模态方式传递给模型。',
+      imageCompressionEnabled: '图片压缩',
+      imageCompressionEnabledDesc:
+        '对提取的图片进行压缩，减少 Token 消耗和传输大小。',
+      imageCompressionQuality: '压缩质量',
+      imageCompressionQualityDesc:
+        '图片压缩比例（1-100）。同时控制尺寸和画质，例如 60 表示尺寸缩至 60%、画质 60%。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',
       autoContextCompactionDesc:

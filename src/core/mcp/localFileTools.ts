@@ -2255,11 +2255,24 @@ export async function callLocalFileTool({
 
           // Extract images from markdown files using the outputContent
           // (which is the line-numbered text that was actually returned)
-          if (path.endsWith('.md') && outputContent.length > 0) {
+          if (
+            (settings?.chatOptions.imageReadingEnabled ?? true) &&
+            path.endsWith('.md') &&
+            outputContent.length > 0
+          ) {
             const imageResult = await extractMarkdownImages(
               app,
               outputContent,
               path,
+              {
+                compression: {
+                  enabled:
+                    settings?.chatOptions.imageCompressionEnabled ?? true,
+                  quality:
+                    settings?.chatOptions.imageCompressionQuality ?? 85,
+                },
+                cache: { enabled: true, settings },
+              },
             )
             if (imageResult.contentParts) {
               perFileImageParts.push({ path, parts: imageResult.contentParts })

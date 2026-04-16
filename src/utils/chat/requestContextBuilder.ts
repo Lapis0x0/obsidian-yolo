@@ -698,7 +698,16 @@ ${message.annotations
           // all tool messages, so the message sequence stays valid.
           const parts = toolCall.response.data.contentParts
           if (parts) {
-            const imageParts = parts.filter((p) => p.type === 'image_url')
+            const imageParts = parts
+              .filter((p) => p.type === 'image_url')
+              .map((p) =>
+                p.type === 'image_url'
+                  ? {
+                      type: 'image_url' as const,
+                      image_url: { url: p.image_url.url },
+                    }
+                  : p,
+              )
             if (imageParts.length > 0) {
               collectedImageParts.push(
                 {

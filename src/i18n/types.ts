@@ -318,6 +318,13 @@ export type TranslationKeys = {
       skillLoadAlways?: string
       skillLoadLazy?: string
       skillDisabledGlobally?: string
+      imageReadingBlockTitle?: string
+      imageReadingEnabled?: string
+      imageReadingEnabledDesc?: string
+      imageCompressionEnabled?: string
+      imageCompressionEnabledDesc?: string
+      imageCompressionQuality?: string
+      imageCompressionQualityDesc?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string
       autoContextCompactionDesc?: string

@@ -433,6 +433,16 @@ export const it: TranslationKeys = {
       skillLoadAlways: 'Iniezione completa',
       skillLoadLazy: 'Su richiesta',
       skillDisabledGlobally: 'Disabilitata globalmente',
+      imageReadingBlockTitle: 'Lettura immagini',
+      imageReadingEnabled: 'Lettura immagini',
+      imageReadingEnabledDesc:
+        'Estrai automaticamente le immagini incorporate durante la lettura dei file Markdown, inviandole al modello come contenuto multimodale.',
+      imageCompressionEnabled: 'Compressione immagini',
+      imageCompressionEnabledDesc:
+        'Comprimi le immagini estratte per ridurre il consumo di token e la dimensione del trasferimento.',
+      imageCompressionQuality: 'Qualità di compressione',
+      imageCompressionQualityDesc:
+        'Rapporto di compressione immagini (1-100). Controlla sia dimensioni che qualità, es. 60 riduce al 60% con qualità 60%.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
       autoContextCompaction: 'Compattazione automatica del contesto',
       autoContextCompactionDesc:

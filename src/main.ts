@@ -58,6 +58,7 @@ import {
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
+import { pruneImageCache } from './database/json/chat/imageCacheStore'
 import type { VectorManager } from './database/modules/vector/VectorManager'
 import { PGliteRuntimeManager } from './database/runtime/PGliteRuntimeManager'
 import { PGLITE_RUNTIME_VERSION } from './database/runtime/pgliteRuntimeMetadata'
@@ -1528,6 +1529,9 @@ export default class SmartComposerPlugin extends Plugin {
     await this.loadSettings()
     this.warnIfInstallationIncomplete()
     this.syncOAuthRuntimesFromSettings()
+
+    // Prune stale image cache entries (>30 days) on startup
+    void pruneImageCache(this.app, 30, this.settings)
     await this.getRagIndexService().initialize()
     const initialRagIndexSnapshot = this.getRagIndexSnapshot()
     if (

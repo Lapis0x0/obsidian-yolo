@@ -51,7 +51,19 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
                   ...tc.response,
                   data: {
                     ...tc.response.data,
-                    contentParts: undefined,
+                    // Replace inline base64 data URLs with cache:// refs
+                    // to avoid bloating the conversation JSON file.
+                    contentParts: tc.response.data.contentParts?.map((part) =>
+                      part.type === 'image_url' && part.image_url.cacheKey
+                        ? {
+                            type: 'image_url' as const,
+                            image_url: {
+                              url: `cache://${part.image_url.cacheKey}`,
+                              cacheKey: part.image_url.cacheKey,
+                            },
+                          }
+                        : part,
+                    ),
                   },
                 }
               : tc.response,

@@ -344,6 +344,10 @@ export const smartComposerSettingsSchema = z.object({
       autoContextCompactionThresholdRatio: z.number().min(0).max(1).optional(),
       // Font scale factor for chat messages (1 = default)
       chatFontScale: z.number().min(0.7).max(1.5).optional(),
+      // Image reading & compression for vision tool calls
+      imageReadingEnabled: z.boolean().optional(),
+      imageCompressionEnabled: z.boolean().optional(),
+      imageCompressionQuality: z.number().min(1).max(100).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -363,6 +367,9 @@ export const smartComposerSettingsSchema = z.object({
       autoContextCompactionThresholdTokens: 24000,
       autoContextCompactionThresholdRatio: 0.8,
       chatFontScale: undefined,
+      imageReadingEnabled: true,
+      imageCompressionEnabled: true,
+      imageCompressionQuality: 85,
     }),
 
   notificationOptions: notificationOptionsSchema,

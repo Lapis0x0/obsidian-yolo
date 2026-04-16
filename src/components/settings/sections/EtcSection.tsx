@@ -13,6 +13,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
+import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
@@ -266,6 +267,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
           await clearAllPromptSnapshotStores(app, settings)
           await clearAllEditReviewSnapshotStores(app, settings)
           await clearAllTimelineHeightCacheStores(app, settings)
+          await clearImageCache(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))

@@ -13,6 +13,7 @@ import { useLanguage } from '../contexts/language-context'
 import { useSettings } from '../contexts/settings-context'
 import { getChatModelClient } from '../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
+import { batchLookupImageCache } from '../database/json/chat/imageCacheStore'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import { ChatConversationMetadata } from '../database/json/chat/types'
 import {
@@ -25,6 +26,7 @@ import {
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'
 import { Mentionable } from '../types/mentionable'
+import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
   deserializeMentionable,
   serializeMentionable,
@@ -362,9 +364,11 @@ export function useChatHistory(): UseChatHistory {
       if (!conversation) {
         return null
       }
-      return conversation.messages.map((message) =>
+      const messages = conversation.messages.map((message) =>
         deserializeChatMessage(message, app),
       )
+      await hydrateImageCacheRefs(messages, app, settingsRef.current)
+      return messages
     },
     [chatManager, app],
   )
@@ -384,10 +388,12 @@ export function useChatHistory(): UseChatHistory {
     } | null> => {
       const conversation = await chatManager.findById(id)
       if (!conversation) return null
+      const messages = conversation.messages.map((m) =>
+        deserializeChatMessage(m, app),
+      )
+      await hydrateImageCacheRefs(messages, app, settingsRef.current)
       return {
-        messages: conversation.messages.map((m) =>
-          deserializeChatMessage(m, app),
-        ),
+        messages,
         overrides: conversation.overrides,
         conversationModelId: conversation.conversationModelId,
         messageModelMap: conversation.messageModelMap,
@@ -746,5 +752,66 @@ const deserializeChatMessage = (
         id: message.id,
         metadata: message.metadata,
       }
+  }
+}
+
+/**
+ * Hydrate cache:// refs in tool message contentParts back to data URLs.
+ * Mutates messages in place for efficiency.
+ */
+const hydrateImageCacheRefs = async (
+  messages: ChatMessage[],
+  app: App,
+  settings?: { yolo?: { baseDir?: string } } | null,
+): Promise<void> => {
+  // Collect all cache keys that need resolution
+  const cacheKeys = new Set<string>()
+  for (const msg of messages) {
+    if (msg.role !== 'tool') continue
+    for (const tc of msg.toolCalls) {
+      if (tc.response.status !== ToolCallResponseStatus.Success) continue
+      const parts = tc.response.data.contentParts
+      if (!parts) continue
+      for (const part of parts) {
+        if (
+          part.type === 'image_url' &&
+          part.image_url.url.startsWith('cache://')
+        ) {
+          cacheKeys.add(part.image_url.cacheKey ?? part.image_url.url.slice(8))
+        }
+      }
+    }
+  }
+
+  if (cacheKeys.size === 0) return
+
+  // Batch lookup
+  const resolved = await batchLookupImageCache(
+    app,
+    Array.from(cacheKeys),
+    settings,
+  )
+
+  // Replace cache refs with resolved data URLs
+  for (const msg of messages) {
+    if (msg.role !== 'tool') continue
+    for (const tc of msg.toolCalls) {
+      if (tc.response.status !== ToolCallResponseStatus.Success) continue
+      const parts = tc.response.data.contentParts
+      if (!parts) continue
+      for (const part of parts) {
+        if (
+          part.type === 'image_url' &&
+          part.image_url.url.startsWith('cache://')
+        ) {
+          const key =
+            part.image_url.cacheKey ?? part.image_url.url.slice(8)
+          const dataUrl = resolved.get(key)
+          if (dataUrl) {
+            part.image_url.url = dataUrl
+          }
+        }
+      }
+    }
   }
 }
