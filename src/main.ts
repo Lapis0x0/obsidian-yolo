@@ -1529,11 +1529,24 @@ export default class SmartComposerPlugin extends Plugin {
     this.syncOAuthRuntimesFromSettings()
     await this.getRagIndexService().initialize()
     const initialRagIndexSnapshot = this.getRagIndexSnapshot()
+    const hasValidEmbeddingModel =
+      !!this.settings?.embeddingModelId &&
+      this.settings.embeddingModels.some(
+        (m) => m.id === this.settings.embeddingModelId,
+      )
+    const ragEnabled =
+      this.settings?.ragOptions?.enabled &&
+      this.settings?.ragOptions?.autoUpdateEnabled &&
+      hasValidEmbeddingModel
     if (
       initialRagIndexSnapshot.status === 'retry_scheduled' &&
       initialRagIndexSnapshot.retryPolicy === 'transient'
     ) {
-      if (initialRagIndexSnapshot.trigger === 'auto') {
+      if (!ragEnabled) {
+        // RAG was disabled while a retry was pending — clear it so the
+        // background-activity badge doesn't show stale state.
+        await this.getRagIndexService().clearRetryScheduled()
+      } else if (initialRagIndexSnapshot.trigger === 'auto') {
         this.getRagAutoUpdateService().restoreRetryScheduled(
           initialRagIndexSnapshot.retryAt,
         )
@@ -1977,6 +1990,20 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     await this.saveData(normalizedSettings)
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
     this.ragCoordinator?.updateSettings(normalizedSettings)
+
+    // When RAG is disabled, stop all pending auto-update timers and clear
+    // any retry_scheduled state so the background-activity UI disappears.
+    const ragWasEnabled =
+      previousSettings?.ragOptions?.enabled &&
+      previousSettings?.ragOptions?.autoUpdateEnabled
+    const ragIsEnabled =
+      normalizedSettings.ragOptions.enabled &&
+      normalizedSettings.ragOptions.autoUpdateEnabled
+    if (ragWasEnabled && !ragIsEnabled) {
+      this.ragAutoUpdateService?.cleanup()
+      await this.ragIndexService?.clearRetryScheduled()
+    }
+
     this.settingsChangeListeners.forEach((listener) => {
       listener(normalizedSettings)
     })

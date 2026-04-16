@@ -116,9 +116,16 @@ export class RagAutoUpdateService {
   }
 
   private isAutoUpdateEnabled(settings: SmartComposerSettings): boolean {
-    return Boolean(
-      settings?.ragOptions?.enabled && settings?.ragOptions?.autoUpdateEnabled,
-    )
+    if (!settings?.ragOptions?.enabled || !settings?.ragOptions?.autoUpdateEnabled) {
+      return false
+    }
+    // Skip auto-update when no valid embedding model is configured so that
+    // fresh installations don't immediately surface a confusing error.
+    const id = settings.embeddingModelId
+    if (!id || !settings.embeddingModels.some((m) => m.id === id)) {
+      return false
+    }
+    return true
   }
 
   private markDirty(path: string, options?: { requiresFullScan?: boolean }) {
