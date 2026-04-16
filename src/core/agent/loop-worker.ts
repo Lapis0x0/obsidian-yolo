@@ -30,17 +30,11 @@ const emit = (msg) => {
   self.postMessage(msg)
 }
 
-const decideAfterLlmResult = ({ hasToolCalls, hasAssistantOutput, iteration, maxIterations }) => {
+const decideAfterLlmResult = ({ hasToolCalls }) => {
   if (hasToolCalls) {
     return { type: 'tool_phase' }
   }
-  if (hasAssistantOutput) {
-    return { type: 'done', reason: 'completed' }
-  }
-  if (iteration >= maxIterations) {
-    return { type: 'done', reason: 'max_iterations' }
-  }
-  return { type: 'llm_request', nextIteration: iteration + 1 }
+  return { type: 'done', reason: 'completed' }
 }
 
 const decideAfterToolResult = ({ hasPendingTools, iteration, maxIterations }) => {

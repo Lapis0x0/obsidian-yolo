@@ -12,7 +12,7 @@ describe('loop decisions', () => {
     expect(result).toEqual({ type: 'tool_phase' })
   })
 
-  it('continues llm request when no output and no tools', () => {
+  it('completes when no tools and no output', () => {
     const result = decideAfterLlmResult({
       hasToolCalls: false,
       hasAssistantOutput: false,
@@ -20,18 +20,7 @@ describe('loop decisions', () => {
       maxIterations: 6,
     })
 
-    expect(result).toEqual({ type: 'llm_request', nextIteration: 2 })
-  })
-
-  it('continues llm request for reasoning-only turns', () => {
-    const result = decideAfterLlmResult({
-      hasToolCalls: false,
-      hasAssistantOutput: false,
-      iteration: 1,
-      maxIterations: 6,
-    })
-
-    expect(result).toEqual({ type: 'llm_request', nextIteration: 2 })
+    expect(result).toEqual({ type: 'done', reason: 'completed' })
   })
 
   it('completes when no tools but assistant has output', () => {
@@ -43,17 +32,6 @@ describe('loop decisions', () => {
     })
 
     expect(result).toEqual({ type: 'done', reason: 'completed' })
-  })
-
-  it('stops with max_iterations when no output at iteration limit', () => {
-    const result = decideAfterLlmResult({
-      hasToolCalls: false,
-      hasAssistantOutput: false,
-      iteration: 6,
-      maxIterations: 6,
-    })
-
-    expect(result).toEqual({ type: 'done', reason: 'max_iterations' })
   })
 
   it('continues after tool results when no pending tools', () => {

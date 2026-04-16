@@ -94,7 +94,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     const clientOptions = {
       apiKey: provider.apiKey,
       baseURL: provider.baseUrl
-        ? provider.baseUrl.replace(/\/+$/, '')
+        ? provider.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '')
         : undefined, // use default
       dangerouslyAllowBrowser: true,
       maxRetries: resolveSdkMaxRetries({
