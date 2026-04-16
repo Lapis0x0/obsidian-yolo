@@ -30,6 +30,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn(),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -64,6 +65,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn(),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -114,6 +116,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -161,6 +164,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -200,6 +204,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -239,6 +244,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 
@@ -271,6 +277,7 @@ describe('RagIndexService', () => {
       } as never,
       getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
       activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',
     })
 

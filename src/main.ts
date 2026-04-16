@@ -588,6 +588,7 @@ export default class SmartComposerPlugin extends Plugin {
         app: this.app,
         getRagEngine: () => this.getRagCoordinator().getRagEngine(),
         activityRegistry: this.getBackgroundActivityRegistry(),
+        isRagEnabled: () => !!this.settings?.ragOptions?.enabled,
         t: (key, fallback) => this.t(key, fallback),
       })
     }
@@ -1529,28 +1530,28 @@ export default class SmartComposerPlugin extends Plugin {
     this.syncOAuthRuntimesFromSettings()
     await this.getRagIndexService().initialize()
     const initialRagIndexSnapshot = this.getRagIndexSnapshot()
-    const hasValidEmbeddingModel =
-      !!this.settings?.embeddingModelId &&
-      this.settings.embeddingModels.some(
-        (m) => m.id === this.settings.embeddingModelId,
-      )
-    const ragEnabled =
-      this.settings?.ragOptions?.enabled &&
-      this.settings?.ragOptions?.autoUpdateEnabled &&
-      hasValidEmbeddingModel
     if (
+      this.settings?.ragOptions?.enabled &&
       initialRagIndexSnapshot.status === 'retry_scheduled' &&
       initialRagIndexSnapshot.retryPolicy === 'transient'
     ) {
-      if (!ragEnabled) {
-        // RAG was disabled while a retry was pending — clear it so the
-        // background-activity badge doesn't show stale state.
-        await this.getRagIndexService().clearRetryScheduled()
-      } else if (initialRagIndexSnapshot.trigger === 'auto') {
+      const hasValidEmbeddingModel =
+        !!this.settings?.embeddingModelId &&
+        this.settings.embeddingModels.some(
+          (m) => m.id === this.settings.embeddingModelId,
+        )
+      if (
+        hasValidEmbeddingModel &&
+        this.settings?.ragOptions?.autoUpdateEnabled &&
+        initialRagIndexSnapshot.trigger === 'auto'
+      ) {
         this.getRagAutoUpdateService().restoreRetryScheduled(
           initialRagIndexSnapshot.retryAt,
         )
-      } else if (initialRagIndexSnapshot.trigger === 'manual') {
+      } else if (
+        hasValidEmbeddingModel &&
+        initialRagIndexSnapshot.trigger === 'manual'
+      ) {
         this.getRagIndexService().restoreRetryScheduledRun(
           this.computeRagStagingFingerprint(),
         )
@@ -1993,15 +1994,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     // When RAG is disabled, stop all pending auto-update timers and clear
     // any retry_scheduled state so the background-activity UI disappears.
-    const ragWasEnabled =
-      previousSettings?.ragOptions?.enabled &&
-      previousSettings?.ragOptions?.autoUpdateEnabled
-    const ragIsEnabled =
-      normalizedSettings.ragOptions.enabled &&
-      normalizedSettings.ragOptions.autoUpdateEnabled
-    if (ragWasEnabled && !ragIsEnabled) {
+    const ragIsEnabled = normalizedSettings.ragOptions.enabled
+    if (!ragIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
-      await this.ragIndexService?.clearRetryScheduled()
+      this.ragIndexService?.refreshActivity()
     }
 
     this.settingsChangeListeners.forEach((listener) => {

@@ -74,6 +74,7 @@ type RagIndexServiceDeps = {
   app: App
   getRagEngine: () => Promise<RAGEngine>
   activityRegistry: BackgroundActivityRegistry
+  isRagEnabled: () => boolean
   t: (key: string, fallback?: string) => string
 }
 
@@ -139,6 +140,7 @@ export class RagIndexService {
   private readonly app: App
   private readonly getRagEngine: () => Promise<RAGEngine>
   private readonly activityRegistry: BackgroundActivityRegistry
+  private readonly isRagEnabled: () => boolean
   private readonly t: (key: string, fallback?: string) => string
 
   private snapshot: RagIndexRunSnapshot = defaultSnapshot()
@@ -151,6 +153,7 @@ export class RagIndexService {
     this.app = deps.app
     this.getRagEngine = deps.getRagEngine
     this.activityRegistry = deps.activityRegistry
+    this.isRagEnabled = deps.isRagEnabled
     this.t = deps.t
   }
 
@@ -427,6 +430,10 @@ export class RagIndexService {
     await this.persistSnapshot()
   }
 
+  refreshActivity(): void {
+    this.publishActivity()
+  }
+
   cleanup(): void {
     this.clearRetryTimer()
     this.currentAbortController?.abort()
@@ -468,6 +475,7 @@ export class RagIndexService {
 
   private publishActivity(): void {
     if (
+      !this.isRagEnabled() ||
       this.snapshot.status === 'idle' ||
       this.snapshot.status === 'completed'
     ) {
