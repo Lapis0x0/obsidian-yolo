@@ -1,5 +1,5 @@
 import type { App, TFile, TFolder } from 'obsidian'
-import { htmlToMarkdown, requestUrl } from 'obsidian'
+import { Notice, htmlToMarkdown, requestUrl } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
@@ -1388,7 +1388,15 @@ ${transcript.map((t) => `${t.offset}: ${t.text}`).join('\n')}`
       }
     }
 
-    const response = await requestUrl({ url })
-    return htmlToMarkdown(response.text)
+    try {
+      const response = await requestUrl({ url })
+      return htmlToMarkdown(response.text)
+    } catch (error) {
+      const status =
+        error instanceof Error ? error.message : String(error)
+      console.warn(`Failed to fetch URL: ${url}`, error)
+      new Notice(`URL fetch failed (${status}): ${url}`, 6000)
+      return `[Failed to fetch content from this URL: ${status}]`
+    }
   }
 }
