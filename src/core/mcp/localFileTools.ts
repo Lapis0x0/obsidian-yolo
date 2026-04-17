@@ -2220,6 +2220,7 @@ export async function callLocalFileTool({
                 signal,
                 maxBinaryBytes: PDF_INDEX_MAX_BYTES,
                 maxPages: PDF_INDEX_MAX_PAGES,
+                settings,
               })
               pages = extracted.pages
             } catch (error) {

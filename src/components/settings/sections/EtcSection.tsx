@@ -14,6 +14,7 @@ import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
+import { clearPdfTextCache } from '../../../database/json/chat/pdfTextCacheStore'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
@@ -39,6 +40,8 @@ type StorageUsage = {
 const CHAT_SNAPSHOT_DIR = 'chat_snapshots'
 const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
+const IMAGE_CACHE_DIR = 'image_cache'
+const PDF_CACHE_DIR = 'pdf_cache'
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) {
@@ -96,23 +99,27 @@ const loadStorageUsage = async (
     promptSnapshotBytes,
     editReviewSnapshotBytes,
     timelineHeightCacheBytes,
+    imageCacheBytes,
+    pdfCacheBytes,
   ] = await Promise.all([
     getPathSize(app, chatDir),
     getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${TIMELINE_HEIGHT_CACHE_DIR}`)),
+    getPathSize(app, normalizePath(`${chatDir}/${IMAGE_CACHE_DIR}`)),
+    getPathSize(app, normalizePath(`${chatDir}/${PDF_CACHE_DIR}`)),
   ])
 
+  const snapshotAndCacheBytes =
+    promptSnapshotBytes +
+    editReviewSnapshotBytes +
+    timelineHeightCacheBytes +
+    imageCacheBytes +
+    pdfCacheBytes
+
   return {
-    chatHistoryBytes: Math.max(
-      0,
-      chatHistoryBytes -
-        promptSnapshotBytes -
-        editReviewSnapshotBytes -
-        timelineHeightCacheBytes,
-    ),
-    chatSnapshotBytes:
-      promptSnapshotBytes + editReviewSnapshotBytes + timelineHeightCacheBytes,
+    chatHistoryBytes: Math.max(0, chatHistoryBytes - snapshotAndCacheBytes),
+    chatSnapshotBytes: snapshotAndCacheBytes,
   }
 }
 
@@ -268,6 +275,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
           await clearAllEditReviewSnapshotStores(app, settings)
           await clearAllTimelineHeightCacheStores(app, settings)
           await clearImageCache(app, settings)
+          await clearPdfTextCache(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))

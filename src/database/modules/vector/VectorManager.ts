@@ -43,6 +43,13 @@ const createStagingModelId = (embeddingModelId: string, indexRunId: string) =>
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
+/** Opaque handle for the YOLO-root-aware PDF text cache. */
+type YoloSettingsLike = {
+  yolo?: {
+    baseDir?: string
+  }
+}
+
 export class VectorManager {
   private app: App
   private repository: VectorRepository
@@ -132,6 +139,8 @@ export class VectorManager {
       includePatterns: string[]
       /** When false, only Markdown files are indexed. */
       ragIndexPdf?: boolean
+      /** Optional YOLO-root-aware settings handle; enables the PDF text cache. */
+      settings?: YoloSettingsLike | null
       reindexAll?: boolean
       /**
        * When true, wipe staging before starting the rebuild (fresh start).
@@ -323,6 +332,7 @@ export class VectorManager {
             stagingModelId,
             stagingFingerprints?.get(file.path),
             signal,
+            options.settings ?? null,
           )
 
         contentChunks.push(...fileChunks)
@@ -739,6 +749,7 @@ Please report this issue to the developer if it persists.`,
     stagingModelId?: string | null,
     stagedFingerprints?: Set<string>,
     signal?: AbortSignal,
+    settings?: YoloSettingsLike | null,
   ): Promise<{
     chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
     totalChunkLines: number
@@ -752,6 +763,7 @@ Please report this issue to the developer if it persists.`,
         stagingModelId,
         stagedFingerprints,
         signal,
+        settings,
       )
     }
 
@@ -893,6 +905,7 @@ Please report this issue to the developer if it persists.`,
     stagingModelId?: string | null,
     stagedFingerprints?: Set<string>,
     signal?: AbortSignal,
+    settings?: YoloSettingsLike | null,
   ): Promise<{
     chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
     totalChunkLines: number
@@ -928,6 +941,7 @@ Please report this issue to the developer if it persists.`,
         signal,
         maxBinaryBytes: PDF_INDEX_MAX_BYTES,
         maxPages: PDF_INDEX_MAX_PAGES,
+        settings: settings ?? null,
       })
       pages = extracted.pages
     } catch (error) {

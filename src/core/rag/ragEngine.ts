@@ -88,6 +88,7 @@ export class RAGEngine {
           excludePatterns: this.settings.ragOptions.excludePatterns,
           includePatterns: this.settings.ragOptions.includePatterns,
           ragIndexPdf: this.settings.ragOptions.indexPdf ?? true,
+          settings: this.settings,
           reindexAll: options.reindexAll,
           fromScratch: options.fromScratch,
           signal: options.signal,

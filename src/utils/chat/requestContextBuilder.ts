@@ -1195,6 +1195,7 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
             const { pages } = await extractPdfText(this.app, file, {
               maxBinaryBytes: PDF_INDEX_MAX_BYTES,
               maxPages: PDF_INDEX_MAX_PAGES,
+              settings: this.settings,
             })
             rawContent = pages
               .map((p) => `<page ${p.page}>\n${p.text}\n</page ${p.page}>`)

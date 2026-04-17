@@ -56,16 +56,18 @@ export function listAllFolderPaths(vault: Vault): string[] {
   return Array.from(folderSet).sort((a, b) => a.localeCompare(b))
 }
 
-/** Convert folder paths => include patterns used by current RAG engine */
+/**
+ * Convert folder paths => include patterns used by current RAG engine.
+ * 模式只限定"目录范围"，不限定扩展名；文件类型由 VectorManager 的扩展名过滤
+ * 与「索引 PDF」等独立开关决定，避免在此处把 PDF/未来新格式挡在外面。
+ */
 export function folderPathsToIncludePatterns(paths: string[]): string[] {
   const patterns = new Set<string>()
   for (const p0 of paths) {
     const p = normalizeFolderPath(p0)
     const base = p && p.length > 0 ? `${p}/` : ''
-    // Include all markdown files recursively
-    patterns.add(`${base}**/*.md`)
-    // Also include files directly under the folder (non-recursive), just in case
-    patterns.add(`${base}*.md`)
+    patterns.add(`${base}**`)
+    patterns.add(`${base}*`)
   }
   return Array.from(patterns)
 }
@@ -74,9 +76,11 @@ export function folderPathsToIncludePatterns(paths: string[]): string[] {
 export function includePatternsToFolderPaths(patterns: string[]): string[] {
   const folders = new Set<string>()
   for (const pat of patterns) {
-    // Match "folder/**/*.md" or "folder/**"
-    let m = pat.match(/^(.*)\/\*\*\/\*\.md$/)
-    if (!m) m = pat.match(/^(.*)\/\*\*$/)
+    // 新格式优先：folder/** 与 folder/*
+    let m = pat.match(/^(.*)\/\*\*$/)
+    if (!m) m = pat.match(/^(.*)\/\*$/)
+    // 旧 md-only 格式兼容：folder/**/*.md 与 folder/*.md
+    if (!m) m = pat.match(/^(.*)\/\*\*\/\*\.md$/)
     if (!m) m = pat.match(/^(.*)\/\*\.md$/)
     if (!m) m = pat.match(/^(.*)\/$/)
     if (m) {
@@ -85,8 +89,8 @@ export function includePatternsToFolderPaths(patterns: string[]): string[] {
       continue
     }
 
-    // Root patterns like "**/*.md"
-    if (pat === '**/*.md' || pat === '**') {
+    // Root patterns
+    if (pat === '**' || pat === '*' || pat === '**/*.md') {
       folders.add('')
     }
   }
