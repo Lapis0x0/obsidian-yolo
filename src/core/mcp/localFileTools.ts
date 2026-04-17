@@ -401,7 +401,7 @@ export function getLocalFileTools(): McpTool[] {
           path: {
             type: 'string',
             description:
-              'Optional vault-relative directory path to scope search.',
+              'Optional vault-relative path to scope search. Accepts a folder (recursive) or a single file. For a file, RAG is restricted to that file\'s chunks and keyword content scans only that file (markdown only for keyword content).',
           },
           maxResults: {
             type: 'integer',
@@ -1071,11 +1071,56 @@ const resolveFolderByPath = (
   return { folder: abstractFile, normalizedPath }
 }
 
+/**
+ * Scope for fs_search. `vault` = entire vault, `folder` = recursive subtree,
+ * `file` = a single file (RAG restricts to that file's chunks; keyword content
+ * scans only that file).
+ */
+type FsSearchScopeTarget =
+  | { kind: 'vault'; normalizedPath: '' }
+  | { kind: 'folder'; folder: TFolder; normalizedPath: string }
+  | { kind: 'file'; file: TFile; normalizedPath: string }
+
+const resolveSearchScopeByPath = (
+  app: App,
+  rawPath: string | undefined,
+): FsSearchScopeTarget => {
+  const trimmedPath = rawPath?.trim()
+  if (!trimmedPath || trimmedPath === '/') {
+    return { kind: 'vault', normalizedPath: '' }
+  }
+
+  const normalizedPath = validateVaultPath(trimmedPath)
+  const abstractFile = app.vault.getAbstractFileByPath(normalizedPath)
+
+  if (!abstractFile) {
+    throw new Error(`Path not found: ${normalizedPath}`)
+  }
+  if (abstractFile instanceof TFolder) {
+    return { kind: 'folder', folder: abstractFile, normalizedPath }
+  }
+  if (abstractFile instanceof TFile) {
+    return { kind: 'file', file: abstractFile, normalizedPath }
+  }
+  throw new Error(`Unsupported path target: ${normalizedPath}`)
+}
+
 const isPathWithinFolder = (filePath: string, folderPath: string): boolean => {
   if (!folderPath) {
     return true
   }
   return filePath.startsWith(`${folderPath}/`)
+}
+
+/** Whether a vault file path falls inside the active search scope. */
+const isPathInSearchScope = (
+  filePath: string,
+  scope: FsSearchScopeTarget,
+): boolean => {
+  if (scope.kind === 'vault') return true
+  if (scope.kind === 'folder')
+    return isPathWithinFolder(filePath, scope.normalizedPath)
+  return filePath === scope.normalizedPath
 }
 
 const getParentFolderPath = (path: string): string => {
@@ -1183,18 +1228,18 @@ const mapRagRowsToSuper = (
   })
 }
 
-const pathFolderToRagScope = (
-  normalizedFolderPath: string,
+const pathToRagScope = (
+  scope: FsSearchScopeTarget,
 ): { files: string[]; folders: string[] } | undefined => {
-  if (!normalizedFolderPath) {
-    return undefined
-  }
-  return { files: [], folders: [normalizedFolderPath] }
+  if (scope.kind === 'vault') return undefined
+  if (scope.kind === 'folder')
+    return { files: [], folders: [scope.normalizedPath] }
+  return { files: [scope.normalizedPath], folders: [] }
 }
 
 const collectKeywordFsSearchResults = async ({
   app,
-  scopeFolder,
+  scopeTarget,
   scope,
   query,
   maxResults,
@@ -1202,7 +1247,7 @@ const collectKeywordFsSearchResults = async ({
   signal,
 }: {
   app: App
-  scopeFolder: { folder: TFolder; normalizedPath: string }
+  scopeTarget: FsSearchScopeTarget
   scope: FsSearchScope
   query: string
   maxResults: number
@@ -1289,7 +1334,7 @@ const collectKeywordFsSearchResults = async ({
     const files = app.vault
       .getFiles()
       .filter((file) =>
-        isPathWithinFolder(file.path, scopeFolder.normalizedPath),
+        isPathInSearchScope(file.path, scopeTarget),
       )
       .map((file) => file.path)
       .map((path) => ({
@@ -1330,7 +1375,7 @@ const collectKeywordFsSearchResults = async ({
       .filter((entry): entry is TFolder => entry instanceof TFolder)
       .filter((folder) => folder.path.length > 0)
       .filter((folder) =>
-        isPathWithinFolder(folder.path, scopeFolder.normalizedPath),
+        isPathInSearchScope(folder.path, scopeTarget),
       )
       .map((folder) => folder.path)
       .map((path) => ({
@@ -1369,7 +1414,7 @@ const collectKeywordFsSearchResults = async ({
     const searchableFiles = app.vault
       .getMarkdownFiles()
       .filter((file) =>
-        isPathWithinFolder(file.path, scopeFolder.normalizedPath),
+        isPathInSearchScope(file.path, scopeTarget),
       )
       .sort((a, b) => a.path.localeCompare(b.path))
     const contentMatches: Array<{
@@ -2777,7 +2822,7 @@ export async function callLocalFileTool({
         })
         const caseSensitive =
           getOptionalBooleanArg(args, 'caseSensitive') ?? false
-        const scopeFolder = resolveFolderByPath(
+        const scopeTarget = resolveSearchScopeByPath(
           app,
           getOptionalTextArg(args, 'path'),
         )
@@ -2806,7 +2851,7 @@ export async function callLocalFileTool({
           const scope = getOptionalFsSearchScope(args, 'all')
           const legacy = await collectKeywordFsSearchResults({
             app,
-            scopeFolder,
+            scopeTarget,
             scope,
             query,
             maxResults,
@@ -2829,7 +2874,7 @@ export async function callLocalFileTool({
                   : undefined,
               scope,
               query,
-              path: scopeFolder.normalizedPath,
+              path: scopeTarget.normalizedPath,
               results: aggregateSearchResults({ results, maxResults }),
             }),
           }
@@ -2858,7 +2903,7 @@ export async function callLocalFileTool({
         }
 
         const ragEngine = await getRagEngine()
-        const ragScope = pathFolderToRagScope(scopeFolder.normalizedPath)
+        const ragScope = pathToRagScope(scopeTarget)
 
         const effectiveRagLimit = Math.min(
           ragLimitArg ?? settings.ragOptions.limit,
@@ -2886,7 +2931,7 @@ export async function callLocalFileTool({
               effectiveMode: 'rag',
               scope: effectiveScope,
               query,
-              path: scopeFolder.normalizedPath,
+              path: scopeTarget.normalizedPath,
               results: aggregateSearchResults({ results, maxResults }),
             }),
           }
@@ -2894,7 +2939,7 @@ export async function callLocalFileTool({
 
         const keywordLegacy = await collectKeywordFsSearchResults({
           app,
-          scopeFolder,
+          scopeTarget,
           scope: 'content',
           query,
           maxResults,
@@ -2910,7 +2955,7 @@ export async function callLocalFileTool({
         )
         const pathLegacyFiles = await collectKeywordFsSearchResults({
           app,
-          scopeFolder,
+          scopeTarget,
           scope: 'files',
           query,
           maxResults,
@@ -2922,7 +2967,7 @@ export async function callLocalFileTool({
         }
         const pathLegacyDirs = await collectKeywordFsSearchResults({
           app,
-          scopeFolder,
+          scopeTarget,
           scope: 'dirs',
           query,
           maxResults,
@@ -2950,7 +2995,7 @@ export async function callLocalFileTool({
             effectiveMode: 'hybrid',
             scope: 'content',
             query,
-            path: scopeFolder.normalizedPath,
+            path: scopeTarget.normalizedPath,
             results: aggregateSearchResults({ results: fused, maxResults }),
           }),
         }
