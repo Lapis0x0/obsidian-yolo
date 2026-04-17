@@ -158,7 +158,14 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    options?: { dimensions?: number },
+  ): Promise<number[]> {
+    const dimensionsParam = options?.dimensions
+      ? { dimensions: options.dimensions }
+      : {}
     try {
       const embedding = await runWithRequestTransport({
         mode: this.requestTransportMode,
@@ -168,16 +175,19 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
           this.browserClient.embeddings.create({
             model: model,
             input: text,
+            ...dimensionsParam,
           }),
         runObsidian: () =>
           this.obsidianClient.embeddings.create({
             model: model,
             input: text,
+            ...dimensionsParam,
           }),
         runNode: () =>
           this.nodeClient.embeddings.create({
             model: model,
             input: text,
+            ...dimensionsParam,
           }),
       })
       return extractEmbeddingVector(embedding)

@@ -358,7 +358,14 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    options?: { dimensions?: number },
+  ): Promise<number[]> {
+    const dimensionsParam = options?.dimensions
+      ? { dimensions: options.dimensions }
+      : {}
     const embedding = await runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
@@ -368,18 +375,21 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
           model: model,
           input: text,
           encoding_format: 'float',
+          ...dimensionsParam,
         }),
       runObsidian: () =>
         this.obsidianClient.embeddings.create({
           model: model,
           input: text,
           encoding_format: 'float',
+          ...dimensionsParam,
         }),
       runNode: () =>
         this.nodeClient.embeddings.create({
           model: model,
           input: text,
           encoding_format: 'float',
+          ...dimensionsParam,
         }),
     })
     return extractEmbeddingVector(embedding)

@@ -153,7 +153,11 @@ export class OllamaProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    _options?: { dimensions?: number },
+  ): Promise<number[]> {
     const embedding = await runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,

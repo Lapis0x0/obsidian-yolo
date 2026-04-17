@@ -204,7 +204,11 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
-  async getEmbedding(_model: string, _text: string): Promise<number[]> {
+  async getEmbedding(
+    _model: string,
+    _text: string,
+    _options?: { dimensions?: number },
+  ): Promise<number[]> {
     throw new LLMProviderNotConfiguredException(
       'ChatGPT OAuth provider does not support embeddings.',
     )

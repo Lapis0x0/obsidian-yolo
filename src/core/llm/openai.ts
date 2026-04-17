@@ -144,7 +144,11 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    options?: { dimensions?: number },
+  ): Promise<number[]> {
     if (!this.client.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
@@ -155,6 +159,7 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
       const embedding = await this.client.embeddings.create({
         model: model,
         input: text,
+        ...(options?.dimensions ? { dimensions: options.dimensions } : {}),
       })
       return extractEmbeddingVector(embedding)
     } catch (error) {

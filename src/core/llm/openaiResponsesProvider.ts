@@ -251,13 +251,20 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    options?: { dimensions?: number },
+  ): Promise<number[]> {
     if (!this.browserClient.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,
       )
     }
 
+    const dimensionsParam = options?.dimensions
+      ? { dimensions: options.dimensions }
+      : {}
     try {
       const embedding = await runWithRequestTransport({
         mode: this.requestTransportMode,
@@ -267,16 +274,19 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
           this.browserClient.embeddings.create({
             model,
             input: text,
+            ...dimensionsParam,
           }),
         runObsidian: () =>
           this.obsidianClient.embeddings.create({
             model,
             input: text,
+            ...dimensionsParam,
           }),
         runNode: () =>
           this.nodeClient.embeddings.create({
             model,
             input: text,
+            ...dimensionsParam,
           }),
       })
       return extractEmbeddingVector(embedding)

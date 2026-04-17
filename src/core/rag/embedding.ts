@@ -24,7 +24,18 @@ export const getEmbeddingModelClient = ({
   return {
     id: embeddingModel.id,
     dimension: embeddingModel.dimension,
-    getEmbedding: (text: string) =>
-      providerClient.getEmbedding(embeddingModel.model, text),
+    getEmbedding: async (text: string) => {
+      const vector = await providerClient.getEmbedding(
+        embeddingModel.model,
+        text,
+        { dimensions: embeddingModel.dimension },
+      )
+      if (vector.length !== embeddingModel.dimension) {
+        throw new Error(
+          `Embedding model "${embeddingModel.id}" returned ${vector.length}-dimensional vector, but it is configured as ${embeddingModel.dimension}-dimensional. Update the model's dimension in settings or re-add the model.`,
+        )
+      }
+      return vector
+    },
   }
 }

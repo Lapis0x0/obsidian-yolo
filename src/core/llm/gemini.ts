@@ -1023,7 +1023,11 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    _options?: { dimensions?: number },
+  ): Promise<number[]> {
     if (!this.apiKey) {
       throw new LLMAPIKeyNotSetException(
         `Provider ${this.provider.id} API key is missing. Please set it in settings menu.`,

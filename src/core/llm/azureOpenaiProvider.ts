@@ -153,7 +153,11 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
-  getEmbedding(_model: string, _text: string): Promise<number[]> {
+  getEmbedding(
+    _model: string,
+    _text: string,
+    _options?: { dimensions?: number },
+  ): Promise<number[]> {
     return Promise.reject(
       new Error(
         `Provider ${this.provider.id} does not support embeddings. Please use a different provider.`,

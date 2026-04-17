@@ -374,7 +374,11 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
-  async getEmbedding(model: string, text: string): Promise<number[]> {
+  async getEmbedding(
+    model: string,
+    text: string,
+    _options?: { dimensions?: number },
+  ): Promise<number[]> {
     this.validateConfiguration()
 
     try {

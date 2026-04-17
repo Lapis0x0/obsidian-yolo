@@ -302,7 +302,11 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
     })
   }
 
-  async getEmbedding(_model: string, _text: string): Promise<number[]> {
+  async getEmbedding(
+    _model: string,
+    _text: string,
+    _options?: { dimensions?: number },
+  ): Promise<number[]> {
     throw new LLMProviderNotConfiguredException(
       'Qwen OAuth provider does not support embeddings.',
     )
