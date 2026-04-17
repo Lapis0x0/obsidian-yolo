@@ -12,7 +12,7 @@ export type EditableUserMessageItemProps = {
   chatUserInputRef: (ref: ChatUserInputRef | null) => void
   autoFocus?: boolean
   onInputChange: (content: SerializedEditorState) => void
-  onSubmit: (content: SerializedEditorState, useVaultSearch: boolean) => void
+  onSubmit: (content: SerializedEditorState) => void
   onFocus: () => void
   onBlur: () => void
   onMentionablesChange: (mentionables: Mentionable[]) => void

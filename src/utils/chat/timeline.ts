@@ -80,7 +80,6 @@ function estimateUserMessageHeight(message: ChatUserMessage): number {
   const text = editorStateToPlainText(message.content)
   const mentionableCount = message.mentionables.length
   const selectedSkillCount = message.selectedSkills?.length ?? 0
-  const similarityResultCount = message.similaritySearchResults?.length ?? 0
   const estimated =
     estimateMarkdownTextHeight(text, {
       baseHeight: USER_MESSAGE_ESTIMATED_HEIGHT,
@@ -89,8 +88,7 @@ function estimateUserMessageHeight(message: ChatUserMessage): number {
       maxHeight: USER_MESSAGE_MAX_ESTIMATED_HEIGHT,
     }) +
     mentionableCount * 22 +
-    selectedSkillCount * 18 +
-    similarityResultCount * 56
+    selectedSkillCount * 18
 
   return clampEstimatedHeight(estimated, {
     min: USER_MESSAGE_ESTIMATED_HEIGHT,

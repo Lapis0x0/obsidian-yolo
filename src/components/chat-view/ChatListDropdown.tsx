@@ -349,10 +349,7 @@ function extractConversationText(messages: SerializedChatMessage[]): string {
           ? editorStateToPlainText(message.content)
           : ''
         const promptText = extractPromptContent(message.promptContent)
-        const ragSnapshotText = (message.similaritySearchResults ?? [])
-          .map((chunk) => `${chunk.path} ${chunk.content}`)
-          .join(' ')
-        return `${editorText} ${promptText} ${ragSnapshotText}`.trim()
+        return `${editorText} ${promptText}`.trim()
       }
       return ''
     })

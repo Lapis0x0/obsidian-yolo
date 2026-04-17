@@ -28,7 +28,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useMcp } from '../../../contexts/mcp-context'
-import { useRAG } from '../../../contexts/rag-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
@@ -233,7 +232,6 @@ export function QuickAskPanel({
   const { settings } = useSettings()
   const { setSettings } = useSettings()
   const { t } = useLanguage()
-  const { getRAGEngine } = useRAG()
   const { getMcpManager } = useMcp()
   const { createOrUpdateConversationImmediately, generateConversationTitle } =
     useChatHistory()
@@ -609,7 +607,6 @@ export function QuickAskPanel({
       `${globalSystemPrompt}\n\n${assistantPrompt}${contextSection}`.trim()
 
     return new RequestContextBuilder(
-      getRAGEngine,
       app,
       {
         ...settings,
@@ -625,7 +622,6 @@ export function QuickAskPanel({
     contextText,
     executionMode,
     fileTitle,
-    getRAGEngine,
     mentionables,
     selectionMentionable,
     selectedAssistant,

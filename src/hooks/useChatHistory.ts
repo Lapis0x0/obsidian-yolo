@@ -692,7 +692,6 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         selectedSkills: message.selectedSkills ?? [],
         selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
-        similaritySearchResults: message.similaritySearchResults,
       }
     case 'assistant':
       return {
@@ -732,7 +731,6 @@ const deserializeChatMessage = (
         selectedSkills: message.selectedSkills ?? [],
         selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
-        similaritySearchResults: message.similaritySearchResults,
       }
     }
     case 'assistant':
@@ -804,8 +802,7 @@ const hydrateImageCacheRefs = async (
           part.type === 'image_url' &&
           part.image_url.url.startsWith('cache://')
         ) {
-          const key =
-            part.image_url.cacheKey ?? part.image_url.url.slice(8)
+          const key = part.image_url.cacheKey ?? part.image_url.url.slice(8)
           const dataUrl = resolved.get(key)
           if (dataUrl) {
             part.image_url.url = dataUrl

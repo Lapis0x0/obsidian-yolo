@@ -2,7 +2,14 @@ import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import cx from 'clsx'
 import { Download, History, Plus } from 'lucide-react'
-import { MarkdownView, Notice, Platform, TFile, TFolder, normalizePath } from 'obsidian'
+import {
+  MarkdownView,
+  Notice,
+  Platform,
+  TFile,
+  TFolder,
+  normalizePath,
+} from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -21,7 +28,6 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
-import { useRAG } from '../../contexts/rag-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
   getLatestAssistantContextUsage,
@@ -87,7 +93,6 @@ import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import type { ChatMode } from './chat-input/ChatModeSelect'
-import ChatSettingsButton from './chat-input/ChatSettingsButton'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import MentionableBadge from './chat-input/MentionableBadge'
@@ -492,7 +497,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const agentService = plugin.getAgentService()
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
-  const { getRAGEngine } = useRAG()
   const { getMcpManager } = useMcp()
 
   const {
@@ -517,8 +521,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [conversationAssistantId, settings],
   )
   const requestContextBuilder = useMemo(() => {
-    return new RequestContextBuilder(getRAGEngine, app, effectiveSettings)
-  }, [app, effectiveSettings, getRAGEngine])
+    return new RequestContextBuilder(app, effectiveSettings)
+  }, [app, effectiveSettings])
 
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
@@ -2497,7 +2501,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputChatMessages,
       requestChatMessages,
       retryBranchTarget,
-      useVaultSearch,
       persistedMessageModelMap,
     }: {
       inputChatMessages: ChatMessage[]
@@ -2508,7 +2511,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         branchModelId?: string
         branchLabel?: string
       }
-      useVaultSearch?: boolean
       persistedMessageModelMap?: Map<string, string>
     }) => {
       abortConversationRun(currentConversationId)
@@ -2566,28 +2568,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const compiledRequestMessages = await Promise.all(
         effectiveRequestChatMessages.map(async (message) => {
           if (message.role === 'user' && message.id === lastMessage.id) {
-            const { promptContent, similaritySearchResults } =
+            const { promptContent } =
               await requestContextBuilder.compileUserMessagePrompt({
                 message,
-                useVaultSearch,
                 onQueryProgressChange: setQueryProgress,
               })
             return {
               ...message,
               promptContent,
-              similaritySearchResults,
             }
           } else if (message.role === 'user' && !message.promptContent) {
-            // Ensure all user messages have prompt content
-            // This is a fallback for cases where compilation was missed earlier in the process
-            const { promptContent, similaritySearchResults } =
+            const { promptContent } =
               await requestContextBuilder.compileUserMessagePrompt({
                 message,
               })
             return {
               ...message,
               promptContent,
-              similaritySearchResults,
             }
           }
           return message
@@ -2612,8 +2609,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ? {
               ...message,
               promptContent: compiledUserMessage.promptContent,
-              similaritySearchResults:
-                compiledUserMessage.similaritySearchResults,
             }
           : message
       })
@@ -3112,7 +3107,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
       if (!currentConversationId) {
         if (!targetFile) {
-          new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+          new Notice(
+            t('chat.editSummary.fileMissing', '文件不存在或已被移动。'),
+          )
           return
         }
         const leaf = app.workspace.getLeaf(false)
@@ -3149,7 +3146,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
 
         if (!targetFile) {
-          new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+          new Notice(
+            t('chat.editSummary.fileMissing', '文件不存在或已被移动。'),
+          )
           return
         }
 
@@ -4335,10 +4334,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 ...message,
                 content,
                 promptContent: null,
-                similaritySearchResults: undefined,
               }))
             }}
-            onSubmit={(content, useVaultSearch) => {
+            onSubmit={(content) => {
               if (
                 editorStateToPlainText(content).trim() === '' &&
                 messageOrGroup.mentionables.length === 0 &&
@@ -4393,7 +4391,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               void handleUserMessageSubmit({
                 inputChatMessages,
                 requestChatMessages,
-                useVaultSearch,
                 persistedMessageModelMap: nextMessageModelMap,
               })
               chatUserInputRefs.current.get(inputMessage.id)?.focus()
@@ -4426,9 +4423,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   promptContent: isSameMentionables
                     ? message.promptContent
                     : null,
-                  similaritySearchResults: isSameMentionables
-                    ? message.similaritySearchResults
-                    : undefined,
                 }
               })
             }}
@@ -4438,7 +4432,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 selectedSkills,
                 promptContent: null,
                 snapshotRef: undefined,
-                similaritySearchResults: undefined,
               }))
             }}
             modelId={
@@ -4647,28 +4640,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   </div>
                 )}
               <div className="smtcmp-chat-input-wrapper">
-                <div className="smtcmp-chat-input-settings-outer">
-                  <ChatSettingsButton
-                    overrides={conversationOverrides}
-                    onChange={(next) => {
-                      const nextOverrides = next
-                        ? {
-                            ...next,
-                            chatMode,
-                            autoAttachCurrentFile,
-                          }
-                        : { chatMode, autoAttachCurrentFile }
-                      setConversationOverrides(nextOverrides)
-                      conversationOverridesRef.current.set(
-                        currentConversationId,
-                        nextOverrides,
-                      )
-                    }}
-                    currentModel={settings.chatModels?.find(
-                      (m) => m.id === conversationModelId,
-                    )}
-                  />
-                </div>
                 <ChatUserInput
                   key={inputMessage.id}
                   ref={(ref) => registerChatUserInputRef(inputMessage.id, ref)}
@@ -4679,7 +4650,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       content,
                     }))
                   }}
-                  onSubmit={(content, useVaultSearch) => {
+                  onSubmit={(content) => {
                     if (
                       editorStateToPlainText(content).trim() === '' &&
                       inputMessage.mentionables.length === 0 &&
@@ -4699,7 +4670,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                         ...displayedChatMessages,
                         messageForSubmit,
                       ],
-                      useVaultSearch,
                       persistedMessageModelMap: nextMessageModelMap,
                     })
                     setMessageModelMap(nextMessageModelMap)
@@ -4729,7 +4699,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       selectedSkills,
                       promptContent: null,
                       snapshotRef: undefined,
-                      similaritySearchResults: undefined,
                     }))
                   }}
                   modelId={conversationModelId}
@@ -4768,22 +4737,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   }}
                   autoFocus
                   addedBlockKey={addedBlockKey}
-                  conversationOverrides={conversationOverrides}
-                  onConversationOverridesChange={(next) => {
-                    const nextOverrides = next
-                      ? {
-                          ...next,
-                          chatMode,
-                          autoAttachCurrentFile,
-                        }
-                      : { chatMode, autoAttachCurrentFile }
-                    setConversationOverrides(nextOverrides)
-                    conversationOverridesRef.current.set(
-                      currentConversationId,
-                      nextOverrides,
-                    )
-                  }}
-                  showConversationSettingsButton={false}
                   hideBadgeMentionables
                   displayMentionables={displayMentionablesForInput}
                   onDeleteFromAll={handleMentionableDeleteFromAll}

@@ -8,7 +8,6 @@ import {
   buildCompactionSummaryMessage,
 } from '../../core/agent/compaction'
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
-import type { RAGEngine } from '../../core/rag/ragEngine'
 import {
   getLiteSkillDocument,
   listLiteSkillEntries,
@@ -18,7 +17,6 @@ import {
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
-import type { SelectEmbedding } from '../../database/schema'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
@@ -38,7 +36,6 @@ import type {
   MentionableFolder,
   MentionableImage,
   MentionableUrl,
-  MentionableVault,
 } from '../../types/mentionable'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import {
@@ -186,19 +183,16 @@ function getMentionedFileProperties(
 }
 
 export class RequestContextBuilder {
-  private getRagEngine: () => Promise<RAGEngine>
   private app: App
   private settings: SmartComposerSettings
   private MAX_CONTEXT_MESSAGES = 32
   private includeSkills: boolean
 
   constructor(
-    getRagEngine: () => Promise<RAGEngine>,
     app: App,
     settings: SmartComposerSettings,
     options?: RequestContextBuilderOptions,
   ) {
-    this.getRagEngine = getRagEngine
     this.app = app
     this.settings = settings
     this.includeSkills = options?.includeSkills ?? true
@@ -257,20 +251,14 @@ export class RequestContextBuilder {
       lastUserMessageIndex
     ] as ChatUserMessage
     if (!lastUserMessage.promptContent) {
-      const { promptContent, similaritySearchResults } =
-        await this.compileUserMessagePrompt({
-          message: lastUserMessage,
-        })
+      const { promptContent } = await this.compileUserMessagePrompt({
+        message: lastUserMessage,
+      })
       compiledMessages[lastUserMessageIndex] = {
         ...lastUserMessage,
         promptContent,
-        similaritySearchResults,
       }
     }
-
-    const effectiveLastUserMessage = compiledMessages[
-      lastUserMessageIndex
-    ] as ChatUserMessage
 
     const snapshotEntries = await readPromptSnapshotEntries({
       app: this.app,
@@ -303,26 +291,17 @@ export class RequestContextBuilder {
         continue
       }
 
-      const { promptContent, similaritySearchResults } =
-        await this.compileUserMessagePrompt({
-          message,
-        })
+      const { promptContent } = await this.compileUserMessagePrompt({
+        message,
+      })
       compiledMessages[i] = {
         ...message,
         promptContent,
         snapshotRef: undefined,
-        similaritySearchResults,
       }
     }
 
-    const shouldUseRAG =
-      effectiveLastUserMessage.similaritySearchResults !== undefined
-
-    const systemMessage = await this.getSystemMessage(
-      shouldUseRAG,
-      hasTools,
-      hasMemoryTools,
-    )
+    const systemMessage = await this.getSystemMessage(hasTools, hasMemoryTools)
 
     const currentFile = currentFileOverride ?? null
     const currentFileMessage =
@@ -500,23 +479,10 @@ export class RequestContextBuilder {
       .join('')
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
 
-    const ragPrompt = message.similaritySearchResults
-      ? `## Potentially Relevant Snippets from the current vault
-${message.similaritySearchResults
-  .map(({ path, content, metadata }) => {
-    const numberedContent = this.addLineNumbersToContent({
-      content,
-      startLine: metadata.startLine,
-    })
-    return `\`\`\`${path}\n${numberedContent}\n\`\`\`\n`
-  })
-  .join('')}\n`
-      : ''
-
     const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
       message.selectedSkills,
     )
-    const textContent = `${ragPrompt}${blockPrompt}${assistantQuotePrompt}${selectedSkillsPrompt}\n\n${query}\n\n`
+    const textContent = `${blockPrompt}${assistantQuotePrompt}${selectedSkillsPrompt}\n\n${query}\n\n`
     if (imageParts.length === 0) {
       return textContent
     }
@@ -539,8 +505,7 @@ ${message.similaritySearchResults
           mentionable.type === 'folder' ||
           mentionable.type === 'url' ||
           mentionable.type === 'assistant-quote' ||
-          mentionable.type === 'current-file' ||
-          mentionable.type === 'vault',
+          mentionable.type === 'current-file',
       )
     )
   }
@@ -745,18 +710,12 @@ ${message.annotations
 
   public async compileUserMessagePrompt({
     message,
-    useVaultSearch,
     onQueryProgressChange,
   }: {
     message: ChatUserMessage
-    useVaultSearch?: boolean
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void
   }): Promise<{
     promptContent: ChatUserMessage['promptContent']
-    shouldUseRAG: boolean
-    similaritySearchResults?: (Omit<SelectEmbedding, 'embedding'> & {
-      similarity: number
-    })[]
   }> {
     try {
       if (
@@ -766,7 +725,6 @@ ${message.annotations
       ) {
         return {
           promptContent: '',
-          shouldUseRAG: false,
         }
       }
       const query = message.content
@@ -774,61 +732,29 @@ ${message.annotations
             ignoreMentionableTypes: ['model'],
           })
         : ''
-      let similaritySearchResults:
-        | (Omit<SelectEmbedding, 'embedding'> & {
-            similarity: number
-          })[]
-        | undefined
-
-      const mentionablesRequireVaultSearch = message.mentionables.some(
-        (m): m is MentionableVault => m.type === 'vault',
-      )
-      const shouldSearchEntireVault =
-        Boolean(useVaultSearch) || mentionablesRequireVaultSearch
 
       onQueryProgressChange?.({
         type: 'reading-mentionables',
       })
-      const shouldUseRAG = shouldSearchEntireVault
 
-      let filePrompt: string
-      if (shouldUseRAG) {
-        similaritySearchResults = await (
-          await this.getRagEngine()
-        ).processQuery({
-          query,
-          onQueryProgressChange: onQueryProgressChange,
-        }) // TODO: Add similarity boosting for mentioned files or folders
-        filePrompt = `## Potentially Relevant Snippets from the current vault
-${similaritySearchResults
-  .map(({ path, content, metadata }) => {
-    const newContent = this.addLineNumbersToContent({
-      content,
-      startLine: metadata.startLine,
-    })
-    return `\`\`\`${path}\n${newContent}\n\`\`\`\n`
-  })
-  .join('')}\n`
-      } else {
-        const files = message.mentionables
-          .filter((m): m is MentionableFile => m.type === 'file')
-          .map((m) => this.app.vault.getFileByPath(m.file.path))
-          .filter((file): file is TFile => Boolean(file))
-        const folders = message.mentionables
-          .filter((m): m is MentionableFolder => m.type === 'folder')
-          .map((m) => this.app.vault.getFolderByPath(m.folder.path))
-          .filter((folder): folder is TFolder => Boolean(folder))
-        const latestCurrentFile = getLatestValidCurrentFileMentionable(
-          message.mentionables,
-        )
-        const currentFiles = latestCurrentFile ? [latestCurrentFile] : []
+      const files = message.mentionables
+        .filter((m): m is MentionableFile => m.type === 'file')
+        .map((m) => this.app.vault.getFileByPath(m.file.path))
+        .filter((file): file is TFile => Boolean(file))
+      const folders = message.mentionables
+        .filter((m): m is MentionableFolder => m.type === 'folder')
+        .map((m) => this.app.vault.getFolderByPath(m.folder.path))
+        .filter((folder): folder is TFolder => Boolean(folder))
+      const latestCurrentFile = getLatestValidCurrentFileMentionable(
+        message.mentionables,
+      )
+      const currentFiles = latestCurrentFile ? [latestCurrentFile] : []
 
-        filePrompt = await this.buildMentionedFilePrompt({
-          files,
-          folders,
-          currentFiles,
-        })
-      }
+      const filePrompt = await this.buildMentionedFilePrompt({
+        files,
+        folders,
+        currentFiles,
+      })
 
       const blocks = message.mentionables.filter(
         (m): m is MentionableBlock => m.type === 'block',
@@ -892,8 +818,6 @@ ${await this.getWebsiteContent(url)}
             text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${urlPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`,
           },
         ],
-        shouldUseRAG,
-        similaritySearchResults: similaritySearchResults,
       }
     } catch (error) {
       console.error('Failed to compile user message', error)
@@ -921,23 +845,14 @@ ${quotes
   }
 
   private async getSystemMessage(
-    shouldUseRAG: boolean,
     hasTools = false,
     hasMemoryTools = false,
   ): Promise<RequestMessage> {
-    // When both RAG and tools are available, prioritize based on context
-    const useRAGPrompt = shouldUseRAG && !hasTools
-
-    // Build user custom instructions section (priority: placed first)
     const customInstructionsSection =
       await this.buildCustomInstructionsSection(hasMemoryTools)
 
-    // Build base behavior section
-    const baseBehaviorSection = useRAGPrompt
-      ? this.buildRAGBehaviorSection(hasTools)
-      : this.buildDefaultBehaviorSection(hasTools)
+    const baseBehaviorSection = this.buildDefaultBehaviorSection(hasTools)
 
-    // Combine all sections: user instructions first, then base behavior
     const sections = [customInstructionsSection, baseBehaviorSection].filter(
       Boolean,
     )
@@ -1113,26 +1028,6 @@ ${customInstruction}
     return section
   }
 
-  private buildRAGBehaviorSection(hasTools: boolean): string {
-    let section = `You are an intelligent assistant that answers the user's questions using their vault content whenever it is available.
-
-- Do not fabricate facts—if the provided context is insufficient, say so.
-- Format your responses in Markdown.
-- Always reply in the same language as the user's message.
-- Your replies should be detailed and insightful.`
-
-    if (hasTools) {
-      section += `
-- You can use tools, but consult the provided markdown first. Only call tools when the vault content cannot answer the question.
-- When using tools, briefly state why they are needed and focus on summarizing the results for the user.
-- Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
-- If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
-- If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
-    }
-
-    return section
-  }
-
   private async buildMentionedPathsPrompt({
     files,
     folders,
@@ -1290,9 +1185,10 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
       uniqueFiles.map(async (file) => {
         try {
           const rawContent = await readTFileContent(file, this.app.vault)
-          const content = file.extension === 'md'
-            ? annotateWikilinksWithPaths(this.app, rawContent, file.path)
-            : rawContent
+          const content =
+            file.extension === 'md'
+              ? annotateWikilinksWithPaths(this.app, rawContent, file.path)
+              : rawContent
           return { file, content }
         } catch (error) {
           console.warn('[YOLO] Failed to read mentioned file', file.path, error)
@@ -1429,8 +1325,7 @@ ${transcript.map((t) => `${t.offset}: ${t.text}`).join('\n')}`
       const response = await requestUrl({ url })
       return htmlToMarkdown(response.text)
     } catch (error) {
-      const status =
-        error instanceof Error ? error.message : String(error)
+      const status = error instanceof Error ? error.message : String(error)
       console.warn(`Failed to fetch URL: ${url}`, error)
       new Notice(`URL fetch failed (${status}): ${url}`, 6000)
       return `[Failed to fetch content from this URL: ${status}]`

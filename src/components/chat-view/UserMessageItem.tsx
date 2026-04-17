@@ -9,14 +9,13 @@ import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import { ReasoningLevel } from './chat-input/ReasoningSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import EditableUserMessageItem from './EditableUserMessageItem'
-import SimilaritySearchResults from './SimilaritySearchResults'
 import UserMessageCard from './UserMessageCard'
 
 export type UserMessageItemProps = {
   message: ChatUserMessage
   chatUserInputRef: (ref: ChatUserInputRef | null) => void
   onInputChange: (content: SerializedEditorState) => void
-  onSubmit: (content: SerializedEditorState, useVaultSearch: boolean) => void
+  onSubmit: (content: SerializedEditorState) => void
   onFocus: () => void
   onBlur: () => void
   onMentionablesChange: (mentionables: Mentionable[]) => void
@@ -106,11 +105,6 @@ function UserMessageItem({
         />
       ) : (
         <UserMessageCard snapshot={snapshot} onClick={onFocus} />
-      )}
-      {message.similaritySearchResults && (
-        <SimilaritySearchResults
-          similaritySearchResults={message.similaritySearchResults}
-        />
       )}
     </div>
   )

@@ -51,7 +51,6 @@ type TabCompletionDeps = {
     temperature?: number
     topP?: number
     stream: boolean
-    useVaultSearch: boolean
   }
   getActiveFileTitle: () => string
   setInlineSuggestionGhost: (

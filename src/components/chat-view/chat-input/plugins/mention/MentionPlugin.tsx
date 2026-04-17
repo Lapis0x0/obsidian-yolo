@@ -230,11 +230,6 @@ class MentionTypeaheadOption extends MenuOption {
           name = mentionable.folder.name
           subtitle = payload.subtitle ?? null
           break
-        case 'vault':
-          key = 'vault'
-          name = 'Vault'
-          subtitle = null
-          break
         case 'model':
           key = `model:${mentionable.modelId}`
           name = mentionable.name

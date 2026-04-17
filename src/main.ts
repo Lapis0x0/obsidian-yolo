@@ -19,11 +19,6 @@ import { createAgentConversationPersistence } from './core/agent/conversationPer
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
 import {
-  BackgroundActivity,
-  BackgroundActivityAction,
-  BackgroundActivityRegistry,
-} from './core/background/backgroundActivityRegistry'
-import {
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
@@ -38,6 +33,11 @@ import {
   getQwenOAuthService as getQwenOAuthServiceRuntime,
   initializeQwenOAuthRuntime,
 } from './core/auth/qwenOAuthRuntime'
+import {
+  BackgroundActivity,
+  BackgroundActivityAction,
+  BackgroundActivityRegistry,
+} from './core/background/backgroundActivityRegistry'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -45,15 +45,15 @@ import { NotificationService } from './core/notifications/notificationService'
 import { relocateYoloManagedData } from './core/paths/yoloManagedData'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
+import type { RAGEngine } from './core/rag/ragEngine'
 import {
   RagIndexBusyError,
   RagIndexRunSnapshot,
   RagIndexService,
 } from './core/rag/ragIndexService'
-import type { RAGEngine } from './core/rag/ragEngine'
 import {
-  checkForUpdate,
   type UpdateCheckResult,
+  checkForUpdate,
 } from './core/update/updateChecker'
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
@@ -577,7 +577,8 @@ export default class SmartComposerPlugin extends Plugin {
             retryAt: input.retryAt,
             failureMessage: input.failureMessage,
           }),
-        clearRetryScheduled: () => this.getRagIndexService().clearRetryScheduled(),
+        clearRetryScheduled: () =>
+          this.getRagIndexService().clearRetryScheduled(),
       })
     }
     return this.ragAutoUpdateService
@@ -660,7 +661,6 @@ export default class SmartComposerPlugin extends Plugin {
     temperature?: number
     topP?: number
     stream: boolean
-    useVaultSearch: boolean
   } {
     const continuation = this.settings.continuationOptions ?? {}
 
@@ -686,14 +686,7 @@ export default class SmartComposerPlugin extends Plugin {
           ? overrides.stream
           : true
 
-    const useVaultSearch =
-      typeof continuation.useVaultSearch === 'boolean'
-        ? continuation.useVaultSearch
-        : typeof overrides?.useVaultSearch === 'boolean'
-          ? overrides.useVaultSearch
-          : Boolean(this.settings.ragOptions?.enabled)
-
-    return { temperature, topP, stream, useVaultSearch }
+    return { temperature, topP, stream }
   }
 
   private resolveObsidianLanguage(): Language {
@@ -733,9 +726,8 @@ export default class SmartComposerPlugin extends Plugin {
   addInstallationIncompleteListener(listener: () => void): () => void {
     this.installationIncompleteListeners.push(listener)
     return () => {
-      this.installationIncompleteListeners = this.installationIncompleteListeners.filter(
-        (l) => l !== listener,
-      )
+      this.installationIncompleteListeners =
+        this.installationIncompleteListeners.filter((l) => l !== listener)
     }
   }
 
@@ -873,11 +865,10 @@ export default class SmartComposerPlugin extends Plugin {
       }
     })
 
-    const unsubscribeActivities = this.getBackgroundActivityRegistry().subscribe(
-      (activities) => {
+    const unsubscribeActivities =
+      this.getBackgroundActivityRegistry().subscribe((activities) => {
         this.updateBackgroundStatusBar(activities)
-      },
-    )
+      })
     const unsubscribeAgentSummaries =
       this.getAgentService().subscribeToRunSummaries((summaries) => {
         this.syncAgentBackgroundActivities(summaries)
@@ -978,7 +969,7 @@ export default class SmartComposerPlugin extends Plugin {
         activity.status === 'running' || activity.status === 'waiting',
     )
       ? visibleActivities.some((activity) => activity.status === 'waiting') &&
-          !visibleActivities.some((activity) => activity.status === 'running')
+        !visibleActivities.some((activity) => activity.status === 'running')
         ? 'is-waiting'
         : 'is-running'
       : 'is-failed'
@@ -1042,10 +1033,7 @@ export default class SmartComposerPlugin extends Plugin {
     if (runningActivities.length === 1 && failedActivities.length === 0) {
       const [activity] = runningActivities
       if (activity.kind === 'rag-index') {
-        return this.t(
-          'statusBar.ragAutoUpdateRunning',
-          '知识库正在后台更新',
-        )
+        return this.t('statusBar.ragAutoUpdateRunning', '知识库正在后台更新')
       }
     }
 
@@ -1296,7 +1284,9 @@ export default class SmartComposerPlugin extends Plugin {
     return activity.title
   }
 
-  private resolveBackgroundActivityDetail(activity: BackgroundActivity): string {
+  private resolveBackgroundActivityDetail(
+    activity: BackgroundActivity,
+  ): string {
     return activity.detail?.trim() ?? ''
   }
 
@@ -1462,7 +1452,6 @@ export default class SmartComposerPlugin extends Plugin {
           this.getActiveConversationOverrides(),
         resolveContinuationParams: (overrides) =>
           this.resolveContinuationParams(overrides),
-        getRagEngine: () => this.getRAGEngine(),
         getEditorView: (editor) => this.getEditorView(editor),
         closeSmartSpace: () => this.closeSmartSpace(),
         registerTimeout: (callback, timeout) =>
@@ -2105,9 +2094,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             this.app,
             runtime.dir,
             this.settings,
-            this.manifest.dir
-              ? normalizePath(this.manifest.dir)
-              : undefined,
+            this.manifest.dir ? normalizePath(this.manifest.dir) : undefined,
           )
           return this.dbManager
         } catch (error) {
@@ -2146,7 +2133,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     trigger: 'manual' | 'auto'
     retryPolicy: 'none' | 'transient'
     fromScratch?: boolean
-    onProgress?: (progress: import('./components/chat-view/QueryProgress').IndexProgress) => void
+    onProgress?: (
+      progress: import('./components/chat-view/QueryProgress').IndexProgress,
+    ) => void
   }): Promise<void> {
     await this.getRagIndexService().runIndex({
       ...options,

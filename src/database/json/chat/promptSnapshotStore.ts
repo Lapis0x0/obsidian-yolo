@@ -61,8 +61,7 @@ const shouldStorePromptSnapshot = (
       mentionable.type === 'folder' ||
       mentionable.type === 'block' ||
       mentionable.type === 'url' ||
-      mentionable.type === 'current-file' ||
-      mentionable.type === 'vault',
+      mentionable.type === 'current-file',
   )
 
 const fnv1aHash = (text: string): string => {

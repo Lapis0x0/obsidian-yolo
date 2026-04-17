@@ -909,7 +909,6 @@ export type TranslationKeys = {
     newChat: string
     continueResponse?: string
     stopGeneration?: string
-    vaultSearch: string
     selectModel: string
     uploadImage: string
     addContext: string
@@ -1093,8 +1092,6 @@ export type TranslationKeys = {
       temperature?: string
       topP?: string
       streaming?: string
-      vaultSearch?: string
-      useVaultSearch?: string
       geminiTools?: string
       webSearch?: string
       urlContext?: string

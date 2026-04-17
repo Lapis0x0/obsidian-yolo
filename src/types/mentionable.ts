@@ -8,9 +8,6 @@ export type MentionableFolder = {
   type: 'folder'
   folder: TFolder
 }
-export type MentionableVault = {
-  type: 'vault'
-}
 export type MentionableCurrentFile = {
   type: 'current-file'
   file: TFile | null
@@ -56,7 +53,6 @@ export type MentionableModel = {
 export type Mentionable =
   | MentionableFile
   | MentionableFolder
-  | MentionableVault
   | MentionableCurrentFile
   | MentionableBlock
   | MentionableAssistantQuote
@@ -71,7 +67,6 @@ export type SerializedMentionableFolder = {
   type: 'folder'
   folder: string
 }
-export type SerializedMentionableVault = MentionableVault
 export type SerializedMentionableCurrentFile = {
   type: 'current-file'
   file: string | null
@@ -102,7 +97,6 @@ export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
   | SerializedMentionableFolder
-  | SerializedMentionableVault
   | SerializedMentionableCurrentFile
   | SerializedMentionableBlock
   | SerializedMentionableAssistantQuote

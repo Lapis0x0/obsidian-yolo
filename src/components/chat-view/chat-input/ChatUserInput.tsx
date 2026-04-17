@@ -33,7 +33,6 @@ import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { ChatSelectedSkill } from '../../../types/chat'
 import { ChatModel } from '../../../types/chat-model.types'
-import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import {
   Mentionable,
   MentionableImage,
@@ -84,7 +83,7 @@ export type ChatUserInputRef = {
 export type ChatUserInputProps = {
   initialSerializedEditorState: SerializedEditorState | null
   onChange: (content: SerializedEditorState) => void
-  onSubmit: (content: SerializedEditorState, useVaultSearch?: boolean) => void
+  onSubmit: (content: SerializedEditorState) => void
   onFocus: () => void
   mentionables: Mentionable[]
   setMentionables: (mentionables: Mentionable[]) => void
@@ -92,11 +91,6 @@ export type ChatUserInputProps = {
   setSelectedSkills?: (skills: ChatSelectedSkill[]) => void
   autoFocus?: boolean
   addedBlockKey?: string | null
-  conversationOverrides?: ConversationOverrideSettings | null
-  onConversationOverridesChange?: (
-    overrides: ConversationOverrideSettings | null,
-  ) => void
-  showConversationSettingsButton?: boolean
   modelId?: string
   onModelChange?: (modelId: string) => void
   // 用于显示聚合后的 mentionables(包含历史消息中的文件)
@@ -120,10 +114,6 @@ export type ChatUserInputProps = {
   allowAgentModeOption?: boolean
   enableResize?: boolean
   onRunSlashCommand?: (command: SlashCommand) => void
-}
-
-type ChatSubmitOptions = {
-  useVaultSearch?: boolean
 }
 
 const INLINE_MENTIONABLE_TYPES = [
@@ -150,9 +140,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       selectedSkills = [],
       setSelectedSkills,
       autoFocus = false,
-      conversationOverrides = null,
-      onConversationOverridesChange: _onConversationOverridesChange,
-      showConversationSettingsButton: _showConversationSettingsButton = false,
       modelId,
       onModelChange,
       displayMentionables,
@@ -953,13 +940,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [effectiveSelectedSkills, setSelectedSkills],
     )
 
-    const handleSubmit = (options: ChatSubmitOptions = {}) => {
+    const handleSubmit = () => {
       const content = editorRef.current?.getEditorState()?.toJSON()
-      // Use vault search from conversation overrides if available, otherwise use the passed option
-      const shouldUseVaultSearch =
-        conversationOverrides?.useVaultSearch ?? options.useVaultSearch
       if (content) {
-        onSubmit(content, shouldUseVaultSearch)
+        onSubmit(content)
       }
     }
 

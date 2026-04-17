@@ -755,7 +755,7 @@ export const it: TranslationKeys = {
       continueIndex: 'Continua indicizzazione',
       rebuildFromScratch: 'Ricostruisci da zero',
       rebuildFromScratchConfirm:
-        'Questa operazione scarterà il progresso parziale e ricostruirà l\'indice da zero. Continuare?',
+        "Questa operazione scarterà il progresso parziale e ricostruirà l'indice da zero. Continuare?",
       waitingRetry: 'In attesa di un nuovo tentativo...',
       cancelIndex: 'Annulla',
     },
@@ -1046,7 +1046,6 @@ export const it: TranslationKeys = {
     newChat: 'Nuova chat',
     continueResponse: 'Continua risposta',
     stopGeneration: 'Ferma generazione',
-    vaultSearch: 'Cerca nel vault',
     selectModel: 'Seleziona modello',
     uploadImage: 'Carica immagine',
     addContext: 'Aggiungi contesto',
@@ -1289,8 +1288,6 @@ export const it: TranslationKeys = {
       temperature: 'Temperatura',
       topP: 'Top p',
       streaming: 'Streaming',
-      vaultSearch: 'Cerca nel vault',
-      useVaultSearch: 'Ricerca RAG',
       geminiTools: 'Strumenti Gemini',
       webSearch: 'Ricerca web',
       urlContext: 'Contesto URL',
@@ -1470,7 +1467,8 @@ export const it: TranslationKeys = {
     viewDetails: 'Controlla aggiornamenti',
     dismiss: 'Chiudi',
     installationIncompleteTitle: 'Installazione del plugin incompleta',
-    installationIncompleteMeta: 'main.js {bakedVersion} · manifest {manifestVersion}',
+    installationIncompleteMeta:
+      'main.js {bakedVersion} · manifest {manifestVersion}',
     installationIncompleteNotes:
       'Di solito main.js non è stato scaricato completamente durante l’aggiornamento. Esegui il backup di data.json, rimuovi il plugin e reinstallalo.',
   },

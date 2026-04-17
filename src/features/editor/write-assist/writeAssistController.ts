@@ -4,7 +4,6 @@ import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 import { executeSingleTurn } from '../../../core/ai/single-turn'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
-import type { RAGEngine } from '../../../core/rag/ragEngine'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
@@ -30,9 +29,7 @@ type WriteAssistDeps = {
     temperature?: number
     topP?: number
     stream: boolean
-    useVaultSearch: boolean
   }
-  getRagEngine: () => Promise<RAGEngine>
   getEditorView: (editor: Editor) => EditorView | null
   closeSmartSpace: () => void
   registerTimeout: (callback: () => void, timeout: number) => void
@@ -386,7 +383,6 @@ export class WriteAssistController {
         temperature,
         topP,
         stream: streamPreference,
-        useVaultSearch,
       } = this.deps.resolveContinuationParams(sidebarOverrides)
 
       const { providerClient, model } = getChatModelClient({
@@ -408,67 +404,6 @@ export class WriteAssistController {
       const titleLine = fileTitle ? `File title: ${fileTitle}\n\n` : ''
       const hasContext = (baseContext ?? '').trim().length > 0
 
-      let ragContextSection = ''
-      const knowledgeBaseRaw =
-        settings.continuationOptions?.knowledgeBaseFolders ?? []
-      const knowledgeBaseFolders: string[] = []
-      const knowledgeBaseFiles: string[] = []
-      for (const raw of knowledgeBaseRaw) {
-        const trimmed = raw.trim()
-        if (!trimmed) continue
-        const abstract = this.deps.app.vault.getAbstractFileByPath(trimmed)
-        if (abstract instanceof TFolder) {
-          knowledgeBaseFolders.push(abstract.path)
-        } else if (abstract instanceof TFile) {
-          knowledgeBaseFiles.push(abstract.path)
-        }
-      }
-      const ragGloballyEnabled = Boolean(settings.ragOptions?.enabled)
-      if (useVaultSearch && ragGloballyEnabled) {
-        try {
-          const querySource = (
-            baseContext ||
-            userInstruction ||
-            fileTitle
-          ).trim()
-          if (querySource.length > 0) {
-            const ragEngine = await this.deps.getRagEngine()
-            const ragResults = await ragEngine.processQuery({
-              query: querySource.slice(-4000),
-              scope:
-                knowledgeBaseFolders.length > 0 || knowledgeBaseFiles.length > 0
-                  ? {
-                      folders: knowledgeBaseFolders,
-                      files: knowledgeBaseFiles,
-                    }
-                  : undefined,
-            })
-            const snippetLimit = Math.max(
-              1,
-              Math.min(settings.ragOptions?.limit ?? 10, 10),
-            )
-            const snippets = ragResults.slice(0, snippetLimit)
-            if (snippets.length > 0) {
-              const formatted = snippets
-                .map((snippet, index) => {
-                  const content = (snippet.content ?? '').trim()
-                  const truncated =
-                    content.length > 600
-                      ? `${content.slice(0, 600)}...`
-                      : content
-                  return `Snippet ${index + 1} (from ${snippet.path}):\n${truncated}`
-                })
-                .join('\n\n')
-              if (formatted.trim().length > 0) {
-                ragContextSection = `Vault snippets:\n\n${formatted}\n\n`
-              }
-            }
-          }
-        } catch (error) {
-          console.warn('Continuation RAG lookup failed:', error)
-        }
-      }
-
       if (controller.signal.aborted) {
         return
       }
@@ -478,7 +413,7 @@ export class WriteAssistController {
         hasContext && limitedContextHasContent
           ? `Context (up to recent portion):\n\n${limitedContext}\n\n`
           : ''
-      const combinedContextSection = `${referenceRulesSection}${mentionableContextSection}${contextSection}${ragContextSection}`
+      const combinedContextSection = `${referenceRulesSection}${mentionableContextSection}${contextSection}`
 
       const requestMessages: RequestMessage[] = [
         ...(systemPrompt.length > 0
@@ -545,7 +480,6 @@ export class WriteAssistController {
         overrides: sidebarOverrides,
         request: baseRequest,
         streamPreference,
-        useVaultSearch,
       })
 
       const insertStart = hasSelection

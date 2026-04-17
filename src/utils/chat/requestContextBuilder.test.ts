@@ -174,13 +174,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
       frontmatters,
     })
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([
@@ -239,13 +233,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
       fileContents,
     })
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([
@@ -276,13 +264,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
       fileContents,
     })
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([
@@ -321,13 +303,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
       ]),
     })
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([{ type: 'file', file: explicitFile }]),
@@ -362,9 +338,6 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     })
 
     const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
       app as never,
       {
         ...settings,
@@ -418,13 +391,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
       fileContents,
     })
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([
@@ -468,13 +435,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [
@@ -611,13 +572,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [
@@ -728,13 +683,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [
@@ -816,13 +765,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [
@@ -884,13 +827,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [
@@ -963,13 +900,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [
@@ -1082,13 +1013,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       },
     } as unknown as ReturnType<typeof createMockApp>
 
-    const builder = new RequestContextBuilder(
-      async () => {
-        throw new Error('RAG should not be called in this test')
-      },
-      app as never,
-      settings,
-    )
+    const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
       messages: [

@@ -486,8 +486,7 @@ export const zh: TranslationKeys = {
         '未连接。连接后即可使用你的 ChatGPT Plus / Pro 账号模型。',
       chatgptOAuthStreamingNotice:
         'ChatGPT OAuth 支持流式传输；使用 Obsidian requestUrl 时会退化为缓冲输出，桌面端 Node fetch 可提供实时流式。',
-      oauthDesktopOnly:
-        'OAuth 登录仅在桌面端可用，请先在桌面端完成连接。',
+      oauthDesktopOnly: 'OAuth 登录仅在桌面端可用，请先在桌面端完成连接。',
       geminiOAuthTitle: 'Gemini OAuth',
       geminiOAuthConnect: '连接',
       geminiOAuthDisconnect: '断开连接',
@@ -996,7 +995,6 @@ export const zh: TranslationKeys = {
     newChat: '新建聊天',
     continueResponse: '继续生成',
     stopGeneration: '停止生成',
-    vaultSearch: '库搜索',
     selectModel: '选择模型',
     uploadImage: '上传图片',
     addContext: '添加上下文',
@@ -1202,8 +1200,6 @@ export const zh: TranslationKeys = {
       temperature: '温度',
       topP: 'Top P',
       streaming: '流式输出',
-      vaultSearch: 'Vault 搜索',
-      useVaultSearch: 'RAG 搜索',
       geminiTools: 'Gemini 工具',
       webSearch: '联网搜索',
       urlContext: 'URL 上下文',
@@ -1366,7 +1362,8 @@ export const zh: TranslationKeys = {
     viewDetails: '前往检查更新',
     dismiss: '关闭',
     installationIncompleteTitle: '插件安装不完整',
-    installationIncompleteMeta: '主程序 {bakedVersion} · manifest {manifestVersion}',
+    installationIncompleteMeta:
+      '主程序 {bakedVersion} · manifest {manifestVersion}',
     installationIncompleteNotes:
       '这通常是更新时 main.js 未能完整下载所致。建议备份 data.json 后，删除插件并重新安装。',
   },

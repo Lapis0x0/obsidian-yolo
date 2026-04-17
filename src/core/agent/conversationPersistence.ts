@@ -28,7 +28,6 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         selectedSkills: message.selectedSkills ?? [],
         selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
-        similaritySearchResults: message.similaritySearchResults,
       }
     case 'assistant':
       return {

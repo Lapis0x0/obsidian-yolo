@@ -14,7 +14,6 @@ import {
   MentionableImage,
   MentionableModel,
   MentionableUrl,
-  MentionableVault,
 } from '../../../types/mentionable'
 import { getBlockMentionableCountInfo } from '../../../utils/chat/mentionable'
 
@@ -142,41 +141,6 @@ function FolderBadge({
           />
         )}
         <span>{mentionable.folder.name}</span>
-      </div>
-    </BadgeBase>
-  )
-}
-
-function VaultBadge({
-  mentionable,
-  onDelete,
-  onClick,
-  isFocused,
-  showDeleteButton,
-}: {
-  mentionable: MentionableVault
-  onDelete: () => void
-  onClick: () => void
-  isFocused: boolean
-  showDeleteButton?: boolean
-}) {
-  const Icon = getMentionableIcon(mentionable)
-  return (
-    <BadgeBase
-      onDelete={onDelete}
-      onClick={onClick}
-      isFocused={isFocused}
-      showExpandButton={false}
-      showDeleteButton={showDeleteButton}
-    >
-      <div className="smtcmp-chat-user-input-file-badge-name">
-        {Icon && (
-          <Icon
-            size={12}
-            className="smtcmp-chat-user-input-file-badge-name-icon"
-          />
-        )}
-        <span>Vault</span>
       </div>
     </BadgeBase>
   )
@@ -472,16 +436,6 @@ export default function MentionableBadge({
     case 'folder':
       return (
         <FolderBadge
-          mentionable={mentionable}
-          onDelete={onDelete}
-          onClick={onClick}
-          isFocused={isFocused}
-          showDeleteButton={showDeleteButton}
-        />
-      )
-    case 'vault':
-      return (
-        <VaultBadge
           mentionable={mentionable}
           onDelete={onDelete}
           onClick={onClick}

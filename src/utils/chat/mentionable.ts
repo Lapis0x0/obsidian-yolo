@@ -25,10 +25,6 @@ export const serializeMentionable = (
         type: 'folder',
         folder: mentionable.folder.path,
       }
-    case 'vault':
-      return {
-        type: 'vault',
-      }
     case 'current-file':
       return {
         type: 'current-file',
@@ -86,6 +82,11 @@ export const deserializeMentionable = (
 ): Mentionable | null => {
   try {
     switch (mentionable.type) {
+      default:
+        // Unknown/legacy types persisted in old conversations (e.g. 'vault'
+        // from the removed Vault similarity search feature) are silently
+        // dropped so they disappear on next save.
+        return null
       case 'file': {
         const filePath =
           typeof mentionable.file === 'string' ? mentionable.file : null
@@ -116,10 +117,6 @@ export const deserializeMentionable = (
           folder: folder,
         }
       }
-      case 'vault':
-        return {
-          type: 'vault',
-        }
       case 'current-file': {
         if (!mentionable.file || typeof mentionable.file !== 'string') {
           return {
@@ -211,8 +208,6 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `file:${mentionable.file}`
     case 'folder':
       return `folder:${mentionable.folder}`
-    case 'vault':
-      return 'vault'
     case 'current-file':
       return `current-file:${mentionable.file ?? 'current'}`
     case 'block':
@@ -301,8 +296,6 @@ export function getMentionableName(
       return mentionable.file.name
     case 'folder':
       return mentionable.folder.name
-    case 'vault':
-      return 'Vault'
     case 'current-file':
       return (
         mentionable.file?.name ?? options?.currentFileLabel ?? 'Current file'

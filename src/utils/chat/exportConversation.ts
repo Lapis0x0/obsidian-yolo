@@ -126,9 +126,6 @@ function mentionablesToMarkdownLines(
       case 'block':
         lines.push(`Block in \`${m.file}\` (lines ${m.startLine}–${m.endLine})`)
         break
-      case 'vault':
-        lines.push('Vault')
-        break
       case 'url':
         lines.push(`<${m.url}>`)
         break

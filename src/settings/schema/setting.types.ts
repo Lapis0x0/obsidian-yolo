@@ -401,8 +401,6 @@ export const smartComposerSettingsSchema = z.object({
       topP: z.number().min(0).max(1).optional(),
       // enable or disable streaming responses for continuation results
       stream: z.boolean().optional(),
-      // whether continuation requests should include RAG / vault search context
-      useVaultSearch: z.boolean().optional(),
       // cap on how many characters of context to send with continuation requests
       maxContinuationChars: z.number().int().min(0).optional(),
       // enable tab completion based on prefix suggestion
@@ -494,7 +492,6 @@ export const smartComposerSettingsSchema = z.object({
       referenceRuleFolders: [],
       knowledgeBaseFolders: [],
       stream: true,
-      useVaultSearch: false,
       maxContinuationChars: 8000,
       enableTabCompletion: false,
       tabCompletionModelId:

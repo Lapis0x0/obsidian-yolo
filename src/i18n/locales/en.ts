@@ -1062,7 +1062,6 @@ export const en: TranslationKeys = {
     newChat: 'New chat',
     continueResponse: 'Continue response',
     stopGeneration: 'Stop generation',
-    vaultSearch: 'Vault search',
     selectModel: 'Select model',
     uploadImage: 'Upload image',
     addContext: 'Add context',
@@ -1287,8 +1286,6 @@ export const en: TranslationKeys = {
       temperature: 'Temperature',
       topP: 'Top p',
       streaming: 'Streaming',
-      vaultSearch: 'Vault search',
-      useVaultSearch: 'Retrieval-augmented search',
       geminiTools: 'Gemini tools',
       webSearch: 'Web search',
       urlContext: 'URL context',
@@ -1464,7 +1461,8 @@ export const en: TranslationKeys = {
     viewDetails: 'Check for updates',
     dismiss: 'Dismiss',
     installationIncompleteTitle: 'Plugin installation incomplete',
-    installationIncompleteMeta: 'main.js {bakedVersion} · manifest {manifestVersion}',
+    installationIncompleteMeta:
+      'main.js {bakedVersion} · manifest {manifestVersion}',
     installationIncompleteNotes:
       'This usually means main.js did not finish downloading during an update. Back up data.json, remove the plugin, and reinstall.',
   },
