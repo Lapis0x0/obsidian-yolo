@@ -348,6 +348,8 @@ export const smartComposerSettingsSchema = z.object({
       imageReadingEnabled: z.boolean().optional(),
       imageCompressionEnabled: z.boolean().optional(),
       imageCompressionQuality: z.number().min(1).max(100).optional(),
+      // Fetch external (http/https) image URLs referenced in Markdown
+      externalImageFetchEnabled: z.boolean().optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -370,6 +372,7 @@ export const smartComposerSettingsSchema = z.object({
       imageReadingEnabled: true,
       imageCompressionEnabled: true,
       imageCompressionQuality: 85,
+      externalImageFetchEnabled: false,
     }),
 
   notificationOptions: notificationOptionsSchema,

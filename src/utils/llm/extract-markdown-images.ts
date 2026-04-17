@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian'
+import { App, requestUrl, TFile } from 'obsidian'
 
 import {
   batchLookupImageCache,
@@ -21,9 +21,18 @@ const MIME_TYPES: Record<string, string> = {
 // and ![alt](path/to/image.png)
 const IMAGE_EMBED_REGEX = /!\[\[([^\]]+)\]\]|!\[([^\]]*)\]\(([^)]+)\)/g
 
+const DEFAULT_EXTERNAL_FETCH_TIMEOUT_MS = 5000
+const DEFAULT_EXTERNAL_FETCH_MAX_BYTES = 10 * 1024 * 1024 // 10MB
+
 export type ImageCompressionOptions = {
   enabled: boolean
   quality: number // 1-100
+}
+
+export type ExternalImageFetchOptions = {
+  enabled: boolean
+  timeoutMs?: number
+  maxBytes?: number
 }
 
 type YoloSettingsLike = {
@@ -35,6 +44,7 @@ type YoloSettingsLike = {
 export type ImageExtractOptions = {
   compression?: ImageCompressionOptions
   cache?: { enabled: true; settings?: YoloSettingsLike | null }
+  externalUrl?: ExternalImageFetchOptions
 }
 
 function getExtension(filename: string): string {
@@ -46,27 +56,48 @@ function isImageExtension(ext: string): boolean {
   return IMAGE_EXTENSIONS.has(ext)
 }
 
+function isHttpUrl(link: string): boolean {
+  return /^https?:\/\//i.test(link)
+}
+
+/**
+ * Strip query/fragment from a URL before extracting its extension.
+ */
+function getUrlExtension(url: string): string {
+  const noFragment = url.split('#')[0]
+  const noQuery = noFragment.split('?')[0]
+  return getExtension(noQuery)
+}
+
+type ParsedEmbed =
+  | { kind: 'local'; linkPath: string; ext: string }
+  | { kind: 'remote'; url: string; ext: string }
+
 /**
  * Parse an image embed match and return the link path and extension.
  * Returns null if the embed is not an image file.
  */
-function parseImageEmbed(
-  match: RegExpExecArray,
-): { linkPath: string; ext: string } | null {
+function parseImageEmbed(match: RegExpExecArray): ParsedEmbed | null {
   if (match[1] !== undefined) {
     // Wiki link: ![[path|optional-size-or-alt]]
+    // Obsidian wiki embeds don't target external URLs — treat as local only.
     const raw = match[1]
     const pipeIndex = raw.indexOf('|')
     const linkPath = pipeIndex >= 0 ? raw.slice(0, pipeIndex) : raw
     const ext = getExtension(linkPath)
     if (!isImageExtension(ext)) return null
-    return { linkPath, ext }
+    return { kind: 'local', linkPath, ext }
   } else if (match[3] !== undefined) {
-    // Markdown link: ![alt](path)
+    // Markdown link: ![alt](path-or-url)
     const linkPath = match[3]
+    if (isHttpUrl(linkPath)) {
+      const ext = getUrlExtension(linkPath)
+      if (!isImageExtension(ext)) return null
+      return { kind: 'remote', url: linkPath, ext }
+    }
     const ext = getExtension(linkPath)
     if (!isImageExtension(ext)) return null
-    return { linkPath, ext }
+    return { kind: 'local', linkPath, ext }
   }
   return null
 }
@@ -188,12 +219,57 @@ async function compressImage(
   }
 }
 
-type ImageMatch = {
+type LocalImageMatch = {
+  kind: 'local'
   startIndex: number
   endIndex: number
   file: TFile
   ext: string
   cacheKey: string
+}
+
+type RemoteImageMatch = {
+  kind: 'remote'
+  startIndex: number
+  endIndex: number
+  url: string
+  ext: string
+  cacheKey: string
+}
+
+type ImageMatch = LocalImageMatch | RemoteImageMatch
+
+/**
+ * Fetch a remote image via Obsidian's requestUrl (bypasses CORS).
+ * Enforces a timeout and a maximum byte size. Returns null on failure.
+ */
+async function fetchRemoteImage(
+  url: string,
+  timeoutMs: number,
+  maxBytes: number,
+): Promise<ArrayBuffer | null> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error('remote image fetch timeout')),
+        timeoutMs,
+      )
+    })
+    const response = await Promise.race([
+      requestUrl({ url, method: 'GET', throw: false }),
+      timeoutPromise,
+    ])
+    if (response.status < 200 || response.status >= 300) return null
+    const buffer = response.arrayBuffer
+    if (!buffer || buffer.byteLength === 0) return null
+    if (buffer.byteLength > maxBytes) return null
+    return buffer
+  } catch {
+    return null
+  } finally {
+    if (timeoutHandle !== null) clearTimeout(timeoutHandle)
+  }
 }
 
 /**
@@ -217,28 +293,45 @@ export async function extractMarkdownImages(
   // First pass: find all image embeds and resolve them
   const matches: ImageMatch[] = []
   const regex = new RegExp(IMAGE_EMBED_REGEX.source, IMAGE_EMBED_REGEX.flags)
+  const externalEnabled = !!options?.externalUrl?.enabled
   let m: RegExpExecArray | null
 
   while ((m = regex.exec(text)) !== null) {
     const parsed = parseImageEmbed(m)
     if (!parsed) continue
 
-    const file = resolveImageFile(app, parsed.linkPath, sourcePath)
-    if (!file) continue
+    if (parsed.kind === 'local') {
+      const file = resolveImageFile(app, parsed.linkPath, sourcePath)
+      if (!file) continue
 
-    const cacheKey = buildImageCacheKey(
-      file.path,
-      file.stat.mtime,
-      file.stat.size,
-    )
+      const cacheKey = buildImageCacheKey(
+        file.path,
+        file.stat.mtime,
+        file.stat.size,
+      )
 
-    matches.push({
-      startIndex: m.index,
-      endIndex: m.index + m[0].length,
-      file,
-      ext: parsed.ext,
-      cacheKey,
-    })
+      matches.push({
+        kind: 'local',
+        startIndex: m.index,
+        endIndex: m.index + m[0].length,
+        file,
+        ext: parsed.ext,
+        cacheKey,
+      })
+    } else {
+      if (!externalEnabled) continue
+      // Cache key uses URL as identifier. URLs never collide with vault paths
+      // (they start with http(s)://), so sharing the cache namespace is safe.
+      const cacheKey = buildImageCacheKey(parsed.url, 0, 0)
+      matches.push({
+        kind: 'remote',
+        startIndex: m.index,
+        endIndex: m.index + m[0].length,
+        url: parsed.url,
+        ext: parsed.ext,
+        cacheKey,
+      })
+    }
   }
 
   if (matches.length === 0) {
@@ -258,6 +351,10 @@ export async function extractMarkdownImages(
   }
 
   const compression = options?.compression
+  const externalTimeoutMs =
+    options?.externalUrl?.timeoutMs ?? DEFAULT_EXTERNAL_FETCH_TIMEOUT_MS
+  const externalMaxBytes =
+    options?.externalUrl?.maxBytes ?? DEFAULT_EXTERNAL_FETCH_MAX_BYTES
   const newCacheEntries: Array<{
     hash: string
     dataUrl: string
@@ -290,7 +387,24 @@ export async function extractMarkdownImages(
       }
 
       // Read and encode the image
-      const buffer = await app.vault.readBinary(match.file)
+      let buffer: ArrayBuffer | null
+      if (match.kind === 'local') {
+        buffer = await app.vault.readBinary(match.file)
+      } else {
+        buffer = await fetchRemoteImage(
+          match.url,
+          externalTimeoutMs,
+          externalMaxBytes,
+        )
+      }
+      if (!buffer) {
+        parts.push({
+          type: 'text',
+          text: text.slice(match.startIndex, match.endIndex),
+        })
+        cursor = match.endIndex
+        continue
+      }
       let dataUrl: string
 
       if (compression?.enabled && compression.quality < 100) {
@@ -316,7 +430,7 @@ export async function extractMarkdownImages(
         newCacheEntries.push({
           hash: match.cacheKey,
           dataUrl,
-          sourcePath: match.file.path,
+          sourcePath: match.kind === 'local' ? match.file.path : match.url,
         })
       }
     } catch {

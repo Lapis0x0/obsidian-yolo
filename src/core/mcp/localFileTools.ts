@@ -2272,6 +2272,10 @@ export async function callLocalFileTool({
                     settings?.chatOptions.imageCompressionQuality ?? 85,
                 },
                 cache: { enabled: true, settings },
+                externalUrl: {
+                  enabled:
+                    settings?.chatOptions.externalImageFetchEnabled ?? false,
+                },
               },
             )
             if (imageResult.contentParts) {

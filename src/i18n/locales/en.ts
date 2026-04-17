@@ -445,6 +445,9 @@ export const en: TranslationKeys = {
       imageReadingEnabled: 'Image reading',
       imageReadingEnabledDesc:
         'Automatically extract embedded images when reading Markdown files, sending them to the model as multimodal content.',
+      externalImageFetchEnabled: 'Fetch external image URLs',
+      externalImageFetchEnabledDesc:
+        'Also fetch http(s) image URLs referenced in Markdown (image hosts, CDNs). Disabled by default — enabling it will send outbound requests to third-party hosts. Fetches time out after 5s and skip images larger than 10MB.',
       imageCompressionEnabled: 'Image compression',
       imageCompressionEnabledDesc:
         'Compress extracted images to reduce token usage and transfer size.',

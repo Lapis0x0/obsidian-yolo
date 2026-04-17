@@ -405,6 +405,9 @@ export const zh: TranslationKeys = {
       imageReadingEnabled: '图片读取',
       imageReadingEnabledDesc:
         '读取 Markdown 文件时自动提取内嵌图片，以多模态方式传递给模型。',
+      externalImageFetchEnabled: '抓取外部图片链接',
+      externalImageFetchEnabledDesc:
+        '同时抓取 Markdown 中引用的 http(s) 图片链接（图床、CDN）。默认关闭——启用后会向第三方主机发起请求。单张图片超时 5 秒、超过 10MB 将被跳过。',
       imageCompressionEnabled: '图片压缩',
       imageCompressionEnabledDesc:
         '对提取的图片进行压缩，减少 Token 消耗和传输大小。',

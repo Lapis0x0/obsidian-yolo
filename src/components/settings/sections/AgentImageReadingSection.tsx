@@ -20,6 +20,9 @@ export function AgentImageReadingSection() {
   const isCompressionEnabled =
     settings.chatOptions.imageCompressionEnabled ?? true
 
+  const isExternalFetchEnabled =
+    settings.chatOptions.externalImageFetchEnabled ?? false
+
   const [qualityInput, setQualityInput] = useState(
     String(
       settings.chatOptions.imageCompressionQuality ??
@@ -75,6 +78,22 @@ export function AgentImageReadingSection() {
 
       {isImageReadingEnabled && (
         <>
+          <ObsidianSetting
+            name={t('settings.agent.externalImageFetchEnabled')}
+            desc={t('settings.agent.externalImageFetchEnabledDesc')}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={isExternalFetchEnabled}
+              onChange={(value) => {
+                updateChatOptions(
+                  { externalImageFetchEnabled: value },
+                  'externalImageFetchEnabled',
+                )
+              }}
+            />
+          </ObsidianSetting>
+
           <ObsidianSetting
             name={t('settings.agent.imageCompressionEnabled')}
             desc={t('settings.agent.imageCompressionEnabledDesc')}
