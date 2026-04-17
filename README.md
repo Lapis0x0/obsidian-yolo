@@ -97,7 +97,7 @@ If you use YOLO on mobile, you may still encounter unavailable features, inconsi
 
 ## Roadmap
 
-- [ ] Better and stronger Vault AI search
+- [x] Better and stronger Vault AI search
 - [ ] Background Agent (long-running task automation)
 - [ ] Cron scheduled tasks
 - [ ] Multi-Agent orchestration

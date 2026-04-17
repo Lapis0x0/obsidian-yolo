@@ -97,7 +97,7 @@ Se usi YOLO su mobile, potresti comunque incontrare funzionalità non disponibil
 
 ## Roadmap
 
-- [ ] Ricerca Vault AI migliore e più forte
+- [x] Ricerca Vault AI migliore e più forte
 - [ ] Agent in Background (automazione task lunghi)
 - [ ] Task programmati Cron
 - [ ] Orchestrazione Multi-Agent

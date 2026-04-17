@@ -104,7 +104,7 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 
 ## Roadmap
 
-- [ ] 更好，更强的 Vault AI 搜索 
+- [x] 更好，更强的 Vault AI 搜索 
 - [ ] 后台 Agent（长程任务自动执行）
 - [ ] Cron 定时任务
 - [ ] 多 Agent 协同编排
