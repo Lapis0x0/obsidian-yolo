@@ -42,7 +42,12 @@ import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
-import { relocateYoloManagedData } from './core/paths/yoloManagedData'
+import {
+  readVaultDataJson,
+  relocateYoloManagedData,
+  removeVaultDataJson,
+  writeVaultDataJson,
+} from './core/paths/yoloManagedData'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -1912,7 +1917,20 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async loadSettings() {
-    const parsedSettings = parseSmartComposerSettings(await this.loadData())
+    const pluginData = await this.loadData()
+    // First pass: parse the plugin-directory data to learn the YOLO base dir
+    // so we can look for a vault-stored mirror at `{baseDir}/.yolo_data.json`.
+    const pluginParsedSettings = parseSmartComposerSettings(pluginData)
+
+    // If the vault mirror exists, it is the authoritative source. This lets
+    // Obsidian Sync propagate settings across devices even when the local
+    // plugin-dir copy is stale.
+    const vaultData = await readVaultDataJson(this.app, pluginParsedSettings)
+    const usedVaultSource = vaultData !== null
+    const parsedSettings = usedVaultSource
+      ? parseSmartComposerSettings(vaultData)
+      : pluginParsedSettings
+
     const settingsWithDefaultAssistant =
       ensureDefaultAssistantInSettings(parsedSettings)
     const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
@@ -1940,6 +1958,14 @@ export default class SmartComposerPlugin extends Plugin {
 
     if (JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)) {
       await this.saveData(normalizedSettings)
+    } else if (usedVaultSource) {
+      // Keep the plugin-directory copy in sync with what we actually loaded
+      // so subsequent boots find the same baseDir/flag without reading vault.
+      await this.saveData(normalizedSettings)
+    }
+
+    if (normalizedSettings.experimental?.storeDataInVault) {
+      await writeVaultDataJson(this.app, normalizedSettings, normalizedSettings)
     }
   }
 
@@ -1959,6 +1985,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const previousSettings = this.settings
     const yoloBaseDirChanged =
       previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+    const previousStoreDataInVault =
+      previousSettings?.experimental?.storeDataInVault ?? false
+    const nextStoreDataInVault =
+      normalizedSettings.experimental?.storeDataInVault ?? false
 
     if (yoloBaseDirChanged) {
       if (this.dbManager) {
@@ -1984,6 +2014,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     this.settings = normalizedSettings
     await this.saveData(normalizedSettings)
+
+    if (nextStoreDataInVault) {
+      await writeVaultDataJson(this.app, normalizedSettings, normalizedSettings)
+    } else if (previousStoreDataInVault) {
+      // Flag turned off: clean up the vault mirror so future loads use the
+      // plugin-directory copy exclusively.
+      await removeVaultDataJson(this.app, normalizedSettings)
+    }
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
     this.ragCoordinator?.updateSettings(normalizedSettings)
 

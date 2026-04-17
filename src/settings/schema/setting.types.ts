@@ -304,6 +304,17 @@ export const smartComposerSettingsSchema = z.object({
       baseDir: 'YOLO',
     }),
 
+  // Experimental options
+  experimental: z
+    .object({
+      // When true, mirror the plugin's data.json into the vault under
+      // `{yolo.baseDir}/.yolo_data.json` so it can be synced by Obsidian Sync.
+      storeDataInVault: z.boolean().catch(false),
+    })
+    .catch({
+      storeDataInVault: false,
+    }),
+
   debug: z
     .object({
       logModelRequestContext: z.boolean().optional(),

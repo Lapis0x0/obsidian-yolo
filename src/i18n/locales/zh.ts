@@ -925,6 +925,9 @@ export const zh: TranslationKeys = {
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
       yoloBaseDirPlaceholder: 'YOLO',
+      storeDataInVault: '通过 vault 同步设置（实验性）',
+      storeDataInVaultDesc:
+        '开启后会把设置文件额外写入 {path}，使其可被 Obsidian Sync 同步。关闭时会从 vault 删除该文件。',
       mentionDisplayMode: '引用内容显示位置',
       mentionDisplayModeDesc:
         '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',

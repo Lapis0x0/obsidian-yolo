@@ -1008,6 +1008,9 @@ export const en: TranslationKeys = {
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
+      storeDataInVault: 'Sync settings via vault (Experimental)',
+      storeDataInVaultDesc:
+        'When enabled, settings are also written to {path} so they can be synced by Obsidian Sync. Turning this off removes the vault copy.',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
         'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',

@@ -5,6 +5,7 @@ export const YOLO_SKILLS_SUBDIR = 'skills'
 export const YOLO_SKILLS_INDEX_FILE_NAME = 'Skills.md'
 export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
 export const YOLO_VECTOR_DB_FILE_NAME = '.yolo_vector_db.tar.gz'
+export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
 export const LEGACY_JSON_DB_DIR_NAME = '.smtcmp_json_db'
 export const LEGACY_VECTOR_DB_FILE_NAME = '.smtcmp_vector_db.tar.gz'
 
@@ -71,6 +72,14 @@ export const getYoloVectorDbPath = (
 ): string => {
   return normalizePath(
     `${getYoloBaseDir(settings)}/${YOLO_VECTOR_DB_FILE_NAME}`,
+  )
+}
+
+export const getYoloDataJsonPath = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(
+    `${getYoloBaseDir(settings)}/${YOLO_DATA_JSON_FILE_NAME}`,
   )
 }
 

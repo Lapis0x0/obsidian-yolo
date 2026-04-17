@@ -4,6 +4,7 @@ import {
   getLegacyJsonDbRootDir,
   getLegacyVectorDbPath,
   getYoloBaseDir,
+  getYoloDataJsonPath,
   getYoloJsonDbRootDir,
   getYoloVectorDbPath,
 } from './yoloPaths'
@@ -296,6 +297,42 @@ const relocateVectorDbFile = async ({
   }
 }
 
+const relocateDataJsonFile = async ({
+  app,
+  sourcePath,
+  targetPath,
+}: {
+  app: App
+  sourcePath: string
+  targetPath: string
+}): Promise<boolean> => {
+  if (sourcePath === targetPath) {
+    return true
+  }
+  if (!(await app.vault.adapter.exists(sourcePath))) {
+    return true
+  }
+
+  try {
+    await ensureParentDir(app, targetPath)
+    if (await app.vault.adapter.exists(targetPath)) {
+      // Target already has data — keep target, drop source to avoid overwriting.
+      await removePathIfExists(app, sourcePath)
+      return true
+    }
+    const content = await app.vault.adapter.read(sourcePath)
+    await app.vault.adapter.write(targetPath, content)
+    await removePathIfExists(app, sourcePath)
+    return true
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to relocate data.json from "${sourcePath}" to "${targetPath}".`,
+      error,
+    )
+    return false
+  }
+}
+
 export const relocateYoloManagedData = async ({
   app,
   fromSettings,
@@ -331,19 +368,99 @@ export const relocateYoloManagedData = async ({
     sourceCandidates: sourceVectorCandidates,
     targetPath: targetVectorPath,
   })
-  if (vectorSucceeded) {
-    return true
+  if (!vectorSucceeded) {
+    const rolledBackJson = await relocateJsonDbRootDir({
+      app,
+      sourceCandidates: [targetJsonDir],
+      targetDir: getYoloJsonDbRootDir(fromSettings),
+    })
+    if (!rolledBackJson) {
+      console.warn(
+        `[YOLO] Failed to roll back chat storage after vector relocation failed. Source root: "${targetJsonDir}".`,
+      )
+    }
+    return false
   }
 
-  const rolledBackJson = await relocateJsonDbRootDir({
+  // When the YOLO base dir changes, also move the optional vault-stored
+  // `data.json` mirror (used by the experimental `storeDataInVault` option).
+  // A failure here is non-fatal — the mirror is best-effort.
+  const sourceDataJsonPath = getYoloDataJsonPath(fromSettings)
+  const targetDataJsonPath = getYoloDataJsonPath(toSettings)
+  await relocateDataJsonFile({
     app,
-    sourceCandidates: [targetJsonDir],
-    targetDir: getYoloJsonDbRootDir(fromSettings),
+    sourcePath: sourceDataJsonPath,
+    targetPath: targetDataJsonPath,
   })
-  if (!rolledBackJson) {
-    console.warn(
-      `[YOLO] Failed to roll back chat storage after vector relocation failed. Source root: "${targetJsonDir}".`,
-    )
+
+  return true
+}
+
+/**
+ * Reads the vault-stored `data.json` mirror, if it exists. Returns null when
+ * the file is missing or cannot be parsed as JSON.
+ */
+export const readVaultDataJson = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<Record<string, unknown> | null> => {
+  const path = getYoloDataJsonPath(settings)
+  if (!(await app.vault.adapter.exists(path))) {
+    return null
   }
-  return false
+  try {
+    const raw = await app.vault.adapter.read(path)
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    return null
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to read vault data.json at "${path}"; falling back to plugin data.`,
+      error,
+    )
+    return null
+  }
+}
+
+/**
+ * Writes settings to the vault-stored `data.json` mirror. Returns true on
+ * success; failures are non-fatal and logged.
+ */
+export const writeVaultDataJson = async (
+  app: App,
+  settings: YoloSettingsLike | null,
+  data: unknown,
+): Promise<boolean> => {
+  const path = getYoloDataJsonPath(settings)
+  try {
+    await ensureDir(app, getYoloBaseDir(settings))
+    await app.vault.adapter.write(path, JSON.stringify(data, null, 2))
+    return true
+  } catch (error) {
+    console.warn(`[YOLO] Failed to write vault data.json at "${path}".`, error)
+    return false
+  }
+}
+
+/**
+ * Removes the vault-stored `data.json` mirror if present. Returns true when
+ * the file is absent after the call.
+ */
+export const removeVaultDataJson = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<boolean> => {
+  const path = getYoloDataJsonPath(settings)
+  if (!(await app.vault.adapter.exists(path))) {
+    return true
+  }
+  try {
+    await app.vault.adapter.remove(path)
+    return true
+  } catch (error) {
+    console.warn(`[YOLO] Failed to remove vault data.json at "${path}".`, error)
+    return false
+  }
 }
