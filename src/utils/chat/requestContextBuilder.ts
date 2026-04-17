@@ -46,6 +46,7 @@ import {
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import { annotateWikilinksWithPaths } from '../llm/annotate-wikilinks'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
@@ -1288,7 +1289,10 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     const fileEntries = await Promise.all(
       uniqueFiles.map(async (file) => {
         try {
-          const content = await readTFileContent(file, this.app.vault)
+          const rawContent = await readTFileContent(file, this.app.vault)
+          const content = file.extension === 'md'
+            ? annotateWikilinksWithPaths(this.app, rawContent, file.path)
+            : rawContent
           return { file, content }
         } catch (error) {
           console.warn('[YOLO] Failed to read mentioned file', file.path, error)

@@ -22,6 +22,7 @@ import {
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
 } from '../edits/textEditEngine'
+import { annotateWikilinksWithPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
   type MemoryScope,
@@ -2197,7 +2198,10 @@ export async function callLocalFileTool({
             continue
           }
 
-          const content = await app.vault.read(file)
+          const rawContent = await app.vault.read(file)
+          const content = path.endsWith('.md')
+            ? annotateWikilinksWithPaths(app, rawContent, path)
+            : rawContent
           const lines = content.length === 0 ? [] : content.split('\n')
           const totalLines = lines.length
 
