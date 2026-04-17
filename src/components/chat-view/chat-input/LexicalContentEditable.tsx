@@ -24,6 +24,7 @@ import {
   fuzzySearchFolders,
 } from '../../../utils/fuzzy-search'
 
+import ObsidianFileDropPlugin from './plugins/drop/ObsidianFileDropPlugin'
 import DragDropPaste from './plugins/image/DragDropPastePlugin'
 import ImagePastePlugin from './plugins/image/ImagePastePlugin'
 import AutoLinkMentionPlugin from './plugins/mention/AutoLinkMentionPlugin'
@@ -266,6 +267,7 @@ export default function LexicalContentEditable({
       <NoFormatPlugin />
       <AutoLinkMentionPlugin />
       <ImagePastePlugin onCreateImageMentionables={onCreateImageMentionables} />
+      <ObsidianFileDropPlugin />
       <DragDropPaste onCreateImageMentionables={onCreateImageMentionables} />
       {/* templates feature removed */}
     </LexicalComposer>
