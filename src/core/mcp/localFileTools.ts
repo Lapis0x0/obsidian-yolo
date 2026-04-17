@@ -16,14 +16,19 @@ import {
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
+import { annotateWikilinksWithPaths } from '../../utils/llm/annotate-wikilinks'
+import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
+import {
+  PDF_INDEX_MAX_BYTES,
+  PDF_INDEX_MAX_PAGES,
+  extractPdfText,
+} from '../../utils/pdf/extractPdfText'
 import {
   type TextEditOperation,
   type TextEditPlan,
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
 } from '../edits/textEditEngine'
-import { annotateWikilinksWithPaths } from '../../utils/llm/annotate-wikilinks'
-import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
   type MemoryScope,
   memoryAdd,
@@ -31,7 +36,7 @@ import {
   memoryUpdate,
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
-import { fuseRrfHybrid, type SuperSearchResult } from '../search/hybridSearch'
+import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import { aggregateSearchResults } from '../search/searchResultAggregation'
 import { getLiteSkillDocument } from '../skills/liteSkills'
 
@@ -372,7 +377,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_search',
       description:
-        'Search the vault. By default, prefer hybrid search: keyword path/content matching plus semantic (RAG) retrieval fused with RRF. Content results are grouped by file and include the most relevant snippets. Use keyword for exact filenames, paths, or literal terms; use rag only when you explicitly want semantic-only retrieval without keyword matching. For deep reading, follow up with fs_read.',
+        'Search the vault. By default, prefer hybrid search: keyword path/content matching plus semantic (RAG) retrieval fused with RRF. Content results are grouped by file and include the most relevant snippets. RAG may return PDF hits: startLine/endLine (and page when present) refer to PDF page numbers, not markdown line numbers. Use keyword for exact filenames, paths, or literal terms; use rag only when you explicitly want semantic-only retrieval without keyword matching. For deep reading, follow up with fs_read.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -424,7 +429,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_read',
       description:
-        'Read vault files by path using either full-file or targeted line-range operations. Prefer lines when you already know the relevant section to reduce context usage.',
+        'Read vault files by path using either full-file or targeted line-range operations. For .md files, lines are 1-based note line numbers. For .pdf files, output is extracted text wrapped in <page N>...</page N> tags; operation lines mode uses startLine/endLine as inclusive PDF page numbers (not markdown lines). Prefer lines when you already know the relevant section to reduce context usage.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -438,7 +443,7 @@ export function getLocalFileTools(): McpTool[] {
           operation: {
             type: 'object',
             description:
-              'Read strategy. Use type="full" to return the whole file. Use type="lines" to read a targeted range, and prefer lines for large files or when headings/line numbers are already known.',
+              'Read strategy. Use type="full" to return the whole file. Use type="lines" to read a targeted range. For PDFs, lines are page numbers.',
             properties: {
               type: {
                 type: 'string',
@@ -446,16 +451,16 @@ export function getLocalFileTools(): McpTool[] {
               },
               startLine: {
                 type: 'integer',
-                description: `Required for lines. 1-based start line. Defaults to ${DEFAULT_READ_START_LINE} when omitted.`,
+                description: `Required for lines. For markdown: 1-based start line. For PDF: 1-based start page. Defaults to ${DEFAULT_READ_START_LINE} when omitted.`,
               },
               maxLines: {
                 type: 'integer',
-                description: `Optional for lines when endLine is not set. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
+                description: `Optional for lines when endLine is not set. For markdown: max lines. For PDF: max pages. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
               },
               endLine: {
                 type: 'integer',
                 description:
-                  'Optional for lines. 1-based inclusive end line. If set, maxLines is ignored.',
+                  'Optional for lines. Inclusive end line (markdown) or end page (PDF). If set, maxLines is ignored.',
               },
             },
             required: ['type'],
@@ -1152,7 +1157,7 @@ const legacyFsSearchItemsToSuper = (
 type RagEmbeddingRow = {
   path: string
   content: string
-  metadata: { startLine: number; endLine: number }
+  metadata: { startLine: number; endLine: number; page?: number }
   similarity: number
 }
 
@@ -1160,16 +1165,22 @@ const mapRagRowsToSuper = (
   rows: RagEmbeddingRow[],
   source: 'rag',
 ): SuperSearchResult[] => {
-  return rows.map((row) => ({
-    kind: 'content' as const,
-    path: row.path,
-    line: row.metadata.startLine,
-    startLine: row.metadata.startLine,
-    endLine: row.metadata.endLine,
-    snippet: truncateRagSnippet(row.content),
-    similarity: row.similarity,
-    source,
-  }))
+  return rows.map((row) => {
+    const page = row.metadata.page
+    const locLine = page ?? row.metadata.startLine
+    const locEnd = page ?? row.metadata.endLine
+    return {
+      kind: 'content' as const,
+      path: row.path,
+      line: locLine,
+      startLine: locLine,
+      endLine: locEnd,
+      page,
+      snippet: truncateRagSnippet(row.content),
+      similarity: row.similarity,
+      source,
+    }
+  })
 }
 
 const pathFolderToRagScope = (
@@ -1416,11 +1427,17 @@ const collectKeywordFsSearchResults = async ({
         return a.path.localeCompare(b.path)
       })
       .slice(0, Math.max(maxResults - results.length, 0))
-      .forEach(({ matchedTokenCount: _matchedTokenCount, firstMatchIndex: _firstMatchIndex, ...item }) => {
-        void _matchedTokenCount
-        void _firstMatchIndex
-        results.push(item)
-      })
+      .forEach(
+        ({
+          matchedTokenCount: _matchedTokenCount,
+          firstMatchIndex: _firstMatchIndex,
+          ...item
+        }) => {
+          void _matchedTokenCount
+          void _firstMatchIndex
+          results.push(item)
+        },
+      )
   }
 
   return results
@@ -1573,9 +1590,7 @@ const parseTextEditOperation = (
   )
 }
 
-const coerceOperationObject = (
-  operation: unknown,
-): Record<string, unknown> => {
+const coerceOperationObject = (operation: unknown): Record<string, unknown> => {
   if (typeof operation === 'string') {
     const trimmed = operation.trim()
     if (trimmed.length > 0) {
@@ -2189,6 +2204,126 @@ export async function callLocalFileTool({
             continue
           }
 
+          const isPdf = file.extension?.toLowerCase() === 'pdf'
+          if (isPdf) {
+            if (file.stat.size > PDF_INDEX_MAX_BYTES) {
+              results.push({
+                path,
+                ok: false,
+                error: `PDF too large (${file.stat.size} bytes).`,
+              })
+              continue
+            }
+            let pages: { page: number; text: string }[] = []
+            try {
+              const extracted = await extractPdfText(app, file, {
+                signal,
+                maxBinaryBytes: PDF_INDEX_MAX_BYTES,
+                maxPages: PDF_INDEX_MAX_PAGES,
+              })
+              pages = extracted.pages
+            } catch (error) {
+              if (
+                error instanceof DOMException &&
+                error.name === 'AbortError'
+              ) {
+                return { status: ToolCallResponseStatus.Aborted }
+              }
+              results.push({
+                path,
+                ok: false,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to extract PDF text.',
+              })
+              continue
+            }
+
+            const totalPageCount = pages.length
+            let rangeStartPage = 1
+            let rangeEndPageInclusive = totalPageCount
+            if (operation.type === 'lines') {
+              rangeStartPage = operation.startLine
+              rangeEndPageInclusive =
+                operation.endLine ??
+                Math.min(
+                  rangeStartPage + operation.maxLines - 1,
+                  totalPageCount,
+                )
+              if (rangeEndPageInclusive < rangeStartPage) {
+                results.push({
+                  path,
+                  ok: false,
+                  error:
+                    'operation.endLine must be greater than or equal to operation.startLine.',
+                })
+                continue
+              }
+              if (
+                rangeEndPageInclusive - rangeStartPage + 1 >
+                MAX_READ_MAX_LINES
+              ) {
+                results.push({
+                  path,
+                  ok: false,
+                  error: `Requested page range is too large. Maximum ${MAX_READ_MAX_LINES} pages per file.`,
+                })
+                continue
+              }
+            }
+
+            const selectedPages = pages.filter(
+              (p) =>
+                p.page >= rangeStartPage && p.page <= rangeEndPageInclusive,
+            )
+
+            const taggedBody = selectedPages
+              .map((p) => `<page ${p.page}>\n${p.text}\n</page ${p.page}>`)
+              .join('\n')
+            if (taggedBody.length > MAX_FILE_SIZE_BYTES) {
+              results.push({
+                path,
+                ok: false,
+                error: `Extracted PDF text too large (${taggedBody.length} chars). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+              })
+              continue
+            }
+
+            // PDF 场景下 line 语义 = 页号。不做 `${index+1}|` 前缀，避免
+            // 与 returnedRange（页号）语义错位，LLM 可直接依赖 <page N> 标签定位。
+            const totalLines = totalPageCount
+            const outputContent = taggedBody
+            const returnedCount = selectedPages.length
+            const returnedStartLine = returnedCount > 0 ? rangeStartPage : null
+            const returnedEndLine =
+              returnedCount > 0 ? rangeEndPageInclusive : null
+            const hasMoreAbove =
+              operation.type === 'lines' && rangeStartPage > 1
+            const hasMoreBelow =
+              operation.type === 'lines' &&
+              rangeEndPageInclusive < totalPageCount
+            const nextStartLine = hasMoreBelow
+              ? rangeEndPageInclusive + 1
+              : null
+
+            results.push({
+              path,
+              ok: true,
+              totalLines,
+              returnedRange: {
+                startLine: returnedStartLine,
+                endLine: returnedEndLine,
+                count: returnedCount,
+              },
+              hasMoreAbove,
+              hasMoreBelow,
+              nextStartLine,
+              content: outputContent,
+            })
+            continue
+          }
+
           if (file.stat.size > MAX_FILE_SIZE_BYTES) {
             results.push({
               path,
@@ -2260,7 +2395,7 @@ export async function callLocalFileTool({
           // Extract images from markdown files using the outputContent
           // (which is the line-numbered text that was actually returned)
           if (
-            (settings?.chatOptions.imageReadingEnabled ?? true) &&
+            (settings?.chatOptions?.imageReadingEnabled ?? true) &&
             path.endsWith('.md') &&
             outputContent.length > 0
           ) {
@@ -2271,14 +2406,13 @@ export async function callLocalFileTool({
               {
                 compression: {
                   enabled:
-                    settings?.chatOptions.imageCompressionEnabled ?? true,
-                  quality:
-                    settings?.chatOptions.imageCompressionQuality ?? 85,
+                    settings?.chatOptions?.imageCompressionEnabled ?? true,
+                  quality: settings?.chatOptions?.imageCompressionQuality ?? 85,
                 },
                 cache: { enabled: true, settings },
                 externalUrl: {
                   enabled:
-                    settings?.chatOptions.externalImageFetchEnabled ?? false,
+                    settings?.chatOptions?.externalImageFetchEnabled ?? false,
                 },
               },
             )
@@ -2293,8 +2427,7 @@ export async function callLocalFileTool({
           toolCallId: toolCallId ?? null,
           requestedOperation: {
             type: operation.type,
-            startLine:
-              operation.type === 'lines' ? operation.startLine : null,
+            startLine: operation.type === 'lines' ? operation.startLine : null,
             endLine:
               operation.type === 'lines' ? (operation.endLine ?? null) : null,
             maxLines:
@@ -2312,9 +2445,7 @@ export async function callLocalFileTool({
         // UI display, compaction, and pruning consumers).
         let contentParts: ContentPart[] | undefined
         if (perFileImageParts.length > 0) {
-          const imageFilePathSet = new Set(
-            perFileImageParts.map((p) => p.path),
-          )
+          const imageFilePathSet = new Set(perFileImageParts.map((p) => p.path))
           contentParts = []
 
           for (const result of results) {
@@ -2332,7 +2463,9 @@ export async function callLocalFileTool({
 
             const rangeInfo =
               result.returnedRange.startLine != null
-                ? ` | lines ${result.returnedRange.startLine}-${result.returnedRange.endLine} of ${result.totalLines}`
+                ? result.path.toLowerCase().endsWith('.pdf')
+                  ? ` | pages ${result.returnedRange.startLine}-${result.returnedRange.endLine} of ${result.totalLines}`
+                  : ` | lines ${result.returnedRange.startLine}-${result.returnedRange.endLine} of ${result.totalLines}`
                 : ''
 
             if (fileParts) {

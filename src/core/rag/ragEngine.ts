@@ -18,7 +18,7 @@ export const dedupeRagQueryResults = (
   const deduped = new Map<string, RagQueryResult>()
 
   for (const row of rows) {
-    const key = `${row.path}:${row.metadata.startLine}:${row.metadata.endLine}`
+    const key = `${row.path}:${row.metadata.page ?? ''}:${row.metadata.startLine}:${row.metadata.endLine}`
     const existing = deduped.get(key)
     if (!existing || row.similarity > existing.similarity) {
       deduped.set(key, row)
@@ -87,6 +87,7 @@ export class RAGEngine {
           chunkSize: this.settings.ragOptions.chunkSize,
           excludePatterns: this.settings.ragOptions.excludePatterns,
           includePatterns: this.settings.ragOptions.includePatterns,
+          ragIndexPdf: this.settings.ragOptions.indexPdf ?? true,
           reindexAll: options.reindexAll,
           fromScratch: options.fromScratch,
           signal: options.signal,
@@ -126,9 +127,7 @@ export class RAGEngine {
     /** Override settings.ragOptions.limit when set */
     limit?: number
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void
-  }): Promise<
-    RagQueryResult[]
-  > {
+  }): Promise<RagQueryResult[]> {
     if (!this.embeddingModel) {
       throw new Error('Embedding model is not set')
     }

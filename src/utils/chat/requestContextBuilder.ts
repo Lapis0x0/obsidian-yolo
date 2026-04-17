@@ -44,6 +44,11 @@ import {
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { annotateWikilinksWithPaths } from '../llm/annotate-wikilinks'
+import {
+  PDF_INDEX_MAX_BYTES,
+  PDF_INDEX_MAX_PAGES,
+  extractPdfText,
+} from '../pdf/extractPdfText'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
@@ -1184,9 +1189,21 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     const fileEntries = await Promise.all(
       uniqueFiles.map(async (file) => {
         try {
-          const rawContent = await readTFileContent(file, this.app.vault)
+          const ext = file.extension?.toLowerCase() ?? ''
+          let rawContent: string
+          if (ext === 'pdf') {
+            const { pages } = await extractPdfText(this.app, file, {
+              maxBinaryBytes: PDF_INDEX_MAX_BYTES,
+              maxPages: PDF_INDEX_MAX_PAGES,
+            })
+            rawContent = pages
+              .map((p) => `<page ${p.page}>\n${p.text}\n</page ${p.page}>`)
+              .join('\n')
+          } else {
+            rawContent = await readTFileContent(file, this.app.vault)
+          }
           const content =
-            file.extension === 'md'
+            ext === 'md'
               ? annotateWikilinksWithPaths(this.app, rawContent, file.path)
               : rawContent
           return { file, content }

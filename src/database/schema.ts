@@ -31,6 +31,8 @@ const customVector = customType<{ data: number[] }>({
 export type VectorMetaData = {
   startLine: number
   endLine: number
+  /** PDF page number (1-based). Omitted for Markdown chunks. */
+  page?: number
 }
 
 // pgvector HNSW: index dimensions follow supported list.

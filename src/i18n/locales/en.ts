@@ -671,6 +671,9 @@ export const en: TranslationKeys = {
       autoUpdate: 'Auto update index',
       autoUpdateDesc:
         'When enabled, incrementally update the index in the background after documents change.',
+      indexPdf: 'Index PDF files',
+      indexPdfDesc:
+        'Extract and index PDF text for the knowledge base. The first full rebuild may take longer; turn off for very large vaults if you do not need PDF retrieval.',
       autoUpdateInterval: 'Minimum interval (hours)',
       autoUpdateIntervalDesc:
         'Only trigger auto update after this interval to avoid frequent re-indexing.',
@@ -1077,6 +1080,7 @@ export const en: TranslationKeys = {
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
     annotations: 'Annotations',
+    pdfReferenceNoPreview: '(PDF: click the title to open the page)',
     assistantQuote: {
       add: 'Quote',
       badge: 'Reply quote',

@@ -5,7 +5,11 @@ import { PropsWithChildren, useEffect, useMemo, useState } from 'react'
 import { useApp } from '../../contexts/app-context'
 import { useDarkModeContext } from '../../contexts/dark-mode-context'
 import { useLanguage } from '../../contexts/language-context'
-import { openMarkdownFile, readTFileContent } from '../../utils/obsidian'
+import {
+  openMarkdownFile,
+  openPdfFileAtPage,
+  readTFileContent,
+} from '../../utils/obsidian'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 import { MemoizedSyntaxHighlighterWrapper } from './SyntaxHighlighterWrapper'
@@ -15,11 +19,14 @@ export default function MarkdownReferenceBlock({
   startLine,
   endLine,
   language,
+  previewContent,
 }: PropsWithChildren<{
   filename: string
   startLine: number
   endLine: number
   language?: string
+  /** For PDF references: assistant-provided excerpt (vault read is not plain text). */
+  previewContent?: string
 }>) {
   const app = useApp()
   const { isDarkMode } = useDarkModeContext()
@@ -33,8 +40,20 @@ export default function MarkdownReferenceBlock({
     return !language || ['markdown'].includes(language)
   }, [language])
 
+  const isPdf = filename.toLowerCase().endsWith('.pdf')
+
   useEffect(() => {
     async function fetchBlockContent() {
+      if (isPdf) {
+        const initial = (previewContent ?? '').trim()
+        setBlockContent(
+          initial.length > 0
+            ? initial
+            : t('chat.pdfReferenceNoPreview', '（PDF：点击标题打开对应页）'),
+        )
+        setCollapsed(initial.split('\n').length > 2)
+        return
+      }
       const file = app.vault.getFileByPath(filename)
       if (!file) {
         setBlockContent(null)
@@ -52,9 +71,13 @@ export default function MarkdownReferenceBlock({
     }
 
     void fetchBlockContent()
-  }, [filename, startLine, endLine, app.vault])
+  }, [filename, startLine, endLine, app.vault, isPdf, previewContent, t])
 
   const handleOpenFile = () => {
+    if (isPdf) {
+      openPdfFileAtPage(app, filename, startLine)
+      return
+    }
     openMarkdownFile(app, filename, startLine)
   }
 
@@ -78,7 +101,11 @@ export default function MarkdownReferenceBlock({
               className="smtcmp-code-block-header-filename"
               onClick={handleOpenFile}
             >
-              {filename}
+              {isPdf
+                ? startLine === endLine
+                  ? `${filename} · p.${startLine}`
+                  : `${filename} · p.${startLine}–${endLine}`
+                : filename}
             </div>
           )}
           <div className="smtcmp-code-block-header-button-container smtcmp-code-block-header-button-container--spaced">

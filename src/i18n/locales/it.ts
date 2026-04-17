@@ -655,6 +655,9 @@ export const it: TranslationKeys = {
       autoUpdate: 'Aggiornamento automatico',
       autoUpdateDesc:
         "Quando è attivo, aggiorna incrementalmente l'indice in background dopo le modifiche ai documenti.",
+      indexPdf: 'Indicizza file PDF',
+      indexPdfDesc:
+        'Estrae e indicizza il testo dei PDF per la knowledge base. La prima ricostruzione completa può richiedere più tempo; disattiva per vault molto grandi se non ti serve il recupero sui PDF.',
       autoUpdateInterval: 'Intervallo aggiornamento automatico',
       autoUpdateIntervalDesc:
         "Tempo di attesa (in millisecondi) dopo che un file viene modificato prima di aggiornare l'indice.",
@@ -1058,6 +1061,7 @@ export const it: TranslationKeys = {
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
     annotations: 'Annotazioni',
+    pdfReferenceNoPreview: '(PDF: clicca il titolo per aprire la pagina)',
     assistantQuote: {
       add: 'Cita',
       badge: 'Citazione risposta',

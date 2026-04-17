@@ -29,6 +29,7 @@ describe('parseSmartComposerSettings', () => {
       thresholdTokens: 20000,
       minSimilarity: 0.0,
       limit: 10,
+      indexPdf: true,
       autoUpdateEnabled: true,
       autoUpdateIntervalHours: 0,
       lastAutoUpdateAt: 0,

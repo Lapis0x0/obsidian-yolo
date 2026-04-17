@@ -478,6 +478,8 @@ export type TranslationKeys = {
       title: string
       enableRag: string
       enableRagDesc: string
+      indexPdf?: string
+      indexPdfDesc?: string
       embeddingModel: string
       embeddingModelDesc: string
       chunkSize: string
@@ -1034,6 +1036,7 @@ export type TranslationKeys = {
     }
     showMore?: string
     showLess?: string
+    pdfReferenceNoPreview?: string
     toolCall?: {
       status?: {
         call?: string

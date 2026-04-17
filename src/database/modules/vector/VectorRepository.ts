@@ -20,6 +20,7 @@ import {
   EmbeddingDbStats,
   EmbeddingModelClient,
 } from '../../../types/embedding'
+import { embeddingChunkFingerprint } from '../../../utils/vector/embedding-chunk-keys'
 import { DatabaseNotInitializedException } from '../../exception'
 import {
   InsertEmbedding,
@@ -92,15 +93,10 @@ export class VectorRepository {
     if (ids.length === 0) {
       return
     }
-    await this.db
-      .delete(embeddingTable)
-      .where(inArray(embeddingTable.id, ids))
+    await this.db.delete(embeddingTable).where(inArray(embeddingTable.id, ids))
   }
 
-  async updateVectorsMtimeByIds(
-    ids: number[],
-    mtime: number,
-  ): Promise<void> {
+  async updateVectorsMtimeByIds(ids: number[], mtime: number): Promise<void> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
@@ -226,7 +222,9 @@ export class VectorRepository {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
-    await this.db.delete(embeddingTable).where(eq(embeddingTable.model, modelId))
+    await this.db
+      .delete(embeddingTable)
+      .where(eq(embeddingTable.model, modelId))
   }
 
   async clearStagingVectorsForModel(baseModelId: string): Promise<void> {
@@ -240,8 +238,9 @@ export class VectorRepository {
 
   /**
    * Build a fingerprint map of chunks already embedded in the given staging
-   * namespace. Key is file path; value is the set of `startLine:endLine:hash`
-   * fingerprints. Used to skip already-embedded chunks when resuming a rebuild.
+   * namespace. Key is file path; value is the set of fingerprints
+   * (`start:end:hash` for Markdown, `page:start:end:hash` for PDF).
+   * Used to skip already-embedded chunks when resuming a rebuild.
    */
   async getStagingFingerprints(
     stagingModelId: string,
@@ -261,7 +260,7 @@ export class VectorRepository {
     const result = new Map<string, Set<string>>()
     for (const row of rows) {
       if (!row.content_hash) continue
-      const fp = `${row.metadata.startLine}:${row.metadata.endLine}:${row.content_hash}`
+      const fp = embeddingChunkFingerprint(row.metadata, row.content_hash)
       let bucket = result.get(row.path)
       if (!bucket) {
         bucket = new Set<string>()
@@ -298,17 +297,15 @@ export class VectorRepository {
         .where(eq(embeddingTable.model, stagingModelId))
       return
     }
-    await this.db
-      .delete(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.model, stagingModelId),
-          sql`${embeddingTable.path} NOT IN (${sql.join(
-            keepPaths.map((p) => sql`${p}`),
-            sql`, `,
-          )})`,
-        ),
-      )
+    await this.db.delete(embeddingTable).where(
+      and(
+        eq(embeddingTable.model, stagingModelId),
+        sql`${embeddingTable.path} NOT IN (${sql.join(
+          keepPaths.map((p) => sql`${p}`),
+          sql`, `,
+        )})`,
+      ),
+    )
   }
 
   /**
@@ -334,18 +331,27 @@ export class VectorRepository {
         )
       return
     }
-    await this.db
-      .delete(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.model, stagingModelId),
-          eq(embeddingTable.path, filePath),
-          sql`(COALESCE((${embeddingTable.metadata}::jsonb ->> 'startLine'), '') || ':' || COALESCE((${embeddingTable.metadata}::jsonb ->> 'endLine'), '') || ':' || COALESCE(${embeddingTable.content_hash}, '')) NOT IN (${sql.join(
+    await this.db.delete(embeddingTable).where(
+      and(
+        eq(embeddingTable.model, stagingModelId),
+        eq(embeddingTable.path, filePath),
+        sql`(
+            CASE
+              WHEN COALESCE((${embeddingTable.metadata}::jsonb ->> 'page'), '') <> ''
+                THEN (${embeddingTable.metadata}::jsonb ->> 'page') || ':'
+              ELSE ''
+            END
+            || COALESCE((${embeddingTable.metadata}::jsonb ->> 'startLine'), '')
+            || ':'
+            || COALESCE((${embeddingTable.metadata}::jsonb ->> 'endLine'), '')
+            || ':'
+            || COALESCE(${embeddingTable.content_hash}, '')
+          ) NOT IN (${sql.join(
             keepFingerprints.map((fp) => sql`${fp}`),
             sql`, `,
           )})`,
-        ),
-      )
+      ),
+    )
   }
 
   async clearVectorsByModelIds(modelIds: string[]): Promise<void> {
@@ -401,7 +407,9 @@ export class VectorRepository {
 
     await client.exec('BEGIN')
     try {
-      await client.exec(`DELETE FROM embeddings WHERE model = '${activeModelId}'`)
+      await client.exec(
+        `DELETE FROM embeddings WHERE model = '${activeModelId}'`,
+      )
       await client.exec(
         `UPDATE embeddings SET model = '${activeModelId}' WHERE model = '${stagingModelId}'`,
       )

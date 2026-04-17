@@ -620,6 +620,9 @@ export const zh: TranslationKeys = {
       // Auto update
       autoUpdate: '自动更新索引',
       autoUpdateDesc: '开启后会在文档发生变化时于后台自动增量更新索引。',
+      indexPdf: '索引 PDF',
+      indexPdfDesc:
+        '为知识库提取并索引 PDF 文本；首次全库重建可能较慢。若仓库很大且不需要 PDF 检索可关闭。',
       autoUpdateInterval: '最小间隔(小时)',
       autoUpdateIntervalDesc: '到达该间隔才会触发自动更新；用于避免频繁重建。',
       manualUpdateNow: '立即更新',
@@ -1010,6 +1013,7 @@ export const zh: TranslationKeys = {
     regenerate: '重新生成',
     reasoning: '推理过程',
     annotations: '注释',
+    pdfReferenceNoPreview: '（PDF：点击标题打开对应页）',
     assistantQuote: {
       add: '引用',
       badge: '回复引用',

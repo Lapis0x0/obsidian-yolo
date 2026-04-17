@@ -11,9 +11,7 @@ import {
   LLMAPIKeyNotSetException,
   LLMBaseUrlNotSetException,
 } from '../../../core/llm/exception'
-import {
-  isTransientRagIndexError,
-} from '../../../core/rag/ragIndexErrors'
+import { isTransientRagIndexError } from '../../../core/rag/ragIndexErrors'
 import {
   InsertEmbedding,
   SelectEmbedding,
@@ -28,11 +26,22 @@ import {
   createYieldController,
   yieldToMain,
 } from '../../../utils/common/yield-to-main'
+import {
+  PDF_INDEX_MAX_BYTES,
+  PDF_INDEX_MAX_PAGES,
+  extractPdfText,
+} from '../../../utils/pdf/extractPdfText'
+import {
+  embeddingChunkFingerprint,
+  embeddingChunkLineKey,
+} from '../../../utils/vector/embedding-chunk-keys'
 
 import { VectorRepository } from './VectorRepository'
 
 const createStagingModelId = (embeddingModelId: string, indexRunId: string) =>
   `${embeddingModelId}::staging:${indexRunId}`
+
+const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
 export class VectorManager {
   private app: App
@@ -121,6 +130,8 @@ export class VectorManager {
       chunkSize: number
       excludePatterns: string[]
       includePatterns: string[]
+      /** When false, only Markdown files are indexed. */
+      ragIndexPdf?: boolean
       reindexAll?: boolean
       /**
        * When true, wipe staging before starting the rebuild (fresh start).
@@ -134,6 +145,7 @@ export class VectorManager {
     updateProgress?: (indexProgress: IndexProgress) => void,
   ): Promise<void> {
     const { signal } = options
+    const ragIndexPdf = options.ragIndexPdf ?? true
     const stagingModelId =
       options.reindexAll && options.indexRunId
         ? createStagingModelId(embeddingModel.id, options.indexRunId)
@@ -150,9 +162,10 @@ export class VectorManager {
     let resumedChunks = 0
 
     if (options.reindexAll) {
-      filesToIndex = this.getFilteredMarkdownFiles(
+      filesToIndex = this.getFilteredIndexableFiles(
         options.excludePatterns,
         options.includePatterns,
+        ragIndexPdf,
       )
       if (stagingModelId) {
         if (options.fromScratch) {
@@ -182,6 +195,7 @@ export class VectorManager {
         embeddingModel,
         excludePatterns: options.excludePatterns,
         includePatterns: options.includePatterns,
+        ragIndexPdf,
       })
 
       filesToIndex = result.files
@@ -305,8 +319,10 @@ export class VectorManager {
             textSplitter,
             embeddingModel,
             Boolean(options.reindexAll),
+            options.chunkSize,
             stagingModelId,
             stagingFingerprints?.get(file.path),
+            signal,
           )
 
         contentChunks.push(...fileChunks)
@@ -387,7 +403,8 @@ export class VectorManager {
     })
 
     let completedChunks = 0
-    const embeddingFileBoundaries: Array<{ path: string; endChunk: number }> = []
+    const embeddingFileBoundaries: Array<{ path: string; endChunk: number }> =
+      []
     let embeddingFileCursor = 0
     let cumulativeChunks = 0
     let lastReportedEmbeddingFile: string | null = null
@@ -718,12 +735,26 @@ Please report this issue to the developer if it persists.`,
     textSplitter: RecursiveCharacterTextSplitter,
     embeddingModel: EmbeddingModelClient,
     reindexAll: boolean,
+    chunkSize: number,
     stagingModelId?: string | null,
     stagedFingerprints?: Set<string>,
+    signal?: AbortSignal,
   ): Promise<{
     chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
     totalChunkLines: number
   }> {
+    if (file.extension?.toLowerCase() === 'pdf') {
+      return this.collectPdfChunksForFile(
+        file,
+        embeddingModel,
+        reindexAll,
+        chunkSize,
+        stagingModelId,
+        stagedFingerprints,
+        signal,
+      )
+    }
+
     const fileContent = await this.app.vault.cachedRead(file)
     const sanitizedContent = fileContent.split('\u0000').join('')
     const fileDocuments = await textSplitter.createDocuments([sanitizedContent])
@@ -736,7 +767,8 @@ Please report this issue to the developer if it persists.`,
         const startLine = chunk.metadata.loc.lines.from as number
         const endLine = chunk.metadata.loc.lines.to as number
         const content_hash = await sha256HexPrefix16(content)
-        desiredFingerprints.push(`${startLine}:${endLine}:${content_hash}`)
+        const meta: VectorMetaData = { startLine, endLine }
+        desiredFingerprints.push(embeddingChunkFingerprint(meta, content_hash))
         // Resumed rebuilds must remove stale staging chunks for this file before
         // promoting, otherwise outdated rows leak into active on success.
         // Do this after we know the file's full current fingerprint set.
@@ -745,7 +777,9 @@ Please report this issue to the developer if it persists.`,
         // known after chunking.
         // Resumable rebuild: skip chunks already embedded into staging from
         // a prior attempt (matched by line range + content hash).
-        if (stagedFingerprints?.has(`${startLine}:${endLine}:${content_hash}`)) {
+        if (
+          stagedFingerprints?.has(embeddingChunkFingerprint(meta, content_hash))
+        ) {
           continue
         }
         chunks.push({
@@ -753,7 +787,7 @@ Please report this issue to the developer if it persists.`,
           mtime: file.stat.mtime,
           content,
           content_hash,
-          metadata: { startLine, endLine },
+          metadata: meta,
         })
       }
       if (stagingModelId) {
@@ -775,7 +809,7 @@ Please report this issue to the developer if it persists.`,
       Awaited<ReturnType<VectorRepository['getChunkMetaForFile']>>[0]
     >()
     for (const row of existing) {
-      const k = `${row.metadata.startLine}:${row.metadata.endLine}`
+      const k = embeddingChunkLineKey(row.metadata)
       existingByLine.set(k, row)
     }
 
@@ -799,7 +833,8 @@ Please report this issue to the developer if it persists.`,
       const content = chunk.pageContent
       const startLine = chunk.metadata.loc.lines.from as number
       const endLine = chunk.metadata.loc.lines.to as number
-      const key = `${startLine}:${endLine}`
+      const meta: VectorMetaData = { startLine, endLine }
+      const key = embeddingChunkLineKey(meta)
       const content_hash = await sha256HexPrefix16(content)
       const prev = existingByLine.get(key)
       if (
@@ -821,7 +856,7 @@ Please report this issue to the developer if it persists.`,
         }
         await this.repository.updateVectorMetadataById(reusableByHash.id, {
           mtime: file.stat.mtime,
-          metadata: { startLine, endLine },
+          metadata: meta,
         })
         reusedIds.add(reusableByHash.id)
         continue
@@ -834,7 +869,7 @@ Please report this issue to the developer if it persists.`,
         mtime: file.stat.mtime,
         content,
         content_hash,
-        metadata: { startLine, endLine },
+        metadata: meta,
       })
     }
 
@@ -845,12 +880,233 @@ Please report this issue to the developer if it persists.`,
     }
 
     await this.repository.deleteVectorsByIds([...new Set(idsToDelete)])
-    await this.repository.updateVectorsMtimeByIds(
-      idsMtimeOnly,
-      file.stat.mtime,
-    )
+    await this.repository.updateVectorsMtimeByIds(idsMtimeOnly, file.stat.mtime)
 
     return { chunks, totalChunkLines: fileDocuments.length }
+  }
+
+  private async collectPdfChunksForFile(
+    file: TFile,
+    embeddingModel: EmbeddingModelClient,
+    reindexAll: boolean,
+    chunkSize: number,
+    stagingModelId?: string | null,
+    stagedFingerprints?: Set<string>,
+    signal?: AbortSignal,
+  ): Promise<{
+    chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
+    totalChunkLines: number
+  }> {
+    const skipPdf = async (): Promise<{
+      chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
+      totalChunkLines: number
+    }> => {
+      if (reindexAll && stagingModelId) {
+        await this.repository.deleteStagingRowsForFileExceptFingerprints(
+          stagingModelId,
+          file.path,
+          [],
+        )
+        return { chunks: [], totalChunkLines: 0 }
+      }
+      if (!reindexAll) {
+        return this.collectPdfChunksEmpty(file, embeddingModel)
+      }
+      return { chunks: [], totalChunkLines: 0 }
+    }
+
+    if (file.stat.size > PDF_INDEX_MAX_BYTES) {
+      console.warn(
+        `[YOLO] Skipping PDF (>${PDF_INDEX_MAX_BYTES} bytes): ${file.path}`,
+      )
+      return skipPdf()
+    }
+
+    let pages: { page: number; text: string }[] = []
+    try {
+      const extracted = await extractPdfText(this.app, file, {
+        signal,
+        maxBinaryBytes: PDF_INDEX_MAX_BYTES,
+        maxPages: PDF_INDEX_MAX_PAGES,
+      })
+      pages = extracted.pages
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
+      }
+      console.warn(
+        `[YOLO] PDF text extraction failed: ${file.path}`,
+        error instanceof Error ? error.message : error,
+      )
+      return skipPdf()
+    }
+
+    const pageSplitter = new RecursiveCharacterTextSplitter({
+      chunkSize: Math.min(PDF_PAGE_CHUNK_CHAR_THRESHOLD, chunkSize),
+      chunkOverlap: 0,
+    })
+
+    const prepared: Array<{
+      content: string
+      metadata: VectorMetaData
+    }> = []
+
+    for (const { page: pageNum, text } of pages) {
+      const trimmed = text.trim()
+      if (!trimmed) {
+        continue
+      }
+      const lineCount = Math.max(1, trimmed.split('\n').length)
+      if (trimmed.length <= PDF_PAGE_CHUNK_CHAR_THRESHOLD) {
+        prepared.push({
+          content: `[page ${pageNum}]\n${trimmed}`,
+          metadata: { page: pageNum, startLine: 1, endLine: lineCount },
+        })
+        continue
+      }
+      const docs = await pageSplitter.createDocuments([trimmed])
+      for (const doc of docs) {
+        const from = doc.metadata.loc.lines.from as number
+        const to = doc.metadata.loc.lines.to as number
+        prepared.push({
+          content: `[page ${pageNum}]\n${doc.pageContent}`,
+          metadata: { page: pageNum, startLine: from, endLine: to },
+        })
+      }
+    }
+
+    if (reindexAll) {
+      const desiredFingerprints: string[] = []
+      const chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
+      for (const item of prepared) {
+        const content_hash = await sha256HexPrefix16(item.content)
+        desiredFingerprints.push(
+          embeddingChunkFingerprint(item.metadata, content_hash),
+        )
+        if (
+          stagedFingerprints?.has(
+            embeddingChunkFingerprint(item.metadata, content_hash),
+          )
+        ) {
+          continue
+        }
+        chunks.push({
+          path: file.path,
+          mtime: file.stat.mtime,
+          content: item.content,
+          content_hash,
+          metadata: item.metadata,
+        })
+      }
+      if (stagingModelId) {
+        await this.repository.deleteStagingRowsForFileExceptFingerprints(
+          stagingModelId,
+          file.path,
+          desiredFingerprints,
+        )
+      }
+      return { chunks, totalChunkLines: chunks.length }
+    }
+
+    const existing = await this.repository.getChunkMetaForFile(
+      file.path,
+      embeddingModel,
+    )
+    const existingByLine = new Map<
+      string,
+      Awaited<ReturnType<VectorRepository['getChunkMetaForFile']>>[0]
+    >()
+    for (const row of existing) {
+      const k = embeddingChunkLineKey(row.metadata)
+      existingByLine.set(k, row)
+    }
+
+    const existingByHash = new Map<
+      string,
+      Awaited<ReturnType<VectorRepository['getChunkMetaForFile']>>
+    >()
+    for (const row of existing) {
+      const rowHash = row.content_hash ?? (await sha256HexPrefix16(row.content))
+      const bucket = existingByHash.get(rowHash) ?? []
+      bucket.push(row)
+      existingByHash.set(rowHash, bucket)
+    }
+
+    const idsToDelete: number[] = []
+    const idsMtimeOnly: number[] = []
+    const chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[] = []
+    const reusedIds = new Set<number>()
+
+    for (const item of prepared) {
+      const content = item.content
+      const meta = item.metadata
+      const key = embeddingChunkLineKey(meta)
+      const content_hash = await sha256HexPrefix16(content)
+      const prev = existingByLine.get(key)
+      if (
+        prev &&
+        (prev.content_hash ?? (await sha256HexPrefix16(prev.content))) ===
+          content_hash &&
+        !reusedIds.has(prev.id)
+      ) {
+        idsMtimeOnly.push(prev.id)
+        reusedIds.add(prev.id)
+        continue
+      }
+      const reusableByHash = (existingByHash.get(content_hash) ?? []).find(
+        (row) => !reusedIds.has(row.id),
+      )
+      if (reusableByHash) {
+        if (prev && prev.id !== reusableByHash.id && !reusedIds.has(prev.id)) {
+          idsToDelete.push(prev.id)
+        }
+        await this.repository.updateVectorMetadataById(reusableByHash.id, {
+          mtime: file.stat.mtime,
+          metadata: meta,
+        })
+        reusedIds.add(reusableByHash.id)
+        continue
+      }
+      if (prev) {
+        idsToDelete.push(prev.id)
+      }
+      chunks.push({
+        path: file.path,
+        mtime: file.stat.mtime,
+        content,
+        content_hash,
+        metadata: meta,
+      })
+    }
+
+    for (const row of existing) {
+      if (!reusedIds.has(row.id)) {
+        idsToDelete.push(row.id)
+      }
+    }
+
+    await this.repository.deleteVectorsByIds([...new Set(idsToDelete)])
+    await this.repository.updateVectorsMtimeByIds(idsMtimeOnly, file.stat.mtime)
+
+    return { chunks, totalChunkLines: prepared.length }
+  }
+
+  /** Remove all embeddings for this PDF path (oversized / unreadable PDFs). */
+  private async collectPdfChunksEmpty(
+    file: TFile,
+    embeddingModel: EmbeddingModelClient,
+  ): Promise<{
+    chunks: Omit<InsertEmbedding, 'model' | 'dimension'>[]
+    totalChunkLines: number
+  }> {
+    const existing = await this.repository.getChunkMetaForFile(
+      file.path,
+      embeddingModel,
+    )
+    if (existing.length > 0) {
+      await this.repository.deleteVectorsByIds(existing.map((r) => r.id))
+    }
+    return { chunks: [], totalChunkLines: 0 }
   }
 
   private async deleteVectorsForDeletedFiles(
@@ -870,14 +1126,24 @@ Please report this issue to the developer if it persists.`,
   }
 
   /**
-   * 获取过滤后的 Markdown 文件列表
+   * 获取参与索引的文件（Markdown，及可选 PDF）
    * 应用 include/exclude 模式过滤
    */
-  private getFilteredMarkdownFiles(
+  private getFilteredIndexableFiles(
     excludePatterns: string[],
     includePatterns: string[],
+    ragIndexPdf: boolean,
   ): TFile[] {
-    let files = this.app.vault.getMarkdownFiles()
+    let files = this.app.vault.getFiles().filter((f) => {
+      const ext = f.extension.toLowerCase()
+      if (ext === 'md') {
+        return true
+      }
+      if (ragIndexPdf && ext === 'pdf') {
+        return true
+      }
+      return false
+    })
 
     files = files.filter((file) => {
       return !excludePatterns.some((pattern) => minimatch(file.path, pattern))
@@ -900,14 +1166,17 @@ Please report this issue to the developer if it persists.`,
     embeddingModel,
     excludePatterns,
     includePatterns,
+    ragIndexPdf,
   }: {
     embeddingModel: EmbeddingModelClient
     excludePatterns: string[]
     includePatterns: string[]
+    ragIndexPdf: boolean
   }): Promise<{ files: TFile[]; newCount: number; updatedCount: number }> {
-    const allFiles = this.getFilteredMarkdownFiles(
+    const allFiles = this.getFilteredIndexableFiles(
       excludePatterns,
       includePatterns,
+      ragIndexPdf,
     )
 
     // 批量查询所有已索引文件的 mtime，一次数据库查询替代 N 次查询
@@ -927,10 +1196,17 @@ Please report this issue to the developer if it persists.`,
 
       if (existingMtime === undefined) {
         // 新文件：未被索引过
-        const fileContent = await this.app.vault.cachedRead(file)
-        if (fileContent.length > 0) {
-          filesToIndex.push(file)
-          newCount++
+        if (file.extension?.toLowerCase() === 'pdf') {
+          if (file.stat.size > 0) {
+            filesToIndex.push(file)
+            newCount++
+          }
+        } else {
+          const fileContent = await this.app.vault.cachedRead(file)
+          if (fileContent.length > 0) {
+            filesToIndex.push(file)
+            newCount++
+          }
         }
       } else if (file.stat.mtime > existingMtime) {
         // 更新的文件：mtime 比索引时更新

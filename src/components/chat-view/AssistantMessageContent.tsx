@@ -179,6 +179,11 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             filename={block.filename}
             startLine={block.startLine}
             endLine={block.endLine}
+            previewContent={
+              block.filename.toLowerCase().endsWith('.pdf')
+                ? block.content
+                : undefined
+            }
           />
         ) : (
           <MarkdownCodeComponent

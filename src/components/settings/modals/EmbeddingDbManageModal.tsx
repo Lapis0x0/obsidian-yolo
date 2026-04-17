@@ -126,6 +126,7 @@ function EmbeddingDbManageModalComponent({
             chunkSize: settings.ragOptions.chunkSize,
             excludePatterns: settings.ragOptions.excludePatterns,
             includePatterns: settings.ragOptions.includePatterns,
+            ragIndexPdf: settings.ragOptions.indexPdf ?? true,
             reindexAll: true,
             indexRunId: `manage-${Date.now()}`,
           },

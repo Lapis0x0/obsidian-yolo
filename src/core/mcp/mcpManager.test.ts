@@ -23,6 +23,7 @@ describe('McpManager mobile built-in tool behavior', () => {
   ) {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
+      extension: 'md',
       stat: { size: 20 },
     })
 
@@ -32,6 +33,7 @@ describe('McpManager mobile built-in tool behavior', () => {
           getAbstractFileByPath: jest.fn().mockReturnValue(file),
           getFileByPath: jest.fn().mockReturnValue(file),
           read: jest.fn().mockResolvedValue('hello world'),
+          readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
         },
       } as unknown as App,
       settings: {

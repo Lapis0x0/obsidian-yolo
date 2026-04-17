@@ -8,6 +8,7 @@ export type AggregatedSearchSnippet = {
   line?: number
   startLine?: number
   endLine?: number
+  page?: number
   snippet?: string
   source: SuperSearchResultSource
   similarity?: number
@@ -68,7 +69,9 @@ const compareSnippetRows = (
   return a.result.path.localeCompare(b.result.path)
 }
 
-const getRangeBounds = (result: SuperSearchResult): { start: number; end: number } => {
+const getRangeBounds = (
+  result: SuperSearchResult,
+): { start: number; end: number } => {
   const start = result.startLine ?? result.line ?? Number.MAX_SAFE_INTEGER
   const end = result.endLine ?? result.line ?? start
   return { start, end }
@@ -95,10 +98,7 @@ const collapseOverlappingRows = (
 
   for (const item of sortedByRange) {
     const bounds = getRangeBounds(item.result)
-    if (
-      currentCluster.length === 0 ||
-      bounds.start > currentClusterEnd
-    ) {
+    if (currentCluster.length === 0 || bounds.start > currentClusterEnd) {
       if (currentCluster.length > 0) {
         collapsed.push([...currentCluster].sort(compareSnippetRows)[0])
       }
@@ -122,10 +122,7 @@ const deriveGroupSource = (
   items: Array<{ result: SuperSearchResult }>,
 ): SuperSearchResultSource => {
   const sources = new Set(items.map((item) => item.result.source))
-  if (
-    sources.has('hybrid') ||
-    (sources.has('keyword') && sources.has('rag'))
-  ) {
+  if (sources.has('hybrid') || (sources.has('keyword') && sources.has('rag'))) {
     return 'hybrid'
   }
   return items[0]?.result.source ?? 'keyword'
@@ -156,7 +153,10 @@ export function aggregateSearchResults({
     index: number
     result: NonContentSearchResult
   }> = []
-  const grouped = new Map<string, Array<{ result: SuperSearchResult; index: number }>>()
+  const grouped = new Map<
+    string,
+    Array<{ result: SuperSearchResult; index: number }>
+  >()
 
   results.forEach((result, index) => {
     if (result.kind === 'file' || result.kind === 'dir') {
@@ -203,6 +203,7 @@ export function aggregateSearchResults({
           line: item.result.line,
           startLine: item.result.startLine,
           endLine: item.result.endLine,
+          page: item.result.page,
           snippet: item.result.snippet,
           source: item.result.source,
           similarity: item.result.similarity,

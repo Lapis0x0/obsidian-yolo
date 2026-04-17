@@ -183,7 +183,7 @@ describe('local fs tool action helpers', () => {
     expect(modify).not.toHaveBeenCalled()
     expect(result.status).toBe(ToolCallResponseStatus.Error)
     if (result.status === ToolCallResponseStatus.Error) {
-      expect(result.error).toContain('operation must be an object')
+      expect(result.error).toContain('operation must be a nested JSON object')
     }
   })
 
@@ -487,7 +487,7 @@ describe('local fs tool action helpers', () => {
 
     expect(result.status).toBe(ToolCallResponseStatus.Error)
     if (result.status === ToolCallResponseStatus.Error) {
-      expect(result.error).toContain('operation must be an object')
+      expect(result.error).toContain('operation must be a nested JSON object')
     }
   })
 
@@ -635,11 +635,13 @@ describe('local fs tool action helpers', () => {
           getFiles: jest.fn().mockReturnValue([fileA, fileB]),
           getAllLoadedFiles: jest.fn().mockReturnValue([root]),
           getMarkdownFiles: jest.fn().mockReturnValue([fileA, fileB]),
-          read: jest.fn().mockImplementation(async (file: TFile) =>
-            file.path === 'a.md'
-              ? 'workflow 工作流 双命中'
-              : '只有 workflow 单命中'
-          ),
+          read: jest
+            .fn()
+            .mockImplementation(async (file: TFile) =>
+              file.path === 'a.md'
+                ? 'workflow 工作流 双命中'
+                : '只有 workflow 单命中',
+            ),
         },
       } as unknown as App,
       toolName: 'fs_search',

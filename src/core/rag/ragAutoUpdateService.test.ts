@@ -24,12 +24,15 @@ describe('RagAutoUpdateService', () => {
 
   const createService = () => {
     const settings = {
+      embeddingModelId: 'test-embed',
+      embeddingModels: [{ id: 'test-embed' }],
       ragOptions: {
         enabled: true,
         autoUpdateEnabled: true,
         includePatterns: [],
         excludePatterns: [],
         lastAutoUpdateAt: 0,
+        indexPdf: true,
       },
     } as unknown as SmartComposerSettings
     const runIndex = jest.fn().mockResolvedValue(undefined)
@@ -147,7 +150,9 @@ describe('RagAutoUpdateService', () => {
       clearRetryScheduled,
       cleanup,
     } = createService()
-    runIndex.mockRejectedValueOnce(transientError).mockResolvedValueOnce(undefined)
+    runIndex
+      .mockRejectedValueOnce(transientError)
+      .mockResolvedValueOnce(undefined)
 
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(5 * 60_000)

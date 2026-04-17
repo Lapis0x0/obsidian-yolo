@@ -5,6 +5,9 @@ import { MentionableFile, MentionableFolder } from '../types/mentionable'
 
 import { calculateFileDistance, getOpenFiles } from './obsidian'
 
+/** Extensions included in @ mention fuzzy search (vault files). */
+export const MENTION_SEARCHABLE_EXTENSIONS = new Set(['md', 'pdf'])
+
 export type SearchableMentionable = MentionableFile | MentionableFolder
 
 type FileWithMetadata = {
@@ -155,10 +158,9 @@ export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
   const currentFile = app.workspace.getActiveFile()
   const openFiles = getOpenFiles(app)
 
-  const allSupportedFiles = app.vault.getFiles().filter((file) => {
-    const extension = file.extension
-    return extension === 'md'
-  })
+  const allSupportedFiles = app.vault.getFiles().filter((file) =>
+    MENTION_SEARCHABLE_EXTENSIONS.has(file.extension.toLowerCase()),
+  )
 
   const allFilesWithMetadata: SearchItem[] = allSupportedFiles.map((file) => ({
     type: 'file',

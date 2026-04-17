@@ -12,6 +12,8 @@ export type SuperSearchResult = {
   line?: number
   startLine?: number
   endLine?: number
+  /** PDF hit: source page (1-based). */
+  page?: number
   snippet?: string
   source: SuperSearchResultSource
   matchType?: SuperSearchMatchType
@@ -26,7 +28,8 @@ export function superSearchDedupKey(result: SuperSearchResult): string {
   if (result.kind === 'content') {
     const start = result.startLine ?? result.line ?? 0
     const end = result.endLine ?? result.line ?? start
-    return `content:${result.path}:${start}:${end}`
+    const pageSeg = result.page != null ? `${result.page}:` : ''
+    return `content:${result.path}:${pageSeg}${start}:${end}`
   }
   return `${result.kind}:${result.path}`
 }
@@ -57,6 +60,7 @@ function mergeHybridRow(
     line: keyword?.line ?? rag?.line,
     startLine: rag?.startLine ?? keyword?.startLine,
     endLine: rag?.endLine ?? keyword?.endLine,
+    page: rag?.page ?? keyword?.page,
     snippet: rag?.snippet ?? keyword?.snippet ?? base.snippet,
     similarity: rag?.similarity,
     source: 'hybrid',

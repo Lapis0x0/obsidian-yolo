@@ -2153,7 +2153,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   private computeRagStagingFingerprint(): string {
     const modelId = this.settings.embeddingModelId ?? ''
     const chunkSize = this.settings.ragOptions?.chunkSize ?? 0
-    return `${modelId}|${chunkSize}`
+    const indexPdf = this.settings.ragOptions?.indexPdf ?? true
+    return `${modelId}|${chunkSize}|${indexPdf ? 'pdf1' : 'pdf0'}`
   }
 
   /** Resume a failed or retry-scheduled rebuild from its existing staging. */

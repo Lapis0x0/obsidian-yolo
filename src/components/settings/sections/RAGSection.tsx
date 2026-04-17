@@ -6,7 +6,10 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import type { PGliteRuntimeStatus } from '../../../database/runtime/PGliteRuntimeManager'
 import { PGLITE_RUNTIME_VERSION } from '../../../database/runtime/pgliteRuntimeMetadata'
-import { RagIndexBusyError, type RagIndexRunSnapshot } from '../../../core/rag/ragIndexService'
+import {
+  RagIndexBusyError,
+  type RagIndexRunSnapshot,
+} from '../../../core/rag/ragIndexService'
 import SmartComposerPlugin from '../../../main'
 import { findFilesMatchingPatterns } from '../../../utils/glob-utils'
 import {
@@ -112,6 +115,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     useState<PGliteRuntimeStatus | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
   const isAutoUpdateEnabled = settings.ragOptions.autoUpdateEnabled ?? true
+  const isIndexPdfEnabled = settings.ragOptions.indexPdf ?? true
   const isIndexing = indexRunSnapshot.status === 'running'
   const progressSource = useMemo(
     () => snapshotToProgress(indexRunSnapshot),
@@ -132,6 +136,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     enabled: boolean
     embeddingModelId: string
     chunkSize: number
+    indexPdf: boolean
     includePatternsKey: string
     excludePatternsKey: string
   } | null>(null)
@@ -380,8 +385,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         : ''
       return (
         prefix +
-          (indexRunSnapshot.failureMessage ??
-            t('settings.rag.indexIncomplete', 'Last index did not finish'))
+        (indexRunSnapshot.failureMessage ??
+          t('settings.rag.indexIncomplete', 'Last index did not finish'))
       )
     }
     if (!progressSource) {
@@ -428,7 +433,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       return 'failed'
     }
     return `idle-${ringPercent}`
-  }, [indexRunSnapshot.status, isIndexing, displayedCurrentFile, progressSource, ringPercent])
+  }, [
+    indexRunSnapshot.status,
+    isIndexing,
+    displayedCurrentFile,
+    progressSource,
+    ringPercent,
+  ])
 
   const isAnimatingCurrentFile = Boolean(isIndexing && displayedCurrentFile)
   const maintenanceStatusPrefix = isAnimatingCurrentFile
@@ -586,7 +597,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       } catch (error) {
         if (error instanceof RagIndexBusyError) {
           new Notice(t('statusBar.ragAutoUpdateRunning', '知识库索引正在运行'))
-        } else if (error instanceof DOMException && error.name === 'AbortError') {
+        } else if (
+          error instanceof DOMException &&
+          error.name === 'AbortError'
+        ) {
           new Notice(t('notices.indexCancelled', '索引已取消'))
         } else {
           console.error('Failed to update knowledge base index:', error)
@@ -639,6 +653,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       enabled: isRagEnabled,
       embeddingModelId: settings.embeddingModelId,
       chunkSize: settings.ragOptions.chunkSize,
+      indexPdf: settings.ragOptions.indexPdf ?? true,
       includePatternsKey: JSON.stringify(settings.ragOptions.includePatterns),
       excludePatternsKey: JSON.stringify(settings.ragOptions.excludePatterns),
     }
@@ -683,6 +698,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
     if (
       previousSyncInputs.chunkSize !== nextSyncInputs.chunkSize ||
+      previousSyncInputs.indexPdf !== nextSyncInputs.indexPdf ||
       previousSyncInputs.includePatternsKey !==
         nextSyncInputs.includePatternsKey ||
       previousSyncInputs.excludePatternsKey !==
@@ -698,6 +714,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     scheduleIndexJob,
     settings.embeddingModelId,
     settings.ragOptions.chunkSize,
+    settings.ragOptions.indexPdf,
     settings.ragOptions.excludePatterns,
     settings.ragOptions.includePatterns,
     t,
@@ -871,6 +888,28 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
           </ObsidianSetting>
 
           <ObsidianSetting
+            name={t('settings.rag.indexPdf', '索引 PDF')}
+            desc={t(
+              'settings.rag.indexPdfDesc',
+              '为知识库提取并索引 PDF 文本；首次全库重建可能较慢。大型仓库若不需要可关闭。',
+            )}
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={isIndexPdfEnabled}
+              onChange={(value) => {
+                applySettingsUpdate({
+                  ...settings,
+                  ragOptions: {
+                    ...settings.ragOptions,
+                    indexPdf: value,
+                  },
+                })
+              }}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
             name={t('settings.rag.embeddingModel')}
             desc={t('settings.rag.embeddingModelDesc')}
             className="smtcmp-settings-card"
@@ -979,10 +1018,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     !isIndexing &&
                     canUseIndexMaintenance && (
                       <ObsidianButton
-                        text={t(
-                          'settings.rag.rebuildFromScratch',
-                          '从头重建',
-                        )}
+                        text={t('settings.rag.rebuildFromScratch', '从头重建')}
                         onClick={() => {
                           const confirmed = window.confirm(
                             t(

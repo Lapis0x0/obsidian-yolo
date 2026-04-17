@@ -2,6 +2,7 @@ import { minimatch } from 'minimatch'
 import { TAbstractFile, TFile, TFolder } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
+
 import { classifyRagIndexError } from './ragIndexErrors'
 
 type RagAutoUpdateServiceDeps = {
@@ -26,9 +27,10 @@ export class RagAutoUpdateService {
     settings: SmartComposerSettings,
   ) => Promise<void>
   private readonly runIndex: () => Promise<void>
-  private readonly markRetryScheduled: (
-    input: { retryAt: number; failureMessage?: string },
-  ) => Promise<void>
+  private readonly markRetryScheduled: (input: {
+    retryAt: number
+    failureMessage?: string
+  }) => Promise<void>
   private readonly clearRetryScheduled: () => Promise<void>
 
   private autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
@@ -76,10 +78,17 @@ export class RagAutoUpdateService {
   ) {
     try {
       if (file instanceof TFile) {
-        if (file.extension !== 'md') {
+        const settings = this.getSettings()
+        if (file.extension === 'md') {
+          this.markDirty(file.path)
           return
         }
-        this.markDirty(file.path)
+        if (
+          file.extension === 'pdf' &&
+          (settings.ragOptions.indexPdf ?? true)
+        ) {
+          this.markDirty(file.path)
+        }
         return
       }
 
@@ -116,7 +125,10 @@ export class RagAutoUpdateService {
   }
 
   private isAutoUpdateEnabled(settings: SmartComposerSettings): boolean {
-    if (!settings?.ragOptions?.enabled || !settings?.ragOptions?.autoUpdateEnabled) {
+    if (
+      !settings?.ragOptions?.enabled ||
+      !settings?.ragOptions?.autoUpdateEnabled
+    ) {
       return false
     }
     // Skip auto-update when no valid embedding model is configured so that
@@ -158,7 +170,15 @@ export class RagAutoUpdateService {
     path: string,
     settings: SmartComposerSettings,
   ): boolean {
-    if (!path.toLowerCase().endsWith('.md')) {
+    const lower = path.toLowerCase()
+    if (lower.endsWith('.md')) {
+      // continue
+    } else if (
+      lower.endsWith('.pdf') &&
+      (settings.ragOptions.indexPdf ?? true)
+    ) {
+      // continue
+    } else {
       return false
     }
     const { includePatterns = [], excludePatterns = [] } =

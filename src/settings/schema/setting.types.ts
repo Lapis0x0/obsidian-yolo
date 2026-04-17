@@ -34,6 +34,8 @@ const ragOptionsSchema = z.object({
   limit: z.number().catch(10),
   excludePatterns: z.array(z.string()).catch([]),
   includePatterns: z.array(z.string()).catch([]),
+  /** When true, index `.pdf` files for RAG (text extraction). */
+  indexPdf: z.boolean().catch(true),
   // auto update options
   autoUpdateEnabled: z.boolean().catch(true),
   autoUpdateIntervalHours: z.number().catch(0),
@@ -267,6 +269,7 @@ export const smartComposerSettingsSchema = z.object({
     limit: 10,
     excludePatterns: [],
     includePatterns: [],
+    indexPdf: true,
     autoUpdateEnabled: true,
     autoUpdateIntervalHours: 0,
     lastAutoUpdateAt: 0,

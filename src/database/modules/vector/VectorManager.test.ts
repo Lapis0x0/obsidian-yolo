@@ -66,6 +66,10 @@ describe('VectorManager incremental chunk reuse', () => {
           },
           embeddingModel: { id: string; dimension: number },
           reindexAll: boolean,
+          chunkSize: number,
+          stagingModelId?: string | null,
+          stagedFingerprints?: Set<string>,
+          signal?: AbortSignal,
         ) => Promise<{
           chunks: Array<{ content: string }>
           totalChunkLines: number
@@ -79,21 +83,23 @@ describe('VectorManager incremental chunk reuse', () => {
       splitter,
       embeddingModel,
       false,
+      1000,
     )
 
     expect(repository.updateVectorMetadataById).toHaveBeenCalledTimes(1)
     expect(repository.deleteVectorsByIds).toHaveBeenCalledWith([])
-    expect(result.chunks.some((chunk) => chunk.content.includes('same body'))).toBe(
-      false,
-    )
+    expect(
+      result.chunks.some((chunk) => chunk.content.includes('same body')),
+    ).toBe(false)
   })
 
   it('uses staging model ids for full rebuilds before promoting results', async () => {
     const app = {
       vault: {
-        getMarkdownFiles: jest.fn().mockReturnValue([
+        getFiles: jest.fn().mockReturnValue([
           {
             path: 'foo.md',
+            extension: 'md',
             stat: { mtime: 3 },
           },
         ]),
@@ -222,8 +228,10 @@ describe('VectorManager incremental chunk reuse', () => {
           },
           embeddingModel: { id: string; dimension: number },
           reindexAll: boolean,
+          chunkSize: number,
           stagingModelId?: string | null,
           stagedFingerprints?: Set<string>,
+          signal?: AbortSignal,
         ) => Promise<{
           chunks: Array<{ content: string }>
           totalChunkLines: number
@@ -240,6 +248,7 @@ describe('VectorManager incremental chunk reuse', () => {
         dimension: 3,
       },
       true,
+      1000,
       'test-model::staging:run-123',
       new Set(['1:1:oldhash']),
     )
@@ -257,7 +266,7 @@ describe('VectorManager incremental chunk reuse', () => {
   it('promotes an empty staging rebuild when there are no markdown files', async () => {
     const app = {
       vault: {
-        getMarkdownFiles: jest.fn().mockReturnValue([]),
+        getFiles: jest.fn().mockReturnValue([]),
       },
     }
     const manager = new VectorManager(app as never, {} as never)
