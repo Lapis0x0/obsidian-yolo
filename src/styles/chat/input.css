@@ -1958,6 +1958,24 @@
   color: color-mix(in srgb, var(--text-muted) 78%, transparent);
   pointer-events: none;
   font-size: var(--font-ui-small);
+  white-space: nowrap;
+
+  .smtcmp-placeholder-trigger {
+    pointer-events: auto;
+    display: inline-block;
+    min-width: 1.4em;
+    text-align: center;
+    padding: 0 3px;
+    border-radius: 3px;
+    background-color: var(--tag-background);
+    color: var(--tag-color);
+    cursor: pointer;
+    transition: opacity 80ms ease;
+
+    &:hover {
+      opacity: 0.75;
+    }
+  }
 }
 
 .smtcmp-chat-user-input-controls {

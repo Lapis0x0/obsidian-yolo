@@ -1060,6 +1060,9 @@ export const en: TranslationKeys = {
     placeholder:
       'Type a message...「@ to add references or models, / to choose a skill or command」',
     placeholderCompact: 'Click to expand and edit...',
+    placeholderPrefix: 'Type a message...',
+    placeholderMention: 'add references or models',
+    placeholderSkill: 'choose a skill or command',
     contextUsage: 'Context window usage',
     sendMessage: 'Send message',
     newChat: 'New chat',

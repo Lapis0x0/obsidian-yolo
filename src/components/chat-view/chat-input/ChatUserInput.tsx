@@ -940,6 +940,25 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [effectiveSelectedSkills, setSelectedSkills],
     )
 
+    const handleTriggerClick = useCallback(
+      (char: string) => {
+        if (!editorRef.current) return
+        editorRef.current.update(
+          () => {
+            const root = $getRoot()
+            root.selectEnd()
+            const selection = $getSelection()
+            if ($isRangeSelection(selection)) {
+              selection.insertText(char)
+            }
+          },
+          { discrete: true },
+        )
+        contentEditableRef.current?.focus()
+      },
+      [],
+    )
+
     const handleSubmit = () => {
       const content = editorRef.current?.getEditorState()?.toJSON()
       if (content) {
@@ -1187,10 +1206,31 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               effectiveMentionables.length === 0 &&
               effectiveSelectedSkills.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
-                  {t(
-                    'chat.placeholder',
-                    '输入消息...「@添加引用或模型，/选择技能」',
-                  )}
+                  {t('chat.placeholderPrefix', '输入消息...')}
+                  {' '}
+                  <span
+                    className="smtcmp-placeholder-trigger"
+                    role="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      handleTriggerClick('@')
+                    }}
+                  >
+                    @
+                  </span>
+                  {t('chat.placeholderMention', '添加引用或模型')}
+                  {'，'}
+                  <span
+                    className="smtcmp-placeholder-trigger"
+                    role="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      handleTriggerClick('/')
+                    }}
+                  >
+                    /
+                  </span>
+                  {t('chat.placeholderSkill', '选择技能或命令')}
                 </div>
               )}
             <LexicalContentEditable

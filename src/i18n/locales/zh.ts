@@ -993,6 +993,9 @@ export const zh: TranslationKeys = {
   chat: {
     placeholder: '输入消息...「@添加引用或模型，/选择技能或命令」',
     placeholderCompact: '点击展开编辑...',
+    placeholderPrefix: '输入消息...',
+    placeholderMention: '添加引用或模型',
+    placeholderSkill: '选择技能或命令',
     contextUsage: '上下文窗口占用',
     sendMessage: '发送消息',
     newChat: '新建聊天',

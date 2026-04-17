@@ -906,6 +906,9 @@ export type TranslationKeys = {
   chat: {
     placeholder: string
     placeholderCompact?: string
+    placeholderPrefix?: string
+    placeholderMention?: string
+    placeholderSkill?: string
     contextUsage?: string
     sendMessage: string
     newChat: string
