@@ -377,7 +377,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_search',
       description:
-        'Search the vault. By default, prefer hybrid search: keyword path/content matching plus semantic (RAG) retrieval fused with RRF. Content results are grouped by file and include the most relevant snippets. RAG may return PDF hits: startLine/endLine (and page when present) refer to PDF page numbers, not markdown line numbers. Use keyword for exact filenames, paths, or literal terms; use rag only when you explicitly want semantic-only retrieval without keyword matching. For deep reading, follow up with fs_read.',
+        'Search the vault. Prefer hybrid mode (keyword + RAG fused). Results grouped by file with snippets. For PDF hits, startLine/endLine are page numbers. Use keyword for exact terms; rag for semantic-only.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -385,23 +385,23 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             enum: ['keyword', 'rag', 'hybrid'],
             description:
-              'Search mode. Default is hybrid and it should be preferred for most queries. hybrid: combines keyword path/content search with RAG using fused ranking. keyword: exact path/content string matching only. rag: semantic retrieval only.',
+              'Default: hybrid (keyword+RAG). keyword: exact match. rag: semantic only.',
           },
           scope: {
             type: 'string',
             enum: ['files', 'dirs', 'content', 'all'],
             description:
-              'Search scope for keyword mode (defaults to all). For rag, use content or all, or omit; files/dirs are not supported for rag. Hybrid uses keyword content search plus RAG.',
+              'Keyword scope (default: all). rag/hybrid: content or all only.',
           },
           query: {
             type: 'string',
             description:
-              'Search query. Optional for keyword files/dirs listing. Required when keyword scope includes content, and required for rag/hybrid.',
+              'Search query. Optional for keyword files/dirs. Required for content/rag/hybrid.',
           },
           path: {
             type: 'string',
             description:
-              'Optional vault-relative path to scope search. Accepts a folder (recursive) or a single file. For a file, RAG is restricted to that file\'s chunks and keyword content scans only that file (markdown only for keyword content).',
+              'Optional vault-relative path to scope search. Folder (recursive) or single file. For a file, RAG is restricted to that file\'s chunks and keyword content scans only that file (markdown only for keyword content).',
           },
           maxResults: {
             type: 'integer',
@@ -429,7 +429,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_read',
       description:
-        'Read vault files by path using either full-file or targeted line-range operations. For .md files, lines are 1-based note line numbers. For .pdf files, output is extracted text wrapped in <page N>...</page N> tags; operation lines mode uses startLine/endLine as inclusive PDF page numbers (not markdown lines). Prefer lines when you already know the relevant section to reduce context usage.',
+        'Read vault files. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Prefer lines for targeted reads.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -438,12 +438,12 @@ export function getLocalFileTools(): McpTool[] {
             items: {
               type: 'string',
             },
-            description: `Vault-relative file paths. Maximum ${MAX_BATCH_READ_FILES} items.`,
+            description: `Vault-relative file paths. Max ${MAX_BATCH_READ_FILES} items.`,
           },
           operation: {
             type: 'object',
             description:
-              'Read strategy. Use type="full" to return the whole file. Use type="lines" to read a targeted range. For PDFs, lines are page numbers.',
+              'Read strategy. full: whole file. lines: targeted range (PDFs use page numbers).',
             properties: {
               type: {
                 type: 'string',
@@ -451,16 +451,16 @@ export function getLocalFileTools(): McpTool[] {
               },
               startLine: {
                 type: 'integer',
-                description: `Required for lines. For markdown: 1-based start line. For PDF: 1-based start page. Defaults to ${DEFAULT_READ_START_LINE} when omitted.`,
+                description: `Start line/page (1-based). Defaults to ${DEFAULT_READ_START_LINE}.`,
               },
               maxLines: {
                 type: 'integer',
-                description: `Optional for lines when endLine is not set. For markdown: max lines. For PDF: max pages. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
+                description: `Max lines/pages when endLine unset. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
               },
               endLine: {
                 type: 'integer',
                 description:
-                  'Optional for lines. Inclusive end line (markdown) or end page (PDF). If set, maxLines is ignored.',
+                  'Inclusive end line/page. If set, maxLines is ignored.',
               },
             },
             required: ['type'],
@@ -492,8 +492,7 @@ export function getLocalFileTools(): McpTool[] {
           },
           reason: {
             type: 'string',
-            description:
-              'Optional short reason for pruning, such as superseded by newer results or preparing for a fresh planning step.',
+            description: 'Optional short reason for pruning.',
           },
         },
       },
@@ -507,13 +506,11 @@ export function getLocalFileTools(): McpTool[] {
         properties: {
           reason: {
             type: 'string',
-            description:
-              'Optional short reason for compacting, such as context is getting crowded.',
+            description: 'Optional short reason for compacting.',
           },
           instruction: {
             type: 'string',
-            description:
-              'Optional focus hint for the summary, such as preserve file paths and pending tasks.',
+            description: 'Optional focus hint for the summary.',
           },
         },
       },
