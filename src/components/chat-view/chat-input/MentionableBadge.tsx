@@ -13,6 +13,7 @@ import {
   MentionableFolder,
   MentionableImage,
   MentionableModel,
+  MentionablePDF,
   MentionableUrl,
 } from '../../../types/mentionable'
 import { getBlockMentionableCountInfo } from '../../../utils/chat/mentionable'
@@ -368,6 +369,42 @@ function ImageBadge({
   )
 }
 
+function PdfBadge({
+  mentionable,
+  onDelete,
+  onClick,
+  isFocused,
+  showDeleteButton,
+}: {
+  mentionable: MentionablePDF
+  onDelete: () => void
+  onClick: () => void
+  isFocused: boolean
+  showDeleteButton?: boolean
+}) {
+  const Icon = getMentionableIcon(mentionable)
+  return (
+    <BadgeBase
+      onDelete={onDelete}
+      onClick={onClick}
+      isFocused={isFocused}
+      showExpandButton={false}
+      showDeleteButton={showDeleteButton}
+      title={mentionable.name}
+    >
+      <div className="smtcmp-chat-user-input-file-badge-name">
+        {Icon && (
+          <Icon
+            size={12}
+            className="smtcmp-chat-user-input-file-badge-name-icon"
+          />
+        )}
+        <span>{mentionable.name}</span>
+      </div>
+    </BadgeBase>
+  )
+}
+
 function ModelBadge({
   mentionable,
   onDelete,
@@ -496,6 +533,16 @@ export default function MentionableBadge({
           isFocused={isFocused}
           isExpanded={isExpanded}
           onToggleExpand={onToggleExpand}
+          showDeleteButton={showDeleteButton}
+        />
+      )
+    case 'pdf':
+      return (
+        <PdfBadge
+          mentionable={mentionable}
+          onDelete={onDelete}
+          onClick={onClick}
+          isFocused={isFocused}
           showDeleteButton={showDeleteButton}
         />
       )

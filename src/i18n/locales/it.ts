@@ -1058,6 +1058,7 @@ export const it: TranslationKeys = {
     stopGeneration: 'Ferma generazione',
     selectModel: 'Seleziona modello',
     uploadImage: 'Carica immagine',
+    uploadFile: 'Aggiungi file',
     addContext: 'Aggiungi contesto',
     applyChanges: 'Applica modifiche',
     copyMessage: 'Copia messaggio',

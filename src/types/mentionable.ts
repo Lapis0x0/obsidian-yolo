@@ -44,6 +44,13 @@ export type MentionableImage = {
   mimeType: string
   data: string // base64
 }
+export type MentionablePDF = {
+  type: 'pdf'
+  name: string
+  data: string // extracted plain text (pages joined)
+  pageCount?: number
+  truncated?: boolean
+}
 export type MentionableModel = {
   type: 'model'
   modelId: string
@@ -58,6 +65,7 @@ export type Mentionable =
   | MentionableAssistantQuote
   | MentionableUrl
   | MentionableImage
+  | MentionablePDF
   | MentionableModel
 export type SerializedMentionableFile = {
   type: 'file'
@@ -93,6 +101,7 @@ export type SerializedMentionableAssistantQuote = {
 }
 export type SerializedMentionableUrl = MentionableUrl
 export type SerializedMentionableImage = MentionableImage
+export type SerializedMentionablePDF = MentionablePDF
 export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
@@ -102,4 +111,5 @@ export type SerializedMentionable =
   | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl
   | SerializedMentionableImage
+  | SerializedMentionablePDF
   | SerializedMentionableModel

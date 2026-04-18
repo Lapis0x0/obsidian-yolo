@@ -918,6 +918,7 @@ export type TranslationKeys = {
     stopGeneration?: string
     selectModel: string
     uploadImage: string
+    uploadFile?: string
     addContext: string
     applyChanges: string
     copyMessage: string

@@ -1006,6 +1006,7 @@ export const zh: TranslationKeys = {
     stopGeneration: '停止生成',
     selectModel: '选择模型',
     uploadImage: '上传图片',
+    uploadFile: '添加文件',
     addContext: '添加上下文',
     applyChanges: '应用更改',
     copyMessage: '复制消息',

@@ -6924,6 +6924,22 @@
   white-space: nowrap;
 }
 
+.smtcmp-chat-user-input-controls__left .smtcmp-chat-user-input-upload-button {
+  width: var(--size-4-5);
+  height: var(--size-4-5);
+  padding: 0;
+  gap: 0;
+  border-radius: var(--radius-s);
+  flex: 0 0 auto;
+  justify-content: center;
+  color: var(--text-muted);
+
+  &:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+  }
+}
+
 .smtcmp-chat-input-model-select__label {
   min-width: 0;
   flex: 1 1 auto;
