@@ -4,12 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import type { PGliteRuntimeStatus } from '../../../database/runtime/PGliteRuntimeManager'
-import { PGLITE_RUNTIME_VERSION } from '../../../database/runtime/pgliteRuntimeMetadata'
 import {
   RagIndexBusyError,
   type RagIndexRunSnapshot,
 } from '../../../core/rag/ragIndexService'
+import type { PGliteRuntimeStatus } from '../../../database/runtime/PGliteRuntimeManager'
+import { PGLITE_RUNTIME_VERSION } from '../../../database/runtime/pgliteRuntimeMetadata'
 import SmartComposerPlugin from '../../../main'
 import { findFilesMatchingPatterns } from '../../../utils/glob-utils'
 import {
@@ -1020,6 +1020,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       <ObsidianButton
                         text={t('settings.rag.rebuildFromScratch', '从头重建')}
                         onClick={() => {
+                          // eslint-disable-next-line no-alert -- intentional user confirmation for destructive rebuild
                           const confirmed = window.confirm(
                             t(
                               'settings.rag.rebuildFromScratchConfirm',

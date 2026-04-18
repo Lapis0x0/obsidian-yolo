@@ -147,8 +147,10 @@ export default function ObsidianFileDropPlugin(): null {
           let selectionPositioned = false
 
           const domRange =
+            // eslint-disable-next-line @typescript-eslint/no-deprecated -- caretRangeFromPoint is still the most reliable API in Chromium/Obsidian
             typeof document.caretRangeFromPoint === 'function'
-              ? document.caretRangeFromPoint(dropX, dropY)
+              ? // eslint-disable-next-line @typescript-eslint/no-deprecated -- see above
+                document.caretRangeFromPoint(dropX, dropY)
               : null
 
           if (domRange !== null) {

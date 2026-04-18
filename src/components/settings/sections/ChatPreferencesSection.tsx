@@ -5,6 +5,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+
 import { FontScaleSlider } from './FontScaleSlider'
 
 const HISTORY_ARCHIVE_THRESHOLD_MIN = 20

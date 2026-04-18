@@ -2,14 +2,7 @@ import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import cx from 'clsx'
 import { Download, History, Plus } from 'lucide-react'
-import {
-  MarkdownView,
-  Notice,
-  Platform,
-  TFile,
-  TFolder,
-  normalizePath,
-} from 'obsidian'
+import { MarkdownView, Notice, TFile, TFolder, normalizePath } from 'obsidian'
 import {
   forwardRef,
   useCallback,

@@ -1397,7 +1397,9 @@ export function ProvidersAndModelsSection({
 
           if (vectorManager) {
             await vectorManager.clearVectorsByModelIds(
-              associatedEmbeddingModels.map((embeddingModel) => embeddingModel.id),
+              associatedEmbeddingModels.map(
+                (embeddingModel) => embeddingModel.id,
+              ),
             )
           } else {
             console.warn(

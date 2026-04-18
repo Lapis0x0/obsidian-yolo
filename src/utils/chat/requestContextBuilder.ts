@@ -44,12 +44,12 @@ import {
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { annotateWikilinksWithPaths } from '../llm/annotate-wikilinks'
+import { getNestedFiles, readTFileContent } from '../obsidian'
 import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
   extractPdfText,
 } from '../pdf/extractPdfText'
-import { getNestedFiles, readTFileContent } from '../obsidian'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
 import { getLatestValidCurrentFileMentionable } from './currentFileMentionable'

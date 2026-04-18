@@ -8,6 +8,7 @@ const getDesktopRequire = (): NodeModuleLoader => {
     return globalRequire
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval -- indirect require lookup for Obsidian desktop runtime
   const indirectRequire = Function(
     'return typeof require === "function" ? require : undefined',
   )() as NodeModuleLoader | undefined

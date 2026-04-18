@@ -24,7 +24,7 @@ type DrizzleMigratableDatabase = PgliteDatabase & {
 }
 
 /** PGlite 0.4+ main thread or worker client */
-type PgliteClientInstance = PGlite | Awaited<ReturnType<typeof PGliteWorker.create>>
+type PgliteClientInstance = PGlite | PGliteWorker
 
 const hasDrizzleMigrationSupport = (
   database: PgliteDatabase,
@@ -68,28 +68,16 @@ export class DatabaseManager {
     const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
     let createdNewDatabase = false
     void pluginDir
-    try {
-      dbManager.db = await dbManager.loadExistingDatabase()
-    } catch (loadErr) {
-      throw loadErr
-    }
+    dbManager.db = await dbManager.loadExistingDatabase()
     const migrationStateBefore =
       dbManager.db && !createdNewDatabase
         ? await dbManager.getMigrationState()
         : null
     if (!dbManager.db) {
-      try {
-        dbManager.db = await dbManager.createNewDatabase()
-        createdNewDatabase = true
-      } catch (createErr) {
-        throw createErr;
-      }
+      dbManager.db = await dbManager.createNewDatabase()
+      createdNewDatabase = true
     }
-    try {
-      await dbManager.migrateDatabase()
-    } catch (migrateErr) {
-      throw migrateErr;
-    }
+    await dbManager.migrateDatabase()
     const migrationStateAfter =
       dbManager.db && !createdNewDatabase
         ? await dbManager.getMigrationState()
@@ -305,9 +293,13 @@ export class DatabaseManager {
       const migrationTableExists = await this.pgClient.query(
         `SELECT to_regclass('public.drizzle_migrations') AS table_name`,
       )
-      const tableName = (migrationTableExists.rows?.[0] as {
-        table_name?: string | null
-      } | undefined)?.table_name
+      const tableName = (
+        migrationTableExists.rows?.[0] as
+          | {
+              table_name?: string | null
+            }
+          | undefined
+      )?.table_name
       if (!tableName) {
         return 'missing'
       }

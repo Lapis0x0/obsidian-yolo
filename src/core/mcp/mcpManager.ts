@@ -1,8 +1,6 @@
 import isEqual from 'lodash.isequal'
 import { App, Platform } from 'obsidian'
 
-import type { RAGEngine } from '../rag/ragEngine'
-
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { ChatMessage } from '../../types/chat'
@@ -17,6 +15,7 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
+import type { RAGEngine } from '../rag/ragEngine'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import {

@@ -1,5 +1,5 @@
 import { Loader2, Undo2 } from 'lucide-react'
-import { memo } from 'react'
+import { type ReactElement, memo } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type {
@@ -12,7 +12,7 @@ const formatDelta = (value: number, sign: '+' | '-') => {
 }
 
 const renderDeltaPair = (addedLines: number, removedLines: number) => {
-  const items: Array<JSX.Element> = []
+  const items: Array<ReactElement> = []
 
   if (addedLines > 0) {
     items.push(
@@ -41,7 +41,9 @@ const renderDeltaPair = (addedLines: number, removedLines: number) => {
   ]
 }
 
-const getOperationLabelKey = (operation: GroupEditSummaryPathItem['operation']) => {
+const getOperationLabelKey = (
+  operation: GroupEditSummaryPathItem['operation'],
+) => {
   switch (operation) {
     case 'create':
       return 'chat.editSummary.operationCreate'
@@ -74,19 +76,16 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
 
   return (
     <div className="smtcmp-agent-edit-summary">
-        <div className="smtcmp-agent-edit-summary-header">
-          <div className="smtcmp-agent-edit-summary-totals">
-            <span>
-              {t(
-                'chat.editSummary.filesChanged',
-                '{count} file(s) changed',
-              ).replace('{count}', String(summary.totalFiles))}
-            </span>
-            {renderDeltaPair(
-              summary.totalAddedLines,
-              summary.totalRemovedLines,
-            )}
-          </div>
+      <div className="smtcmp-agent-edit-summary-header">
+        <div className="smtcmp-agent-edit-summary-totals">
+          <span>
+            {t(
+              'chat.editSummary.filesChanged',
+              '{count} file(s) changed',
+            ).replace('{count}', String(summary.totalFiles))}
+          </span>
+          {renderDeltaPair(summary.totalAddedLines, summary.totalRemovedLines)}
+        </div>
         <button
           type="button"
           className="smtcmp-agent-edit-summary-undo"

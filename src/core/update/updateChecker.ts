@@ -79,8 +79,7 @@ export async function checkForUpdate(
     const hasUpdate = compareVersions(currentVersion, latestVersion)
     const releaseNotes =
       typeof data.body === 'string' ? firstParagraph(data.body) : ''
-    const releaseUrl =
-      typeof data.html_url === 'string' ? data.html_url : ''
+    const releaseUrl = typeof data.html_url === 'string' ? data.html_url : ''
 
     return {
       hasUpdate,

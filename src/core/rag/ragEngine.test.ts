@@ -62,10 +62,7 @@ describe('RAGEngine', () => {
       },
     ]
 
-    expect(dedupeRagQueryResults(rows)).toEqual([
-      rows[1],
-      rows[2],
-    ])
+    expect(dedupeRagQueryResults(rows)).toEqual([rows[1], rows[2]])
   })
 
   it('serializes updateVaultIndex calls across shared engine entrypoints', async () => {
@@ -107,9 +104,8 @@ describe('RAGEngine', () => {
     )
     const progressEvents: QueryProgressState[] = []
 
-    const firstRun = engine.updateVaultIndex(
-      { reindexAll: true },
-      (progress) => progressEvents.push(progress),
+    const firstRun = engine.updateVaultIndex({ reindexAll: true }, (progress) =>
+      progressEvents.push(progress),
     )
     const secondRun = engine.updateVaultIndex(
       { reindexAll: false },

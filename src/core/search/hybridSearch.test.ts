@@ -1,7 +1,7 @@
 import {
+  type SuperSearchResult,
   fuseRrfHybrid,
   superSearchDedupKey,
-  type SuperSearchResult,
 } from './hybridSearch'
 
 describe('hybridSearch RRF', () => {

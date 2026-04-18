@@ -45,6 +45,7 @@ version-bump.mjs
 versions.json
 package.json
 manifest.json
+src/database/migrations.json
 
 # Obsidian
 .obsidian

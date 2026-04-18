@@ -1,4 +1,3 @@
-import { Notice } from 'obsidian'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -106,20 +105,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
       })
     },
     [setSettings, settings],
-  )
-
-  const applySettingsUpdate = useCallback(
-    (nextSettings: SmartComposerSettings, errorMessage: string) => {
-      void (async () => {
-        try {
-          await setSettings(nextSettings)
-        } catch (error: unknown) {
-          console.error('[Sparkle] ' + errorMessage, error)
-          new Notice(errorMessage)
-        }
-      })()
-    },
-    [setSettings],
   )
 
   const parseIntegerInput = (value: string) => {

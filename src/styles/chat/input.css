@@ -1506,8 +1506,7 @@
     var(--text-error) 10%,
     var(--background-secondary)
   );
-  border: 1px solid
-    color-mix(in srgb, var(--text-error) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-error) 28%, transparent);
   box-shadow: 0 8px 24px
     color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent);
   text-align: left;

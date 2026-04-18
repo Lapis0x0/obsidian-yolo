@@ -1,7 +1,4 @@
-export type BackgroundActivityStatus =
-  | 'running'
-  | 'waiting'
-  | 'failed'
+export type BackgroundActivityStatus = 'running' | 'waiting' | 'failed'
 
 export type BackgroundActivityAction =
   | {

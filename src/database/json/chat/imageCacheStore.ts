@@ -162,7 +162,11 @@ export const pruneImageCache = async (
 
   const pruned = originalCount - Object.keys(filtered).length
   if (pruned > 0) {
-    await writeCacheStore(app, { schemaVersion: 1, entries: filtered }, settings)
+    await writeCacheStore(
+      app,
+      { schemaVersion: 1, entries: filtered },
+      settings,
+    )
   }
 
   return pruned

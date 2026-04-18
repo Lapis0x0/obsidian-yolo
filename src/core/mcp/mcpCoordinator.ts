@@ -2,7 +2,6 @@ import { App } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
-
 import type { RAGEngine } from '../rag/ragEngine'
 
 import { McpManager } from './mcpManager'

@@ -360,14 +360,16 @@ function AddEmbeddingModelModalComponent({
       onClose()
     }
 
-    void run().catch((error) => {
-      new Notice(
-        error instanceof Error ? error.message : 'An unknown error occurred',
-      )
-    }).finally(() => {
-      isSubmittingRef.current = false
-      setIsSubmitting(false)
-    })
+    void run()
+      .catch((error) => {
+        new Notice(
+          error instanceof Error ? error.message : 'An unknown error occurred',
+        )
+      })
+      .finally(() => {
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
+      })
   }
 
   return (

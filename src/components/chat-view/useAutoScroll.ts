@@ -90,10 +90,6 @@ export function useAutoScroll({
     )
   }, [getScrollContainer])
 
-  const isNearBottom = useCallback(() => {
-    return getDistanceToBottom() <= NEAR_BOTTOM_THRESHOLD
-  }, [getDistanceToBottom])
-
   const scrollToBottom = useCallback(() => {
     const scrollContainer = getScrollContainer()
     if (!scrollContainer) {

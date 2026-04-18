@@ -2,13 +2,13 @@ jest.mock('obsidian')
 
 import { App, TFile, TFolder } from 'obsidian'
 
-import type { RAGEngine } from '../rag/ragEngine'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import type { RAGEngine } from '../rag/ragEngine'
 
 import {
   callLocalFileTool,

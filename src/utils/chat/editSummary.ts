@@ -159,10 +159,7 @@ export const createToolEditSummary = ({
   afterExists?: boolean
   reviewRoundId?: string
 }): ToolEditSummary | undefined => {
-  if (
-    beforeExists === afterExists &&
-    beforeContent === afterContent
-  ) {
+  if (beforeExists === afterExists && beforeContent === afterContent) {
     return undefined
   }
 

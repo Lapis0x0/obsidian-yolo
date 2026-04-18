@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import type { UpdateCheckResult } from '../core/update/updateChecker'
 import { usePlugin } from '../contexts/plugin-context'
+import type { UpdateCheckResult } from '../core/update/updateChecker'
 
 export function useUpdateCheck(): {
   result: UpdateCheckResult | null

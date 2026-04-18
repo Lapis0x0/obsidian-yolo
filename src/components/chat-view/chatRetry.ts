@@ -188,7 +188,9 @@ export const buildRetrySubmissionMessages = ({
             if (!isAssistantOrToolMessage(candidate)) {
               break
             }
-            if (candidate.metadata?.sourceUserMessageId !== sourceUserMessageId) {
+            if (
+              candidate.metadata?.sourceUserMessageId !== sourceUserMessageId
+            ) {
               break
             }
             branchGroupEndIndex += 1

@@ -17,8 +17,7 @@ export function IndexProgressRing({
   const circumference = 2 * Math.PI * r
   const dashOffset = circumference * (1 - clamped / 100)
 
-  const label =
-    ariaLabel ?? `Indexing progress ${Math.round(clamped)} percent`
+  const label = ariaLabel ?? `Indexing progress ${Math.round(clamped)} percent`
 
   return (
     <div

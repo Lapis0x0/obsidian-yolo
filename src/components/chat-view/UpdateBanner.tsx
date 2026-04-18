@@ -20,10 +20,7 @@ export function UpdateBanner(): ReactNode {
   }
 
   const title = interpolateVersion(
-    t(
-      'update.newVersionAvailable',
-      'New version {version} is available',
-    ),
+    t('update.newVersionAvailable', 'New version {version} is available'),
     result.latestVersion,
   )
 
@@ -43,7 +40,9 @@ export function UpdateBanner(): ReactNode {
             {currentLabel}: v{plugin.manifest.version}
           </div>
           {result.releaseNotes ? (
-            <div className="smtcmp-update-banner-notes">{result.releaseNotes}</div>
+            <div className="smtcmp-update-banner-notes">
+              {result.releaseNotes}
+            </div>
           ) : null}
         </div>
         <button

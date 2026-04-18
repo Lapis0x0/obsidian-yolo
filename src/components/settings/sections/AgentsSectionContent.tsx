@@ -45,8 +45,8 @@ import {
   AgentPersona,
   Assistant,
   AssistantSkillLoadMode,
-  AssistantToolPreference,
   AssistantToolApprovalMode,
+  AssistantToolPreference,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
 import {
@@ -66,6 +66,7 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SimpleSelect } from '../../common/SimpleSelect'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
+
 import {
   normalizeToolPreferencesForPersistence,
   normalizeToolSelectionForPersistence,

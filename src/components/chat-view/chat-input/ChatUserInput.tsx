@@ -940,24 +940,21 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [effectiveSelectedSkills, setSelectedSkills],
     )
 
-    const handleTriggerClick = useCallback(
-      (char: string) => {
-        if (!editorRef.current) return
-        editorRef.current.update(
-          () => {
-            const root = $getRoot()
-            root.selectEnd()
-            const selection = $getSelection()
-            if ($isRangeSelection(selection)) {
-              selection.insertText(char)
-            }
-          },
-          { discrete: true },
-        )
-        contentEditableRef.current?.focus()
-      },
-      [],
-    )
+    const handleTriggerClick = useCallback((char: string) => {
+      if (!editorRef.current) return
+      editorRef.current.update(
+        () => {
+          const root = $getRoot()
+          root.selectEnd()
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            selection.insertText(char)
+          }
+        },
+        { discrete: true },
+      )
+      contentEditableRef.current?.focus()
+    }, [])
 
     const handleSubmit = () => {
       const content = editorRef.current?.getEditorState()?.toJSON()
@@ -1206,8 +1203,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               effectiveMentionables.length === 0 &&
               effectiveSelectedSkills.length === 0 && (
                 <div className="smtcmp-chat-user-input-placeholder">
-                  {t('chat.placeholderPrefix', '输入消息...')}
-                  {' '}
+                  {t('chat.placeholderPrefix', '输入消息...')}{' '}
                   <span
                     className="smtcmp-placeholder-trigger"
                     role="button"

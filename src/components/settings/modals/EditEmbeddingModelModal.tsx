@@ -130,9 +130,7 @@ function EditEmbeddingModelModalComponent({
         onClose()
       } catch (error) {
         console.error('Failed to update embedding model:', error)
-        new Notice(
-          error instanceof Error ? error.message : t('common.error'),
-        )
+        new Notice(error instanceof Error ? error.message : t('common.error'))
       } finally {
         setIsSubmitting(false)
       }

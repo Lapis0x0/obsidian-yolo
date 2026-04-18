@@ -1,4 +1,4 @@
-import { App, requestUrl, TFile } from 'obsidian'
+import { App, TFile, requestUrl } from 'obsidian'
 
 import {
   batchLookupImageCache,
@@ -111,10 +111,7 @@ function resolveImageFile(
   sourcePath: string,
 ): TFile | null {
   // Try wiki-link resolution first (handles shortest-path matches)
-  const resolved = app.metadataCache.getFirstLinkpathDest(
-    linkPath,
-    sourcePath,
-  )
+  const resolved = app.metadataCache.getFirstLinkpathDest(linkPath, sourcePath)
   if (resolved instanceof TFile) return resolved
 
   // Fallback: try as direct vault path
@@ -454,11 +451,7 @@ export async function extractMarkdownImages(
 
   // Batch write new cache entries (fire-and-forget)
   if (newCacheEntries.length > 0) {
-    void batchWriteImageCache(
-      app,
-      newCacheEntries,
-      options?.cache?.settings,
-    )
+    void batchWriteImageCache(app, newCacheEntries, options?.cache?.settings)
   }
 
   return { contentParts: parts }

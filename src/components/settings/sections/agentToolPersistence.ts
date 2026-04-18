@@ -35,9 +35,10 @@ export function normalizeToolPreferencesForPersistence(
 ): Record<string, AssistantToolPreference> {
   const available = new Set(availableTools.map((tool) => tool.name))
   const knownBuiltinToolNames = getKnownBuiltinToolNames()
-  const entries = Object.entries(toolPreferences ?? {}).filter(([toolName]) =>
-    available.has(toolName) ||
-    isKnownOrRemoteToolName(toolName, knownBuiltinToolNames),
+  const entries = Object.entries(toolPreferences ?? {}).filter(
+    ([toolName]) =>
+      available.has(toolName) ||
+      isKnownOrRemoteToolName(toolName, knownBuiltinToolNames),
   )
 
   return Object.fromEntries(entries)

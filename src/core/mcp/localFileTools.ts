@@ -401,7 +401,7 @@ export function getLocalFileTools(): McpTool[] {
           path: {
             type: 'string',
             description:
-              'Optional vault-relative path to scope search. Folder (recursive) or single file. For a file, RAG is restricted to that file\'s chunks and keyword content scans only that file (markdown only for keyword content).',
+              "Optional vault-relative path to scope search. Folder (recursive) or single file. For a file, RAG is restricted to that file's chunks and keyword content scans only that file (markdown only for keyword content).",
           },
           maxResults: {
             type: 'integer',
@@ -1330,9 +1330,7 @@ const collectKeywordFsSearchResults = async ({
   if (includeFiles) {
     const files = app.vault
       .getFiles()
-      .filter((file) =>
-        isPathInSearchScope(file.path, scopeTarget),
-      )
+      .filter((file) => isPathInSearchScope(file.path, scopeTarget))
       .map((file) => file.path)
       .map((path) => ({
         path,
@@ -1371,9 +1369,7 @@ const collectKeywordFsSearchResults = async ({
       .getAllLoadedFiles()
       .filter((entry): entry is TFolder => entry instanceof TFolder)
       .filter((folder) => folder.path.length > 0)
-      .filter((folder) =>
-        isPathInSearchScope(folder.path, scopeTarget),
-      )
+      .filter((folder) => isPathInSearchScope(folder.path, scopeTarget))
       .map((folder) => folder.path)
       .map((path) => ({
         path,
@@ -1410,9 +1406,7 @@ const collectKeywordFsSearchResults = async ({
   if (includeContent && results.length < maxResults) {
     const searchableFiles = app.vault
       .getMarkdownFiles()
-      .filter((file) =>
-        isPathInSearchScope(file.path, scopeTarget),
-      )
+      .filter((file) => isPathInSearchScope(file.path, scopeTarget))
       .sort((a, b) => a.path.localeCompare(b.path))
     const contentMatches: Array<{
       kind: 'content_match'

@@ -14,8 +14,7 @@ export function AgentImageReadingSection() {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
 
-  const isImageReadingEnabled =
-    settings.chatOptions.imageReadingEnabled ?? true
+  const isImageReadingEnabled = settings.chatOptions.imageReadingEnabled ?? true
 
   const isCompressionEnabled =
     settings.chatOptions.imageCompressionEnabled ?? true

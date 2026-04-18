@@ -70,7 +70,12 @@ describe('chatRetry', () => {
 
     expect(payload).toEqual({
       sourceUserMessageId: 'user-1',
-      inputChatMessages: [userMessage, branchAAssistant, branchATool, branchBAssistant],
+      inputChatMessages: [
+        userMessage,
+        branchAAssistant,
+        branchATool,
+        branchBAssistant,
+      ],
       requestChatMessages: [userMessage],
       branchTarget: {
         branchId: 'branch-b',

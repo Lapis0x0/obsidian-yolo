@@ -78,10 +78,6 @@ function pathRankByPath(results: SuperSearchResult[]): Map<string, number> {
   return map
 }
 
-function resultScore(result: SuperSearchResult): number {
-  return result.rrfScore ?? result.similarity ?? 0
-}
-
 /**
  * Fuse keyword and RAG ranked lists with RRF (1-based ranks, k default 60).
  */

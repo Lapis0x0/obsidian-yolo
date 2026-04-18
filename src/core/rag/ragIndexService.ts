@@ -3,12 +3,11 @@ import { App } from 'obsidian'
 import { IndexProgress } from '../../components/chat-view/QueryProgress'
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 
-import {
-  classifyRagIndexError,
-  describeRagIndexError,
-  type RagIndexFailureKind,
-} from './ragIndexErrors'
 import { RAGEngine } from './ragEngine'
+import {
+  type RagIndexFailureKind,
+  describeRagIndexError,
+} from './ragIndexErrors'
 
 type AppWithLocalStorage = App & {
   loadLocalStorage?: (key: string) => string | null | Promise<string | null>
@@ -85,7 +84,7 @@ const RETRY_ACTIVITY_ID = 'rag:index'
 const TRANSIENT_RETRY_DELAY_MS = 5 * 60 * 1000
 const INTERRUPTED_RETRY_DELAY_MS = 15 * 1000
 
-const isPromiseLike = <T,>(value: T | Promise<T>): value is Promise<T> =>
+const isPromiseLike = <T>(value: T | Promise<T>): value is Promise<T> =>
   typeof value === 'object' &&
   value !== null &&
   'then' in (value as Record<string, unknown>) &&
@@ -105,7 +104,10 @@ const defaultSnapshot = (): RagIndexRunSnapshot => ({
 const createRunId = (): string =>
   `rag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
-const readLocalStorage = async (app: App, key: string): Promise<string | null> => {
+const readLocalStorage = async (
+  app: App,
+  key: string,
+): Promise<string | null> => {
   const appWithLocalStorage = app as AppWithLocalStorage
   if (typeof appWithLocalStorage.loadLocalStorage !== 'function') {
     return null
@@ -287,9 +289,11 @@ export class RagIndexService {
       status: 'running',
       startedAt,
       updatedAt: startedAt,
-      stagingRunId: options.reindexAll ? stagingRunId : this.snapshot.stagingRunId,
+      stagingRunId: options.reindexAll
+        ? stagingRunId
+        : this.snapshot.stagingRunId,
       stagingConfigFingerprint: options.reindexAll
-        ? options.stagingConfigFingerprint ?? null
+        ? (options.stagingConfigFingerprint ?? null)
         : this.snapshot.stagingConfigFingerprint,
       failureKind: undefined,
       failureMessage: undefined,
@@ -322,7 +326,7 @@ export class RagIndexService {
             currentFile: progress.currentFile,
             lastCompletedFile:
               (progress.completedFiles ?? 0) > 0
-                ? progress.currentFile ?? this.snapshot.lastCompletedFile
+                ? (progress.currentFile ?? this.snapshot.lastCompletedFile)
                 : this.snapshot.lastCompletedFile,
             totalFiles: progress.totalFiles,
             completedFiles: progress.completedFiles,
@@ -443,7 +447,11 @@ export class RagIndexService {
   }
 
   private async persistSnapshot(): Promise<void> {
-    await writeLocalStorage(this.app, STORAGE_KEY, JSON.stringify(this.snapshot))
+    await writeLocalStorage(
+      this.app,
+      STORAGE_KEY,
+      JSON.stringify(this.snapshot),
+    )
     this.publishActivity()
     this.emit()
   }
@@ -456,7 +464,10 @@ export class RagIndexService {
     fromScratch?: boolean
   }): void {
     this.clearRetryTimer()
-    const delayMs = Math.max(0, (this.snapshot.retryAt ?? Date.now()) - Date.now())
+    const delayMs = Math.max(
+      0,
+      (this.snapshot.retryAt ?? Date.now()) - Date.now(),
+    )
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null
       void this.runIndex(options).catch((error: unknown) => {

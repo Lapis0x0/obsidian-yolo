@@ -616,12 +616,11 @@ export function useChatStreamManager({
 
         const requestedModelId =
           modelId || selectedAssistant?.modelId || settings.chatModelId
-        const targetModelIds =
-          branchTarget?.branchModelId?.trim()
-            ? [branchTarget.branchModelId]
-            : modelIds && modelIds.length > 0
-              ? modelIds
-              : [requestedModelId]
+        const targetModelIds = branchTarget?.branchModelId?.trim()
+          ? [branchTarget.branchModelId]
+          : modelIds && modelIds.length > 0
+            ? modelIds
+            : [requestedModelId]
 
         const resolveClientForModelId = (
           requestedId: string,
