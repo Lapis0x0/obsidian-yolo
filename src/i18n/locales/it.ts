@@ -995,6 +995,10 @@ export const it: TranslationKeys = {
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
+      storeDataInVault:
+        'Sincronizza le impostazioni tramite vault (sperimentale)',
+      storeDataInVaultDesc:
+        'Se attivo, le impostazioni vengono scritte anche in {path} così da poter essere sincronizzate da Obsidian Sync; disattivandolo il file nel vault viene rimosso. ⚠️ Il file contiene chiavi API e altri dati sensibili. Assicurati che il tuo vault NON sia sincronizzato tramite canali pubblici (ad esempio repository Git pubblici o cloud drive pubblici) e di fidarti pienamente di tutti i plugin che possono leggere il vault.',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",

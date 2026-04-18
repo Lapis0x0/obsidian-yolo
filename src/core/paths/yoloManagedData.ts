@@ -4,7 +4,9 @@ import {
   getLegacyJsonDbRootDir,
   getLegacyVectorDbPath,
   getYoloBaseDir,
+  getYoloDataJsonPath,
   getYoloJsonDbRootDir,
+  getYoloSyncPointerPath,
   getYoloVectorDbPath,
 } from './yoloPaths'
 
@@ -296,6 +298,43 @@ const relocateVectorDbFile = async ({
   }
 }
 
+// Move the optional vault-stored `data.json` mirror alongside `baseDir`
+// changes. Failure is non-fatal — the mirror is best-effort and the next
+// successful `writeVaultDataJson` will overwrite the target anyway.
+const relocateDataJsonFile = async ({
+  app,
+  sourcePath,
+  targetPath,
+}: {
+  app: App
+  sourcePath: string
+  targetPath: string
+}): Promise<void> => {
+  if (sourcePath === targetPath) {
+    return
+  }
+  if (!(await app.vault.adapter.exists(sourcePath))) {
+    return
+  }
+  try {
+    await ensureParentDir(app, targetPath)
+    // If target already exists, we still drop source to avoid orphan. The
+    // caller (`saveSettings`) invokes `writeVaultDataJson` right after, which
+    // overwrites target with the latest in-memory settings — so whatever was
+    // at target gets refreshed regardless.
+    if (!(await app.vault.adapter.exists(targetPath))) {
+      const content = await app.vault.adapter.read(sourcePath)
+      await app.vault.adapter.write(targetPath, content)
+    }
+    await removePathIfExists(app, sourcePath)
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to relocate data.json mirror from "${sourcePath}" to "${targetPath}".`,
+      error,
+    )
+  }
+}
+
 export const relocateYoloManagedData = async ({
   app,
   fromSettings,
@@ -331,19 +370,145 @@ export const relocateYoloManagedData = async ({
     sourceCandidates: sourceVectorCandidates,
     targetPath: targetVectorPath,
   })
-  if (vectorSucceeded) {
-    return true
+  if (!vectorSucceeded) {
+    const rolledBackJson = await relocateJsonDbRootDir({
+      app,
+      sourceCandidates: [targetJsonDir],
+      targetDir: getYoloJsonDbRootDir(fromSettings),
+    })
+    if (!rolledBackJson) {
+      console.warn(
+        `[YOLO] Failed to roll back chat storage after vector relocation failed. Source root: "${targetJsonDir}".`,
+      )
+    }
+    return false
   }
 
-  const rolledBackJson = await relocateJsonDbRootDir({
+  // Move the optional vault-stored mirror alongside baseDir changes. The
+  // pointer file is updated by the subsequent `writeVaultDataJson` call in
+  // `saveSettings` (if the feature is on); if the feature is off, a stale
+  // pointer may remain — that's fine, `readVaultDataJson` gracefully returns
+  // null when the pointer target is missing.
+  await relocateDataJsonFile({
     app,
-    sourceCandidates: [targetJsonDir],
-    targetDir: getYoloJsonDbRootDir(fromSettings),
+    sourcePath: getYoloDataJsonPath(fromSettings),
+    targetPath: getYoloDataJsonPath(toSettings),
   })
-  if (!rolledBackJson) {
-    console.warn(
-      `[YOLO] Failed to roll back chat storage after vector relocation failed. Source root: "${targetJsonDir}".`,
-    )
+
+  return true
+}
+
+const readPointerDataPath = async (app: App): Promise<string | null> => {
+  const pointerPath = getYoloSyncPointerPath()
+  if (!(await app.vault.adapter.exists(pointerPath))) {
+    return null
   }
-  return false
+  try {
+    const raw = await app.vault.adapter.read(pointerPath)
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { dataPath?: unknown }).dataPath === 'string'
+    ) {
+      return normalizePath((parsed as { dataPath: string }).dataPath)
+    }
+    return null
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to read sync pointer at "${pointerPath}".`,
+      error,
+    )
+    return null
+  }
+}
+
+/**
+ * Reads the vault-stored `data.json` mirror by first resolving the pointer
+ * file at vault root, then reading the file it points to. Returns null when
+ * the pointer or data file is missing or unparseable.
+ */
+export const readVaultDataJson = async (
+  app: App,
+): Promise<Record<string, unknown> | null> => {
+  const dataPath = await readPointerDataPath(app)
+  if (!dataPath) {
+    return null
+  }
+  if (!(await app.vault.adapter.exists(dataPath))) {
+    return null
+  }
+  try {
+    const raw = await app.vault.adapter.read(dataPath)
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    return null
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to read vault data mirror at "${dataPath}"; falling back to plugin data.`,
+      error,
+    )
+    return null
+  }
+}
+
+/**
+ * Writes settings to the vault-stored `data.json` mirror under `baseDir`,
+ * and refreshes the vault-root pointer so other devices can locate it.
+ * Returns true on success; failures are non-fatal and logged.
+ */
+export const writeVaultDataJson = async (
+  app: App,
+  settings: YoloSettingsLike | null,
+  data: unknown,
+): Promise<boolean> => {
+  const dataPath = getYoloDataJsonPath(settings)
+  const pointerPath = getYoloSyncPointerPath()
+  try {
+    await ensureDir(app, getYoloBaseDir(settings))
+    await app.vault.adapter.write(dataPath, JSON.stringify(data, null, 2))
+    await app.vault.adapter.write(
+      pointerPath,
+      JSON.stringify({ dataPath }, null, 2),
+    )
+    return true
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to write vault data mirror at "${dataPath}".`,
+      error,
+    )
+    return false
+  }
+}
+
+/**
+ * Removes both the pointer file and the data mirror it points to. Falls back
+ * to the settings-derived data path when the pointer is missing or invalid,
+ * so a stale/partial state still gets cleaned up.
+ */
+export const removeVaultDataJson = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<boolean> => {
+  const pointerPath = getYoloSyncPointerPath()
+  const dataPathFromPointer = await readPointerDataPath(app)
+  const dataPath = dataPathFromPointer ?? getYoloDataJsonPath(settings)
+  try {
+    if (await app.vault.adapter.exists(dataPath)) {
+      await app.vault.adapter.remove(dataPath)
+    }
+    if (await app.vault.adapter.exists(pointerPath)) {
+      await app.vault.adapter.remove(pointerPath)
+    }
+    return true
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to remove vault data mirror (pointer="${pointerPath}", data="${dataPath}").`,
+      error,
+    )
+    return false
+  }
 }
