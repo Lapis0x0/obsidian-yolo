@@ -20,9 +20,11 @@ export class KimiMessageAdapter extends OpenAIMessageAdapter {
       return parsed
     }
 
+    const hasToolCalls =
+      Array.isArray(parsed.tool_calls) && parsed.tool_calls.length > 0
+
     if (
-      Array.isArray(parsed.tool_calls) &&
-      parsed.tool_calls.length > 0 &&
+      hasToolCalls &&
       typeof parsed.content === 'string' &&
       parsed.content.length === 0
     ) {
@@ -32,6 +34,11 @@ export class KimiMessageAdapter extends OpenAIMessageAdapter {
 
     if (typeof message.reasoning === 'string' && message.reasoning.length > 0) {
       parsed.reasoning_content = message.reasoning
+    } else if (hasToolCalls) {
+      // Kimi thinking models (k2-thinking / k2.5) require reasoning_content on
+      // every assistant tool-call message for cross-turn reasoning continuity.
+      // Fall back to empty string for legacy history that never captured it.
+      parsed.reasoning_content = ''
     }
 
     return parsed
