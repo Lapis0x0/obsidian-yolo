@@ -1917,19 +1917,15 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async loadSettings() {
-    const pluginData = await this.loadData()
-    // First pass: parse the plugin-directory data to learn the YOLO base dir
-    // so we can look for a vault-stored mirror at `{baseDir}/.yolo_data.json`.
-    const pluginParsedSettings = parseSmartComposerSettings(pluginData)
-
-    // If the vault mirror exists, it is the authoritative source. This lets
-    // Obsidian Sync propagate settings across devices even when the local
-    // plugin-dir copy is stale.
-    const vaultData = await readVaultDataJson(this.app, pluginParsedSettings)
+    // The vault-stored mirror lives at a fixed vault-root path and does not
+    // depend on `yolo.baseDir`. If it exists, it is the authoritative source
+    // so Obsidian Sync can propagate settings across devices even when the
+    // local plugin-dir copy is stale.
+    const vaultData = await readVaultDataJson(this.app)
     const usedVaultSource = vaultData !== null
-    const parsedSettings = usedVaultSource
-      ? parseSmartComposerSettings(vaultData)
-      : pluginParsedSettings
+    const parsedSettings = parseSmartComposerSettings(
+      usedVaultSource ? vaultData : await this.loadData(),
+    )
 
     const settingsWithDefaultAssistant =
       ensureDefaultAssistantInSettings(parsedSettings)
@@ -1956,15 +1952,22 @@ export default class SmartComposerPlugin extends Plugin {
       )
     }
 
-    if (JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)) {
-      await this.saveData(normalizedSettings)
-    } else if (usedVaultSource) {
-      // Keep the plugin-directory copy in sync with what we actually loaded
-      // so subsequent boots find the same baseDir/flag without reading vault.
+    const normalizationChanged =
+      JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)
+
+    // Persist to plugin-dir when: normalization changed anything, OR vault
+    // was authoritative (so the local copy gets refreshed and subsequent
+    // boots are consistent even without reading the mirror).
+    if (normalizationChanged || usedVaultSource) {
       await this.saveData(normalizedSettings)
     }
 
-    if (normalizedSettings.experimental?.storeDataInVault) {
+    // Persist to vault mirror only when there is something new to write:
+    // normalization changed content, or the mirror didn't exist yet.
+    if (
+      normalizedSettings.experimental?.storeDataInVault &&
+      (normalizationChanged || !usedVaultSource)
+    ) {
       await writeVaultDataJson(this.app, normalizedSettings, normalizedSettings)
     }
   }
