@@ -482,8 +482,12 @@ export class RequestContextBuilder {
       (m): m is MentionablePDF => m.type === 'pdf',
     )
     const blockPrompt = blocks
-      .map(({ file, content }) => {
-        return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
+      .map(({ file, content, startLine }) => {
+        const numberedContent = this.addLineNumbersToContent({
+          content,
+          startLine,
+        })
+        return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
       })
       .join('')
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
@@ -776,8 +780,12 @@ ${message.annotations
         (m): m is MentionablePDF => m.type === 'pdf',
       )
       const blockPrompt = blocks
-        .map(({ file, content }) => {
-          return `\`\`\`${file.path}\n${content}\n\`\`\`\n`
+        .map(({ file, content, startLine }) => {
+          const numberedContent = this.addLineNumbersToContent({
+            content,
+            startLine,
+          })
+          return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
         })
         .join('')
       const assistantQuotePrompt =
