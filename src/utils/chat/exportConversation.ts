@@ -135,6 +135,9 @@ function mentionablesToMarkdownLines(
       case 'image':
         lines.push(`Image: ${m.name}`)
         break
+      case 'pdf':
+        lines.push(`PDF: ${m.name}`)
+        break
       case 'model':
         lines.push(`Model: ${m.name}`)
         break

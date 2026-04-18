@@ -36,6 +36,7 @@ import { ChatModel } from '../../../types/chat-model.types'
 import {
   Mentionable,
   MentionableImage,
+  MentionablePDF,
   SerializedMentionable,
 } from '../../../types/mentionable'
 import { getDisplayOnlyCurrentFileMentionables } from '../../../utils/chat/currentFileMentionable'
@@ -46,9 +47,10 @@ import {
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 import { fileToMentionableImage } from '../../../utils/llm/image'
+import { fileToMentionablePDF } from '../../../utils/llm/pdf'
 
 import ChatSkillBadge from './ChatSkillBadge'
-import { ImageUploadButton } from './ImageUploadButton'
+import { FileUploadButton } from './FileUploadButton'
 import LexicalContentEditable from './LexicalContentEditable'
 import MentionableBadge from './MentionableBadge'
 import { ModelSelect } from './ModelSelect'
@@ -858,6 +860,127 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [mentionableUnitLabel, mentionables, setMentionables],
     )
 
+    const handleCreatePdfMentionables = useCallback(
+      (mentionablePdfs: MentionablePDF[]) => {
+        const newMentionablePdfs = mentionablePdfs.filter(
+          (m) =>
+            !mentionables.some(
+              (mentionable) =>
+                getMentionableKey(serializeMentionable(mentionable)) ===
+                getMentionableKey(serializeMentionable(m)),
+            ),
+        )
+        if (newMentionablePdfs.length === 0) return
+        const editor = editorRef.current
+        if (editor) {
+          editor.update(() => {
+            const nodesToInsert: LexicalNode[] = []
+            newMentionablePdfs.forEach((mentionable) => {
+              nodesToInsert.push(
+                $createMentionNode(
+                  getMentionableName(mentionable, {
+                    unitLabel: mentionableUnitLabel,
+                  }),
+                  serializeMentionable(mentionable),
+                ),
+              )
+              nodesToInsert.push($createTextNode(' '))
+            })
+            const selection = $getSelection()
+            if (selection && $isRangeSelection(selection)) {
+              selection.insertNodes(nodesToInsert)
+              return
+            }
+
+            const root = $getRoot()
+            let paragraphNode = root.getFirstChild()
+            if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
+              const created = $createParagraphNode()
+              root.append(created)
+              paragraphNode = created
+            }
+            const paragraph = paragraphNode as ParagraphNode
+            nodesToInsert.forEach((node) => {
+              paragraph.append(node)
+            })
+          })
+        }
+        setMentionables([...mentionables, ...newMentionablePdfs])
+      },
+      [mentionableUnitLabel, mentionables, setMentionables],
+    )
+
+    const handleUploadFiles = useCallback(
+      (files: File[]) => {
+        const imageFiles: File[] = []
+        const pdfFiles: File[] = []
+        const unsupported: File[] = []
+        for (const file of files) {
+          if (file.type.startsWith('image/')) {
+            imageFiles.push(file)
+          } else if (
+            file.type === 'application/pdf' ||
+            file.name.toLowerCase().endsWith('.pdf')
+          ) {
+            pdfFiles.push(file)
+          } else {
+            unsupported.push(file)
+          }
+        }
+        if (unsupported.length > 0) {
+          new Notice(
+            `Unsupported file type: ${unsupported.map((f) => f.name).join(', ')}`,
+          )
+        }
+        if (imageFiles.length > 0) {
+          void Promise.all(
+            imageFiles.map((file) => fileToMentionableImage(file)),
+          )
+            .then((mentionableImages) => {
+              handleCreateImageMentionables(mentionableImages)
+            })
+            .catch((error) => {
+              console.error('Failed to process uploaded images', error)
+              new Notice('Failed to process uploaded images')
+            })
+        }
+        if (pdfFiles.length > 0) {
+          void Promise.allSettled(
+            pdfFiles.map((file) => fileToMentionablePDF(file)),
+          ).then((results) => {
+            const successes: MentionablePDF[] = []
+            results.forEach((result, idx) => {
+              if (result.status === 'fulfilled') {
+                successes.push(result.value)
+              } else {
+                const name = pdfFiles[idx]?.name ?? 'PDF'
+                console.error(`Failed to extract PDF ${name}`, result.reason)
+                new Notice(
+                  `Failed to read PDF "${name}": ${
+                    result.reason instanceof Error
+                      ? result.reason.message
+                      : 'unknown error'
+                  }`,
+                )
+              }
+            })
+            if (successes.length > 0) {
+              handleCreatePdfMentionables(successes)
+              const truncated = successes.filter((p) => p.truncated)
+              if (truncated.length > 0) {
+                new Notice(
+                  `Some PDFs were truncated to the first pages: ${truncated
+                    .map((p) => p.name)
+                    .join(', ')}`,
+                )
+              }
+            }
+          })
+        }
+      },
+      [handleCreateImageMentionables, handleCreatePdfMentionables],
+    )
+
     const handleSelectMentionableForBadge = useCallback(
       (mentionable: Mentionable) => {
         if (mentionDisplayMode !== 'badge') return
@@ -1282,6 +1405,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           {!compact && (
             <div className="smtcmp-chat-user-input-controls">
               <div className="smtcmp-chat-user-input-controls__left">
+                <FileUploadButton onUpload={handleUploadFiles} />
                 <ModelSelect
                   modelId={modelId}
                   onChange={onModelChange}
@@ -1302,22 +1426,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 )}
               </div>
               <div className="smtcmp-chat-user-input-controls__right">
-                <ImageUploadButton
-                  onUpload={(files) => {
-                    void Promise.all(
-                      files.map((file) => fileToMentionableImage(file)),
-                    )
-                      .then((mentionableImages) => {
-                        handleCreateImageMentionables(mentionableImages)
-                      })
-                      .catch((error) => {
-                        console.error(
-                          'Failed to process uploaded images',
-                          error,
-                        )
-                      })
-                  }}
-                />
                 <SubmitButton onClick={() => handleSubmit()} />
               </div>
             </div>

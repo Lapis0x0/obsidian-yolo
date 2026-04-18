@@ -1,14 +1,15 @@
-import { ImageIcon } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { ChangeEvent } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 
-export function ImageUploadButton({
+export function FileUploadButton({
   onUpload,
 }: {
   onUpload: (files: File[]) => void
 }) {
   const { t } = useLanguage()
+  const label = t('chat.uploadFile', '添加文件')
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
@@ -19,19 +20,20 @@ export function ImageUploadButton({
   }
 
   return (
-    <label className="smtcmp-chat-user-input-submit-button">
+    <label
+      className="smtcmp-chat-user-input-submit-button smtcmp-chat-user-input-upload-button"
+      title={label}
+      aria-label={label}
+    >
       <input
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         multiple
         onChange={handleFileChange}
         hidden
       />
       <div className="smtcmp-chat-user-input-submit-button-icons">
-        <ImageIcon size={12} />
-      </div>
-      <div className="smtcmp-chat-user-input-submit-button-label">
-        {t('chat.uploadImage', '上传图片')}
+        <Plus size={14} />
       </div>
     </label>
   )

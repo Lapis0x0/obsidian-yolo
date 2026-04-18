@@ -26,6 +26,8 @@ export const getMentionableIcon = (mentionable: Mentionable) => {
       return LinkIcon
     case 'image':
       return ImageIcon
+    case 'pdf':
+      return FileText
     case 'model':
       return Cpu
     default:

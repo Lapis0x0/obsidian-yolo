@@ -1073,6 +1073,7 @@ export const en: TranslationKeys = {
     stopGeneration: 'Stop generation',
     selectModel: 'Select model',
     uploadImage: 'Upload image',
+    uploadFile: 'Add file',
     addContext: 'Add context',
     applyChanges: 'Apply changes',
     copyMessage: 'Copy message',
