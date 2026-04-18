@@ -1,3 +1,5 @@
+import { Platform } from 'obsidian'
+
 import { RequestTransportMode } from '../../types/provider.types'
 
 export type AutoPromotedTransportMode = Extract<
@@ -296,7 +298,7 @@ export const runWithRequestTransport = async <T>({
       throw error
     }
     return tryNodeThenObsidian({
-      runNode,
+      runNode: Platform.isDesktop ? runNode : undefined,
       runObsidian,
       memoryKey,
       onAutoPromoteTransportMode,
@@ -508,7 +510,7 @@ export const runWithRequestTransportForStream = async <T>({
 
   return createAutoFallbackStream({
     createBrowserStream,
-    createNodeStream,
+    createNodeStream: Platform.isDesktop ? createNodeStream : undefined,
     createObsidianStream,
     memoryKey,
     onAutoPromoteTransportMode,
