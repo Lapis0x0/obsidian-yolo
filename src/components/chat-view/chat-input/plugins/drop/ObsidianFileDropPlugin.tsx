@@ -1,9 +1,13 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
+  $createRangeSelection,
   $createTextNode,
+  $getNearestNodeFromDOMNode,
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  $isTextNode,
+  $setSelection,
   COMMAND_PRIORITY_HIGH,
   DROP_COMMAND,
 } from 'lexical'
@@ -134,10 +138,47 @@ export default function ObsidianFileDropPlugin(): null {
         event.preventDefault()
         event.stopPropagation()
 
+        // Capture drop coordinates before the update so we can position the
+        // cursor at the actual drop point rather than the old caret position.
+        const dropX = event.clientX
+        const dropY = event.clientY
+
         editor.update(() => {
-          const selection = $getSelection()
-          if (!$isRangeSelection(selection)) {
-            $getRoot().selectEnd()
+          let selectionPositioned = false
+
+          const domRange =
+            typeof document.caretRangeFromPoint === 'function'
+              ? document.caretRangeFromPoint(dropX, dropY)
+              : null
+
+          if (domRange !== null) {
+            try {
+              const domNode = domRange.startContainer
+              const domOffset = domRange.startOffset
+              const lexicalNode = $getNearestNodeFromDOMNode(domNode)
+              if (lexicalNode !== null) {
+                const newSel = $createRangeSelection()
+                const key = lexicalNode.getKey()
+                if ($isTextNode(lexicalNode)) {
+                  newSel.anchor.set(key, domOffset, 'text')
+                  newSel.focus.set(key, domOffset, 'text')
+                } else {
+                  newSel.anchor.set(key, 0, 'element')
+                  newSel.focus.set(key, 0, 'element')
+                }
+                $setSelection(newSel)
+                selectionPositioned = true
+              }
+            } catch {
+              // fall through to default positioning
+            }
+          }
+
+          if (!selectionPositioned) {
+            const sel = $getSelection()
+            if (!$isRangeSelection(sel)) {
+              $getRoot().selectEnd()
+            }
           }
 
           const activeSelection = $getSelection()
