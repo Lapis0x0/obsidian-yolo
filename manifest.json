@@ -1,7 +1,7 @@
 {
   "id": "yolo",
   "name": "YOLO",
-  "version": "1.5.5.3",
+  "version": "1.5.5.4",
   "minAppVersion": "1.8.0",
   "description": "Agent-native AI assistant — chat, write, search, orchestrate, all in one.",
   "author": "Lapix0x0",
