@@ -151,7 +151,7 @@ describe('local fs tool action helpers', () => {
     expect(result.status).toBe('aborted')
   })
 
-  it('rejects the removed fs_edit operations array shape', async () => {
+  it('supports fs_edit operations[] array as an atomic batch', async () => {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
       stat: { size: 20 },
@@ -180,10 +180,79 @@ describe('local fs tool action helpers', () => {
       },
     })
 
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(modify).toHaveBeenCalledTimes(1)
+    expect(modify.mock.calls[0][1]).toBe('hello changed')
+  })
+
+  it('applies multiple fs_edit operations atomically against a single snapshot', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 100 },
+    })
+    const modify = jest.fn()
+    // Four lines so line-based edits have room to operate.
+    const read = jest
+      .fn()
+      .mockResolvedValue(['alpha', 'beta', 'gamma', 'delta'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        // Intentionally provided in ASC startLine order to exercise the
+        // engine's automatic descending reordering for replace_lines.
+        operations: [
+          { type: 'replace_lines', startLine: 1, endLine: 1, newText: 'A' },
+          { type: 'replace_lines', startLine: 3, endLine: 3, newText: 'C' },
+        ],
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(modify).toHaveBeenCalledTimes(1)
+    expect(modify.mock.calls[0][1]).toBe(['A', 'beta', 'C', 'delta'].join('\n'))
+  })
+
+  it('rejects fs_edit operations[] with overlapping replace_lines ranges', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 100 },
+    })
+    const modify = jest.fn()
+    const read = jest
+      .fn()
+      .mockResolvedValue(['one', 'two', 'three', 'four'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        operations: [
+          { type: 'replace_lines', startLine: 1, endLine: 2, newText: 'X' },
+          { type: 'replace_lines', startLine: 2, endLine: 3, newText: 'Y' },
+        ],
+      },
+    })
+
     expect(modify).not.toHaveBeenCalled()
     expect(result.status).toBe(ToolCallResponseStatus.Error)
     if (result.status === ToolCallResponseStatus.Error) {
-      expect(result.error).toContain('operation must be a nested JSON object')
+      expect(result.error).toContain('overlap')
     }
   })
 

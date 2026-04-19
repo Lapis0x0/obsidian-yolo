@@ -774,6 +774,57 @@ const applyReplaceLikeOperation = ({
   }
 }
 
+const reorderOperationsForLineSafety = (
+  operations: TextEditOperation[],
+): { operations: TextEditOperation[]; error?: string } => {
+  const lineOps: Array<{
+    op: ReplaceLinesTextOperation
+    originalIndex: number
+  }> = []
+  const otherOps: TextEditOperation[] = []
+
+  operations.forEach((op, index) => {
+    if (op.type === 'replace_lines') {
+      lineOps.push({ op, originalIndex: index })
+    } else {
+      otherOps.push(op)
+    }
+  })
+
+  if (lineOps.length === 0) {
+    return { operations }
+  }
+
+  // Detect overlapping line ranges across replace_lines ops — these are
+  // unambiguously bad regardless of ordering.
+  const sortedAsc = [...lineOps].sort((a, b) => a.op.startLine - b.op.startLine)
+  for (let i = 1; i < sortedAsc.length; i += 1) {
+    const prev = sortedAsc[i - 1].op
+    const curr = sortedAsc[i].op
+    if (curr.startLine <= prev.endLine) {
+      return {
+        operations,
+        error:
+          `replace_lines ranges overlap: lines ${prev.startLine}-${prev.endLine} ` +
+          `and ${curr.startLine}-${curr.endLine}. Merge or split these operations.`,
+      }
+    }
+  }
+
+  if (lineOps.length === 1) {
+    // Single line-based op — keep original order to preserve existing semantics.
+    return { operations }
+  }
+
+  // Multiple replace_lines ops: apply them DESC by startLine before other ops
+  // so earlier edits don't invalidate later edits' line numbers.
+  const lineOpsDesc = [...lineOps]
+    .sort((a, b) => b.op.startLine - a.op.startLine)
+    .map((entry) => entry.op)
+
+  return { operations: [...lineOpsDesc, ...otherOps] }
+}
+
 export const materializeTextEditPlan = ({
   content,
   plan,
@@ -786,8 +837,20 @@ export const materializeTextEditPlan = ({
   let appliedCount = 0
   const operationResults: AppliedTextEditOperation[] = []
 
-  for (let index = 0; index < plan.operations.length; index += 1) {
-    const operation = plan.operations[index]
+  const reordered = reorderOperationsForLineSafety(plan.operations)
+  if (reordered.error) {
+    return {
+      newContent: content,
+      appliedCount: 0,
+      totalOperations: plan.operations.length,
+      errors: [reordered.error],
+      operationResults: [],
+    }
+  }
+  const orderedOperations = reordered.operations
+
+  for (let index = 0; index < orderedOperations.length; index += 1) {
+    const operation = orderedOperations[index]
 
     if (operation.type === 'replace_lines') {
       const result = applyReplaceLinesOperation({

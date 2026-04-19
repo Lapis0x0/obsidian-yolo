@@ -518,7 +518,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_edit',
       description:
-        'Apply exactly one text edit operation within a single existing file. Prefer this tool when modifying content in an existing file. Supports replace, replace_lines, insert_after, and append.',
+        'Apply one or more text edit operations within a single existing file, atomically against one snapshot. Prefer this tool when modifying content in an existing file. Supports replace, replace_lines, insert_after, and append. To perform multiple edits on the same file, prefer bundling them via the "operations" array in a single fs_edit call rather than emitting multiple parallel fs_edit calls — bundled edits share one review, one write, and are applied against a single snapshot so earlier edits cannot invalidate later ones.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -526,10 +526,17 @@ export function getLocalFileTools(): McpTool[] {
             type: 'string',
             description: 'Vault-relative file path.',
           },
+          operations: {
+            type: 'array',
+            description:
+              'Preferred for multiple edits to the same file: an array of text edit operations applied atomically against a single snapshot. Each item uses the same shape as "operation". If multiple replace_lines ops are present their line ranges must not overlap; they are automatically applied in descending order so earlier edits do not shift later line numbers.',
+            minItems: 1,
+            items: { type: 'object' },
+          },
           operation: {
             type: 'object',
             description:
-              'A single text edit operation to apply. Supports replace, replace_lines, insert_after, and append.',
+              'A single text edit operation to apply. Supports replace, replace_lines, insert_after, and append. For multiple edits to the same file, prefer the "operations" array instead.',
             properties: {
               type: {
                 type: 'string',
@@ -570,7 +577,7 @@ export function getLocalFileTools(): McpTool[] {
             required: ['type'],
           },
         },
-        required: ['path', 'operation'],
+        required: ['path'],
       },
     },
     {
@@ -1654,6 +1661,17 @@ const coerceOperationObject = (operation: unknown): Record<string, unknown> => {
 }
 
 const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
+  const operationsValue = args.operations
+  if (Array.isArray(operationsValue)) {
+    if (operationsValue.length === 0) {
+      throw new Error('operations array must contain at least one operation.')
+    }
+    const operations = operationsValue.map((entry) =>
+      parseTextEditOperation(coerceOperationObject(entry)),
+    )
+    return { operations }
+  }
+
   const operation = coerceOperationObject(args.operation)
 
   return {
