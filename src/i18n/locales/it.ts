@@ -1106,6 +1106,8 @@ export const it: TranslationKeys = {
         'La conversazione precedente e stata compressa in un riassunto. Le risposte seguenti continuano da quel riassunto',
       dividerDescriptionWithEstimate:
         'La conversazione precedente e stata compressa in un riassunto. Il contesto totale del turno successivo e stimato intorno a {count} token',
+      dividerDescriptionWithSavings:
+        '{messageCount} messaggi compressi, risparmiati circa {tokens} token',
       pendingStatus:
         'Sto riorganizzando il contesto. La conversazione continuera tra poco in un nuovo contesto.',
       success:

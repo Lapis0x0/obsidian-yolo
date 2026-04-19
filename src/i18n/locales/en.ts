@@ -1124,6 +1124,8 @@ export const en: TranslationKeys = {
         'Earlier conversation has been compressed into a summary. Replies below continue from that summary',
       dividerDescriptionWithEstimate:
         'Earlier conversation has been compressed into a summary. The next-round total context is estimated at about {count} tokens',
+      dividerDescriptionWithSavings:
+        '{messageCount} messages compacted, saved about {tokens} tokens',
       pendingStatus:
         'Organizing context now. The conversation will continue in a fresh context shortly.',
       success:

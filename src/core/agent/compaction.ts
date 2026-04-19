@@ -242,6 +242,20 @@ export const findCompactToolCallId = (
   return null
 }
 
+export const getLastAssistantPromptTokens = (
+  messages: ChatMessage[],
+): number | null => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.role !== 'assistant') {
+      continue
+    }
+    const tokens = message.metadata?.usage?.prompt_tokens
+    return typeof tokens === 'number' && tokens > 0 ? tokens : null
+  }
+  return null
+}
+
 export const buildCompactionSummaryMessage = (
   compaction: ChatConversationCompaction,
 ): RequestMessage => {
@@ -293,6 +307,7 @@ export const buildCompactedConversationState = ({
     summary,
     compactedAt: Date.now(),
     summaryModelId,
+    compactedMessageCount: trigger.retainedStartIndex,
   }
 }
 
@@ -315,6 +330,7 @@ export const buildManualCompactionState = ({
     summary,
     compactedAt: Date.now(),
     summaryModelId,
+    compactedMessageCount: messages.length,
   }
 }
 

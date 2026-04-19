@@ -17,6 +17,7 @@ import {
   buildCompactedConversationState,
   createConversationCompactionSummary,
   findCompactToolCallId,
+  getLastAssistantPromptTokens,
 } from './compaction'
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
@@ -262,6 +263,20 @@ export class NativeAgentRuntime implements AgentRuntime {
                           '[YOLO][Compact] failed to estimate continuation context tokens',
                           error,
                         )
+                      }
+                      const preCompactionTokens =
+                        getLastAssistantPromptTokens(conversationMessages)
+                      if (
+                        typeof preCompactionTokens === 'number' &&
+                        typeof nextCompaction.estimatedNextContextTokens ===
+                          'number'
+                      ) {
+                        const saved =
+                          preCompactionTokens -
+                          nextCompaction.estimatedNextContextTokens
+                        if (saved > 0) {
+                          nextCompaction.estimatedTokensSaved = saved
+                        }
                       }
                     }
                     this.compactionState = nextCompaction

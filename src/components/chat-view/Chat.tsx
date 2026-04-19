@@ -1097,19 +1097,36 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     'chat.compaction.pendingTitle',
     '正在压缩上下文',
   )
-  const compactionDividerDescription =
-    typeof latestCompactionState?.estimatedNextContextTokens === 'number'
-      ? t(
-          'chat.compaction.dividerDescriptionWithEstimate',
-          '以上对话已压缩为摘要，下一轮总上下文约为 {count} tokens',
-        ).replace(
-          '{count}',
-          formatTokenCount(latestCompactionState.estimatedNextContextTokens),
-        )
-      : t(
-          'chat.compaction.dividerDescription',
-          '以上对话已压缩为摘要，以下回复基于摘要继续',
-        )
+  const compactionDividerDescription = (() => {
+    const compactedMessageCount = latestCompactionState?.compactedMessageCount
+    const estimatedTokensSaved = latestCompactionState?.estimatedTokensSaved
+    if (
+      typeof compactedMessageCount === 'number' &&
+      compactedMessageCount > 0 &&
+      typeof estimatedTokensSaved === 'number' &&
+      estimatedTokensSaved > 0
+    ) {
+      return t(
+        'chat.compaction.dividerDescriptionWithSavings',
+        '{messageCount} 条消息已压缩，节省约 {tokens} tokens',
+      )
+        .replace('{messageCount}', String(compactedMessageCount))
+        .replace('{tokens}', formatTokenCount(estimatedTokensSaved))
+    }
+    if (typeof latestCompactionState?.estimatedNextContextTokens === 'number') {
+      return t(
+        'chat.compaction.dividerDescriptionWithEstimate',
+        '以上对话已压缩为摘要，下一轮总上下文约为 {count} tokens',
+      ).replace(
+        '{count}',
+        formatTokenCount(latestCompactionState.estimatedNextContextTokens),
+      )
+    }
+    return t(
+      'chat.compaction.dividerDescription',
+      '以上对话已压缩为摘要，以下回复基于摘要继续',
+    )
+  })()
   const compactionPendingDescription = t(
     'chat.compaction.pendingStatus',
     '正在整理上下文，稍后将从新的上下文继续。',

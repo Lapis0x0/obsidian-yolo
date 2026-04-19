@@ -9,6 +9,7 @@ import { useSettings } from '../../contexts/settings-context'
 import {
   buildManualCompactionState,
   createConversationCompactionSummary,
+  getLastAssistantPromptTokens,
 } from '../../core/agent/compaction'
 import { estimateContinuationRequestContextTokens } from '../../core/agent/requestContextEstimate'
 import type {
@@ -551,6 +552,18 @@ export function useChatStreamManager({
           '[YOLO][Compact] failed to estimate continuation context tokens',
           error,
         )
+      }
+
+      const preCompactionTokens = getLastAssistantPromptTokens(messages)
+      if (
+        typeof preCompactionTokens === 'number' &&
+        typeof nextCompaction.estimatedNextContextTokens === 'number'
+      ) {
+        const saved =
+          preCompactionTokens - nextCompaction.estimatedNextContextTokens
+        if (saved > 0) {
+          nextCompaction.estimatedTokensSaved = saved
+        }
       }
 
       return nextCompaction

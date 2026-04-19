@@ -963,6 +963,7 @@ export type TranslationKeys = {
       dividerTitle?: string
       dividerDescription?: string
       dividerDescriptionWithEstimate?: string
+      dividerDescriptionWithSavings?: string
       pendingStatus?: string
       success?: string
       failed?: string
