@@ -415,21 +415,42 @@ export default function AssistantToolMessageGroupItem({
     () => collectGroupEditSummary(displayedMessages),
     [displayedMessages],
   )
-  const [groupEditSummary, setGroupEditSummary] =
-    useState<GroupEditSummary | null>(baseGroupEditSummary)
+
+  // Stable key identifying the set of files × rounds that need snapshot reads.
+  // Changes only when a file is added / removed / gets a new round, so the
+  // snapshot-fetch effect below doesn't re-run on every streaming frame —
+  // previously this re-ran ~60Hz and re-parsed the full snapshot JSON on each
+  // frame, producing GB-scale transient allocations on long conversations.
+  const snapshotFetchKey = useMemo(() => {
+    if (!baseGroupEditSummary || baseGroupEditSummary.files.length === 0) {
+      return null
+    }
+    return baseGroupEditSummary.files
+      .map(
+        (file) => `${file.path}::${file.firstRoundId}::${file.latestRoundId}`,
+      )
+      .join('|')
+  }, [baseGroupEditSummary])
+
+  // Cached per-file {addedLines, removedLines} derived from the cumulative
+  // first→latest snapshot diff. Keyed by snapshotFetchKey entries so it
+  // survives re-renders of baseGroupEditSummary that don't touch the file
+  // set (e.g. tool-call entries appended during the same round).
+  const [enrichedFileCounts, setEnrichedFileCounts] = useState<
+    Record<string, { addedLines: number; removedLines: number }>
+  >({})
 
   useEffect(() => {
-    if (!baseGroupEditSummary) {
-      setGroupEditSummary(null)
+    if (!snapshotFetchKey || !baseGroupEditSummary) {
       return
     }
 
     let cancelled = false
-    setGroupEditSummary(baseGroupEditSummary)
+    const files = baseGroupEditSummary.files
 
     void (async () => {
-      const snapshotEntries = await Promise.all(
-        baseGroupEditSummary.files.map(async (file) => {
+      const entries = await Promise.all(
+        files.map(async (file) => {
           const [firstSnapshot, latestSnapshot] = await Promise.all([
             readEditReviewSnapshot({
               app,
@@ -448,7 +469,7 @@ export default function AssistantToolMessageGroupItem({
           ])
 
           if (!firstSnapshot || !latestSnapshot) {
-            return file
+            return null
           }
 
           const counts = countFileChangeStats({
@@ -458,11 +479,8 @@ export default function AssistantToolMessageGroupItem({
             afterExists: latestSnapshot.afterExists,
           })
 
-          return {
-            ...file,
-            addedLines: counts.addedLines,
-            removedLines: counts.removedLines,
-          }
+          const key = `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
+          return [key, counts] as const
         }),
       )
 
@@ -470,24 +488,51 @@ export default function AssistantToolMessageGroupItem({
         return
       }
 
-      setGroupEditSummary({
-        ...baseGroupEditSummary,
-        files: snapshotEntries,
-        totalAddedLines: snapshotEntries.reduce(
-          (sum, file) => sum + file.addedLines,
-          0,
-        ),
-        totalRemovedLines: snapshotEntries.reduce(
-          (sum, file) => sum + file.removedLines,
-          0,
-        ),
-      })
+      const next: Record<string, { addedLines: number; removedLines: number }> =
+        {}
+      for (const entry of entries) {
+        if (entry) {
+          next[entry[0]] = entry[1]
+        }
+      }
+      setEnrichedFileCounts(next)
     })()
 
     return () => {
       cancelled = true
     }
-  }, [app, baseGroupEditSummary, conversationId, settings])
+    // snapshotFetchKey encodes the files × rounds identity we read here;
+    // baseGroupEditSummary changes every streaming frame and MUST NOT be a
+    // dep — it would retrigger this effect at ~60Hz and re-parse the full
+    // snapshot JSON on every frame.
+  }, [snapshotFetchKey, app, conversationId, settings])
+
+  const groupEditSummary = useMemo<GroupEditSummary | null>(() => {
+    if (!baseGroupEditSummary) {
+      return null
+    }
+    const files = baseGroupEditSummary.files.map((file) => {
+      const key = `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
+      const enriched = enrichedFileCounts[key]
+      if (!enriched) {
+        return file
+      }
+      return {
+        ...file,
+        addedLines: enriched.addedLines,
+        removedLines: enriched.removedLines,
+      }
+    })
+    return {
+      ...baseGroupEditSummary,
+      files,
+      totalAddedLines: files.reduce((sum, file) => sum + file.addedLines, 0),
+      totalRemovedLines: files.reduce(
+        (sum, file) => sum + file.removedLines,
+        0,
+      ),
+    }
+  }, [baseGroupEditSummary, enrichedFileCounts])
 
   const groupEditSummaryKey = useMemo(
     () =>

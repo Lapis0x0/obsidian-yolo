@@ -1,7 +1,15 @@
 import { getEncoding } from 'js-tiktoken'
 
+// Bounded LRU for repeated short-text lookups (e.g. skill prompts shown in the
+// Settings UI). We rely on Map's insertion-order guarantee: re-setting a key
+// moves it to the end, so the oldest live entry is always the first key.
+//
+// NOTE: we intentionally do NOT cache `estimateJsonTokens` results. The caller
+// serializes the full request payload (messages + tools) on every LLM turn,
+// producing a unique key each time — the cache would never hit and would pin
+// gigabytes of serialized JSON in memory across a session.
+const TEXT_TOKEN_CACHE_LIMIT = 500
 const textTokenCache = new Map<string, number>()
-const jsonTokenCache = new Map<string, number>()
 
 let sharedEncoding: ReturnType<typeof getEncoding> | null = null
 
@@ -45,11 +53,21 @@ const normalizeJsonValue = (value: unknown): unknown => {
 export const estimateTextTokens = (text: string): number => {
   const cached = textTokenCache.get(text)
   if (cached !== undefined) {
+    // LRU touch: move to the end so it is evicted last.
+    textTokenCache.delete(text)
+    textTokenCache.set(text, cached)
     return cached
   }
 
   const count = getSharedEncoding().encode(text).length
   textTokenCache.set(text, count)
+  if (textTokenCache.size > TEXT_TOKEN_CACHE_LIMIT) {
+    // Drop the oldest inserted key (first in iteration order).
+    const oldestKey = textTokenCache.keys().next().value
+    if (oldestKey !== undefined) {
+      textTokenCache.delete(oldestKey)
+    }
+  }
   return count
 }
 
@@ -58,13 +76,9 @@ export const estimateJsonTokens = (value: unknown): number => {
   const serialized = JSON.stringify(normalizeJsonValue(value))
   const imageCount = strippedImageCount
 
-  const cached = jsonTokenCache.get(serialized)
-  if (cached !== undefined) {
-    return cached + imageCount * ESTIMATED_IMAGE_TOKENS
-  }
-
-  const textTokens = estimateTextTokens(serialized)
-  jsonTokenCache.set(serialized, textTokens)
+  // Do not cache here — keys are always unique in hot paths (request payloads
+  // change every turn) and caching them would leak memory unboundedly.
+  const textTokens = getSharedEncoding().encode(serialized).length
   return textTokens + imageCount * ESTIMATED_IMAGE_TOKENS
 }
 
