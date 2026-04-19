@@ -1,4 +1,4 @@
-import { Compartment, Prec, StateEffect } from '@codemirror/state'
+import { Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { Editor } from 'obsidian'
 
@@ -38,29 +38,6 @@ export class InlineSuggestionController {
   private readonly getEditorView: (editor: Editor) => EditorView | null
   private readonly getTabCompletionController: () => TabCompletionController
 
-  private readonly inlineSuggestionExtensionViews = new Set<EditorView>()
-  private readonly inlineSuggestionCompartment = new Compartment()
-  private readonly inlineSuggestionExtension = [
-    inlineSuggestionGhostField,
-    thinkingIndicatorField,
-    Prec.high(
-      keymap.of([
-        {
-          key: 'Tab',
-          run: (v) => this.tryAcceptInlineSuggestionFromView(v),
-        },
-        {
-          key: 'Shift-Tab',
-          run: (v) => this.tryRejectInlineSuggestionFromView(v),
-        },
-        {
-          key: 'Escape',
-          run: (v) => this.tryRejectInlineSuggestionFromView(v),
-        },
-      ]),
-    ),
-  ]
-
   private activeInlineSuggestion: ActiveInlineSuggestion | null = null
   private continuationInlineSuggestion: ContinuationInlineSuggestion | null =
     null
@@ -70,29 +47,30 @@ export class InlineSuggestionController {
     this.getTabCompletionController = deps.getTabCompletionController
   }
 
-  ensureInlineSuggestionExtension(view: EditorView) {
-    if (this.inlineSuggestionExtensionViews.has(view)) return
-    view.dispatch({
-      effects: StateEffect.appendConfig.of([
-        this.inlineSuggestionCompartment.of(this.inlineSuggestionExtension),
-      ]),
-    })
-    this.inlineSuggestionExtensionViews.add(view)
-  }
-
-  removeInlineSuggestionExtension(view: EditorView) {
-    if (!this.inlineSuggestionExtensionViews.has(view)) return
-    view.dispatch({
-      effects: this.inlineSuggestionCompartment.reconfigure([]),
-    })
-    this.inlineSuggestionExtensionViews.delete(view)
+  createExtension(): Extension {
+    return [
+      inlineSuggestionGhostField,
+      thinkingIndicatorField,
+      Prec.high(
+        keymap.of([
+          {
+            key: 'Tab',
+            run: (v) => this.tryAcceptInlineSuggestionFromView(v),
+          },
+          {
+            key: 'Shift-Tab',
+            run: (v) => this.tryRejectInlineSuggestionFromView(v),
+          },
+          {
+            key: 'Escape',
+            run: (v) => this.tryRejectInlineSuggestionFromView(v),
+          },
+        ]),
+      ),
+    ]
   }
 
   destroy() {
-    for (const view of this.inlineSuggestionExtensionViews) {
-      this.removeInlineSuggestionExtension(view)
-    }
-    this.inlineSuggestionExtensionViews.clear()
     this.activeInlineSuggestion = null
     this.continuationInlineSuggestion = null
   }
@@ -101,7 +79,6 @@ export class InlineSuggestionController {
     view: EditorView,
     payload: InlineSuggestionGhostPayload,
   ) {
-    this.ensureInlineSuggestionExtension(view)
     view.dispatch({ effects: inlineSuggestionGhostEffect.of(payload) })
   }
 
@@ -111,7 +88,6 @@ export class InlineSuggestionController {
     label: string,
     snippet?: string,
   ) {
-    this.ensureInlineSuggestionExtension(view)
     view.dispatch({
       effects: thinkingIndicatorEffect.of({
         from,

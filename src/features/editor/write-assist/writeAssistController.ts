@@ -38,7 +38,6 @@ type WriteAssistDeps = {
   setContinuationInProgress: (value: boolean) => void
   cancelAllAiTasks: () => void
   clearInlineSuggestion: () => void
-  ensureInlineSuggestionExtension: (view: EditorView) => void
   setInlineSuggestionGhost: (
     view: EditorView,
     payload: { from: number; text: string } | null,
@@ -438,8 +437,6 @@ export class WriteAssistController {
         this.deps.registerTimeout(() => notice.hide(), 1200)
         return
       }
-
-      this.deps.ensureInlineSuggestionExtension(view)
 
       // Ensure editor is focused so inline widgets render at the active cursor
       view.focus()

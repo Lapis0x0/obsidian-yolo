@@ -1336,10 +1336,6 @@ export default class SmartComposerPlugin extends Plugin {
     return maybeEditor.cm instanceof EditorView
   }
 
-  private ensureInlineSuggestionExtension(view: EditorView) {
-    this.getInlineSuggestionController().ensureInlineSuggestionExtension(view)
-  }
-
   private setInlineSuggestionGhost(
     view: EditorView,
     payload: InlineSuggestionGhostPayload,
@@ -1471,8 +1467,6 @@ export default class SmartComposerPlugin extends Plugin {
         },
         cancelAllAiTasks: () => this.cancelAllAiTasks(),
         clearInlineSuggestion: () => this.clearInlineSuggestion(),
-        ensureInlineSuggestionExtension: (view) =>
-          this.ensureInlineSuggestionExtension(view),
         setInlineSuggestionGhost: (view, payload) =>
           this.setInlineSuggestionGhost(view, payload),
         showThinkingIndicator: (view, from, label, snippet) =>
@@ -1566,6 +1560,9 @@ export default class SmartComposerPlugin extends Plugin {
     this.registerEditorExtension(selectionHighlightController.createExtension())
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
+    this.registerEditorExtension(
+      this.getInlineSuggestionController().createExtension(),
+    )
     this.registerEditorExtension(
       this.getTabCompletionController().createTriggerExtension(),
     )
