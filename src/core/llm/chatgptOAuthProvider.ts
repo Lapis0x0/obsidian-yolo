@@ -3,6 +3,7 @@ import type {
   ResponseCreateParamsStreaming,
   ResponseStreamEvent,
 } from 'openai/resources/responses/responses'
+import { Platform } from 'obsidian'
 
 import { ChatModel } from '../../types/chat-model.types'
 import {
@@ -26,9 +27,7 @@ import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
-  AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
-  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
@@ -45,46 +44,29 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   private readonly obsidianClient: OpenAI
   private readonly nodeClient: OpenAI
   private readonly requestTransportMemoryKey: string
-  private requestTransportMode: RequestTransportMode
-  private readonly onAutoPromoteTransportMode?: (
-    mode: AutoPromotedTransportMode,
-  ) => void
-
-  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
-    if (this.requestTransportMode === mode) {
-      return
-    }
-
-    this.provider.additionalSettings = {
-      ...(this.provider.additionalSettings ?? {}),
-      requestTransportMode: mode,
-    }
-    this.requestTransportMode = mode
-    this.onAutoPromoteTransportMode?.(mode)
-  }
+  private readonly requestTransportMode: RequestTransportMode
 
   constructor(
     provider: LLMProvider,
     options?: {
-      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
       requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
-    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: CODEX_BASE_URL,
     })
+    const configuredMode = provider.additionalSettings?.requestTransportMode
     this.requestTransportMode =
-      provider.additionalSettings?.requestTransportMode === undefined
-        ? 'auto'
-        : resolveRequestTransportMode({
-            additionalSettings: provider.additionalSettings,
-            hasCustomBaseUrl: true,
-            memoryKey: this.requestTransportMemoryKey,
-          })
+      configuredMode === 'browser' ||
+      configuredMode === 'obsidian' ||
+      configuredMode === 'node'
+        ? configuredMode
+        : Platform.isDesktop
+          ? 'node'
+          : 'obsidian'
 
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const createClient = (customFetch: typeof fetch) =>
@@ -131,7 +113,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: async () =>
         this.generateResponseWithFallback(
           this.browserClient,
@@ -178,7 +159,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransportForStream({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteTransportMode: this.promoteTransportMode,
       signal: options?.signal,
       createBrowserStream: async (signal) =>
         this.streamResponseWithFallback(

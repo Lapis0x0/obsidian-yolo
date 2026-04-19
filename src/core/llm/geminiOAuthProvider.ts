@@ -2,6 +2,7 @@ import type {
   GenerateContentResponse as GeminiGenerateContentResponse,
   Tool as GeminiTool,
 } from '@google/genai'
+import { Platform } from 'obsidian'
 
 import { ChatModel } from '../../types/chat-model.types'
 import {
@@ -28,9 +29,7 @@ import {
 import { GeminiProvider } from './gemini'
 import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 import {
-  AutoPromotedTransportMode,
   createRequestTransportMemoryKey,
-  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
@@ -54,48 +53,31 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
   private readonly requestTransportMemoryKey: string
   private readonly obsidianFetch = createObsidianFetch()
   private readonly nodeFetch = createDesktopNodeFetch()
-  private requestTransportMode: RequestTransportMode
-  private readonly onAutoPromoteTransportMode?: (
-    mode: AutoPromotedTransportMode,
-  ) => void
+  private readonly requestTransportMode: RequestTransportMode
   private readonly requestPolicy?: ModelRequestPolicy
-
-  private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
-    if (this.requestTransportMode === mode) {
-      return
-    }
-
-    this.provider.additionalSettings = {
-      ...(this.provider.additionalSettings ?? {}),
-      requestTransportMode: mode,
-    }
-    this.requestTransportMode = mode
-    this.onAutoPromoteTransportMode?.(mode)
-  }
 
   constructor(
     provider: LLMProvider,
     options?: {
-      onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
       requestPolicy?: ModelRequestPolicy
     },
   ) {
     super(provider)
-    this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
     this.requestPolicy = options?.requestPolicy
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
       providerId: provider.id,
       baseUrl: CODE_ASSIST_ENDPOINT,
     })
+    const configuredMode = provider.additionalSettings?.requestTransportMode
     this.requestTransportMode =
-      provider.additionalSettings?.requestTransportMode === undefined
-        ? 'auto'
-        : resolveRequestTransportMode({
-            additionalSettings: provider.additionalSettings,
-            hasCustomBaseUrl: true,
-            memoryKey: this.requestTransportMemoryKey,
-          })
+      configuredMode === 'browser' ||
+      configuredMode === 'obsidian' ||
+      configuredMode === 'node'
+        ? configuredMode
+        : Platform.isDesktop
+          ? 'node'
+          : 'obsidian'
   }
 
   async getEmbedding(
@@ -118,7 +100,6 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteTransportMode: this.promoteTransportMode,
       runBrowser: async () =>
         this.generateViaFetch(
           this.browserFetch,
@@ -153,7 +134,6 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return runWithRequestTransportForStream({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteTransportMode: this.promoteTransportMode,
       signal: options?.signal,
       createBrowserStream: async (signal) =>
         this.streamViaFetch(this.browserFetch, payload, request.model, signal),
