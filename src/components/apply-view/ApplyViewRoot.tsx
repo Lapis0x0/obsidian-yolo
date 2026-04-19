@@ -206,7 +206,13 @@ export default function ApplyViewRoot({
 
   useEffect(() => {
     if (autoCloseRef.current) return
-    if (modifiedBlockIndices.length === 0) return
+    if (modifiedBlockIndices.length === 0) {
+      // Nothing to review — close immediately to prevent the user from
+      // being stranded on a "0/0" overlay with all buttons disabled.
+      autoCloseRef.current = true
+      void persistAndClose(state.originalContent)
+      return
+    }
     if (decisionCount < modifiedBlockIndices.length) return
     const allDecided = session.areAllModifiedBlocksDecided()
     if (!allDecided) return
@@ -218,6 +224,7 @@ export default function ApplyViewRoot({
     modifiedBlockIndices.length,
     persistAndClose,
     session,
+    state.originalContent,
   ])
 
   const getOffsetTopFromScroller = useCallback(
