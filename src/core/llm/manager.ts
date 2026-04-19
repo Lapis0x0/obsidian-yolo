@@ -14,6 +14,7 @@ import { GeminiOAuthProvider } from './geminiOAuthProvider'
 import { GroqProvider } from './groq'
 import { LmStudioProvider } from './lmStudioProvider'
 import { MistralProvider } from './mistralProvider'
+import { MoonshotAnthropicProvider } from './moonshotAnthropicProvider'
 import { MoonshotProvider } from './moonshotProvider'
 import { MorphProvider } from './morphProvider'
 import { OllamaProvider } from './ollama'
@@ -62,6 +63,13 @@ export function getProviderClient({
       })
     }
     case 'anthropic': {
+      if (provider.presetType === 'moonshot') {
+        return new MoonshotAnthropicProvider(provider as never, {
+          requestPolicy,
+          onAutoPromoteTransportMode: (mode) =>
+            onAutoPromoteTransportMode?.(provider.id, mode),
+        })
+      }
       return new AnthropicProvider(provider as never, {
         requestPolicy,
         onAutoPromoteTransportMode: (mode) =>

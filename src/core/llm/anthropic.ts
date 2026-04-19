@@ -134,7 +134,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
       const payloadBase: MessageCreateParamsNonStreaming = {
         model: request.model,
         messages: request.messages
-          .map((m) => AnthropicProvider.parseRequestMessage(m))
+          .map((m) => this.parseRequestMessage(m))
           .filter((m): m is MessageParam => m !== null),
         system: systemMessage,
         thinking:
@@ -244,7 +244,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       const payloadBase: MessageCreateParamsStreaming = {
         model: request.model,
         messages: request.messages
-          .map((m) => AnthropicProvider.parseRequestMessage(m))
+          .map((m) => this.parseRequestMessage(m))
           .filter((m): m is MessageParam => m !== null),
         system: systemMessage,
         thinking:
@@ -395,7 +395,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
     }
   }
 
-  static parseRequestMessage(message: RequestMessage): MessageParam | null {
+  protected parseRequestMessage(message: RequestMessage): MessageParam | null {
     switch (message.role) {
       case 'user': {
         if (Array.isArray(message.content)) {
