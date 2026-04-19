@@ -75,6 +75,10 @@ import {
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
+import {
+  buildFullReviewBlocks,
+  countModifiedBlocks,
+} from './features/editor/diff-review/review-model'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
@@ -1415,6 +1419,21 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async openApplyReview(state: ApplyViewState): Promise<boolean> {
+    // If the diff that the overlay would display has zero modified blocks,
+    // skip the overlay entirely — otherwise the UI renders "0/0" with every
+    // button disabled and no auto-close path, stranding the user.
+    const reviewBlocks = buildFullReviewBlocks(
+      state.originalContent,
+      state.newContent,
+    )
+    if (countModifiedBlocks(reviewBlocks) === 0) {
+      if (state.originalContent !== state.newContent) {
+        await this.app.vault.modify(state.file, state.newContent)
+      }
+      state.callbacks?.onComplete?.({ finalContent: state.newContent })
+      return true
+    }
+
     const opened = this.getDiffReviewController().openReview(state)
     if (opened) return true
 
