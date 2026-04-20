@@ -12546,7 +12546,7 @@ button.smtcmp-chat-input-model-select {
   box-shadow:
     0 8px 20px rgba(0, 0, 0, 0.18),
     0 1px 0 color-mix(in srgb, white 2%, transparent);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .smtcmp-quick-ask-panel.has-messages {
@@ -12840,11 +12840,6 @@ button.smtcmp-chat-input-model-select {
 /* Assistant Dropdown */
 
 .smtcmp-quick-ask-assistant-dropdown {
-  position: absolute;
-  top: calc(100% + 16px);
-  left: -8px;
-  transform: none;
-  z-index: 20;
   min-width: 200px;
   width: clamp(200px, 34vw, 300px);
   background: color-mix(in srgb, var(--background-primary) 96%, transparent);
@@ -13234,9 +13229,8 @@ button.smtcmp-chat-input-model-select {
 /* Chat Area - only shown when there are messages */
 
 .smtcmp-quick-ask-chat-shell {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 300px;
   padding-top: var(--smtcmp-quick-ask-message-top-safe-area);
   display: flex;
   flex-direction: column;
@@ -13244,11 +13238,6 @@ button.smtcmp-chat-input-model-select {
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
   order: 1;
-}
-
-.smtcmp-quick-ask-chat-shell--fill {
-  flex: 1 1 auto;
-  max-height: none;
 }
 
 .smtcmp-quick-ask-chat-area {

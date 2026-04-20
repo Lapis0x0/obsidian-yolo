@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   $getRoot,
   $nodesOfType,
@@ -66,6 +67,7 @@ import {
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
+import { getNodeBody } from '../../../utils/dom/window-context'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
@@ -286,13 +288,19 @@ export function QuickAskPanel({
         initialMode ?? settings.continuationOptions?.quickAskMode,
       ),
   )
-  const assistantDropdownRef = useRef<HTMLDivElement | null>(null)
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
-
   const inputRowRef = useRef<HTMLDivElement | null>(null)
   const contentEditableRef = useRef<HTMLDivElement>(null)
+  const mentionPortalContainerRef = useMemo<React.RefObject<HTMLElement>>(
+    () => ({
+      get current() {
+        return getNodeBody(inputRowRef.current)
+      },
+    }),
+    [],
+  )
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
@@ -1652,11 +1660,7 @@ export function QuickAskPanel({
   )
   const hideScrollbarWhileFollowing =
     isStreaming && isAutoFollowEnabled && hasMessages
-  const quickAskChatShellClassName = useMemo(
-    () =>
-      `smtcmp-quick-ask-chat-shell${panelSize?.height ? ' smtcmp-quick-ask-chat-shell--fill' : ''}`,
-    [panelSize?.height],
-  )
+  const quickAskChatShellClassName = 'smtcmp-quick-ask-chat-shell'
   const quickAskChatAreaClassName = useMemo(
     () =>
       `smtcmp-chat-messages smtcmp-quick-ask-chat-area smtcmp-quick-ask-chat-area--shared${hideScrollbarWhileFollowing ? ' smtcmp-quick-ask-chat-area--hide-scrollbar' : ''}`,
@@ -2094,11 +2098,11 @@ export function QuickAskPanel({
         panelSize
           ? {
               width: panelSize.width,
-              maxWidth: panelSize.width, // Override CSS max-width constraint
+              maxWidth: panelSize.width,
               ...(panelSize.height
                 ? {
                     height: panelSize.height,
-                    maxHeight: panelSize.height, // Override CSS max-height constraint
+                    maxHeight: panelSize.height,
                   }
                 : {}),
             }
@@ -2145,7 +2149,7 @@ export function QuickAskPanel({
                   if (open) updateMentionMenuPlacement()
                 }}
                 onMentionNodeMutation={handleMentionNodeMutation}
-                mentionMenuContainerRef={inputRowRef}
+                mentionMenuContainerRef={mentionPortalContainerRef}
                 mentionMenuPlacement={mentionMenuPlacement}
                 autoFocus
                 contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"
@@ -2193,69 +2197,81 @@ export function QuickAskPanel({
       <div className="smtcmp-quick-ask-toolbar">
         {/* Left: Assistant selector */}
         <div className="smtcmp-quick-ask-toolbar-left">
-          <button
-            type="button"
-            ref={assistantTriggerRef}
-            className="smtcmp-quick-ask-assistant-trigger"
-            onClick={() => setIsAssistantMenuOpen(!isAssistantMenuOpen)}
-            onKeyDown={(event) => {
-              if (!isAssistantMenuOpen) {
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  contentEditableRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  modelTriggerRef.current?.focus()
-                  return
-                }
-              }
-            }}
+          <DropdownMenu.Root
+            open={isAssistantMenuOpen}
+            onOpenChange={setIsAssistantMenuOpen}
           >
-            {selectedAssistant && (
-              <span className="smtcmp-quick-ask-assistant-icon">
-                {renderAssistantIcon(selectedAssistant.icon, 14)}
-              </span>
-            )}
-            <span className="smtcmp-quick-ask-assistant-name">
-              {selectedAssistant?.name ||
-                t('quickAsk.noAssistant', 'No Assistant')}
-            </span>
-            {isAssistantMenuOpen ? (
-              <ChevronUp size={12} />
-            ) : (
-              <ChevronDown size={12} />
-            )}
-          </button>
-
-          {/* Assistant dropdown */}
-          {isAssistantMenuOpen && (
-            <div
-              className="smtcmp-quick-ask-assistant-dropdown"
-              ref={assistantDropdownRef}
-            >
-              <AssistantSelectMenu
-                assistants={assistants}
-                currentAssistantId={selectedAssistant?.id}
-                onSelect={(assistant) => {
-                  setSelectedAssistant(assistant)
-                  void setSettings({
-                    ...settings,
-                    quickAskAssistantId: assistant?.id,
-                  })
-                  setIsAssistantMenuOpen(false)
-                  requestAnimationFrame(() => {
-                    contentEditableRef.current?.focus()
-                  })
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                ref={assistantTriggerRef}
+                className="smtcmp-quick-ask-assistant-trigger"
+                onKeyDown={(event) => {
+                  if (!isAssistantMenuOpen) {
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      contentEditableRef.current?.focus()
+                      return
+                    }
+                    if (
+                      event.key === 'ArrowRight' ||
+                      event.key === 'ArrowLeft'
+                    ) {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      modelTriggerRef.current?.focus()
+                      return
+                    }
+                  }
                 }}
-                onClose={() => setIsAssistantMenuOpen(false)}
-                compact
-              />
-            </div>
-          )}
+              >
+                {selectedAssistant && (
+                  <span className="smtcmp-quick-ask-assistant-icon">
+                    {renderAssistantIcon(selectedAssistant.icon, 14)}
+                  </span>
+                )}
+                <span className="smtcmp-quick-ask-assistant-name">
+                  {selectedAssistant?.name ||
+                    t('quickAsk.noAssistant', 'No Assistant')}
+                </span>
+                {isAssistantMenuOpen ? (
+                  <ChevronUp size={12} />
+                ) : (
+                  <ChevronDown size={12} />
+                )}
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal
+              container={getNodeBody(assistantTriggerRef.current)}
+            >
+              <DropdownMenu.Content
+                side="top"
+                align="start"
+                sideOffset={8}
+                className="smtcmp-quick-ask-assistant-dropdown"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
+                <AssistantSelectMenu
+                  assistants={assistants}
+                  currentAssistantId={selectedAssistant?.id}
+                  onSelect={(assistant) => {
+                    setSelectedAssistant(assistant)
+                    void setSettings({
+                      ...settings,
+                      quickAskAssistantId: assistant?.id,
+                    })
+                    setIsAssistantMenuOpen(false)
+                    requestAnimationFrame(() => {
+                      contentEditableRef.current?.focus()
+                    })
+                  }}
+                  onClose={() => setIsAssistantMenuOpen(false)}
+                  compact
+                />
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
 
           <div className="smtcmp-quick-ask-model-select smtcmp-smart-space-model-select">
             <ModelSelect
@@ -2279,7 +2295,6 @@ export function QuickAskPanel({
                   },
                 })
               }}
-              container={containerRef?.current ?? undefined}
               side="bottom"
               align="start"
               sideOffset={12}
@@ -2325,7 +2340,6 @@ export function QuickAskPanel({
               triggerLabel={modeTriggerLabel}
               triggerIcon={modeTriggerIcon}
               onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
-              container={containerRef?.current ?? undefined}
               side="bottom"
               align="start"
               sideOffset={12}
