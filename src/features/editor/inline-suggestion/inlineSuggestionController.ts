@@ -51,6 +51,18 @@ export class InlineSuggestionController {
     return [
       inlineSuggestionGhostField,
       thinkingIndicatorField,
+      EditorView.updateListener.of((update) => {
+        if (update.focusChanged && !update.view.hasFocus) {
+          const tab = this.getTabCompletionController()
+          tab.clearTimer()
+          tab.cancelRequest()
+          this.clearInlineSuggestion()
+          return
+        }
+        if (update.selectionSet) {
+          this.invalidateIfStale(update.view)
+        }
+      }),
       Prec.high(
         keymap.of([
           {
@@ -68,6 +80,14 @@ export class InlineSuggestionController {
         ]),
       ),
     ]
+  }
+
+  private invalidateIfStale(view: EditorView) {
+    const active = this.activeInlineSuggestion
+    if (!active || active.view !== view) return
+    if (view.state.selection.main.head !== active.fromOffset) {
+      this.clearInlineSuggestion()
+    }
   }
 
   destroy() {
