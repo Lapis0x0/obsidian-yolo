@@ -29,7 +29,6 @@ export const createDefaultAssistant = (fallbackModelId: string): Assistant => ({
   toolPreferences: {},
   enabledSkills: [],
   skillPreferences: {},
-  customParameters: [],
   createdAt: Date.now(),
   updatedAt: Date.now(),
 })
@@ -54,9 +53,7 @@ const hasDefaultAssistantChanged = (
     JSON.stringify(current.enabledSkills ?? []) !==
       JSON.stringify(normalized.enabledSkills ?? []) ||
     JSON.stringify(current.skillPreferences ?? {}) !==
-      JSON.stringify(normalized.skillPreferences ?? {}) ||
-    JSON.stringify(current.customParameters ?? []) !==
-      JSON.stringify(normalized.customParameters ?? [])
+      JSON.stringify(normalized.skillPreferences ?? {})
   )
 }
 
@@ -87,7 +84,6 @@ const normalizeDefaultAssistant = (
           ),
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
-    customParameters: assistant.customParameters ?? [],
     createdAt,
     updatedAt: assistant.updatedAt ?? createdAt,
   }

@@ -39,7 +39,6 @@ import {
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
-import { mergeCustomParameters } from '../../utils/custom-parameters'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
@@ -470,16 +469,7 @@ export function useChatStreamManager({
         }
       }
 
-      const effectiveModel =
-        chatMode === 'agent' && selectedAssistant
-          ? {
-              ...resolvedClient.model,
-              customParameters: mergeCustomParameters(
-                resolvedClient.model.customParameters,
-                selectedAssistant.customParameters,
-              ),
-            }
-          : resolvedClient.model
+      const effectiveModel = resolvedClient.model
       const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = selectedAssistant
         ? listLiteSkillEntries(app, { settings }).filter((skill) =>
@@ -506,8 +496,6 @@ export function useChatStreamManager({
           ? assistantEnabledToolNames
           : intersectToolNames(assistantEnabledToolNames, CHAT_SAFE_TOOL_NAMES)
         : undefined
-      const assistantMaxContextMessages =
-        chatMode === 'agent' ? selectedAssistant?.maxContextMessages : undefined
       const resolvedCompactionClient = resolveCompactionClient()
       const summary = await createConversationCompactionSummary({
         providerClient: resolvedCompactionClient.providerClient,
@@ -541,9 +529,7 @@ export function useChatStreamManager({
             allowedSkillIds,
             allowedSkillNames,
             maxContextOverride:
-              conversationOverrides?.maxContextMessages ??
-              assistantMaxContextMessages ??
-              undefined,
+              conversationOverrides?.maxContextMessages ?? undefined,
             currentFileContextMode: chatMode === 'agent' ? 'summary' : 'full',
             currentFileOverride,
           })
@@ -673,26 +659,7 @@ export function useChatStreamManager({
         const modelTemperature = resolvedClient.model.temperature
         const modelTopP = resolvedClient.model.topP
         const modelMaxTokens = resolvedClient.model.maxOutputTokens
-        const assistantTemperature =
-          chatMode === 'agent' ? selectedAssistant?.temperature : undefined
-        const assistantTopP =
-          chatMode === 'agent' ? selectedAssistant?.topP : undefined
-        const assistantMaxTokens =
-          chatMode === 'agent' ? selectedAssistant?.maxOutputTokens : undefined
-        const assistantMaxContextMessages =
-          chatMode === 'agent'
-            ? selectedAssistant?.maxContextMessages
-            : undefined
-        const effectiveModel =
-          chatMode === 'agent' && selectedAssistant
-            ? {
-                ...resolvedClient.model,
-                customParameters: mergeCustomParameters(
-                  resolvedClient.model.customParameters,
-                  selectedAssistant.customParameters,
-                ),
-              }
-            : resolvedClient.model
+        const effectiveModel = resolvedClient.model
         const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries = selectedAssistant
           ? listLiteSkillEntries(app, { settings }).filter((skill) =>
@@ -727,21 +694,16 @@ export function useChatStreamManager({
         const loopConfig = chatRuntimeLoopConfig
         const requestParams = {
           stream: shouldStreamResponse,
-          temperature:
-            conversationOverrides?.temperature ??
-            assistantTemperature ??
-            modelTemperature,
-          top_p: conversationOverrides?.top_p ?? assistantTopP ?? modelTopP,
-          max_tokens: assistantMaxTokens ?? modelMaxTokens,
+          temperature: conversationOverrides?.temperature ?? modelTemperature,
+          top_p: conversationOverrides?.top_p ?? modelTopP,
+          max_tokens: modelMaxTokens,
           primaryRequestTimeoutMs:
             settings.continuationOptions.primaryRequestTimeoutMs,
           streamFallbackRecoveryEnabled:
             settings.continuationOptions.streamFallbackRecoveryEnabled,
         }
         const maxContextOverride =
-          conversationOverrides?.maxContextMessages ??
-          assistantMaxContextMessages ??
-          undefined
+          conversationOverrides?.maxContextMessages ?? undefined
         const currentFileContextMode: 'full' | 'summary' =
           chatMode === 'agent' ? 'summary' : 'full'
         const effectiveCompactionForRequest = compactionOverride ?? compaction
@@ -841,16 +803,7 @@ export function useChatStreamManager({
               provider: branchProvider,
             })
             const branchAbortController = new AbortController()
-            const branchModel =
-              chatMode === 'agent' && selectedAssistant
-                ? {
-                    ...branchResolvedClient.model,
-                    customParameters: mergeCustomParameters(
-                      branchResolvedClient.model.customParameters,
-                      selectedAssistant.customParameters,
-                    ),
-                  }
-                : branchResolvedClient.model
+            const branchModel = branchResolvedClient.model
             const branchLabel =
               branchModel.name?.trim() || branchModel.model || branchModel.id
             const branchId = `${lastMessage.id}:${branchModel.id}`
@@ -874,15 +827,11 @@ export function useChatStreamManager({
                   stream: branchShouldStream,
                   temperature:
                     conversationOverrides?.temperature ??
-                    assistantTemperature ??
                     branchResolvedClient.model.temperature,
                   top_p:
                     conversationOverrides?.top_p ??
-                    assistantTopP ??
                     branchResolvedClient.model.topP,
-                  max_tokens:
-                    assistantMaxTokens ??
-                    branchResolvedClient.model.maxOutputTokens,
+                  max_tokens: branchResolvedClient.model.maxOutputTokens,
                 },
               },
             })

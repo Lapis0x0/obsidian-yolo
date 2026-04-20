@@ -56,37 +56,6 @@ export function sanitizeCustomParameters(
     .filter((entry) => entry.key.length > 0)
 }
 
-export function mergeCustomParameters(
-  base: CustomParameter[] | undefined,
-  override: CustomParameter[] | undefined,
-): CustomParameter[] | undefined {
-  const merged = new Map<string, CustomParameter>()
-
-  ;(base ?? []).forEach((entry) => {
-    const key = entry.key.trim()
-    if (!key) return
-    merged.set(key, {
-      ...entry,
-      key,
-      type: normalizeCustomParameterType(entry.type),
-    })
-  })
-  ;(override ?? []).forEach((entry) => {
-    const key = entry.key.trim()
-    if (!key) return
-    merged.set(key, {
-      ...entry,
-      key,
-      type: normalizeCustomParameterType(entry.type),
-    })
-  })
-
-  if (merged.size === 0) {
-    return undefined
-  }
-  return [...merged.values()]
-}
-
 export function parseCustomParameterValue(
   raw: string,
   type?: string,

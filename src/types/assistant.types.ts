@@ -1,7 +1,5 @@
 import { z } from 'zod'
 
-import { customParameterSchema } from './custom-parameter.types'
-
 // Assistant icon type definition
 export const assistantIconSchema = z.object({
   type: z.enum(['lucide', 'emoji']),
@@ -55,11 +53,6 @@ export const assistantSchema = z.object({
   icon: assistantIconSchema.optional(),
   persona: agentPersonaSchema.optional(),
   modelId: z.string().optional(),
-  temperature: z.number().min(0).max(2).optional(),
-  topP: z.number().min(0).max(1).optional(),
-  maxOutputTokens: z.number().int().min(1).optional(),
-  maxContextMessages: z.number().int().min(1).max(100).optional(),
-  customParameters: z.array(customParameterSchema).optional(),
   enableTools: z.boolean().optional(),
   includeBuiltinTools: z.boolean().optional(),
   enabledToolNames: z.array(z.string()).optional(),

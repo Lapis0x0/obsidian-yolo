@@ -66,7 +66,6 @@ import {
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
-import { mergeCustomParameters } from '../../../utils/custom-parameters'
 import { readTFileContent } from '../../../utils/obsidian'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
@@ -981,16 +980,7 @@ export function QuickAskPanel({
           assistant: selectedAssistant,
         })
         const effectiveEnableTools = quickAskLoopConfig.enableTools
-        const effectiveModel =
-          isAgentMode && selectedAssistant
-            ? {
-                ...model,
-                customParameters: mergeCustomParameters(
-                  model.customParameters,
-                  selectedAssistant.customParameters,
-                ),
-              }
-            : model
+        const effectiveModel = model
         const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries =
           isAgentMode && selectedAssistant

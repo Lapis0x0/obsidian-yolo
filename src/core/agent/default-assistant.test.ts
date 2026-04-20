@@ -46,7 +46,6 @@ describe('ensureDefaultAssistantInSettings', () => {
           enabledToolNames: [],
           enabledSkills: [],
           skillPreferences: {},
-          customParameters: [],
           createdAt: 111,
           updatedAt: 222,
         },
