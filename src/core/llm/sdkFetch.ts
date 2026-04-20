@@ -2,6 +2,7 @@ import { Platform } from 'obsidian'
 
 import type { RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { shouldBypassProxy } from '../../utils/net/proxyBypass'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 type RequestOptions = import('node:http').RequestOptions
@@ -180,8 +181,12 @@ const getDesktopProxyAgent = async (): Promise<
     import('proxy-from-env'),
   ])
   desktopProxyAgent = new ProxyAgent({
-    getProxyForUrl: (url) =>
-      withProcessEnv(resolvedEnv, () => getProxyForUrl(url)),
+    getProxyForUrl: (url) => {
+      if (shouldBypassProxy(url)) {
+        return ''
+      }
+      return withProcessEnv(resolvedEnv, () => getProxyForUrl(url))
+    },
   })
   return desktopProxyAgent
 }

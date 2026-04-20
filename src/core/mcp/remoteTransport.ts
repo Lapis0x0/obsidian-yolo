@@ -4,6 +4,7 @@ import { ProxyAgent } from 'proxy-agent'
 import { getProxyForUrl } from 'proxy-from-env'
 
 import type { McpServerParameters } from '../../types/mcp.types'
+import { shouldBypassProxy } from '../../utils/net/proxyBypass'
 import { createDesktopNodeFetch } from '../llm/sdkFetch'
 
 type McpRemoteTransportParameters = Extract<
@@ -70,8 +71,12 @@ function createProxyAgent(env: Record<string, string>): ProxyAgent {
   }
 
   return new ProxyAgent({
-    getProxyForUrl: (url) =>
-      withProcessEnv(resolvedEnv, () => getProxyForUrl(url)),
+    getProxyForUrl: (url) => {
+      if (shouldBypassProxy(url)) {
+        return ''
+      }
+      return withProcessEnv(resolvedEnv, () => getProxyForUrl(url))
+    },
   })
 }
 
