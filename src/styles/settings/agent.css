@@ -362,8 +362,9 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--size-4-2);
+  padding-top: 0.75em;
   padding-bottom: var(--size-4-2);
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 .smtcmp-agent-model-setting-info {

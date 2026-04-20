@@ -16,7 +16,11 @@ function makeApp(resolver: (linkpath: string) => string | null): App {
 describe('collectWikilinkPaths', () => {
   it('resolves wikilinks by base linkpath', () => {
     const app = makeApp((name) =>
-      name === 'Foo' ? 'notes/Foo.md' : name === 'Bar/Baz' ? 'notes/Bar/Baz.md' : null,
+      name === 'Foo'
+        ? 'notes/Foo.md'
+        : name === 'Bar/Baz'
+          ? 'notes/Bar/Baz.md'
+          : null,
     )
     const content = 'see [[Foo]] and [[Bar/Baz]] for details'
     expect(collectWikilinkPaths(app, content, 'src.md')).toEqual([

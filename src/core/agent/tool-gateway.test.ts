@@ -255,8 +255,7 @@ describe('AgentToolGateway', () => {
     // Two distinct invocations: one batched for note.md, one for other.md.
     expect(callTool).toHaveBeenCalledTimes(2)
     const noteCall = callTool.mock.calls.find(
-      ([args]: [{ args?: { path?: string } }]) =>
-        args.args?.path === 'note.md',
+      ([args]: [{ args?: { path?: string } }]) => args.args?.path === 'note.md',
     )
     expect(noteCall).toBeDefined()
     expect(noteCall![0].id).toBe('tool-1')

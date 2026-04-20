@@ -4173,8 +4173,9 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--size-4-2);
+  padding-top: 0.75em;
   padding-bottom: var(--size-4-2);
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 .smtcmp-agent-model-setting-info {
@@ -7492,8 +7493,8 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 
 .smtcmp-settings-textarea {
   display: block;
-  border-top: none;
-  padding: 0;
+  border-top: none !important;
+  padding: 0 !important;
   margin-bottom: var(--size-4-3);
 
   .smtcmp-item-control {
@@ -7515,6 +7516,7 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 
 .smtcmp-settings-textarea-header {
   padding-top: 0.75em !important;
+  padding-bottom: 0 !important;
   border-top: 1px solid var(--background-modifier-border) !important;
 }
 

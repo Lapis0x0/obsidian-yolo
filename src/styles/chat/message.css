@@ -185,8 +185,8 @@
 
 .smtcmp-settings-textarea {
   display: block;
-  border-top: none;
-  padding: 0;
+  border-top: none !important;
+  padding: 0 !important;
   margin-bottom: var(--size-4-3);
 
   .smtcmp-item-control {
@@ -207,6 +207,7 @@
 /* prevent setting-item:first-child overwriting padding-top and border-top */
 .smtcmp-settings-textarea-header {
   padding-top: 0.75em !important;
+  padding-bottom: 0 !important;
   border-top: 1px solid var(--background-modifier-border) !important;
 }
 

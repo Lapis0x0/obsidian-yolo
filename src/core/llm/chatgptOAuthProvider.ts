@@ -1,9 +1,9 @@
+import { Platform } from 'obsidian'
 import OpenAI from 'openai'
 import type {
   ResponseCreateParamsStreaming,
   ResponseStreamEvent,
 } from 'openai/resources/responses/responses'
-import { Platform } from 'obsidian'
 
 import { ChatModel } from '../../types/chat-model.types'
 import {

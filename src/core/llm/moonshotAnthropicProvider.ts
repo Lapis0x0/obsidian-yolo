@@ -12,11 +12,13 @@ import { AnthropicProvider } from './anthropic'
 const PLACEHOLDER_SIGNATURE = 'c2lnbmF0dXJlX3BsYWNlaG9sZGVy'
 
 export class MoonshotAnthropicProvider extends AnthropicProvider {
-  protected parseRequestMessage(
-    message: RequestMessage,
-  ): MessageParam | null {
+  protected parseRequestMessage(message: RequestMessage): MessageParam | null {
     const parsed = super.parseRequestMessage(message)
-    if (!parsed || parsed.role !== 'assistant' || message.role !== 'assistant') {
+    if (
+      !parsed ||
+      parsed.role !== 'assistant' ||
+      message.role !== 'assistant'
+    ) {
       return parsed
     }
 
