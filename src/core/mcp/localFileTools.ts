@@ -16,7 +16,7 @@ import {
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
-import { annotateWikilinksWithPaths } from '../../utils/llm/annotate-wikilinks'
+import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
   PDF_INDEX_MAX_BYTES,
@@ -2234,6 +2234,7 @@ export async function callLocalFileTool({
               hasMoreBelow: boolean
               nextStartLine: number | null
               content: string
+              wikilinks?: Array<{ link: string; path: string }>
             }
           | {
               path: string
@@ -2389,13 +2390,12 @@ export async function callLocalFileTool({
           }
 
           const rawContent = await app.vault.read(file)
-          const content = path.endsWith('.md')
-            ? annotateWikilinksWithPaths(app, rawContent, path)
-            : rawContent
+          const content = rawContent
           const lines = content.length === 0 ? [] : content.split('\n')
           const totalLines = lines.length
 
           let outputContent = ''
+          let rawSelected = ''
           let returnedStartLine: number | null = null
           let returnedEndLine: number | null = null
           let returnedCount = 0
@@ -2407,6 +2407,7 @@ export async function callLocalFileTool({
             outputContent = lines
               .map((line, index) => `${index + 1}|${line}`)
               .join('\n')
+            rawSelected = content
             returnedCount = totalLines
             returnedStartLine = totalLines > 0 ? 1 : null
             returnedEndLine = totalLines > 0 ? totalLines : null
@@ -2423,6 +2424,7 @@ export async function callLocalFileTool({
             outputContent = selectedLines
               .map((line, index) => `${startIndex + index + 1}|${line}`)
               .join('\n')
+            rawSelected = selectedLines.join('\n')
             returnedCount = selectedLines.length
             returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
             returnedEndLine =
@@ -2431,6 +2433,11 @@ export async function callLocalFileTool({
             hasMoreBelow = endExclusive < totalLines
             nextStartLine = hasMoreBelow ? endExclusive + 1 : null
           }
+
+          const wikilinks =
+            path.endsWith('.md') && rawSelected.length > 0
+              ? collectWikilinkPaths(app, rawSelected, path)
+              : []
 
           results.push({
             path,
@@ -2445,6 +2452,7 @@ export async function callLocalFileTool({
             hasMoreBelow,
             nextStartLine,
             content: outputContent,
+            ...(wikilinks.length > 0 ? { wikilinks } : {}),
           })
 
           // Extract images from markdown files using the outputContent

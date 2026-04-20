@@ -44,7 +44,7 @@ import {
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { annotateWikilinksWithPaths } from '../llm/annotate-wikilinks'
+import { collectWikilinkPaths } from '../llm/annotate-wikilinks'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import {
   PDF_INDEX_MAX_BYTES,
@@ -1238,11 +1238,7 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
           } else {
             rawContent = await readTFileContent(file, this.app.vault)
           }
-          const content =
-            ext === 'md'
-              ? annotateWikilinksWithPaths(this.app, rawContent, file.path)
-              : rawContent
-          return { file, content }
+          return { file, content: rawContent }
         } catch (error) {
           console.warn('[YOLO] Failed to read mentioned file', file.path, error)
           return null
@@ -1263,7 +1259,17 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
           index === 0
             ? '## Mentioned Vault Files (full content already provided below)\nUse this provided content first. Only call file tools if you need another file or want to verify the latest contents.\n\n'
             : ''
-        return `${prefix}\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+        const wikilinks =
+          file.path.endsWith('.md') && content.length > 0
+            ? collectWikilinkPaths(this.app, content, file.path)
+            : []
+        const wikilinksBlock =
+          wikilinks.length > 0
+            ? `<wikilinks file="${file.path}">\n${wikilinks
+                .map((w) => `${w.link} -> ${w.path}`)
+                .join('\n')}\n</wikilinks>\n`
+            : ''
+        return `${prefix}\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n${wikilinksBlock}`
       })
       .join('')
   }
