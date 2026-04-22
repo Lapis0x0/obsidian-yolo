@@ -1,3 +1,4 @@
+import { EditorView } from '@codemirror/view'
 import { App, Editor, MarkdownView, TFile, TFolder, Vault } from 'obsidian'
 
 import { MentionableBlockData } from '../types/mentionable'
@@ -40,19 +41,83 @@ export function getMentionableBlockData(
   }
 
   const selection = editor.getSelection()
-  if (!selection) {
+  if (selection) {
+    const startLine = editor.getCursor('from').line
+    const endLine = editor.getCursor('to').line
+    return {
+      content: selection,
+      file,
+      startLine: startLine + 1,
+      endLine: endLine + 1,
+    }
+  }
+
+  // Fallback: editor.getSelection() returns empty when the selection lives
+  // inside a CM6 replace widget (e.g. rendered callouts in Live Preview).
+  // Map the DOM range back to doc positions via posAtDOM, and expand to the
+  // widget's source range via posAtCoords when the two endpoints collapse.
+  return resolveMentionableBlockFromDomSelection(editor, file)
+}
+
+function resolveMentionableBlockFromDomSelection(
+  editor: Editor,
+  file: TFile,
+): MentionableBlockData | null {
+  const cm = (editor as { cm?: unknown }).cm
+  if (!(cm instanceof EditorView)) {
     return null
   }
 
-  const startLine = editor.getCursor('from').line
-  const endLine = editor.getCursor('to').line
-  const selectionContent = selection
+  const activeDoc = cm.contentDOM.ownerDocument ?? document
+  const domSelection = activeDoc.getSelection()
+  if (!domSelection || domSelection.rangeCount === 0) {
+    return null
+  }
+
+  const range = domSelection.getRangeAt(0)
+  if (!cm.contentDOM.contains(range.commonAncestorContainer)) {
+    return null
+  }
+
+  let from = cm.posAtDOM(range.startContainer, range.startOffset)
+  let to = cm.posAtDOM(range.endContainer, range.endOffset)
+  if (from > to) {
+    ;[from, to] = [to, from]
+  }
+
+  if (from === to) {
+    const rect = range.getBoundingClientRect()
+    if (rect.width > 0 || rect.height > 0) {
+      const topPos = cm.posAtCoords({ x: rect.left, y: rect.top })
+      const bottomPos = cm.posAtCoords({
+        x: Math.max(rect.right - 1, rect.left),
+        y: Math.max(rect.bottom - 1, rect.top),
+      })
+      if (typeof topPos === 'number' && typeof bottomPos === 'number') {
+        const a = Math.min(topPos, bottomPos)
+        const b = Math.max(topPos, bottomPos)
+        if (b > a) {
+          from = a
+          to = b
+        }
+      }
+    }
+  }
+
+  const content =
+    from < to ? cm.state.sliceDoc(from, to) : range.toString().trim()
+  if (!content) {
+    return null
+  }
+
+  const startLine = cm.state.doc.lineAt(from).number
+  const endLine = cm.state.doc.lineAt(to).number
 
   return {
-    content: selectionContent,
+    content,
     file,
-    startLine: startLine + 1, // +1 because startLine is 0-indexed
-    endLine: endLine + 1, // +1 because startLine is 0-indexed
+    startLine,
+    endLine,
   }
 }
 
