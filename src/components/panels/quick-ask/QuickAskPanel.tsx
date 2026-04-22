@@ -741,9 +741,9 @@ export function QuickAskPanel({
   }, [isAssistantMenuOpen])
 
   // Get model client
-  const modelClient = useMemo(():
-    | ReturnType<typeof getChatModelClient>
-    | null => {
+  const modelClient = useMemo((): ReturnType<
+    typeof getChatModelClient
+  > | null => {
     const continuationModelId =
       settings.continuationOptions?.continuationModelId
     const preferredModelId =
@@ -935,7 +935,10 @@ export function QuickAskPanel({
 
       if (!providerClient || !model) {
         new Notice(
-          t('quickAsk.noModelConfigured', 'No chat model configured. Please add a model in settings.'),
+          t(
+            'quickAsk.noModelConfigured',
+            'No chat model configured. Please add a model in settings.',
+          ),
         )
         return
       }
@@ -1328,7 +1331,10 @@ export function QuickAskPanel({
 
       if (!providerClient || !model) {
         new Notice(
-          t('quickAsk.noModelConfigured', 'No chat model configured. Please add a model in settings.'),
+          t(
+            'quickAsk.noModelConfigured',
+            'No chat model configured. Please add a model in settings.',
+          ),
         )
         return
       }
@@ -1451,7 +1457,10 @@ export function QuickAskPanel({
 
       if (!providerClient || !model) {
         new Notice(
-          t('quickAsk.noModelConfigured', 'No chat model configured. Please add a model in settings.'),
+          t(
+            'quickAsk.noModelConfigured',
+            'No chat model configured. Please add a model in settings.',
+          ),
         )
         return
       }
