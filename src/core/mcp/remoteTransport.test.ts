@@ -27,6 +27,18 @@ jest.mock('../../utils/net/systemProxyResolver', () => ({
   resolveSystemProxy: jest.fn().mockResolvedValue(''),
 }))
 
+/** Must match `PROXY_ENV_KEYS` in `remoteTransport.ts` — any set value makes `envHasProxy` true. */
+const PROXY_ENV_KEYS = [
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+  'no_proxy',
+] as const
+
 describe('remoteTransport', () => {
   const mockedCreateDesktopNodeFetch =
     createDesktopNodeFetch as jest.MockedFunction<typeof createDesktopNodeFetch>
@@ -106,10 +118,13 @@ describe('remoteTransport', () => {
     )
     resolveSystemProxy.mockResolvedValueOnce('http://system-proxy.corp:8080')
 
-    const previousHttpsProxy = process.env.HTTPS_PROXY
-    const previousHttpProxy = process.env.HTTP_PROXY
-    delete process.env.HTTPS_PROXY
-    delete process.env.HTTP_PROXY
+    const previousProxyEnv: Partial<
+      Record<(typeof PROXY_ENV_KEYS)[number], string | undefined>
+    > = {}
+    for (const key of PROXY_ENV_KEYS) {
+      previousProxyEnv[key] = process.env[key]
+      delete process.env[key]
+    }
 
     try {
       createMcpRemoteTransportFactory({ env: {} })
@@ -126,11 +141,13 @@ describe('remoteTransport', () => {
       ).resolves.toBe('http://system-proxy.corp:8080')
       expect(resolveSystemProxy).toHaveBeenCalledWith('https://example.com')
     } finally {
-      if (previousHttpsProxy !== undefined) {
-        process.env.HTTPS_PROXY = previousHttpsProxy
-      }
-      if (previousHttpProxy !== undefined) {
-        process.env.HTTP_PROXY = previousHttpProxy
+      for (const key of PROXY_ENV_KEYS) {
+        const value = previousProxyEnv[key]
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
       }
     }
   })
