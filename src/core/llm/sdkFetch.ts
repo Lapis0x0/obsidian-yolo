@@ -3,7 +3,7 @@ import { Platform } from 'obsidian'
 import type { RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { shouldBypassProxy } from '../../utils/net/proxyBypass'
-import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
+import { resolveSystemProxy } from '../../utils/net/systemProxyResolver'
 
 type RequestOptions = import('node:http').RequestOptions
 
@@ -18,20 +18,6 @@ export type DesktopNodeFetchOptions = {
   agent?: RequestOptions['agent']
 }
 
-type ProxyEnv = Partial<
-  Record<
-    | 'HTTP_PROXY'
-    | 'HTTPS_PROXY'
-    | 'ALL_PROXY'
-    | 'NO_PROXY'
-    | 'http_proxy'
-    | 'https_proxy'
-    | 'all_proxy'
-    | 'no_proxy',
-    string
-  >
->
-
 const PROXY_ENV_KEYS = [
   'HTTP_PROXY',
   'HTTPS_PROXY',
@@ -43,121 +29,8 @@ const PROXY_ENV_KEYS = [
   'no_proxy',
 ] as const
 
-const withProcessEnv = <T>(env: NodeJS.ProcessEnv, cb: () => T): T => {
-  const previousEnv = process.env
-  process.env = env
-  try {
-    return cb()
-  } finally {
-    process.env = previousEnv
-  }
-}
-
-const hasProxyEnv = (env: NodeJS.ProcessEnv): boolean =>
+const envHasProxy = (env: NodeJS.ProcessEnv): boolean =>
   PROXY_ENV_KEYS.some((key) => typeof env[key] === 'string' && env[key]?.trim())
-
-const setProxyEnvValue = (
-  env: ProxyEnv,
-  key: 'HTTP_PROXY' | 'HTTPS_PROXY' | 'ALL_PROXY' | 'NO_PROXY',
-  value?: string,
-): void => {
-  const trimmed = value?.trim()
-  if (!trimmed) {
-    return
-  }
-
-  env[key] = trimmed
-  env[key.toLowerCase() as Lowercase<typeof key>] = trimmed
-}
-
-export const parseMacOsProxyEnv = (output: string): ProxyEnv => {
-  const entries = new Map<string, string>()
-  const exceptions: string[] = []
-  let inExceptionsList = false
-
-  for (const line of output.split(/\r?\n/)) {
-    if (inExceptionsList) {
-      const exceptionMatch = line.match(/^\s*\d+\s*:\s*(.+?)\s*$/)
-      if (exceptionMatch) {
-        exceptions.push(exceptionMatch[1])
-        continue
-      }
-
-      if (line.trim() === '}') {
-        inExceptionsList = false
-      }
-    }
-
-    const entryMatch = line.match(/^\s*([A-Za-z0-9]+)\s*:\s*(.+?)\s*$/)
-    if (entryMatch) {
-      const [, key, value] = entryMatch
-      entries.set(key, value)
-      inExceptionsList = key === 'ExceptionsList'
-      continue
-    }
-  }
-
-  const env: ProxyEnv = {}
-  const httpProxy = entries.get('HTTPProxy')
-  const httpPort = entries.get('HTTPPort')
-  const httpsProxy = entries.get('HTTPSProxy')
-  const httpsPort = entries.get('HTTPSPort')
-  const socksProxy = entries.get('SOCKSProxy')
-  const socksPort = entries.get('SOCKSPort')
-
-  if (entries.get('HTTPEnable') === '1' && httpProxy && httpPort) {
-    setProxyEnvValue(env, 'HTTP_PROXY', `http://${httpProxy}:${httpPort}`)
-  }
-
-  if (entries.get('HTTPSEnable') === '1' && httpsProxy && httpsPort) {
-    setProxyEnvValue(env, 'HTTPS_PROXY', `http://${httpsProxy}:${httpsPort}`)
-  }
-
-  if (
-    !env.ALL_PROXY &&
-    entries.get('SOCKSEnable') === '1' &&
-    socksProxy &&
-    socksPort
-  ) {
-    setProxyEnvValue(env, 'ALL_PROXY', `socks5://${socksProxy}:${socksPort}`)
-  }
-
-  if (exceptions.length > 0) {
-    setProxyEnvValue(env, 'NO_PROXY', exceptions.join(','))
-  }
-
-  return env
-}
-
-const readMacOsProxyEnv = async (): Promise<ProxyEnv> => {
-  if (process.platform !== 'darwin') {
-    return {}
-  }
-
-  try {
-    const { execFileSync } =
-      await loadDesktopNodeModule<typeof import('node:child_process')>(
-        'node:child_process',
-      )
-    const output = execFileSync('scutil', ['--proxy'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return parseMacOsProxyEnv(output)
-  } catch {
-    return {}
-  }
-}
-
-export const resolveDesktopProxyEnv = (
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<ProxyEnv> => {
-  if (hasProxyEnv(env)) {
-    return Promise.resolve({})
-  }
-
-  return readMacOsProxyEnv()
-}
 
 const getDesktopProxyAgent = async (): Promise<
   RequestOptions['agent'] | undefined
@@ -166,26 +39,22 @@ const getDesktopProxyAgent = async (): Promise<
     return desktopProxyAgent ?? undefined
   }
 
-  const proxyEnv = await resolveDesktopProxyEnv()
-  if (Object.keys(proxyEnv).length === 0) {
-    desktopProxyAgent = null
-    return undefined
-  }
-
-  const resolvedEnv: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...proxyEnv,
-  }
   const [{ ProxyAgent }, { getProxyForUrl }] = await Promise.all([
     import('proxy-agent'),
     import('proxy-from-env'),
   ])
+
+  // proxy-agent@6.5.0 accepts `Promise<string>` from getProxyForUrl.
+  // Decision order per URL:
+  //   1. Local/private destinations — always DIRECT (matches curl/VS Code).
+  //   2. Explicit HTTP(S)_PROXY/NO_PROXY env — honor the user's override.
+  //   3. Otherwise delegate to Chromium via @electron/remote, giving parity
+  //      with Obsidian's requestUrl and globalThis.fetch on all 3 OSes.
   desktopProxyAgent = new ProxyAgent({
-    getProxyForUrl: (url) => {
-      if (shouldBypassProxy(url)) {
-        return ''
-      }
-      return withProcessEnv(resolvedEnv, () => getProxyForUrl(url))
+    getProxyForUrl: async (url: string): Promise<string> => {
+      if (shouldBypassProxy(url)) return ''
+      if (envHasProxy(process.env)) return getProxyForUrl(url)
+      return resolveSystemProxy(url)
     },
   })
   return desktopProxyAgent
