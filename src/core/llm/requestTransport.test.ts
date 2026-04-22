@@ -156,7 +156,7 @@ describe('requestTransport', () => {
       expect(obsidian).not.toHaveBeenCalled()
     })
 
-    it('falls back to obsidian when node also fails with retryable error', async () => {
+    it('throws node error on desktop without falling back to obsidian', async () => {
       const nodeError = new TypeError('Failed to fetch')
       const obsidian = jest.fn(async () => 'obsidian')
 
@@ -168,6 +168,22 @@ describe('requestTransport', () => {
           },
           runNode: async () => {
             throw nodeError
+          },
+          runObsidian: obsidian,
+        }),
+      ).rejects.toBe(nodeError)
+
+      expect(obsidian).not.toHaveBeenCalled()
+    })
+
+    it('falls back to obsidian on non-desktop (no runNode provided)', async () => {
+      const obsidian = jest.fn(async () => 'obsidian')
+
+      await expect(
+        runWithRequestTransport({
+          mode: 'auto',
+          runBrowser: async () => {
+            throw new TypeError('Failed to fetch')
           },
           runObsidian: obsidian,
         }),
@@ -353,8 +369,7 @@ describe('requestTransport', () => {
       expect(onAutoPromoteTransportMode).toHaveBeenCalledWith('node')
     })
 
-    it('falls back to obsidian when browser and node stream creation both fail', async () => {
-      const onAutoPromoteTransportMode = jest.fn()
+    it('throws node error on desktop without falling back to obsidian stream', async () => {
       const createObsidianStream = jest.fn(async () => ({
         async *[Symbol.asyncIterator]() {
           yield 'ok'
@@ -367,6 +382,28 @@ describe('requestTransport', () => {
           throw new TypeError('Failed to fetch')
         },
         createNodeStream: async () => {
+          throw new TypeError('Failed to fetch from node')
+        },
+        createObsidianStream,
+      })
+
+      await expect(collectStream(stream)).rejects.toThrow(
+        'Failed to fetch from node',
+      )
+      expect(createObsidianStream).not.toHaveBeenCalled()
+    })
+
+    it('falls back to obsidian stream on non-desktop (no createNodeStream provided)', async () => {
+      const onAutoPromoteTransportMode = jest.fn()
+      const createObsidianStream = jest.fn(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield 'ok'
+        },
+      }))
+
+      const stream = await runWithRequestTransportForStream({
+        mode: 'auto',
+        createBrowserStream: async () => {
           throw new TypeError('Failed to fetch')
         },
         createObsidianStream,

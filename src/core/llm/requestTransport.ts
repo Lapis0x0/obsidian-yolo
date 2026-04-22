@@ -231,36 +231,6 @@ const withTimeout = async <T>({
   }
 }
 
-const tryNodeThenObsidian = async <T>({
-  runNode,
-  runObsidian,
-  memoryKey,
-  onAutoPromoteTransportMode,
-}: {
-  runNode?: () => Promise<T>
-  runObsidian: () => Promise<T>
-  memoryKey?: string
-  onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
-}): Promise<T> => {
-  if (runNode) {
-    try {
-      const nodeResponse = await runNode()
-      rememberTransportMode('node', memoryKey)
-      onAutoPromoteTransportMode?.('node')
-      return nodeResponse
-    } catch (nodeError) {
-      if (!shouldRetryWithObsidianTransport(nodeError)) {
-        throw nodeError
-      }
-    }
-  }
-
-  const obsidianResponse = await runObsidian()
-  rememberTransportMode('obsidian', memoryKey)
-  onAutoPromoteTransportMode?.('obsidian')
-  return obsidianResponse
-}
-
 export const runWithRequestTransport = async <T>({
   mode,
   runBrowser,
@@ -291,18 +261,24 @@ export const runWithRequestTransport = async <T>({
     return runNode()
   }
 
+  const effectiveRunNode = Platform.isDesktop ? runNode : undefined
+
   try {
     return await runBrowser()
   } catch (error) {
     if (!shouldRetryWithObsidianTransport(error)) {
       throw error
     }
-    return tryNodeThenObsidian({
-      runNode: Platform.isDesktop ? runNode : undefined,
-      runObsidian,
-      memoryKey,
-      onAutoPromoteTransportMode,
-    })
+    if (effectiveRunNode) {
+      const nodeResponse = await effectiveRunNode()
+      rememberTransportMode('node', memoryKey)
+      onAutoPromoteTransportMode?.('node')
+      return nodeResponse
+    }
+    const obsidianResponse = await runObsidian()
+    rememberTransportMode('obsidian', memoryKey)
+    onAutoPromoteTransportMode?.('obsidian')
+    return obsidianResponse
   }
 }
 
@@ -402,24 +378,23 @@ const createAutoFallbackStream = <T>({
         }
       }
 
-      const streamFactories = [
-        ...(createNodeStream
-          ? [
-              {
-                mode: 'node' as const,
-                createStream: (attemptSignal?: AbortSignal) =>
-                  createNodeStream(attemptSignal),
-                timed: true as const,
-              },
-            ]
-          : []),
-        {
-          mode: 'obsidian' as const,
-          createStream: (attemptSignal?: AbortSignal) =>
-            createObsidianStream(attemptSignal ?? signal),
-          timed: false as const,
-        },
-      ]
+      const streamFactories = createNodeStream
+        ? [
+            {
+              mode: 'node' as const,
+              createStream: (attemptSignal?: AbortSignal) =>
+                createNodeStream(attemptSignal),
+              timed: true as const,
+            },
+          ]
+        : [
+            {
+              mode: 'obsidian' as const,
+              createStream: (attemptSignal?: AbortSignal) =>
+                createObsidianStream(attemptSignal ?? signal),
+              timed: false as const,
+            },
+          ]
 
       let lastError: unknown
       for (const {
@@ -519,6 +494,9 @@ export const runWithRequestTransportForStream = async <T>({
   })
 }
 
-export const clearRequestTransportMemoryForTests = (): void => {
+export const clearRequestTransportMemory = (): void => {
   requestTransportMemory.clear()
 }
+
+export const clearRequestTransportMemoryForTests =
+  clearRequestTransportMemory

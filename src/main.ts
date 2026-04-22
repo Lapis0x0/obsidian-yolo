@@ -38,6 +38,7 @@ import {
   BackgroundActivityAction,
   BackgroundActivityRegistry,
 } from './core/background/backgroundActivityRegistry'
+import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -1533,6 +1534,7 @@ export default class SmartComposerPlugin extends Plugin {
 
   async onload() {
     ensureBufferByteLengthCompat()
+    clearRequestTransportMemory()
 
     await this.loadSettings()
     this.warnIfInstallationIncomplete()
