@@ -1,7 +1,7 @@
 import { migrateFrom47To48 } from './47_to_48'
 
 describe('migrateFrom47To48', () => {
-  it('maps reasoning/thinking to defaultReasoningLevel and strips legacy fields', () => {
+  it('strips legacy reasoning/thinking fields and normalizes generic reasoningType', () => {
     const result = migrateFrom47To48({
       version: 47,
       chatModels: [
@@ -27,11 +27,11 @@ describe('migrateFrom47To48', () => {
 
     expect(result.version).toBe(48)
     const models = result.chatModels as Record<string, unknown>[]
-    expect(models[0].defaultReasoningLevel).toBe('high')
     expect(models[0].reasoning).toBeUndefined()
-    expect(models[1].defaultReasoningLevel).toBe('auto')
+    expect(models[0].defaultReasoningLevel).toBeUndefined()
     expect(models[1].reasoningType).toBe('gemini')
     expect(models[1].thinking).toBeUndefined()
+    expect(models[1].defaultReasoningLevel).toBeUndefined()
 
     const opts = result.chatOptions as {
       reasoningLevelByModelId: Record<string, string>

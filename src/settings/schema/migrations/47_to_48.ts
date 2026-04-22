@@ -10,29 +10,6 @@ const migrateChatModel = (raw: unknown): unknown => {
   const reasoning = isRecord(m.reasoning) ? m.reasoning : null
   const thinking = isRecord(m.thinking) ? m.thinking : null
 
-  if (reasoning && reasoning.enabled === true) {
-    const effort = reasoning.reasoning_effort
-    m.defaultReasoningLevel =
-      effort === 'low'
-        ? 'low'
-        : effort === 'high'
-          ? 'high'
-          : effort === 'medium'
-            ? 'medium'
-            : 'medium'
-  } else if (thinking && thinking.enabled === true) {
-    const bRaw = thinking.thinking_budget ?? thinking.budget_tokens
-    const b = typeof bRaw === 'number' ? bRaw : null
-    if (b === -1) m.defaultReasoningLevel = 'auto'
-    else if (b === 0 || b == null) m.defaultReasoningLevel = 'off'
-    else if (b <= 4096) m.defaultReasoningLevel = 'low'
-    else if (b <= 8192) m.defaultReasoningLevel = 'medium'
-    else if (b <= 16384) m.defaultReasoningLevel = 'high'
-    else m.defaultReasoningLevel = 'extra-high'
-  } else {
-    m.defaultReasoningLevel = 'off'
-  }
-
   if (m.reasoningType === 'generic') {
     if (reasoning && reasoning.enabled === true) {
       m.reasoningType = 'openai'
@@ -47,6 +24,7 @@ const migrateChatModel = (raw: unknown): unknown => {
 
   delete m.reasoning
   delete m.thinking
+  delete m.defaultReasoningLevel
   return m
 }
 
@@ -69,7 +47,10 @@ export const migrateFrom47To48: SettingMigration['migrate'] = (data) => {
         levelMap[key] = 'medium'
       }
     }
-    next.chatOptions = { ...next.chatOptions, reasoningLevelByModelId: levelMap }
+    next.chatOptions = {
+      ...next.chatOptions,
+      reasoningLevelByModelId: levelMap,
+    }
   }
 
   return next

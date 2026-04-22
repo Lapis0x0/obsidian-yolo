@@ -52,26 +52,24 @@ export function modelSupportsReasoning(model: {
 
 /**
  * Effective level for the HTTP request: only when `reasoningType` is set and not `none`.
- * Chat override wins; otherwise model default; otherwise `medium`.
+ * Chat override wins; otherwise fall back to `auto` so the model decides.
  */
 export function resolveRequestReasoningLevel(
   model: {
     reasoningType?: ReasoningModelType
-    defaultReasoningLevel?: ReasoningLevel
   },
   override?: ReasoningLevel,
 ): ReasoningLevel | undefined {
   if (!modelSupportsReasoning(model)) return undefined
-  return override ?? model.defaultReasoningLevel ?? 'medium'
+  return override ?? 'auto'
 }
 
 /** Settings / UI default when the model supports reasoning. */
 export function getDefaultReasoningLevel(
   model: {
     reasoningType?: ReasoningModelType
-    defaultReasoningLevel?: ReasoningLevel
   } | null,
 ): ReasoningLevel {
   if (!model || !modelSupportsReasoning(model)) return 'off'
-  return model.defaultReasoningLevel ?? 'medium'
+  return 'auto'
 }

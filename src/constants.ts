@@ -362,7 +362,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'claude-sonnet-4-0',
     enable: false,
     reasoningType: 'anthropic',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
@@ -370,7 +369,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'claude-opus-4-1',
     enable: false,
     reasoningType: 'anthropic',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
@@ -378,7 +376,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'claude-3-7-sonnet-latest',
     enable: false,
     reasoningType: 'anthropic',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
@@ -405,7 +402,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     name: 'GPT-5.3 Codex',
     enable: false,
     reasoningType: 'openai',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
@@ -414,7 +410,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     name: 'GPT-5.4',
     enable: false,
     reasoningType: 'openai',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
@@ -422,7 +417,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.5-pro',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
     toolType: 'gemini',
   },
   {
@@ -431,7 +425,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.5-flash',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
     toolType: 'gemini',
   },
   {
@@ -440,7 +433,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.5-flash-lite',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'off',
     toolType: 'gemini',
   },
   {
@@ -498,7 +490,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'o4-mini',
     enable: false,
     reasoningType: 'openai',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
@@ -506,7 +497,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'o3',
     enable: false,
     reasoningType: 'openai',
-    defaultReasoningLevel: 'medium',
   },
   {
     providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
@@ -514,7 +504,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.5-pro',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
   },
   {
     providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
@@ -522,7 +511,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.5-flash',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
   },
   {
     providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
@@ -530,7 +518,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.5-flash-lite',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
   },
   {
     providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
@@ -538,7 +525,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.0-flash',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
   },
   {
     providerId: PROVIDER_PRESET_INFO.gemini.defaultProviderId,
@@ -546,7 +532,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     model: 'gemini-2.0-flash-lite',
     enable: false,
     reasoningType: 'gemini',
-    defaultReasoningLevel: 'auto',
   },
   {
     providerId: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,

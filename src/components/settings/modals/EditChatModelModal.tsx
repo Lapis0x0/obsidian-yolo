@@ -4,11 +4,6 @@ import React, { useEffect, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
-import {
-  REASONING_LEVELS,
-  type ReasoningLevel,
-  isReasoningLevelString,
-} from '../../../types/reasoning'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import {
   normalizeCustomParameterType,
@@ -99,11 +94,7 @@ function EditChatModelModalComponent({
   const normalizeReasoningType = (
     value: string,
   ): 'none' | 'openai' | 'gemini' | 'anthropic' => {
-    if (
-      value === 'openai' ||
-      value === 'gemini' ||
-      value === 'anthropic'
-    ) {
+    if (value === 'openai' || value === 'gemini' || value === 'anthropic') {
       return value
     }
     return 'none'
@@ -134,27 +125,23 @@ function EditChatModelModalComponent({
     name: model.name ?? '',
   })
 
-  const initialReasoningType:
-    | 'none'
-    | 'openai'
-    | 'gemini'
-    | 'anthropic' = (() => {
-    if (editableModel.reasoningType && editableModel.reasoningType !== 'none') {
-      return editableModel.reasoningType
-    }
-    return normalizeReasoningType(
-      detectReasoningTypeFromModelId(editableModel.model),
-    )
-  })()
+  const initialReasoningType: 'none' | 'openai' | 'gemini' | 'anthropic' =
+    (() => {
+      if (
+        editableModel.reasoningType &&
+        editableModel.reasoningType !== 'none'
+      ) {
+        return editableModel.reasoningType
+      }
+      return normalizeReasoningType(
+        detectReasoningTypeFromModelId(editableModel.model),
+      )
+    })()
 
   // Reasoning UI states
   const [reasoningType, setReasoningType] = useState<
     'none' | 'openai' | 'gemini' | 'anthropic'
   >(() => initialReasoningType)
-  const [defaultReasoningLevel, setDefaultReasoningLevel] =
-    useState<ReasoningLevel>(
-      editableModel.defaultReasoningLevel ?? 'medium',
-    )
   // If user changes dropdown manually, disable auto detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
 
@@ -346,13 +333,7 @@ function EditChatModelModalComponent({
           maxOutputTokens,
         }
 
-        if (reasoningType === 'none') {
-          updatedModel.reasoningType = 'none'
-          delete updatedModel.defaultReasoningLevel
-        } else {
-          updatedModel.reasoningType = reasoningType
-          updatedModel.defaultReasoningLevel = defaultReasoningLevel
-        }
+        updatedModel.reasoningType = reasoningType
 
         // Apply tool type
         updatedModel.toolType = toolType
@@ -444,45 +425,6 @@ function EditChatModelModalComponent({
           }}
         />
       </ObsidianSetting>
-
-      {reasoningType !== 'none' && (
-        <ObsidianSetting
-          name={t(
-            'settings.models.defaultReasoningLevel',
-            'Default reasoning level',
-          )}
-          desc={t(
-            'settings.models.defaultReasoningLevelDesc',
-            'Default strength for new messages; you can override per send in chat.',
-          )}
-        >
-          <ObsidianDropdown
-            value={defaultReasoningLevel}
-            options={Object.fromEntries(
-              REASONING_LEVELS.map((level) => {
-                const labelKey =
-                  level === 'extra-high'
-                    ? 'reasoning.extraHigh'
-                    : `reasoning.${level}`
-                const fallbacks: Record<ReasoningLevel, string> = {
-                  off: 'Off',
-                  auto: 'Auto',
-                  low: 'Low',
-                  medium: 'Medium',
-                  high: 'High',
-                  'extra-high': 'Extra high',
-                }
-                return [level, t(labelKey, fallbacks[level])]
-              }),
-            )}
-            onChange={(v: string) => {
-              if (isReasoningLevelString(v)) {
-                setDefaultReasoningLevel(v)
-              }
-            }}
-          />
-        </ObsidianSetting>
-      )}
 
       {(supportsGeminiTools || supportsGptTools) && (
         <ObsidianSetting

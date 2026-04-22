@@ -7,11 +7,6 @@ import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel, chatModelSchema } from '../../../types/chat-model.types'
-import {
-  REASONING_LEVELS,
-  type ReasoningLevel,
-  isReasoningLevelString,
-} from '../../../types/reasoning'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import { LLMProvider } from '../../../types/provider.types'
 import {
@@ -46,12 +41,7 @@ type CustomParameterFormEntry = CustomParameter & {
 
 const MODEL_IDENTIFIER_KEYS = ['id', 'name', 'model'] as const
 
-const REASONING_TYPES = [
-  'none',
-  'openai',
-  'gemini',
-  'anthropic',
-] as const
+const REASONING_TYPES = ['none', 'openai', 'gemini', 'anthropic'] as const
 type ReasoningType = (typeof REASONING_TYPES)[number]
 
 const TOOL_TYPES = ['none', 'gemini', 'gpt'] as const
@@ -239,8 +229,6 @@ function AddChatModelModalComponent({
   const [loadingModels, setLoadingModels] = useState<boolean>(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reasoningType, setReasoningType] = useState<ReasoningType>('none')
-  const [defaultReasoningLevel, setDefaultReasoningLevel] =
-    useState<ReasoningLevel>('medium')
   // When user manually changes reasoning type, stop auto-detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
   const [toolType, setToolType] = useState<ToolType>('none')
@@ -682,9 +670,6 @@ function AddChatModelModalComponent({
     modelDataWithPrefix = {
       ...modelDataWithPrefix,
       reasoningType: reasoningType === 'none' ? 'none' : reasoningType,
-      ...(reasoningType !== 'none'
-        ? { defaultReasoningLevel }
-        : {}),
     }
 
     if (
@@ -808,45 +793,6 @@ function AddChatModelModalComponent({
           }}
         />
       </ObsidianSetting>
-
-      {reasoningType !== 'none' && (
-        <ObsidianSetting
-          name={t(
-            'settings.models.defaultReasoningLevel',
-            'Default reasoning level',
-          )}
-          desc={t(
-            'settings.models.defaultReasoningLevelDesc',
-            'Default strength for new messages; you can override per send in chat.',
-          )}
-        >
-          <ObsidianDropdown
-            value={defaultReasoningLevel}
-            options={Object.fromEntries(
-              REASONING_LEVELS.map((level) => {
-                const labelKey =
-                  level === 'extra-high'
-                    ? 'reasoning.extraHigh'
-                    : `reasoning.${level}`
-                const fallbacks: Record<ReasoningLevel, string> = {
-                  off: 'Off',
-                  auto: 'Auto',
-                  low: 'Low',
-                  medium: 'Medium',
-                  high: 'High',
-                  'extra-high': 'Extra high',
-                }
-                return [level, t(labelKey, fallbacks[level])]
-              }),
-            )}
-            onChange={(v: string) => {
-              if (isReasoningLevelString(v)) {
-                setDefaultReasoningLevel(v)
-              }
-            }}
-          />
-        </ObsidianSetting>
-      )}
 
       {/* Tool type for Gemini provider */}
       {(supportsGeminiTools(selectedProvider) ||

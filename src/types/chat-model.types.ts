@@ -1,7 +1,6 @@
 import { z } from 'zod'
 
 import { customParameterSchema } from './custom-parameter.types'
-import { REASONING_LEVELS } from './reasoning'
 
 export const gptToolsConfigSchema = z
   .object({
@@ -32,10 +31,7 @@ export const chatModelSchema = z.object({
   // Optional display name for UI. When absent, UI should fallback to showing `model`.
   name: z.string().optional(),
   enable: z.boolean().default(true).optional(),
-  reasoningType: z
-    .enum(['none', 'openai', 'gemini', 'anthropic'])
-    .optional(),
-  defaultReasoningLevel: z.enum(REASONING_LEVELS).optional(),
+  reasoningType: z.enum(['none', 'openai', 'gemini', 'anthropic']).optional(),
   temperature: z.number().min(0).max(2).optional(),
   topP: z.number().min(0).max(1).optional(),
   maxContextTokens: z.number().int().min(1).optional(),
