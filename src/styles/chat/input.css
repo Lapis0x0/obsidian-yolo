@@ -2024,7 +2024,7 @@
 }
 
 .smtcmp-chat-user-input-controls__left .smtcmp-reasoning-select {
-  min-width: 0;
+  min-width: 72px;
   flex: 0 1 auto;
 }
 
@@ -2182,15 +2182,15 @@
 .smtcmp-reasoning-select {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  min-width: 0;
+  justify-content: center;
+  min-width: 72px;
   flex-shrink: 1;
   gap: var(--size-4-1);
 }
 
 .smtcmp-reasoning-select .smtcmp-chat-input-model-select__label {
   flex: 0 1 auto;
-  text-align: left;
+  text-align: center;
 }
 
 @media (max-width: 520px) {
@@ -2223,36 +2223,128 @@
   height: 14px;
 }
 
-.smtcmp-reasoning-select-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px !important;
+.smtcmp-reasoning-popover {
+  padding: 12px 14px;
+  min-width: 360px;
+  max-width: 460px;
+  /* Override .smtcmp-chat-sidebar-popover's margin-left: -64px which is tailored
+     for the smart-space panel popover and would push this popover off-center. */
+  margin-left: 0 !important;
 }
 
-.smtcmp-reasoning-select-item__icon {
+.smtcmp-reasoning-popover__header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: var(--text-normal);
+}
+
+.smtcmp-reasoning-popover__header-icon {
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
-.smtcmp-reasoning-select-item__icon svg {
-  width: 14px;
-  height: 14px;
+.smtcmp-reasoning-popover__header-title {
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-.smtcmp-reasoning-select-item__label {
-  font-size: 12px;
+.smtcmp-reasoning-popover__header-current {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
+
+/* Pill variant of the shared segmented control: solid white slider with soft
+   accent ring, paired with an absolutely positioned glider for the slide. */
+.smtcmp-segmented.smtcmp-segmented--pill {
+  display: flex;
+  width: 100%;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 0;
+  position: relative;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.smtcmp-segmented.smtcmp-segmented--pill > .smtcmp-segmented-glider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / var(--smtcmp-segment-count));
+  height: calc(100% - 6px);
+  background: var(--background-primary);
+  border: none;
+  border-radius: 5px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  transform: translateX(calc(100% * var(--smtcmp-segment-index)));
+  transition: transform 0.24s cubic-bezier(0.4, 1.1, 0.4, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.smtcmp-segmented.smtcmp-segmented--pill > button {
+  flex: 1 1 0;
+  position: relative;
+  z-index: 2;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none;
+  padding: 6px 4px;
+  border-radius: 5px;
+  font-size: 12.5px;
   font-weight: 500;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+  text-align: center;
+  transform: none !important;
+  transition:
+    color 0.15s ease,
+    font-weight 0.15s ease;
+}
+
+.smtcmp-segmented.smtcmp-segmented--pill > button:hover {
+  background: transparent !important;
+  color: var(--text-normal) !important;
+  transform: none !important;
+}
+
+.smtcmp-segmented.smtcmp-segmented--pill > button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--interactive-accent) !important;
+}
+
+.smtcmp-segmented.smtcmp-segmented--pill > button.active {
+  background: transparent !important;
+  color: var(--interactive-accent) !important;
+  font-weight: 600;
+  transform: none !important;
+}
+
+.smtcmp-reasoning-popover__desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+.smtcmp-reasoning-popover__desc-label {
   color: var(--text-normal);
 }
 
-.smtcmp-reasoning-select-item[data-state='checked']
-  .smtcmp-reasoning-select-item__icon,
-.smtcmp-reasoning-select-item[data-highlighted]
-  .smtcmp-reasoning-select-item__icon {
-  color: var(--text-normal);
+.smtcmp-reasoning-popover__desc-sep {
+  color: var(--text-faint);
 }
 
 .smtcmp-chat-user-input-file-badge {

@@ -1257,6 +1257,12 @@ export type TranslationKeys = {
     medium?: string
     high?: string
     extraHigh?: string
+    offDesc?: string
+    autoDesc?: string
+    lowDesc?: string
+    mediumDesc?: string
+    highDesc?: string
+    extraHighDesc?: string
   }
 
   // Plugin update banner (GitHub release check)

@@ -1473,6 +1473,12 @@ export const it: TranslationKeys = {
     medium: 'Medio',
     high: 'Alto',
     extraHigh: 'Extra alto',
+    offDesc: 'Nessun ragionamento, risponde direttamente',
+    autoDesc: 'Il modello decide la profondità del ragionamento',
+    lowDesc: 'Ragionamento leggero, risposta più rapida',
+    mediumDesc: 'Profondità di ragionamento bilanciata',
+    highDesc: 'Ragionamento approfondito, per problemi complessi',
+    extraHighDesc: 'Ragionamento massimo, per i casi più difficili',
   },
 
   update: {

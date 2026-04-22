@@ -1468,6 +1468,12 @@ export const en: TranslationKeys = {
     medium: 'Medium',
     high: 'High',
     extraHigh: 'Extra high',
+    offDesc: 'No thinking, answer directly',
+    autoDesc: 'Let the model decide thinking depth based on the prompt',
+    lowDesc: 'Lightweight thinking, faster response',
+    mediumDesc: 'Balanced thinking depth',
+    highDesc: 'Deep thinking, suited for complex problems',
+    extraHighDesc: 'Maximum thinking, for the toughest reasoning',
   },
 
   update: {

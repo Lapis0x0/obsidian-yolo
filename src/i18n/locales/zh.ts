@@ -1368,6 +1368,12 @@ export const zh: TranslationKeys = {
     medium: '中',
     high: '高',
     extraHigh: '超高',
+    offDesc: '不进行任何思考，直接回答',
+    autoDesc: '由模型根据问题决定思考强度',
+    lowDesc: '轻量思考，响应更快',
+    mediumDesc: '平衡的思考深度',
+    highDesc: '深入思考，适合复杂问题',
+    extraHighDesc: '极致思考，处理最棘手的推理',
   },
 
   update: {
