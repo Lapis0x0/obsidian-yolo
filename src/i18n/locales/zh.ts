@@ -1317,6 +1317,7 @@ export const zh: TranslationKeys = {
     clearConfirm: '确定要清空当前对话吗？',
     cleared: '对话已清空',
     error: '生成失败',
+    noModelConfigured: '未配置聊天模型，请前往设置添加模型。',
     copied: '已复制到剪贴板',
     inserted: '已插入到光标位置',
     // Mode select

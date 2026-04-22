@@ -1414,6 +1414,7 @@ export const en: TranslationKeys = {
     clearConfirm: 'Are you sure you want to clear the current conversation?',
     cleared: 'Conversation cleared',
     error: 'Failed to generate response',
+    noModelConfigured: 'No chat model configured. Please add a model in settings.',
     copied: 'Copied to clipboard',
     inserted: 'Inserted at cursor',
     // Mode select

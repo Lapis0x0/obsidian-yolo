@@ -33,6 +33,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
+import { LLMModelNotFoundException } from '../../../core/llm/exception'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
@@ -740,7 +741,9 @@ export function QuickAskPanel({
   }, [isAssistantMenuOpen])
 
   // Get model client
-  const { providerClient, model } = useMemo(() => {
+  const modelClient = useMemo(():
+    | ReturnType<typeof getChatModelClient>
+    | null => {
     const continuationModelId =
       settings.continuationOptions?.continuationModelId
     const preferredModelId =
@@ -749,8 +752,23 @@ export function QuickAskPanel({
         ? continuationModelId
         : settings.chatModelId
 
-    return getChatModelClient({ settings, modelId: preferredModelId })
+    try {
+      return getChatModelClient({ settings, modelId: preferredModelId })
+    } catch (error) {
+      if (error instanceof LLMModelNotFoundException) {
+        if (settings.chatModels.length > 0) {
+          return getChatModelClient({
+            settings,
+            modelId: settings.chatModels[0].id,
+          })
+        }
+        return null
+      }
+      throw error
+    }
   }, [settings])
+  const providerClient = modelClient?.providerClient
+  const model = modelClient?.model
 
   const readEditBaseContent = useCallback(
     async (targetFilePath?: string): Promise<string> => {
@@ -813,7 +831,7 @@ export function QuickAskPanel({
       targetFile: ReturnType<typeof resolveEditTargetFile>
       scopedToSelection: boolean
     }) => {
-      if (!targetFile) {
+      if (!targetFile || !providerClient || !model) {
         return null
       }
 
@@ -914,6 +932,13 @@ export function QuickAskPanel({
       },
     ) => {
       if (isStreaming) return
+
+      if (!providerClient || !model) {
+        new Notice(
+          t('quickAsk.noModelConfigured', 'No chat model configured. Please add a model in settings.'),
+        )
+        return
+      }
 
       // Extract text from editor state
       const textContent = editorStateToPlainText(editorState)
@@ -1287,7 +1312,6 @@ export function QuickAskPanel({
         mentionableUnitLabel,
       })
       editor.setEditorState(editor.parseEditorState(editorState))
-      setInputText(initialInput ?? '')
     }
 
     requestAnimationFrame(applyInitialState)
@@ -1301,6 +1325,14 @@ export function QuickAskPanel({
     async (instruction: string) => {
       if (isStreaming) return
       if (!instruction.trim()) return
+
+      if (!providerClient || !model) {
+        new Notice(
+          t('quickAsk.noModelConfigured', 'No chat model configured. Please add a model in settings.'),
+        )
+        return
+      }
+
       const resolvedInstruction = buildEditInstruction(instruction.trim())
 
       const targetFile = resolveEditTargetFile()
@@ -1416,6 +1448,14 @@ export function QuickAskPanel({
     async (instruction: string) => {
       if (isStreaming) return
       if (!instruction.trim()) return
+
+      if (!providerClient || !model) {
+        new Notice(
+          t('quickAsk.noModelConfigured', 'No chat model configured. Please add a model in settings.'),
+        )
+        return
+      }
+
       const resolvedInstruction = buildEditInstruction(instruction.trim())
 
       const targetFile = resolveEditTargetFile()

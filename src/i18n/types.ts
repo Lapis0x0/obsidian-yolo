@@ -1207,6 +1207,7 @@ export type TranslationKeys = {
     clearConfirm?: string
     cleared?: string
     error?: string
+    noModelConfigured?: string
     copied?: string
     inserted?: string
     // Mode select
