@@ -6,6 +6,7 @@ import type {
 } from 'openai/resources/responses/responses'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -73,19 +74,17 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     model: ChatModel,
     request: LLMRequestNonStreaming | LLMRequestStreaming,
   ): LLMRequestNonStreaming | LLMRequestStreaming {
-    const reasoningEffort = model.reasoning?.reasoning_effort
-    if (
-      !model.reasoning?.enabled ||
-      request.reasoning_effort ||
-      !reasoningEffort
-    ) {
+    const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+    if (level === undefined || level === 'auto' || request.reasoning_effort) {
       return request
     }
-
+    const reasoning_effort =
+      level === 'off'
+        ? 'low'
+        : (REASONING_META[level].effort as LLMRequestNonStreaming['reasoning_effort'])
     return {
       ...request,
-      reasoning_effort:
-        reasoningEffort as LLMRequestNonStreaming['reasoning_effort'],
+      reasoning_effort,
     }
   }
 

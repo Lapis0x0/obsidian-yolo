@@ -1,6 +1,6 @@
 import { TFile } from 'obsidian'
 
-import { ReasoningLevel } from '../../components/chat-view/chat-input/ReasoningSelect'
+import { ReasoningLevel } from '../../types/reasoning'
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,

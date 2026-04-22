@@ -68,10 +68,9 @@ import type { SlashCommand } from './plugins/mention/SkillSlashPlugin'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import {
   ReasoningLevel,
-  ReasoningSelect,
   getDefaultReasoningLevel,
-  supportsReasoning,
-} from './ReasoningSelect'
+} from '../../../types/reasoning'
+import { ReasoningSelect, supportsReasoning } from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
 
 export type ChatUserInputRef = {

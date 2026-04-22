@@ -94,11 +94,11 @@ export function migrateModelId(oldModelId: string, providerId: string): string {
 /**
  * Detect reasoning type based on model id keywords.
  * Returns 'openai' when the id looks like GPT/o-series; 'gemini' when it contains 'gemini';
- * 'anthropic' when it contains 'claude'; 'generic' for other reasoning-like keywords; otherwise 'none'.
+ * 'anthropic' when it contains 'claude'; otherwise 'none' (ambiguous ids need explicit `reasoningType`).
  */
 export function detectReasoningTypeFromModelId(
   modelIdOrName: string,
-): 'openai' | 'gemini' | 'anthropic' | 'generic' | 'none' {
+): 'openai' | 'gemini' | 'anthropic' | 'none' {
   const s = (modelIdOrName || '').toLowerCase()
   if (!s) return 'none'
 
@@ -118,14 +118,6 @@ export function detectReasoningTypeFromModelId(
     s.includes('gpt-5')
   ) {
     return 'openai'
-  }
-
-  if (
-    s.includes('thinking') ||
-    s.includes('reasoning') ||
-    s.includes('deepthink')
-  ) {
-    return 'generic'
   }
 
   return 'none'

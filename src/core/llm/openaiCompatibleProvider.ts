@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
-import type { ReasoningEffort } from 'openai/resources'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -206,19 +206,11 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
 
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
-      model,
+      reasoningType: model.reasoningType,
+      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
       baseUrl: this.resolvedBaseUrl,
     })
 
-    // Keep explicit ReasoningEffort typing fallback for strongly OpenAI-like gateways.
-    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
-      const effort = model.reasoning.reasoning_effort as
-        | ReasoningEffort
-        | undefined
-      if (effort) {
-        formattedRequest.reasoning_effort = effort
-      }
-    }
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
     return runWithRequestTransport({
       mode: this.requestTransportMode,
@@ -322,18 +314,11 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
 
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
-      model,
+      reasoningType: model.reasoningType,
+      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
       baseUrl: this.resolvedBaseUrl,
     })
 
-    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
-      const effort = model.reasoning.reasoning_effort as
-        | ReasoningEffort
-        | undefined
-      if (effort) {
-        formattedRequest.reasoning_effort = effort
-      }
-    }
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
     return runWithRequestTransportForStream({
       mode: this.requestTransportMode,

@@ -1,23 +1,7 @@
-import { ChatModel } from '../../types/chat-model.types'
-
 import {
   applyOpenAICompatibleCapabilities,
   resolveOpenAICompatibleHostCapabilities,
 } from './openaiCompatibleCapabilities'
-
-const baseModel: ChatModel = {
-  providerId: 'provider-1',
-  id: 'model-1',
-  model: 'test-model',
-  thinking: {
-    enabled: true,
-    thinking_budget: 256,
-  },
-  reasoning: {
-    enabled: true,
-    reasoning_effort: 'medium',
-  },
-}
 
 describe('openaiCompatibleCapabilities', () => {
   it('applies dashscope thinking fields', () => {
@@ -25,12 +9,13 @@ describe('openaiCompatibleCapabilities', () => {
 
     applyOpenAICompatibleCapabilities({
       request,
-      model: baseModel,
+      reasoningType: 'gemini',
+      reasoningLevel: 'low',
       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     })
 
     expect(request.enable_thinking).toBe(true)
-    expect(request.thinking_budget).toBe(256)
+    expect(request.thinking_budget).toBe(4096)
   })
 
   it('applies volcengine-style thinking fields', () => {
@@ -38,27 +23,42 @@ describe('openaiCompatibleCapabilities', () => {
 
     applyOpenAICompatibleCapabilities({
       request,
-      model: baseModel,
+      reasoningType: 'gemini',
+      reasoningLevel: 'medium',
       baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     })
 
     expect(request.thinking).toEqual({ type: 'enabled' })
   })
 
-  it('keeps default openai-compatible thinking fields', () => {
+  it('keeps default openai-compatible thinking fields for gemini family', () => {
     const request: Record<string, unknown> = {}
 
     applyOpenAICompatibleCapabilities({
       request,
-      model: baseModel,
+      reasoningType: 'gemini',
+      reasoningLevel: 'medium',
       baseUrl: 'https://example-proxy.ai/v1',
     })
 
     expect(request.thinking_config).toEqual({
-      thinking_budget: 256,
+      thinking_budget: 8192,
       include_thoughts: true,
     })
-    expect(request.reasoning_effort).toBe('medium')
+  })
+
+  it('applies OpenAI-style reasoning effort on generic proxy', () => {
+    const request: Record<string, unknown> = {}
+
+    applyOpenAICompatibleCapabilities({
+      request,
+      reasoningType: 'openai',
+      reasoningLevel: 'high',
+      baseUrl: 'https://example-proxy.ai/v1',
+    })
+
+    expect(request.reasoning_effort).toBe('high')
+    expect(request.reasoning).toEqual({ effort: 'high' })
   })
 
   it('disables stream options for mistral host', () => {
@@ -69,26 +69,17 @@ describe('openaiCompatibleCapabilities', () => {
     expect(capabilities.disableStreamOptions).toBe(true)
   })
 
-  it('does not inject reasoning exclude when reasoning is enabled and thinking is disabled', () => {
-    const request: Record<string, unknown> = {}
+  it('skips reasoning fields for mistral host', () => {
+    const request: Record<string, unknown> = { stream_options: { include_usage: true } }
 
     applyOpenAICompatibleCapabilities({
       request,
-      model: {
-        ...baseModel,
-        thinking: {
-          enabled: false,
-          thinking_budget: 0,
-        },
-        reasoning: {
-          enabled: true,
-          reasoning_effort: 'high',
-        },
-      },
-      baseUrl: 'https://example-proxy.ai/v1',
+      reasoningType: 'openai',
+      reasoningLevel: 'high',
+      baseUrl: 'https://api.mistral.ai/v1',
     })
 
-    expect(request.reasoning_effort).toBe('high')
-    expect(request.reasoning).toEqual({ effort: 'high' })
+    expect(request.stream_options).toBeUndefined()
+    expect(request.reasoning_effort).toBeUndefined()
   })
 })

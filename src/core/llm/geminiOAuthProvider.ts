@@ -5,6 +5,7 @@ import type {
 import { Platform } from 'obsidian'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -203,10 +204,33 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
         ? { temperature: request.temperature }
         : {}),
     }
-    if (model.thinking?.enabled) {
-      config.thinkingConfig = {
-        thinkingBudget: model.thinking.thinking_budget,
-        includeThoughts: true,
+    const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+    if (level !== undefined) {
+      const isGemini3 = /gemini-3/i.test(request.model)
+      if (level === 'auto') {
+        // omit
+      } else if (level === 'off') {
+        if (isGemini3) {
+          config.thinkingConfig = {
+            thinkingLevel: 'minimal',
+            includeThoughts: false,
+          }
+        } else {
+          config.thinkingConfig = {
+            thinkingBudget: 0,
+            includeThoughts: false,
+          }
+        }
+      } else if (isGemini3) {
+        config.thinkingConfig = {
+          thinkingLevel: level === 'extra-high' ? 'high' : level,
+          includeThoughts: true,
+        }
+      } else {
+        config.thinkingConfig = {
+          thinkingBudget: REASONING_META[level].budget,
+          includeThoughts: true,
+        }
       }
     }
 

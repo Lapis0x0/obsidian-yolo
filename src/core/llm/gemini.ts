@@ -11,6 +11,7 @@ import type {
 import { v4 as uuidv4 } from 'uuid'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -135,11 +136,33 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
         maxOutputTokens: request.max_tokens ?? undefined,
         temperature: request.temperature ?? undefined,
       }
-      if (model.thinking?.enabled) {
-        const budget = model.thinking.thinking_budget
-        config.thinkingConfig = {
-          thinkingBudget: budget,
-          includeThoughts: true,
+      const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      if (level !== undefined) {
+        const isGemini3 = /gemini-3/i.test(request.model)
+        if (level === 'auto') {
+          // Provider default: omit thinkingConfig
+        } else if (level === 'off') {
+          if (isGemini3) {
+            config.thinkingConfig = {
+              thinkingLevel: 'minimal',
+              includeThoughts: false,
+            } as GeminiRequestConfig['thinkingConfig']
+          } else {
+            config.thinkingConfig = {
+              thinkingBudget: 0,
+              includeThoughts: false,
+            }
+          }
+        } else if (isGemini3) {
+          config.thinkingConfig = {
+            thinkingLevel: level === 'extra-high' ? 'high' : level,
+            includeThoughts: true,
+          } as GeminiRequestConfig['thinkingConfig']
+        } else {
+          config.thinkingConfig = {
+            thinkingBudget: REASONING_META[level].budget,
+            includeThoughts: true,
+          }
         }
       }
       if (options?.signal) {
@@ -237,11 +260,33 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
         maxOutputTokens: request.max_tokens ?? undefined,
         temperature: request.temperature ?? undefined,
       }
-      if (model.thinking?.enabled) {
-        const budget = model.thinking.thinking_budget
-        config.thinkingConfig = {
-          thinkingBudget: budget,
-          includeThoughts: true,
+      const streamLevel = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      if (streamLevel !== undefined) {
+        const isGemini3 = /gemini-3/i.test(request.model)
+        if (streamLevel === 'auto') {
+          // omit
+        } else if (streamLevel === 'off') {
+          if (isGemini3) {
+            config.thinkingConfig = {
+              thinkingLevel: 'minimal',
+              includeThoughts: false,
+            } as GeminiRequestConfig['thinkingConfig']
+          } else {
+            config.thinkingConfig = {
+              thinkingBudget: 0,
+              includeThoughts: false,
+            }
+          }
+        } else if (isGemini3) {
+          config.thinkingConfig = {
+            thinkingLevel: streamLevel === 'extra-high' ? 'high' : streamLevel,
+            includeThoughts: true,
+          } as GeminiRequestConfig['thinkingConfig']
+        } else {
+          config.thinkingConfig = {
+            thinkingBudget: REASONING_META[streamLevel].budget,
+            includeThoughts: true,
+          }
         }
       }
       if (options?.signal) {

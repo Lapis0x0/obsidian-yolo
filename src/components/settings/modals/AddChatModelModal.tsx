@@ -7,6 +7,11 @@ import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel, chatModelSchema } from '../../../types/chat-model.types'
+import {
+  REASONING_LEVELS,
+  type ReasoningLevel,
+  isReasoningLevelString,
+} from '../../../types/reasoning'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import { LLMProvider } from '../../../types/provider.types'
 import {
@@ -46,7 +51,6 @@ const REASONING_TYPES = [
   'openai',
   'gemini',
   'anthropic',
-  'generic',
 ] as const
 type ReasoningType = (typeof REASONING_TYPES)[number]
 
@@ -159,19 +163,32 @@ const isReasoningType = (value: string): value is ReasoningType =>
 const isToolType = (value: string): value is ToolType =>
   TOOL_TYPES.includes(value as ToolType)
 
-const isReasoningConfigurable = (
+const isReasoningTypeCompatible = (
   provider: LLMProvider | undefined,
-): provider is LLMProvider =>
-  provider?.apiType === 'openai-compatible' ||
-  provider?.apiType === 'openai-responses'
-
-const isThinkingConfigurable = (
-  provider: LLMProvider | undefined,
-): provider is LLMProvider =>
-  provider?.apiType === 'anthropic' ||
-  provider?.apiType === 'gemini' ||
-  provider?.apiType === 'openai-compatible' ||
-  provider?.apiType === 'amazon-bedrock'
+  reasoningType: ReasoningType,
+): boolean => {
+  if (!provider) return false
+  switch (reasoningType) {
+    case 'none':
+      return true
+    case 'openai':
+      return (
+        provider.apiType === 'openai-responses' ||
+        provider.apiType === 'openai-compatible'
+      )
+    case 'gemini':
+      return (
+        provider.apiType === 'gemini' ||
+        provider.apiType === 'openai-compatible'
+      )
+    case 'anthropic':
+      return (
+        provider.apiType === 'anthropic' ||
+        provider.apiType === 'openai-compatible' ||
+        provider.apiType === 'amazon-bedrock'
+      )
+  }
+}
 
 const supportsGeminiTools = (provider: LLMProvider | undefined): boolean =>
   provider?.apiType === 'gemini' || provider?.apiType === 'openai-compatible'
@@ -221,8 +238,9 @@ function AddChatModelModalComponent({
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState<boolean>(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // Reasoning type selection: none | openai | gemini | anthropic | generic
   const [reasoningType, setReasoningType] = useState<ReasoningType>('none')
+  const [defaultReasoningLevel, setDefaultReasoningLevel] =
+    useState<ReasoningLevel>('medium')
   // When user manually changes reasoning type, stop auto-detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
   const [toolType, setToolType] = useState<ToolType>('none')
@@ -664,18 +682,14 @@ function AddChatModelModalComponent({
     modelDataWithPrefix = {
       ...modelDataWithPrefix,
       reasoningType: reasoningType === 'none' ? 'none' : reasoningType,
+      ...(reasoningType !== 'none'
+        ? { defaultReasoningLevel }
+        : {}),
     }
 
     if (
-      reasoningType === 'openai' &&
-      !isReasoningConfigurable(selectedProvider)
-    ) {
-      new Notice(t('common.error'))
-      return
-    }
-    if (
-      (reasoningType === 'gemini' || reasoningType === 'anthropic') &&
-      !isThinkingConfigurable(selectedProvider)
+      reasoningType !== 'none' &&
+      !isReasoningTypeCompatible(selectedProvider, reasoningType)
     ) {
       new Notice(t('common.error'))
       return
@@ -738,8 +752,7 @@ function AddChatModelModalComponent({
               name: value, // Always update display name with the selected model
             }))
             if (autoDetectReasoning) {
-              const detected = detectReasoningTypeFromModelId(value)
-              setReasoningType(detected)
+              setReasoningType(detectReasoningTypeFromModelId(value))
             }
           }}
           disabled={loadingModels || availableModels.length === 0}
@@ -760,8 +773,7 @@ function AddChatModelModalComponent({
           onChange={(value: string) => {
             setFormData((prev) => ({ ...prev, model: value }))
             if (autoDetectReasoning) {
-              const detected = detectReasoningTypeFromModelId(value)
-              setReasoningType(detected)
+              setReasoningType(detectReasoningTypeFromModelId(value))
             }
           }}
         />
@@ -787,7 +799,6 @@ function AddChatModelModalComponent({
             openai: t('settings.models.reasoningTypeOpenAI'),
             gemini: t('settings.models.reasoningTypeGemini'),
             anthropic: t('settings.models.reasoningTypeAnthropic'),
-            generic: t('settings.models.reasoningTypeGeneric'),
           }}
           onChange={(value: string) => {
             setReasoningType(
@@ -798,7 +809,45 @@ function AddChatModelModalComponent({
         />
       </ObsidianSetting>
 
-      {/* Reasoning strength is controlled in the chat sidebar */}
+      {reasoningType !== 'none' && (
+        <ObsidianSetting
+          name={t(
+            'settings.models.defaultReasoningLevel',
+            'Default reasoning level',
+          )}
+          desc={t(
+            'settings.models.defaultReasoningLevelDesc',
+            'Default strength for new messages; you can override per send in chat.',
+          )}
+        >
+          <ObsidianDropdown
+            value={defaultReasoningLevel}
+            options={Object.fromEntries(
+              REASONING_LEVELS.map((level) => {
+                const labelKey =
+                  level === 'extra-high'
+                    ? 'reasoning.extraHigh'
+                    : `reasoning.${level}`
+                const fallbacks: Record<ReasoningLevel, string> = {
+                  off: 'Off',
+                  auto: 'Auto',
+                  low: 'Low',
+                  medium: 'Medium',
+                  high: 'High',
+                  'extra-high': 'Extra high',
+                }
+                return [level, t(labelKey, fallbacks[level])]
+              }),
+            )}
+            onChange={(v: string) => {
+              if (isReasoningLevelString(v)) {
+                setDefaultReasoningLevel(v)
+              }
+            }}
+          />
+        </ObsidianSetting>
+      )}
+
       {/* Tool type for Gemini provider */}
       {(supportsGeminiTools(selectedProvider) ||
         supportsGptTools(selectedProvider)) && (

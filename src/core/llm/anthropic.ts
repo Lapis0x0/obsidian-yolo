@@ -13,6 +13,7 @@ import {
 } from '@anthropic-ai/sdk/resources/messages'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -70,6 +71,21 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   }
 
   private static readonly DEFAULT_MAX_TOKENS = 8192
+
+  /**
+   * max_tokens must cover thinking tokens too. For bounded levels (low/medium/high/extra-high)
+   * add the budget from REASONING_META on top of DEFAULT_MAX_TOKENS so visible output isn't truncated.
+   */
+  private static resolveMaxTokens(
+    requested: number | undefined,
+    level: ReturnType<typeof resolveRequestReasoningLevel>,
+  ): number {
+    if (typeof requested === 'number') return requested
+    if (level && level !== 'off' && level !== 'auto') {
+      return AnthropicProvider.DEFAULT_MAX_TOKENS + REASONING_META[level].budget
+    }
+    return AnthropicProvider.DEFAULT_MAX_TOKENS
+  }
 
   constructor(
     provider: LLMProvider,
@@ -131,33 +147,46 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     )
 
     try {
-      const payloadBase: MessageCreateParamsNonStreaming = {
+      const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      const payloadBase: MessageCreateParamsNonStreaming &
+        Record<string, unknown> = {
         model: request.model,
         messages: request.messages
           .map((m) => this.parseRequestMessage(m))
           .filter((m): m is MessageParam => m !== null),
         system: systemMessage,
-        thinking:
-          model.thinking?.enabled &&
-          typeof model.thinking.budget_tokens === 'number'
-            ? {
-                type: 'enabled',
-                budget_tokens: model.thinking.budget_tokens,
-              }
-            : undefined,
         tools: request.tools?.map((t) => AnthropicProvider.parseRequestTool(t)),
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
-        max_tokens:
-          request.max_tokens ??
-          (model.thinking?.enabled &&
-          typeof model.thinking.budget_tokens === 'number'
-            ? model.thinking.budget_tokens +
-              AnthropicProvider.DEFAULT_MAX_TOKENS
-            : AnthropicProvider.DEFAULT_MAX_TOKENS),
+        max_tokens: AnthropicProvider.resolveMaxTokens(
+          request.max_tokens,
+          level,
+        ),
         temperature: request.temperature,
         top_p: request.top_p,
+      }
+
+      if (level !== undefined) {
+        switch (level) {
+          case 'off':
+            payloadBase.thinking = { type: 'disabled' }
+            break
+          case 'auto':
+            payloadBase.thinking = {
+              type: 'adaptive',
+              display: 'summarized',
+            } as unknown as MessageCreateParamsNonStreaming['thinking']
+            break
+          default:
+            payloadBase.thinking = {
+              type: 'adaptive',
+              display: 'summarized',
+            } as unknown as MessageCreateParamsNonStreaming['thinking']
+            payloadBase.output_config = {
+              effort: REASONING_META[level].effort,
+            }
+        }
       }
 
       const payload = this.applyCustomModelParameters<
@@ -241,34 +270,47 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
     )
 
     try {
-      const payloadBase: MessageCreateParamsStreaming = {
+      const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      const payloadBase: MessageCreateParamsStreaming &
+        Record<string, unknown> = {
         model: request.model,
         messages: request.messages
           .map((m) => this.parseRequestMessage(m))
           .filter((m): m is MessageParam => m !== null),
         system: systemMessage,
-        thinking:
-          model.thinking?.enabled &&
-          typeof model.thinking.budget_tokens === 'number'
-            ? {
-                type: 'enabled',
-                budget_tokens: model.thinking.budget_tokens,
-              }
-            : undefined,
         tools: request.tools?.map((t) => AnthropicProvider.parseRequestTool(t)),
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
-        max_tokens:
-          request.max_tokens ??
-          (model.thinking?.enabled &&
-          typeof model.thinking.budget_tokens === 'number'
-            ? model.thinking.budget_tokens +
-              AnthropicProvider.DEFAULT_MAX_TOKENS
-            : AnthropicProvider.DEFAULT_MAX_TOKENS),
+        max_tokens: AnthropicProvider.resolveMaxTokens(
+          request.max_tokens,
+          level,
+        ),
         temperature: request.temperature,
         top_p: request.top_p,
         stream: true,
+      }
+
+      if (level !== undefined) {
+        switch (level) {
+          case 'off':
+            payloadBase.thinking = { type: 'disabled' }
+            break
+          case 'auto':
+            payloadBase.thinking = {
+              type: 'adaptive',
+              display: 'summarized',
+            } as unknown as MessageCreateParamsStreaming['thinking']
+            break
+          default:
+            payloadBase.thinking = {
+              type: 'adaptive',
+              display: 'summarized',
+            } as unknown as MessageCreateParamsStreaming['thinking']
+            payloadBase.output_config = {
+              effort: REASONING_META[level].effort,
+            }
+        }
       }
 
       const payload = this.applyCustomModelParameters<

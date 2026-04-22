@@ -4,6 +4,11 @@ import React, { useEffect, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
+import {
+  REASONING_LEVELS,
+  type ReasoningLevel,
+  isReasoningLevelString,
+} from '../../../types/reasoning'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import {
   normalizeCustomParameterType,
@@ -30,20 +35,6 @@ type EditChatModelModalComponentProps = {
 
 type CustomParameterFormEntry = CustomParameter & {
   uid: string
-}
-
-type EditableChatModel = ChatModel & {
-  reasoning?: {
-    enabled: boolean
-    reasoning_effort?: string
-  }
-  thinking?: {
-    enabled: boolean
-    thinking_budget?: number // Gemini, OpenRouter
-    budget_tokens?: number // Anthropic
-  }
-  toolType?: 'none' | 'gemini' | 'gpt'
-  customParameters?: CustomParameter[]
 }
 
 const TOOL_TYPES = ['none', 'gemini', 'gpt'] as const
@@ -100,19 +91,18 @@ function EditChatModelModalComponent({
   model,
 }: EditChatModelModalComponentProps & { onClose: () => void }) {
   const { t } = useLanguage()
-  const editableModel: EditableChatModel = model
+  const editableModel = model
   const selectedProvider = plugin.settings.providers.find(
     (provider) => provider.id === model.providerId,
   )
 
   const normalizeReasoningType = (
     value: string,
-  ): 'none' | 'openai' | 'gemini' | 'anthropic' | 'generic' => {
+  ): 'none' | 'openai' | 'gemini' | 'anthropic' => {
     if (
       value === 'openai' ||
       value === 'gemini' ||
-      value === 'anthropic' ||
-      value === 'generic'
+      value === 'anthropic'
     ) {
       return value
     }
@@ -148,26 +138,23 @@ function EditChatModelModalComponent({
     | 'none'
     | 'openai'
     | 'gemini'
-    | 'anthropic'
-    | 'generic' = (() => {
+    | 'anthropic' = (() => {
     if (editableModel.reasoningType && editableModel.reasoningType !== 'none') {
       return editableModel.reasoningType
     }
-    if (editableModel.reasoning?.enabled) return 'openai'
-    if (editableModel.thinking?.enabled) {
-      if (typeof editableModel.thinking.budget_tokens === 'number')
-        return 'anthropic'
-      if (typeof editableModel.thinking.thinking_budget === 'number')
-        return 'gemini'
-      return 'generic'
-    }
-    return 'none'
+    return normalizeReasoningType(
+      detectReasoningTypeFromModelId(editableModel.model),
+    )
   })()
 
   // Reasoning UI states
   const [reasoningType, setReasoningType] = useState<
-    'none' | 'openai' | 'gemini' | 'anthropic' | 'generic'
+    'none' | 'openai' | 'gemini' | 'anthropic'
   >(() => initialReasoningType)
+  const [defaultReasoningLevel, setDefaultReasoningLevel] =
+    useState<ReasoningLevel>(
+      editableModel.defaultReasoningLevel ?? 'medium',
+    )
   // If user changes dropdown manually, disable auto detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
 
@@ -345,7 +332,7 @@ function EditChatModelModalComponent({
         const newInternalId = ensureUniqueModelId(existingIds, baseInternalId)
 
         // Compose reasoning/thinking fields based on selection and provider
-        const updatedModel: EditableChatModel = {
+        const updatedModel: ChatModel = {
           ...chatModels[modelIndex],
           id: newInternalId,
           model: formData.model,
@@ -359,26 +346,12 @@ function EditChatModelModalComponent({
           maxOutputTokens,
         }
 
-        // Apply according to selected reasoningType only (not limited by providerType)
-        if (reasoningType === 'openai') {
-          updatedModel.reasoningType = 'openai'
-          delete updatedModel.reasoning
-          delete updatedModel.thinking
-        } else if (
-          reasoningType === 'gemini' ||
-          reasoningType === 'anthropic'
-        ) {
-          updatedModel.reasoningType = reasoningType
-          delete updatedModel.reasoning
-          delete updatedModel.thinking
-        } else if (reasoningType === 'generic') {
-          updatedModel.reasoningType = 'generic'
-          delete updatedModel.reasoning
-          delete updatedModel.thinking
-        } else {
-          delete updatedModel.reasoning
-          delete updatedModel.thinking
+        if (reasoningType === 'none') {
           updatedModel.reasoningType = 'none'
+          delete updatedModel.defaultReasoningLevel
+        } else {
+          updatedModel.reasoningType = reasoningType
+          updatedModel.defaultReasoningLevel = defaultReasoningLevel
         }
 
         // Apply tool type
@@ -438,7 +411,7 @@ function EditChatModelModalComponent({
             setFormData((prev) => ({ ...prev, model: value }))
             if (autoDetectReasoning) {
               const detected = detectReasoningTypeFromModelId(value)
-              setReasoningType(detected)
+              setReasoningType(normalizeReasoningType(detected))
             }
           }}
         />
@@ -464,7 +437,6 @@ function EditChatModelModalComponent({
             openai: t('settings.models.reasoningTypeOpenAI'),
             gemini: t('settings.models.reasoningTypeGemini'),
             anthropic: t('settings.models.reasoningTypeAnthropic'),
-            generic: t('settings.models.reasoningTypeGeneric'),
           }}
           onChange={(v: string) => {
             setReasoningType(normalizeReasoningType(v))
@@ -473,7 +445,45 @@ function EditChatModelModalComponent({
         />
       </ObsidianSetting>
 
-      {/* Reasoning strength is controlled in the chat sidebar */}
+      {reasoningType !== 'none' && (
+        <ObsidianSetting
+          name={t(
+            'settings.models.defaultReasoningLevel',
+            'Default reasoning level',
+          )}
+          desc={t(
+            'settings.models.defaultReasoningLevelDesc',
+            'Default strength for new messages; you can override per send in chat.',
+          )}
+        >
+          <ObsidianDropdown
+            value={defaultReasoningLevel}
+            options={Object.fromEntries(
+              REASONING_LEVELS.map((level) => {
+                const labelKey =
+                  level === 'extra-high'
+                    ? 'reasoning.extraHigh'
+                    : `reasoning.${level}`
+                const fallbacks: Record<ReasoningLevel, string> = {
+                  off: 'Off',
+                  auto: 'Auto',
+                  low: 'Low',
+                  medium: 'Medium',
+                  high: 'High',
+                  'extra-high': 'Extra high',
+                }
+                return [level, t(labelKey, fallbacks[level])]
+              }),
+            )}
+            onChange={(v: string) => {
+              if (isReasoningLevelString(v)) {
+                setDefaultReasoningLevel(v)
+              }
+            }}
+          />
+        </ObsidianSetting>
+      )}
+
       {(supportsGeminiTools || supportsGptTools) && (
         <ObsidianSetting
           name={t('settings.models.toolType')}

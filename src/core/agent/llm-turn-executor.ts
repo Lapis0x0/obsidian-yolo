@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 
 import {
   ReasoningLevel,
-  reasoningLevelToConfig,
-} from '../../components/chat-view/chat-input/ReasoningSelect'
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
@@ -121,38 +121,42 @@ export class AgentLlmTurnExecutor {
 
     this.logModelRequestContext({ requestMessages, tools })
     const responseStart = Date.now()
-    const effectiveModel = this.getEffectiveModel()
+    const model = this.input.model
     const assistantMessage: ChatAssistantMessage = {
       role: 'assistant',
       id: uuidv4(),
       content: '',
       metadata: {
-        model: effectiveModel,
+        model,
         generationState: 'streaming',
         branchConversationId: this.input.conversationId,
         sourceUserMessageId: this.input.sourceUserMessageId,
         branchId: this.input.branchId,
-        branchModelId: effectiveModel.id,
+        branchModelId: model.id,
         branchLabel:
-          this.input.branchLabel ??
-          effectiveModel.name ??
-          effectiveModel.model ??
-          effectiveModel.id,
+          this.input.branchLabel ?? model.name ?? model.model ?? model.id,
       },
     }
     this.input.onAssistantMessage(assistantMessage)
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     try {
+      const resolvedReasoning = resolveRequestReasoningLevel(
+        this.input.model,
+        this.input.reasoningLevel,
+      )
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
-        model: effectiveModel,
+        model: this.input.model,
         request: {
-          model: effectiveModel.model,
+          model: this.input.model.model,
           messages: requestMessages,
           temperature: this.input.requestParams?.temperature,
           top_p: this.input.requestParams?.top_p,
           max_tokens: this.input.requestParams?.max_tokens,
+          ...(resolvedReasoning !== undefined
+            ? { reasoningLevel: resolvedReasoning }
+            : {}),
         },
         tools,
         signal: this.input.abortSignal,
@@ -294,31 +298,20 @@ export class AgentLlmTurnExecutor {
       messages: requestMessages,
       tools,
     })
-    const effectiveModel = this.getEffectiveModel()
+    const model = this.input.model
 
     console.debug(
       `[YOLO][Agent Debug] request context ${formatTokenCount(estimatedTokens)} tokens`,
     )
     console.debug('[YOLO][Agent Debug] Summary', {
       conversationId: this.input.conversationId,
-      modelId: effectiveModel.id,
-      providerId: effectiveModel.providerId,
+      modelId: model.id,
+      providerId: model.providerId,
       messageCount: requestMessages.length,
       toolCount: tools?.length ?? 0,
       estimatedTokens,
     })
     console.debug('[YOLO][Agent Debug] Request messages', requestMessages)
     console.debug('[YOLO][Agent Debug] Tools', tools ?? [])
-  }
-
-  private getEffectiveModel(): ChatModel {
-    if (!this.input.reasoningLevel) {
-      return this.input.model
-    }
-
-    return {
-      ...this.input.model,
-      ...reasoningLevelToConfig(this.input.reasoningLevel, this.input.model),
-    } as ChatModel
   }
 }

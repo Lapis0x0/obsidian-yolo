@@ -6,6 +6,7 @@ import type {
 } from 'openai/resources/responses/responses'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -93,13 +94,15 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
+    const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
     let formattedRequest = request
-    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
+    if (level !== undefined && level !== 'auto' && !formattedRequest.reasoning_effort) {
       formattedRequest = {
         ...formattedRequest,
-        reasoning_effort: model.reasoning.reasoning_effort as
-          | LLMRequestNonStreaming['reasoning_effort']
-          | undefined,
+        reasoning_effort:
+          level === 'off'
+            ? 'low'
+            : (REASONING_META[level].effort as LLMRequestNonStreaming['reasoning_effort']),
       }
     }
 
@@ -142,13 +145,15 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
+    const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
     let formattedRequest = request
-    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
+    if (level !== undefined && level !== 'auto' && !formattedRequest.reasoning_effort) {
       formattedRequest = {
         ...formattedRequest,
-        reasoning_effort: model.reasoning.reasoning_effort as
-          | LLMRequestStreaming['reasoning_effort']
-          | undefined,
+        reasoning_effort:
+          level === 'off'
+            ? 'low'
+            : (REASONING_META[level].effort as LLMRequestStreaming['reasoning_effort']),
       }
     }
 

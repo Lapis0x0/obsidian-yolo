@@ -16,6 +16,7 @@ import {
 } from '@aws-sdk/client-bedrock-runtime'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   ContentPart,
   LLMOptions,
@@ -87,11 +88,14 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
     const systemBlocks = BedrockProvider.extractSystemBlocks(request.messages)
     const messages = BedrockProvider.convertMessages(request.messages)
+    const thinkingBudget = BedrockProvider.resolveThinkingBudgetTokens(
+      model,
+      request,
+    )
     const maxTokens =
       request.max_tokens ??
-      (model.thinking?.enabled &&
-      typeof model.thinking.budget_tokens === 'number'
-        ? model.thinking.budget_tokens + BedrockProvider.DEFAULT_MAX_TOKENS
+      (thinkingBudget !== null
+        ? thinkingBudget + BedrockProvider.DEFAULT_MAX_TOKENS
         : BedrockProvider.DEFAULT_MAX_TOKENS)
 
     const toolConfig = BedrockProvider.buildToolConfig(
@@ -100,7 +104,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     )
 
     const additionalModelRequestFields =
-      BedrockProvider.buildAdditionalModelRequestFields(model)
+      BedrockProvider.buildAdditionalModelRequestFields(model, request)
 
     try {
       const response = await runWithModelRequestPolicy({
@@ -193,11 +197,14 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
 
     const systemBlocks = BedrockProvider.extractSystemBlocks(request.messages)
     const messages = BedrockProvider.convertMessages(request.messages)
+    const thinkingBudget = BedrockProvider.resolveThinkingBudgetTokens(
+      model,
+      request,
+    )
     const maxTokens =
       request.max_tokens ??
-      (model.thinking?.enabled &&
-      typeof model.thinking.budget_tokens === 'number'
-        ? model.thinking.budget_tokens + BedrockProvider.DEFAULT_MAX_TOKENS
+      (thinkingBudget !== null
+        ? thinkingBudget + BedrockProvider.DEFAULT_MAX_TOKENS
         : BedrockProvider.DEFAULT_MAX_TOKENS)
 
     const toolConfig = BedrockProvider.buildToolConfig(
@@ -206,7 +213,7 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     )
 
     const additionalModelRequestFields =
-      BedrockProvider.buildAdditionalModelRequestFields(model)
+      BedrockProvider.buildAdditionalModelRequestFields(model, request)
 
     try {
       const response = await runWithModelRequestPolicy({
@@ -583,22 +590,38 @@ export class BedrockProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
+  private static resolveThinkingBudgetTokens(
+    model: ChatModel,
+    request: LLMRequestNonStreaming | LLMRequestStreaming,
+  ): number | null {
+    const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+    if (
+      model.reasoningType !== 'anthropic' ||
+      level === undefined ||
+      level === 'off'
+    ) {
+      return null
+    }
+    if (level === 'auto') {
+      return REASONING_META.medium.budget
+    }
+    return REASONING_META[level].budget
+  }
+
   private static buildAdditionalModelRequestFields(
     model: ChatModel,
+    request: LLMRequestNonStreaming | LLMRequestStreaming,
   ): BedrockDocumentType | undefined {
-    const fields: { [prop: string]: BedrockDocumentType } = {}
-
-    if (
-      model.thinking?.enabled &&
-      typeof model.thinking.budget_tokens === 'number'
-    ) {
-      fields.thinking = {
-        type: 'enabled',
-        budget_tokens: model.thinking.budget_tokens,
-      }
+    const budget = BedrockProvider.resolveThinkingBudgetTokens(model, request)
+    if (budget === null) {
+      return undefined
     }
-
-    return Object.keys(fields).length > 0 ? fields : undefined
+    return {
+      thinking: {
+        type: 'enabled',
+        budget_tokens: budget,
+      },
+    }
   }
 
   private static convertUsage(usage?: TokenUsage): ResponseUsage {

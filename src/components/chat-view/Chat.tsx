@@ -89,8 +89,12 @@ import type { ChatMode } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import MentionableBadge from './chat-input/MentionableBadge'
-import { getDefaultReasoningLevel } from './chat-input/ReasoningSelect'
-import type { ReasoningLevel } from './chat-input/ReasoningSelect'
+import {
+  REASONING_LEVELS,
+  ReasoningLevel,
+  getDefaultReasoningLevel,
+  normalizeStoredReasoningLevel,
+} from '../../types/reasoning'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { getChatSurfacePreset } from './chat-surface-presets'
 import { ChatConversationPane } from './ChatConversationPane'
@@ -431,15 +435,7 @@ const isSyncSelectionMentionable = (mentionable: MentionableBlock): boolean => {
   return isSyncSelectionSource(mentionable.source)
 }
 
-const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [
-  'off',
-  'on',
-  'auto',
-  'low',
-  'medium',
-  'high',
-  'extra-high',
-]
+const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [...REASONING_LEVELS]
 
 export type ChatRef = {
   openNewChat: (selectedBlock?: MentionableBlockData) => void
@@ -519,9 +515,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
-      if (!value) return null
-      return REASONING_LEVEL_CANDIDATES.includes(value as ReasoningLevel)
-        ? (value as ReasoningLevel)
+      const normalized = normalizeStoredReasoningLevel(value)
+      if (!normalized) return null
+      return REASONING_LEVEL_CANDIDATES.includes(normalized)
+        ? normalized
         : null
     },
     [],

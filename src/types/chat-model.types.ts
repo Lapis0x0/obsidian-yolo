@@ -1,21 +1,7 @@
 import { z } from 'zod'
 
 import { customParameterSchema } from './custom-parameter.types'
-export const reasoningConfigSchema = z
-  .object({
-    enabled: z.boolean(),
-    reasoning_effort: z.string().optional(),
-  })
-  .optional()
-
-export const thinkingConfigSchema = z
-  .object({
-    enabled: z.boolean(),
-    budget_tokens: z.number().optional(),
-    // Google Gemini thinking tokens budget. 0=off (Flash/Flash-Lite), -1=dynamic.
-    thinking_budget: z.number().optional(),
-  })
-  .optional()
+import { REASONING_LEVELS } from './reasoning'
 
 export const gptToolsConfigSchema = z
   .object({
@@ -47,15 +33,14 @@ export const chatModelSchema = z.object({
   name: z.string().optional(),
   enable: z.boolean().default(true).optional(),
   reasoningType: z
-    .enum(['none', 'openai', 'gemini', 'anthropic', 'generic'])
+    .enum(['none', 'openai', 'gemini', 'anthropic'])
     .optional(),
+  defaultReasoningLevel: z.enum(REASONING_LEVELS).optional(),
   temperature: z.number().min(0).max(2).optional(),
   topP: z.number().min(0).max(1).optional(),
   maxContextTokens: z.number().int().min(1).optional(),
   maxOutputTokens: z.number().int().min(1).optional(),
   customParameters: z.array(customParameterSchema).optional(),
-  reasoning: reasoningConfigSchema,
-  thinking: thinkingConfigSchema,
   toolType: z.enum(['none', 'gemini', 'gpt']).default('none').optional(),
   gptTools: gptToolsConfigSchema,
   web_search_options: z

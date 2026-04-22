@@ -5,7 +5,7 @@ import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
 
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
-import { ReasoningLevel } from './chat-input/ReasoningSelect'
+import { ReasoningLevel } from '../../types/reasoning'
 
 export type EditableUserMessageItemProps = {
   message: ChatUserMessage

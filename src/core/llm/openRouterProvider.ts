@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -204,6 +205,11 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     const formattedRequest = { ...request } as RequestType &
       Record<string, unknown>
 
+    const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+    if (level === undefined) {
+      return formattedRequest as RequestType
+    }
+
     const resolveReasoningType = () => {
       if (model.reasoningType && model.reasoningType !== 'none') {
         return model.reasoningType
@@ -213,62 +219,34 @@ export class OpenRouterProvider extends BaseLLMProvider<LLMProvider> {
     }
 
     const reasoningType = resolveReasoningType()
-    const thinkingModel = model as ChatModel & {
-      thinking?: {
-        enabled?: boolean
-        thinking_budget?: number
-        budget_tokens?: number
+    if (!reasoningType) {
+      return formattedRequest as RequestType
+    }
+
+    if (reasoningType === 'openai') {
+      if (level === 'auto') {
+        return formattedRequest as RequestType
       }
-    }
-    const reasoningModel = model as ChatModel & {
-      reasoning?: { enabled?: boolean; reasoning_effort?: string }
-    }
-
-    const budget =
-      thinkingModel.thinking?.thinking_budget ??
-      thinkingModel.thinking?.budget_tokens
-
-    if (reasoningType === 'openai' && reasoningModel.reasoning) {
-      if (reasoningModel.reasoning.enabled === false) {
+      if (level === 'off') {
         formattedRequest.reasoning = { effort: 'none', exclude: true }
       } else {
-        const effort = reasoningModel.reasoning.reasoning_effort as
-          | 'low'
-          | 'medium'
-          | 'high'
-          | undefined
-        if (effort) {
-          formattedRequest.reasoning = { effort }
-        } else if (reasoningModel.reasoning.enabled) {
-          formattedRequest.reasoning = { enabled: true }
-        }
+        formattedRequest.reasoning = { effort: REASONING_META[level].effort }
       }
+      return formattedRequest as RequestType
     }
 
-    if (reasoningType !== 'openai' && thinkingModel.thinking) {
-      if (thinkingModel.thinking.enabled === false) {
-        formattedRequest.reasoning = { max_tokens: 0, exclude: true }
-      } else if (budget === -1) {
-        formattedRequest.reasoning = { enabled: true }
-      } else if (typeof budget === 'number') {
-        if (budget <= 0) {
-          formattedRequest.reasoning = { max_tokens: 0, exclude: true }
-        } else {
-          formattedRequest.reasoning = { max_tokens: budget }
-        }
-      }
+    if (level === 'off') {
+      formattedRequest.reasoning = { max_tokens: 0, exclude: true }
+      return formattedRequest as RequestType
+    }
+    if (level === 'auto') {
+      formattedRequest.reasoning = { enabled: true }
+      return formattedRequest as RequestType
     }
 
-    if (!reasoningType && reasoningModel.reasoning) {
-      if (reasoningModel.reasoning.enabled === false) {
-        formattedRequest.reasoning = { effort: 'none', exclude: true }
-      } else if (reasoningModel.reasoning.reasoning_effort) {
-        formattedRequest.reasoning = {
-          effort: reasoningModel.reasoning.reasoning_effort,
-        }
-      }
+    formattedRequest.reasoning = {
+      max_tokens: REASONING_META[level].budget,
     }
-
     return formattedRequest as RequestType
   }
 }

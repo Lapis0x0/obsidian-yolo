@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
-import type { ReasoningEffort } from 'openai/resources'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -206,18 +206,10 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
 
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
-      model,
+      reasoningType: model.reasoningType,
+      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
       baseUrl: DEFAULT_QWEN_BASE_URL,
     })
-
-    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
-      const effort = model.reasoning.reasoning_effort as
-        | ReasoningEffort
-        | undefined
-      if (effort) {
-        formattedRequest.reasoning_effort = effort
-      }
-    }
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
     return runWithRequestTransport({
@@ -265,18 +257,10 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
 
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
-      model,
+      reasoningType: model.reasoningType,
+      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
       baseUrl: DEFAULT_QWEN_BASE_URL,
     })
-
-    if (model.reasoning?.enabled && !formattedRequest.reasoning_effort) {
-      const effort = model.reasoning.reasoning_effort as
-        | ReasoningEffort
-        | undefined
-      if (effort) {
-        formattedRequest.reasoning_effort = effort
-      }
-    }
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
     return runWithRequestTransportForStream({

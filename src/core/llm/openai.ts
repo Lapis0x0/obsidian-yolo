@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { ReasoningEffort } from 'openai/resources/shared'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -51,11 +52,17 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
     try {
+      const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      let reasoning_effort: ReasoningEffort | undefined
+      if (level !== undefined && level !== 'auto') {
+        reasoning_effort =
+          level === 'off'
+            ? 'low'
+            : (REASONING_META[level].effort as ReasoningEffort)
+      }
       let formattedRequest = {
         ...request,
-        reasoning_effort: model.reasoning?.enabled
-          ? (model.reasoning.reasoning_effort as ReasoningEffort)
-          : undefined,
+        reasoning_effort,
       }
 
       formattedRequest = this.applyCustomModelParameters(
@@ -115,11 +122,17 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
     try {
+      const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      let reasoning_effort: ReasoningEffort | undefined
+      if (level !== undefined && level !== 'auto') {
+        reasoning_effort =
+          level === 'off'
+            ? 'low'
+            : (REASONING_META[level].effort as ReasoningEffort)
+      }
       let formattedRequest = {
         ...request,
-        reasoning_effort: model.reasoning?.enabled
-          ? (model.reasoning.reasoning_effort as ReasoningEffort)
-          : undefined,
+        reasoning_effort,
       }
 
       formattedRequest = this.applyCustomModelParameters(

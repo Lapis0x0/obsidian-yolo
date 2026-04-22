@@ -6,7 +6,7 @@ import { UserMessageDisplaySnapshot } from '../../types/chat-timeline'
 import { Mentionable } from '../../types/mentionable'
 
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
-import { ReasoningLevel } from './chat-input/ReasoningSelect'
+import { ReasoningLevel } from '../../types/reasoning'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import EditableUserMessageItem from './EditableUserMessageItem'
 import UserMessageCard from './UserMessageCard'

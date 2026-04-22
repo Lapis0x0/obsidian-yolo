@@ -12,6 +12,7 @@ import {
   mcpServerToolOptionsSchema,
 } from '../../types/mcp.types'
 import { llmProviderSchema } from '../../types/provider.types'
+import { REASONING_LEVELS } from '../../types/reasoning'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
@@ -338,10 +339,7 @@ export const smartComposerSettingsSchema = z.object({
       agentModeWarningConfirmed: z.boolean().optional(),
       // Persist preferred reasoning level per model id in Chat input
       reasoningLevelByModelId: z
-        .record(
-          z.string(),
-          z.enum(['off', 'on', 'auto', 'low', 'medium', 'high', 'extra-high']),
-        )
+        .record(z.string(), z.enum(REASONING_LEVELS))
         .optional(),
       // Collapse older non-pinned conversations into an archive group
       historyArchiveEnabled: z.boolean().optional(),

@@ -42,7 +42,7 @@ import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
-import { ReasoningLevel } from './chat-input/ReasoningSelect'
+import { ReasoningLevel } from '../../types/reasoning'
 import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {

@@ -351,6 +351,7 @@ export class ChatGPTOAuthResponsesAdapter {
         key === 'tool_choice' ||
         key === 'max_tokens' ||
         key === 'reasoning_effort' ||
+        key === 'reasoningLevel' ||
         key === 'stream'
       ) {
         continue

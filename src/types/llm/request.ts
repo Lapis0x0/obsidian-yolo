@@ -3,6 +3,7 @@
 
 import { ChatCompletionCreateParams, ReasoningEffort } from 'openai/resources'
 
+import { ReasoningLevel } from '../reasoning'
 import { ToolCallRequest } from '../tool-call.types'
 
 import { ProviderMetadata } from './response'
@@ -10,6 +11,8 @@ import { ProviderMetadata } from './response'
 export type LLMRequestBase = {
   messages: RequestMessage[]
   model: string
+
+  reasoningLevel?: ReasoningLevel
 
   // Tool calling
   tools?: RequestTool[]
