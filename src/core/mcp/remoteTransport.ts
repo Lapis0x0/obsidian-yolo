@@ -5,6 +5,7 @@ import { getProxyForUrl } from 'proxy-from-env'
 
 import type { McpServerParameters } from '../../types/mcp.types'
 import { shouldBypassProxy } from '../../utils/net/proxyBypass'
+import { resolveSystemProxy } from '../../utils/net/systemProxyResolver'
 import { createDesktopNodeFetch } from '../llm/sdkFetch'
 
 type McpRemoteTransportParameters = Extract<
@@ -54,6 +55,23 @@ const CONNECTION_ERROR_CODES = new Set([
   'EHOSTUNREACH',
 ])
 
+const PROXY_ENV_KEYS = [
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+  'no_proxy',
+] as const
+
+function envHasProxy(env: NodeJS.ProcessEnv): boolean {
+  return PROXY_ENV_KEYS.some(
+    (key) => typeof env[key] === 'string' && env[key]?.trim(),
+  )
+}
+
 function withProcessEnv<T>(env: NodeJS.ProcessEnv, cb: () => T): T {
   const previousEnv = process.env
   process.env = env
@@ -65,17 +83,21 @@ function withProcessEnv<T>(env: NodeJS.ProcessEnv, cb: () => T): T {
 }
 
 function createProxyAgent(env: Record<string, string>): ProxyAgent {
+  // `env` is the merged shell env from shellEnvSync() — it may legitimately
+  // carry HTTP(S)_PROXY values that are not in process.env, so keep the
+  // env-swap for proxy-from-env to observe them.
   const resolvedEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...env,
   }
 
   return new ProxyAgent({
-    getProxyForUrl: (url) => {
-      if (shouldBypassProxy(url)) {
-        return ''
+    getProxyForUrl: async (url) => {
+      if (shouldBypassProxy(url)) return ''
+      if (envHasProxy(resolvedEnv)) {
+        return withProcessEnv(resolvedEnv, () => getProxyForUrl(url))
       }
-      return withProcessEnv(resolvedEnv, () => getProxyForUrl(url))
+      return resolveSystemProxy(url)
     },
   })
 }
