@@ -1953,11 +1953,11 @@
 .smtcmp-chat-user-input-placeholder {
   position: absolute;
   left: var(--size-2-1);
+  right: var(--size-2-1);
   top: calc(var(--size-2-1) + 1.4px);
   color: color-mix(in srgb, var(--text-muted) 78%, transparent);
   pointer-events: none;
   font-size: var(--font-ui-small);
-  white-space: nowrap;
 
   .smtcmp-placeholder-trigger {
     pointer-events: auto;
