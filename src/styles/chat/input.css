@@ -2231,13 +2231,6 @@
      for the smart-space panel popover and would push this popover off-center. */
   margin-left: 0 !important;
 }
-
-/* Override .smtcmp-chat-sidebar-popover grey background for the reasoning popover,
-   matching the input field white background. Compound selector for specificity. */
-.smtcmp-popover.smtcmp-reasoning-popover {
-  background: var(--background-primary);
-}
-
 .smtcmp-reasoning-popover__header {
   display: flex;
   align-items: center;

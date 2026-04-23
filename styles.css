@@ -7089,13 +7089,6 @@
   margin-left: 0 !important;
 }
 
-/* Override .smtcmp-chat-sidebar-popover grey background for the reasoning popover,
-   matching the input field white background. Compound selector for specificity. */
-
-.smtcmp-popover.smtcmp-reasoning-popover {
-  background: var(--background-primary);
-}
-
 .smtcmp-reasoning-popover__header {
   display: flex;
   align-items: center;
@@ -11648,7 +11641,7 @@ button.smtcmp-chat-input-model-select {
 }
 
 .smtcmp-chat-sidebar-popover {
-  background: var(--huisede1, var(--background-secondary));
+  background: var(--background-primary);
   border-color: color-mix(
     in srgb,
     var(--background-modifier-border) 75%,
@@ -11664,6 +11657,21 @@ button.smtcmp-chat-input-model-select {
   max-height: 400px;
   overflow: hidden;
   margin-left: -64px;
+  /* Override smart-space's 250ms scale+translate animation with a snappier
+     fade for底部小弹框, to avoid a "heavy" feel on open. */
+  animation: smtcmp-chat-sidebar-popover-fade-in 130ms
+    cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes smtcmp-chat-sidebar-popover-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .smtcmp-view-toggle-mode-popover {
