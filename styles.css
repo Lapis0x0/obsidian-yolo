@@ -8333,6 +8333,58 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   width: max-content;
 }
 
+/* Rich details shown in the hover tooltip — always full fidelity regardless
+ * of how aggressively the inline row has been compressed.
+ *
+ * Design goal: a single calm tone. One row per metric, icon/label/value in the
+ * same muted color family, only the numeric values tinted stronger. Cache
+ * detail folds under Input as a tight sub-line. */
+
+.smtcmp-llm-inline-info-tooltip-content {
+  z-index: 1000;
+  padding: var(--size-4-3) var(--size-4-4);
+  min-width: 240px;
+}
+
+.smtcmp-llm-inline-info-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-3);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.smtcmp-llm-inline-info-tooltip-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--size-4-3);
+}
+
+.smtcmp-llm-inline-info-tooltip-row .smtcmp-llm-inline-info-icon {
+  height: var(--size-4-3);
+  width: var(--size-4-3);
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.smtcmp-llm-inline-info-tooltip-label {
+  color: var(--text-muted);
+}
+
+.smtcmp-llm-inline-info-tooltip-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-normal);
+}
+
+.smtcmp-llm-inline-info-tooltip-sub {
+  padding-left: calc(var(--size-4-3) + var(--size-4-3));
+  margin-top: calc(var(--size-2-3) * -1);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
 .smtcmp-llm-inline-info-icon {
   height: var(--size-4-3);
   width: var(--size-4-3);
