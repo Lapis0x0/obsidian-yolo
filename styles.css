@@ -7089,6 +7089,13 @@
   margin-left: 0 !important;
 }
 
+/* Override .smtcmp-chat-sidebar-popover grey background for the reasoning popover,
+   matching the input field white background. Compound selector for specificity. */
+
+.smtcmp-popover.smtcmp-reasoning-popover {
+  background: var(--background-primary);
+}
+
 .smtcmp-reasoning-popover__header {
   display: flex;
   align-items: center;
@@ -7119,7 +7126,7 @@
 .smtcmp-segmented.smtcmp-segmented--pill {
   display: flex;
   width: 100%;
-  background: var(--background-secondary);
+  background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   padding: 3px;
@@ -7135,12 +7142,10 @@
   left: 3px;
   width: calc((100% - 6px) / var(--smtcmp-segment-count));
   height: calc(100% - 6px);
-  background: var(--background-primary);
+  background: var(--background-secondary);
   border: none;
   border-radius: 5px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 0 0 1px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  box-shadow: 0 0 0 1.5px var(--interactive-accent);
   transform: translateX(calc(100% * var(--smtcmp-segment-index)));
   transition: transform 0.24s cubic-bezier(0.4, 1.1, 0.4, 1);
   pointer-events: none;
@@ -7180,12 +7185,19 @@
 
 .smtcmp-segmented.smtcmp-segmented--pill > button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--interactive-accent) !important;
+  box-shadow: 0 0 0 2px var(--background-modifier-border) !important;
+}
+
+/* When the active segment also has keyboard focus, suppress the neutral focus
+   ring so the glider's accent ring remains the visual indicator. */
+
+.smtcmp-segmented.smtcmp-segmented--pill > button.active:focus-visible {
+  box-shadow: none !important;
 }
 
 .smtcmp-segmented.smtcmp-segmented--pill > button.active {
   background: transparent !important;
-  color: var(--interactive-accent) !important;
+  color: var(--text-normal) !important;
   font-weight: 600;
   transform: none !important;
 }
