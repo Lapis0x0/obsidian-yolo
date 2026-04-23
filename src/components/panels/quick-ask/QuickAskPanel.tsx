@@ -651,13 +651,6 @@ export function QuickAskPanel({
     followFromReactCommitsOnly: !timelineIsVirtualized,
   })
 
-  // Focus input on mount
-  useEffect(() => {
-    setTimeout(() => {
-      contentEditableRef.current?.focus()
-    }, 100)
-  }, [])
-
   useEffect(() => {
     if (!isMentionMenuOpen) return
     updateMentionMenuPlacement()
@@ -1315,6 +1308,8 @@ export function QuickAskPanel({
         mentionableUnitLabel,
       })
       editor.setEditorState(editor.parseEditorState(editorState))
+      // setEditorState 会重置选区并让 contentEditable 失焦，这里把焦点/光标拿回来
+      editor.focus(undefined, { defaultSelection: 'rootEnd' })
     }
 
     requestAnimationFrame(applyInitialState)
