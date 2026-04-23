@@ -1,7 +1,11 @@
 import { App, Notice, Platform } from 'obsidian'
 import { useState } from 'react'
 
-import { PROVIDER_API_INFO, PROVIDER_PRESET_INFO } from '../../../constants'
+import {
+  PROMPT_CACHING_SETTING,
+  PROVIDER_API_INFO,
+  PROVIDER_PRESET_INFO,
+} from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
 import {
@@ -240,8 +244,15 @@ function ProviderFormComponent({
         }
       : {}),
   }
-  const visibleAdditionalSettings = providerTypeInfo.additionalSettings.filter(
-    (setting: (typeof providerTypeInfo.additionalSettings)[number]) =>
+  type AdditionalSettingEntry =
+    | (typeof providerTypeInfo.additionalSettings)[number]
+    | typeof PROMPT_CACHING_SETTING
+  const baseAdditionalSettings: AdditionalSettingEntry[] =
+    formData.apiType === 'anthropic'
+      ? [PROMPT_CACHING_SETTING, ...providerTypeInfo.additionalSettings]
+      : [...providerTypeInfo.additionalSettings]
+  const visibleAdditionalSettings = baseAdditionalSettings.filter(
+    (setting) =>
       setting.key !== 'requestTransportMode' ||
       providerSupportsTransportModeSelection(formData),
   )
@@ -366,13 +377,17 @@ function ProviderFormComponent({
             ? t('settings.providers.noStainlessHeaders')
             : setting.key === 'requestTransportMode'
               ? t('settings.providers.requestTransportMode')
-              : setting.label
+              : setting.key === 'promptCaching'
+                ? t('settings.providers.promptCaching')
+                : setting.label
         const description =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeadersDesc')
             : setting.key === 'requestTransportMode'
               ? t('settings.providers.requestTransportModeDesc')
-              : (setting as { description?: string }).description
+              : setting.key === 'promptCaching'
+                ? t('settings.providers.promptCachingDesc')
+                : (setting as { description?: string }).description
 
         return (
           <ObsidianSetting

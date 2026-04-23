@@ -512,6 +512,9 @@ export const en: TranslationKeys = {
       requestTransportModeBrowser: 'Browser fetch only',
       requestTransportModeObsidian: 'Obsidian requestUrl only',
       requestTransportModeNode: 'Desktop Node fetch only',
+      promptCaching: 'Prompt caching',
+      promptCachingDesc:
+        'Enable Anthropic ephemeral prompt caching. Reuses system prompt, tools, and conversation history across turns to cut input tokens. Cache writes carry a 25% premium; reads cost ~10% of normal input. Available whenever the provider API type is Anthropic; upstream must actually honor the cache_control field.',
       customHeaders: 'Custom headers',
       customHeadersDesc:
         'Attach extra HTTP headers to all requests sent through this provider.',

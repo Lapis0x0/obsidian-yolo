@@ -505,6 +505,9 @@ export const it: TranslationKeys = {
       requestTransportModeBrowser: 'Solo fetch browser',
       requestTransportModeObsidian: 'Solo requestUrl Obsidian',
       requestTransportModeNode: 'Solo fetch Node desktop',
+      promptCaching: 'Cache del prompt',
+      promptCachingDesc:
+        "Abilita la cache effimera dei prompt Anthropic. Riutilizza prompt di sistema, strumenti e cronologia tra i turni per ridurre i token di input. Le scritture in cache hanno un sovrapprezzo del 25%; le letture costano circa il 10% del normale. Disponibile quando il tipo API del provider è Anthropic; l'upstream deve supportare il campo cache_control.",
       customHeaders: 'Header personalizzati',
       customHeadersDesc:
         'Aggiungi header HTTP extra a tutte le richieste inviate tramite questo provider.',

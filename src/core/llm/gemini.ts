@@ -11,7 +11,6 @@ import type {
 import { v4 as uuidv4 } from 'uuid'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -24,10 +23,15 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
   ProviderMetadata,
+  ResponseUsage,
   ToolCall,
   ToolCallDelta,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import {
+  REASONING_META,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import {
   type ToolCallArguments,
   getToolCallArgumentsObject,
@@ -73,6 +77,29 @@ type GeminiReplayPart = GeminiPart & {
  * preventing its use in Obsidian. Consider switching to this endpoint in the future once these
  * issues are resolved.
  */
+/**
+ * Build our generic ResponseUsage from a Gemini `usageMetadata` object,
+ * lifting Gemini's context-cache hit count (`cachedContentTokenCount`) to the
+ * shared `cache_read_input_tokens` slot the UI reads.
+ */
+function buildGeminiUsage(metadata: {
+  promptTokenCount?: number | null
+  candidatesTokenCount?: number | null
+  totalTokenCount?: number | null
+  cachedContentTokenCount?: number | null
+}): ResponseUsage {
+  const result: ResponseUsage = {
+    prompt_tokens: metadata.promptTokenCount ?? 0,
+    completion_tokens: metadata.candidatesTokenCount ?? 0,
+    total_tokens: metadata.totalTokenCount ?? 0,
+  }
+  const cached = metadata.cachedContentTokenCount
+  if (cached !== undefined && cached !== null && cached > 0) {
+    result.cache_read_input_tokens = cached
+  }
+  return result
+}
+
 export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
   private static readonly SUPPORTED_IMAGE_TYPES = [
     'image/png',
@@ -260,7 +287,10 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
         maxOutputTokens: request.max_tokens ?? undefined,
         temperature: request.temperature ?? undefined,
       }
-      const streamLevel = resolveRequestReasoningLevel(model, request.reasoningLevel)
+      const streamLevel = resolveRequestReasoningLevel(
+        model,
+        request.reasoningLevel,
+      )
       if (streamLevel !== undefined) {
         const isGemini3 = /gemini-3/i.test(request.model)
         if (streamLevel === 'auto') {
@@ -686,11 +716,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
       model,
       object: 'chat.completion',
       usage: response.usageMetadata
-        ? {
-            prompt_tokens: response.usageMetadata.promptTokenCount ?? 0,
-            completion_tokens: response.usageMetadata.candidatesTokenCount ?? 0,
-            total_tokens: response.usageMetadata.totalTokenCount ?? 0,
-          }
+        ? buildGeminiUsage(response.usageMetadata)
         : undefined,
     }
   }
@@ -834,11 +860,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
       model: model,
       object: 'chat.completion.chunk',
       usage: chunk.usageMetadata
-        ? {
-            prompt_tokens: chunk.usageMetadata.promptTokenCount ?? 0,
-            completion_tokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
-            total_tokens: chunk.usageMetadata.totalTokenCount ?? 0,
-          }
+        ? buildGeminiUsage(chunk.usageMetadata)
         : undefined,
     }
   }

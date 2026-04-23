@@ -375,6 +375,8 @@ export type TranslationKeys = {
       requestTransportModeBrowser: string
       requestTransportModeObsidian: string
       requestTransportModeNode: string
+      promptCaching: string
+      promptCachingDesc: string
       customHeaders: string
       customHeadersDesc: string
       customHeadersAdd: string

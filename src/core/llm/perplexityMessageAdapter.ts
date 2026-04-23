@@ -9,7 +9,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 
-import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import {
+  OpenAIMessageAdapter,
+  normalizeOpenAICompatUsage,
+} from './openaiMessageAdapter'
 
 /**
  * Adapter for Perplexity's API that extends OpenAIMessageAdapter to handle the additional
@@ -51,7 +54,7 @@ export class PerplexityMessageAdapter extends OpenAIMessageAdapter {
       model: response.model,
       object: 'chat.completion',
       system_fingerprint: response.system_fingerprint,
-      usage: response.usage,
+      usage: normalizeOpenAICompatUsage(response.usage),
     }
   }
 
@@ -80,7 +83,7 @@ export class PerplexityMessageAdapter extends OpenAIMessageAdapter {
       model: chunk.model,
       object: 'chat.completion.chunk',
       system_fingerprint: chunk.system_fingerprint,
-      usage: chunk.usage ?? undefined,
+      usage: normalizeOpenAICompatUsage(chunk.usage),
     }
   }
 }

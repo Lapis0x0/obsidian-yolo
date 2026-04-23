@@ -874,6 +874,7 @@
 }
 
 .smtcmp-llm-inline-info {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -900,6 +901,28 @@
   gap: var(--size-2-3);
   min-width: 0;
   flex: 0 1 auto;
+}
+
+/*
+ * Off-screen "ghost" rows used only for measuring each compression level's
+ * natural width. Mirrors the styles of the visible row so measurements are
+ * accurate, but does not participate in layout.
+ */
+.smtcmp-llm-inline-info-ghosts {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.smtcmp-llm-inline-info-ghost {
+  visibility: hidden;
+  flex: 0 0 auto;
+  overflow: visible;
+  width: max-content;
 }
 
 .smtcmp-llm-inline-info-icon {

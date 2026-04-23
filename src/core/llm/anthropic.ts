@@ -13,7 +13,6 @@ import {
 } from '@anthropic-ai/sdk/resources/messages'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -29,11 +28,16 @@ import {
   ToolCall,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import {
+  REASONING_META,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
+import { applyAnthropicPromptCache } from './anthropicPromptCache'
 import { BaseLLMProvider } from './base'
 import {
   LLMAPIKeyInvalidException,
@@ -68,6 +72,11 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
     }
     this.requestTransportMode = mode
     this.onAutoPromoteTransportMode?.(mode)
+  }
+
+  private isPromptCachingEnabled(): boolean {
+    const raw = this.provider.additionalSettings?.promptCaching
+    return raw === true
   }
 
   private static readonly DEFAULT_MAX_TOKENS = 8192
@@ -192,7 +201,9 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
       const payload = this.applyCustomModelParameters<
         MessageCreateParamsNonStreaming & Record<string, unknown>
       >(model, {
-        ...payloadBase,
+        ...(this.isPromptCachingEnabled()
+          ? applyAnthropicPromptCache(payloadBase)
+          : payloadBase),
       })
 
       const response = await runWithRequestTransport({
@@ -316,7 +327,9 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       const payload = this.applyCustomModelParameters<
         MessageCreateParamsStreaming & Record<string, unknown>
       >(model, {
-        ...payloadBase,
+        ...(this.isPromptCachingEnabled()
+          ? applyAnthropicPromptCache(payloadBase)
+          : payloadBase),
       })
 
       const stream = (await runWithRequestTransportForStream({
@@ -397,12 +410,24 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       if (chunk.type === 'message_start') {
         messageId = chunk.message.id
         model = chunk.message.model
+        const cacheRead =
+          chunk.message.usage.cache_read_input_tokens ?? undefined
+        const cacheCreation =
+          chunk.message.usage.cache_creation_input_tokens ?? undefined
+        const billedInputTokens =
+          chunk.message.usage.input_tokens +
+          (cacheRead ?? 0) +
+          (cacheCreation ?? 0)
         usage = {
-          prompt_tokens: chunk.message.usage.input_tokens,
+          prompt_tokens: billedInputTokens,
           completion_tokens: chunk.message.usage.output_tokens,
-          total_tokens:
-            chunk.message.usage.input_tokens +
-            chunk.message.usage.output_tokens,
+          total_tokens: billedInputTokens + chunk.message.usage.output_tokens,
+          ...(cacheRead !== undefined
+            ? { cache_read_input_tokens: cacheRead }
+            : {}),
+          ...(cacheCreation !== undefined
+            ? { cache_creation_input_tokens: cacheCreation }
+            : {}),
         }
       } else if (
         chunk.type === 'content_block_start' ||
@@ -419,10 +444,39 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       } else if (chunk.type === 'message_delta') {
         // Anthropic streams `message_delta.usage.output_tokens` as the current
         // cumulative output token count, not an incremental delta.
+        //
+        // Newer Anthropic API revisions (and most third-party proxies) finalize
+        // cache accounting in `message_delta.usage` rather than `message_start`,
+        // and also re-send `input_tokens` there. SDK v0.39's MessageDeltaUsage
+        // type only declares `output_tokens`, so we reach through at runtime.
+        const rawUsage = chunk.usage as unknown as {
+          input_tokens?: number | null
+          output_tokens: number
+          cache_read_input_tokens?: number | null
+          cache_creation_input_tokens?: number | null
+        }
+        const cacheRead =
+          rawUsage.cache_read_input_tokens ?? usage.cache_read_input_tokens
+        const cacheCreation =
+          rawUsage.cache_creation_input_tokens ??
+          usage.cache_creation_input_tokens
+        const freshInputTokens =
+          rawUsage.input_tokens ??
+          usage.prompt_tokens -
+            (usage.cache_read_input_tokens ?? 0) -
+            (usage.cache_creation_input_tokens ?? 0)
+        const billedInputTokens =
+          freshInputTokens + (cacheRead ?? 0) + (cacheCreation ?? 0)
         usage = {
-          prompt_tokens: usage.prompt_tokens,
-          completion_tokens: chunk.usage.output_tokens,
-          total_tokens: usage.prompt_tokens + chunk.usage.output_tokens,
+          prompt_tokens: billedInputTokens,
+          completion_tokens: rawUsage.output_tokens,
+          total_tokens: billedInputTokens + rawUsage.output_tokens,
+          ...(cacheRead !== undefined && cacheRead !== null
+            ? { cache_read_input_tokens: cacheRead }
+            : {}),
+          ...(cacheCreation !== undefined && cacheCreation !== null
+            ? { cache_creation_input_tokens: cacheCreation }
+            : {}),
         }
       }
     }
@@ -544,6 +598,12 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         }
       })
 
+    const cacheRead = response.usage.cache_read_input_tokens ?? undefined
+    const cacheCreation =
+      response.usage.cache_creation_input_tokens ?? undefined
+    const billedInputTokens =
+      response.usage.input_tokens + (cacheRead ?? 0) + (cacheCreation ?? 0)
+
     return {
       id: response.id,
       choices: [
@@ -560,10 +620,15 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       model: response.model,
       object: 'chat.completion',
       usage: {
-        prompt_tokens: response.usage.input_tokens,
+        prompt_tokens: billedInputTokens,
         completion_tokens: response.usage.output_tokens,
-        total_tokens:
-          response.usage.input_tokens + response.usage.output_tokens,
+        total_tokens: billedInputTokens + response.usage.output_tokens,
+        ...(cacheRead !== undefined
+          ? { cache_read_input_tokens: cacheRead }
+          : {}),
+        ...(cacheCreation !== undefined
+          ? { cache_creation_input_tokens: cacheCreation }
+          : {}),
       },
     }
   }

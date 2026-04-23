@@ -25,6 +25,16 @@ export type ResponseUsage = {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /**
+   * Input tokens served from an ephemeral prompt cache (Anthropic only, for now).
+   * Included inside `prompt_tokens`; exposed separately for cost/hit-rate display.
+   */
+  cache_read_input_tokens?: number
+  /**
+   * Input tokens written to the ephemeral prompt cache this request (Anthropic only).
+   * Included inside `prompt_tokens`; carries a write premium on the bill.
+   */
+  cache_creation_input_tokens?: number
 }
 
 export type GeminiAssistantPart =

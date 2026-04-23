@@ -19,11 +19,49 @@ import {
 import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
+  ResponseUsage,
   ToolCall,
   ToolCallDelta,
 } from '../../types/llm/response'
 import { getToolCallArgumentsText } from '../../types/tool-call.types'
 import { filterEmptyAssistantMessages } from '../../utils/chat/tool-boundary'
+
+/**
+ * Normalize raw `usage` from OpenAI-compatible endpoints into our generic
+ * `ResponseUsage`, lifting provider-specific cache fields to the shared
+ * `cache_read_input_tokens` slot so the UI can treat them uniformly.
+ *
+ * Known shapes:
+ *   - OpenAI / Moonshot / OpenRouter / Groq / ...: usage.prompt_tokens_details.cached_tokens
+ *   - DeepSeek (non-standard extension):            usage.prompt_cache_hit_tokens
+ */
+export function normalizeOpenAICompatUsage(
+  raw: unknown,
+): ResponseUsage | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined
+  }
+  const u = raw as {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    prompt_tokens_details?: { cached_tokens?: number | null } | null
+    prompt_cache_hit_tokens?: number | null
+  }
+  const cachedTokens =
+    u.prompt_tokens_details?.cached_tokens ??
+    u.prompt_cache_hit_tokens ??
+    undefined
+  const base: ResponseUsage = {
+    prompt_tokens: u.prompt_tokens ?? 0,
+    completion_tokens: u.completion_tokens ?? 0,
+    total_tokens: u.total_tokens ?? 0,
+  }
+  if (cachedTokens !== undefined && cachedTokens !== null && cachedTokens > 0) {
+    base.cache_read_input_tokens = cachedTokens
+  }
+  return base
+}
 
 function hasObjectProperty<T extends object, K extends PropertyKey>(
   value: T,
@@ -573,7 +611,7 @@ export class OpenAIMessageAdapter {
       model: response.model,
       object: 'chat.completion',
       system_fingerprint: response.system_fingerprint,
-      usage: response.usage,
+      usage: normalizeOpenAICompatUsage(response.usage),
     }
   }
 
@@ -614,7 +652,7 @@ export class OpenAIMessageAdapter {
       model: chunk.model,
       object: 'chat.completion.chunk',
       system_fingerprint: chunk.system_fingerprint,
-      usage: chunk.usage ?? undefined,
+      usage: normalizeOpenAICompatUsage(chunk.usage),
     }
   }
 }

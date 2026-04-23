@@ -49,6 +49,15 @@ const REQUEST_TRANSPORT_MODE_SETTING = {
     'Auto: try browser fetch first, then desktop Node fetch, and finally Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses. Node mode uses desktop-only Node fetch for real streaming.',
 }
 
+// Surfaced dynamically when a provider's apiType is 'anthropic'
+// (native Anthropic or Anthropic-compatible endpoints like Moonshot/Kimi).
+export const PROMPT_CACHING_SETTING = {
+  label: 'Prompt caching',
+  key: 'promptCaching',
+  type: 'toggle' as const,
+  required: false,
+}
+
 export const PROVIDER_PRESET_INFO = {
   openai: {
     label: 'OpenAI',

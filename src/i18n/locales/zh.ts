@@ -470,6 +470,9 @@ export const zh: TranslationKeys = {
       requestTransportModeBrowser: '仅浏览器 fetch',
       requestTransportModeObsidian: '仅 Obsidian requestUrl',
       requestTransportModeNode: '仅桌面端 Node fetch',
+      promptCaching: '提示缓存',
+      promptCachingDesc:
+        '启用 Anthropic 临时提示缓存。在连续对话中复用系统提示、工具列表和历史消息，显著降低输入 token 消耗。写缓存有 25% 溢价，命中读取约为原价 10%。仅当渠道 API 类型为 Anthropic 时生效；是否真正生效取决于上游服务是否支持 cache_control 字段。',
       customHeaders: '自定义请求头',
       customHeadersDesc: '为此提供商发出的所有请求附加额外的 HTTP Header。',
       customHeadersAdd: '添加请求头',
