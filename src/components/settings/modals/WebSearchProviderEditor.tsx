@@ -13,6 +13,7 @@ import {
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
@@ -273,6 +274,10 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
               onChange={(value) => update('baseUrl', value)}
             />
           </ObsidianSetting>
+          <SystemPromptField
+            value={form.systemPrompt}
+            onChange={(value) => update('systemPrompt', value)}
+          />
         </>
       )}
 
@@ -296,14 +301,10 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
               onChange={(value) => update('baseUrl', value)}
             />
           </ObsidianSetting>
-          <ObsidianSetting
-            name={t('settings.webSearch.fieldSystemPrompt', 'System prompt')}
-          >
-            <ObsidianTextInput
-              value={form.systemPrompt}
-              onChange={(value) => update('systemPrompt', value)}
-            />
-          </ObsidianSetting>
+          <SystemPromptField
+            value={form.systemPrompt}
+            onChange={(value) => update('systemPrompt', value)}
+          />
           <ObsidianSetting
             name={t('settings.webSearch.fieldEnableX', 'Also search X')}
           >
@@ -342,5 +343,32 @@ function ApiKeyField({
     >
       <ObsidianTextInput value={value} onChange={onChange} />
     </ObsidianSetting>
+  )
+}
+
+function SystemPromptField({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const { t } = useLanguage()
+  return (
+    <>
+      <ObsidianSetting
+        name={t('settings.webSearch.fieldSystemPrompt', 'System prompt')}
+        className="smtcmp-settings-textarea-header"
+      />
+      <ObsidianSetting className="smtcmp-settings-textarea">
+        <ObsidianTextArea
+          value={value}
+          onChange={onChange}
+          autoResize
+          maxAutoResizeHeight={360}
+          inputClassName="smtcmp-ws-system-prompt-textarea"
+        />
+      </ObsidianSetting>
+    </>
   )
 }

@@ -33,7 +33,12 @@ export const grokSearchProvider: WebSearchProvider<GrokOptions> = {
     }
 
     const tools: Array<Record<string, unknown>> = [{ type: 'web_search' }]
-    if (options.enableX) {
+    // x_search is an xAI-native built-in tool; aggregators such as OpenRouter
+    // reject it with `invalid_union` on tools[].type. Only inject when the
+    // request actually targets xAI's own Responses endpoint.
+    const baseUrl = options.baseUrl || 'https://api.x.ai/v1/responses'
+    const isNativeXai = /(^|\.)x\.ai(\/|:|$)/i.test(new URL(baseUrl).host)
+    if (options.enableX && isNativeXai) {
       tools.push({ type: 'x_search' })
     }
 
@@ -48,7 +53,7 @@ export const grokSearchProvider: WebSearchProvider<GrokOptions> = {
     }
 
     const response = await webSearchRequest({
-      url: options.baseUrl || 'https://api.x.ai/v1/responses',
+      url: baseUrl,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${options.apiKey}`,

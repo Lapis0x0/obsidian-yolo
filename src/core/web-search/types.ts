@@ -70,20 +70,25 @@ export const geminiGroundingOptionsSchema = z.object({
   apiKey: z.string().default(''),
   model: z.string().default('gemini-2.5-flash'),
   baseUrl: z.string().default('https://generativelanguage.googleapis.com'),
+  systemPrompt: z
+    .string()
+    .default(
+      'You are a search engine. Return concise factual answers with citations.',
+    ),
 })
 
 export const grokSearchOptionsSchema = z.object({
   ...baseFields,
   type: z.literal('grok'),
   apiKey: z.string().default(''),
-  model: z.string().default('grok-4-latest'),
-  baseUrl: z.string().default('https://api.x.ai/v1/responses'),
+  model: z.string().default('x-ai/grok-4.1-fast'),
+  baseUrl: z.string().default('https://openrouter.ai/api/v1/responses'),
   systemPrompt: z
     .string()
     .default(
-      'You are a search engine. Return concise factual answers with citations.',
+      "You are a helpful search assistant. Search the web to find accurate and up-to-date information for the user's query. Provide a comprehensive answer with citations.",
     ),
-  enableX: z.boolean().default(true),
+  enableX: z.boolean().default(false),
 })
 
 export const webSearchProviderOptionsSchema = z.discriminatedUnion('type', [
@@ -100,7 +105,7 @@ export type WebSearchProviderOptions = z.infer<
 
 export const webSearchCommonOptionsSchema = z.object({
   resultSize: z.number().int().min(1).max(50).default(8),
-  searchTimeoutMs: z.number().int().min(1000).max(120000).default(15000),
+  searchTimeoutMs: z.number().int().min(1000).max(120000).default(120000),
   scrapeTimeoutMs: z.number().int().min(1000).max(120000).default(20000),
 })
 export type WebSearchCommonOptions = z.infer<
@@ -120,7 +125,7 @@ export const webSearchSettingsSchema = z.object({
   defaultProviderId: z.string().optional(),
   common: webSearchCommonOptionsSchema.catch({
     resultSize: 8,
-    searchTimeoutMs: 15000,
+    searchTimeoutMs: 120000,
     scrapeTimeoutMs: 20000,
   }),
 })
@@ -199,6 +204,8 @@ export function createDefaultProviderOptions(
         apiKey: '',
         model: 'gemini-2.5-flash',
         baseUrl: 'https://generativelanguage.googleapis.com',
+        systemPrompt:
+          'You are a search engine. Return concise factual answers with citations.',
       }
     case 'grok':
       return {
@@ -206,11 +213,11 @@ export function createDefaultProviderOptions(
         name: 'Grok',
         type: 'grok',
         apiKey: '',
-        model: 'grok-4-latest',
-        baseUrl: 'https://api.x.ai/v1/responses',
+        model: 'x-ai/grok-4.1-fast',
+        baseUrl: 'https://openrouter.ai/api/v1/responses',
         systemPrompt:
-          'You are a search engine. Return concise factual answers with citations.',
-        enableX: true,
+          "You are a helpful search assistant. Search the web to find accurate and up-to-date information for the user's query. Provide a comprehensive answer with citations.",
+        enableX: false,
       }
   }
 }

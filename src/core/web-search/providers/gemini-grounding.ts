@@ -34,7 +34,7 @@ export const geminiGroundingProvider: WebSearchProvider<GeminiOptions> = {
     const model = options.model || 'gemini-2.5-flash'
     const url = `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(options.apiKey)}`
 
-    const body = {
+    const body: Record<string, unknown> = {
       contents: [
         {
           role: 'user',
@@ -42,6 +42,12 @@ export const geminiGroundingProvider: WebSearchProvider<GeminiOptions> = {
         },
       ],
       tools: [{ google_search: {} }],
+    }
+    const systemPrompt = options.systemPrompt?.trim()
+    if (systemPrompt) {
+      body.systemInstruction = {
+        parts: [{ text: systemPrompt }],
+      }
     }
 
     const response = await webSearchRequest({

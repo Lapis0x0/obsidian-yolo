@@ -294,7 +294,7 @@ export const smartComposerSettingsSchema = z.object({
     defaultProviderId: undefined,
     common: {
       resultSize: 8,
-      searchTimeoutMs: 15000,
+      searchTimeoutMs: 120000,
       scrapeTimeoutMs: 20000,
     },
   }),

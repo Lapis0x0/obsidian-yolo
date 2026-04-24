@@ -369,3 +369,10 @@
 .smtcmp-ws-edit-form .setting-item .setting-item-description {
   margin-top: 6px;
 }
+
+.smtcmp-ws-system-prompt-textarea {
+  min-height: 140px !important;
+  max-height: 360px;
+  height: var(--smtcmp-textarea-auto-height, 140px);
+  overflow-y: var(--smtcmp-textarea-auto-overflow-y, auto);
+}
