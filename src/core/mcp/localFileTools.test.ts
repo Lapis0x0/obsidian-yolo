@@ -1,5 +1,11 @@
 jest.mock('obsidian')
 
+jest.mock('../../utils/llm/extract-markdown-images', () => ({
+  extractMarkdownImages: jest.fn().mockResolvedValue({ contentParts: undefined }),
+}))
+
+import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
+
 import { App, TFile, TFolder } from 'obsidian'
 
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
@@ -424,6 +430,106 @@ describe('local fs tool action helpers', () => {
         startLine: 1,
         endLine: 3,
       },
+    })
+  })
+
+  describe('fs_read image reading gating by chat model modalities', () => {
+    const extractMock = extractMarkdownImages as jest.MockedFunction<
+      typeof extractMarkdownImages
+    >
+    const buildSettings = (
+      modalities: Array<'text' | 'vision'> | undefined,
+    ): SmartComposerSettings =>
+      ({
+        chatOptions: {
+          imageReadingEnabled: true,
+          imageCompressionEnabled: false,
+          imageCompressionQuality: 85,
+          externalImageFetchEnabled: false,
+        },
+        chatModels: [
+          {
+            id: 'provider/text-model',
+            providerId: 'provider',
+            model: 'text-model',
+            modalities,
+          },
+        ],
+      }) as unknown as SmartComposerSettings
+
+    const buildCallArgs = (settings: SmartComposerSettings, modelId?: string) => {
+      const file = Object.assign(new TFile(), {
+        path: 'note.md',
+        stat: { size: 64 },
+      })
+      return {
+        app: {
+          vault: {
+            getFileByPath: jest.fn().mockReturnValue(file),
+            read: jest.fn().mockResolvedValue('alpha\n![[img.png]]\nbeta'),
+          },
+        } as unknown as App,
+        toolCallId: 'read-call',
+        toolName: 'fs_read',
+        args: {
+          paths: ['note.md'],
+          operation: { type: 'full' as const },
+        },
+        settings,
+        chatModelId: modelId,
+      }
+    }
+
+    beforeEach(() => {
+      extractMock.mockReset()
+      extractMock.mockResolvedValue({
+        contentParts: [
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+        ],
+      } as unknown as Awaited<ReturnType<typeof extractMarkdownImages>>)
+    })
+
+    it('skips image extraction when the active model has declared text-only modalities', async () => {
+      const settings = buildSettings(['text'])
+      const result = await callLocalFileTool(
+        buildCallArgs(settings, 'provider/text-model'),
+      )
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      expect(extractMock).not.toHaveBeenCalled()
+      if (result.status === ToolCallResponseStatus.Success) {
+        expect(result.contentParts).toBeUndefined()
+      }
+    })
+
+    it('extracts images when the active model declares vision support', async () => {
+      const settings = buildSettings(['text', 'vision'])
+      const result = await callLocalFileTool(
+        buildCallArgs(settings, 'provider/text-model'),
+      )
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      expect(extractMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('defaults to text-only when the model has no modalities (should not happen post-migration)', async () => {
+      const settings = buildSettings(undefined)
+      const result = await callLocalFileTool(
+        buildCallArgs(settings, 'provider/text-model'),
+      )
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      expect(extractMock).not.toHaveBeenCalled()
+    })
+
+    it('stays permissive when no chatModelId is passed (non-agent callers)', async () => {
+      const settings = buildSettings(['text'])
+      const result = await callLocalFileTool(
+        buildCallArgs(settings, undefined),
+      )
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      expect(extractMock).toHaveBeenCalledTimes(1)
     })
   })
 

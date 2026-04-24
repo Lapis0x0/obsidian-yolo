@@ -442,6 +442,10 @@ export type TranslationKeys = {
       reasoningTypeGemini?: string
       reasoningTypeAnthropic?: string
       reasoningTypeGeneric?: string
+      inputModality?: string
+      inputModalityDesc?: string
+      inputModalityText?: string
+      inputModalityVision?: string
       openaiReasoningEffort?: string
       openaiReasoningEffortDesc?: string
       geminiThinkingBudget?: string
@@ -921,6 +925,7 @@ export type TranslationKeys = {
     selectModel: string
     uploadImage: string
     uploadFile?: string
+    imageUnsupportedByModel?: string
     addContext: string
     applyChanges: string
     copyMessage: string

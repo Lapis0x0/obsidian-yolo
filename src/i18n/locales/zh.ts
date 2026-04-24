@@ -541,6 +541,10 @@ export const zh: TranslationKeys = {
       reasoningTypeGemini: 'Gemini 推理（3 Pro / Flash / Flash-Lite）',
       reasoningTypeAnthropic: 'Claude 扩展思考（Extended thinking）',
       reasoningTypeGeneric: '通用推理模型',
+      inputModality: '输入模态',
+      inputModalityDesc: '该模型实际支持的输入类型，选错会导致调用失败',
+      inputModalityText: '文本',
+      inputModalityVision: '图片',
       openaiReasoningEffort: '推理强度 (effort)',
       openaiReasoningEffortDesc:
         '选择推理强度：minimal（更快更省，仅 GPT-5）/ low / medium / high',
@@ -1010,6 +1014,8 @@ export const zh: TranslationKeys = {
     selectModel: '选择模型',
     uploadImage: '上传图片',
     uploadFile: '添加文件',
+    imageUnsupportedByModel:
+      '当前模型未声明支持图片输入；请在模型设置里开启「图片」模态后再上传。',
     addContext: '添加上下文',
     applyChanges: '应用更改',
     copyMessage: '复制消息',

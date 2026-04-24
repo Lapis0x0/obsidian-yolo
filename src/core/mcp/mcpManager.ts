@@ -579,6 +579,7 @@ export class McpManager {
     conversationMessages,
     signal,
     requireReview = false,
+    chatModelId,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -588,6 +589,7 @@ export class McpManager {
     conversationMessages?: ChatMessage[]
     signal?: AbortSignal
     requireReview?: boolean
+    chatModelId?: string
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -623,6 +625,7 @@ export class McpManager {
           args: parsedArgs ?? {},
           requireReview,
           signal: compositeSignal,
+          chatModelId,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {

@@ -107,7 +107,7 @@ import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import type { Mentionable, MentionableBlockData } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
-import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-context-registry'
+import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 

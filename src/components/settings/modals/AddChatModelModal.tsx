@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
+import { Image as ImageIcon, Type } from 'lucide-react'
 import { App, Notice, requestUrl } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
@@ -6,7 +7,11 @@ import { DEFAULT_CHAT_MODELS } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import SmartComposerPlugin from '../../../main'
-import { ChatModel, chatModelSchema } from '../../../types/chat-model.types'
+import {
+  ChatModel,
+  ChatModelModality,
+  chatModelSchema,
+} from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import { LLMProvider } from '../../../types/provider.types'
 import {
@@ -14,7 +19,11 @@ import {
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
 import { formatIntegerWithGrouping } from '../../../utils/formatIntegerWithGrouping'
-import { resolveKnownMaxContextTokens } from '../../../utils/llm/model-context-registry'
+import {
+  resolveKnownChatModelModalities,
+  resolveKnownMaxContextTokens,
+} from '../../../utils/llm/model-capability-registry'
+import { resolveDefaultChatModelModalities } from '../../../utils/llm/model-modalities'
 import { resolveProviderBaseUrl } from '../../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../../utils/llm/provider-headers'
 import {
@@ -232,6 +241,25 @@ function AddChatModelModalComponent({
   // When user manually changes reasoning type, stop auto-detection
   const [autoDetectReasoning, setAutoDetectReasoning] = useState<boolean>(true)
   const [toolType, setToolType] = useState<ToolType>('none')
+  const [modalities, setModalities] = useState<ChatModelModality[]>(() =>
+    resolveDefaultChatModelModalities(selectedProvider),
+  )
+  const [modalitiesTouched, setModalitiesTouched] = useState(false)
+  useEffect(() => {
+    if (modalitiesTouched) return
+    const known = resolveKnownChatModelModalities(formData.model)
+    setModalities(known ?? resolveDefaultChatModelModalities(selectedProvider))
+  }, [formData.model, selectedProvider, modalitiesTouched])
+  const toggleModality = (modality: ChatModelModality) => {
+    setModalitiesTouched(true)
+    setModalities((prev) => {
+      if (prev.includes(modality)) {
+        if (prev.length === 1) return prev
+        return prev.filter((m) => m !== modality)
+      }
+      return [...prev, modality]
+    })
+  }
   const [gptWebSearchEnabled, setGptWebSearchEnabled] = useState<boolean>(false)
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
@@ -653,6 +681,8 @@ function AddChatModelModalComponent({
         formData.name && formData.name.trim().length > 0
           ? formData.name
           : formData.model,
+      modalities:
+        modalities.length > 0 ? Array.from(new Set(modalities)) : ['text'],
       ...(supportsGeminiTools(selectedProvider) ||
       supportsGptTools(selectedProvider)
         ? { toolType }
@@ -793,6 +823,46 @@ function AddChatModelModalComponent({
           }}
         />
       </ObsidianSetting>
+
+      {/* Input modalities */}
+      <div className="smtcmp-modality-field">
+        <div className="smtcmp-modality-field-header">
+          <div className="smtcmp-modality-field-label">
+            {t('settings.models.inputModality')}
+          </div>
+          <div className="smtcmp-modality-field-desc">
+            {t('settings.models.inputModalityDesc')}
+          </div>
+        </div>
+        <div className="smtcmp-modality-chips">
+          <button
+            type="button"
+            className={`smtcmp-modality-chip${
+              modalities.includes('text') ? ' is-active' : ''
+            }`}
+            onClick={() => toggleModality('text')}
+          >
+            <Type size={14} />
+            <span className="smtcmp-modality-chip-label">
+              {t('settings.models.inputModalityText')}
+            </span>
+            <span className="smtcmp-modality-chip-sub">Text</span>
+          </button>
+          <button
+            type="button"
+            className={`smtcmp-modality-chip${
+              modalities.includes('vision') ? ' is-active' : ''
+            }`}
+            onClick={() => toggleModality('vision')}
+          >
+            <ImageIcon size={14} />
+            <span className="smtcmp-modality-chip-label">
+              {t('settings.models.inputModalityVision')}
+            </span>
+            <span className="smtcmp-modality-chip-sub">Vision</span>
+          </button>
+        </div>
+      </div>
 
       {/* Tool type for Gemini provider */}
       {(supportsGeminiTools(selectedProvider) ||

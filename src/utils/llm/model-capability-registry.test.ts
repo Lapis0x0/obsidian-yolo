@@ -3,10 +3,11 @@ import { ChatModel } from '../../types/chat-model.types'
 import {
   applyKnownMaxContextTokensToChatModels,
   normalizeModelContextLookupKey,
+  resolveKnownChatModelModalities,
   resolveKnownMaxContextTokens,
-} from './model-context-registry'
+} from './model-capability-registry'
 
-describe('model-context-registry', () => {
+describe('model-capability-registry', () => {
   it('normalizes provider-prefixed model ids', () => {
     expect(normalizeModelContextLookupKey('openai/gpt-4.1')).toBe('gpt-4.1')
     expect(normalizeModelContextLookupKey('models/gemini-2.5-pro')).toBe(
@@ -23,6 +24,19 @@ describe('model-context-registry', () => {
     )
     expect(resolveKnownMaxContextTokens('gemini-2.5-flash')).toBe(1048576)
     expect(resolveKnownMaxContextTokens('openrouter/grok-4-fast')).toBe(2000000)
+  })
+
+  it('resolves known modalities per model', () => {
+    expect(resolveKnownChatModelModalities('deepseek/deepseek-chat')).toEqual([
+      'text',
+    ])
+    expect(resolveKnownChatModelModalities('anthropic/claude-sonnet-4.5')).toEqual(
+      expect.arrayContaining(['text', 'vision']),
+    )
+    expect(
+      resolveKnownChatModelModalities('google/gemini-2.5-flash'),
+    ).toEqual(expect.arrayContaining(['text', 'vision']))
+    expect(resolveKnownChatModelModalities('some/unknown-model')).toBeUndefined()
   })
 
   it('fills missing values without overwriting existing ones', () => {

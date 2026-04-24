@@ -2108,6 +2108,89 @@
   margin-top: 6px;
 }
 
+.smtcmp-modality-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.smtcmp-modality-field-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.smtcmp-modality-field-label {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.smtcmp-modality-field-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.smtcmp-modality-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.smtcmp-modality-chip,
+.smtcmp-modality-chip:hover,
+.smtcmp-modality-chip:focus,
+.smtcmp-modality-chip:focus-visible,
+.smtcmp-modality-chip:active {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.smtcmp-modality-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.smtcmp-modality-chip:hover {
+  border-color: var(--background-modifier-border-hover);
+  color: var(--text-normal);
+}
+
+.smtcmp-modality-chip.is-active {
+  border-color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+  color: var(--interactive-accent);
+}
+
+.smtcmp-modality-chip-label {
+  font-weight: var(--font-medium);
+}
+
+.smtcmp-modality-chip-sub {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.smtcmp-modality-chip.is-active .smtcmp-modality-chip-sub {
+  color: color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+}
+
 .smtcmp-provider-form .setting-item:not(.smtcmp-settings-kv-entry) {
   align-items: center;
   padding-top: var(--size-4-2) !important;

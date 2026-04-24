@@ -99,11 +99,13 @@ export class AgentToolGateway {
     conversationId,
     conversationMessages,
     signal,
+    chatModelId,
   }: {
     toolMessage: ChatToolMessage
     conversationId: string
     conversationMessages?: ChatMessage[]
     signal?: AbortSignal
+    chatModelId?: string
   }): Promise<ChatToolMessage> {
     const nextToolCalls = [...toolMessage.toolCalls]
     const runnableEntries = nextToolCalls
@@ -156,6 +158,7 @@ export class AgentToolGateway {
               entry.toolCall.request.name,
             ),
             signal,
+            chatModelId,
           })
           .then((response) => ({ entries: [entry], responses: [response] })),
       )
@@ -179,6 +182,7 @@ export class AgentToolGateway {
                 entry.toolCall.request.name,
               ),
               signal,
+              chatModelId,
             })
             .then((response) => ({ entries: [entry], responses: [response] })),
         )
@@ -206,6 +210,7 @@ export class AgentToolGateway {
               leader.toolCall.request.name,
             ),
             signal,
+            chatModelId,
           })
           .then((response) => ({
             entries,

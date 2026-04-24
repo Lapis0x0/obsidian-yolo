@@ -18,6 +18,7 @@ import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
+import { chatModelSupportsVision } from '../../utils/llm/model-modalities'
 import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
@@ -2113,6 +2114,7 @@ export async function callLocalFileTool({
   args,
   requireReview = false,
   signal,
+  chatModelId,
 }: {
   app: App
   settings?: SmartComposerSettings
@@ -2126,6 +2128,7 @@ export async function callLocalFileTool({
   args: Record<string, unknown>
   requireReview?: boolean
   signal?: AbortSignal
+  chatModelId?: string
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
@@ -2247,6 +2250,19 @@ export async function callLocalFileTool({
           path: string
           parts: ContentPart[]
         }> = []
+
+        // Skip image extraction when the active chat model does not accept
+        // vision input; otherwise we'd ship base64 payloads to a text-only
+        // endpoint and get a 400 back (issue #255). Migration 48→49 backfills
+        // `modalities` on every ChatModel, so a missing array here means we
+        // either have no active model or the lookup failed — treat as allow.
+        const activeChatModel =
+          chatModelId && settings?.chatModels
+            ? (settings.chatModels.find((m) => m.id === chatModelId) ?? null)
+            : null
+        const chatModelAcceptsImages = activeChatModel
+          ? chatModelSupportsVision(activeChatModel)
+          : true
 
         for (const path of paths) {
           if (signal?.aborted) {
@@ -2458,6 +2474,7 @@ export async function callLocalFileTool({
           // Extract images from markdown files using the outputContent
           // (which is the line-numbered text that was actually returned)
           if (
+            chatModelAcceptsImages &&
             (settings?.chatOptions?.imageReadingEnabled ?? true) &&
             path.endsWith('.md') &&
             outputContent.length > 0

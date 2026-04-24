@@ -47,6 +47,7 @@ import {
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 import { fileToMentionableImage } from '../../../utils/llm/image'
+import { chatModelSupportsVision } from '../../../utils/llm/model-modalities'
 import { fileToMentionablePDF } from '../../../utils/llm/pdf'
 
 import ChatSkillBadge from './ChatSkillBadge'
@@ -810,6 +811,19 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     const handleCreateImageMentionables = useCallback(
       (mentionableImages: MentionableImage[]) => {
+        if (
+          mentionableImages.length > 0 &&
+          !chatModelSupportsVision(currentModel)
+        ) {
+          const modelLabel =
+            currentModel?.name ?? currentModel?.model ?? 'model'
+          const prefix = t(
+            'chat.imageUnsupportedByModel',
+            'This model does not accept image input. Enable "Vision" in the model settings to attach images.',
+          )
+          new Notice(`${prefix} (${modelLabel})`)
+          return
+        }
         const newMentionableImages = mentionableImages.filter(
           (m) =>
             !mentionables.some(
@@ -856,7 +870,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         setMentionables([...mentionables, ...newMentionableImages])
         // 默认保持收起状态，不自动展开新添加的徽章
       },
-      [mentionableUnitLabel, mentionables, setMentionables],
+      [currentModel, mentionableUnitLabel, mentionables, setMentionables, t],
     )
 
     const handleCreatePdfMentionables = useCallback(

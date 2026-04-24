@@ -199,6 +199,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                       ...this.messages,
                     ],
                     signal: abortSignal,
+                    chatModelId: input.model.id,
                   })
 
                 this.replaceToolMessage(completedToolMessage)

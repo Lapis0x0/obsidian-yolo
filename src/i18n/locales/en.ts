@@ -587,6 +587,11 @@ export const en: TranslationKeys = {
       reasoningTypeGemini: 'Gemini reasoning (3 pro / flash / flash-lite)',
       reasoningTypeAnthropic: 'Claude extended thinking',
       reasoningTypeGeneric: 'Generic reasoning model',
+      inputModality: 'Input modality',
+      inputModalityDesc:
+        'Input types this model actually supports. A wrong pick will cause request failures.',
+      inputModalityText: 'Text',
+      inputModalityVision: 'Vision',
       openaiReasoningEffort: 'Reasoning effort',
       openaiReasoningEffortDesc:
         'Choose effort: minimal (gpt-5 only) / low / medium / high',
@@ -1077,6 +1082,8 @@ export const en: TranslationKeys = {
     selectModel: 'Select model',
     uploadImage: 'Upload image',
     uploadFile: 'Add file',
+    imageUnsupportedByModel:
+      'This model has not declared image support. Enable the "Vision" input modality in the model settings to attach images.',
     addContext: 'Add context',
     applyChanges: 'Apply changes',
     copyMessage: 'Copy message',

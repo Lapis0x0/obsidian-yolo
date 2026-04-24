@@ -587,6 +587,11 @@ export const it: TranslationKeys = {
       geminiThinkingBudgetDesc:
         'Unità: token di thinking. 0 = off; -1 = dinamico (solo Gemini).',
       geminiThinkingBudgetPlaceholder: 'Ad esempio, 10000',
+      inputModality: 'Modalità di input',
+      inputModalityDesc:
+        'Tipi di input effettivamente supportati dal modello. Una scelta errata può causare errori di richiesta.',
+      inputModalityText: 'Testo',
+      inputModalityVision: 'Immagini',
       toolType: 'Tipo di strumento',
       toolTypeDesc:
         'Tipo di chiamata di strumento supportato da questo modello.',
@@ -1062,6 +1067,8 @@ export const it: TranslationKeys = {
     selectModel: 'Seleziona modello',
     uploadImage: 'Carica immagine',
     uploadFile: 'Aggiungi file',
+    imageUnsupportedByModel:
+      'Questo modello non dichiara il supporto alle immagini. Abilita la modalità di input "Vision" nelle impostazioni del modello per allegare immagini.',
     addContext: 'Aggiungi contesto',
     applyChanges: 'Applica modifiche',
     copyMessage: 'Copia messaggio',
