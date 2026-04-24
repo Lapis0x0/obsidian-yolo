@@ -123,3 +123,48 @@ export const getBuiltinToolUiMeta = (
 ): BuiltinToolUiMeta | null => {
   return BUILTIN_TOOL_UI_META[toolName] ?? null
 }
+
+export type BuiltinToolCategory = 'vault' | 'context' | 'external'
+
+export const BUILTIN_TOOL_CATEGORY_ORDER: BuiltinToolCategory[] = [
+  'vault',
+  'context',
+  'external',
+]
+
+const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
+  fs_list: 'vault',
+  fs_search: 'vault',
+  fs_read: 'vault',
+  fs_edit: 'vault',
+  [FILE_OPS_GROUP_TOOL_NAME]: 'vault',
+  context_prune_tool_results: 'context',
+  context_compact: 'context',
+  [MEMORY_OPS_GROUP_TOOL_NAME]: 'context',
+  [WEB_OPS_GROUP_TOOL_NAME]: 'external',
+  open_skill: 'external',
+}
+
+export const getBuiltinToolCategory = (
+  toolName: string,
+): BuiltinToolCategory | null => {
+  return BUILTIN_TOOL_CATEGORY_MAP[toolName] ?? null
+}
+
+export const BUILTIN_TOOL_CATEGORY_I18N: Record<
+  BuiltinToolCategory,
+  { key: string; fallback: string }
+> = {
+  vault: {
+    key: 'settings.agent.toolsGroupBuiltinVault',
+    fallback: 'Vault',
+  },
+  context: {
+    key: 'settings.agent.toolsGroupBuiltinContext',
+    fallback: 'Context & Memory',
+  },
+  external: {
+    key: 'settings.agent.toolsGroupBuiltinExternal',
+    fallback: 'External',
+  },
+}

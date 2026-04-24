@@ -8,10 +8,14 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import {
+  BUILTIN_TOOL_CATEGORY_I18N,
+  BUILTIN_TOOL_CATEGORY_ORDER,
+  BuiltinToolCategory,
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
   WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
+  getBuiltinToolCategory,
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
 import {
@@ -79,7 +83,7 @@ function AgentToolsModalContent({
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
 
-  const builtinTools = useMemo(() => {
+  const builtinToolGroups = useMemo(() => {
     const toolOptions = settings.mcp.builtinToolOptions
     const tools = getLocalFileTools()
       .filter(
@@ -152,18 +156,25 @@ function AgentToolsModalContent({
       hasSettings: true,
     }
 
-    const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
-    if (openSkillIndex >= 0) {
-      tools.splice(openSkillIndex, 0, fileOpsTool)
-      tools.splice(openSkillIndex + 1, 0, memoryOpsTool)
-      tools.splice(openSkillIndex + 2, 0, webOpsTool)
-    } else {
-      tools.push(fileOpsTool)
-      tools.push(memoryOpsTool)
-      tools.push(webOpsTool)
+    const allTools = [...tools, fileOpsTool, memoryOpsTool, webOpsTool]
+
+    const byCategory = new Map<BuiltinToolCategory, typeof allTools>()
+    for (const category of BUILTIN_TOOL_CATEGORY_ORDER) {
+      byCategory.set(category, [])
+    }
+    for (const tool of allTools) {
+      const category = getBuiltinToolCategory(tool.id) ?? 'vault'
+      byCategory.get(category)!.push(tool)
     }
 
-    return tools
+    return BUILTIN_TOOL_CATEGORY_ORDER.map((category) => ({
+      category,
+      title: t(
+        BUILTIN_TOOL_CATEGORY_I18N[category].key,
+        BUILTIN_TOOL_CATEGORY_I18N[category].fallback,
+      ),
+      tools: byCategory.get(category) ?? [],
+    })).filter((group) => group.tools.length > 0)
   }, [settings.mcp.builtinToolOptions, t])
 
   const handleToggleBuiltinTool = (toolName: string, enabled: boolean) => {
@@ -204,59 +215,63 @@ function AgentToolsModalContent({
         )}
       </div>
 
-      <div className="smtcmp-settings-sub-header">
-        <span className="smtcmp-agent-tools-section-title">
-          <span>{t('settings.agent.toolSourceBuiltin', 'Built-in')}</span>
-        </span>
-      </div>
-      <div className="smtcmp-mcp-servers-container smtcmp-builtin-tools-table">
-        <div className="smtcmp-mcp-servers-header smtcmp-builtin-tools-table-header">
-          <div>{t('settings.mcp.tools', 'Tools')}</div>
-          <div>{t('settings.agent.descriptionColumn', 'Description')}</div>
-          <div>{t('settings.mcp.enabled', 'Enabled')}</div>
-          <div />
-        </div>
-        <div className="smtcmp-mcp-server smtcmp-builtin-tools-table-body">
-          {builtinTools.map((tool) => (
-            <div
-              key={tool.id}
-              className="smtcmp-mcp-server-row smtcmp-builtin-tools-table-row"
-            >
-              <div className="smtcmp-mcp-server-name">{tool.label}</div>
-              <div className="smtcmp-mcp-server-status smtcmp-builtin-tools-table-description">
-                <div className="smtcmp-mcp-tool-description">
-                  {tool.description}
-                </div>
-              </div>
-              <div className="smtcmp-mcp-server-toggle">
-                <ObsidianToggle
-                  value={tool.enabled}
-                  onChange={(enabled) =>
-                    handleToggleBuiltinTool(tool.id, enabled)
-                  }
-                />
-              </div>
-              <div className="smtcmp-builtin-tools-table-action">
-                {tool.hasSettings ? (
-                  <button
-                    type="button"
-                    className="clickable-icon"
-                    aria-label={t(
-                      'settings.webSearch.openSettings',
-                      'Configure web search providers',
-                    )}
-                    onClick={() =>
-                      new WebSearchSettingsModal(app, plugin).open()
-                    }
-                  >
-                    <Settings size={16} />
-                  </button>
-                ) : null}
-              </div>
+      {builtinToolGroups.map((group) => (
+        <div key={group.category}>
+          <div className="smtcmp-settings-sub-header">
+            <span className="smtcmp-agent-tools-section-title">
+              <span>{group.title}</span>
+            </span>
+          </div>
+          <div className="smtcmp-mcp-servers-container smtcmp-builtin-tools-table">
+            <div className="smtcmp-mcp-servers-header smtcmp-builtin-tools-table-header">
+              <div>{t('settings.mcp.tools', 'Tools')}</div>
+              <div>{t('settings.agent.descriptionColumn', 'Description')}</div>
+              <div>{t('settings.mcp.enabled', 'Enabled')}</div>
+              <div />
             </div>
-          ))}
+            <div className="smtcmp-mcp-server smtcmp-builtin-tools-table-body">
+              {group.tools.map((tool) => (
+                <div
+                  key={tool.id}
+                  className="smtcmp-mcp-server-row smtcmp-builtin-tools-table-row"
+                >
+                  <div className="smtcmp-mcp-server-name">{tool.label}</div>
+                  <div className="smtcmp-mcp-server-status smtcmp-builtin-tools-table-description">
+                    <div className="smtcmp-mcp-tool-description">
+                      {tool.description}
+                    </div>
+                  </div>
+                  <div className="smtcmp-mcp-server-toggle">
+                    <ObsidianToggle
+                      value={tool.enabled}
+                      onChange={(enabled) =>
+                        handleToggleBuiltinTool(tool.id, enabled)
+                      }
+                    />
+                  </div>
+                  <div className="smtcmp-builtin-tools-table-action">
+                    {tool.hasSettings ? (
+                      <button
+                        type="button"
+                        className="clickable-icon"
+                        aria-label={t(
+                          'settings.webSearch.openSettings',
+                          'Configure web search providers',
+                        )}
+                        onClick={() =>
+                          new WebSearchSettingsModal(app, plugin).open()
+                        }
+                      >
+                        <Settings size={16} />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      ))}
 
       <McpSection app={app} plugin={plugin} embedded />
     </div>

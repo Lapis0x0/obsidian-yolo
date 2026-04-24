@@ -4162,9 +4162,18 @@
 }
 
 .smtcmp-agent-tool-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-2-2);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   letter-spacing: 0.01em;
+}
+
+.smtcmp-agent-tool-group-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 .smtcmp-agent-tools-panel .smtcmp-agent-tool-list {

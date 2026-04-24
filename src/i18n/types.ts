@@ -234,6 +234,9 @@ export type TranslationKeys = {
       deleteConfirmMessageSuffix?: string
       toolSourceBuiltin?: string
       toolSourceMcp?: string
+      toolsGroupBuiltinVault?: string
+      toolsGroupBuiltinContext?: string
+      toolsGroupBuiltinExternal?: string
       noMcpTools?: string
       toolsEnabledCount?: string
       manageTools?: string

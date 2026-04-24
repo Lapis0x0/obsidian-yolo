@@ -13,10 +13,13 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  BUILTIN_TOOL_CATEGORY_I18N,
+  BUILTIN_TOOL_CATEGORY_ORDER,
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
   WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
+  getBuiltinToolCategory,
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
 import {
@@ -671,9 +674,15 @@ export function AgentsSectionContent({
         return
       }
 
-      const key = serverName
+      const builtinCategory = isBuiltin
+        ? (getBuiltinToolCategory(toolName) ?? 'vault')
+        : null
+      const key = isBuiltin ? `__builtin:${builtinCategory}` : serverName
       const title = isBuiltin
-        ? t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
+        ? t(
+            BUILTIN_TOOL_CATEGORY_I18N[builtinCategory!].key,
+            BUILTIN_TOOL_CATEGORY_I18N[builtinCategory!].fallback,
+          )
         : serverName
       const builtinMeta = isBuiltin ? getBuiltinToolUiMeta(toolName) : null
       const displayName = builtinMeta
@@ -692,73 +701,81 @@ export function AgentsSectionContent({
       groups.set(key, group)
     })
 
+    const pushBuiltinGroupTool = (
+      toolName: string,
+      tool: AgentToolView,
+    ) => {
+      const category = getBuiltinToolCategory(toolName) ?? 'vault'
+      const key = `__builtin:${category}`
+      const title = t(
+        BUILTIN_TOOL_CATEGORY_I18N[category].key,
+        BUILTIN_TOOL_CATEGORY_I18N[category].fallback,
+      )
+      const group = groups.get(key) ?? { title, tools: [] }
+      group.tools.push(tool)
+      groups.set(key, group)
+    }
+
     if (
       draftAgent?.includeBuiltinTools !== false &&
       localSplitToolTargets.size > 0
     ) {
-      const key = localFsServerName
-      const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
       const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
       if (!fileOpsMeta) {
         throw new Error('Missing built-in tool UI metadata for fs_file_ops')
       }
-      const group = groups.get(key) ?? { title, tools: [] }
-      const prefixedAlias = `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`
-      group.tools.push({
-        fullName: prefixedAlias,
+      pushBuiltinGroupTool(FILE_OPS_GROUP_TOOL_NAME, {
+        fullName: `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`,
         toggleTargets: [...localSplitToolTargets],
         displayName: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
         description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       })
-      groups.set(key, group)
     }
 
     if (
       draftAgent?.includeBuiltinTools !== false &&
       localMemorySplitToolTargets.size > 0
     ) {
-      const key = localFsServerName
-      const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
       const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
       if (!memoryOpsMeta) {
         throw new Error('Missing built-in tool UI metadata for memory_ops')
       }
-      const group = groups.get(key) ?? { title, tools: [] }
-      const prefixedAlias = `${localFsServerName}__${MEMORY_OPS_GROUP_TOOL_NAME}`
-      group.tools.push({
-        fullName: prefixedAlias,
+      pushBuiltinGroupTool(MEMORY_OPS_GROUP_TOOL_NAME, {
+        fullName: `${localFsServerName}__${MEMORY_OPS_GROUP_TOOL_NAME}`,
         toggleTargets: [...localMemorySplitToolTargets],
         displayName: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
         description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
       })
-      groups.set(key, group)
     }
 
     if (
       draftAgent?.includeBuiltinTools !== false &&
       localWebSplitToolTargets.size > 0
     ) {
-      const key = localFsServerName
-      const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
       const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
       if (!webOpsMeta) {
         throw new Error('Missing built-in tool UI metadata for web_ops')
       }
-      const group = groups.get(key) ?? { title, tools: [] }
-      const prefixedAlias = `${localFsServerName}__${WEB_OPS_GROUP_TOOL_NAME}`
-      group.tools.push({
-        fullName: prefixedAlias,
+      pushBuiltinGroupTool(WEB_OPS_GROUP_TOOL_NAME, {
+        fullName: `${localFsServerName}__${WEB_OPS_GROUP_TOOL_NAME}`,
         toggleTargets: [...localWebSplitToolTargets],
         displayName: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
         description: t(webOpsMeta.descKey ?? '', webOpsMeta.descFallback),
       })
-      groups.set(key, group)
     }
 
+    const builtinCategoryRank = new Map<string, number>(
+      BUILTIN_TOOL_CATEGORY_ORDER.map(
+        (category, index) => [`__builtin:${category}`, index] as const,
+      ),
+    )
     return [...groups.entries()]
       .sort(([a], [b]) => {
-        if (a === localFsServerName) return -1
-        if (b === localFsServerName) return 1
+        const ra = builtinCategoryRank.get(a)
+        const rb = builtinCategoryRank.get(b)
+        if (ra !== undefined && rb !== undefined) return ra - rb
+        if (ra !== undefined) return -1
+        if (rb !== undefined) return 1
         return a.localeCompare(b)
       })
       .map(([key, value]) => ({ key, ...value }))
@@ -779,6 +796,20 @@ export function AgentsSectionContent({
         ).length,
       0,
     )
+  }, [draftAgent, visibleToolGroups])
+
+  const groupEnabledCounts = useMemo(() => {
+    const enabled = new Set(getEnabledAssistantToolNames(draftAgent))
+    const counts = new Map<string, number>()
+    for (const group of visibleToolGroups) {
+      counts.set(
+        group.key,
+        group.tools.filter((tool) =>
+          tool.toggleTargets.every((target) => enabled.has(target)),
+        ).length,
+      )
+    }
+    return counts
   }, [draftAgent, visibleToolGroups])
 
   const estimatedToolContextTokens = useMemo(() => {
@@ -1215,7 +1246,13 @@ export function AgentsSectionContent({
                 {visibleToolGroups.map((group) => (
                   <div key={group.key} className="smtcmp-agent-tool-group">
                     <div className="smtcmp-agent-tool-group-title">
-                      {group.title}
+                      <span>{group.title}</span>
+                      <span className="smtcmp-agent-tool-group-count">
+                        {`${groupEnabledCounts.get(group.key) ?? 0} / ${group.tools.length} ${t(
+                          'settings.agent.toolsActive',
+                          'active',
+                        )}`}
+                      </span>
                     </div>
                     <div className="smtcmp-agent-tool-list">
                       {group.tools.map((tool) => {
