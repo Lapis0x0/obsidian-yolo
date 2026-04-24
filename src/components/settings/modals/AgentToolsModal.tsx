@@ -1,3 +1,4 @@
+import { Settings } from 'lucide-react'
 import { App } from 'obsidian'
 import { useMemo } from 'react'
 
@@ -16,10 +17,15 @@ import {
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
+import {
+  WEB_SCRAPE_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
+} from '../../../core/web-search'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { McpSection } from '../sections/McpSection'
+import { WebSearchSettingsModal } from './WebSearchSettingsModal'
 
 type AgentToolsModalProps = {
   app: App
@@ -80,7 +86,10 @@ function AgentToolsModalContent({
       .filter(
         (tool) =>
           !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
-          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name),
+          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
+          // web_scrape is a sub-capability of web_search, controlled by the
+          // same toggle and surfaced via the web_search row only.
+          tool.name !== WEB_SCRAPE_TOOL_NAME,
       )
       .map((tool) => {
         const meta = getBuiltinToolUiMeta(tool.name)
@@ -91,6 +100,7 @@ function AgentToolsModalContent({
             ? t(meta.descKey ?? '', meta.descFallback)
             : tool.description,
           enabled: !(toolOptions[tool.name]?.disabled ?? false),
+          hasSettings: tool.name === WEB_SEARCH_TOOL_NAME,
         }
       })
 
@@ -108,6 +118,7 @@ function AgentToolsModalContent({
       label: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
       description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       enabled: splitToolEnabled,
+      hasSettings: false,
     }
 
     const memorySplitToolEnabled = LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES.every(
@@ -124,6 +135,7 @@ function AgentToolsModalContent({
       label: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
       description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
       enabled: memorySplitToolEnabled,
+      hasSettings: false,
     }
 
     const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
@@ -184,6 +196,7 @@ function AgentToolsModalContent({
           <div>{t('settings.mcp.tools', 'Tools')}</div>
           <div>{t('settings.agent.descriptionColumn', 'Description')}</div>
           <div>{t('settings.mcp.enabled', 'Enabled')}</div>
+          <div />
         </div>
         <div className="smtcmp-mcp-server smtcmp-builtin-tools-table-body">
           {builtinTools.map((tool) => (
@@ -204,6 +217,23 @@ function AgentToolsModalContent({
                     handleToggleBuiltinTool(tool.id, enabled)
                   }
                 />
+              </div>
+              <div className="smtcmp-builtin-tools-table-action">
+                {tool.hasSettings ? (
+                  <button
+                    type="button"
+                    className="clickable-icon"
+                    aria-label={t(
+                      'settings.webSearch.openSettings',
+                      'Configure web search providers',
+                    )}
+                    onClick={() =>
+                      new WebSearchSettingsModal(app, plugin).open()
+                    }
+                  >
+                    <Settings size={16} />
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}

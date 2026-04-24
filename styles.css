@@ -4408,7 +4408,41 @@
 
 .smtcmp-builtin-tools-table-header,
 .smtcmp-builtin-tools-table-row {
-  grid-template-columns: minmax(180px, 0.9fr) minmax(360px, 1.8fr) 88px;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(320px, 1.8fr) 88px 48px;
+}
+
+.smtcmp-builtin-tools-table-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.smtcmp-builtin-tools-table-action--placeholder {
+  visibility: hidden;
+}
+
+.smtcmp-web-search-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.8fr) 80px 96px;
+  gap: var(--size-4-3);
+  align-items: center;
+  padding: var(--size-2-3) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.smtcmp-web-search-row:last-child {
+  border-bottom: none;
+}
+
+.smtcmp-web-search-header {
+  font-weight: var(--font-semibold);
+  background: var(--background-secondary);
+}
+
+.smtcmp-web-search-add {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
 .smtcmp-builtin-tools-table-description {
@@ -4965,11 +4999,19 @@
 }
 
 .smtcmp-agent-workspace-group--include {
-  border-color: color-mix(in srgb, var(--color-green) 35%, var(--background-modifier-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-green) 35%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-group--exclude {
-  border-color: color-mix(in srgb, var(--color-red) 35%, var(--background-modifier-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-red) 35%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-group-head {
@@ -4983,13 +5025,29 @@
 }
 
 .smtcmp-agent-workspace-group--include .smtcmp-agent-workspace-group-head {
-  background: color-mix(in srgb, var(--color-green) 8%, var(--background-primary));
-  border-bottom-color: color-mix(in srgb, var(--color-green) 20%, var(--background-modifier-border));
+  background: color-mix(
+    in srgb,
+    var(--color-green) 8%,
+    var(--background-primary)
+  );
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--color-green) 20%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-group--exclude .smtcmp-agent-workspace-group-head {
-  background: color-mix(in srgb, var(--color-red) 8%, var(--background-primary));
-  border-bottom-color: color-mix(in srgb, var(--color-red) 20%, var(--background-modifier-border));
+  background: color-mix(
+    in srgb,
+    var(--color-red) 8%,
+    var(--background-primary)
+  );
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--color-red) 20%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-badge {
@@ -5008,12 +5066,20 @@
 
 .smtcmp-agent-workspace-group--include .smtcmp-agent-workspace-badge {
   color: var(--color-green);
-  border-color: color-mix(in srgb, var(--color-green) 30%, var(--background-modifier-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-green) 30%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-group--exclude .smtcmp-agent-workspace-badge {
   color: var(--color-red);
-  border-color: color-mix(in srgb, var(--color-red) 30%, var(--background-modifier-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-red) 30%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-group-title {
@@ -5058,12 +5124,20 @@
 
 .smtcmp-agent-workspace-group--include .smtcmp-agent-workspace-add {
   color: var(--color-green);
-  border-color: color-mix(in srgb, var(--color-green) 30%, var(--background-modifier-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-green) 30%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-group--exclude .smtcmp-agent-workspace-add {
   color: var(--color-red);
-  border-color: color-mix(in srgb, var(--color-red) 30%, var(--background-modifier-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-red) 30%,
+    var(--background-modifier-border)
+  );
 }
 
 .smtcmp-agent-workspace-empty {

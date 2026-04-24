@@ -27,6 +27,12 @@ import {
   getLocalFileTools,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
+import {
+  WEB_SCRAPE_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
+  activeProviderSupportsScrape,
+  isWebSearchToolReady,
+} from '../web-search'
 const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -109,6 +115,24 @@ export class McpManager {
       const groupedMemoryOpsDisabled =
         this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
       return !(splitToolDisabled || groupedMemoryOpsDisabled)
+    }
+    if (
+      toolName === WEB_SEARCH_TOOL_NAME ||
+      toolName === WEB_SCRAPE_TOOL_NAME
+    ) {
+      // Both tools share the same on/off switch under the `web_search` key.
+      const groupDisabled =
+        this.settings.mcp.builtinToolOptions[WEB_SEARCH_TOOL_NAME]?.disabled ??
+        false
+      if (groupDisabled) return false
+      if (!isWebSearchToolReady(this.settings.webSearch)) return false
+      if (
+        toolName === WEB_SCRAPE_TOOL_NAME &&
+        !activeProviderSupportsScrape(this.settings.webSearch)
+      ) {
+        return false
+      }
+      return true
     }
     return true
   }

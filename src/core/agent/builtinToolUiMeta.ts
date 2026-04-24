@@ -89,6 +89,13 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelFallback: 'Open Skill',
     descFallback: 'Load a skill markdown file by id or name.',
   },
+  web_search: {
+    labelKey: 'settings.agent.builtinWebSearchLabel',
+    descKey: 'settings.agent.builtinWebSearchDesc',
+    labelFallback: 'Web Search',
+    descFallback:
+      'Search the web (and optionally fetch full pages) through a configured search provider.',
+  },
 }
 
 export const getBuiltinToolUiMeta = (

@@ -395,6 +395,9 @@ export const it: TranslationKeys = {
       builtinMemoryDeleteDesc: 'Elimina una memoria esistente tramite id.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
+      builtinWebSearchLabel: 'Ricerca web',
+      builtinWebSearchDesc:
+        'Cerca sul web (e facoltativamente recupera intere pagine) tramite il provider configurato.',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',
@@ -475,6 +478,54 @@ export const it: TranslationKeys = {
         'Uso finestra di contesto (%)',
       autoContextCompactionThresholdRatioPercentDesc:
         'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
+    },
+    webSearch: {
+      modalTitle: 'Impostazioni ricerca web',
+      openSettings: 'Configura provider di ricerca web',
+      intro:
+        'Configura i provider di ricerca usati dallo strumento agent web_search integrato. Il provider predefinito qui sotto verrà usato dall’agent.',
+      providersHeader: 'Provider',
+      addProvider: 'Aggiungi provider',
+      editProvider: 'Modifica provider',
+      empty:
+        'Nessun provider configurato. Aggiungine uno per abilitare lo strumento web_search.',
+      colName: 'Nome',
+      colType: 'Tipo',
+      colDefault: 'Predefinito',
+      colActions: 'Azioni',
+      deleteConfirmTitle: 'Elimina provider',
+      deleteConfirmMessage:
+        'Sei sicuro di voler eliminare questo provider di ricerca web?',
+      deleteFailed: 'Impossibile eliminare il provider.',
+      commonHeader: 'Comuni',
+      resultSize: 'Numero risultati',
+      resultSizeDesc:
+        'Numero massimo di risultati restituiti al modello per ricerca.',
+      searchTimeout: 'Timeout ricerca (ms)',
+      scrapeTimeout: 'Timeout scrape (ms)',
+      types: {
+        tavily: 'Tavily',
+        jina: 'Jina',
+        searxng: 'SearXNG',
+        bing: 'Bing (senza chiave)',
+        'gemini-grounding': 'Gemini (Grounding)',
+        grok: 'Grok',
+      },
+      fieldName: 'Nome visualizzato',
+      fieldApiKey: 'API key',
+      fieldDepth: 'Profondità',
+      fieldSearchUrl: 'URL ricerca',
+      fieldScrapeUrl: 'URL scrape',
+      fieldBaseUrl: 'Base URL',
+      fieldLanguage: 'Lingua',
+      fieldEngines: 'Motori (separati da virgola)',
+      fieldUsername: 'Username Basic Auth',
+      fieldPassword: 'Password Basic Auth',
+      fieldModel: 'Modello',
+      fieldSystemPrompt: 'System prompt',
+      fieldEnableX: 'Cerca anche su X',
+      bingNote:
+        'Bing non richiede API key. Il provider effettua scraping della pagina pubblica dei risultati; l’affidabilità dipende dalle misure anti-bot di Bing.',
     },
     providers: {
       title: 'Provider',

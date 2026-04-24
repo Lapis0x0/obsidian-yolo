@@ -13,6 +13,7 @@ import {
 } from '../../types/mcp.types'
 import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS } from '../../types/reasoning'
+import { webSearchSettingsSchema } from '../../core/web-search/types'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
@@ -286,6 +287,17 @@ export const smartComposerSettingsSchema = z.object({
       servers: [],
       builtinToolOptions: {},
     }),
+
+  // Web search configuration (built-in agent tool)
+  webSearch: webSearchSettingsSchema.catch({
+    providers: [],
+    defaultProviderId: undefined,
+    common: {
+      resultSize: 8,
+      searchTimeoutMs: 15000,
+      scrapeTimeoutMs: 20000,
+    },
+  }),
 
   // Skills configuration
   skills: z

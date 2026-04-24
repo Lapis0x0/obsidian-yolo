@@ -267,6 +267,8 @@ export type TranslationKeys = {
       builtinMemoryDeleteDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
+      builtinWebSearchLabel?: string
+      builtinWebSearchDesc?: string
       editorDefaultName?: string
       editorIntro?: string
       editorTabProfile?: string
@@ -350,6 +352,49 @@ export type TranslationKeys = {
       autoContextCompactionThresholdTokensDesc?: string
       autoContextCompactionThresholdRatioPercent?: string
       autoContextCompactionThresholdRatioPercentDesc?: string
+    }
+    webSearch?: {
+      modalTitle?: string
+      openSettings?: string
+      intro?: string
+      providersHeader?: string
+      addProvider?: string
+      editProvider?: string
+      empty?: string
+      colName?: string
+      colType?: string
+      colDefault?: string
+      colActions?: string
+      deleteConfirmTitle?: string
+      deleteConfirmMessage?: string
+      deleteFailed?: string
+      commonHeader?: string
+      resultSize?: string
+      resultSizeDesc?: string
+      searchTimeout?: string
+      scrapeTimeout?: string
+      types?: {
+        tavily?: string
+        jina?: string
+        searxng?: string
+        bing?: string
+        'gemini-grounding'?: string
+        grok?: string
+      }
+      fieldName?: string
+      fieldApiKey?: string
+      fieldDepth?: string
+      fieldSearchUrl?: string
+      fieldScrapeUrl?: string
+      fieldBaseUrl?: string
+      fieldLanguage?: string
+      fieldEngines?: string
+      fieldUsername?: string
+      fieldPassword?: string
+      fieldModel?: string
+      fieldSystemPrompt?: string
+      fieldEnableX?: string
+      bingNote?: string
     }
     providers: {
       title: string
