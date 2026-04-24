@@ -350,7 +350,11 @@ export const zh: TranslationKeys = {
       builtinOpenSkillDesc: '按 id 或名称读取技能 Markdown 内容。',
       builtinWebSearchLabel: '联网搜索',
       builtinWebSearchDesc:
-        '通过配置的搜索服务进行网页搜索，并可按需抓取完整页面内容。',
+        '通过配置的搜索服务进行网页搜索，返回带摘要的结果列表。',
+      builtinWebScrapeLabel: '抓取网页',
+      builtinWebScrapeDesc: '通过配置的搜索服务抓取单个 URL 的完整正文。',
+      builtinWebOpsLabel: '联网搜索工具集',
+      builtinWebOpsDesc: '联网能力组合：网页搜索 + 单页正文抓取。',
       editorDefaultName: '新建 Agent',
       editorIntro: '配置此 Agent 的能力、模型与行为。',
       editorTabProfile: '资料',

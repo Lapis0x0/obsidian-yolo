@@ -27,6 +27,7 @@ import {
   getLocalFileTools,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
+import { WEB_OPS_GROUP_TOOL_NAME } from '../agent/builtinToolUiMeta'
 import {
   WEB_SCRAPE_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
@@ -97,17 +98,19 @@ export class McpManager {
   }
 
   private isLocalToolEnabled(toolName: string): boolean {
-    // Web search tools share a single `web_search` group switch, but also
-    // need a configured provider to actually run. Keep this branch ahead of
-    // the direct-disabled early return so readiness is always evaluated.
+    // Web search tools share a single `web_ops` group switch, but also need a
+    // configured provider to actually run. Keep this branch ahead of the
+    // direct-disabled early return so readiness is always evaluated.
     if (
       toolName === WEB_SEARCH_TOOL_NAME ||
       toolName === WEB_SCRAPE_TOOL_NAME
     ) {
       const groupDisabled =
-        this.settings.mcp.builtinToolOptions[WEB_SEARCH_TOOL_NAME]?.disabled ??
-        false
-      if (groupDisabled) return false
+        this.settings.mcp.builtinToolOptions[WEB_OPS_GROUP_TOOL_NAME]
+          ?.disabled ?? false
+      const splitToolDisabled =
+        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
+      if (groupDisabled || splitToolDisabled) return false
       if (!isWebSearchToolReady(this.settings.webSearch)) return false
       if (
         toolName === WEB_SCRAPE_TOOL_NAME &&

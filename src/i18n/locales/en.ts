@@ -389,7 +389,13 @@ export const en: TranslationKeys = {
       builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
       builtinWebSearchLabel: 'Web Search',
       builtinWebSearchDesc:
-        'Search the web (and optionally fetch full pages) through a configured search provider.',
+        'Search the web through a configured search provider and return ranked results with snippets.',
+      builtinWebScrapeLabel: 'Web Scrape',
+      builtinWebScrapeDesc:
+        'Fetch the full content of a single URL through a configured search provider.',
+      builtinWebOpsLabel: 'Web Search Toolset',
+      builtinWebOpsDesc:
+        'Grouped web tools: web_search for queries and web_scrape for single-page full content.',
       editorDefaultName: 'New agent',
       editorIntro: "Configure this agent's capabilities, model, and behavior.",
       editorTabProfile: 'Profile',

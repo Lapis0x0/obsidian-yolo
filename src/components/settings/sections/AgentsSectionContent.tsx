@@ -15,6 +15,8 @@ import { useSettings } from '../../../contexts/settings-context'
 import {
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
 import {
@@ -95,6 +97,7 @@ const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
+const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
 
 const AGENT_EDITOR_TABS: AgentEditorTab[] = [
   'profile',
@@ -636,6 +639,7 @@ export function AgentsSectionContent({
     const groups = new Map<string, { title: string; tools: AgentToolView[] }>()
     const localSplitToolTargets = new Set<string>()
     const localMemorySplitToolTargets = new Set<string>()
+    const localWebSplitToolTargets = new Set<string>()
 
     availableTools.forEach((tool) => {
       let serverName = localFsServerName
@@ -660,6 +664,10 @@ export function AgentsSectionContent({
       }
       if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
         localMemorySplitToolTargets.add(tool.name)
+        return
+      }
+      if (isBuiltin && SPLIT_WEB_TOOL_NAME_SET.has(toolName)) {
+        localWebSplitToolTargets.add(tool.name)
         return
       }
 
@@ -722,6 +730,27 @@ export function AgentsSectionContent({
         toggleTargets: [...localMemorySplitToolTargets],
         displayName: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
         description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
+      })
+      groups.set(key, group)
+    }
+
+    if (
+      draftAgent?.includeBuiltinTools !== false &&
+      localWebSplitToolTargets.size > 0
+    ) {
+      const key = localFsServerName
+      const title = t('settings.agent.toolsGroupBuiltin', 'Built-in tools')
+      const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
+      if (!webOpsMeta) {
+        throw new Error('Missing built-in tool UI metadata for web_ops')
+      }
+      const group = groups.get(key) ?? { title, tools: [] }
+      const prefixedAlias = `${localFsServerName}__${WEB_OPS_GROUP_TOOL_NAME}`
+      group.tools.push({
+        fullName: prefixedAlias,
+        toggleTargets: [...localWebSplitToolTargets],
+        displayName: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
+        description: t(webOpsMeta.descKey ?? '', webOpsMeta.descFallback),
       })
       groups.set(key, group)
     }

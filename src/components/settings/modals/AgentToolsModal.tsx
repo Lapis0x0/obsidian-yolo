@@ -10,6 +10,8 @@ import {
 import {
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
 import {
@@ -17,10 +19,6 @@ import {
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
-import {
-  WEB_SCRAPE_TOOL_NAME,
-  WEB_SEARCH_TOOL_NAME,
-} from '../../../core/web-search'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
@@ -36,6 +34,7 @@ const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
+const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
 
 export class AgentToolsModal extends ReactModal<AgentToolsModalProps> {
   constructor(app: App, plugin: SmartComposerPlugin) {
@@ -87,9 +86,7 @@ function AgentToolsModalContent({
         (tool) =>
           !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
-          // web_scrape is a sub-capability of web_search, controlled by the
-          // same toggle and surfaced via the web_search row only.
-          tool.name !== WEB_SCRAPE_TOOL_NAME,
+          !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
       .map((tool) => {
         const meta = getBuiltinToolUiMeta(tool.name)
@@ -100,7 +97,7 @@ function AgentToolsModalContent({
             ? t(meta.descKey ?? '', meta.descFallback)
             : tool.description,
           enabled: !(toolOptions[tool.name]?.disabled ?? false),
-          hasSettings: tool.name === WEB_SEARCH_TOOL_NAME,
+          hasSettings: false,
         }
       })
 
@@ -138,13 +135,32 @@ function AgentToolsModalContent({
       hasSettings: false,
     }
 
+    const webSplitToolEnabled = WEB_OPS_SPLIT_ACTION_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[WEB_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
+    if (!webOpsMeta) {
+      throw new Error('Missing built-in tool UI metadata for web_ops')
+    }
+    const webOpsTool = {
+      id: WEB_OPS_GROUP_TOOL_NAME,
+      label: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
+      description: t(webOpsMeta.descKey ?? '', webOpsMeta.descFallback),
+      enabled: webSplitToolEnabled,
+      hasSettings: true,
+    }
+
     const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
     if (openSkillIndex >= 0) {
       tools.splice(openSkillIndex, 0, fileOpsTool)
       tools.splice(openSkillIndex + 1, 0, memoryOpsTool)
+      tools.splice(openSkillIndex + 2, 0, webOpsTool)
     } else {
       tools.push(fileOpsTool)
       tools.push(memoryOpsTool)
+      tools.push(webOpsTool)
     }
 
     return tools
@@ -159,7 +175,9 @@ function AgentToolsModalContent({
               MEMORY_OPS_GROUP_TOOL_NAME,
               ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
             ]
-          : [toolName]
+          : toolName === WEB_OPS_GROUP_TOOL_NAME
+            ? [WEB_OPS_GROUP_TOOL_NAME, ...WEB_OPS_SPLIT_ACTION_TOOL_NAMES]
+            : [toolName]
     const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
     for (const target of targets) {
       nextBuiltinToolOptions[target] = {

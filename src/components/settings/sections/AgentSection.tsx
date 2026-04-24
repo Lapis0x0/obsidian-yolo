@@ -9,6 +9,8 @@ import { useSettings } from '../../../contexts/settings-context'
 import {
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
@@ -41,6 +43,7 @@ const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
+const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
 
 export function AgentSection({ app }: AgentSectionProps) {
   const { settings, setSettings } = useSettings()
@@ -193,7 +196,8 @@ export function AgentSection({ app }: AgentSectionProps) {
       .filter(
         (tool) =>
           !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
-          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name),
+          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
+          !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
       .map((tool) => {
         const meta = getBuiltinToolUiMeta(tool.name)
@@ -234,13 +238,30 @@ export function AgentSection({ app }: AgentSectionProps) {
       enabled: memorySplitToolEnabled,
     }
 
+    const webSplitToolEnabled = WEB_OPS_SPLIT_ACTION_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[WEB_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
+    if (!webOpsMeta) {
+      throw new Error('Missing built-in tool UI metadata for web_ops')
+    }
+    const webOpsTool = {
+      id: WEB_OPS_GROUP_TOOL_NAME,
+      label: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
+      enabled: webSplitToolEnabled,
+    }
+
     const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
     if (openSkillIndex >= 0) {
       tools.splice(openSkillIndex, 0, fileOpsTool)
       tools.splice(openSkillIndex + 1, 0, memoryOpsTool)
+      tools.splice(openSkillIndex + 2, 0, webOpsTool)
     } else {
       tools.push(fileOpsTool)
       tools.push(memoryOpsTool)
+      tools.push(webOpsTool)
     }
 
     return tools

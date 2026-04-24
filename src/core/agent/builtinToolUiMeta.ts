@@ -7,6 +7,12 @@ export type BuiltinToolUiMeta = {
 
 export const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
 export const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
+export const WEB_OPS_GROUP_TOOL_NAME = 'web_ops'
+
+export const WEB_OPS_SPLIT_ACTION_TOOL_NAMES = [
+  'web_search',
+  'web_scrape',
+] as const
 
 export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
   fs_list: {
@@ -89,12 +95,26 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelFallback: 'Open Skill',
     descFallback: 'Load a skill markdown file by id or name.',
   },
+  [WEB_OPS_GROUP_TOOL_NAME]: {
+    labelKey: 'settings.agent.builtinWebOpsLabel',
+    descKey: 'settings.agent.builtinWebOpsDesc',
+    labelFallback: 'Web Search Toolset',
+    descFallback:
+      'Grouped web tools: web_search for queries and web_scrape for single-page full content.',
+  },
   web_search: {
     labelKey: 'settings.agent.builtinWebSearchLabel',
     descKey: 'settings.agent.builtinWebSearchDesc',
     labelFallback: 'Web Search',
     descFallback:
-      'Search the web (and optionally fetch full pages) through a configured search provider.',
+      'Search the web through a configured search provider and return ranked results with snippets.',
+  },
+  web_scrape: {
+    labelKey: 'settings.agent.builtinWebScrapeLabel',
+    descKey: 'settings.agent.builtinWebScrapeDesc',
+    labelFallback: 'Web Scrape',
+    descFallback:
+      'Fetch the full content of a single URL through a configured search provider.',
   },
 }
 

@@ -269,6 +269,10 @@ export type TranslationKeys = {
       builtinOpenSkillDesc?: string
       builtinWebSearchLabel?: string
       builtinWebSearchDesc?: string
+      builtinWebScrapeLabel?: string
+      builtinWebScrapeDesc?: string
+      builtinWebOpsLabel?: string
+      builtinWebOpsDesc?: string
       editorDefaultName?: string
       editorIntro?: string
       editorTabProfile?: string
