@@ -272,6 +272,19 @@ export type TranslationKeys = {
       editorTabProfile?: string
       editorTabTools?: string
       editorTabSkills?: string
+      editorTabWorkspace?: string
+      workspace?: {
+        enableTitle?: string
+        enableDesc?: string
+        includeTitle?: string
+        includeDesc?: string
+        includeBadge?: string
+        includeEmpty?: string
+        excludeTitle?: string
+        excludeDesc?: string
+        excludeBadge?: string
+        excludeEmpty?: string
+      }
       editorTabModel?: string
       editorName?: string
       editorNameDesc?: string
@@ -442,6 +455,10 @@ export type TranslationKeys = {
       reasoningTypeGemini?: string
       reasoningTypeAnthropic?: string
       reasoningTypeGeneric?: string
+      inputModality?: string
+      inputModalityDesc?: string
+      inputModalityText?: string
+      inputModalityVision?: string
       openaiReasoningEffort?: string
       openaiReasoningEffortDesc?: string
       geminiThinkingBudget?: string
@@ -921,6 +938,7 @@ export type TranslationKeys = {
     selectModel: string
     uploadImage: string
     uploadFile?: string
+    imageUnsupportedByModel?: string
     addContext: string
     applyChanges: string
     copyMessage: string

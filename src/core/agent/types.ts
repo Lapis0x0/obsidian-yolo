@@ -52,6 +52,11 @@ export type AgentRuntimeRunInput = {
       approvalMode?: 'full_access' | 'require_approval'
     }
   >
+  workspaceScope?: {
+    enabled: boolean
+    include: string[]
+    exclude: string[]
+  }
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   maxContextOverride?: number

@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid'
 
-import { AssistantToolPreference } from '../../types/assistant.types'
+import {
+  AssistantToolPreference,
+  AssistantWorkspaceScope,
+} from '../../types/assistant.types'
 import { ChatMessage, ChatToolMessage } from '../../types/chat'
 import { McpTool } from '../../types/mcp.types'
 import {
@@ -17,11 +20,13 @@ import {
   getAssistantToolApprovalMode,
   isAssistantToolEnabled,
 } from './tool-preferences'
+import { findPathOutsideScope } from './workspaceScope'
 
 export class AgentToolGateway {
   private readonly toolsEnabled: boolean
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
+  private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillIds?: Set<string>
   private readonly allowedSkillNames?: Set<string>
 
@@ -31,6 +36,7 @@ export class AgentToolGateway {
       toolsEnabled?: boolean
       allowedToolNames?: string[]
       toolPreferences?: Record<string, AssistantToolPreference>
+      workspaceScope?: AssistantWorkspaceScope
       allowedSkillIds?: string[]
       allowedSkillNames?: string[]
     },
@@ -40,12 +46,28 @@ export class AgentToolGateway {
       ? new Set(options.allowedToolNames)
       : undefined
     this.toolPreferences = options?.toolPreferences
+    this.workspaceScope = options?.workspaceScope
     this.allowedSkillIds = options?.allowedSkillIds
       ? new Set(options.allowedSkillIds.map((id) => id.toLowerCase()))
       : undefined
     this.allowedSkillNames = options?.allowedSkillNames
       ? new Set(options.allowedSkillNames.map((name) => name.toLowerCase()))
       : undefined
+  }
+
+  private isRequestPathAllowed(request: ToolCallRequest): boolean {
+    if (!this.workspaceScope?.enabled) return true
+    try {
+      const parsed = parseToolName(request.name)
+      if (parsed.serverName !== getLocalFileToolServerName()) return true
+      const args = getToolCallArgumentsObject(request.arguments)
+      return (
+        findPathOutsideScope(parsed.toolName, args, this.workspaceScope) ===
+        null
+      )
+    } catch {
+      return true
+    }
   }
 
   async listTools({
@@ -84,11 +106,13 @@ export class AgentToolGateway {
       toolCalls: toolCallRequests.map((request) => ({
         request,
         response: {
-          status: !this.isToolAllowed(request.name)
-            ? ToolCallResponseStatus.Rejected
-            : this.shouldStartToolCallRunning({ request, conversationId })
-              ? ToolCallResponseStatus.Running
-              : ToolCallResponseStatus.PendingApproval,
+          status:
+            !this.isToolAllowed(request.name) ||
+            !this.isRequestPathAllowed(request)
+              ? ToolCallResponseStatus.Rejected
+              : this.shouldStartToolCallRunning({ request, conversationId })
+                ? ToolCallResponseStatus.Running
+                : ToolCallResponseStatus.PendingApproval,
         },
       })),
     }
@@ -99,11 +123,13 @@ export class AgentToolGateway {
     conversationId,
     conversationMessages,
     signal,
+    chatModelId,
   }: {
     toolMessage: ChatToolMessage
     conversationId: string
     conversationMessages?: ChatMessage[]
     signal?: AbortSignal
+    chatModelId?: string
   }): Promise<ChatToolMessage> {
     const nextToolCalls = [...toolMessage.toolCalls]
     const runnableEntries = nextToolCalls
@@ -156,6 +182,8 @@ export class AgentToolGateway {
               entry.toolCall.request.name,
             ),
             signal,
+            chatModelId,
+            workspaceScope: this.workspaceScope,
           })
           .then((response) => ({ entries: [entry], responses: [response] })),
       )
@@ -179,6 +207,8 @@ export class AgentToolGateway {
                 entry.toolCall.request.name,
               ),
               signal,
+              chatModelId,
+              workspaceScope: this.workspaceScope,
             })
             .then((response) => ({ entries: [entry], responses: [response] })),
         )
@@ -206,6 +236,8 @@ export class AgentToolGateway {
               leader.toolCall.request.name,
             ),
             signal,
+            chatModelId,
+            workspaceScope: this.workspaceScope,
           })
           .then((response) => ({
             entries,

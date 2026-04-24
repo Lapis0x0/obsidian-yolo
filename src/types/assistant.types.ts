@@ -44,6 +44,16 @@ export type AssistantToolPreference = z.infer<
   typeof assistantToolPreferenceSchema
 >
 
+export const assistantWorkspaceScopeSchema = z.object({
+  enabled: z.boolean().default(false),
+  include: z.array(z.string()).default([]),
+  exclude: z.array(z.string()).default([]),
+})
+
+export type AssistantWorkspaceScope = z.infer<
+  typeof assistantWorkspaceScopeSchema
+>
+
 // Assistant type definition
 export const assistantSchema = z.object({
   id: z.string(),
@@ -63,6 +73,7 @@ export const assistantSchema = z.object({
   skillPreferences: z
     .record(z.string(), assistantSkillPreferenceSchema)
     .optional(),
+  workspaceScope: assistantWorkspaceScopeSchema.optional(),
   createdAt: z.number().optional(),
   updatedAt: z.number().optional(),
 })

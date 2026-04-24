@@ -392,6 +392,21 @@ export const en: TranslationKeys = {
       editorTabProfile: 'Profile',
       editorTabTools: 'Tools',
       editorTabSkills: 'Skills',
+      editorTabWorkspace: 'Workspace',
+      workspace: {
+        enableTitle: 'Restrict directory access',
+        enableDesc:
+          'When off, this agent can access the entire vault. When on, only the rules below apply.',
+        includeTitle: 'Allow',
+        includeDesc: 'Only read/write files under these paths',
+        includeBadge: 'INCLUDE',
+        includeEmpty:
+          'Leave empty to allow everything except the exclude list below.',
+        excludeTitle: 'Deny',
+        excludeDesc: 'Excluded from the allow range (higher priority)',
+        excludeBadge: 'EXCLUDE',
+        excludeEmpty: 'No exclusions.',
+      },
       editorTabModel: 'Model',
       editorName: 'Name',
       editorNameDesc: 'Agent display name',
@@ -587,6 +602,11 @@ export const en: TranslationKeys = {
       reasoningTypeGemini: 'Gemini reasoning (3 pro / flash / flash-lite)',
       reasoningTypeAnthropic: 'Claude extended thinking',
       reasoningTypeGeneric: 'Generic reasoning model',
+      inputModality: 'Input modality',
+      inputModalityDesc:
+        'Input types this model actually supports. A wrong pick will cause request failures.',
+      inputModalityText: 'Text',
+      inputModalityVision: 'Vision',
       openaiReasoningEffort: 'Reasoning effort',
       openaiReasoningEffortDesc:
         'Choose effort: minimal (gpt-5 only) / low / medium / high',
@@ -1077,6 +1097,8 @@ export const en: TranslationKeys = {
     selectModel: 'Select model',
     uploadImage: 'Upload image',
     uploadFile: 'Add file',
+    imageUnsupportedByModel:
+      'This model has not declared image support. Enable the "Vision" input modality in the model settings to attach images.',
     addContext: 'Add context',
     applyChanges: 'Apply changes',
     copyMessage: 'Copy message',

@@ -3,6 +3,7 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian'
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 import { McpTool } from '../../types/mcp.types'
@@ -18,6 +19,7 @@ import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
+import { chatModelSupportsVision } from '../../utils/llm/model-modalities'
 import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
@@ -36,6 +38,10 @@ import {
   memoryUpdate,
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
+import {
+  findPathOutsideScope,
+  isPathAllowedByScope,
+} from '../agent/workspaceScope'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import { aggregateSearchResults } from '../search/searchResultAggregation'
 import { getLiteSkillDocument } from '../skills/liteSkills'
@@ -2113,6 +2119,8 @@ export async function callLocalFileTool({
   args,
   requireReview = false,
   signal,
+  chatModelId,
+  workspaceScope,
 }: {
   app: App
   settings?: SmartComposerSettings
@@ -2126,12 +2134,31 @@ export async function callLocalFileTool({
   args: Record<string, unknown>
   requireReview?: boolean
   signal?: AbortSignal
+  chatModelId?: string
+  workspaceScope?: AssistantWorkspaceScope
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
   }
 
   try {
+    // Final defense: reject any fs_* call whose path args (including batch
+    // items[]) fall outside the agent's workspace scope. The gateway performs
+    // the same check up front for UI Rejected status, but we re-validate here
+    // so manual-approval / direct-call code paths cannot bypass the constraint.
+    if (workspaceScope?.enabled) {
+      const offendingPath = findPathOutsideScope(
+        toolName,
+        args,
+        workspaceScope,
+      )
+      if (offendingPath !== null) {
+        throw new Error(
+          `Path "${offendingPath}" is outside this agent's workspace scope.`,
+        )
+      }
+    }
+
     const name = toolName as LocalFileToolName
     switch (name) {
       case 'fs_list': {
@@ -2194,6 +2221,12 @@ export async function callLocalFileTool({
           }
         }
 
+        const filteredEntries = workspaceScope?.enabled
+          ? entries.filter((entry) =>
+              isPathAllowedByScope(entry.path, workspaceScope),
+            )
+          : entries
+
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
@@ -2201,7 +2234,7 @@ export async function callLocalFileTool({
             path: scopeFolder.normalizedPath,
             scope,
             depth,
-            entries,
+            entries: filteredEntries,
           }),
         }
       }
@@ -2247,6 +2280,19 @@ export async function callLocalFileTool({
           path: string
           parts: ContentPart[]
         }> = []
+
+        // Skip image extraction when the active chat model does not accept
+        // vision input; otherwise we'd ship base64 payloads to a text-only
+        // endpoint and get a 400 back (issue #255). Migration 48→49 backfills
+        // `modalities` on every ChatModel, so a missing array here means we
+        // either have no active model or the lookup failed — treat as allow.
+        const activeChatModel =
+          chatModelId && settings?.chatModels
+            ? (settings.chatModels.find((m) => m.id === chatModelId) ?? null)
+            : null
+        const chatModelAcceptsImages = activeChatModel
+          ? chatModelSupportsVision(activeChatModel)
+          : true
 
         for (const path of paths) {
           if (signal?.aborted) {
@@ -2458,6 +2504,7 @@ export async function callLocalFileTool({
           // Extract images from markdown files using the outputContent
           // (which is the line-numbered text that was actually returned)
           if (
+            chatModelAcceptsImages &&
             (settings?.chatOptions?.imageReadingEnabled ?? true) &&
             path.endsWith('.md') &&
             outputContent.length > 0
@@ -2864,6 +2911,13 @@ export async function callLocalFileTool({
             ? 'keyword'
             : requestedMode
 
+        const applyWorkspaceScopeFilter = <T extends { path: string }>(
+          rows: T[],
+        ): T[] =>
+          workspaceScope?.enabled
+            ? rows.filter((row) => isPathAllowedByScope(row.path, workspaceScope))
+            : rows
+
         if (effectiveMode === 'keyword') {
           const scope = getOptionalFsSearchScope(args, 'all')
           const legacy = await collectKeywordFsSearchResults({
@@ -2878,7 +2932,9 @@ export async function callLocalFileTool({
           if (signal?.aborted) {
             return { status: ToolCallResponseStatus.Aborted }
           }
-          const results = legacyFsSearchItemsToSuper(legacy, 'keyword')
+          const results = applyWorkspaceScopeFilter(
+            legacyFsSearchItemsToSuper(legacy, 'keyword'),
+          )
           return {
             status: ToolCallResponseStatus.Success,
             text: formatJsonResult({
@@ -2970,7 +3026,9 @@ export async function callLocalFileTool({
           }
         }
 
-        const ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+        const ragMapped = applyWorkspaceScopeFilter(
+          mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag'),
+        )
 
         if (effectiveMode === 'rag') {
           const effectiveScope: FsSearchScope =
@@ -3002,9 +3060,8 @@ export async function callLocalFileTool({
         if (signal?.aborted) {
           return { status: ToolCallResponseStatus.Aborted }
         }
-        const keywordSuper = legacyFsSearchItemsToSuper(
-          keywordLegacy,
-          'keyword',
+        const keywordSuper = applyWorkspaceScopeFilter(
+          legacyFsSearchItemsToSuper(keywordLegacy, 'keyword'),
         )
         const pathLegacyFiles = await collectKeywordFsSearchResults({
           app,
@@ -3030,9 +3087,11 @@ export async function callLocalFileTool({
         if (signal?.aborted) {
           return { status: ToolCallResponseStatus.Aborted }
         }
-        const pathSuper = legacyFsSearchItemsToSuper(
-          [...pathLegacyFiles, ...pathLegacyDirs],
-          'keyword',
+        const pathSuper = applyWorkspaceScopeFilter(
+          legacyFsSearchItemsToSuper(
+            [...pathLegacyFiles, ...pathLegacyDirs],
+            'keyword',
+          ),
         )
         const fused = fuseRrfHybrid({
           pathResults: pathSuper,

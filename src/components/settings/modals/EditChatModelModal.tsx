@@ -1,16 +1,18 @@
+import { Image as ImageIcon, Type } from 'lucide-react'
 import { App, Notice } from 'obsidian'
 import React, { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import SmartComposerPlugin from '../../../main'
-import { ChatModel } from '../../../types/chat-model.types'
+import { ChatModel, ChatModelModality } from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import {
   normalizeCustomParameterType,
   sanitizeCustomParameters,
 } from '../../../utils/custom-parameters'
 import { formatIntegerWithGrouping } from '../../../utils/formatIntegerWithGrouping'
-import { resolveKnownMaxContextTokens } from '../../../utils/llm/model-context-registry'
+import { resolveKnownMaxContextTokens } from '../../../utils/llm/model-capability-registry'
+import { resolveDefaultChatModelModalities } from '../../../utils/llm/model-modalities'
 import {
   detectReasoningTypeFromModelId,
   ensureUniqueModelId,
@@ -152,6 +154,21 @@ function EditChatModelModalComponent({
   const [gptWebSearchEnabled, setGptWebSearchEnabled] = useState<boolean>(
     editableModel.gptTools?.webSearch?.enabled === true,
   )
+  const [modalities, setModalities] = useState<ChatModelModality[]>(() => {
+    if (editableModel.modalities && editableModel.modalities.length > 0) {
+      return [...editableModel.modalities]
+    }
+    return resolveDefaultChatModelModalities(selectedProvider)
+  })
+  const toggleModality = (modality: ChatModelModality) => {
+    setModalities((prev) => {
+      if (prev.includes(modality)) {
+        if (prev.length === 1) return prev
+        return prev.filter((m) => m !== modality)
+      }
+      return [...prev, modality]
+    })
+  }
   const resolvedKnownMaxContextTokens = resolveKnownMaxContextTokens(
     model.model,
   )
@@ -335,6 +352,9 @@ function EditChatModelModalComponent({
 
         updatedModel.reasoningType = reasoningType
 
+        updatedModel.modalities =
+          modalities.length > 0 ? Array.from(new Set(modalities)) : ['text']
+
         // Apply tool type
         updatedModel.toolType = toolType
         updatedModel.gptTools = {
@@ -425,6 +445,46 @@ function EditChatModelModalComponent({
           }}
         />
       </ObsidianSetting>
+
+      {/* Input modalities */}
+      <div className="smtcmp-modality-field">
+        <div className="smtcmp-modality-field-header">
+          <div className="smtcmp-modality-field-label">
+            {t('settings.models.inputModality')}
+          </div>
+          <div className="smtcmp-modality-field-desc">
+            {t('settings.models.inputModalityDesc')}
+          </div>
+        </div>
+        <div className="smtcmp-modality-chips">
+          <button
+            type="button"
+            className={`smtcmp-modality-chip${
+              modalities.includes('text') ? ' is-active' : ''
+            }`}
+            onClick={() => toggleModality('text')}
+          >
+            <Type size={14} />
+            <span className="smtcmp-modality-chip-label">
+              {t('settings.models.inputModalityText')}
+            </span>
+            <span className="smtcmp-modality-chip-sub">Text</span>
+          </button>
+          <button
+            type="button"
+            className={`smtcmp-modality-chip${
+              modalities.includes('vision') ? ' is-active' : ''
+            }`}
+            onClick={() => toggleModality('vision')}
+          >
+            <ImageIcon size={14} />
+            <span className="smtcmp-modality-chip-label">
+              {t('settings.models.inputModalityVision')}
+            </span>
+            <span className="smtcmp-modality-chip-sub">Vision</span>
+          </button>
+        </div>
+      </div>
 
       {(supportsGeminiTools || supportsGptTools) && (
         <ObsidianSetting

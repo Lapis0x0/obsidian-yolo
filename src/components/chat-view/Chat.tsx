@@ -2387,6 +2387,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationId,
           conversationMessages: runningMessages,
           roundId: toolMessageId,
+          workspaceScope:
+            chatMode === 'agent'
+              ? selectedAssistant?.workspaceScope
+              : undefined,
         })
 
         const resolvedMessages = updateToolCallResponseInMessages({

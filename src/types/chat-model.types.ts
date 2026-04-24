@@ -2,6 +2,10 @@ import { z } from 'zod'
 
 import { customParameterSchema } from './custom-parameter.types'
 
+export const CHAT_MODEL_MODALITIES = ['text', 'vision'] as const
+export const chatModelModalitySchema = z.enum(CHAT_MODEL_MODALITIES)
+export type ChatModelModality = z.infer<typeof chatModelModalitySchema>
+
 export const gptToolsConfigSchema = z
   .object({
     webSearch: z
@@ -37,6 +41,7 @@ export const chatModelSchema = z.object({
   maxContextTokens: z.number().int().min(1).optional(),
   maxOutputTokens: z.number().int().min(1).optional(),
   customParameters: z.array(customParameterSchema).optional(),
+  modalities: z.array(chatModelModalitySchema).optional(),
   toolType: z.enum(['none', 'gemini', 'gpt']).default('none').optional(),
   gptTools: gptToolsConfigSchema,
   web_search_options: z
