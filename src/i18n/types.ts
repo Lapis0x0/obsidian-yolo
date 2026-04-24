@@ -450,6 +450,7 @@ export type TranslationKeys = {
       embeddingModelsFirst?: string
       // reasoning UI
       reasoningType?: string
+      reasoningTypeDesc?: string
       reasoningTypeNone?: string
       reasoningTypeOpenAI?: string
       reasoningTypeGemini?: string

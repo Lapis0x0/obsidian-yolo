@@ -430,7 +430,10 @@ function EditChatModelModalComponent({
       </ObsidianSetting>
 
       {/* Reasoning type */}
-      <ObsidianSetting name={t('settings.models.reasoningType')}>
+      <ObsidianSetting
+        name={t('settings.models.reasoningType')}
+        desc={t('settings.models.reasoningTypeDesc')}
+      >
         <ObsidianDropdown
           value={reasoningType}
           options={{
