@@ -357,23 +357,19 @@ export const it: TranslationKeys = {
       manageSkills: 'Gestisci competenze',
       descriptionColumn: 'Descrizione',
       builtinFsListLabel: 'Leggi vault',
-      builtinFsListDesc:
-        'Elenca la struttura delle directory del vault per orientarsi rapidamente.',
+      builtinFsListDesc: 'Elenca la struttura delle directory del vault',
       builtinFsSearchLabel: 'Cerca nel vault',
-      builtinFsSearchDesc:
-        'Cerca nel vault con parole chiave, semantica (RAG) o ricerca ibrida, raggruppando i risultati di contenuto per file e mostrando gli snippet principali.',
+      builtinFsSearchDesc: 'Cerca file e contenuti nel vault',
       builtinFsReadLabel: 'Leggi',
-      builtinFsReadDesc:
-        'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
+      builtinFsReadDesc: 'Leggi file del vault',
       builtinContextPruneToolResultsLabel: 'Pota risultati strumenti',
       builtinContextPruneToolResultsDesc:
-        'Esclude dai futuri contesti visibili al modello i risultati storici degli strumenti selezionati, oppure tutti quelli potabili in una volta, senza eliminare la cronologia chat.',
+        'Escludi i risultati storici degli strumenti dal contesto futuro',
       builtinContextCompactLabel: 'Compatta contesto',
       builtinContextCompactDesc:
-        'Comprimi la cronologia meno recente in un riepilogo e continua in una nuova finestra di contesto.',
+        'Comprimi la cronologia meno recente in un riepilogo',
       builtinFsEditLabel: 'Modifica testo',
-      builtinFsEditDesc:
-        'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, replace_lines, insert_after e append.',
+      builtinFsEditDesc: 'Modifica il testo di un singolo file',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
@@ -381,11 +377,9 @@ export const it: TranslationKeys = {
       fsEditReviewToggleDesc:
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
       builtinFsFileOpsLabel: 'Set operazioni file',
-      builtinFsFileOpsDesc:
-        'Operazioni percorso file raggruppate: crea/elimina file, crea/elimina cartelle e sposta.',
+      builtinFsFileOpsDesc: 'Crea, elimina e sposta file e cartelle',
       builtinMemoryOpsLabel: 'Set strumenti memoria',
-      builtinMemoryOpsDesc:
-        'Operazioni memoria raggruppate: aggiungi, aggiorna ed elimina memoria.',
+      builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
       builtinMemoryAddLabel: 'Aggiungi memoria',
       builtinMemoryAddDesc:
         "Aggiunge una memoria globale o dell'assistant con id assegnato automaticamente.",
@@ -394,7 +388,7 @@ export const it: TranslationKeys = {
       builtinMemoryDeleteLabel: 'Elimina memoria',
       builtinMemoryDeleteDesc: 'Elimina una memoria esistente tramite id.',
       builtinOpenSkillLabel: 'Apri skill',
-      builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
+      builtinOpenSkillDesc: 'Carica uno skill markdown',
       builtinWebSearchLabel: 'Ricerca web',
       builtinWebSearchDesc:
         'Cerca sul web tramite il provider configurato e restituisce risultati con snippet.',
@@ -402,8 +396,7 @@ export const it: TranslationKeys = {
       builtinWebScrapeDesc:
         'Recupera il contenuto completo di un singolo URL tramite il provider configurato.',
       builtinWebOpsLabel: 'Set strumenti ricerca web',
-      builtinWebOpsDesc:
-        'Strumenti web raggruppati: ricerca e scrape di una singola pagina.',
+      builtinWebOpsDesc: 'Ricerca web e scraping di pagine',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',

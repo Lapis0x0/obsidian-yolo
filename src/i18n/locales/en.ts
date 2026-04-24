@@ -349,23 +349,18 @@ export const en: TranslationKeys = {
       manageSkills: 'Manage skills',
       descriptionColumn: 'Description',
       builtinFsListLabel: 'Read Vault',
-      builtinFsListDesc:
-        'List directory structure under a vault path. Useful for workspace orientation.',
+      builtinFsListDesc: 'List vault directory structure',
       builtinFsSearchLabel: 'Search Vault',
-      builtinFsSearchDesc:
-        'Search the vault using keyword, semantic (RAG), or hybrid retrieval, with content results grouped by file and paired with top snippets.',
+      builtinFsSearchDesc: 'Search vault files and content',
       builtinFsReadLabel: 'Read',
-      builtinFsReadDesc:
-        'Read vault files by path with either full-file or targeted line-range operations.',
+      builtinFsReadDesc: 'Read vault files',
       builtinContextPruneToolResultsLabel: 'Prune Tool Results',
       builtinContextPruneToolResultsDesc:
-        'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
+        'Exclude past tool results from future context',
       builtinContextCompactLabel: 'Compact Context',
-      builtinContextCompactDesc:
-        'Compress earlier conversation history into a summary and continue in a fresh context window.',
+      builtinContextCompactDesc: 'Compress earlier conversation into a summary',
       builtinFsEditLabel: 'Text Editing',
-      builtinFsEditDesc:
-        'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
+      builtinFsEditDesc: 'Edit text in a single file',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',
@@ -373,11 +368,9 @@ export const en: TranslationKeys = {
       fsEditReviewToggleDesc:
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
       builtinFsFileOpsLabel: 'File Operation Toolset',
-      builtinFsFileOpsDesc:
-        'Grouped file path operations: create/delete file, create/delete folder, and move.',
+      builtinFsFileOpsDesc: 'Create, delete, and move files and folders',
       builtinMemoryOpsLabel: 'Memory Toolset',
-      builtinMemoryOpsDesc:
-        'Grouped memory operations: add, update, and delete memory.',
+      builtinMemoryOpsDesc: 'Add, update, and delete memory',
       builtinMemoryAddLabel: 'Add Memory',
       builtinMemoryAddDesc:
         'Add one memory item into global or assistant memory and auto-assign an id.',
@@ -386,7 +379,7 @@ export const en: TranslationKeys = {
       builtinMemoryDeleteLabel: 'Delete Memory',
       builtinMemoryDeleteDesc: 'Delete an existing memory item by id.',
       builtinOpenSkillLabel: 'Open Skill',
-      builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
+      builtinOpenSkillDesc: 'Load a skill markdown',
       builtinWebSearchLabel: 'Web Search',
       builtinWebSearchDesc:
         'Search the web through a configured search provider and return ranked results with snippets.',
@@ -394,8 +387,7 @@ export const en: TranslationKeys = {
       builtinWebScrapeDesc:
         'Fetch the full content of a single URL through a configured search provider.',
       builtinWebOpsLabel: 'Web Search Toolset',
-      builtinWebOpsDesc:
-        'Grouped web tools: web_search for queries and web_scrape for single-page full content.',
+      builtinWebOpsDesc: 'Web search and page scraping',
       editorDefaultName: 'New agent',
       editorIntro: "Configure this agent's capabilities, model, and behavior.",
       editorTabProfile: 'Profile',
