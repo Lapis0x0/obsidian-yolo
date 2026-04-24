@@ -523,17 +523,18 @@
 
 .smtcmp-builtin-tools-table-header,
 .smtcmp-builtin-tools-table-row {
-  grid-template-columns: minmax(180px, 0.9fr) minmax(320px, 1.8fr) 88px 48px;
+  grid-template-columns: minmax(140px, max-content) minmax(200px, max-content) 1fr auto;
 }
 
-.smtcmp-builtin-tools-table-action {
+.smtcmp-builtin-tools-table-header > div:last-child {
+  text-align: right;
+}
+
+.smtcmp-builtin-tools-table-control {
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-.smtcmp-builtin-tools-table-action--placeholder {
-  visibility: hidden;
+  justify-content: flex-end;
+  gap: var(--size-2-2);
 }
 
 .smtcmp-web-search-row {

@@ -226,8 +226,8 @@ function AgentToolsModalContent({
             <div className="smtcmp-mcp-servers-header smtcmp-builtin-tools-table-header">
               <div>{t('settings.mcp.tools', 'Tools')}</div>
               <div>{t('settings.agent.descriptionColumn', 'Description')}</div>
-              <div>{t('settings.mcp.enabled', 'Enabled')}</div>
               <div />
+              <div>{t('settings.mcp.enabled', 'Enabled')}</div>
             </div>
             <div className="smtcmp-mcp-server smtcmp-builtin-tools-table-body">
               {group.tools.map((tool) => (
@@ -241,15 +241,8 @@ function AgentToolsModalContent({
                       {tool.description}
                     </div>
                   </div>
-                  <div className="smtcmp-mcp-server-toggle">
-                    <ObsidianToggle
-                      value={tool.enabled}
-                      onChange={(enabled) =>
-                        handleToggleBuiltinTool(tool.id, enabled)
-                      }
-                    />
-                  </div>
-                  <div className="smtcmp-builtin-tools-table-action">
+                  <div />
+                  <div className="smtcmp-builtin-tools-table-control">
                     {tool.hasSettings ? (
                       <button
                         type="button"
@@ -265,6 +258,12 @@ function AgentToolsModalContent({
                         <Settings size={16} />
                       </button>
                     ) : null}
+                    <ObsidianToggle
+                      value={tool.enabled}
+                      onChange={(enabled) =>
+                        handleToggleBuiltinTool(tool.id, enabled)
+                      }
+                    />
                   </div>
                 </div>
               ))}
