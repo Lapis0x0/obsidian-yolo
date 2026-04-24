@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 
 import { ChatModel } from '../../types/chat-model.types'
+import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -16,6 +17,7 @@ import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
 
 import { BaseLLMProvider } from './base'
+import { applyDeepSeekCapabilities } from './deepseekCapabilities'
 import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'
 import { LLMAPIKeyNotSetException } from './exception'
 import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
@@ -104,10 +106,16 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
 
-    let formattedRequest = {
+    let formattedRequest: typeof request & Record<string, unknown> = {
       ...request,
       messages: formatMessages(request.messages),
     }
+
+    applyDeepSeekCapabilities({
+      request: formattedRequest,
+      model,
+      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
+    })
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
 
@@ -147,10 +155,16 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
       )
     }
 
-    let formattedRequest = {
+    let formattedRequest: typeof request & Record<string, unknown> = {
       ...request,
       messages: formatMessages(request.messages),
     }
+
+    applyDeepSeekCapabilities({
+      request: formattedRequest,
+      model,
+      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
+    })
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
 
