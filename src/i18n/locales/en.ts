@@ -392,6 +392,21 @@ export const en: TranslationKeys = {
       editorTabProfile: 'Profile',
       editorTabTools: 'Tools',
       editorTabSkills: 'Skills',
+      editorTabWorkspace: 'Workspace',
+      workspace: {
+        enableTitle: 'Restrict directory access',
+        enableDesc:
+          'When off, this agent can access the entire vault. When on, only the rules below apply.',
+        includeTitle: 'Allow',
+        includeDesc: 'Only read/write files under these paths',
+        includeBadge: 'INCLUDE',
+        includeEmpty:
+          'Leave empty to allow everything except the exclude list below.',
+        excludeTitle: 'Deny',
+        excludeDesc: 'Excluded from the allow range (higher priority)',
+        excludeBadge: 'EXCLUDE',
+        excludeEmpty: 'No exclusions.',
+      },
       editorTabModel: 'Model',
       editorName: 'Name',
       editorNameDesc: 'Agent display name',

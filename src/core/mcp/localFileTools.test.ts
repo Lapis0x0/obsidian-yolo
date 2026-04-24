@@ -1803,4 +1803,130 @@ describe('local fs tool action helpers', () => {
       '99-Assets/YOLO/skills/content-organization',
     )
   })
+
+  describe('workspace scope final defense', () => {
+    const allowNotes = {
+      enabled: true,
+      include: ['Notes'],
+      exclude: [],
+    }
+
+    it('rejects fs_edit when path is outside scope', async () => {
+      const result = await callLocalFileTool({
+        app: {
+          vault: { getAbstractFileByPath: jest.fn() },
+        } as unknown as App,
+        toolName: 'fs_edit',
+        args: {
+          path: 'secret/a.md',
+          operations: [{ type: 'append', text: 'x' }],
+        },
+        workspaceScope: allowNotes,
+      })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toMatch(/workspace scope/i)
+        expect(result.error).toMatch(/secret\/a\.md/)
+      }
+    })
+
+    it('rejects fs_move when only newPath is outside scope', async () => {
+      const result = await callLocalFileTool({
+        app: {
+          vault: {
+            getAbstractFileByPath: jest.fn(),
+          },
+          fileManager: { renameFile: jest.fn() },
+        } as unknown as App,
+        toolName: 'fs_move',
+        args: {
+          oldPath: 'Notes/a.md',
+          newPath: 'secret/a.md',
+        },
+        workspaceScope: allowNotes,
+      })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toMatch(/secret\/a\.md/)
+      }
+    })
+
+    it('rejects fs_delete_file when any batch item is outside scope', async () => {
+      const result = await callLocalFileTool({
+        app: {
+          vault: { getAbstractFileByPath: jest.fn() },
+        } as unknown as App,
+        toolName: 'fs_delete_file',
+        args: {
+          items: [{ path: 'Notes/a.md' }, { path: 'secret/b.md' }],
+        },
+        workspaceScope: allowNotes,
+      })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toMatch(/secret\/b\.md/)
+      }
+    })
+
+    it('rejects fs_create_file batch when any item is outside scope', async () => {
+      const result = await callLocalFileTool({
+        app: {
+          vault: {
+            getAbstractFileByPath: jest.fn().mockReturnValue(null),
+            create: jest.fn(),
+            createFolder: jest.fn(),
+          },
+        } as unknown as App,
+        toolName: 'fs_create_file',
+        args: {
+          items: [
+            { path: 'Notes/new.md', content: 'ok' },
+            { path: 'secret/new.md', content: 'leak' },
+          ],
+        },
+        workspaceScope: allowNotes,
+      })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+    })
+
+    it('allows in-scope batch operations when scope is enabled', async () => {
+      const result = await callLocalFileTool({
+        app: {
+          vault: {
+            getAbstractFileByPath: jest.fn().mockReturnValue(null),
+            create: jest.fn(),
+            createFolder: jest.fn(),
+          },
+        } as unknown as App,
+        toolName: 'fs_create_file',
+        args: {
+          items: [
+            { path: 'Notes/a.md', content: 'one' },
+            { path: 'Notes/b.md', content: 'two' },
+          ],
+        },
+        workspaceScope: allowNotes,
+      })
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+    })
+
+    it('is a no-op when scope is disabled', async () => {
+      const result = await callLocalFileTool({
+        app: {
+          vault: {
+            getAbstractFileByPath: jest.fn().mockReturnValue(null),
+            create: jest.fn(),
+            createFolder: jest.fn(),
+          },
+        } as unknown as App,
+        toolName: 'fs_create_file',
+        args: {
+          path: 'secret/a.md',
+          content: 'ok',
+        },
+        workspaceScope: { enabled: false, include: ['Notes'], exclude: [] },
+      })
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+    })
+  })
 })

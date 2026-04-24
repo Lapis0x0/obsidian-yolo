@@ -272,6 +272,19 @@ export type TranslationKeys = {
       editorTabProfile?: string
       editorTabTools?: string
       editorTabSkills?: string
+      editorTabWorkspace?: string
+      workspace?: {
+        enableTitle?: string
+        enableDesc?: string
+        includeTitle?: string
+        includeDesc?: string
+        includeBadge?: string
+        includeEmpty?: string
+        excludeTitle?: string
+        excludeDesc?: string
+        excludeBadge?: string
+        excludeEmpty?: string
+      }
       editorTabModel?: string
       editorName?: string
       editorNameDesc?: string

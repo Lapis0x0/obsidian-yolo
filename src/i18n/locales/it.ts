@@ -401,6 +401,21 @@ export const it: TranslationKeys = {
       editorTabProfile: 'Profilo',
       editorTabTools: 'Strumenti',
       editorTabSkills: 'Competenze',
+      editorTabWorkspace: 'Spazio di lavoro',
+      workspace: {
+        enableTitle: "Limita l'accesso alle directory",
+        enableDesc:
+          "Se disattivato, l'agent può accedere all'intero vault. Se attivo, si applicano solo le regole sotto.",
+        includeTitle: 'Consenti',
+        includeDesc: 'Leggi/scrivi solo i file in questi percorsi',
+        includeBadge: 'INCLUDE',
+        includeEmpty:
+          "Lascia vuoto per consentire tutto tranne l'elenco di esclusione sotto.",
+        excludeTitle: 'Nega',
+        excludeDesc: "Escluso dall'intervallo consentito (priorità maggiore)",
+        excludeBadge: 'EXCLUDE',
+        excludeEmpty: 'Nessuna esclusione.',
+      },
       editorTabModel: 'Modello',
       editorName: 'Nome',
       editorNameDesc: "Nome visualizzato dell'agent",

@@ -3,6 +3,7 @@ import { App, Platform } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import {
   McpServerConfig,
@@ -580,6 +581,7 @@ export class McpManager {
     signal,
     requireReview = false,
     chatModelId,
+    workspaceScope,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -590,6 +592,7 @@ export class McpManager {
     signal?: AbortSignal
     requireReview?: boolean
     chatModelId?: string
+    workspaceScope?: AssistantWorkspaceScope
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -626,6 +629,7 @@ export class McpManager {
           requireReview,
           signal: compositeSignal,
           chatModelId,
+          workspaceScope,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {

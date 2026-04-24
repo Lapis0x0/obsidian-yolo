@@ -1,4 +1,4 @@
-import { BookOpen, User, Wrench } from 'lucide-react'
+import { BookOpen, FolderOpen, User, Wrench } from 'lucide-react'
 import { App, TFile } from 'obsidian'
 import {
   useCallback,
@@ -47,6 +47,7 @@ import {
   AssistantSkillLoadMode,
   AssistantToolApprovalMode,
   AssistantToolPreference,
+  AssistantWorkspaceScope,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
 import {
@@ -62,6 +63,7 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SimpleSelect } from '../../common/SimpleSelect'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
 
+import { AgentWorkspaceScopeEditor } from './AgentWorkspaceScopeEditor'
 import {
   normalizeToolPreferencesForPersistence,
   normalizeToolSelectionForPersistence,
@@ -74,7 +76,7 @@ type AgentsSectionContentProps = {
   initialCreate?: boolean
 }
 
-type AgentEditorTab = 'profile' | 'tools' | 'skills'
+type AgentEditorTab = 'profile' | 'tools' | 'skills' | 'workspace'
 
 type AgentToolView = {
   fullName: string
@@ -94,12 +96,18 @@ const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
 
-const AGENT_EDITOR_TABS: AgentEditorTab[] = ['profile', 'tools', 'skills']
+const AGENT_EDITOR_TABS: AgentEditorTab[] = [
+  'profile',
+  'tools',
+  'skills',
+  'workspace',
+]
 
 const AGENT_EDITOR_TAB_ICONS = {
   profile: User,
   tools: Wrench,
   skills: BookOpen,
+  workspace: FolderOpen,
 } as const
 
 const DEFAULT_PERSONA: AgentPersona = 'balanced'
@@ -564,6 +572,13 @@ export function AgentsSectionContent({
     })
   }
 
+  const setWorkspaceScope = (next: AssistantWorkspaceScope) => {
+    setDraftAgent((prev) => {
+      if (!prev) return prev
+      return { ...prev, workspaceScope: next }
+    })
+  }
+
   const setSkillEnabled = (skillId: string, enabled: boolean) => {
     if (!draftAgent) {
       return
@@ -947,6 +962,10 @@ export function AgentsSectionContent({
                         ),
                         tools: t('settings.agent.editorTabTools', 'Tools'),
                         skills: t('settings.agent.editorTabSkills', 'Skills'),
+                        workspace: t(
+                          'settings.agent.editorTabWorkspace',
+                          'Workspace',
+                        ),
                       }[tab]
                     }
                   </span>
@@ -1355,6 +1374,17 @@ export function AgentsSectionContent({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'workspace' && (
+            <div className="smtcmp-agent-editor-body">
+              <AgentWorkspaceScopeEditor
+                app={app}
+                vault={app.vault}
+                value={draftAgent.workspaceScope}
+                onChange={setWorkspaceScope}
+              />
             </div>
           )}
 

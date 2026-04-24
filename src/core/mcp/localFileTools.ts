@@ -3,6 +3,7 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian'
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 import { McpTool } from '../../types/mcp.types'
@@ -37,6 +38,10 @@ import {
   memoryUpdate,
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
+import {
+  findPathOutsideScope,
+  isPathAllowedByScope,
+} from '../agent/workspaceScope'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import { aggregateSearchResults } from '../search/searchResultAggregation'
 import { getLiteSkillDocument } from '../skills/liteSkills'
@@ -2115,6 +2120,7 @@ export async function callLocalFileTool({
   requireReview = false,
   signal,
   chatModelId,
+  workspaceScope,
 }: {
   app: App
   settings?: SmartComposerSettings
@@ -2129,12 +2135,30 @@ export async function callLocalFileTool({
   requireReview?: boolean
   signal?: AbortSignal
   chatModelId?: string
+  workspaceScope?: AssistantWorkspaceScope
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
   }
 
   try {
+    // Final defense: reject any fs_* call whose path args (including batch
+    // items[]) fall outside the agent's workspace scope. The gateway performs
+    // the same check up front for UI Rejected status, but we re-validate here
+    // so manual-approval / direct-call code paths cannot bypass the constraint.
+    if (workspaceScope?.enabled) {
+      const offendingPath = findPathOutsideScope(
+        toolName,
+        args,
+        workspaceScope,
+      )
+      if (offendingPath !== null) {
+        throw new Error(
+          `Path "${offendingPath}" is outside this agent's workspace scope.`,
+        )
+      }
+    }
+
     const name = toolName as LocalFileToolName
     switch (name) {
       case 'fs_list': {
@@ -2197,6 +2221,12 @@ export async function callLocalFileTool({
           }
         }
 
+        const filteredEntries = workspaceScope?.enabled
+          ? entries.filter((entry) =>
+              isPathAllowedByScope(entry.path, workspaceScope),
+            )
+          : entries
+
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
@@ -2204,7 +2234,7 @@ export async function callLocalFileTool({
             path: scopeFolder.normalizedPath,
             scope,
             depth,
-            entries,
+            entries: filteredEntries,
           }),
         }
       }
@@ -2881,6 +2911,13 @@ export async function callLocalFileTool({
             ? 'keyword'
             : requestedMode
 
+        const applyWorkspaceScopeFilter = <T extends { path: string }>(
+          rows: T[],
+        ): T[] =>
+          workspaceScope?.enabled
+            ? rows.filter((row) => isPathAllowedByScope(row.path, workspaceScope))
+            : rows
+
         if (effectiveMode === 'keyword') {
           const scope = getOptionalFsSearchScope(args, 'all')
           const legacy = await collectKeywordFsSearchResults({
@@ -2895,7 +2932,9 @@ export async function callLocalFileTool({
           if (signal?.aborted) {
             return { status: ToolCallResponseStatus.Aborted }
           }
-          const results = legacyFsSearchItemsToSuper(legacy, 'keyword')
+          const results = applyWorkspaceScopeFilter(
+            legacyFsSearchItemsToSuper(legacy, 'keyword'),
+          )
           return {
             status: ToolCallResponseStatus.Success,
             text: formatJsonResult({
@@ -2951,7 +2990,9 @@ export async function callLocalFileTool({
           limit: effectiveRagLimit,
         })
 
-        const ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+        const ragMapped = applyWorkspaceScopeFilter(
+          mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag'),
+        )
 
         if (effectiveMode === 'rag') {
           const effectiveScope: FsSearchScope =
@@ -2983,9 +3024,8 @@ export async function callLocalFileTool({
         if (signal?.aborted) {
           return { status: ToolCallResponseStatus.Aborted }
         }
-        const keywordSuper = legacyFsSearchItemsToSuper(
-          keywordLegacy,
-          'keyword',
+        const keywordSuper = applyWorkspaceScopeFilter(
+          legacyFsSearchItemsToSuper(keywordLegacy, 'keyword'),
         )
         const pathLegacyFiles = await collectKeywordFsSearchResults({
           app,
@@ -3011,9 +3051,11 @@ export async function callLocalFileTool({
         if (signal?.aborted) {
           return { status: ToolCallResponseStatus.Aborted }
         }
-        const pathSuper = legacyFsSearchItemsToSuper(
-          [...pathLegacyFiles, ...pathLegacyDirs],
-          'keyword',
+        const pathSuper = applyWorkspaceScopeFilter(
+          legacyFsSearchItemsToSuper(
+            [...pathLegacyFiles, ...pathLegacyDirs],
+            'keyword',
+          ),
         )
         const fused = fuseRrfHybrid({
           pathResults: pathSuper,

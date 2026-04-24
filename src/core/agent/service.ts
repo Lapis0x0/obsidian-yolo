@@ -524,6 +524,7 @@ export class AgentService {
       conversationMessages: runEntry.state.messages,
       roundId: toolMessage.id,
       chatModelId: lastRunInput.model.id,
+      workspaceScope: lastRunInput.workspaceScope,
     })
 
     const nextMessages = this.updateToolCallResponse({
