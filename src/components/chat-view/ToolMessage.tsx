@@ -154,6 +154,8 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       memory_add: translateBuiltinToolLabel('memory_add', translate),
       memory_update: translateBuiltinToolLabel('memory_update', translate),
       memory_delete: translateBuiltinToolLabel('memory_delete', translate),
+      web_search: translateBuiltinToolLabel('web_search', translate),
+      web_scrape: translateBuiltinToolLabel('web_scrape', translate),
     },
     writeActionLabels: {
       create_file: translate(
@@ -465,6 +467,26 @@ const getLocalToolSummaryText = ({
       return scope
     }
     return `${scope} | ${truncateText(query, 60)}`
+  }
+
+  if (toolName === 'web_search') {
+    const query =
+      typeof argumentsObject?.query === 'string' ? argumentsObject.query : ''
+    if (query.trim().length === 0) {
+      return undefined
+    }
+    const topic =
+      typeof argumentsObject?.topic === 'string'
+        ? argumentsObject.topic.trim()
+        : ''
+    const queryText = truncateText(query, 60)
+    return topic ? `${topic} | ${queryText}` : queryText
+  }
+
+  if (toolName === 'web_scrape') {
+    const url =
+      typeof argumentsObject?.url === 'string' ? argumentsObject.url : ''
+    return url ? truncateText(url, 80) : undefined
   }
 
   if (toolName === 'fs_read') {
