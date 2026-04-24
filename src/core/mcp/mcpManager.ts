@@ -97,6 +97,26 @@ export class McpManager {
   }
 
   private isLocalToolEnabled(toolName: string): boolean {
+    // Web search tools share a single `web_search` group switch, but also
+    // need a configured provider to actually run. Keep this branch ahead of
+    // the direct-disabled early return so readiness is always evaluated.
+    if (
+      toolName === WEB_SEARCH_TOOL_NAME ||
+      toolName === WEB_SCRAPE_TOOL_NAME
+    ) {
+      const groupDisabled =
+        this.settings.mcp.builtinToolOptions[WEB_SEARCH_TOOL_NAME]?.disabled ??
+        false
+      if (groupDisabled) return false
+      if (!isWebSearchToolReady(this.settings.webSearch)) return false
+      if (
+        toolName === WEB_SCRAPE_TOOL_NAME &&
+        !activeProviderSupportsScrape(this.settings.webSearch)
+      ) {
+        return false
+      }
+      return true
+    }
     const directDisabled =
       this.settings.mcp.builtinToolOptions[toolName]?.disabled
     if (typeof directDisabled === 'boolean') {
@@ -115,24 +135,6 @@ export class McpManager {
       const groupedMemoryOpsDisabled =
         this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
       return !(splitToolDisabled || groupedMemoryOpsDisabled)
-    }
-    if (
-      toolName === WEB_SEARCH_TOOL_NAME ||
-      toolName === WEB_SCRAPE_TOOL_NAME
-    ) {
-      // Both tools share the same on/off switch under the `web_search` key.
-      const groupDisabled =
-        this.settings.mcp.builtinToolOptions[WEB_SEARCH_TOOL_NAME]?.disabled ??
-        false
-      if (groupDisabled) return false
-      if (!isWebSearchToolReady(this.settings.webSearch)) return false
-      if (
-        toolName === WEB_SCRAPE_TOOL_NAME &&
-        !activeProviderSupportsScrape(this.settings.webSearch)
-      ) {
-        return false
-      }
-      return true
     }
     return true
   }

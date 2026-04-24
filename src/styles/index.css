@@ -5,6 +5,7 @@
 @import './settings/assistants.css';
 @import './settings/tabs.css';
 @import './settings/agent.css';
+@import './settings/web-search.css';
 
 @import './chat/input.css';
 @import './chat/message.css';

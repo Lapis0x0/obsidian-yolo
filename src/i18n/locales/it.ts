@@ -503,6 +503,17 @@ export const it: TranslationKeys = {
         'Numero massimo di risultati restituiti al modello per ricerca.',
       searchTimeout: 'Timeout ricerca (ms)',
       scrapeTimeout: 'Timeout scrape (ms)',
+      searchTimeoutLabel: 'Timeout ricerca',
+      searchTimeoutDesc:
+        'Tempo massimo di attesa per una chiamata di ricerca del provider.',
+      scrapeTimeoutLabel: 'Timeout scrape',
+      scrapeTimeoutDesc:
+        'Tempo massimo di attesa per una singola chiamata web_scrape.',
+      unitResults: 'elementi',
+      tagDefault: 'Predefinito',
+      failoverNotice:
+        "Le chiamate fallite non vengono rilanciate silenziosamente su un altro provider — l'errore viene passato al modello perché l'agent decida se riprovare o cambiare strategia.",
+      providerCount: 'Provider totali',
       types: {
         tavily: 'Tavily',
         jina: 'Jina',

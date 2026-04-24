@@ -373,6 +373,14 @@ export type TranslationKeys = {
       resultSizeDesc?: string
       searchTimeout?: string
       scrapeTimeout?: string
+      searchTimeoutLabel?: string
+      searchTimeoutDesc?: string
+      scrapeTimeoutLabel?: string
+      scrapeTimeoutDesc?: string
+      unitResults?: string
+      tagDefault?: string
+      failoverNotice?: string
+      providerCount?: string
       types?: {
         tavily?: string
         jina?: string

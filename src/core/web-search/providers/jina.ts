@@ -10,9 +10,16 @@ import { jinaOptionsSchema } from '../types'
 
 type JinaOptions = z.infer<typeof jinaOptionsSchema>
 
-type JinaSearchResponse = {
-  data?: Array<{ title?: string; url?: string; content?: string }>
+type JinaSearchResultItem = {
+  title?: string
+  url?: string
+  content?: string
+  description?: string
 }
+
+type JinaSearchResponse =
+  | JinaSearchResultItem[]
+  | { data?: JinaSearchResultItem[] }
 
 export const jinaProvider: WebSearchProvider<JinaOptions> = {
   type: 'jina',
@@ -23,25 +30,30 @@ export const jinaProvider: WebSearchProvider<JinaOptions> = {
     if (!options.apiKey) {
       throw new Error('Jina API key is required')
     }
-    const url = (options.searchUrl || 'https://s.jina.ai/').trim()
+    // Jina Reader search: GET https://s.jina.ai/<encoded query>
+    // See https://github.com/jina-ai/reader#using-sjinaai-for-web-search
+    const base = (options.searchUrl || 'https://s.jina.ai/')
+      .trim()
+      .replace(/\/+$/, '')
+    const url = `${base}/${encodeURIComponent(input.query)}`
     const response = await webSearchRequest({
       url,
-      method: 'POST',
+      method: 'GET',
       headers: {
         Authorization: `Bearer ${options.apiKey}`,
-        'Content-Type': 'application/json',
         Accept: 'application/json',
+        'X-Retain-Images': 'none',
       },
-      body: JSON.stringify({ q: input.query }),
       timeoutMs: common.searchTimeoutMs,
       signal,
     })
     ensureSuccess(response, 'Jina')
-    const data = JSON.parse(response.text) as JinaSearchResponse
-    const items = (data.data ?? []).slice(0, common.resultSize).map((it) => ({
+    const parsed = JSON.parse(response.text) as JinaSearchResponse
+    const rawItems = Array.isArray(parsed) ? parsed : (parsed.data ?? [])
+    const items = rawItems.slice(0, common.resultSize).map((it) => ({
       title: it.title ?? it.url ?? '',
       url: it.url ?? '',
-      text: it.content ?? '',
+      text: it.content ?? it.description ?? '',
     }))
     return { items }
   },

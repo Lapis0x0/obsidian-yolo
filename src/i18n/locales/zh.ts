@@ -466,6 +466,15 @@ export const zh: TranslationKeys = {
       resultSizeDesc: '每次搜索返回给模型的最大结果条数。',
       searchTimeout: '搜索超时（毫秒）',
       scrapeTimeout: '抓取超时（毫秒）',
+      searchTimeoutLabel: '搜索超时',
+      searchTimeoutDesc: 'Provider search 调用的最长等待时间。',
+      scrapeTimeoutLabel: '抓取超时',
+      scrapeTimeoutDesc: 'web_scrape 单页抓取的最长等待时间。',
+      unitResults: '条',
+      tagDefault: '默认',
+      failoverNotice:
+        '调用失败时不会自动兜底切换 Provider，错误会直接抛给模型，由 Agent 自行决定是否重试或切换思路。',
+      providerCount: '当前 Provider 数',
       types: {
         tavily: 'Tavily',
         jina: 'Jina',

@@ -32,9 +32,11 @@ export const tavilyProvider: WebSearchProvider<TavilyOptions> = {
     if (!options.apiKey) {
       throw new Error('Tavily API key is required')
     }
+    // Tavily hard-caps max_results at 20. Our global resultSize allows up to
+    // 50, so clamp here instead of failing the request.
     const body: Record<string, unknown> = {
       query: input.query,
-      max_results: common.resultSize,
+      max_results: Math.min(common.resultSize, 20),
       search_depth: options.depth ?? 'advanced',
       include_answer: 'advanced',
     }

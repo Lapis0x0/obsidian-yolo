@@ -510,6 +510,15 @@ export const en: TranslationKeys = {
         'Maximum number of results returned to the model per search.',
       searchTimeout: 'Search timeout (ms)',
       scrapeTimeout: 'Scrape timeout (ms)',
+      searchTimeoutLabel: 'Search timeout',
+      searchTimeoutDesc: 'Maximum wait time for a provider search call.',
+      scrapeTimeoutLabel: 'Scrape timeout',
+      scrapeTimeoutDesc: 'Maximum wait time for a single web_scrape call.',
+      unitResults: 'items',
+      tagDefault: 'Default',
+      failoverNotice:
+        'Failed calls are not silently retried against another provider — the error is surfaced to the model so the agent can decide to retry or change approach.',
+      providerCount: 'Total providers',
       types: {
         tavily: 'Tavily',
         jina: 'Jina',

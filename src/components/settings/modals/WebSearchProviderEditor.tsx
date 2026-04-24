@@ -97,9 +97,7 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
 
   const [form, setForm] = useState<WebSearchProviderOptions>(initial)
 
-  // Updates one field of the form. We type the value loosely on purpose:
-  // the discriminated union narrows down per-branch, so the callsite is the
-  // one that already knows the right field/value pair for `form.type`.
+  // The discriminated union narrows down per-branch at the callsite.
   const update = (key: string, value: unknown) => {
     setForm(
       (prev) =>
@@ -139,17 +137,7 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
   }
 
   return (
-    <>
-      <ObsidianSetting
-        name={t('settings.webSearch.fieldName', 'Display name')}
-        required
-      >
-        <ObsidianTextInput
-          value={form.name}
-          onChange={(value) => update('name', value)}
-        />
-      </ObsidianSetting>
-
+    <div className="smtcmp-ws-edit-form">
       {form.type === 'tavily' && (
         <>
           <ApiKeyField
@@ -260,7 +248,7 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
         <div className="smtcmp-settings-desc">
           {t(
             'settings.webSearch.bingNote',
-            'Bing requires no API key. The provider scrapes the public results page; reliability depends on Bing’s anti-bot measures.',
+            'Bing requires no API key. The provider scrapes the public results page; reliability depends on Bing\u2019s anti-bot measures.',
           )}
         </div>
       )}
@@ -335,7 +323,7 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
         />
         <ObsidianButton text={t('common.cancel', 'Cancel')} onClick={onClose} />
       </ObsidianSetting>
-    </>
+    </div>
   )
 }
 
