@@ -1425,7 +1425,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                   align="start"
                   sideOffset={8}
                   alignOffset={-6}
-                  contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+                  contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover smtcmp-chat-model-select-popover"
                 />
                 {showReasoningSelect && supportsReasoning(currentModel) && (
                   <ReasoningSelect

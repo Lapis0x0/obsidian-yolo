@@ -60,26 +60,85 @@
 
 .smtcmp-popover .smtcmp-popover-group-label {
   display: block;
-  margin: var(--size-2-1) 8px;
-  padding: var(--size-2-1) var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
-  font-weight: var(--font-medium);
-  letter-spacing: 0.02em;
+  margin: 0;
+  padding: 8px 8px 6px 8px;
+  color: color-mix(in srgb, var(--text-muted) 85%, transparent);
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   user-select: none;
   text-align: left;
+  opacity: 0.8;
 }
 
 .smtcmp-popover .smtcmp-popover-group-separator {
   height: 1px;
-  background-color: var(--background-modifier-border);
-  margin: var(--size-2-1) 8px;
+  background: linear-gradient(
+    to right,
+    transparent 4px,
+    color-mix(in srgb, var(--background-modifier-border) 50%, transparent) 16px,
+    color-mix(in srgb, var(--background-modifier-border) 50%, transparent)
+      calc(100% - 16px),
+    transparent calc(100% - 4px)
+  );
+  margin: 6px 0;
 }
 
-/* Final override: Make model items indent to align with group label text */
+.smtcmp-model-select-list {
+  padding: 4px 0;
+  max-height: min(300px, 50vh);
+  overflow-y: auto;
+}
+
 .smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item {
-  padding-left: calc(var(--size-4-2) + 8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: 0;
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  outline: none;
+}
+
+.smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item:hover,
+.smtcmp-popover
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item[data-highlighted] {
+  background: var(--background-modifier-hover);
+}
+
+.smtcmp-popover
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item[data-state='checked'] {
+  background: var(--background-modifier-hover);
+  font-weight: var(--font-semibold);
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+}
+
+.smtcmp-popover-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtcmp-popover-item__indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive-accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.smtcmp-popover-item[data-state='checked'] .smtcmp-popover-item__indicator {
+  opacity: 1;
 }
 
 .smtcmp-popover ul li {
@@ -122,10 +181,6 @@
   align-items: start;
 }
 
-/* Must come after the generic li padding shorthand above */
-.smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item {
-  padding-left: calc(var(--size-4-2) + 8px);
-}
 
 .smtcmp-popover li.active {
   display: flex;
@@ -207,7 +262,7 @@
   top: 0;
   z-index: 1;
   padding: 6px 10px;
-  background: var(--huisede1, var(--background-secondary));
+  background: var(--background-primary);
   border-bottom: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 }

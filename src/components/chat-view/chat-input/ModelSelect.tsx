@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useSettings } from '../../../contexts/settings-context'
@@ -295,7 +295,12 @@ export const ModelSelect = forwardRef<
                           runningIndex === 1 && index === 0 ? 'true' : undefined
                         }
                       >
-                        {displayName}
+                        <span className="smtcmp-popover-item__label">
+                          {displayName}
+                        </span>
+                        <DropdownMenu.ItemIndicator className="smtcmp-popover-item__indicator">
+                          <Check size={12} />
+                        </DropdownMenu.ItemIndicator>
                       </DropdownMenu.RadioItem>
                     )
                   })
