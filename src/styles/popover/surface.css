@@ -1,17 +1,50 @@
 /*
- * yolo-popover surface classes.
+ * yolo-popover surface classes —— 项目所有弹窗 / 下拉的视觉地基。
+ * 改这块代码 / 写新弹窗前，请通读以下约定（历史曾两次踩坑）。
  *
- * IMPORTANT: These classes define VISUAL STYLES ONLY (background, border,
- * shadow, animation, overflow, z-index). They MUST NOT contain any sizing
- * properties (min/max-width, max-height, margin, width).
+ * ─────────────────────────────────────────────
+ * 1. consumer 必须用抽象组件，不要自己组 Portal + Content
+ * ─────────────────────────────────────────────
+ * 禁止在调用方写 `DropdownMenu.Portal + DropdownMenu.Content + className=...` 的
+ * 组合。统一用 src/components/common/popover/ 下的 <YoloDropdownContent> /
+ * <YoloPopoverContent>，所有视觉 variant 与尺寸通过 props 显式声明。
+ * 参考迁移：ModelSelect.tsx、ReasoningSelect.tsx、ChatListDropdown.tsx。
  *
- * Sizing is the consumer's responsibility — pass minWidth / maxWidth /
- * maxHeight props to <YoloDropdownContent> / <YoloPopoverContent>, or use
- * the className escape hatch for one-off concerns (like the chat history
- * dropdown's -64px alignment).
+ * ─────────────────────────────────────────────
+ * 2. 视觉 vs 尺寸：共用 class 只管视觉表面
+ * ─────────────────────────────────────────────
+ * 本文件里的 .yolo-popover-surface* class 只允许定义：
+ *   background / border / box-shadow / animation / overflow / z-index
+ * 严禁出现：
+ *   min-width / max-width / max-height / width / margin
+ * 尺寸是 consumer 的责任 —— 通过 minWidth/maxWidth/maxHeight props 传入，
+ * 或一次性需求自带 `yolo-popover-<purpose>` class（例如聊天历史的 -64px 对齐）。
+ * 违反这条会跨组件污染（历史踩坑详见 docs/plans/parsed-wiggling-shore.md）。
  *
- * See: docs/plans/parsed-wiggling-shore.md
- *      CLAUDE.md ("样式与 Popover 约定")
+ * ─────────────────────────────────────────────
+ * 3. 变体规则按文件归属，禁止跨文件覆盖
+ * ─────────────────────────────────────────────
+ *   --default 变体的样式      → src/styles/chat/popover.css
+ *   --smart-space 变体的样式  → src/styles/panels/smart-space.css
+ * 不要在 smart-space.css 里写 `.yolo-popover-surface--default ...`，反之亦然。
+ * 同一选择器跨文件出现时胜负只剩源码顺序，是最隐蔽的"屎山"来源。
+ * 真正跨变体共享的样式（如 [data-state='checked']）写无前缀版本，
+ * 但必须在注释里写明"有意跨变体共享"。
+ *
+ * ─────────────────────────────────────────────
+ * 4. 慎用裸标签选择器
+ * ─────────────────────────────────────────────
+ * 避免 `.yolo-popover-surface ul / li / button` 这种命中所有后代标签的写法 ——
+ * 等同于隐式全局副作用，未来任何弹窗内出现 ul/li 都会被牵连。要写就用 class 限定。
+ *
+ * ─────────────────────────────────────────────
+ * 5. 新增弹窗 checklist
+ * ─────────────────────────────────────────────
+ *   [ ] consumer 用 <YoloDropdownContent> / <YoloPopoverContent>
+ *   [ ] 显式传 minWidth / maxWidth / maxHeight，不依赖任何继承
+ *   [ ] 非通用视觉需求自带 `yolo-popover-<purpose>` class，不复用别人的
+ *   [ ] 新 class 一律 `yolo-` 前缀，不新增 `smtcmp-`
+ *   [ ] 写 variant-scoped 规则时确认放在了对应变体的归属文件里
  */
 
 .yolo-popover-surface {
