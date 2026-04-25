@@ -1,10 +1,10 @@
 jest.mock('obsidian')
 
 jest.mock('../../utils/llm/extract-markdown-images', () => ({
-  extractMarkdownImages: jest.fn().mockResolvedValue({ contentParts: undefined }),
+  extractMarkdownImages: jest
+    .fn()
+    .mockResolvedValue({ contentParts: undefined }),
 }))
-
-import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 
 import { App, TFile, TFolder } from 'obsidian'
 
@@ -14,6 +14,7 @@ import {
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import {
@@ -457,7 +458,10 @@ describe('local fs tool action helpers', () => {
         ],
       }) as unknown as SmartComposerSettings
 
-    const buildCallArgs = (settings: SmartComposerSettings, modelId?: string) => {
+    const buildCallArgs = (
+      settings: SmartComposerSettings,
+      modelId?: string,
+    ) => {
       const file = Object.assign(new TFile(), {
         path: 'note.md',
         stat: { size: 64 },
@@ -484,7 +488,10 @@ describe('local fs tool action helpers', () => {
       extractMock.mockReset()
       extractMock.mockResolvedValue({
         contentParts: [
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,AAA' },
+          },
         ],
       } as unknown as Awaited<ReturnType<typeof extractMarkdownImages>>)
     })
@@ -524,9 +531,7 @@ describe('local fs tool action helpers', () => {
 
     it('stays permissive when no chatModelId is passed (non-agent callers)', async () => {
       const settings = buildSettings(['text'])
-      const result = await callLocalFileTool(
-        buildCallArgs(settings, undefined),
-      )
+      const result = await callLocalFileTool(buildCallArgs(settings, undefined))
 
       expect(result.status).toBe(ToolCallResponseStatus.Success)
       expect(extractMock).toHaveBeenCalledTimes(1)

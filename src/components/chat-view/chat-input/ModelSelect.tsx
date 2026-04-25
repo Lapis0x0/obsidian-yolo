@@ -9,6 +9,16 @@ import {
   getNodeWindow,
 } from '../../../utils/dom/window-context'
 import { getModelDisplayName } from '../../../utils/model-id-utils'
+import { YoloDropdownContent, YoloPopoverVariant } from '../../common/popover'
+
+export type ModelSelectPopoverProps = {
+  variant?: YoloPopoverVariant
+  minWidth?: number | string
+  maxWidth?: number | string
+  maxHeight?: number | string
+  /** Extra class for consumer-specific concerns (rare; use sparingly). */
+  className?: string
+}
 
 export const ModelSelect = forwardRef<
   HTMLButtonElement,
@@ -22,7 +32,8 @@ export const ModelSelect = forwardRef<
     align?: 'start' | 'center' | 'end'
     alignOffset?: number
     container?: HTMLElement
-    contentClassName?: string
+    /** Popover surface variant + sizing. Each caller declares its own. */
+    popover?: ModelSelectPopoverProps
     onKeyDown?: (
       event: React.KeyboardEvent<HTMLButtonElement>,
       isMenuOpen: boolean,
@@ -40,7 +51,7 @@ export const ModelSelect = forwardRef<
       align = 'end',
       alignOffset = 0,
       container,
-      contentClassName,
+      popover,
       onKeyDown,
     } = {},
     ref,
@@ -202,126 +213,122 @@ export const ModelSelect = forwardRef<
           </div>
         </DropdownMenu.Trigger>
 
-        <DropdownMenu.Portal container={resolvedContainer}>
-          <DropdownMenu.Content
-            className={
-              contentClassName
-                ? `smtcmp-popover ${contentClassName}`
-                : 'smtcmp-popover'
-            }
-            side={side}
-            sideOffset={sideOffset}
-            align={align}
-            alignOffset={alignOffset}
-            collisionPadding={8}
-            loop
-            onPointerDownOutside={(e) => {
-              // 阻止事件冒泡，防止关闭父容器
-              e.stopPropagation()
+        <YoloDropdownContent
+          container={resolvedContainer}
+          variant={popover?.variant ?? 'default'}
+          minWidth={popover?.minWidth}
+          maxWidth={popover?.maxWidth}
+          maxHeight={popover?.maxHeight}
+          className={popover?.className}
+          side={side}
+          sideOffset={sideOffset}
+          align={align}
+          alignOffset={alignOffset}
+          collisionPadding={8}
+          loop
+          onPointerDownOutside={(e) => {
+            // 阻止事件冒泡，防止关闭父容器
+            e.stopPropagation()
+          }}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault()
+            triggerRef.current?.focus({ preventScroll: true })
+          }}
+        >
+          <DropdownMenu.RadioGroup
+            className="smtcmp-model-select-list"
+            value={selectedModelId}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                focusByDelta(1)
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                focusByDelta(-1)
+              }
             }}
-            onCloseAutoFocus={(e) => {
-              e.preventDefault()
-              triggerRef.current?.focus({ preventScroll: true })
+            onValueChange={(modelId: string) => {
+              if (onChange) {
+                onChange(modelId)
+              } else {
+                void (async () => {
+                  try {
+                    await setSettings({
+                      ...settings,
+                      chatModelId: modelId,
+                    })
+                  } catch (error: unknown) {
+                    console.error('Failed to update chat model setting', error)
+                  }
+                })()
+              }
+              onModelSelected?.(modelId)
             }}
           >
-            <DropdownMenu.RadioGroup
-              className="smtcmp-model-select-list"
-              value={selectedModelId}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault()
-                  focusByDelta(1)
-                } else if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  focusByDelta(-1)
-                }
-              }}
-              onValueChange={(modelId: string) => {
-                if (onChange) {
-                  onChange(modelId)
-                } else {
-                  void (async () => {
-                    try {
-                      await setSettings({
-                        ...settings,
-                        chatModelId: modelId,
-                      })
-                    } catch (error: unknown) {
-                      console.error(
-                        'Failed to update chat model setting',
-                        error,
-                      )
-                    }
-                  })()
-                }
-                onModelSelected?.(modelId)
-              }}
-            >
-              {(() => {
-                let runningIndex = 0
+            {(() => {
+              let runningIndex = 0
 
-                return orderedProviderIds.flatMap((pid, groupIndex) => {
-                  const groupModels = enabledModels.filter(
-                    (m) => m.providerId === pid,
-                  )
-                  if (groupModels.length === 0) return []
+              return orderedProviderIds.flatMap((pid, groupIndex) => {
+                const groupModels = enabledModels.filter(
+                  (m) => m.providerId === pid,
+                )
+                if (groupModels.length === 0) return []
 
-                  const groupHeader = (
-                    <DropdownMenu.Label
-                      key={`label-${pid}`}
-                      className="smtcmp-popover-group-label"
+                const groupHeader = (
+                  <DropdownMenu.Label
+                    key={`label-${pid}`}
+                    className="smtcmp-popover-group-label"
+                  >
+                    {pid}
+                  </DropdownMenu.Label>
+                )
+
+                const items = groupModels.map((chatModelOption, index) => {
+                  // 列表项名称：优先显示「展示名称」，其次调用ID(model)，最后回退到内部 id
+                  const displayName =
+                    chatModelOption.name ||
+                    chatModelOption.model ||
+                    getModelDisplayName(chatModelOption.id)
+                  runningIndex += 1
+                  return (
+                    <DropdownMenu.RadioItem
+                      key={chatModelOption.id}
+                      className="smtcmp-popover-item"
+                      value={chatModelOption.id}
+                      ref={(element) => {
+                        itemRefs.current[chatModelOption.id] = element
+                      }}
+                      data-model-id={chatModelOption.id}
+                      data-first-item={
+                        runningIndex === 1 && index === 0 ? 'true' : undefined
+                      }
                     >
-                      {pid}
-                    </DropdownMenu.Label>
+                      <span className="smtcmp-popover-item__label">
+                        {displayName}
+                      </span>
+                      <DropdownMenu.ItemIndicator className="smtcmp-popover-item__indicator">
+                        <Check size={12} />
+                      </DropdownMenu.ItemIndicator>
+                    </DropdownMenu.RadioItem>
                   )
-
-                  const items = groupModels.map((chatModelOption, index) => {
-                    // 列表项名称：优先显示「展示名称」，其次调用ID(model)，最后回退到内部 id
-                    const displayName =
-                      chatModelOption.name ||
-                      chatModelOption.model ||
-                      getModelDisplayName(chatModelOption.id)
-                    runningIndex += 1
-                    return (
-                      <DropdownMenu.RadioItem
-                        key={chatModelOption.id}
-                        className="smtcmp-popover-item"
-                        value={chatModelOption.id}
-                        ref={(element) => {
-                          itemRefs.current[chatModelOption.id] = element
-                        }}
-                        data-model-id={chatModelOption.id}
-                        data-first-item={
-                          runningIndex === 1 && index === 0 ? 'true' : undefined
-                        }
-                      >
-                        <span className="smtcmp-popover-item__label">
-                          {displayName}
-                        </span>
-                        <DropdownMenu.ItemIndicator className="smtcmp-popover-item__indicator">
-                          <Check size={12} />
-                        </DropdownMenu.ItemIndicator>
-                      </DropdownMenu.RadioItem>
-                    )
-                  })
-
-                  return [
-                    groupHeader,
-                    ...items,
-                    ...(groupIndex < orderedProviderIds.length - 1
-                      ? [
-                          <DropdownMenu.Separator
-                            key={`sep-${pid}`}
-                            className="smtcmp-popover-group-separator"
-                          />,
-                        ]
-                      : []),
-                  ]
                 })
-              })()}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
+
+                return [
+                  groupHeader,
+                  ...items,
+                  ...(groupIndex < orderedProviderIds.length - 1
+                    ? [
+                        <DropdownMenu.Separator
+                          key={`sep-${pid}`}
+                          className="smtcmp-popover-group-separator"
+                        />,
+                      ]
+                    : []),
+                ]
+              })
+            })()}
+          </DropdownMenu.RadioGroup>
+        </YoloDropdownContent>
       </DropdownMenu.Root>
     )
   },

@@ -70,7 +70,9 @@ describe('openaiCompatibleCapabilities', () => {
   })
 
   it('skips reasoning fields for mistral host', () => {
-    const request: Record<string, unknown> = { stream_options: { include_usage: true } }
+    const request: Record<string, unknown> = {
+      stream_options: { include_usage: true },
+    }
 
     applyOpenAICompatibleCapabilities({
       request,

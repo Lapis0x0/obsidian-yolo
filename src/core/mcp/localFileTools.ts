@@ -26,6 +26,10 @@ import {
   extractPdfText,
 } from '../../utils/pdf/extractPdfText'
 import {
+  findPathOutsideScope,
+  isPathAllowedByScope,
+} from '../agent/workspaceScope'
+import {
   type TextEditOperation,
   type TextEditPlan,
   materializeTextEditPlan,
@@ -38,19 +42,15 @@ import {
   memoryUpdate,
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
+import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
+import { aggregateSearchResults } from '../search/searchResultAggregation'
+import { getLiteSkillDocument } from '../skills/liteSkills'
 import {
   WEB_SCRAPE_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   runWebScrape,
   runWebSearch,
 } from '../web-search'
-import {
-  findPathOutsideScope,
-  isPathAllowedByScope,
-} from '../agent/workspaceScope'
-import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
-import { aggregateSearchResults } from '../search/searchResultAggregation'
-import { getLiteSkillDocument } from '../skills/liteSkills'
 
 export { recoverLikelyEscapedBackslashSequences }
 
@@ -2195,11 +2195,7 @@ export async function callLocalFileTool({
     // the same check up front for UI Rejected status, but we re-validate here
     // so manual-approval / direct-call code paths cannot bypass the constraint.
     if (workspaceScope?.enabled) {
-      const offendingPath = findPathOutsideScope(
-        toolName,
-        args,
-        workspaceScope,
-      )
+      const offendingPath = findPathOutsideScope(toolName, args, workspaceScope)
       if (offendingPath !== null) {
         throw new Error(
           `Path "${offendingPath}" is outside this agent's workspace scope.`,
@@ -2963,7 +2959,9 @@ export async function callLocalFileTool({
           rows: T[],
         ): T[] =>
           workspaceScope?.enabled
-            ? rows.filter((row) => isPathAllowedByScope(row.path, workspaceScope))
+            ? rows.filter((row) =>
+                isPathAllowedByScope(row.path, workspaceScope),
+              )
             : rows
 
         if (effectiveMode === 'keyword') {

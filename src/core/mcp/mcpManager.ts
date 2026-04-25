@@ -16,7 +16,14 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
+import { WEB_OPS_GROUP_TOOL_NAME } from '../agent/builtinToolUiMeta'
 import type { RAGEngine } from '../rag/ragEngine'
+import {
+  WEB_SCRAPE_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
+  activeProviderSupportsScrape,
+  isWebSearchToolReady,
+} from '../web-search'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import {
@@ -27,13 +34,7 @@ import {
   getLocalFileTools,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
-import { WEB_OPS_GROUP_TOOL_NAME } from '../agent/builtinToolUiMeta'
-import {
-  WEB_SCRAPE_TOOL_NAME,
-  WEB_SEARCH_TOOL_NAME,
-  activeProviderSupportsScrape,
-  isWebSearchToolReady,
-} from '../web-search'
+
 const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
 )

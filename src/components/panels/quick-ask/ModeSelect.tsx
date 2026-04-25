@@ -9,6 +9,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { getNodeBody, getNodeWindow } from '../../../utils/dom/window-context'
+import { YoloDropdownContent } from '../../common/popover'
 
 export type QuickAskMode = 'chat' | 'agent'
 
@@ -60,7 +61,6 @@ export const ModeSelect = forwardRef<
     sideOffset?: number
     align?: 'start' | 'center' | 'end'
     alignOffset?: number
-    contentClassName?: string
   }
 >(
   (
@@ -76,7 +76,6 @@ export const ModeSelect = forwardRef<
       sideOffset = 4,
       align = 'start',
       alignOffset = 0,
-      contentClassName,
     },
     ref,
   ) => {
@@ -195,71 +194,69 @@ export const ModeSelect = forwardRef<
           </div>
         </DropdownMenu.Trigger>
 
-        <DropdownMenu.Portal container={resolvedContainer}>
-          <DropdownMenu.Content
-            className={
-              contentClassName
-                ? `smtcmp-popover ${contentClassName}`
-                : 'smtcmp-popover'
-            }
-            side={side}
-            sideOffset={sideOffset}
-            align={align}
-            alignOffset={alignOffset}
-            collisionPadding={8}
-            loop
-            onPointerDownOutside={(e) => {
-              e.stopPropagation()
+        <YoloDropdownContent
+          container={resolvedContainer}
+          variant="smart-space"
+          minWidth={140}
+          maxWidth={200}
+          maxHeight={400}
+          side={side}
+          sideOffset={sideOffset}
+          align={align}
+          alignOffset={alignOffset}
+          collisionPadding={8}
+          loop
+          onPointerDownOutside={(e) => {
+            e.stopPropagation()
+          }}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault()
+            triggerRef.current?.focus({ preventScroll: true })
+          }}
+        >
+          <DropdownMenu.RadioGroup
+            className="smtcmp-model-select-list smtcmp-mode-select-list"
+            value={mode}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                focusByDelta(1)
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                focusByDelta(-1)
+              }
             }}
-            onCloseAutoFocus={(e) => {
-              e.preventDefault()
-              triggerRef.current?.focus({ preventScroll: true })
+            onValueChange={(value) => {
+              if (isQuickAskMode(value)) {
+                onChange(value)
+              }
             }}
           >
-            <DropdownMenu.RadioGroup
-              className="smtcmp-model-select-list smtcmp-mode-select-list"
-              value={mode}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault()
-                  focusByDelta(1)
-                } else if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  focusByDelta(-1)
-                }
-              }}
-              onValueChange={(value) => {
-                if (isQuickAskMode(value)) {
-                  onChange(value)
-                }
-              }}
-            >
-              {MODE_OPTIONS.map((option) => (
-                <DropdownMenu.RadioItem
-                  key={option.value}
-                  className="smtcmp-popover-item smtcmp-mode-select-item"
-                  value={option.value}
-                  ref={(element) => {
-                    itemRefs.current[option.value] = element
-                  }}
-                  data-mode={option.value}
-                >
-                  <div className="smtcmp-mode-select-item__icon">
-                    {option.icon}
+            {MODE_OPTIONS.map((option) => (
+              <DropdownMenu.RadioItem
+                key={option.value}
+                className="smtcmp-popover-item smtcmp-mode-select-item"
+                value={option.value}
+                ref={(element) => {
+                  itemRefs.current[option.value] = element
+                }}
+                data-mode={option.value}
+              >
+                <div className="smtcmp-mode-select-item__icon">
+                  {option.icon}
+                </div>
+                <div className="smtcmp-mode-select-item__content">
+                  <div className="smtcmp-mode-select-item__label">
+                    {t(option.labelKey, option.labelFallback)}
                   </div>
-                  <div className="smtcmp-mode-select-item__content">
-                    <div className="smtcmp-mode-select-item__label">
-                      {t(option.labelKey, option.labelFallback)}
-                    </div>
-                    <div className="smtcmp-mode-select-item__desc">
-                      {t(option.descKey, option.descFallback)}
-                    </div>
+                  <div className="smtcmp-mode-select-item__desc">
+                    {t(option.descKey, option.descFallback)}
                   </div>
-                </DropdownMenu.RadioItem>
-              ))}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
+                </div>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </YoloDropdownContent>
       </DropdownMenu.Root>
     )
   },

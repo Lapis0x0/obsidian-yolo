@@ -68,11 +68,11 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SimpleSelect } from '../../common/SimpleSelect'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
 
-import { AgentWorkspaceScopeEditor } from './AgentWorkspaceScopeEditor'
 import {
   normalizeToolPreferencesForPersistence,
   normalizeToolSelectionForPersistence,
 } from './agentToolPersistence'
+import { AgentWorkspaceScopeEditor } from './AgentWorkspaceScopeEditor'
 
 type AgentsSectionContentProps = {
   app: App
@@ -701,10 +701,7 @@ export function AgentsSectionContent({
       groups.set(key, group)
     })
 
-    const pushBuiltinGroupTool = (
-      toolName: string,
-      tool: AgentToolView,
-    ) => {
+    const pushBuiltinGroupTool = (toolName: string, tool: AgentToolView) => {
       const category = getBuiltinToolCategory(toolName) ?? 'vault'
       const key = `__builtin:${category}`
       const title = t(

@@ -498,5 +498,4 @@ export const clearRequestTransportMemory = (): void => {
   requestTransportMemory.clear()
 }
 
-export const clearRequestTransportMemoryForTests =
-  clearRequestTransportMemory
+export const clearRequestTransportMemoryForTests = clearRequestTransportMemory

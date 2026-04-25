@@ -2225,11 +2225,7 @@
 
 .smtcmp-reasoning-popover {
   padding: 12px 14px;
-  min-width: 360px;
-  max-width: 460px;
-  /* Override .smtcmp-chat-sidebar-popover's margin-left: -64px which is tailored
-     for the smart-space panel popover and would push this popover off-center. */
-  margin-left: 0 !important;
+  /* Sizing is declared via <YoloDropdownContent> props in ReasoningSelect.tsx. */
 }
 .smtcmp-reasoning-popover__header {
   display: flex;

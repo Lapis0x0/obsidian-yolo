@@ -6,7 +6,6 @@ import { searxngProvider } from './providers/searxng'
 import { tavilyProvider } from './providers/tavily'
 import type { WebSearchProvider, WebSearchProviderOptions } from './types'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- discriminated union dispatch
 const PROVIDERS: Record<string, WebSearchProvider<any>> = {
   tavily: tavilyProvider,
   jina: jinaProvider,

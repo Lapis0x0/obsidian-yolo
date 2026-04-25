@@ -16,7 +16,6 @@ import {
 } from '@aws-sdk/client-bedrock-runtime'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   ContentPart,
   LLMOptions,
@@ -33,6 +32,10 @@ import {
   ToolCall,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
+import {
+  REASONING_META,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
 import {
   buildBedrockEmbeddingRequestBody,

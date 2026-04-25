@@ -30,13 +30,15 @@ describe('model-capability-registry', () => {
     expect(resolveKnownChatModelModalities('deepseek/deepseek-chat')).toEqual([
       'text',
     ])
-    expect(resolveKnownChatModelModalities('anthropic/claude-sonnet-4.5')).toEqual(
+    expect(
+      resolveKnownChatModelModalities('anthropic/claude-sonnet-4.5'),
+    ).toEqual(expect.arrayContaining(['text', 'vision']))
+    expect(resolveKnownChatModelModalities('google/gemini-2.5-flash')).toEqual(
       expect.arrayContaining(['text', 'vision']),
     )
     expect(
-      resolveKnownChatModelModalities('google/gemini-2.5-flash'),
-    ).toEqual(expect.arrayContaining(['text', 'vision']))
-    expect(resolveKnownChatModelModalities('some/unknown-model')).toBeUndefined()
+      resolveKnownChatModelModalities('some/unknown-model'),
+    ).toBeUndefined()
   })
 
   it('fills missing values without overwriting existing ones', () => {

@@ -11,6 +11,7 @@ import {
 import { Assistant } from '../../types/assistant.types'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
 import { getNodeBody } from '../../utils/dom/window-context'
+import { YoloPopoverContent } from '../common/popover'
 
 type AssistantSelectorProps = {
   currentAssistantId?: string
@@ -120,71 +121,72 @@ export function AssistantSelector({
         </button>
       </Popover.Trigger>
 
-      <Popover.Portal container={getNodeBody(triggerRef.current)}>
-        <Popover.Content
-          className={`smtcmp-popover smtcmp-chat-sidebar-popover smtcmp-assistant-selector-content${
-            contentClassName ? ` ${contentClassName}` : ''
-          }`}
-          sideOffset={14}
-        >
-          <ul className="smtcmp-assistant-selector-list smtcmp-model-select-list">
-            {/* "No Assistant" option */}
-            <li className="smtcmp-assistant-selector-row">
-              <button
-                type="button"
-                className={`smtcmp-assistant-selector-item ${
-                  isDefaultAssistantId(resolvedCurrentAssistantId)
-                    ? 'selected'
-                    : ''
-                }`}
-                onClick={handleSelectDefaultAssistant}
-              >
-                <div className="smtcmp-assistant-selector-item-content">
-                  <div className="smtcmp-assistant-selector-item-name">
-                    {assistants.find((assistant) =>
-                      isDefaultAssistantId(assistant.id),
-                    )?.name ?? t('settings.assistants.noAssistant')}
-                  </div>
+      <YoloPopoverContent
+        container={getNodeBody(triggerRef.current)}
+        variant="default"
+        minWidth={280}
+        maxHeight={400}
+        className={
+          contentClassName
+            ? `smtcmp-assistant-selector-content ${contentClassName}`
+            : 'smtcmp-assistant-selector-content'
+        }
+        sideOffset={14}
+      >
+        <ul className="smtcmp-assistant-selector-list smtcmp-model-select-list">
+          {/* "No Assistant" option */}
+          <li className="smtcmp-assistant-selector-row">
+            <button
+              type="button"
+              className={`smtcmp-assistant-selector-item ${
+                isDefaultAssistantId(resolvedCurrentAssistantId)
+                  ? 'selected'
+                  : ''
+              }`}
+              onClick={handleSelectDefaultAssistant}
+            >
+              <div className="smtcmp-assistant-selector-item-content">
+                <div className="smtcmp-assistant-selector-item-name">
+                  {assistants.find((assistant) =>
+                    isDefaultAssistantId(assistant.id),
+                  )?.name ?? t('settings.assistants.noAssistant')}
                 </div>
-              </button>
-            </li>
+              </div>
+            </button>
+          </li>
 
-            {/* Available assistants */}
-            {assistants
-              .filter((assistant) => !isDefaultAssistantId(assistant.id))
-              .map((assistant) => (
-                <li
-                  key={assistant.id}
-                  className="smtcmp-assistant-selector-row"
+          {/* Available assistants */}
+          {assistants
+            .filter((assistant) => !isDefaultAssistantId(assistant.id))
+            .map((assistant) => (
+              <li key={assistant.id} className="smtcmp-assistant-selector-row">
+                <button
+                  type="button"
+                  className={`smtcmp-assistant-selector-item ${
+                    assistant.id === resolvedCurrentAssistantId
+                      ? 'selected'
+                      : ''
+                  }`}
+                  onClick={() => handleSelectAssistant(assistant)}
                 >
-                  <button
-                    type="button"
-                    className={`smtcmp-assistant-selector-item ${
-                      assistant.id === resolvedCurrentAssistantId
-                        ? 'selected'
-                        : ''
-                    }`}
-                    onClick={() => handleSelectAssistant(assistant)}
-                  >
-                    <div className="smtcmp-assistant-selector-item-icon">
-                      {renderAssistantIcon(assistant.icon, 14)}
+                  <div className="smtcmp-assistant-selector-item-icon">
+                    {renderAssistantIcon(assistant.icon, 14)}
+                  </div>
+                  <div className="smtcmp-assistant-selector-item-content">
+                    <div className="smtcmp-assistant-selector-item-name">
+                      {assistant.name}
                     </div>
-                    <div className="smtcmp-assistant-selector-item-content">
-                      <div className="smtcmp-assistant-selector-item-name">
-                        {assistant.name}
+                    {assistant.description && (
+                      <div className="smtcmp-assistant-selector-item-description">
+                        {assistant.description}
                       </div>
-                      {assistant.description && (
-                        <div className="smtcmp-assistant-selector-item-description">
-                          {assistant.description}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                </li>
-              ))}
-          </ul>
-        </Popover.Content>
-      </Popover.Portal>
+                    )}
+                  </div>
+                </button>
+              </li>
+            ))}
+        </ul>
+      </YoloPopoverContent>
     </Popover.Root>
   )
 }

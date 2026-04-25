@@ -4,6 +4,7 @@ import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_CHAT_TITLE_MODEL_ID,
 } from '../../constants'
+import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
 import { embeddingModelSchema } from '../../types/embedding-model.types'
@@ -13,7 +14,6 @@ import {
 } from '../../types/mcp.types'
 import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS } from '../../types/reasoning'
-import { webSearchSettingsSchema } from '../../core/web-search/types'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 

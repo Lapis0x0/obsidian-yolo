@@ -13,7 +13,7 @@ describe('migrateFrom48To49', () => {
         { providerId: 'custom', id: 'a', model: 'gemini-2.5-flash' },
         { providerId: 'custom', id: 'b', model: 'deepseek-chat' },
       ],
-    }) as Record<string, unknown>
+    })
 
     const models = result.chatModels as Record<string, unknown>[]
     expect(models[0].modalities).toEqual(
@@ -39,7 +39,7 @@ describe('migrateFrom48To49', () => {
         { providerId: 'openai', id: 'd', model: 'gpt-5' },
         { providerId: 'bedrock', id: 'e', model: 'bedrock-claude' },
       ],
-    }) as Record<string, unknown>
+    })
 
     expect(result.version).toBe(49)
     const models = result.chatModels as Record<string, unknown>[]
@@ -62,7 +62,7 @@ describe('migrateFrom48To49', () => {
           modalities: ['text', 'vision'],
         },
       ],
-    }) as Record<string, unknown>
+    })
 
     const models = result.chatModels as Record<string, unknown>[]
     expect(models[0].modalities).toEqual(['text', 'vision'])
@@ -72,10 +72,8 @@ describe('migrateFrom48To49', () => {
     const result = migrateFrom48To49({
       version: 48,
       providers: [],
-      chatModels: [
-        { providerId: 'ghost', id: 'a', model: 'x' },
-      ],
-    }) as Record<string, unknown>
+      chatModels: [{ providerId: 'ghost', id: 'a', model: 'x' }],
+    })
 
     const models = result.chatModels as Record<string, unknown>[]
     expect(models[0].modalities).toEqual(['text'])

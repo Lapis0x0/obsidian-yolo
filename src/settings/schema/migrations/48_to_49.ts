@@ -56,9 +56,7 @@ export const migrateFrom48To49: SettingMigration['migrate'] = (data) => {
 
     const providerId =
       typeof raw.providerId === 'string' ? raw.providerId : null
-    const apiType = providerId
-      ? providerApiTypeById.get(providerId)
-      : undefined
+    const apiType = providerId ? providerApiTypeById.get(providerId) : undefined
     return { ...raw, modalities: modalitiesForApiType(apiType) }
   })
 

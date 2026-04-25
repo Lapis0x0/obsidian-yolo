@@ -40,7 +40,7 @@ export const migrateFrom47To48: SettingMigration['migrate'] = (data) => {
     isRecord(next.chatOptions.reasoningLevelByModelId)
   ) {
     const levelMap: Record<string, unknown> = {
-      ...(next.chatOptions.reasoningLevelByModelId as Record<string, unknown>),
+      ...next.chatOptions.reasoningLevelByModelId,
     }
     for (const [key, val] of Object.entries(levelMap)) {
       if (val === 'on') {

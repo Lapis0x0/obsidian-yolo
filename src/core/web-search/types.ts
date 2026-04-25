@@ -140,9 +140,9 @@ export type WebSearchScrapeInput = {
   url: string
 }
 
-export interface WebSearchProvider<
+export type WebSearchProvider<
   T extends WebSearchProviderOptions = WebSearchProviderOptions,
-> {
+> = {
   readonly type: T['type']
   readonly displayName: string
   readonly supportsScrape: boolean

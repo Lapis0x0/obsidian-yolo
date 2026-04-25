@@ -6,7 +6,6 @@ import type {
 } from 'openai/resources/responses/responses'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -17,6 +16,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import {
+  REASONING_META,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
@@ -81,7 +84,8 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     const reasoning_effort =
       level === 'off'
         ? 'low'
-        : (REASONING_META[level].effort as LLMRequestNonStreaming['reasoning_effort'])
+        : (REASONING_META[level]
+            .effort as LLMRequestNonStreaming['reasoning_effort'])
     return {
       ...request,
       reasoning_effort,

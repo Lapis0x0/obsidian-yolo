@@ -1,7 +1,6 @@
 import OpenAI from 'openai'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -12,6 +11,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import {
+  REASONING_META,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'

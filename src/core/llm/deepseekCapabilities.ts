@@ -1,7 +1,7 @@
 import { ChatModel } from '../../types/chat-model.types'
 import {
-  modelSupportsReasoning,
   type ReasoningLevel,
+  modelSupportsReasoning,
 } from '../../types/reasoning'
 
 type DeepSeekRequestRecord = Record<string, unknown>
@@ -35,8 +35,7 @@ export function applyDeepSeekCapabilities(params: {
   }
 
   request.thinking = { type: 'enabled' }
-  request.reasoning_effort =
-    reasoningLevel === 'extra-high' ? 'max' : 'high'
+  request.reasoning_effort = reasoningLevel === 'extra-high' ? 'max' : 'high'
 }
 
 function isDeepSeekReasonerModel(modelId: string): boolean {

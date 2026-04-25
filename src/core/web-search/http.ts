@@ -1,4 +1,4 @@
-import { requestUrl, type RequestUrlParam } from 'obsidian'
+import { type RequestUrlParam, requestUrl } from 'obsidian'
 
 export type WebSearchHttpResponse = {
   status: number

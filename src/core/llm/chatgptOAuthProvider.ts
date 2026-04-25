@@ -6,7 +6,6 @@ import type {
 } from 'openai/resources/responses/responses'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { REASONING_META, resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -17,6 +16,10 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import {
+  REASONING_META,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { getChatGPTOAuthService } from '../auth/chatgptOAuthRuntime'
@@ -96,13 +99,18 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   ): Promise<LLMResponseNonStreaming> {
     const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
     let formattedRequest = request
-    if (level !== undefined && level !== 'auto' && !formattedRequest.reasoning_effort) {
+    if (
+      level !== undefined &&
+      level !== 'auto' &&
+      !formattedRequest.reasoning_effort
+    ) {
       formattedRequest = {
         ...formattedRequest,
         reasoning_effort:
           level === 'off'
             ? 'low'
-            : (REASONING_META[level].effort as LLMRequestNonStreaming['reasoning_effort']),
+            : (REASONING_META[level]
+                .effort as LLMRequestNonStreaming['reasoning_effort']),
       }
     }
 
@@ -147,13 +155,18 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
     const level = resolveRequestReasoningLevel(model, request.reasoningLevel)
     let formattedRequest = request
-    if (level !== undefined && level !== 'auto' && !formattedRequest.reasoning_effort) {
+    if (
+      level !== undefined &&
+      level !== 'auto' &&
+      !formattedRequest.reasoning_effort
+    ) {
       formattedRequest = {
         ...formattedRequest,
         reasoning_effort:
           level === 'off'
             ? 'low'
-            : (REASONING_META[level].effort as LLMRequestStreaming['reasoning_effort']),
+            : (REASONING_META[level]
+                .effort as LLMRequestStreaming['reasoning_effort']),
       }
     }
 

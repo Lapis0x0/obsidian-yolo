@@ -5640,6 +5640,83 @@
   overflow-y: var(--smtcmp-textarea-auto-overflow-y, auto);
 }
 
+/*
+ * yolo-popover surface classes.
+ *
+ * IMPORTANT: These classes define VISUAL STYLES ONLY (background, border,
+ * shadow, animation, overflow, z-index). They MUST NOT contain any sizing
+ * properties (min/max-width, max-height, margin, width).
+ *
+ * Sizing is the consumer's responsibility — pass minWidth / maxWidth /
+ * maxHeight props to <YoloDropdownContent> / <YoloPopoverContent>, or use
+ * the className escape hatch for one-off concerns (like the chat history
+ * dropdown's -64px alignment).
+ *
+ * See: docs/plans/parsed-wiggling-shore.md
+ *      CLAUDE.md ("样式与 Popover 约定")
+ */
+
+.yolo-popover-surface {
+  overflow: hidden;
+}
+
+/* Default variant — used by chat-input dropdowns, chat-history,
+   AssistantSelector, ViewToggle. */
+
+.yolo-popover-surface--default {
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+  border-radius: var(--radius-m);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.12),
+    0 0 0 1px
+      color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+  animation: yolo-popover-fade-in 130ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* Smart-space variant — heavier shadow, blur backdrop, larger radius.
+   Used by SmartSpace panel, QuickAsk panel, mention/slash menus. */
+
+.yolo-popover-surface--smart-space {
+  z-index: 10000;
+  background: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 3px
+      color-mix(in srgb, var(--background-modifier-border) 20%, transparent),
+    0 12px 32px -8px rgba(0, 0, 0, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(16px);
+  animation: yolo-popover-smart-space-fade-in 0.25s
+    cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes yolo-popover-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes yolo-popover-smart-space-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .smtcmp-chat-header {
   display: flex;
   justify-content: space-between;
@@ -7888,11 +7965,7 @@
 
 .smtcmp-reasoning-popover {
   padding: 12px 14px;
-  min-width: 360px;
-  max-width: 460px;
-  /* Override .smtcmp-chat-sidebar-popover's margin-left: -64px which is tailored
-     for the smart-space panel popover and would push this popover off-center. */
-  margin-left: 0 !important;
+  /* Sizing is declared via <YoloDropdownContent> props in ReasoningSelect.tsx. */
 }
 
 .smtcmp-reasoning-popover__header {
@@ -9878,16 +9951,7 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   line-height: 1.6;
 }
 
-.smtcmp-popover {
-  z-index: 1000;
-  background: var(--background-primary);
-  box-shadow: var(--shadow-s);
-  border-radius: var(--radius-m);
-  border: 1px solid var(--background-modifier-border);
-  overflow: hidden;
-}
-
-.smtcmp-popover ul {
+.yolo-popover-surface ul {
   padding: 0;
   list-style: none;
   margin: 0;
@@ -9895,14 +9959,14 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   overflow-y: scroll;
 }
 
-.smtcmp-popover ul {
+.yolo-popover-surface ul {
   padding: var(--size-4-1) 0;
 }
 
-.smtcmp-popover .smtcmp-popover-group-label {
+.yolo-popover-surface .smtcmp-popover-group-label {
   display: block;
   margin: 0;
-  padding: 8px 8px 6px 8px;
+  padding: 10px 14px 6px 14px;
   color: color-mix(in srgb, var(--text-muted) 85%, transparent);
   font-size: 10px;
   font-weight: var(--font-bold);
@@ -9913,7 +9977,7 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   opacity: 0.8;
 }
 
-.smtcmp-popover .smtcmp-popover-group-separator {
+.yolo-popover-surface .smtcmp-popover-group-separator {
   height: 1px;
   background: linear-gradient(
     to right,
@@ -9927,17 +9991,17 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
 }
 
 .smtcmp-model-select-list {
-  padding: 4px 0;
+  padding: 6px 6px;
   max-height: min(300px, 50vh);
   overflow-y: auto;
 }
 
-.smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item {
+.yolo-popover-surface .smtcmp-model-select-list > .smtcmp-popover-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   margin: 0;
   border-radius: var(--radius-s);
   color: var(--text-normal);
@@ -9946,19 +10010,24 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   outline: none;
 }
 
-.smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item:hover,
-.smtcmp-popover
+.yolo-popover-surface .smtcmp-model-select-list > .smtcmp-popover-item:hover,
+.yolo-popover-surface
   .smtcmp-model-select-list
   > .smtcmp-popover-item[data-highlighted] {
   background: var(--background-modifier-hover);
 }
 
-.smtcmp-popover
+.yolo-popover-surface
   .smtcmp-model-select-list
   > .smtcmp-popover-item[data-state='checked'] {
-  background: var(--background-modifier-hover);
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 45%,
+    transparent
+  );
   font-weight: var(--font-semibold);
-  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 }
 
 .smtcmp-popover-item__label {
@@ -9982,7 +10051,7 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   opacity: 1;
 }
 
-.smtcmp-popover ul li {
+.yolo-popover-surface ul li {
   margin: 0;
   min-width: 180px;
   font-size: var(--font-ui-smaller);
@@ -9993,11 +10062,11 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   justify-content: flex-start;
 }
 
-.smtcmp-popover ul li.selected {
+.yolo-popover-surface ul li.selected {
   background: var(--background-modifier-hover);
 }
 
-.smtcmp-popover li {
+.yolo-popover-surface li {
   z-index: 1000;
   max-height: 300px;
   overflow-y: auto;
@@ -10022,14 +10091,14 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   align-items: start;
 }
 
-.smtcmp-popover li.active {
+.yolo-popover-surface li.active {
   display: flex;
   width: 20px;
   height: 20px;
   background-size: contain;
 }
 
-.smtcmp-popover li:hover {
+.yolo-popover-surface li:hover {
   background-color: var(--background-modifier-hover);
 }
 
@@ -10047,13 +10116,13 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   min-width: fit-content;
 }
 
-.smtcmp-popover li:hover {
+.yolo-popover-surface li:hover {
   background-color: var(--background-modifier-hover);
   cursor: pointer;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon,
-.smtcmp-popover li .smtcmp-chat-list-pin-button {
+.yolo-popover-surface li .smtcmp-chat-list-dropdown-item-icon,
+.yolo-popover-surface li .smtcmp-chat-list-pin-button {
   visibility: visible;
   opacity: 0;
   transform: translateX(5px) scale(0.96);
@@ -10065,16 +10134,18 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
     background-color 120ms ease;
 }
 
-.smtcmp-popover
+.yolo-popover-surface
   li:is(:hover, :focus-within)
   .smtcmp-chat-list-dropdown-item-icon,
-.smtcmp-popover li:is(:hover, :focus-within) .smtcmp-chat-list-pin-button {
+.yolo-popover-surface
+  li:is(:hover, :focus-within)
+  .smtcmp-chat-list-pin-button {
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon:hover {
+.yolo-popover-surface li .smtcmp-chat-list-dropdown-item-icon:hover {
   background-color: var(--background-modifier-hover);
   border-radius: var(--radius-s);
 }
@@ -10096,6 +10167,8 @@ button.smtcmp-chat-user-input-file-badge-delete:focus-visible,
   width: 100%;
   max-width: 420px;
   min-width: 0;
+  /* 让弹层左侧与聊天面板外层布局对齐（仅聊天历史下拉需要）。 */
+  margin-left: -64px;
 }
 
 .smtcmp-chat-list-search {
@@ -10485,9 +10558,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
 .smtcmp-chat-list-dropdown-item:hover,
 .smtcmp-chat-list-dropdown-item:focus-within,
-.smtcmp-chat-sidebar-popover
-  .smtcmp-chat-list-dropdown-content
-  li:is(:hover, :focus-within, :has(:hover)) {
+.smtcmp-chat-list-dropdown-content li:is(:hover, :focus-within, :has(:hover)) {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 92%,
@@ -10499,10 +10570,8 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
 .smtcmp-chat-list-dropdown-item.selected,
 .smtcmp-chat-list-dropdown-item[data-highlighted='true'],
-.smtcmp-chat-sidebar-popover .smtcmp-chat-list-dropdown-content li.selected,
-.smtcmp-chat-sidebar-popover
-  .smtcmp-chat-list-dropdown-content
-  li[data-highlighted='true'] {
+.smtcmp-chat-list-dropdown-content li.selected,
+.smtcmp-chat-list-dropdown-content li[data-highlighted='true'] {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 96%,
@@ -10680,14 +10749,14 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   fill: transparent;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-pin-button.is-pinned {
+.yolo-popover-surface li .smtcmp-chat-list-pin-button.is-pinned {
   color: var(--text-normal);
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-pin-button.is-pinned svg {
+.yolo-popover-surface li .smtcmp-chat-list-pin-button.is-pinned svg {
   fill: currentColor;
 }
 
@@ -11954,19 +12023,14 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-smart-space-mention-dropdown {
   display: block;
   right: auto;
-  width: 100%;
+  width: min(100%, var(--smtcmp-chat-typeahead-max-width, 480px));
   min-width: 0;
-  max-width: 100%;
+  max-width: min(100%, var(--smtcmp-chat-typeahead-max-width, 480px));
   pointer-events: auto;
-  background: transparent;
-  border: none;
-  box-shadow: none;
   padding: 0;
-}
-
-.smtcmp-chat-container--centered .smtcmp-smart-space-mention-dropdown {
-  width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
-  max-width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
+  /* 视觉表面由 .yolo-popover-surface--smart-space 提供；此处不再覆盖 background/border/box-shadow。
+     宽度上限用 CSS 变量 --smtcmp-chat-typeahead-max-width 控制：
+     默认 480px；centered 容器（input.css）会覆盖为 400px。 */
 }
 
 .smtcmp-smart-space-mention-list {
@@ -11980,7 +12044,7 @@ button.smtcmp-chat-input-model-select {
   padding: 8px;
 }
 
-.smtcmp-smart-space-popover .smtcmp-smart-space-mention-list {
+.yolo-popover-surface--smart-space .smtcmp-smart-space-mention-list {
   max-height: min(320px, var(--smtcmp-typeahead-available-height, 320px));
   overflow-y: auto;
   scrollbar-width: thin;
@@ -12060,7 +12124,7 @@ button.smtcmp-chat-input-model-select {
   min-width: 0;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option {
   display: flex;
@@ -12079,7 +12143,7 @@ button.smtcmp-chat-input-model-select {
   scroll-margin-bottom: 8px;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option:focus-visible {
   outline: 1px solid
@@ -12090,16 +12154,16 @@ button.smtcmp-chat-input-model-select {
     );
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option::before {
   display: none;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option:hover,
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option[data-highlighted='true'] {
   background: color-mix(
@@ -12553,125 +12617,30 @@ button.smtcmp-chat-input-model-select {
   opacity: 0.85;
 }
 
-/* Smart Space Model Popover - 精致美观的设计 */
-
-.smtcmp-smart-space-popover {
-  z-index: 10000;
-  background: var(--background-primary);
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
-  border-radius: 12px;
-  box-shadow:
-    0 0 0 3px
-      color-mix(in srgb, var(--background-modifier-border) 20%, transparent),
-    0 12px 32px -8px rgba(0, 0, 0, 0.2),
-    0 4px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  max-height: 400px;
-  min-width: 240px;
-  animation: smtcmp-smart-space-popover-fade-in 0.25s
-    cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(16px);
-}
-
-.smtcmp-chat-sidebar-popover {
-  background: var(--background-primary);
-  border-color: color-mix(
-    in srgb,
-    var(--background-modifier-border) 75%,
-    transparent
-  );
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.12),
-    0 0 0 1px
-      color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
-  backdrop-filter: none;
-  width: auto;
-  min-width: max(var(--radix-dropdown-menu-trigger-width, 0px), 280px);
-  max-height: 400px;
-  overflow: hidden;
-  margin-left: -64px;
-  /* Override smart-space's 250ms scale+translate animation with a snappier
-     fade for底部小弹框, to avoid a "heavy" feel on open. */
-  animation: smtcmp-chat-sidebar-popover-fade-in 130ms
-    cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-.smtcmp-chat-model-select-popover {
-  min-width: max(var(--radix-dropdown-menu-trigger-width, 0px), 220px);
-  max-width: 260px;
-}
-
-@keyframes smtcmp-chat-sidebar-popover-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.smtcmp-view-toggle-mode-popover {
-  margin-left: 0;
-}
-
-.smtcmp-view-toggle-mode-popover[data-state='open'] {
-  animation: smtcmp-smart-space-popover-fade-in 0.25s
-    cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.smtcmp-view-toggle-mode-popover[data-state='closed'] {
-  animation: smtcmp-smart-space-popover-fade-out 0.18s
-    cubic-bezier(0.4, 0, 1, 1);
-}
-
-@keyframes smtcmp-smart-space-popover-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(8px) scale(0.94);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes smtcmp-smart-space-popover-fade-out {
-  0% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
-  }
-}
-
 /* 模型选择列表滚动样式 - 应用到 RadioGroup */
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list,
-.smtcmp-chat-sidebar-popover .smtcmp-model-select-list {
+.yolo-popover-surface .smtcmp-model-select-list {
   max-height: 380px;
   overflow-y: auto;
   scrollbar-width: thin;
   padding: 8px;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list::-webkit-scrollbar,
-.smtcmp-chat-sidebar-popover .smtcmp-model-select-list::-webkit-scrollbar {
+.yolo-popover-surface--smart-space .smtcmp-model-select-list::-webkit-scrollbar,
+.yolo-popover-surface--default .smtcmp-model-select-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list::-webkit-scrollbar-track,
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--smart-space
+  .smtcmp-model-select-list::-webkit-scrollbar-track,
+.yolo-popover-surface--default
   .smtcmp-model-select-list::-webkit-scrollbar-track {
   background: transparent;
   margin: 8px 0;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list::-webkit-scrollbar-thumb {
+.yolo-popover-surface--smart-space
+  .smtcmp-model-select-list::-webkit-scrollbar-thumb {
   background: color-mix(
     in srgb,
     var(--h1-color, var(--interactive-accent)) 25%,
@@ -12682,7 +12651,7 @@ button.smtcmp-chat-input-model-select {
   background-clip: padding-box;
 }
 
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text-muted) 30%, transparent);
   border-radius: 4px;
@@ -12690,7 +12659,7 @@ button.smtcmp-chat-input-model-select {
   background-clip: padding-box;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(
     in srgb,
@@ -12700,13 +12669,13 @@ button.smtcmp-chat-input-model-select {
   background-clip: padding-box;
 }
 
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--text-muted) 50%, transparent);
   background-clip: padding-box;
 }
 
-.smtcmp-smart-space-popover .smtcmp-popover-group-label {
+.yolo-popover-surface--smart-space .smtcmp-popover-group-label {
   display: block;
   margin: 0;
   padding: 8px 12px 6px 12px;
@@ -12719,11 +12688,11 @@ button.smtcmp-chat-input-model-select {
   opacity: 0.8;
 }
 
-.smtcmp-chat-sidebar-popover .smtcmp-popover-group-label {
+.yolo-popover-surface--default .smtcmp-popover-group-label {
   color: color-mix(in srgb, var(--text-muted) 75%, transparent);
 }
 
-.smtcmp-smart-space-popover .smtcmp-popover-group-separator {
+.yolo-popover-surface--smart-space .smtcmp-popover-group-separator {
   height: 1px;
   background: linear-gradient(
     to right,
@@ -12736,7 +12705,9 @@ button.smtcmp-chat-input-model-select {
   margin: 6px 0;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list > .smtcmp-popover-item {
+.yolo-popover-surface--smart-space
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item {
   position: relative;
   padding: 8px 12px;
   margin: 2px 0;
@@ -12753,10 +12724,10 @@ button.smtcmp-chat-input-model-select {
   outline: none;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item:hover,
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item[data-highlighted] {
   background: color-mix(
@@ -12767,10 +12738,10 @@ button.smtcmp-chat-input-model-select {
   color: var(--text-normal);
 }
 
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list
   > .smtcmp-popover-item:hover,
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list
   > .smtcmp-popover-item[data-highlighted] {
   background: color-mix(
@@ -12780,17 +12751,17 @@ button.smtcmp-chat-input-model-select {
   );
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item:active {
   transform: scale(0.98);
 }
 
-.smtcmp-chat-sidebar-popover .smtcmp-model-select-list {
+.yolo-popover-surface--default .smtcmp-model-select-list {
   padding: 4px 0;
 }
 
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list
   > .smtcmp-popover-item {
   display: flex;
@@ -12802,14 +12773,6 @@ button.smtcmp-chat-input-model-select {
   font-size: var(--font-ui-smaller);
   border-radius: var(--radius-s);
   line-height: var(--line-height-tight);
-}
-
-.smtcmp-chat-sidebar-popover
-  .smtcmp-model-select-list
-  > .smtcmp-popover-item[data-state='checked'] {
-  background: var(--background-modifier-hover);
-  font-weight: var(--font-semibold);
-  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
 }
 
 /* Smart Space Gemini Tools */

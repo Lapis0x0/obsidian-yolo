@@ -1,0 +1,74 @@
+/*
+ * yolo-popover surface classes.
+ *
+ * IMPORTANT: These classes define VISUAL STYLES ONLY (background, border,
+ * shadow, animation, overflow, z-index). They MUST NOT contain any sizing
+ * properties (min/max-width, max-height, margin, width).
+ *
+ * Sizing is the consumer's responsibility — pass minWidth / maxWidth /
+ * maxHeight props to <YoloDropdownContent> / <YoloPopoverContent>, or use
+ * the className escape hatch for one-off concerns (like the chat history
+ * dropdown's -64px alignment).
+ *
+ * See: docs/plans/parsed-wiggling-shore.md
+ *      CLAUDE.md ("样式与 Popover 约定")
+ */
+
+.yolo-popover-surface {
+  overflow: hidden;
+}
+
+/* Default variant — used by chat-input dropdowns, chat-history,
+   AssistantSelector, ViewToggle. */
+.yolo-popover-surface--default {
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+  border-radius: var(--radius-m);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.12),
+    0 0 0 1px
+      color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+  animation: yolo-popover-fade-in 130ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* Smart-space variant — heavier shadow, blur backdrop, larger radius.
+   Used by SmartSpace panel, QuickAsk panel, mention/slash menus. */
+.yolo-popover-surface--smart-space {
+  z-index: 10000;
+  background: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 3px
+      color-mix(in srgb, var(--background-modifier-border) 20%, transparent),
+    0 12px 32px -8px rgba(0, 0, 0, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(16px);
+  animation: yolo-popover-smart-space-fade-in 0.25s
+    cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes yolo-popover-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes yolo-popover-smart-space-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

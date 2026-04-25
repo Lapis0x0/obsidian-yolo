@@ -97,11 +97,7 @@ export function applyOpenAICompatibleCapabilities(params: {
     return
   }
 
-  if (
-    !reasoningLevel ||
-    !reasoningType ||
-    reasoningType === 'none'
-  ) {
+  if (!reasoningLevel || !reasoningType || reasoningType === 'none') {
     return
   }
 

@@ -120,9 +120,7 @@ describe('collectToolCallPaths', () => {
   })
 
   it('ignores empty strings and non-string values', () => {
-    expect(
-      collectToolCallPaths('fs_list', { path: '  ' }),
-    ).toEqual([])
+    expect(collectToolCallPaths('fs_list', { path: '  ' })).toEqual([])
     expect(
       collectToolCallPaths('fs_read', { paths: ['a.md', 42, null] }),
     ).toEqual(['a.md'])

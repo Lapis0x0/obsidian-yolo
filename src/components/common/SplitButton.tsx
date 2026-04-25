@@ -2,6 +2,8 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
+import { YoloDropdownContent } from './popover'
+
 type SplitButtonProps = {
   primaryText: string
   menuOptions: {
@@ -30,21 +32,19 @@ export function SplitButton({
         >
           <ChevronDown size={16} />
         </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="smtcmp-popover">
-            <ul>
-              {menuOptions.map((option) => (
-                <DropdownMenu.Item
-                  key={option.label}
-                  onSelect={option.onClick}
-                  asChild
-                >
-                  <li>{option.label}</li>
-                </DropdownMenu.Item>
-              ))}
-            </ul>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
+        <YoloDropdownContent variant="default" minWidth={180} maxHeight={400}>
+          <ul>
+            {menuOptions.map((option) => (
+              <DropdownMenu.Item
+                key={option.label}
+                onSelect={option.onClick}
+                asChild
+              >
+                <li>{option.label}</li>
+              </DropdownMenu.Item>
+            ))}
+          </ul>
+        </YoloDropdownContent>
       </DropdownMenu.Root>
     </div>
   )

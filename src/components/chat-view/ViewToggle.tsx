@@ -231,7 +231,11 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
           setHoveredView(null)
           closeModeMenuWithDelay()
         }}
-        contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover smtcmp-view-toggle-mode-popover"
+        popover={{
+          variant: 'default',
+          minWidth: 280,
+          maxHeight: 400,
+        }}
       />
       {showComposer ? (
         <button
