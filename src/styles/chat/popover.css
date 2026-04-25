@@ -49,11 +49,14 @@
   padding: var(--size-4-1) 0;
 }
 
-.yolo-popover-surface .smtcmp-popover-group-label {
+/* default 变体下的 group-label / separator / list / item 样式集中在这里。
+   --smart-space 变体的同名元素样式集中在 src/styles/panels/smart-space.css。
+   两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */
+.yolo-popover-surface--default .smtcmp-popover-group-label {
   display: block;
   margin: 0;
-  padding: 10px 14px 6px 14px;
-  color: color-mix(in srgb, var(--text-muted) 85%, transparent);
+  padding: 10px 14px 6px 12px;
+  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
   font-size: 10px;
   font-weight: var(--font-bold);
   letter-spacing: 0.08em;
@@ -63,7 +66,7 @@
   opacity: 0.8;
 }
 
-.yolo-popover-surface .smtcmp-popover-group-separator {
+.yolo-popover-surface--default .smtcmp-popover-group-separator {
   height: 1px;
   background: linear-gradient(
     to right,
@@ -76,31 +79,41 @@
   margin: 6px 0;
 }
 
-.smtcmp-model-select-list {
-  padding: 6px 6px;
-  max-height: min(300px, 50vh);
+.yolo-popover-surface--default .smtcmp-model-select-list {
+  padding: 4px 0;
+  max-height: 380px;
   overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-.yolo-popover-surface .smtcmp-model-select-list > .smtcmp-popover-item {
+.yolo-popover-surface--default
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 4px 10px 4px 12px;
   margin: 0;
   border-radius: var(--radius-s);
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
   cursor: pointer;
   outline: none;
 }
 
-.yolo-popover-surface .smtcmp-model-select-list > .smtcmp-popover-item:hover,
-.yolo-popover-surface
+.yolo-popover-surface--default
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item:hover,
+.yolo-popover-surface--default
   .smtcmp-model-select-list
   > .smtcmp-popover-item[data-highlighted] {
-  background: var(--background-modifier-hover);
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 90%,
+    transparent
+  );
 }
 
 .yolo-popover-surface

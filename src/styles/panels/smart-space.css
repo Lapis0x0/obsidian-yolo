@@ -836,8 +836,9 @@
   opacity: 0.85;
 }
 
-/* 模型选择列表滚动样式 - 应用到 RadioGroup */
-.yolo-popover-surface .smtcmp-model-select-list {
+/* --smart-space 变体下 model-select-list 的容器样式。
+   --default 变体的对应规则在 src/styles/chat/popover.css。 */
+.yolo-popover-surface--smart-space .smtcmp-model-select-list {
   max-height: 380px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -906,10 +907,6 @@
   opacity: 0.8;
 }
 
-.yolo-popover-surface--default .smtcmp-popover-group-label {
-  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
-}
-
 .yolo-popover-surface--smart-space .smtcmp-popover-group-separator {
   height: 1px;
   background: linear-gradient(
@@ -956,41 +953,10 @@
   color: var(--text-normal);
 }
 
-.yolo-popover-surface--default
-  .smtcmp-model-select-list
-  > .smtcmp-popover-item:hover,
-.yolo-popover-surface--default
-  .smtcmp-model-select-list
-  > .smtcmp-popover-item[data-highlighted] {
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-hover) 90%,
-    transparent
-  );
-}
-
 .yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item:active {
   transform: scale(0.98);
-}
-
-.yolo-popover-surface--default .smtcmp-model-select-list {
-  padding: 4px 0;
-}
-
-.yolo-popover-surface--default
-  .smtcmp-model-select-list
-  > .smtcmp-popover-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 8px;
-  margin: 0;
-  font-size: var(--font-ui-smaller);
-  border-radius: var(--radius-s);
-  line-height: var(--line-height-tight);
 }
 
 /* Smart Space Gemini Tools */
