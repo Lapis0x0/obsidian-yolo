@@ -158,31 +158,6 @@ export class VectorRepository {
       .where(inArray(embeddingTable.model, modelIds))
   }
 
-  async hasVectorsForModelId(modelId: string): Promise<boolean> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    const result = await this.db
-      .select({ value: count() })
-      .from(embeddingTable)
-      .where(eq(embeddingTable.model, modelId))
-      .limit(1)
-    const countValue = result[0]?.value ?? 0
-    return countValue > 0
-  }
-
-  /** All distinct paths currently indexed under this model. */
-  async listIndexedPaths(modelId: string): Promise<string[]> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    const rows = await this.db
-      .select({ path: embeddingTable.path })
-      .from(embeddingTable)
-      .where(eq(embeddingTable.model, modelId))
-    return [...new Set(rows.map((row) => row.path))]
-  }
-
   async performSimilaritySearch(
     queryVector: number[],
     embeddingModel: EmbeddingModelClient,

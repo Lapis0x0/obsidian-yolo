@@ -234,4 +234,30 @@ describe('VectorManager.reconcile', () => {
     })
     expect(repository.deleteVectorsByIds).toHaveBeenCalledWith([5])
   })
+
+  it('does not delete existing vectors when chunkify throws (transient I/O error)', async () => {
+    // Regression: a failed cachedRead must NOT be interpreted as "file is empty
+    // → delete its actual rows". Otherwise a transient error wipes the user's
+    // index. The retry path will pick up these files on the next reconcile.
+    const { manager, repository, app } = setupManager(
+      [{ path: 'a.md', mtime: 200, content: 'updated' }],
+      [
+        {
+          id: 1,
+          path: 'a.md',
+          mtime: 100,
+          content_hash: 'h',
+          metadata: { startLine: 1, endLine: 1 },
+        },
+      ],
+    )
+    ;(app.vault.cachedRead as jest.Mock).mockRejectedValueOnce(
+      new Error('disk hiccup'),
+    )
+    await manager.reconcile(embeddingModel, baseConfig, {
+      scope: { kind: 'all' },
+    })
+    expect(repository.deleteVectorsByIds).not.toHaveBeenCalled()
+    expect(repository.insertVectors).not.toHaveBeenCalled()
+  })
 })

@@ -326,9 +326,19 @@ export class VectorManager {
     }
 
     // 6. Read actual rows over the diff scope and plan.
+    //
+    // Critical: exclude failed-to-chunkify paths from the diff. Their `desired`
+    // is empty (chunking threw) but their existing rows must NOT be treated as
+    // "no longer desired" — that would silently delete a user's index after a
+    // transient I/O error. Skip them; next reconcile will retry.
+    const failedPaths = new Set(failedFiles.map((f) => f.path))
+    const safeDiffPaths = diffPaths.filter((p) => !failedPaths.has(p))
     const actualRows = truncate
       ? []
-      : await this.repository.listChunksForPaths(embeddingModel.id, diffPaths)
+      : await this.repository.listChunksForPaths(
+          embeddingModel.id,
+          safeDiffPaths,
+        )
     const actual = actualRows.map((row) => ({
       id: row.id,
       path: row.path,
