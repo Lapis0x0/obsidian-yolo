@@ -1,9 +1,14 @@
 import { App, Stat } from 'obsidian'
 
 import {
+  YOLO_DATA_META_KEY,
   ensureJsonDbRootDir,
   ensureVectorDbPath,
+  extractYoloDataMeta,
+  readVaultDataJson,
   relocateYoloManagedData,
+  stampYoloDataMeta,
+  writeVaultDataJson,
 } from './yoloManagedData'
 
 type Listing = {
@@ -372,5 +377,107 @@ describe('yoloManagedData', () => {
     await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(
       false,
     )
+  })
+})
+
+describe('yoloManagedData meta helpers', () => {
+  test('extractYoloDataMeta returns null for non-objects', () => {
+    expect(extractYoloDataMeta(null)).toBeNull()
+    expect(extractYoloDataMeta('string')).toBeNull()
+    expect(extractYoloDataMeta([1, 2])).toBeNull()
+  })
+
+  test('extractYoloDataMeta strips meta and returns parsed shape', () => {
+    const result = extractYoloDataMeta({
+      foo: 1,
+      [YOLO_DATA_META_KEY]: { updatedAt: 42, deviceId: 'abc' },
+    })
+    expect(result).not.toBeNull()
+    expect(result?.meta).toEqual({ updatedAt: 42, deviceId: 'abc' })
+    expect(result?.raw).toEqual({ foo: 1 })
+    expect(result?.raw).not.toHaveProperty(YOLO_DATA_META_KEY)
+  })
+
+  test('extractYoloDataMeta returns null meta when shape is invalid', () => {
+    const result = extractYoloDataMeta({
+      foo: 1,
+      [YOLO_DATA_META_KEY]: { updatedAt: 'oops', deviceId: 'abc' },
+    })
+    expect(result?.meta).toBeNull()
+    expect(result?.raw).toEqual({ foo: 1 })
+  })
+
+  test('extractYoloDataMeta returns null meta for legacy data without meta', () => {
+    const result = extractYoloDataMeta({ foo: 1 })
+    expect(result?.meta).toBeNull()
+    expect(result?.raw).toEqual({ foo: 1 })
+  })
+
+  test('stampYoloDataMeta attaches meta and preserves data fields', () => {
+    const stamped = stampYoloDataMeta(
+      { foo: 1 },
+      { updatedAt: 99, deviceId: 'd1' },
+    )
+    expect(stamped).toEqual({
+      foo: 1,
+      [YOLO_DATA_META_KEY]: { updatedAt: 99, deviceId: 'd1' },
+    })
+  })
+
+  test('stampYoloDataMeta tolerates non-object data by yielding meta-only payload', () => {
+    const stamped = stampYoloDataMeta(null, { updatedAt: 1, deviceId: 'd1' })
+    expect(stamped).toEqual({
+      [YOLO_DATA_META_KEY]: { updatedAt: 1, deviceId: 'd1' },
+    })
+  })
+})
+
+describe('readVaultDataJson + writeVaultDataJson roundtrip', () => {
+  test('round trip preserves meta and the pointer points at the mirror', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const settings = { yolo: { baseDir: 'YOLO' } }
+    const meta = { updatedAt: 12345, deviceId: 'pc-1' }
+
+    const ok = await writeVaultDataJson(app, settings, { hello: 'world' }, meta)
+    expect(ok).toBe(true)
+
+    const result = await readVaultDataJson(app)
+    expect(result).not.toBeNull()
+    expect(result?.meta).toEqual(meta)
+    expect(result?.raw).toEqual({ hello: 'world' })
+    // pointer file at vault root
+    await expect(adapter.exists('.yolo_sync')).resolves.toBe(true)
+  })
+
+  test('returns null when pointer is missing', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await expect(readVaultDataJson(app)).resolves.toBeNull()
+  })
+
+  test('returns null when pointer references a missing file', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('.yolo_sync', JSON.stringify({ dataPath: 'gone.json' }))
+    await expect(readVaultDataJson(app)).resolves.toBeNull()
+  })
+
+  test('legacy mirror without meta still parses with meta=null', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.mkdir('YOLO')
+    await adapter.write(
+      'YOLO/.yolo_data.json',
+      JSON.stringify({ legacy: true }),
+    )
+    await adapter.write(
+      '.yolo_sync',
+      JSON.stringify({ dataPath: 'YOLO/.yolo_data.json' }),
+    )
+    const result = await readVaultDataJson(app)
+    expect(result).not.toBeNull()
+    expect(result?.meta).toBeNull()
+    expect(result?.raw).toEqual({ legacy: true })
   })
 })

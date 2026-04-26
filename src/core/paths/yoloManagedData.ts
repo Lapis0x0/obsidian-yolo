@@ -16,6 +16,53 @@ type YoloSettingsLike = {
   }
 }
 
+export const YOLO_DATA_META_KEY = '__meta'
+
+export type YoloDataMeta = {
+  updatedAt: number
+  deviceId: string
+}
+
+export type YoloDataReadResult = {
+  raw: Record<string, unknown>
+  meta: YoloDataMeta | null
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+export const extractYoloDataMeta = (
+  raw: unknown,
+): YoloDataReadResult | null => {
+  if (!isPlainObject(raw)) {
+    return null
+  }
+  const candidate = raw[YOLO_DATA_META_KEY]
+  let meta: YoloDataMeta | null = null
+  if (
+    isPlainObject(candidate) &&
+    typeof candidate.updatedAt === 'number' &&
+    typeof candidate.deviceId === 'string'
+  ) {
+    meta = {
+      updatedAt: candidate.updatedAt,
+      deviceId: candidate.deviceId,
+    }
+  }
+  // Strip meta key from a shallow copy so callers can parse settings cleanly.
+  const { [YOLO_DATA_META_KEY]: _ignored, ...rest } = raw
+  return { raw: rest, meta }
+}
+
+export const stampYoloDataMeta = (
+  data: unknown,
+  meta: YoloDataMeta,
+): Record<string, unknown> => {
+  const base = isPlainObject(data) ? { ...data } : {}
+  base[YOLO_DATA_META_KEY] = meta
+  return base
+}
+
 const ensureDir = async (app: App, dirPath: string): Promise<void> => {
   try {
     await app.vault.adapter.mkdir(dirPath)
@@ -431,7 +478,7 @@ const readPointerDataPath = async (app: App): Promise<string | null> => {
  */
 export const readVaultDataJson = async (
   app: App,
-): Promise<Record<string, unknown> | null> => {
+): Promise<YoloDataReadResult | null> => {
   const dataPath = await readPointerDataPath(app)
   if (!dataPath) {
     return null
@@ -442,10 +489,7 @@ export const readVaultDataJson = async (
   try {
     const raw = await app.vault.adapter.read(dataPath)
     const parsed = JSON.parse(raw) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-    return null
+    return extractYoloDataMeta(parsed)
   } catch (error) {
     console.warn(
       `[YOLO] Failed to read vault data mirror at "${dataPath}"; falling back to plugin data.`,
@@ -453,6 +497,14 @@ export const readVaultDataJson = async (
     )
     return null
   }
+}
+
+export const getVaultDataJsonResolvedPath = async (
+  app: App,
+  settings?: YoloSettingsLike | null,
+): Promise<string> => {
+  const fromPointer = await readPointerDataPath(app)
+  return fromPointer ?? getYoloDataJsonPath(settings)
 }
 
 /**
@@ -464,12 +516,14 @@ export const writeVaultDataJson = async (
   app: App,
   settings: YoloSettingsLike | null,
   data: unknown,
+  meta: YoloDataMeta,
 ): Promise<boolean> => {
   const dataPath = getYoloDataJsonPath(settings)
   const pointerPath = getYoloSyncPointerPath()
   try {
     await ensureDir(app, getYoloBaseDir(settings))
-    await app.vault.adapter.write(dataPath, JSON.stringify(data, null, 2))
+    const payload = stampYoloDataMeta(data, meta)
+    await app.vault.adapter.write(dataPath, JSON.stringify(payload, null, 2))
     await app.vault.adapter.write(
       pointerPath,
       JSON.stringify({ dataPath }, null, 2),

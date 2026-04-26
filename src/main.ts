@@ -44,11 +44,16 @@ import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import {
+  type YoloDataMeta,
+  extractYoloDataMeta,
+  getVaultDataJsonResolvedPath,
   readVaultDataJson,
   relocateYoloManagedData,
   removeVaultDataJson,
+  stampYoloDataMeta,
   writeVaultDataJson,
 } from './core/paths/yoloManagedData'
+import { getYoloSyncPointerPath } from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -114,6 +119,11 @@ import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLe
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
   settingsChangeListeners: ((newSettings: SmartComposerSettings) => void)[] = []
+  private deviceId: string | null = null
+  private currentSettingsMeta: YoloDataMeta | null = null
+  private lastWrittenVaultMirrorMeta: YoloDataMeta | null = null
+  private vaultMirrorPath: string | null = null
+  private vaultMirrorReloadTimer: ReturnType<typeof setTimeout> | null = null
   updateCheckResult: UpdateCheckResult | null = null
   private hasCheckedForUpdate = false
   private updateBannerDismissed = false
@@ -1540,6 +1550,7 @@ export default class SmartComposerPlugin extends Plugin {
     await this.loadSettings()
     this.warnIfInstallationIncomplete()
     this.syncOAuthRuntimesFromSettings()
+    this.registerVaultMirrorWatcher()
 
     // Prune stale image cache entries (>30 days) on startup
     void pruneImageCache(this.app, 30, this.settings)
@@ -1936,15 +1947,30 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async loadSettings() {
-    // The vault-stored mirror lives at a fixed vault-root path and does not
-    // depend on `yolo.baseDir`. If it exists, it is the authoritative source
-    // so Obsidian Sync can propagate settings across devices even when the
-    // local plugin-dir copy is stale.
-    const vaultData = await readVaultDataJson(this.app)
-    const usedVaultSource = vaultData !== null
-    const parsedSettings = parseSmartComposerSettings(
-      usedVaultSource ? vaultData : await this.loadData(),
-    )
+    // Read both the plugin-dir copy and the optional vault-synced mirror, then
+    // pick whichever has the newer `__meta.updatedAt`. This gives "newest wins"
+    // semantics across devices instead of the older "mirror always wins" rule,
+    // which could let a stale boot overwrite fresh settings the user changed
+    // on another device.
+    const [rawPluginData, vaultRead] = await Promise.all([
+      this.loadData() as Promise<unknown>,
+      readVaultDataJson(this.app),
+    ])
+    const pluginExtract = extractYoloDataMeta(rawPluginData)
+    const pluginMeta = pluginExtract?.meta ?? null
+    const pluginRaw = pluginExtract?.raw ?? null
+    const vaultMeta = vaultRead?.meta ?? null
+    const vaultRaw = vaultRead?.raw ?? null
+
+    const vaultIsNewer =
+      vaultRaw !== null &&
+      (pluginMeta === null ||
+        (vaultMeta !== null && vaultMeta.updatedAt > pluginMeta.updatedAt))
+    const usedVaultSource = vaultIsNewer
+    const sourceRaw = usedVaultSource ? vaultRaw : pluginRaw
+    const sourceMeta = usedVaultSource ? vaultMeta : pluginMeta
+
+    const parsedSettings = parseSmartComposerSettings(sourceRaw)
 
     const settingsWithDefaultAssistant =
       ensureDefaultAssistantInSettings(parsedSettings)
@@ -1959,6 +1985,14 @@ export default class SmartComposerPlugin extends Plugin {
       : settingsWithDefaultAssistant
 
     this.settings = normalizedSettings
+    this.currentSettingsMeta = sourceMeta
+    if (vaultMeta) {
+      this.lastWrittenVaultMirrorMeta = vaultMeta
+    }
+    this.vaultMirrorPath = await getVaultDataJsonResolvedPath(
+      this.app,
+      normalizedSettings,
+    )
 
     const migrated = await relocateYoloManagedData({
       app: this.app,
@@ -1974,21 +2008,205 @@ export default class SmartComposerPlugin extends Plugin {
     const normalizationChanged =
       JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)
 
-    // Persist to plugin-dir when: normalization changed anything, OR vault
-    // was authoritative (so the local copy gets refreshed and subsequent
-    // boots are consistent even without reading the mirror).
+    // Persist to plugin-dir when: normalization changed anything, OR vault was
+    // authoritative (so the local copy is refreshed and subsequent boots stay
+    // consistent). Don't touch the vault mirror here — startup writes risk
+    // racing with in-flight Obsidian Sync downloads. The mirror is only
+    // refreshed via setSettings() once the user actually changes something.
     if (normalizationChanged || usedVaultSource) {
-      await this.saveData(normalizedSettings)
+      await this.persistPluginDirSettings(normalizedSettings)
+    }
+  }
+
+  private getDeviceId(): string {
+    if (this.deviceId) {
+      return this.deviceId
+    }
+    const storageKey = 'yolo.deviceId'
+    let id: string | null = null
+    try {
+      id = window.localStorage.getItem(storageKey)
+    } catch {
+      // localStorage may be unavailable in some contexts; fall through to gen.
+    }
+    if (!id) {
+      id =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      try {
+        window.localStorage.setItem(storageKey, id)
+      } catch {
+        // Best-effort persistence; a regenerated id on next boot is acceptable.
+      }
+    }
+    this.deviceId = id
+    return id
+  }
+
+  private buildSettingsMeta(): YoloDataMeta {
+    return {
+      updatedAt: Date.now(),
+      deviceId: this.getDeviceId(),
+    }
+  }
+
+  private async persistPluginDirSettings(
+    settings: SmartComposerSettings,
+    meta: YoloDataMeta = this.buildSettingsMeta(),
+  ): Promise<YoloDataMeta> {
+    await this.saveData(stampYoloDataMeta(settings, meta))
+    this.currentSettingsMeta = meta
+    return meta
+  }
+
+  private async persistVaultMirror(
+    settings: SmartComposerSettings,
+    meta: YoloDataMeta,
+  ): Promise<void> {
+    const ok = await writeVaultDataJson(this.app, settings, settings, meta)
+    if (ok) {
+      this.lastWrittenVaultMirrorMeta = meta
+      this.vaultMirrorPath = await getVaultDataJsonResolvedPath(
+        this.app,
+        settings,
+      )
+    }
+  }
+
+  private registerVaultMirrorWatcher(): void {
+    const pointerPath = getYoloSyncPointerPath()
+    const scheduleReload = () => {
+      if (this.vaultMirrorReloadTimer) {
+        clearTimeout(this.vaultMirrorReloadTimer)
+      }
+      // Debounce: Sync may emit multiple `modify` events as it streams the
+      // file. Wait briefly so we read the final content once.
+      this.vaultMirrorReloadTimer = setTimeout(() => {
+        this.vaultMirrorReloadTimer = null
+        void this.handleExternalMirrorChange()
+      }, 250)
+    }
+    const handle = (path: string) => {
+      // Pointer changes must always trigger a reload, since they relocate the
+      // mirror to a new file path (e.g. when another device changed
+      // `yolo.baseDir`). Without this we'd only see modify events on the
+      // stale path and miss the new mirror entirely.
+      if (path === pointerPath) {
+        scheduleReload()
+        return
+      }
+      if (this.vaultMirrorPath && path === this.vaultMirrorPath) {
+        scheduleReload()
+      }
+    }
+    this.registerEvent(this.app.vault.on('modify', (file) => handle(file.path)))
+    this.registerEvent(this.app.vault.on('create', (file) => handle(file.path)))
+    this.register(() => {
+      if (this.vaultMirrorReloadTimer) {
+        clearTimeout(this.vaultMirrorReloadTimer)
+        this.vaultMirrorReloadTimer = null
+      }
+    })
+  }
+
+  private async handleExternalMirrorChange(): Promise<void> {
+    // Re-resolve via the pointer first, since the mirror may have moved to a
+    // new path (remote `yolo.baseDir` change).
+    const resolvedPath = await getVaultDataJsonResolvedPath(
+      this.app,
+      this.settings,
+    )
+    if (resolvedPath !== this.vaultMirrorPath) {
+      this.vaultMirrorPath = resolvedPath
     }
 
-    // Persist to vault mirror only when there is something new to write:
-    // normalization changed content, or the mirror didn't exist yet.
-    if (
-      normalizedSettings.experimental?.storeDataInVault &&
-      (normalizationChanged || !usedVaultSource)
-    ) {
-      await writeVaultDataJson(this.app, normalizedSettings, normalizedSettings)
+    const vaultRead = await readVaultDataJson(this.app)
+    if (!vaultRead) {
+      return
     }
+    const incomingMeta = vaultRead.meta
+    // Skip self-triggered events: same device + same updatedAt is the write we
+    // just made. A different deviceId means the change came from another
+    // synced client and must propagate.
+    if (
+      incomingMeta &&
+      this.lastWrittenVaultMirrorMeta &&
+      incomingMeta.deviceId === this.lastWrittenVaultMirrorMeta.deviceId &&
+      incomingMeta.updatedAt === this.lastWrittenVaultMirrorMeta.updatedAt
+    ) {
+      return
+    }
+    // Refuse to apply an incoming mirror that lacks `__meta` whenever we
+    // already hold a meta-stamped version locally. A meta-less mirror is
+    // either pre-upgrade legacy or written by a client that doesn't honor
+    // the protocol, and we can't reason about its freshness — preferring
+    // local avoids a stale Sync replay clobbering newer settings.
+    if (!incomingMeta && this.currentSettingsMeta) {
+      return
+    }
+    if (
+      this.currentSettingsMeta &&
+      incomingMeta &&
+      incomingMeta.updatedAt <= this.currentSettingsMeta.updatedAt
+    ) {
+      return
+    }
+
+    const parsedSettings = parseSmartComposerSettings(vaultRead.raw)
+    const settingsWithDefaultAssistant =
+      ensureDefaultAssistantInSettings(parsedSettings)
+    const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
+      settingsWithDefaultAssistant.chatModels,
+    )
+    const normalizedSettings = changed
+      ? { ...settingsWithDefaultAssistant, chatModels }
+      : settingsWithDefaultAssistant
+
+    const previousSettings = this.settings
+    const baseDirChanged =
+      previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+
+    this.settings = normalizedSettings
+    this.currentSettingsMeta = incomingMeta
+    if (incomingMeta) {
+      this.lastWrittenVaultMirrorMeta = incomingMeta
+    }
+
+    if (baseDirChanged) {
+      // Another device moved YOLO managed data to a new `baseDir`. Sync has
+      // already replicated the files to the new path on disk, so we must
+      // NOT call `relocateYoloManagedData` (that would treat the synced
+      // copy as a source and try to move it again). Instead, tear down the
+      // active runtime so the next access re-inits against the new paths.
+      if (this.dbManager) {
+        await this.dbManager.cleanup()
+        this.dbManager = null
+        this.dbManagerInitPromise = null
+      }
+      this.vaultMirrorPath = await getVaultDataJsonResolvedPath(
+        this.app,
+        normalizedSettings,
+      )
+      new Notice(
+        'YOLO: detected a `baseDir` change synced from another device. Reloaded settings against the new path.',
+      )
+    }
+
+    // Refresh the plugin-dir copy so the next cold start picks up the new
+    // settings even if the mirror is missing.
+    await this.saveData(
+      stampYoloDataMeta(
+        normalizedSettings,
+        incomingMeta ?? this.buildSettingsMeta(),
+      ),
+    )
+
+    this.syncOAuthRuntimesFromSettings(normalizedSettings)
+    this.ragCoordinator?.updateSettings(normalizedSettings)
+    this.settingsChangeListeners.forEach((listener) => {
+      listener(normalizedSettings)
+    })
   }
 
   async setSettings(newSettings: SmartComposerSettings) {
@@ -2035,14 +2253,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     this.settings = normalizedSettings
-    await this.saveData(normalizedSettings)
+    const meta = await this.persistPluginDirSettings(normalizedSettings)
 
     if (nextStoreDataInVault) {
-      await writeVaultDataJson(this.app, normalizedSettings, normalizedSettings)
+      await this.persistVaultMirror(normalizedSettings, meta)
     } else if (previousStoreDataInVault) {
       // Flag turned off: clean up the vault mirror so future loads use the
       // plugin-directory copy exclusively.
       await removeVaultDataJson(this.app, normalizedSettings)
+      this.lastWrittenVaultMirrorMeta = null
     }
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
     this.ragCoordinator?.updateSettings(normalizedSettings)
