@@ -20,142 +20,25 @@ import {
   EmbeddingDbStats,
   EmbeddingModelClient,
 } from '../../../types/embedding'
-import { embeddingChunkFingerprint } from '../../../utils/vector/embedding-chunk-keys'
 import { DatabaseNotInitializedException } from '../../exception'
-import {
-  InsertEmbedding,
-  SelectEmbedding,
-  VectorMetaData,
-  embeddingTable,
-} from '../../schema'
+import { InsertEmbedding, SelectEmbedding, embeddingTable } from '../../schema'
 
 export class VectorRepository {
-  private app: App
   private db: PgliteDatabase | null
 
-  constructor(app: App, db: PgliteDatabase | null) {
-    this.app = app
+  constructor(_app: App, db: PgliteDatabase | null) {
     this.db = db
   }
 
-  async getIndexedFilePaths(
-    embeddingModel: EmbeddingModelClient,
-  ): Promise<string[]> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    const indexedFiles = await this.db
-      .select({
-        path: embeddingTable.path,
-      })
-      .from(embeddingTable)
-      .where(eq(embeddingTable.model, embeddingModel.id))
-    return [...new Set(indexedFiles.map((row) => row.path))]
-  }
-
-  /** Chunk metadata without embedding column (lighter for incremental diff). */
-  async getChunkMetaForFile(
-    filePath: string,
-    embeddingModel: EmbeddingModelClient,
-  ): Promise<
-    {
-      id: number
-      mtime: number
-      content: string
-      content_hash: string | null
-      metadata: VectorMetaData
-    }[]
-  > {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    return await this.db
-      .select({
-        id: embeddingTable.id,
-        mtime: embeddingTable.mtime,
-        content: embeddingTable.content,
-        content_hash: embeddingTable.content_hash,
-        metadata: embeddingTable.metadata,
-      })
-      .from(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.path, filePath),
-          eq(embeddingTable.model, embeddingModel.id),
-        ),
-      )
-  }
-
-  async deleteVectorsByIds(ids: number[]): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    if (ids.length === 0) {
-      return
-    }
-    await this.db.delete(embeddingTable).where(inArray(embeddingTable.id, ids))
-  }
-
-  async updateVectorsMtimeByIds(ids: number[], mtime: number): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    if (ids.length === 0) {
-      return
-    }
-    await this.db
-      .update(embeddingTable)
-      .set({ mtime })
-      .where(inArray(embeddingTable.id, ids))
-  }
-
-  async updateVectorMetadataById(
-    id: number,
-    updates: {
-      mtime: number
-      metadata: VectorMetaData
-      path?: string
-    },
-  ): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    await this.db
-      .update(embeddingTable)
-      .set({
-        mtime: updates.mtime,
-        metadata: updates.metadata,
-        ...(updates.path ? { path: updates.path } : {}),
-      })
-      .where(eq(embeddingTable.id, id))
-  }
-
-  async getVectorsByFilePath(
-    filePath: string,
-    embeddingModel: EmbeddingModelClient,
-  ): Promise<SelectEmbedding[]> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    const fileVectors = await this.db
-      .select()
-      .from(embeddingTable)
-      .where(
-        and(
-          eq(embeddingTable.path, filePath),
-          eq(embeddingTable.model, embeddingModel.id),
-        ),
-      )
-    return fileVectors
-  }
-
   /**
-   * 批量获取文件的 mtime 信息
-   * 用于优化 N+1 查询问题，一次查询获取所有文件的索引状态
+   * Build a path → mtime map for the given model. Used by the reconciler to
+   * decide which files have changed without round-tripping per file.
+   *
+   * If a path has multiple chunk rows (the common case), we expose the max
+   * mtime across them — they should all match anyway, since updateVaultIndex
+   * sets mtime per file.
    */
-  async getFileMtimes(
-    embeddingModel: EmbeddingModelClient,
-  ): Promise<Map<string, number>> {
+  async getFileMtimes(modelId: string): Promise<Map<string, number>> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
@@ -166,12 +49,11 @@ export class VectorRepository {
         mtime: embeddingTable.mtime,
       })
       .from(embeddingTable)
-      .where(eq(embeddingTable.model, embeddingModel.id))
+      .where(eq(embeddingTable.model, modelId))
       .groupBy(embeddingTable.path, embeddingTable.mtime)
 
     const mtimeMap = new Map<string, number>()
     for (const row of results) {
-      // 如果同一文件有多条记录，取最新的 mtime
       const existing = mtimeMap.get(row.path)
       if (existing === undefined || row.mtime > existing) {
         mtimeMap.set(row.path, row.mtime)
@@ -180,45 +62,84 @@ export class VectorRepository {
     return mtimeMap
   }
 
-  async deleteVectorsForSingleFile(
-    filePath: string,
-    embeddingModel: EmbeddingModelClient,
-  ): Promise<void> {
+  /**
+   * Read the actual chunk rows for a set of paths under a given model. Used
+   * by the reconciler to diff against desired chunks. The embedding column
+   * is excluded since the diff doesn't need it.
+   */
+  async listChunksForPaths(
+    modelId: string,
+    paths: string[],
+  ): Promise<
+    Array<{
+      id: number
+      path: string
+      mtime: number
+      content_hash: string | null
+      metadata: SelectEmbedding['metadata']
+    }>
+  > {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
-    await this.db
-      .delete(embeddingTable)
+    if (paths.length === 0) return []
+    return this.db
+      .select({
+        id: embeddingTable.id,
+        path: embeddingTable.path,
+        mtime: embeddingTable.mtime,
+        content_hash: embeddingTable.content_hash,
+        metadata: embeddingTable.metadata,
+      })
+      .from(embeddingTable)
       .where(
         and(
-          eq(embeddingTable.path, filePath),
-          eq(embeddingTable.model, embeddingModel.id),
+          eq(embeddingTable.model, modelId),
+          inArray(embeddingTable.path, paths),
         ),
       )
   }
 
-  async deleteVectorsForMultipleFiles(
-    filePaths: string[],
-    embeddingModel: EmbeddingModelClient,
+  async deleteVectorsByIds(ids: number[]): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (ids.length === 0) return
+    await this.db.delete(embeddingTable).where(inArray(embeddingTable.id, ids))
+  }
+
+  async bumpMtimeByIds(
+    updates: Array<{ id: number; mtime: number }>,
   ): Promise<void> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
-    await this.db
-      .delete(embeddingTable)
-      .where(
-        and(
-          inArray(embeddingTable.path, filePaths),
-          eq(embeddingTable.model, embeddingModel.id),
-        ),
-      )
+    if (updates.length === 0) return
+    // Group by mtime to minimize statements when many rows share the new mtime.
+    const groups = new Map<number, number[]>()
+    for (const u of updates) {
+      const bucket = groups.get(u.mtime)
+      if (bucket) bucket.push(u.id)
+      else groups.set(u.mtime, [u.id])
+    }
+    for (const [mtime, ids] of groups) {
+      await this.db
+        .update(embeddingTable)
+        .set({ mtime })
+        .where(inArray(embeddingTable.id, ids))
+    }
   }
 
-  async clearAllVectors(embeddingModel: EmbeddingModelClient): Promise<void> {
-    await this.clearVectorsByModelId(embeddingModel.id)
+  async insertVectors(data: InsertEmbedding[]): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (data.length === 0) return
+    await this.db.insert(embeddingTable).values(data)
   }
 
-  async clearVectorsByModelId(modelId: string): Promise<void> {
+  /** Wipe all rows for one model namespace. */
+  async truncateModel(modelId: string): Promise<void> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
@@ -227,149 +148,14 @@ export class VectorRepository {
       .where(eq(embeddingTable.model, modelId))
   }
 
-  async clearStagingVectorsForModel(baseModelId: string): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    await this.db
-      .delete(embeddingTable)
-      .where(sql`${embeddingTable.model} LIKE ${`${baseModelId}::staging:%`}`)
-  }
-
-  /**
-   * Build a fingerprint map of chunks already embedded in the given staging
-   * namespace. Key is file path; value is the set of fingerprints
-   * (`start:end:hash` for Markdown, `page:start:end:hash` for PDF).
-   * Used to skip already-embedded chunks when resuming a rebuild.
-   */
-  async getStagingFingerprints(
-    stagingModelId: string,
-  ): Promise<Map<string, Set<string>>> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    const rows = await this.db
-      .select({
-        path: embeddingTable.path,
-        content_hash: embeddingTable.content_hash,
-        metadata: embeddingTable.metadata,
-      })
-      .from(embeddingTable)
-      .where(eq(embeddingTable.model, stagingModelId))
-
-    const result = new Map<string, Set<string>>()
-    for (const row of rows) {
-      if (!row.content_hash) continue
-      const fp = embeddingChunkFingerprint(row.metadata, row.content_hash)
-      let bucket = result.get(row.path)
-      if (!bucket) {
-        bucket = new Set<string>()
-        result.set(row.path, bucket)
-      }
-      bucket.add(fp)
-    }
-    return result
-  }
-
-  /** Count chunks in the given staging namespace (for UI progress resume hint). */
-  async getStagingChunkCount(stagingModelId: string): Promise<number> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    const result = await this.db
-      .select({ value: count() })
-      .from(embeddingTable)
-      .where(eq(embeddingTable.model, stagingModelId))
-    return result[0]?.value ?? 0
-  }
-
-  /** Delete staging rows whose path is not in `keepPaths` (scope-shrink guard). */
-  async deleteStagingRowsOutsideScope(
-    stagingModelId: string,
-    keepPaths: string[],
-  ): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    if (keepPaths.length === 0) {
-      await this.db
-        .delete(embeddingTable)
-        .where(eq(embeddingTable.model, stagingModelId))
-      return
-    }
-    await this.db.delete(embeddingTable).where(
-      and(
-        eq(embeddingTable.model, stagingModelId),
-        sql`${embeddingTable.path} NOT IN (${sql.join(
-          keepPaths.map((p) => sql`${p}`),
-          sql`, `,
-        )})`,
-      ),
-    )
-  }
-
-  /**
-   * Delete staging rows for one file that no longer match the current chunk
-   * fingerprint set. Used by resumable full rebuilds after a file changed.
-   */
-  async deleteStagingRowsForFileExceptFingerprints(
-    stagingModelId: string,
-    filePath: string,
-    keepFingerprints: string[],
-  ): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    if (keepFingerprints.length === 0) {
-      await this.db
-        .delete(embeddingTable)
-        .where(
-          and(
-            eq(embeddingTable.model, stagingModelId),
-            eq(embeddingTable.path, filePath),
-          ),
-        )
-      return
-    }
-    await this.db.delete(embeddingTable).where(
-      and(
-        eq(embeddingTable.model, stagingModelId),
-        eq(embeddingTable.path, filePath),
-        sql`(
-            CASE
-              WHEN COALESCE((${embeddingTable.metadata}::jsonb ->> 'page'), '') <> ''
-                THEN (${embeddingTable.metadata}::jsonb ->> 'page') || ':'
-              ELSE ''
-            END
-            || COALESCE((${embeddingTable.metadata}::jsonb ->> 'startLine'), '')
-            || ':'
-            || COALESCE((${embeddingTable.metadata}::jsonb ->> 'endLine'), '')
-            || ':'
-            || COALESCE(${embeddingTable.content_hash}, '')
-          ) NOT IN (${sql.join(
-            keepFingerprints.map((fp) => sql`${fp}`),
-            sql`, `,
-          )})`,
-      ),
-    )
-  }
-
   async clearVectorsByModelIds(modelIds: string[]): Promise<void> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
-    if (modelIds.length === 0) {
-      return
-    }
+    if (modelIds.length === 0) return
     await this.db
       .delete(embeddingTable)
       .where(inArray(embeddingTable.model, modelIds))
-  }
-
-  async hasVectorsForModel(
-    embeddingModel: EmbeddingModelClient,
-  ): Promise<boolean> {
-    return this.hasVectorsForModelId(embeddingModel.id)
   }
 
   async hasVectorsForModelId(modelId: string): Promise<boolean> {
@@ -385,46 +171,16 @@ export class VectorRepository {
     return countValue > 0
   }
 
-  async replaceModelContents(input: {
-    activeModelId: string
-    stagingModelId: string
-  }): Promise<void> {
+  /** All distinct paths currently indexed under this model. */
+  async listIndexedPaths(modelId: string): Promise<string[]> {
     if (!this.db) {
       throw new DatabaseNotInitializedException()
     }
-
-    const dbWithClient = this.db as PgliteDatabase & {
-      $client?: { exec: (query: string) => Promise<unknown> }
-    }
-    const client = dbWithClient.$client
-    if (!client) {
-      throw new Error('PGlite client is unavailable')
-    }
-
-    const escapeSqlText = (value: string) => value.replace(/'/g, "''")
-    const activeModelId = escapeSqlText(input.activeModelId)
-    const stagingModelId = escapeSqlText(input.stagingModelId)
-
-    await client.exec('BEGIN')
-    try {
-      await client.exec(
-        `DELETE FROM embeddings WHERE model = '${activeModelId}'`,
-      )
-      await client.exec(
-        `UPDATE embeddings SET model = '${activeModelId}' WHERE model = '${stagingModelId}'`,
-      )
-      await client.exec('COMMIT')
-    } catch (error) {
-      await client.exec('ROLLBACK')
-      throw error
-    }
-  }
-
-  async insertVectors(data: InsertEmbedding[]): Promise<void> {
-    if (!this.db) {
-      throw new DatabaseNotInitializedException()
-    }
-    await this.db.insert(embeddingTable).values(data)
+    const rows = await this.db
+      .select({ path: embeddingTable.path })
+      .from(embeddingTable)
+      .where(eq(embeddingTable.model, modelId))
+    return [...new Set(rows.map((row) => row.path))]
   }
 
   async performSimilaritySearch(
@@ -516,7 +272,6 @@ export class VectorRepository {
         ),
       })
       .from(embeddingTable)
-      .where(sql`${embeddingTable.model} NOT LIKE '%::staging:%'`)
       .groupBy(embeddingTable.model)
       .orderBy(embeddingTable.model)
 
