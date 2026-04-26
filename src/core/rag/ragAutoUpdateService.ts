@@ -5,10 +5,19 @@ import { SmartComposerSettings } from '../../settings/schema/setting.types'
 
 import { classifyRagIndexError } from './ragIndexErrors'
 
+/**
+ * Snapshot of pending vault changes the auto-updater wants reconciled.
+ * `kind: 'all'` means the change set is too broad to enumerate (folder
+ * rename/delete) and a vault-wide reconcile is required.
+ */
+export type AutoUpdateRunRequest =
+  | { kind: 'all' }
+  | { kind: 'paths'; paths: string[] }
+
 type RagAutoUpdateServiceDeps = {
   getSettings: () => SmartComposerSettings
   setSettings: (settings: SmartComposerSettings) => Promise<void>
-  runIndex: () => Promise<void>
+  runIndex: (request: AutoUpdateRunRequest) => Promise<void>
   markRetryScheduled: (input: {
     retryAt: number
     failureMessage?: string
@@ -26,7 +35,7 @@ export class RagAutoUpdateService {
   private readonly setSettings: (
     settings: SmartComposerSettings,
   ) => Promise<void>
-  private readonly runIndex: () => Promise<void>
+  private readonly runIndex: (request: AutoUpdateRunRequest) => Promise<void>
   private readonly markRetryScheduled: (input: {
     retryAt: number
     failureMessage?: string
@@ -234,7 +243,11 @@ export class RagAutoUpdateService {
       this.hasPendingChangesDuringRun = false
       this.hasRecoveredRetry = false
       await this.clearRetryScheduled()
-      await this.runIndex()
+      const request: AutoUpdateRunRequest =
+        requiresFullScanSnapshot || recoveredRetrySnapshot
+          ? { kind: 'all' }
+          : { kind: 'paths', paths: [...pendingSnapshot] }
+      await this.runIndex(request)
       const settings = this.getSettings()
       await this.setSettings({
         ...settings,

@@ -576,15 +576,16 @@ export default class SmartComposerPlugin extends Plugin {
       this.ragAutoUpdateService = new RagAutoUpdateService({
         getSettings: () => this.settings,
         setSettings: (settings) => this.setSettings(settings),
-        runIndex: () =>
+        runIndex: (request) =>
           this.getRagIndexService().runIndex({
-            reindexAll: false,
+            mode: 'sync',
+            scope: request,
             trigger: 'auto',
             retryPolicy: 'transient',
           }),
         markRetryScheduled: (input) =>
           this.getRagIndexService().markRetryScheduled({
-            reindexAll: false,
+            mode: 'sync',
             retryAt: input.retryAt,
             failureMessage: input.failureMessage,
           }),
@@ -1567,9 +1568,7 @@ export default class SmartComposerPlugin extends Plugin {
         hasValidEmbeddingModel &&
         initialRagIndexSnapshot.trigger === 'manual'
       ) {
-        this.getRagIndexService().restoreRetryScheduledRun(
-          this.computeRagStagingFingerprint(),
-        )
+        this.getRagIndexService().restoreRetryScheduledRun()
       }
     }
 
@@ -1773,7 +1772,8 @@ export default class SmartComposerPlugin extends Plugin {
         const notice = new Notice(this.t('notices.rebuildingIndex'), 0)
         try {
           await this.getRagIndexService().runIndex({
-            reindexAll: true,
+            mode: 'rebuild',
+            scope: { kind: 'all' },
             trigger: 'manual',
             retryPolicy: 'transient',
             onProgress: (progress) => {
@@ -1811,7 +1811,8 @@ export default class SmartComposerPlugin extends Plugin {
         const notice = new Notice(this.t('notices.updatingIndex'), 0)
         try {
           await this.getRagIndexService().runIndex({
-            reindexAll: false,
+            mode: 'sync',
+            scope: { kind: 'all' },
             trigger: 'manual',
             retryPolicy: 'none',
             onProgress: (progress) => {
@@ -2190,42 +2191,26 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   async runRagIndex(options: {
-    reindexAll: boolean
+    mode: 'rebuild' | 'sync'
+    scope: import('./core/rag/reconciler').ReconcileScope
     trigger: 'manual' | 'auto'
     retryPolicy: 'none' | 'transient'
-    fromScratch?: boolean
     onProgress?: (
       progress: import('./components/chat-view/QueryProgress').IndexProgress,
     ) => void
   }): Promise<void> {
-    await this.getRagIndexService().runIndex({
-      ...options,
-      stagingConfigFingerprint: options.reindexAll
-        ? this.computeRagStagingFingerprint()
-        : undefined,
-    })
+    await this.getRagIndexService().runIndex(options)
   }
 
-  /**
-   * Fingerprint identifying the embedding/chunking config. Used to decide
-   * whether a paused rebuild can resume its staging namespace or must start
-   * fresh. Changing embedding model or chunk size invalidates staging.
-   */
-  private computeRagStagingFingerprint(): string {
-    const modelId = this.settings.embeddingModelId ?? ''
-    const chunkSize = this.settings.ragOptions?.chunkSize ?? 0
-    const indexPdf = this.settings.ragOptions?.indexPdf ?? true
-    return `${modelId}|${chunkSize}|${indexPdf ? 'pdf1' : 'pdf0'}`
-  }
-
-  /** Resume a failed or retry-scheduled rebuild from its existing staging. */
+  /** Re-issue the previously failed run. Falls back to a full sync reconcile. */
   async retryRagIndex(): Promise<void> {
     const snapshot = this.getRagIndexSnapshot()
     if (snapshot.mode === null) {
       return
     }
     await this.runRagIndex({
-      reindexAll: snapshot.mode === 'full',
+      mode: snapshot.mode,
+      scope: { kind: 'all' },
       trigger: 'manual',
       retryPolicy: 'transient',
     })

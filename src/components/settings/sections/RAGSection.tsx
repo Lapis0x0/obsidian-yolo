@@ -37,8 +37,7 @@ type RAGSectionProps = {
 }
 
 type IndexJob = {
-  reindexAll: boolean
-  fromScratch?: boolean
+  mode: 'rebuild' | 'sync'
   successNotice?: string
   failureNotice: string
 }
@@ -571,18 +570,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   }, [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t])
 
   const runIndexJob = useCallback(
-    async ({
-      reindexAll,
-      fromScratch,
-      successNotice,
-      failureNotice,
-    }: IndexJob) => {
+    async ({ mode, successNotice, failureNotice }: IndexJob) => {
       try {
         await plugin.runRagIndex({
-          reindexAll,
-          fromScratch,
+          mode,
+          scope: { kind: 'all' },
           trigger: 'manual',
-          retryPolicy: reindexAll ? 'transient' : 'none',
+          retryPolicy: mode === 'rebuild' ? 'transient' : 'none',
         })
         await plugin.setSettings({
           ...plugin.settings,
@@ -674,39 +668,23 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       return
     }
 
-    if (
-      !previousSyncInputs.enabled &&
-      nextSyncInputs.enabled &&
-      nextSyncInputs.embeddingModelId
-    ) {
-      scheduleIndexJob({
-        reindexAll: false,
-        failureNotice: t('notices.indexUpdateFailed'),
-      })
-      return
-    }
-
-    if (
-      previousSyncInputs.embeddingModelId !== nextSyncInputs.embeddingModelId
-    ) {
-      scheduleIndexJob({
-        reindexAll: false,
-        failureNotice: t('notices.indexUpdateFailed'),
-      })
-      return
-    }
-
-    if (
+    // Any config change is handled by a single `sync` reconcile. The
+    // reconciler computes desired vs. actual itself, so changes to patterns,
+    // chunkSize, indexPdf, embeddingModel, or first-time enable all converge
+    // through the same idempotent path — no special-casing per field.
+    const changed =
+      previousSyncInputs.enabled !== nextSyncInputs.enabled ||
+      previousSyncInputs.embeddingModelId !== nextSyncInputs.embeddingModelId ||
       previousSyncInputs.chunkSize !== nextSyncInputs.chunkSize ||
       previousSyncInputs.indexPdf !== nextSyncInputs.indexPdf ||
       previousSyncInputs.includePatternsKey !==
         nextSyncInputs.includePatternsKey ||
       previousSyncInputs.excludePatternsKey !==
         nextSyncInputs.excludePatternsKey
-    ) {
+    if (changed) {
       scheduleIndexJob({
-        reindexAll: true,
-        failureNotice: t('notices.rebuildFailed'),
+        mode: 'sync',
+        failureNotice: t('notices.indexUpdateFailed'),
       })
     }
   }, [
@@ -986,17 +964,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                     }}
                   />
                   {(() => {
-                    const hasStaging = Boolean(indexRunSnapshot.stagingRunId)
                     const status = indexRunSnapshot.status
                     let label: string
                     if (status === 'retry_scheduled') {
                       label = t('settings.rag.retryNow', '立即重试')
                     } else if (status === 'failed') {
-                      label = hasStaging
-                        ? t('settings.rag.continueIndex', '继续索引')
-                        : t('common.retry', '重试')
-                    } else if (hasStaging) {
-                      label = t('settings.rag.continueIndex', '继续索引')
+                      label = t('common.retry', '重试')
                     } else {
                       label = t('settings.rag.rebuildIndex', '重建索引')
                     }
@@ -1006,7 +979,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         disabled={isIndexing || !canUseIndexMaintenance}
                         onClick={() => {
                           void runIndexJob({
-                            reindexAll: true,
+                            mode: 'rebuild',
                             successNotice: t('notices.rebuildComplete'),
                             failureNotice: t('notices.rebuildFailed'),
                           })
@@ -1014,29 +987,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       />
                     )
                   })()}
-                  {indexRunSnapshot.stagingRunId &&
-                    !isIndexing &&
-                    canUseIndexMaintenance && (
-                      <ObsidianButton
-                        text={t('settings.rag.rebuildFromScratch', '从头重建')}
-                        onClick={() => {
-                          // eslint-disable-next-line no-alert -- intentional user confirmation for destructive rebuild
-                          const confirmed = window.confirm(
-                            t(
-                              'settings.rag.rebuildFromScratchConfirm',
-                              '这将丢弃上次未完成的进度并从零开始重建索引，确定继续吗？',
-                            ),
-                          )
-                          if (!confirmed) return
-                          void runIndexJob({
-                            reindexAll: true,
-                            fromScratch: true,
-                            successNotice: t('notices.rebuildComplete'),
-                            failureNotice: t('notices.rebuildFailed'),
-                          })
-                        }}
-                      />
-                    )}
                   {isIndexing && (
                     <ObsidianButton
                       text={t('settings.rag.cancelIndex', '取消')}

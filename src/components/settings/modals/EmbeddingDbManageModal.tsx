@@ -120,22 +120,25 @@ function EmbeddingDbManageModalComponent({
 
         await (
           await getVectorManager()
-        ).updateVaultIndex(
+        ).reconcile(
           embeddingModel,
           {
             chunkSize: settings.ragOptions.chunkSize,
             excludePatterns: settings.ragOptions.excludePatterns,
             includePatterns: settings.ragOptions.includePatterns,
-            ragIndexPdf: settings.ragOptions.indexPdf ?? true,
-            reindexAll: true,
-            indexRunId: `manage-${Date.now()}`,
+            indexPdf: settings.ragOptions.indexPdf ?? true,
+            settings,
           },
-          (progress) => {
-            setIndexProgressMap((prev) => {
-              const newMap = new Map(prev)
-              newMap.set(modelId, progress)
-              return newMap
-            })
+          {
+            scope: { kind: 'all' },
+            truncate: true,
+            onProgress: (progress) => {
+              setIndexProgressMap((prev) => {
+                const newMap = new Map(prev)
+                newMap.set(modelId, progress)
+                return newMap
+              })
+            },
           },
         )
       } catch (error) {

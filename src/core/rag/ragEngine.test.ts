@@ -69,32 +69,32 @@ describe('RAGEngine', () => {
     const updateEvents: string[] = []
     const resolvers: Array<() => void> = []
     const vectorManager = {
-      updateVaultIndex: jest
-        .fn()
-        .mockImplementation(
-          async (
-            _embeddingModel: unknown,
-            options: { reindexAll: boolean },
-            onProgress?: (progress: unknown) => void,
-          ) => {
-            updateEvents.push(`start:${options.reindexAll ? 'full' : 'delta'}`)
-            onProgress?.({
-              completedChunks: 0,
-              totalChunks: 1,
-              totalFiles: 1,
-              completedFiles: 0,
-            })
-
-            await new Promise<void>((resolve) => {
-              resolvers.push(() => {
-                updateEvents.push(
-                  `end:${options.reindexAll ? 'full' : 'delta'}`,
-                )
-                resolve()
-              })
-            })
+      reconcile: jest.fn().mockImplementation(
+        async (
+          _embeddingModel: unknown,
+          _config: unknown,
+          options: {
+            truncate?: boolean
+            onProgress?: (progress: unknown) => void
           },
-        ),
+        ) => {
+          const tag = options.truncate ? 'rebuild' : 'sync'
+          updateEvents.push(`start:${tag}`)
+          options.onProgress?.({
+            completedChunks: 0,
+            totalChunks: 1,
+            totalFiles: 1,
+            completedFiles: 0,
+          })
+
+          await new Promise<void>((resolve) => {
+            resolvers.push(() => {
+              updateEvents.push(`end:${tag}`)
+              resolve()
+            })
+          })
+        },
+      ),
     }
 
     const engine = new RAGEngine(
@@ -104,33 +104,34 @@ describe('RAGEngine', () => {
     )
     const progressEvents: QueryProgressState[] = []
 
-    const firstRun = engine.updateVaultIndex({ reindexAll: true }, (progress) =>
-      progressEvents.push(progress),
+    const firstRun = engine.updateVaultIndex(
+      { scope: { kind: 'all' }, truncate: true },
+      (progress) => progressEvents.push(progress),
     )
     const secondRun = engine.updateVaultIndex(
-      { reindexAll: false },
+      { scope: { kind: 'all' }, truncate: false },
       (progress) => progressEvents.push(progress),
     )
 
     await waitForNextTick()
-    expect(vectorManager.updateVaultIndex).toHaveBeenCalledTimes(1)
-    expect(updateEvents).toEqual(['start:full'])
+    expect(vectorManager.reconcile).toHaveBeenCalledTimes(1)
+    expect(updateEvents).toEqual(['start:rebuild'])
 
     resolvers[0]?.()
     await firstRun
     await waitForNextTick()
 
-    expect(vectorManager.updateVaultIndex).toHaveBeenCalledTimes(2)
-    expect(updateEvents).toEqual(['start:full', 'end:full', 'start:delta'])
+    expect(vectorManager.reconcile).toHaveBeenCalledTimes(2)
+    expect(updateEvents).toEqual(['start:rebuild', 'end:rebuild', 'start:sync'])
 
     resolvers[1]?.()
     await secondRun
 
     expect(updateEvents).toEqual([
-      'start:full',
-      'end:full',
-      'start:delta',
-      'end:delta',
+      'start:rebuild',
+      'end:rebuild',
+      'start:sync',
+      'end:sync',
     ])
     expect(progressEvents).toHaveLength(2)
     expect(progressEvents.every((event) => event.type === 'indexing')).toBe(
