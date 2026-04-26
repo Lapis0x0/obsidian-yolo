@@ -171,10 +171,17 @@ export class VectorManager {
       : await this.repository.getFileMtimes(embeddingModel.id)
 
     // 3. Partition candidates by mtime.
+    //
+    // Skip 0-byte files: they would chunkify into 0 chunks → no DB row →
+    // mtime-based partition would flag them as "new" forever, wasting a
+    // chunkify pass on every sync. Daily-note plugins commonly create empty
+    // placeholder notes; without this guard they'd flicker through the
+    // progress UI on every config change.
     const filesToChunkify: TFile[] = []
     let newFilesCount = 0
     let updatedFilesCount = 0
     for (const file of candidateFiles) {
+      if (file.stat.size === 0) continue
       const existingMtime = mtimeMap.get(file.path)
       if (existingMtime === undefined) {
         filesToChunkify.push(file)

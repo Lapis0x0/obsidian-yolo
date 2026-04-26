@@ -235,6 +235,44 @@ describe('VectorManager.reconcile', () => {
     expect(repository.deleteVectorsByIds).toHaveBeenCalledWith([5])
   })
 
+  it('skips 0-byte files so they do not flicker as "new" forever', async () => {
+    // Regression: empty files would chunkify into 0 chunks and never write a
+    // DB row, which made mtime-based partition flag them as new on every
+    // sync — visible to the user as a stray file flashing through the
+    // progress UI when they only changed unrelated settings.
+    const fileObjects = [
+      { path: 'empty.md', extension: 'md', stat: { mtime: 100, size: 0 } },
+    ]
+    const app = {
+      vault: {
+        getFiles: jest.fn().mockReturnValue(fileObjects),
+        cachedRead: jest.fn(),
+      },
+    }
+    const manager = new VectorManager(app as never, {} as never)
+    const repository = {
+      getFileMtimes: jest.fn().mockResolvedValue(new Map()),
+      listChunksForPaths: jest.fn().mockResolvedValue([]),
+      deleteVectorsByIds: jest.fn().mockResolvedValue(undefined),
+      bumpMtimeByIds: jest.fn().mockResolvedValue(undefined),
+      insertVectors: jest.fn().mockResolvedValue(undefined),
+      truncateModel: jest.fn().mockResolvedValue(undefined),
+    }
+    ;(
+      manager as unknown as { repository: typeof repository }
+    ).repository = repository
+    manager.setSaveCallback(async () => undefined)
+    manager.setVacuumCallback(async () => undefined)
+
+    await manager.reconcile(embeddingModel, baseConfig, {
+      scope: { kind: 'all' },
+    })
+
+    expect(app.vault.cachedRead).not.toHaveBeenCalled()
+    expect(repository.insertVectors).not.toHaveBeenCalled()
+    expect(repository.deleteVectorsByIds).not.toHaveBeenCalled()
+  })
+
   it('does not delete existing vectors when chunkify throws (transient I/O error)', async () => {
     // Regression: a failed cachedRead must NOT be interpreted as "file is empty
     // → delete its actual rows". Otherwise a transient error wipes the user's

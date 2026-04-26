@@ -54,9 +54,14 @@ export class VectorRepository {
 
     const mtimeMap = new Map<string, number>()
     for (const row of results) {
+      // Defensive: PGlite/drizzle's `bigint mode:'number'` occasionally hands
+      // back a JS bigint instead of a number, which would make `!==` always
+      // true against the file system's number mtime and force every file
+      // through chunkify on every sync.
+      const mtime = Number(row.mtime)
       const existing = mtimeMap.get(row.path)
-      if (existing === undefined || row.mtime > existing) {
-        mtimeMap.set(row.path, row.mtime)
+      if (existing === undefined || mtime > existing) {
+        mtimeMap.set(row.path, mtime)
       }
     }
     return mtimeMap

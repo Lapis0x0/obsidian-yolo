@@ -344,6 +344,16 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   }, [])
 
   const ringPercent = useMemo(() => {
+    // After a sync that only deleted rows (e.g. user removed an include
+    // folder), the run reports totalChunks=0 with status='completed'. Treat
+    // that as 100% so the UI shows "索引已完成" instead of a stale 0%.
+    if (
+      !isIndexing &&
+      indexRunSnapshot.status === 'completed' &&
+      (progressSource?.totalChunks ?? 0) === 0
+    ) {
+      return 100
+    }
     if (!progressSource || progressSource.totalChunks <= 0) {
       return 0
     }
@@ -351,7 +361,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       (progressSource.completedChunks / progressSource.totalChunks) * 100,
     )
     return Math.max(0, Math.min(100, pct))
-  }, [progressSource])
+  }, [indexRunSnapshot.status, isIndexing, progressSource])
 
   const maintenanceStatusLine = useMemo(() => {
     if (isIndexing) {
@@ -387,6 +397,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         (indexRunSnapshot.failureMessage ??
           t('settings.rag.indexIncomplete', 'Last index did not finish'))
       )
+    }
+    // A completed run wins over the 0% fallback — covers the "deletion-only"
+    // sync case where progressSource has totalChunks=0 but the run succeeded.
+    if (indexRunSnapshot.status === 'completed') {
+      return `100% ${t('settings.rag.indexComplete', 'Index complete')}`
     }
     if (!progressSource) {
       return t('settings.rag.notIndexedYet', 'Not indexed yet')
