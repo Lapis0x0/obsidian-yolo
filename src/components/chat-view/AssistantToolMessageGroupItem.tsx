@@ -751,9 +751,7 @@ export default function AssistantToolMessageGroupItem({
               onBranch={
                 !isRunActive
                   ? () => {
-                      onBranchGroup(
-                        displayedMessages.map((message) => message.id),
-                      )
+                      onBranchGroup(messages.map((message) => message.id))
                     }
                   : undefined
               }
