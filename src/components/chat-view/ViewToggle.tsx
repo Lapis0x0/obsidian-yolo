@@ -233,8 +233,8 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
         }}
         popover={{
           variant: 'default',
-          minWidth: 280,
           maxHeight: 400,
+          className: 'yolo-popover-view-toggle-mode',
         }}
       />
       {showComposer ? (

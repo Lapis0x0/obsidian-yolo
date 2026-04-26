@@ -76,6 +76,28 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
   const [incomingValue, setIncomingValue] = useState<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const [contextBg, setContextBg] = useState<string | null>(null)
+
+  /** popover 通过 Radix Portal 挂到 body 上，CSS 级联无法从 trigger 所在容器
+   * 透传 background；这里在打开瞬间从 trigger 上溯找到第一个有实底色的祖先，
+   * 把它的 background-color 作为 inline style 注入到 popover，让弹窗自动跟随
+   * 所在容器（侧栏面板 / 独立窗口编辑区 / etc.）的底色。 */
+  useEffect(() => {
+    if (!isOpen) return
+    const node = triggerRef.current
+    if (!node) return
+    const win = getNodeWindow(node)
+    let el: Element | null = node.parentElement
+    while (el) {
+      const bg = win.getComputedStyle(el).backgroundColor
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        setContextBg(bg)
+        return
+      }
+      el = el.parentElement
+    }
+    setContextBg(null)
+  }, [isOpen])
 
   useEffect(() => {
     const ownerWindow = getNodeWindow(triggerRef.current)
@@ -184,7 +206,10 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
         maxWidth={popover?.maxWidth}
         maxHeight={popover?.maxHeight}
         className={popover?.className}
-        style={contentStyle}
+        style={{
+          ...(contextBg ? { background: contextBg } : null),
+          ...contentStyle,
+        }}
         side="bottom"
         sideOffset={sideOffset}
         align="start"
@@ -193,7 +218,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
         onMouseLeave={onContentMouseLeave}
       >
         <DropdownMenu.RadioGroup
-          className="smtcmp-model-select-list smtcmp-roller-select-list"
+          className="smtcmp-roller-select-list"
           value={value}
           onValueChange={(nextValue) => {
             if (!options.some((option) => option.value === nextValue)) {
@@ -206,7 +231,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
             <DropdownMenu.RadioItem
               key={option.value}
               value={option.value}
-              className="smtcmp-popover-item smtcmp-roller-select-list-item"
+              className="smtcmp-roller-select-list-item"
             >
               {option.icon ? (
                 <span className="smtcmp-roller-select-list-item-icon">
