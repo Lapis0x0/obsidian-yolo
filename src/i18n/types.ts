@@ -666,9 +666,6 @@ export type TranslationKeys = {
       indexComplete?: string
       indexIncomplete?: string
       retryNow?: string
-      continueIndex?: string
-      rebuildFromScratch?: string
-      rebuildFromScratchConfirm?: string
       waitingRetry?: string
       cancelIndex?: string
     }

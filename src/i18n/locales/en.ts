@@ -857,10 +857,6 @@ export const en: TranslationKeys = {
       indexComplete: 'Index complete',
       indexIncomplete: 'Last index did not finish',
       retryNow: 'Retry now',
-      continueIndex: 'Continue indexing',
-      rebuildFromScratch: 'Rebuild from scratch',
-      rebuildFromScratchConfirm:
-        'This will discard the partially-embedded progress and rebuild the index from zero. Continue?',
       waitingRetry: 'Waiting to retry...',
       cancelIndex: 'Cancel',
     },

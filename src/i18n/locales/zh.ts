@@ -790,10 +790,6 @@ export const zh: TranslationKeys = {
       indexComplete: '索引已完成',
       indexIncomplete: '上次索引未完成',
       retryNow: '立即重试',
-      continueIndex: '继续索引',
-      rebuildFromScratch: '从头重建',
-      rebuildFromScratchConfirm:
-        '这将丢弃上次未完成的进度并从零开始重建索引，确定继续吗？',
       waitingRetry: '等待重试中...',
       cancelIndex: '取消',
     },
