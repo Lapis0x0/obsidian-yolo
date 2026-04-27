@@ -1109,7 +1109,11 @@ function SmartSpacePanelBody({
                     // 负偏移让弹层右侧与输入框右缘（16px 内边距）保持对齐
                     alignOffset={-16}
                     container={containerRef?.current ?? undefined}
-                    contentClassName="smtcmp-smart-space-popover"
+                    popover={{
+                      variant: 'smart-space',
+                      minWidth: 240,
+                      maxHeight: 400,
+                    }}
                   />
                 </div>
                 {hasGeminiTools && (

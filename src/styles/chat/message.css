@@ -1356,11 +1356,36 @@
   opacity: 1;
 }
 
+.smtcmp-roller-select-list {
+  padding: 4px;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 .smtcmp-roller-select-list-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 6px 10px !important;
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+/* 鼠标 hover 任意项都给视觉反馈；键盘 highlight 仅对非选中项给 bg。
+   原因：弹窗打开时 Radix 会把当前选中项自动设为 [data-highlighted]，若在
+   [data-state='checked'] 上叠加 bg 会让"被动选中"出现一块灰底，与 ✓ 图标重复
+   且视觉上像 hover 状态，违和。 */
+.smtcmp-roller-select-list-item:hover,
+.smtcmp-roller-select-list-item:not([data-state='checked'])[data-highlighted] {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 90%,
+    transparent
+  );
 }
 
 .smtcmp-roller-select-list-item-icon {
@@ -1376,6 +1401,15 @@
   flex-direction: column;
   gap: 1px;
   flex: 1;
+  /* 让 flex 子元素允许收缩到 0，配合下面 label/desc 的 ellipsis 才会生效 */
+  min-width: 0;
+}
+
+.smtcmp-roller-select-list-item-label,
+.smtcmp-roller-select-list-item-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .smtcmp-roller-select-list-item-label {

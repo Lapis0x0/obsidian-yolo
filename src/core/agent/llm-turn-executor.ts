@@ -2,10 +2,6 @@ import { TFile } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import {
-  ReasoningLevel,
-  resolveRequestReasoningLevel,
-} from '../../types/reasoning'
-import {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
   ChatMessage,
@@ -13,6 +9,10 @@ import {
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage, RequestTool } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
+import {
+  ReasoningLevel,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { ToolCallRequest } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import {

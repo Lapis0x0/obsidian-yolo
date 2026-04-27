@@ -15,6 +15,7 @@ import {
   getNodeDocument,
   getNodeWindow,
 } from '../../../utils/dom/window-context'
+import { YoloDropdownContent } from '../../common/popover'
 
 export type { ReasoningLevel } from '../../../types/reasoning'
 
@@ -94,7 +95,6 @@ export const ReasoningSelect = forwardRef<
     sideOffset?: number
     align?: 'start' | 'center' | 'end'
     alignOffset?: number
-    contentClassName?: string
   }
 >(
   (
@@ -108,7 +108,6 @@ export const ReasoningSelect = forwardRef<
       sideOffset = 4,
       align = 'center',
       alignOffset = 0,
-      contentClassName,
     },
     ref,
   ) => {
@@ -232,95 +231,94 @@ export const ReasoningSelect = forwardRef<
           </div>
         </DropdownMenu.Trigger>
 
-        <DropdownMenu.Portal container={resolvedContainer}>
-          <DropdownMenu.Content
-            className={
-              contentClassName
-                ? `smtcmp-popover smtcmp-reasoning-popover ${contentClassName}`
-                : 'smtcmp-popover smtcmp-reasoning-popover'
+        <YoloDropdownContent
+          container={resolvedContainer}
+          variant="default"
+          minWidth={360}
+          maxWidth={460}
+          maxHeight={400}
+          className="smtcmp-reasoning-popover"
+          side={side}
+          sideOffset={sideOffset}
+          align={align}
+          alignOffset={alignOffset}
+          collisionPadding={8}
+          loop
+          onPointerDownOutside={(e) => {
+            e.stopPropagation()
+          }}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault()
+            triggerRef.current?.focus({ preventScroll: true })
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+              event.preventDefault()
+              focusByDelta(1)
+            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              focusByDelta(-1)
             }
-            side={side}
-            sideOffset={sideOffset}
-            align={align}
-            alignOffset={alignOffset}
-            collisionPadding={8}
-            loop
-            onPointerDownOutside={(e) => {
-              e.stopPropagation()
-            }}
-            onCloseAutoFocus={(e) => {
-              e.preventDefault()
-              triggerRef.current?.focus({ preventScroll: true })
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                event.preventDefault()
-                focusByDelta(1)
-              } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                event.preventDefault()
-                focusByDelta(-1)
-              }
-            }}
+          }}
+        >
+          <div className="smtcmp-reasoning-popover__header">
+            <Brain
+              size={14}
+              className="smtcmp-reasoning-popover__header-icon"
+            />
+            <span className="smtcmp-reasoning-popover__header-title">
+              {t('reasoning.selectReasoning', 'Select reasoning')}
+            </span>
+            <span className="smtcmp-reasoning-popover__header-current">
+              · {currentLabel}
+            </span>
+          </div>
+
+          <div
+            className="smtcmp-segmented smtcmp-segmented--pill smtcmp-reasoning-segmented"
+            role="radiogroup"
+            aria-label={t('reasoning.selectReasoning', 'Select reasoning')}
+            style={
+              {
+                '--smtcmp-segment-count': REASONING_OPTIONS.length,
+                '--smtcmp-segment-index': REASONING_OPTIONS.findIndex(
+                  (opt) => opt.value === safeValue,
+                ),
+              } as React.CSSProperties
+            }
           >
-            <div className="smtcmp-reasoning-popover__header">
-              <Brain
-                size={14}
-                className="smtcmp-reasoning-popover__header-icon"
-              />
-              <span className="smtcmp-reasoning-popover__header-title">
-                {t('reasoning.selectReasoning', 'Select reasoning')}
-              </span>
-              <span className="smtcmp-reasoning-popover__header-current">
-                · {currentLabel}
-              </span>
-            </div>
+            <div className="smtcmp-segmented-glider" aria-hidden="true" />
+            {REASONING_OPTIONS.map((option) => {
+              const selected = option.value === safeValue
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={selected ? 'active' : ''}
+                  tabIndex={selected ? 0 : -1}
+                  ref={(element) => {
+                    segmentRefs.current[option.value] = element
+                  }}
+                  onClick={() => {
+                    onChange(option.value)
+                  }}
+                >
+                  {t(option.labelKey, option.labelFallback)}
+                </button>
+              )
+            })}
+          </div>
 
-            <div
-              className="smtcmp-segmented smtcmp-segmented--pill smtcmp-reasoning-segmented"
-              role="radiogroup"
-              aria-label={t('reasoning.selectReasoning', 'Select reasoning')}
-              style={
-                {
-                  '--smtcmp-segment-count': REASONING_OPTIONS.length,
-                  '--smtcmp-segment-index': REASONING_OPTIONS.findIndex(
-                    (opt) => opt.value === safeValue,
-                  ),
-                } as React.CSSProperties
-              }
-            >
-              <div className="smtcmp-segmented-glider" aria-hidden="true" />
-              {REASONING_OPTIONS.map((option) => {
-                const selected = option.value === safeValue
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    className={selected ? 'active' : ''}
-                    tabIndex={selected ? 0 : -1}
-                    ref={(element) => {
-                      segmentRefs.current[option.value] = element
-                    }}
-                    onClick={() => {
-                      onChange(option.value)
-                    }}
-                  >
-                    {t(option.labelKey, option.labelFallback)}
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="smtcmp-reasoning-popover__desc">
-              <span className="smtcmp-reasoning-popover__desc-label">
-                {currentLabel}
-              </span>
-              <span className="smtcmp-reasoning-popover__desc-sep"> — </span>
-              {currentDesc}
-            </div>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
+          <div className="smtcmp-reasoning-popover__desc">
+            <span className="smtcmp-reasoning-popover__desc-label">
+              {currentLabel}
+            </span>
+            <span className="smtcmp-reasoning-popover__desc-sep"> — </span>
+            {currentDesc}
+          </div>
+        </YoloDropdownContent>
       </DropdownMenu.Root>
     )
   },

@@ -26,6 +26,10 @@ import {
   extractPdfText,
 } from '../../utils/pdf/extractPdfText'
 import {
+  findPathOutsideScope,
+  isPathAllowedByScope,
+} from '../agent/workspaceScope'
+import {
   type TextEditOperation,
   type TextEditPlan,
   materializeTextEditPlan,
@@ -38,13 +42,15 @@ import {
   memoryUpdate,
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
-import {
-  findPathOutsideScope,
-  isPathAllowedByScope,
-} from '../agent/workspaceScope'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import { aggregateSearchResults } from '../search/searchResultAggregation'
 import { getLiteSkillDocument } from '../skills/liteSkills'
+import {
+  WEB_SCRAPE_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
+  runWebScrape,
+  runWebSearch,
+} from '../web-search'
 
 export { recoverLikelyEscapedBackslashSequences }
 
@@ -110,6 +116,8 @@ type LocalFileToolName =
   | 'memory_update'
   | 'memory_delete'
   | 'open_skill'
+  | 'web_search'
+  | 'web_scrape'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsSearchMode = 'keyword' | 'rag' | 'hybrid'
 type LegacyFsSearchItem =
@@ -892,6 +900,46 @@ export function getLocalFileTools(): McpTool[] {
             description: 'Skill name from frontmatter.',
           },
         },
+      },
+    },
+    {
+      name: WEB_SEARCH_TOOL_NAME,
+      description:
+        'Search the web for up-to-date or specific information using the configured search provider. ' +
+        'Returns { answer?, items: [{ id, title, url, text }] }. ' +
+        'When citing a fact taken from a result, append `[citation,domain](id)` immediately after the sentence; ' +
+        'example: "The capital of France is Paris. [citation,example.com](abc123)".',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Natural language search query.',
+          },
+          topic: {
+            type: 'string',
+            enum: ['general', 'news', 'finance'],
+            description:
+              'Optional topic hint. Some providers (e.g. Tavily) use this to bias results; others ignore it.',
+          },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: WEB_SCRAPE_TOOL_NAME,
+      description:
+        'Fetch the full content of a single web page (markdown when the provider supports it). ' +
+        'Use this only when search snippets are insufficient. Returns { url, title?, content }.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'Absolute http(s) URL to fetch.',
+          },
+        },
+        required: ['url'],
       },
     },
   ]
@@ -2147,11 +2195,7 @@ export async function callLocalFileTool({
     // the same check up front for UI Rejected status, but we re-validate here
     // so manual-approval / direct-call code paths cannot bypass the constraint.
     if (workspaceScope?.enabled) {
-      const offendingPath = findPathOutsideScope(
-        toolName,
-        args,
-        workspaceScope,
-      )
+      const offendingPath = findPathOutsideScope(toolName, args, workspaceScope)
       if (offendingPath !== null) {
         throw new Error(
           `Path "${offendingPath}" is outside this agent's workspace scope.`,
@@ -2915,7 +2959,9 @@ export async function callLocalFileTool({
           rows: T[],
         ): T[] =>
           workspaceScope?.enabled
-            ? rows.filter((row) => isPathAllowedByScope(row.path, workspaceScope))
+            ? rows.filter((row) =>
+                isPathAllowedByScope(row.path, workspaceScope),
+              )
             : rows
 
         if (effectiveMode === 'keyword') {
@@ -3132,6 +3178,64 @@ export async function callLocalFileTool({
             tool: 'open_skill',
             skill: skill.entry,
             content: skill.content,
+          }),
+        }
+      }
+
+      case 'web_search': {
+        if (!settings) {
+          throw new Error('Web search is unavailable: settings not loaded.')
+        }
+        const query = getTextArg(args, 'query').trim()
+        if (!query) {
+          throw new Error('query cannot be empty.')
+        }
+        const topic = getOptionalTextArg(args, 'topic')?.trim() || undefined
+        const result = await runWebSearch({
+          settings: settings.webSearch,
+          query,
+          topic,
+          signal,
+        })
+        const itemsWithIndex = result.items.map((it, idx) => ({
+          id: it.id,
+          index: idx + 1,
+          title: it.title,
+          url: it.url,
+          text: it.text,
+        }))
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'web_search',
+            provider: result.providerName,
+            answer: result.answer,
+            items: itemsWithIndex,
+          }),
+        }
+      }
+
+      case 'web_scrape': {
+        if (!settings) {
+          throw new Error('Web scrape is unavailable: settings not loaded.')
+        }
+        const url = getTextArg(args, 'url').trim()
+        if (!url) {
+          throw new Error('url cannot be empty.')
+        }
+        const result = await runWebScrape({
+          settings: settings.webSearch,
+          url,
+          signal,
+        })
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'web_scrape',
+            provider: result.providerName,
+            url: result.url,
+            title: result.title,
+            content: result.content,
           }),
         }
       }

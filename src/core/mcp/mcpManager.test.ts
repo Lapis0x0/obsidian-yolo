@@ -41,6 +41,15 @@ describe('McpManager mobile built-in tool behavior', () => {
           servers: [],
           builtinToolOptions: {},
         },
+        webSearch: {
+          providers: [],
+          defaultProviderId: undefined,
+          common: {
+            resultSize: 8,
+            searchTimeoutMs: 15000,
+            scrapeTimeoutMs: 20000,
+          },
+        },
       } as never,
       openApplyReview,
       registerSettingsListener: () => () => {},

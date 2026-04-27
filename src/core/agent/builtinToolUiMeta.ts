@@ -7,6 +7,12 @@ export type BuiltinToolUiMeta = {
 
 export const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
 export const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
+export const WEB_OPS_GROUP_TOOL_NAME = 'web_ops'
+
+export const WEB_OPS_SPLIT_ACTION_TOOL_NAMES = [
+  'web_search',
+  'web_scrape',
+] as const
 
 export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
   fs_list: {
@@ -89,10 +95,76 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelFallback: 'Open Skill',
     descFallback: 'Load a skill markdown file by id or name.',
   },
+  [WEB_OPS_GROUP_TOOL_NAME]: {
+    labelKey: 'settings.agent.builtinWebOpsLabel',
+    descKey: 'settings.agent.builtinWebOpsDesc',
+    labelFallback: 'Web Search Toolset',
+    descFallback:
+      'Grouped web tools: web_search for queries and web_scrape for single-page full content.',
+  },
+  web_search: {
+    labelKey: 'settings.agent.builtinWebSearchLabel',
+    descKey: 'settings.agent.builtinWebSearchDesc',
+    labelFallback: 'Web Search',
+    descFallback:
+      'Search the web through a configured search provider and return ranked results with snippets.',
+  },
+  web_scrape: {
+    labelKey: 'settings.agent.builtinWebScrapeLabel',
+    descKey: 'settings.agent.builtinWebScrapeDesc',
+    labelFallback: 'Web Scrape',
+    descFallback:
+      'Fetch the full content of a single URL through a configured search provider.',
+  },
 }
 
 export const getBuiltinToolUiMeta = (
   toolName: string,
 ): BuiltinToolUiMeta | null => {
   return BUILTIN_TOOL_UI_META[toolName] ?? null
+}
+
+export type BuiltinToolCategory = 'vault' | 'context' | 'external'
+
+export const BUILTIN_TOOL_CATEGORY_ORDER: BuiltinToolCategory[] = [
+  'vault',
+  'context',
+  'external',
+]
+
+const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
+  fs_list: 'vault',
+  fs_search: 'vault',
+  fs_read: 'vault',
+  fs_edit: 'vault',
+  [FILE_OPS_GROUP_TOOL_NAME]: 'vault',
+  context_prune_tool_results: 'context',
+  context_compact: 'context',
+  [MEMORY_OPS_GROUP_TOOL_NAME]: 'context',
+  [WEB_OPS_GROUP_TOOL_NAME]: 'external',
+  open_skill: 'external',
+}
+
+export const getBuiltinToolCategory = (
+  toolName: string,
+): BuiltinToolCategory | null => {
+  return BUILTIN_TOOL_CATEGORY_MAP[toolName] ?? null
+}
+
+export const BUILTIN_TOOL_CATEGORY_I18N: Record<
+  BuiltinToolCategory,
+  { key: string; fallback: string }
+> = {
+  vault: {
+    key: 'settings.agent.toolsGroupBuiltinVault',
+    fallback: 'Vault',
+  },
+  context: {
+    key: 'settings.agent.toolsGroupBuiltinContext',
+    fallback: 'Context & Memory',
+  },
+  external: {
+    key: 'settings.agent.toolsGroupBuiltinExternal',
+    fallback: 'External',
+  },
 }

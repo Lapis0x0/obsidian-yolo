@@ -343,29 +343,27 @@ export const en: TranslationKeys = {
       deleteConfirmMessageSuffix: '? This action cannot be undone.',
       toolSourceBuiltin: 'Built-in',
       toolSourceMcp: 'MCP',
+      toolsGroupBuiltinVault: 'Vault',
+      toolsGroupBuiltinContext: 'Context & Memory',
+      toolsGroupBuiltinExternal: 'External',
       noMcpTools: 'No custom tools (MCP) discovered yet',
       toolsEnabledCount: '{count} enabled',
       manageTools: 'Manage tools',
       manageSkills: 'Manage skills',
       descriptionColumn: 'Description',
       builtinFsListLabel: 'Read Vault',
-      builtinFsListDesc:
-        'List directory structure under a vault path. Useful for workspace orientation.',
+      builtinFsListDesc: 'List vault directory structure',
       builtinFsSearchLabel: 'Search Vault',
-      builtinFsSearchDesc:
-        'Search the vault using keyword, semantic (RAG), or hybrid retrieval, with content results grouped by file and paired with top snippets.',
+      builtinFsSearchDesc: 'Search vault files and content',
       builtinFsReadLabel: 'Read',
-      builtinFsReadDesc:
-        'Read vault files by path with either full-file or targeted line-range operations.',
+      builtinFsReadDesc: 'Read vault files',
       builtinContextPruneToolResultsLabel: 'Prune Tool Results',
       builtinContextPruneToolResultsDesc:
-        'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
+        'Exclude past tool results from future context',
       builtinContextCompactLabel: 'Compact Context',
-      builtinContextCompactDesc:
-        'Compress earlier conversation history into a summary and continue in a fresh context window.',
+      builtinContextCompactDesc: 'Compress earlier conversation into a summary',
       builtinFsEditLabel: 'Text Editing',
-      builtinFsEditDesc:
-        'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
+      builtinFsEditDesc: 'Edit text in a single file',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',
@@ -373,11 +371,9 @@ export const en: TranslationKeys = {
       fsEditReviewToggleDesc:
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
       builtinFsFileOpsLabel: 'File Operation Toolset',
-      builtinFsFileOpsDesc:
-        'Grouped file path operations: create/delete file, create/delete folder, and move.',
+      builtinFsFileOpsDesc: 'Create, delete, and move files and folders',
       builtinMemoryOpsLabel: 'Memory Toolset',
-      builtinMemoryOpsDesc:
-        'Grouped memory operations: add, update, and delete memory.',
+      builtinMemoryOpsDesc: 'Add, update, and delete memory',
       builtinMemoryAddLabel: 'Add Memory',
       builtinMemoryAddDesc:
         'Add one memory item into global or assistant memory and auto-assign an id.',
@@ -386,7 +382,15 @@ export const en: TranslationKeys = {
       builtinMemoryDeleteLabel: 'Delete Memory',
       builtinMemoryDeleteDesc: 'Delete an existing memory item by id.',
       builtinOpenSkillLabel: 'Open Skill',
-      builtinOpenSkillDesc: 'Load a skill markdown file by id or name.',
+      builtinOpenSkillDesc: 'Load a skill markdown',
+      builtinWebSearchLabel: 'Web Search',
+      builtinWebSearchDesc:
+        'Search the web through a configured search provider and return ranked results with snippets.',
+      builtinWebScrapeLabel: 'Web Scrape',
+      builtinWebScrapeDesc:
+        'Fetch the full content of a single URL through a configured search provider.',
+      builtinWebOpsLabel: 'Web Search Toolset',
+      builtinWebOpsDesc: 'Web search and page scraping',
       editorDefaultName: 'New agent',
       editorIntro: "Configure this agent's capabilities, model, and behavior.",
       editorTabProfile: 'Profile',
@@ -482,6 +486,63 @@ export const en: TranslationKeys = {
       autoContextCompactionThresholdRatioPercent: 'Context window usage (%)',
       autoContextCompactionThresholdRatioPercentDesc:
         'Trigger when prompt_tokens divided by the chat model’s max context window reaches this percentage. Requires max context tokens on the model.',
+    },
+    webSearch: {
+      modalTitle: 'Web search settings',
+      openSettings: 'Configure web search providers',
+      intro:
+        'Configure search providers used by the built-in web_search agent tool. The default provider below is used when the agent invokes web_search.',
+      providersHeader: 'Providers',
+      addProvider: 'Add provider',
+      editProvider: 'Edit provider',
+      empty:
+        'No providers configured yet. Add one to enable the web_search tool.',
+      colName: 'Name',
+      colType: 'Type',
+      colDefault: 'Default',
+      colActions: 'Actions',
+      deleteConfirmTitle: 'Delete provider',
+      deleteConfirmMessage:
+        'Are you sure you want to delete this web search provider?',
+      deleteFailed: 'Failed to delete provider.',
+      commonHeader: 'Common',
+      resultSize: 'Result size',
+      resultSizeDesc:
+        'Maximum number of results returned to the model per search.',
+      searchTimeout: 'Search timeout (ms)',
+      scrapeTimeout: 'Scrape timeout (ms)',
+      searchTimeoutLabel: 'Search timeout',
+      searchTimeoutDesc: 'Maximum wait time for a provider search call.',
+      scrapeTimeoutLabel: 'Scrape timeout',
+      scrapeTimeoutDesc: 'Maximum wait time for a single web_scrape call.',
+      unitResults: 'items',
+      tagDefault: 'Default',
+      failoverNotice:
+        'Failed calls are not silently retried against another provider — the error is surfaced to the model so the agent can decide to retry or change approach.',
+      providerCount: 'Total providers',
+      types: {
+        tavily: 'Tavily',
+        jina: 'Jina',
+        searxng: 'SearXNG',
+        bing: 'Bing (no key)',
+        'gemini-grounding': 'Gemini (Grounding)',
+        grok: 'Grok',
+      },
+      fieldName: 'Display name',
+      fieldApiKey: 'API key',
+      fieldDepth: 'Depth',
+      fieldSearchUrl: 'Search URL',
+      fieldScrapeUrl: 'Scrape URL',
+      fieldBaseUrl: 'Base URL',
+      fieldLanguage: 'Language',
+      fieldEngines: 'Engines (comma-separated)',
+      fieldUsername: 'Basic auth username',
+      fieldPassword: 'Basic auth password',
+      fieldModel: 'Model',
+      fieldSystemPrompt: 'System prompt',
+      fieldEnableX: 'Also search X',
+      bingNote:
+        'Bing requires no API key. The provider scrapes the public results page; reliability depends on Bing\u2019s anti-bot measures.',
     },
     providers: {
       title: 'Providers',
@@ -796,10 +857,6 @@ export const en: TranslationKeys = {
       indexComplete: 'Index complete',
       indexIncomplete: 'Last index did not finish',
       retryNow: 'Retry now',
-      continueIndex: 'Continue indexing',
-      rebuildFromScratch: 'Rebuild from scratch',
-      rebuildFromScratchConfirm:
-        'This will discard the partially-embedded progress and rebuild the index from zero. Continue?',
       waitingRetry: 'Waiting to retry...',
       cancelIndex: 'Cancel',
     },

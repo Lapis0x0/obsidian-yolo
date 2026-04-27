@@ -254,19 +254,14 @@
 .smtcmp-smart-space-mention-dropdown {
   display: block;
   right: auto;
-  width: 100%;
+  width: min(100%, var(--smtcmp-chat-typeahead-max-width, 480px));
   min-width: 0;
-  max-width: 100%;
+  max-width: min(100%, var(--smtcmp-chat-typeahead-max-width, 480px));
   pointer-events: auto;
-  background: transparent;
-  border: none;
-  box-shadow: none;
   padding: 0;
-}
-
-.smtcmp-chat-container--centered .smtcmp-smart-space-mention-dropdown {
-  width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
-  max-width: min(100%, var(--smtcmp-chat-typeahead-max-width, 560px));
+  /* 视觉表面由 .yolo-popover-surface--smart-space 提供；此处不再覆盖 background/border/box-shadow。
+     宽度上限用 CSS 变量 --smtcmp-chat-typeahead-max-width 控制：
+     默认 480px；centered 容器（input.css）会覆盖为 400px。 */
 }
 
 .smtcmp-smart-space-mention-list {
@@ -280,7 +275,7 @@
   padding: 8px;
 }
 
-.smtcmp-smart-space-popover .smtcmp-smart-space-mention-list {
+.yolo-popover-surface--smart-space .smtcmp-smart-space-mention-list {
   max-height: min(320px, var(--smtcmp-typeahead-available-height, 320px));
   overflow-y: auto;
   scrollbar-width: thin;
@@ -360,7 +355,7 @@
   min-width: 0;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option {
   display: flex;
@@ -379,7 +374,7 @@
   scroll-margin-bottom: 8px;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option:focus-visible {
   outline: 1px solid
@@ -390,16 +385,16 @@
     );
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option::before {
   display: none;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option:hover,
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-smart-space-mention-list
   > .smtcmp-smart-space-mention-option[data-highlighted='true'] {
   background: color-mix(
@@ -841,118 +836,30 @@
   opacity: 0.85;
 }
 
-/* Smart Space Model Popover - 精致美观的设计 */
-.smtcmp-smart-space-popover {
-  z-index: 10000;
-  background: var(--background-primary);
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
-  border-radius: 12px;
-  box-shadow:
-    0 0 0 3px
-      color-mix(in srgb, var(--background-modifier-border) 20%, transparent),
-    0 12px 32px -8px rgba(0, 0, 0, 0.2),
-    0 4px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  max-height: 400px;
-  min-width: 240px;
-  animation: smtcmp-smart-space-popover-fade-in 0.25s
-    cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(16px);
-}
-
-.smtcmp-chat-sidebar-popover {
-  background: var(--background-primary);
-  border-color: color-mix(
-    in srgb,
-    var(--background-modifier-border) 75%,
-    transparent
-  );
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.12),
-    0 0 0 1px
-      color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
-  backdrop-filter: none;
-  width: auto;
-  min-width: max(var(--radix-dropdown-menu-trigger-width, 0px), 280px);
-  max-height: 400px;
-  overflow: hidden;
-  margin-left: -64px;
-  /* Override smart-space's 250ms scale+translate animation with a snappier
-     fade for底部小弹框, to avoid a "heavy" feel on open. */
-  animation: smtcmp-chat-sidebar-popover-fade-in 130ms
-    cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-@keyframes smtcmp-chat-sidebar-popover-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.smtcmp-view-toggle-mode-popover {
-  margin-left: 0;
-}
-
-.smtcmp-view-toggle-mode-popover[data-state='open'] {
-  animation: smtcmp-smart-space-popover-fade-in 0.25s
-    cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.smtcmp-view-toggle-mode-popover[data-state='closed'] {
-  animation: smtcmp-smart-space-popover-fade-out 0.18s
-    cubic-bezier(0.4, 0, 1, 1);
-}
-
-@keyframes smtcmp-smart-space-popover-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(8px) scale(0.94);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes smtcmp-smart-space-popover-fade-out {
-  0% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
-  }
-}
-
-/* 模型选择列表滚动样式 - 应用到 RadioGroup */
-.smtcmp-smart-space-popover .smtcmp-model-select-list,
-.smtcmp-chat-sidebar-popover .smtcmp-model-select-list {
+/* --smart-space 变体下 model-select-list 的容器样式。
+   --default 变体的对应规则在 src/styles/chat/popover.css。 */
+.yolo-popover-surface--smart-space .smtcmp-model-select-list {
   max-height: 380px;
   overflow-y: auto;
   scrollbar-width: thin;
   padding: 8px;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list::-webkit-scrollbar,
-.smtcmp-chat-sidebar-popover .smtcmp-model-select-list::-webkit-scrollbar {
+.yolo-popover-surface--smart-space .smtcmp-model-select-list::-webkit-scrollbar,
+.yolo-popover-surface--default .smtcmp-model-select-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list::-webkit-scrollbar-track,
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--smart-space
+  .smtcmp-model-select-list::-webkit-scrollbar-track,
+.yolo-popover-surface--default
   .smtcmp-model-select-list::-webkit-scrollbar-track {
   background: transparent;
   margin: 8px 0;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list::-webkit-scrollbar-thumb {
+.yolo-popover-surface--smart-space
+  .smtcmp-model-select-list::-webkit-scrollbar-thumb {
   background: color-mix(
     in srgb,
     var(--h1-color, var(--interactive-accent)) 25%,
@@ -963,7 +870,7 @@
   background-clip: padding-box;
 }
 
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text-muted) 30%, transparent);
   border-radius: 4px;
@@ -971,7 +878,7 @@
   background-clip: padding-box;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(
     in srgb,
@@ -981,13 +888,13 @@
   background-clip: padding-box;
 }
 
-.smtcmp-chat-sidebar-popover
+.yolo-popover-surface--default
   .smtcmp-model-select-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--text-muted) 50%, transparent);
   background-clip: padding-box;
 }
 
-.smtcmp-smart-space-popover .smtcmp-popover-group-label {
+.yolo-popover-surface--smart-space .smtcmp-popover-group-label {
   display: block;
   margin: 0;
   padding: 8px 12px 6px 12px;
@@ -1000,11 +907,7 @@
   opacity: 0.8;
 }
 
-.smtcmp-chat-sidebar-popover .smtcmp-popover-group-label {
-  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
-}
-
-.smtcmp-smart-space-popover .smtcmp-popover-group-separator {
+.yolo-popover-surface--smart-space .smtcmp-popover-group-separator {
   height: 1px;
   background: linear-gradient(
     to right,
@@ -1017,7 +920,9 @@
   margin: 6px 0;
 }
 
-.smtcmp-smart-space-popover .smtcmp-model-select-list > .smtcmp-popover-item {
+.yolo-popover-surface--smart-space
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item {
   position: relative;
   padding: 8px 12px;
   margin: 2px 0;
@@ -1034,10 +939,10 @@
   outline: none;
 }
 
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item:hover,
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item[data-highlighted] {
   background: color-mix(
@@ -1048,20 +953,7 @@
   color: var(--text-normal);
 }
 
-.smtcmp-chat-sidebar-popover
-  .smtcmp-model-select-list
-  > .smtcmp-popover-item:hover,
-.smtcmp-chat-sidebar-popover
-  .smtcmp-model-select-list
-  > .smtcmp-popover-item[data-highlighted] {
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-hover) 90%,
-    transparent
-  );
-}
-
-.smtcmp-smart-space-popover
+.yolo-popover-surface--smart-space
   .smtcmp-model-select-list
   > .smtcmp-popover-item:active {
   transform: scale(0.98);

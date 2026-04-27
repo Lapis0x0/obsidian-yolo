@@ -37,16 +37,7 @@
   line-height: 1.6;
 }
 
-.smtcmp-popover {
-  z-index: 1000;
-  background: var(--background-primary);
-  box-shadow: var(--shadow-s);
-  border-radius: var(--radius-m);
-  border: 1px solid var(--background-modifier-border);
-  overflow: hidden;
-}
-
-.smtcmp-popover ul {
+.yolo-popover-surface ul {
   padding: 0;
   list-style: none;
   margin: 0;
@@ -54,35 +45,112 @@
   overflow-y: scroll;
 }
 
-.smtcmp-popover ul {
+.yolo-popover-surface ul {
   padding: var(--size-4-1) 0;
 }
 
-.smtcmp-popover .smtcmp-popover-group-label {
+/* default 变体下的 group-label / separator / list / item 样式集中在这里。
+   --smart-space 变体的同名元素样式集中在 src/styles/panels/smart-space.css。
+   两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */
+.yolo-popover-surface--default .smtcmp-popover-group-label {
   display: block;
-  margin: var(--size-2-1) 8px;
-  padding: var(--size-2-1) var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
-  font-weight: var(--font-medium);
-  letter-spacing: 0.02em;
+  margin: 0;
+  padding: 10px 14px 6px 12px;
+  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   user-select: none;
   text-align: left;
+  opacity: 0.8;
 }
 
-.smtcmp-popover .smtcmp-popover-group-separator {
+.yolo-popover-surface--default .smtcmp-popover-group-separator {
   height: 1px;
-  background-color: var(--background-modifier-border);
-  margin: var(--size-2-1) 8px;
+  background: linear-gradient(
+    to right,
+    transparent 4px,
+    color-mix(in srgb, var(--background-modifier-border) 50%, transparent) 16px,
+    color-mix(in srgb, var(--background-modifier-border) 50%, transparent)
+      calc(100% - 16px),
+    transparent calc(100% - 4px)
+  );
+  margin: 6px 0;
 }
 
-/* Final override: Make model items indent to align with group label text */
-.smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item {
-  padding-left: calc(var(--size-4-2) + 8px);
+.yolo-popover-surface--default .smtcmp-model-select-list {
+  padding: 4px 0;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-.smtcmp-popover ul li {
+.yolo-popover-surface--default
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 10px 4px 12px;
+  margin: 0;
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+  cursor: pointer;
+  outline: none;
+}
+
+.yolo-popover-surface--default
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item:hover,
+.yolo-popover-surface--default
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item[data-highlighted] {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 90%,
+    transparent
+  );
+}
+
+.yolo-popover-surface
+  .smtcmp-model-select-list
+  > .smtcmp-popover-item[data-state='checked'] {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 45%,
+    transparent
+  );
+  font-weight: var(--font-semibold);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+}
+
+.smtcmp-popover-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtcmp-popover-item__indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive-accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.smtcmp-popover-item[data-state='checked'] .smtcmp-popover-item__indicator {
+  opacity: 1;
+}
+
+.yolo-popover-surface ul li {
   margin: 0;
   min-width: 180px;
   font-size: var(--font-ui-smaller);
@@ -93,11 +161,11 @@
   justify-content: flex-start;
 }
 
-.smtcmp-popover ul li.selected {
+.yolo-popover-surface ul li.selected {
   background: var(--background-modifier-hover);
 }
 
-.smtcmp-popover li {
+.yolo-popover-surface li {
   z-index: 1000;
   max-height: 300px;
   overflow-y: auto;
@@ -122,19 +190,14 @@
   align-items: start;
 }
 
-/* Must come after the generic li padding shorthand above */
-.smtcmp-popover .smtcmp-model-select-list > .smtcmp-popover-item {
-  padding-left: calc(var(--size-4-2) + 8px);
-}
-
-.smtcmp-popover li.active {
+.yolo-popover-surface li.active {
   display: flex;
   width: 20px;
   height: 20px;
   background-size: contain;
 }
 
-.smtcmp-popover li:hover {
+.yolo-popover-surface li:hover {
   background-color: var(--background-modifier-hover);
 }
 
@@ -152,12 +215,12 @@
   min-width: fit-content;
 }
 
-.smtcmp-popover li:hover {
+.yolo-popover-surface li:hover {
   background-color: var(--background-modifier-hover);
   cursor: pointer;
 }
-.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon,
-.smtcmp-popover li .smtcmp-chat-list-pin-button {
+.yolo-popover-surface li .smtcmp-chat-list-dropdown-item-icon,
+.yolo-popover-surface li .smtcmp-chat-list-pin-button {
   visibility: visible;
   opacity: 0;
   transform: translateX(5px) scale(0.96);
@@ -169,16 +232,18 @@
     background-color 120ms ease;
 }
 
-.smtcmp-popover
+.yolo-popover-surface
   li:is(:hover, :focus-within)
   .smtcmp-chat-list-dropdown-item-icon,
-.smtcmp-popover li:is(:hover, :focus-within) .smtcmp-chat-list-pin-button {
+.yolo-popover-surface
+  li:is(:hover, :focus-within)
+  .smtcmp-chat-list-pin-button {
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-dropdown-item-icon:hover {
+.yolo-popover-surface li .smtcmp-chat-list-dropdown-item-icon:hover {
   background-color: var(--background-modifier-hover);
   border-radius: var(--radius-s);
 }
@@ -200,6 +265,8 @@
   width: 100%;
   max-width: 420px;
   min-width: 0;
+  /* 让弹层左侧与聊天面板外层布局对齐（仅聊天历史下拉需要）。 */
+  margin-left: -64px;
 }
 
 .smtcmp-chat-list-search {
@@ -207,7 +274,7 @@
   top: 0;
   z-index: 1;
   padding: 6px 10px;
-  background: var(--huisede1, var(--background-secondary));
+  background: var(--background-primary);
   border-bottom: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 }
@@ -589,9 +656,7 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
 .smtcmp-chat-list-dropdown-item:hover,
 .smtcmp-chat-list-dropdown-item:focus-within,
-.smtcmp-chat-sidebar-popover
-  .smtcmp-chat-list-dropdown-content
-  li:is(:hover, :focus-within, :has(:hover)) {
+.smtcmp-chat-list-dropdown-content li:is(:hover, :focus-within, :has(:hover)) {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 92%,
@@ -603,10 +668,8 @@ input[type='text'].smtcmp-chat-list-dropdown-item-title-input {
 
 .smtcmp-chat-list-dropdown-item.selected,
 .smtcmp-chat-list-dropdown-item[data-highlighted='true'],
-.smtcmp-chat-sidebar-popover .smtcmp-chat-list-dropdown-content li.selected,
-.smtcmp-chat-sidebar-popover
-  .smtcmp-chat-list-dropdown-content
-  li[data-highlighted='true'] {
+.smtcmp-chat-list-dropdown-content li.selected,
+.smtcmp-chat-list-dropdown-content li[data-highlighted='true'] {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 96%,
@@ -784,14 +847,14 @@ button.smtcmp-chat-list-dropdown-archive-toggle:focus-visible
   fill: transparent;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-pin-button.is-pinned {
+.yolo-popover-surface li .smtcmp-chat-list-pin-button.is-pinned {
   color: var(--text-normal);
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
 }
 
-.smtcmp-popover li .smtcmp-chat-list-pin-button.is-pinned svg {
+.yolo-popover-surface li .smtcmp-chat-list-pin-button.is-pinned svg {
   fill: currentColor;
 }
 
@@ -1796,4 +1859,12 @@ button.smtcmp-chat-input-model-select {
 .smtcmp-query-progress-detail {
   font-size: var(--font-smallest);
   color: var(--text-faint);
+}
+
+/* ViewToggle 模式切换下拉的 purpose 类——按 surface.css 头部约定一次性需求
+   自带 yolo-popover-<purpose> class。这里只覆盖宽度（跟 trigger 按钮严格对齐），
+   背景沿用 --default 变体的 --background-primary：在侧栏/独立窗口里都能跟周围
+   bg 自然过渡，不会出现"独立窗口白底但 popover 灰底"的违和。 */
+.yolo-popover-surface.yolo-popover-view-toggle-mode {
+  width: var(--radix-dropdown-menu-trigger-width);
 }

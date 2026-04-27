@@ -103,6 +103,27 @@ export class DatabaseManager {
 
     DatabaseManager.managers.set(dbManager, managers)
 
+    // One-time cleanup: drop legacy staging-namespace rows left over from the
+    // pre-reconcile architecture. These are unreachable by the new code path
+    // but still occupy space and surface as confusing "unknown model" entries
+    // in the embedding management modal. Idempotent — no-op once cleared.
+    try {
+      const result = await dbManager.db.execute(
+        `DELETE FROM embeddings WHERE model LIKE '%::staging:%'`,
+      )
+      const deleted = (result as unknown as { affectedRows?: number })
+        .affectedRows
+      if (deleted && deleted > 0) {
+        console.info(
+          `[YOLO] Dropped ${deleted} legacy staging row(s) from embeddings.`,
+        )
+        await dbManager.vacuum()
+        await dbManager.save()
+      }
+    } catch (error) {
+      console.warn('[YOLO] Failed to clean up legacy staging rows', error)
+    }
+
     console.debug('Smart composer database initialized.', dbManager)
 
     return dbManager

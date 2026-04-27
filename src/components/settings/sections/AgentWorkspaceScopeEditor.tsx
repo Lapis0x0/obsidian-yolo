@@ -48,8 +48,7 @@ export function AgentWorkspaceScopeEditor({
     [scope.exclude],
   )
 
-  const setEnabled = (next: boolean) =>
-    onChange({ ...scope, enabled: next })
+  const setEnabled = (next: boolean) => onChange({ ...scope, enabled: next })
 
   const addInclude = () => {
     new FolderPickerModal(
@@ -145,10 +144,7 @@ export function AgentWorkspaceScopeEditor({
         vault={vault}
         onAdd={addExclude}
         onRemove={removeExclude}
-        emptyHint={t(
-          'settings.agent.workspace.excludeEmpty',
-          'No exclusions.',
-        )}
+        emptyHint={t('settings.agent.workspace.excludeEmpty', 'No exclusions.')}
       />
     </div>
   )

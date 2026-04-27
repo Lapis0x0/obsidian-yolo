@@ -1,0 +1,107 @@
+/*
+ * yolo-popover surface classes —— 项目所有弹窗 / 下拉的视觉地基。
+ * 改这块代码 / 写新弹窗前，请通读以下约定（历史曾两次踩坑）。
+ *
+ * ─────────────────────────────────────────────
+ * 1. consumer 必须用抽象组件，不要自己组 Portal + Content
+ * ─────────────────────────────────────────────
+ * 禁止在调用方写 `DropdownMenu.Portal + DropdownMenu.Content + className=...` 的
+ * 组合。统一用 src/components/common/popover/ 下的 <YoloDropdownContent> /
+ * <YoloPopoverContent>，所有视觉 variant 与尺寸通过 props 显式声明。
+ * 参考迁移：ModelSelect.tsx、ReasoningSelect.tsx、ChatListDropdown.tsx。
+ *
+ * ─────────────────────────────────────────────
+ * 2. 视觉 vs 尺寸：共用 class 只管视觉表面
+ * ─────────────────────────────────────────────
+ * 本文件里的 .yolo-popover-surface* class 只允许定义：
+ *   background / border / box-shadow / animation / overflow / z-index
+ * 严禁出现：
+ *   min-width / max-width / max-height / width / margin
+ * 尺寸是 consumer 的责任 —— 通过 minWidth/maxWidth/maxHeight props 传入，
+ * 或一次性需求自带 `yolo-popover-<purpose>` class（例如聊天历史的 -64px 对齐）。
+ * 违反这条会跨组件污染（历史踩坑详见 docs/plans/parsed-wiggling-shore.md）。
+ *
+ * ─────────────────────────────────────────────
+ * 3. 变体规则按文件归属，禁止跨文件覆盖
+ * ─────────────────────────────────────────────
+ *   --default 变体的样式      → src/styles/chat/popover.css
+ *   --smart-space 变体的样式  → src/styles/panels/smart-space.css
+ * 不要在 smart-space.css 里写 `.yolo-popover-surface--default ...`，反之亦然。
+ * 同一选择器跨文件出现时胜负只剩源码顺序，是最隐蔽的"屎山"来源。
+ * 真正跨变体共享的样式（如 [data-state='checked']）写无前缀版本，
+ * 但必须在注释里写明"有意跨变体共享"。
+ *
+ * ─────────────────────────────────────────────
+ * 4. 慎用裸标签选择器
+ * ─────────────────────────────────────────────
+ * 避免 `.yolo-popover-surface ul / li / button` 这种命中所有后代标签的写法 ——
+ * 等同于隐式全局副作用，未来任何弹窗内出现 ul/li 都会被牵连。要写就用 class 限定。
+ *
+ * ─────────────────────────────────────────────
+ * 5. 新增弹窗 checklist
+ * ─────────────────────────────────────────────
+ *   [ ] consumer 用 <YoloDropdownContent> / <YoloPopoverContent>
+ *   [ ] 显式传 minWidth / maxWidth / maxHeight，不依赖任何继承
+ *   [ ] 非通用视觉需求自带 `yolo-popover-<purpose>` class，不复用别人的
+ *   [ ] 新 class 一律 `yolo-` 前缀，不新增 `smtcmp-`
+ *   [ ] 写 variant-scoped 规则时确认放在了对应变体的归属文件里
+ */
+
+.yolo-popover-surface {
+  overflow: hidden;
+}
+
+/* Default variant — used by chat-input dropdowns, chat-history,
+   AssistantSelector, ViewToggle. */
+.yolo-popover-surface--default {
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+  border-radius: var(--radius-m);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.12),
+    0 0 0 1px
+      color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+  animation: yolo-popover-fade-in 130ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* Smart-space variant — heavier shadow, blur backdrop, larger radius.
+   Used by SmartSpace panel, QuickAsk panel, mention/slash menus. */
+.yolo-popover-surface--smart-space {
+  z-index: 10000;
+  background: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 3px
+      color-mix(in srgb, var(--background-modifier-border) 20%, transparent),
+    0 12px 32px -8px rgba(0, 0, 0, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(16px);
+  animation: yolo-popover-smart-space-fade-in 0.25s
+    cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes yolo-popover-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes yolo-popover-smart-space-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -23,7 +23,7 @@ describe('migrateFrom47To48', () => {
       chatOptions: {
         reasoningLevelByModelId: { 'mid-1': 'on' as const },
       },
-    }) as Record<string, unknown>
+    })
 
     expect(result.version).toBe(48)
     const models = result.chatModels as Record<string, unknown>[]

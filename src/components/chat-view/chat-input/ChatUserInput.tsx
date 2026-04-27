@@ -39,6 +39,10 @@ import {
   MentionablePDF,
   SerializedMentionable,
 } from '../../../types/mentionable'
+import {
+  ReasoningLevel,
+  getDefaultReasoningLevel,
+} from '../../../types/reasoning'
 import { getDisplayOnlyCurrentFileMentionables } from '../../../utils/chat/currentFileMentionable'
 import {
   deserializeMentionable,
@@ -67,10 +71,6 @@ import {
 } from './plugins/mention/SkillNode'
 import type { SlashCommand } from './plugins/mention/SkillSlashPlugin'
 import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
-import {
-  ReasoningLevel,
-  getDefaultReasoningLevel,
-} from '../../../types/reasoning'
 import { ReasoningSelect, supportsReasoning } from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
 
@@ -289,7 +289,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       if (
         nextTarget &&
         nextTarget instanceof HTMLElement &&
-        nextTarget.closest('.smtcmp-chat-sidebar-popover')
+        nextTarget.closest('.yolo-popover-surface')
       ) {
         return
       }
@@ -1422,10 +1422,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 <ModelSelect
                   modelId={modelId}
                   onChange={onModelChange}
-                  align="start"
+                  align="center"
                   sideOffset={8}
-                  alignOffset={-6}
-                  contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
+                  popover={{
+                    variant: 'default',
+                    minWidth: 260,
+                    maxWidth: 320,
+                    maxHeight: 400,
+                  }}
                 />
                 {showReasoningSelect && supportsReasoning(currentModel) && (
                   <ReasoningSelect
@@ -1434,7 +1438,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                     onChange={(level) => onReasoningChange?.(level)}
                     side="top"
                     sideOffset={8}
-                    contentClassName="smtcmp-smart-space-popover smtcmp-chat-sidebar-popover"
                   />
                 )}
               </div>

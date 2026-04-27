@@ -351,29 +351,28 @@ export const it: TranslationKeys = {
       deleteConfirmMessageSuffix: '? Questa azione non può essere annullata.',
       toolSourceBuiltin: 'Integrato',
       toolSourceMcp: 'MCP',
+      toolsGroupBuiltinVault: 'Vault',
+      toolsGroupBuiltinContext: 'Contesto e memoria',
+      toolsGroupBuiltinExternal: 'Esterno',
       noMcpTools: 'Nessuno strumento personalizzato (MCP) rilevato',
       toolsEnabledCount: '{count} abilitati',
       manageTools: 'Gestisci strumenti',
       manageSkills: 'Gestisci competenze',
       descriptionColumn: 'Descrizione',
       builtinFsListLabel: 'Leggi vault',
-      builtinFsListDesc:
-        'Elenca la struttura delle directory del vault per orientarsi rapidamente.',
+      builtinFsListDesc: 'Elenca la struttura delle directory del vault',
       builtinFsSearchLabel: 'Cerca nel vault',
-      builtinFsSearchDesc:
-        'Cerca nel vault con parole chiave, semantica (RAG) o ricerca ibrida, raggruppando i risultati di contenuto per file e mostrando gli snippet principali.',
+      builtinFsSearchDesc: 'Cerca file e contenuti nel vault',
       builtinFsReadLabel: 'Leggi',
-      builtinFsReadDesc:
-        'Legge file del vault per percorso con operazioni a file intero o per intervallo di righe.',
+      builtinFsReadDesc: 'Leggi file del vault',
       builtinContextPruneToolResultsLabel: 'Pota risultati strumenti',
       builtinContextPruneToolResultsDesc:
-        'Esclude dai futuri contesti visibili al modello i risultati storici degli strumenti selezionati, oppure tutti quelli potabili in una volta, senza eliminare la cronologia chat.',
+        'Escludi i risultati storici degli strumenti dal contesto futuro',
       builtinContextCompactLabel: 'Compatta contesto',
       builtinContextCompactDesc:
-        'Comprimi la cronologia meno recente in un riepilogo e continua in una nuova finestra di contesto.',
+        'Comprimi la cronologia meno recente in un riepilogo',
       builtinFsEditLabel: 'Modifica testo',
-      builtinFsEditDesc:
-        'Applica esattamente una singola operazione di modifica del testo in un file esistente, incluse replace, replace_lines, insert_after e append.',
+      builtinFsEditDesc: 'Modifica il testo di un singolo file',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
@@ -381,11 +380,9 @@ export const it: TranslationKeys = {
       fsEditReviewToggleDesc:
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
       builtinFsFileOpsLabel: 'Set operazioni file',
-      builtinFsFileOpsDesc:
-        'Operazioni percorso file raggruppate: crea/elimina file, crea/elimina cartelle e sposta.',
+      builtinFsFileOpsDesc: 'Crea, elimina e sposta file e cartelle',
       builtinMemoryOpsLabel: 'Set strumenti memoria',
-      builtinMemoryOpsDesc:
-        'Operazioni memoria raggruppate: aggiungi, aggiorna ed elimina memoria.',
+      builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
       builtinMemoryAddLabel: 'Aggiungi memoria',
       builtinMemoryAddDesc:
         "Aggiunge una memoria globale o dell'assistant con id assegnato automaticamente.",
@@ -394,7 +391,15 @@ export const it: TranslationKeys = {
       builtinMemoryDeleteLabel: 'Elimina memoria',
       builtinMemoryDeleteDesc: 'Elimina una memoria esistente tramite id.',
       builtinOpenSkillLabel: 'Apri skill',
-      builtinOpenSkillDesc: 'Carica un file markdown skill tramite id o nome.',
+      builtinOpenSkillDesc: 'Carica uno skill markdown',
+      builtinWebSearchLabel: 'Ricerca web',
+      builtinWebSearchDesc:
+        'Cerca sul web tramite il provider configurato e restituisce risultati con snippet.',
+      builtinWebScrapeLabel: 'Scrape web',
+      builtinWebScrapeDesc:
+        'Recupera il contenuto completo di un singolo URL tramite il provider configurato.',
+      builtinWebOpsLabel: 'Set strumenti ricerca web',
+      builtinWebOpsDesc: 'Ricerca web e scraping di pagine',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',
@@ -475,6 +480,65 @@ export const it: TranslationKeys = {
         'Uso finestra di contesto (%)',
       autoContextCompactionThresholdRatioPercentDesc:
         'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
+    },
+    webSearch: {
+      modalTitle: 'Impostazioni ricerca web',
+      openSettings: 'Configura provider di ricerca web',
+      intro:
+        'Configura i provider di ricerca usati dallo strumento agent web_search integrato. Il provider predefinito qui sotto verrà usato dall’agent.',
+      providersHeader: 'Provider',
+      addProvider: 'Aggiungi provider',
+      editProvider: 'Modifica provider',
+      empty:
+        'Nessun provider configurato. Aggiungine uno per abilitare lo strumento web_search.',
+      colName: 'Nome',
+      colType: 'Tipo',
+      colDefault: 'Predefinito',
+      colActions: 'Azioni',
+      deleteConfirmTitle: 'Elimina provider',
+      deleteConfirmMessage:
+        'Sei sicuro di voler eliminare questo provider di ricerca web?',
+      deleteFailed: 'Impossibile eliminare il provider.',
+      commonHeader: 'Comuni',
+      resultSize: 'Numero risultati',
+      resultSizeDesc:
+        'Numero massimo di risultati restituiti al modello per ricerca.',
+      searchTimeout: 'Timeout ricerca (ms)',
+      scrapeTimeout: 'Timeout scrape (ms)',
+      searchTimeoutLabel: 'Timeout ricerca',
+      searchTimeoutDesc:
+        'Tempo massimo di attesa per una chiamata di ricerca del provider.',
+      scrapeTimeoutLabel: 'Timeout scrape',
+      scrapeTimeoutDesc:
+        'Tempo massimo di attesa per una singola chiamata web_scrape.',
+      unitResults: 'elementi',
+      tagDefault: 'Predefinito',
+      failoverNotice:
+        "Le chiamate fallite non vengono rilanciate silenziosamente su un altro provider — l'errore viene passato al modello perché l'agent decida se riprovare o cambiare strategia.",
+      providerCount: 'Provider totali',
+      types: {
+        tavily: 'Tavily',
+        jina: 'Jina',
+        searxng: 'SearXNG',
+        bing: 'Bing (senza chiave)',
+        'gemini-grounding': 'Gemini (Grounding)',
+        grok: 'Grok',
+      },
+      fieldName: 'Nome visualizzato',
+      fieldApiKey: 'API key',
+      fieldDepth: 'Profondità',
+      fieldSearchUrl: 'URL ricerca',
+      fieldScrapeUrl: 'URL scrape',
+      fieldBaseUrl: 'Base URL',
+      fieldLanguage: 'Lingua',
+      fieldEngines: 'Motori (separati da virgola)',
+      fieldUsername: 'Username Basic Auth',
+      fieldPassword: 'Password Basic Auth',
+      fieldModel: 'Modello',
+      fieldSystemPrompt: 'System prompt',
+      fieldEnableX: 'Cerca anche su X',
+      bingNote:
+        'Bing non richiede API key. Il provider effettua scraping della pagina pubblica dei risultati; l’affidabilità dipende dalle misure anti-bot di Bing.',
     },
     providers: {
       title: 'Provider',
@@ -779,10 +843,6 @@ export const it: TranslationKeys = {
       indexComplete: 'Indicizzazione completata',
       indexIncomplete: 'Ultima indicizzazione non completata',
       retryNow: 'Riprova ora',
-      continueIndex: 'Continua indicizzazione',
-      rebuildFromScratch: 'Ricostruisci da zero',
-      rebuildFromScratchConfirm:
-        "Questa operazione scarterà il progresso parziale e ricostruirà l'indice da zero. Continuare?",
       waitingRetry: 'In attesa di un nuovo tentativo...',
       cancelIndex: 'Annulla',
     },

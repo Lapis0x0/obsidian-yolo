@@ -7,6 +7,7 @@ import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import { EmbeddingModelClient } from '../../types/embedding'
 
 import { getEmbeddingModelClient } from './embedding'
+import type { ReconcileScope } from './reconciler'
 
 type RagQueryResult = Omit<SelectEmbedding, 'embedding'> & {
   similarity: number
@@ -64,16 +65,19 @@ export class RAGEngine {
     })
   }
 
-  // TODO: Implement automatic vault re-indexing when settings are changed.
-  // Currently, users must manually re-index the vault.
+  /**
+   * Reconcile the vault index against the current settings. The single
+   * write entrypoint for indexing — see {@link VectorManager.reconcile}.
+   *
+   * - `truncate: true, scope: { kind: 'all' }` → "rebuild from scratch"
+   * - `truncate: false, scope: { kind: 'all' }` → "sync after settings change"
+   * - `truncate: false, scope: { kind: 'paths', paths }` → "sync changed files"
+   */
   async updateVaultIndex(
     options: {
-      reindexAll: boolean
-      fromScratch?: boolean
+      scope: ReconcileScope
+      truncate?: boolean
       signal?: AbortSignal
-      indexRunId?: string
-    } = {
-      reindexAll: false,
     },
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void,
   ): Promise<void> {
@@ -81,24 +85,25 @@ export class RAGEngine {
       if (!this.embeddingModel) {
         throw new Error('Embedding model is not set')
       }
-      await this.vectorManager?.updateVaultIndex(
+      await this.vectorManager?.reconcile(
         this.embeddingModel,
         {
           chunkSize: this.settings.ragOptions.chunkSize,
           excludePatterns: this.settings.ragOptions.excludePatterns,
           includePatterns: this.settings.ragOptions.includePatterns,
-          ragIndexPdf: this.settings.ragOptions.indexPdf ?? true,
+          indexPdf: this.settings.ragOptions.indexPdf ?? true,
           settings: this.settings,
-          reindexAll: options.reindexAll,
-          fromScratch: options.fromScratch,
-          signal: options.signal,
-          indexRunId: options.indexRunId,
         },
-        (indexProgress) => {
-          onQueryProgressChange?.({
-            type: 'indexing',
-            indexProgress,
-          })
+        {
+          scope: options.scope,
+          truncate: options.truncate,
+          signal: options.signal,
+          onProgress: (indexProgress) => {
+            onQueryProgressChange?.({
+              type: 'indexing',
+              indexProgress,
+            })
+          },
         },
       )
     }

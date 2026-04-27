@@ -1,6 +1,5 @@
 import { TFile } from 'obsidian'
 
-import { ReasoningLevel } from '../../types/reasoning'
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
@@ -8,6 +7,7 @@ import {
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMProvider } from '../../types/provider.types'
+import { ReasoningLevel } from '../../types/reasoning'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'

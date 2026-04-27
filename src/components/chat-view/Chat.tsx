@@ -55,6 +55,12 @@ import type {
   MentionableBlockData,
 } from '../../types/mentionable'
 import {
+  REASONING_LEVELS,
+  ReasoningLevel,
+  getDefaultReasoningLevel,
+  normalizeStoredReasoningLevel,
+} from '../../types/reasoning'
+import {
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
@@ -89,12 +95,6 @@ import type { ChatMode } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import MentionableBadge from './chat-input/MentionableBadge'
-import {
-  REASONING_LEVELS,
-  ReasoningLevel,
-  getDefaultReasoningLevel,
-  normalizeStoredReasoningLevel,
-} from '../../types/reasoning'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { getChatSurfacePreset } from './chat-surface-presets'
 import { ChatConversationPane } from './ChatConversationPane'
@@ -517,9 +517,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     (value?: string): ReasoningLevel | null => {
       const normalized = normalizeStoredReasoningLevel(value)
       if (!normalized) return null
-      return REASONING_LEVEL_CANDIDATES.includes(normalized)
-        ? normalized
-        : null
+      return REASONING_LEVEL_CANDIDATES.includes(normalized) ? normalized : null
     },
     [],
   )
@@ -1790,10 +1788,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
 
-      if (
-        target.closest('.smtcmp-chat-sidebar-popover') ||
-        target.closest('.smtcmp-smart-space-popover')
-      ) {
+      if (target.closest('.yolo-popover-surface')) {
         return
       }
 

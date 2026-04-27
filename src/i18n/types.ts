@@ -234,6 +234,9 @@ export type TranslationKeys = {
       deleteConfirmMessageSuffix?: string
       toolSourceBuiltin?: string
       toolSourceMcp?: string
+      toolsGroupBuiltinVault?: string
+      toolsGroupBuiltinContext?: string
+      toolsGroupBuiltinExternal?: string
       noMcpTools?: string
       toolsEnabledCount?: string
       manageTools?: string
@@ -267,6 +270,12 @@ export type TranslationKeys = {
       builtinMemoryDeleteDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
+      builtinWebSearchLabel?: string
+      builtinWebSearchDesc?: string
+      builtinWebScrapeLabel?: string
+      builtinWebScrapeDesc?: string
+      builtinWebOpsLabel?: string
+      builtinWebOpsDesc?: string
       editorDefaultName?: string
       editorIntro?: string
       editorTabProfile?: string
@@ -350,6 +359,57 @@ export type TranslationKeys = {
       autoContextCompactionThresholdTokensDesc?: string
       autoContextCompactionThresholdRatioPercent?: string
       autoContextCompactionThresholdRatioPercentDesc?: string
+    }
+    webSearch?: {
+      modalTitle?: string
+      openSettings?: string
+      intro?: string
+      providersHeader?: string
+      addProvider?: string
+      editProvider?: string
+      empty?: string
+      colName?: string
+      colType?: string
+      colDefault?: string
+      colActions?: string
+      deleteConfirmTitle?: string
+      deleteConfirmMessage?: string
+      deleteFailed?: string
+      commonHeader?: string
+      resultSize?: string
+      resultSizeDesc?: string
+      searchTimeout?: string
+      scrapeTimeout?: string
+      searchTimeoutLabel?: string
+      searchTimeoutDesc?: string
+      scrapeTimeoutLabel?: string
+      scrapeTimeoutDesc?: string
+      unitResults?: string
+      tagDefault?: string
+      failoverNotice?: string
+      providerCount?: string
+      types?: {
+        tavily?: string
+        jina?: string
+        searxng?: string
+        bing?: string
+        'gemini-grounding'?: string
+        grok?: string
+      }
+      fieldName?: string
+      fieldApiKey?: string
+      fieldDepth?: string
+      fieldSearchUrl?: string
+      fieldScrapeUrl?: string
+      fieldBaseUrl?: string
+      fieldLanguage?: string
+      fieldEngines?: string
+      fieldUsername?: string
+      fieldPassword?: string
+      fieldModel?: string
+      fieldSystemPrompt?: string
+      fieldEnableX?: string
+      bingNote?: string
     }
     providers: {
       title: string
@@ -606,9 +666,6 @@ export type TranslationKeys = {
       indexComplete?: string
       indexIncomplete?: string
       retryNow?: string
-      continueIndex?: string
-      rebuildFromScratch?: string
-      rebuildFromScratchConfirm?: string
       waitingRetry?: string
       cancelIndex?: string
     }

@@ -1,7 +1,6 @@
 import OpenAI from 'openai'
 
 import { ChatModel } from '../../types/chat-model.types'
-import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import {
   LLMOptions,
   LLMRequestNonStreaming,
@@ -13,6 +12,7 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import { getHostedToolsForModel } from '../../utils/llm/model-tools'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
@@ -207,7 +207,10 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
       reasoningType: model.reasoningType,
-      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
+      reasoningLevel: resolveRequestReasoningLevel(
+        model,
+        request.reasoningLevel,
+      ),
       baseUrl: DEFAULT_QWEN_BASE_URL,
     })
 
@@ -258,7 +261,10 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
     applyOpenAICompatibleCapabilities({
       request: formattedRequest,
       reasoningType: model.reasoningType,
-      reasoningLevel: resolveRequestReasoningLevel(model, request.reasoningLevel),
+      reasoningLevel: resolveRequestReasoningLevel(
+        model,
+        request.reasoningLevel,
+      ),
       baseUrl: DEFAULT_QWEN_BASE_URL,
     })
 

@@ -4,6 +4,7 @@ import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_CHAT_TITLE_MODEL_ID,
 } from '../../constants'
+import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
 import { embeddingModelSchema } from '../../types/embedding-model.types'
@@ -286,6 +287,17 @@ export const smartComposerSettingsSchema = z.object({
       servers: [],
       builtinToolOptions: {},
     }),
+
+  // Web search configuration (built-in agent tool)
+  webSearch: webSearchSettingsSchema.catch({
+    providers: [],
+    defaultProviderId: undefined,
+    common: {
+      resultSize: 8,
+      searchTimeoutMs: 120000,
+      scrapeTimeoutMs: 20000,
+    },
+  }),
 
   // Skills configuration
   skills: z

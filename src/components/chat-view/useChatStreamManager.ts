@@ -37,12 +37,12 @@ import {
   ChatToolMessage,
 } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
+import { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
-import { ReasoningLevel } from '../../types/reasoning'
 import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {

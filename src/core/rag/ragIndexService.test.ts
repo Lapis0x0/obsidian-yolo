@@ -15,7 +15,7 @@ describe('RagIndexService', () => {
       smtcmp_rag_index_run: JSON.stringify({
         runId: 'old-run',
         status: 'running',
-        mode: 'full',
+        mode: 'rebuild',
         trigger: 'manual',
         retryPolicy: 'transient',
       }),
@@ -40,7 +40,7 @@ describe('RagIndexService', () => {
       status: 'retry_scheduled',
       failureKind: 'transient',
       retryPolicy: 'transient',
-      mode: 'full',
+      mode: 'rebuild',
       trigger: 'manual',
     })
   })
@@ -50,7 +50,7 @@ describe('RagIndexService', () => {
       smtcmp_rag_index_run: JSON.stringify({
         runId: 'old-run',
         status: 'running',
-        mode: 'incremental',
+        mode: 'sync',
         trigger: 'manual',
         retryPolicy: 'none',
       }),
@@ -122,7 +122,8 @@ describe('RagIndexService', () => {
 
     await service.initialize()
     const firstRun = service.runIndex({
-      reindexAll: false,
+      mode: 'sync',
+      scope: { kind: 'all' },
       trigger: 'manual',
       retryPolicy: 'none',
     })
@@ -137,7 +138,8 @@ describe('RagIndexService', () => {
 
     await expect(
       service.runIndex({
-        reindexAll: false,
+        mode: 'sync',
+        scope: { kind: 'all' },
         trigger: 'manual',
         retryPolicy: 'none',
       }),
@@ -151,7 +153,7 @@ describe('RagIndexService', () => {
     })
   })
 
-  it('schedules retry for transient manual full rebuild failures', async () => {
+  it('schedules retry for transient manual rebuild failures', async () => {
     jest.useFakeTimers()
     const updateVaultIndex = jest
       .fn()
@@ -172,7 +174,8 @@ describe('RagIndexService', () => {
 
     await expect(
       service.runIndex({
-        reindexAll: true,
+        mode: 'rebuild',
+        scope: { kind: 'all' },
         trigger: 'manual',
         retryPolicy: 'transient',
       }),
@@ -181,7 +184,7 @@ describe('RagIndexService', () => {
     expect(service.getSnapshot()).toMatchObject({
       status: 'retry_scheduled',
       retryPolicy: 'transient',
-      mode: 'full',
+      mode: 'rebuild',
     })
 
     await jest.advanceTimersByTimeAsync(5 * 60_000)
@@ -212,7 +215,8 @@ describe('RagIndexService', () => {
 
     await expect(
       service.runIndex({
-        reindexAll: true,
+        mode: 'rebuild',
+        scope: { kind: 'all' },
         trigger: 'manual',
         retryPolicy: 'transient',
       }),
@@ -234,7 +238,7 @@ describe('RagIndexService', () => {
           JSON.stringify({
             runId: 'retry-run',
             status: 'retry_scheduled',
-            mode: 'full',
+            mode: 'rebuild',
             trigger: 'manual',
             retryPolicy: 'transient',
             retryAt: Date.now() + 1_000,
@@ -255,45 +259,6 @@ describe('RagIndexService', () => {
     expect(updateVaultIndex).toHaveBeenCalledTimes(1)
     expect(service.getSnapshot()).toMatchObject({
       status: 'completed',
-    })
-  })
-
-  it('preserves resumable full rebuild cursor after a successful incremental run', async () => {
-    const updateVaultIndex = jest.fn().mockResolvedValue(undefined)
-    const service = new RagIndexService({
-      app: {
-        loadLocalStorage: jest.fn().mockReturnValue(
-          JSON.stringify({
-            runId: 'failed-full-run',
-            status: 'failed',
-            mode: 'full',
-            trigger: 'manual',
-            retryPolicy: 'transient',
-            stagingRunId: 'failed-full-run-staging',
-            stagingConfigFingerprint: 'embed-a|1000',
-          }),
-        ),
-        saveLocalStorage: jest.fn(),
-      } as never,
-      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
-      activityRegistry: new BackgroundActivityRegistry(),
-      isRagEnabled: () => true,
-      t: (_key, fallback) => fallback ?? '',
-    })
-
-    await service.initialize()
-
-    await service.runIndex({
-      reindexAll: false,
-      trigger: 'manual',
-      retryPolicy: 'none',
-    })
-
-    expect(service.getSnapshot()).toMatchObject({
-      status: 'completed',
-      mode: 'incremental',
-      stagingRunId: 'failed-full-run-staging',
-      stagingConfigFingerprint: 'embed-a|1000',
     })
   })
 })

@@ -1145,10 +1145,7 @@ export function QuickAskPanel({
         return
       }
 
-      if (
-        target.closest('.smtcmp-chat-sidebar-popover') ||
-        target.closest('.smtcmp-smart-space-popover')
-      ) {
+      if (target.closest('.yolo-popover-surface')) {
         return
       }
 
@@ -2343,7 +2340,11 @@ export function QuickAskPanel({
               align="start"
               sideOffset={12}
               alignOffset={-4}
-              contentClassName="smtcmp-smart-space-popover smtcmp-quick-ask-model-popover"
+              popover={{
+                variant: 'smart-space',
+                maxHeight: 400,
+                className: 'smtcmp-quick-ask-model-popover',
+              }}
               onKeyDown={(event, isMenuOpen) => {
                 if (isMenuOpen) {
                   if (event.key === 'Escape') {
@@ -2388,7 +2389,6 @@ export function QuickAskPanel({
               align="start"
               sideOffset={12}
               alignOffset={-4}
-              contentClassName="smtcmp-smart-space-popover smtcmp-quick-ask-mode-popover"
               onKeyDown={(event, isMenuOpen) => {
                 if (isMenuOpen) {
                   if (event.key === 'Escape') {

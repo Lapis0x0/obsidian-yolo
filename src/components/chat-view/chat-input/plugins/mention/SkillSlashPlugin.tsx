@@ -290,7 +290,7 @@ export default function SkillSlashPlugin({
                 className="smtcmp-smart-space-mention-popover"
                 data-placement={placement}
               >
-                <div className="smtcmp-popover smtcmp-smart-space-popover smtcmp-smart-space-mention-dropdown">
+                <div className="yolo-popover-surface yolo-popover-surface--smart-space smtcmp-smart-space-mention-dropdown">
                   <div
                     className="smtcmp-smart-space-mention-list"
                     role="listbox"
