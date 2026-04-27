@@ -45,13 +45,29 @@ export const providerApiTypeSchema = z.enum([
   'amazon-bedrock',
 ])
 
-const legacyProviderPresetTypeInputSchema = z.union([
-  providerPresetTypeSchema,
-  z.literal('kimi'),
-])
-
 export type LLMProviderPresetType = z.infer<typeof providerPresetTypeSchema>
 export type LLMProviderApiType = z.infer<typeof providerApiTypeSchema>
+
+const KNOWN_PRESET_TYPES = new Set<string>(providerPresetTypeSchema.options)
+const KNOWN_API_TYPES = new Set<string>(providerApiTypeSchema.options)
+
+const normalizePresetType = (raw: unknown): LLMProviderPresetType => {
+  if (typeof raw !== 'string') return 'openai-compatible'
+  if (raw === 'kimi') return 'moonshot'
+  return KNOWN_PRESET_TYPES.has(raw)
+    ? (raw as LLMProviderPresetType)
+    : 'openai-compatible'
+}
+
+const normalizeApiType = (
+  raw: unknown,
+  presetType: LLMProviderPresetType,
+): LLMProviderApiType => {
+  if (typeof raw === 'string' && KNOWN_API_TYPES.has(raw)) {
+    return raw as LLMProviderApiType
+  }
+  return getDefaultApiTypeForPresetType(presetType)
+}
 
 export function getDefaultRequestTransportModeForPresetType(
   presetType: LLMProviderPresetType,
@@ -127,15 +143,29 @@ export function getSupportedApiTypesForPresetType(
   return [...defaults]
 }
 
+// Lenient input schema. Unknown enum-like values (preset/api types from a
+// newer plugin version, or hand-edited data) are accepted here and normalized
+// in the transform below — schema-level rejection would silently drop the
+// whole provider via `resilientArraySchema`, which has bitten cross-device
+// sync users hard. The strict enum contract still applies on the OUTPUT
+// (`normalizedLlmProviderSchema`), so downstream code keeps narrow types.
 const baseLlmProviderInputSchema = z.object({
   id: z.string().min(1, 'id is required'),
-  type: legacyProviderPresetTypeInputSchema.optional(),
-  presetType: legacyProviderPresetTypeInputSchema.optional(),
-  apiType: providerApiTypeSchema.optional(),
+  type: z.string().optional(),
+  presetType: z.string().optional(),
+  apiType: z.string().optional(),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
   additionalSettings: z.record(z.string(), z.unknown()).optional(),
-  customHeaders: z.array(providerHeaderSchema).optional(),
+  customHeaders: z
+    .array(z.unknown())
+    .transform((items): ProviderHeader[] =>
+      items.flatMap((item) => {
+        const parsed = providerHeaderSchema.safeParse(item)
+        return parsed.success ? [parsed.data] : []
+      }),
+    )
+    .optional(),
 })
 
 const normalizedLlmProviderSchema = z.object({
@@ -157,13 +187,13 @@ const normalizedLlmProviderSchema = z.object({
  */
 export const llmProviderSchema = baseLlmProviderInputSchema
   .transform((value) => {
-    const rawPresetType = value.presetType ?? value.type ?? 'openai-compatible'
-    const presetType = rawPresetType === 'kimi' ? 'moonshot' : rawPresetType
+    const presetType = normalizePresetType(value.presetType ?? value.type)
+    const apiType = normalizeApiType(value.apiType, presetType)
 
     return {
       id: value.id,
       presetType,
-      apiType: value.apiType ?? getDefaultApiTypeForPresetType(presetType),
+      apiType,
       ...(value.baseUrl !== undefined ? { baseUrl: value.baseUrl } : {}),
       ...(value.apiKey !== undefined ? { apiKey: value.apiKey } : {}),
       ...(value.additionalSettings !== undefined
