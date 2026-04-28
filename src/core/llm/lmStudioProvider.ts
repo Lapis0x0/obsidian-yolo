@@ -12,6 +12,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -72,7 +73,7 @@ export class LmStudioProvider extends BaseLLMProvider<LLMProvider> {
     })
     const clientOptions = {
       apiKey: provider.apiKey ?? '',
-      baseURL: `${provider.baseUrl ? provider.baseUrl.replace(/\/+$/, '') : 'http://127.0.0.1:1234'}/v1`,
+      baseURL: `${resolveProviderBaseUrl(provider)}/v1`,
       dangerouslyAllowBrowser: true,
       defaultHeaders,
       maxRetries: resolveSdkMaxRetries({

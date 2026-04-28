@@ -10,6 +10,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -69,7 +70,7 @@ export class MorphProvider extends BaseLLMProvider<LLMProvider> {
       memoryKey: this.requestTransportMemoryKey,
     })
     const clientOptions = {
-      baseURL: `${provider.baseUrl ? provider.baseUrl.replace(/\/+$/, '') : 'https://api.morphllm.com'}/v1`,
+      baseURL: `${resolveProviderBaseUrl(provider)}/v1`,
       apiKey: provider.apiKey ?? '',
       dangerouslyAllowBrowser: true,
       defaultHeaders,
