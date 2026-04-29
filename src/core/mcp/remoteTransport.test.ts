@@ -1,55 +1,28 @@
-import { createDesktopNodeFetch } from '../llm/sdkFetch'
-
+import { createDesktopMcpFetch } from './desktopMcpFetch'
 import {
+  classifyRemoteTransportError,
   createMcpRemoteTransportError,
   createMcpRemoteTransportFactory,
   getMcpRemoteTransportContext,
   getMcpRemoteTransportDiagnostics,
 } from './remoteTransport'
 
-jest.mock('../llm/sdkFetch', () => ({
-  createDesktopNodeFetch: jest.fn(),
+// jest.mock is hoisted by ts-jest above imports, so order with imports is fine.
+jest.mock('./desktopMcpFetch', () => ({
+  createDesktopMcpFetch: jest.fn(),
 }))
-
-jest.mock('proxy-from-env', () => ({
-  getProxyForUrl: jest.fn(
-    () => process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY ?? '',
-  ),
-}))
-
-jest.mock('proxy-agent', () => ({
-  ProxyAgent: jest.fn().mockImplementation((options) => ({
-    options,
-  })),
-}))
-
-jest.mock('../../utils/net/systemProxyResolver', () => ({
-  resolveSystemProxy: jest.fn().mockResolvedValue(''),
-}))
-
-/** Must match `PROXY_ENV_KEYS` in `remoteTransport.ts` — any set value makes `envHasProxy` true. */
-const PROXY_ENV_KEYS = [
-  'HTTP_PROXY',
-  'HTTPS_PROXY',
-  'ALL_PROXY',
-  'NO_PROXY',
-  'http_proxy',
-  'https_proxy',
-  'all_proxy',
-  'no_proxy',
-] as const
 
 describe('remoteTransport', () => {
-  const mockedCreateDesktopNodeFetch =
-    createDesktopNodeFetch as jest.MockedFunction<typeof createDesktopNodeFetch>
+  const mockedCreateDesktopMcpFetch =
+    createDesktopMcpFetch as jest.MockedFunction<typeof createDesktopMcpFetch>
 
   beforeEach(() => {
     jest.clearAllMocks()
   })
 
-  it('shares one Node fetch backend for MCP http and sse transports', () => {
+  it('shares one MCP fetch backend for http and sse transports', () => {
     const sharedFetch = jest.fn() as unknown as typeof fetch
-    mockedCreateDesktopNodeFetch.mockReturnValue(sharedFetch)
+    mockedCreateDesktopMcpFetch.mockReturnValue(sharedFetch)
 
     const factory = createMcpRemoteTransportFactory({ env: {} })
     const headers = { Authorization: 'Bearer token' }
@@ -65,7 +38,8 @@ describe('remoteTransport', () => {
       headers,
     })
 
-    expect(mockedCreateDesktopNodeFetch).toHaveBeenCalledTimes(1)
+    expect(mockedCreateDesktopMcpFetch).toHaveBeenCalledTimes(1)
+    expect(mockedCreateDesktopMcpFetch).toHaveBeenCalledWith({ env: {} })
     expect(httpOptions.fetch).toBe(sharedFetch)
     expect(sseOptions.fetch).toBe(sharedFetch)
     expect(httpOptions.requestInit).toEqual({ headers })
@@ -73,85 +47,77 @@ describe('remoteTransport', () => {
     expect(sseOptions.eventSourceInit).toEqual({ headers })
   })
 
-  it('resolves proxy configuration from provided shell env values', async () => {
-    mockedCreateDesktopNodeFetch.mockReturnValue(
+  it('forwards shell env into desktopMcpFetch', () => {
+    mockedCreateDesktopMcpFetch.mockReturnValue(
       jest.fn() as unknown as typeof fetch,
     )
 
-    const previousHttpsProxy = process.env.HTTPS_PROXY
-    process.env.HTTPS_PROXY = 'http://process-proxy.local:3128'
+    createMcpRemoteTransportFactory({
+      env: { HTTPS_PROXY: 'http://shell-proxy.local:8080' },
+    })
 
-    try {
-      createMcpRemoteTransportFactory({
-        env: {
-          HTTPS_PROXY: 'http://shell-proxy.local:8080',
-        },
-      })
-
-      const { ProxyAgent } = jest.requireMock('proxy-agent')
-      const proxyAgentOptions = ProxyAgent.mock.calls[0][0] as {
-        getProxyForUrl: (url: string) => string | Promise<string>
-      }
-
-      await expect(
-        Promise.resolve(
-          proxyAgentOptions.getProxyForUrl('https://example.com'),
-        ),
-      ).resolves.toBe('http://shell-proxy.local:8080')
-      expect(process.env.HTTPS_PROXY).toBe('http://process-proxy.local:3128')
-    } finally {
-      if (previousHttpsProxy === undefined) {
-        delete process.env.HTTPS_PROXY
-      } else {
-        process.env.HTTPS_PROXY = previousHttpsProxy
-      }
-    }
+    expect(mockedCreateDesktopMcpFetch).toHaveBeenCalledWith({
+      env: { HTTPS_PROXY: 'http://shell-proxy.local:8080' },
+    })
   })
 
-  it('falls back to resolveSystemProxy when no env proxy is present', async () => {
-    mockedCreateDesktopNodeFetch.mockReturnValue(
-      jest.fn() as unknown as typeof fetch,
+  it('classifies legacy node error codes', () => {
+    const econnrefused = Object.assign(new Error('connect ECONNREFUSED'), {
+      code: 'ECONNREFUSED',
+    })
+    expect(classifyRemoteTransportError(econnrefused)).toBe(
+      'network connection failed',
     )
 
-    const { resolveSystemProxy } = jest.requireMock(
-      '../../utils/net/systemProxyResolver',
+    const etimedout = Object.assign(new Error('socket hang up'), {
+      code: 'ETIMEDOUT',
+    })
+    expect(classifyRemoteTransportError(etimedout)).toBe('request timed out')
+  })
+
+  it('classifies undici error codes (issue #252)', () => {
+    const wrap = (code: string, msg = 'inner') => {
+      const outer = new TypeError('fetch failed')
+      ;(outer as unknown as { cause: unknown }).cause = Object.assign(
+        new Error(msg),
+        { code },
+      )
+      return outer
+    }
+
+    // Timeouts (all three undici timeout variants must collapse).
+    expect(classifyRemoteTransportError(wrap('UND_ERR_HEADERS_TIMEOUT'))).toBe(
+      'request timed out',
     )
-    resolveSystemProxy.mockResolvedValueOnce('http://system-proxy.corp:8080')
+    expect(classifyRemoteTransportError(wrap('UND_ERR_BODY_TIMEOUT'))).toBe(
+      'request timed out',
+    )
+    expect(classifyRemoteTransportError(wrap('UND_ERR_CONNECT_TIMEOUT'))).toBe(
+      'request timed out',
+    )
 
-    const previousProxyEnv: Partial<
-      Record<(typeof PROXY_ENV_KEYS)[number], string | undefined>
-    > = {}
-    for (const key of PROXY_ENV_KEYS) {
-      previousProxyEnv[key] = process.env[key]
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- iterating a fixed allowlist of proxy env keys to isolate test state
-      delete process.env[key]
-    }
+    // Connection / socket family.
+    expect(classifyRemoteTransportError(wrap('UND_ERR_SOCKET'))).toBe(
+      'network connection failed',
+    )
+    expect(classifyRemoteTransportError(wrap('UND_ERR_CLOSED'))).toBe(
+      'network connection failed',
+    )
+    expect(classifyRemoteTransportError(wrap('UND_ERR_DESTROYED'))).toBe(
+      'network connection failed',
+    )
+  })
 
-    try {
-      createMcpRemoteTransportFactory({ env: {} })
-
-      const { ProxyAgent } = jest.requireMock('proxy-agent')
-      const proxyAgentOptions = ProxyAgent.mock.calls[0][0] as {
-        getProxyForUrl: (url: string) => string | Promise<string>
-      }
-
-      await expect(
-        Promise.resolve(
-          proxyAgentOptions.getProxyForUrl('https://example.com'),
-        ),
-      ).resolves.toBe('http://system-proxy.corp:8080')
-      expect(resolveSystemProxy).toHaveBeenCalledWith('https://example.com')
-    } finally {
-      for (const key of PROXY_ENV_KEYS) {
-        const value = previousProxyEnv[key]
-        if (value === undefined) {
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- restoring the same fixed allowlist of proxy env keys
-          delete process.env[key]
-        } else {
-          process.env[key] = value
-        }
-      }
-    }
+  it('classifies SOCKS fail-fast as proxy negotiation failed', () => {
+    const socksErr = Object.assign(
+      new Error(
+        'SOCKS proxy is not supported by Streamable HTTP MCP transport (resolved proxy: socks5://127.0.0.1:1080).',
+      ),
+      { code: 'YOLO_MCP_SOCKS_UNSUPPORTED' },
+    )
+    expect(classifyRemoteTransportError(socksErr)).toBe(
+      'proxy negotiation failed',
+    )
   })
 
   it('creates actionable diagnostics for remote transport failures', () => {
@@ -171,9 +137,7 @@ describe('remoteTransport', () => {
 
     const error = Object.assign(
       new Error('connect ECONNREFUSED 127.0.0.1:8080'),
-      {
-        code: 'ECONNREFUSED',
-      },
+      { code: 'ECONNREFUSED' },
     )
 
     const wrapped = createMcpRemoteTransportError({
