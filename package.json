@@ -109,6 +109,7 @@
     "react-virtuoso": "^4.18.4",
     "remark-gfm": "^4.0.0",
     "shell-env": "^4.0.1",
+    "undici": "6.25.0",
     "uuid": "^10.0.0",
     "vscode-diff": "^2.1.1",
     "zod": "^3.23.8"

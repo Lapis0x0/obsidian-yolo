@@ -1,12 +1,9 @@
 import type { SSEClientTransportOptions } from '@modelcontextprotocol/sdk/client/sse.js'
 import type { StreamableHTTPClientTransportOptions } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { ProxyAgent } from 'proxy-agent'
-import { getProxyForUrl } from 'proxy-from-env'
 
 import type { McpServerParameters } from '../../types/mcp.types'
-import { shouldBypassProxy } from '../../utils/net/proxyBypass'
-import { resolveSystemProxy } from '../../utils/net/systemProxyResolver'
-import { createDesktopNodeFetch } from '../llm/sdkFetch'
+
+import { createDesktopMcpFetch } from './desktopMcpFetch'
 
 type McpRemoteTransportParameters = Extract<
   McpServerParameters,
@@ -44,7 +41,14 @@ const TLS_ERROR_CODES = new Set([
   'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
 ])
 
-const TIMEOUT_ERROR_CODES = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT'])
+const TIMEOUT_ERROR_CODES = new Set([
+  'ETIMEDOUT',
+  'ESOCKETTIMEDOUT',
+  // undici timeout codes (see scripts spike for issue #252)
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+])
 
 const CONNECTION_ERROR_CODES = new Set([
   'EAI_AGAIN',
@@ -53,54 +57,11 @@ const CONNECTION_ERROR_CODES = new Set([
   'ENETUNREACH',
   'ENOTFOUND',
   'EHOSTUNREACH',
+  // undici socket/network errors
+  'UND_ERR_SOCKET',
+  'UND_ERR_CLOSED',
+  'UND_ERR_DESTROYED',
 ])
-
-const PROXY_ENV_KEYS = [
-  'HTTP_PROXY',
-  'HTTPS_PROXY',
-  'ALL_PROXY',
-  'NO_PROXY',
-  'http_proxy',
-  'https_proxy',
-  'all_proxy',
-  'no_proxy',
-] as const
-
-function envHasProxy(env: NodeJS.ProcessEnv): boolean {
-  return PROXY_ENV_KEYS.some(
-    (key) => typeof env[key] === 'string' && env[key]?.trim(),
-  )
-}
-
-function withProcessEnv<T>(env: NodeJS.ProcessEnv, cb: () => T): T {
-  const previousEnv = process.env
-  process.env = env
-  try {
-    return cb()
-  } finally {
-    process.env = previousEnv
-  }
-}
-
-function createProxyAgent(env: Record<string, string>): ProxyAgent {
-  // `env` is the merged shell env from shellEnvSync() — it may legitimately
-  // carry HTTP(S)_PROXY values that are not in process.env, so keep the
-  // env-swap for proxy-from-env to observe them.
-  const resolvedEnv: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...env,
-  }
-
-  return new ProxyAgent({
-    getProxyForUrl: async (url) => {
-      if (shouldBypassProxy(url)) return ''
-      if (envHasProxy(resolvedEnv)) {
-        return withProcessEnv(resolvedEnv, () => getProxyForUrl(url))
-      }
-      return resolveSystemProxy(url)
-    },
-  })
-}
 
 function createRequestInit(
   headers?: Record<string, string>,
@@ -138,7 +99,7 @@ function getErrorCode(error: unknown): string | undefined {
   return undefined
 }
 
-function classifyRemoteTransportError(error: unknown): string {
+export function classifyRemoteTransportError(error: unknown): string {
   const code = getErrorCode(error)
   const message = getErrorMessage(error).toLowerCase()
 
@@ -235,8 +196,10 @@ export function createMcpRemoteTransportFactory({
 }: {
   env: Record<string, string>
 }): McpRemoteTransportFactory {
-  const proxyAgent = createProxyAgent(env)
-  const fetch = createDesktopNodeFetch({ agent: proxyAgent })
+  // Issue #252: switched from `node-fetch@2` to undici-backed fetch so the
+  // MCP SDK's `StreamableHTTPClientTransport` receives a WHATWG ReadableStream
+  // body (with `pipeThrough`/`getReader`) and can consume the SSE channel.
+  const fetch = createDesktopMcpFetch({ env })
 
   return {
     createHttpOptions: (params) => ({
