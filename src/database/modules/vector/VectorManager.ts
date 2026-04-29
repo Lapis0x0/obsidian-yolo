@@ -507,7 +507,7 @@ export class VectorManager {
 
     const chunks: DesiredChunk[] = []
     for (const { page: pageNum, text } of pages) {
-      const trimmed = text.trim()
+      const trimmed = text.split('\u0000').join('').trim()
       if (!trimmed) continue
       const lineCount = Math.max(1, trimmed.split('\n').length)
       if (trimmed.length <= PDF_PAGE_CHUNK_CHAR_THRESHOLD) {
