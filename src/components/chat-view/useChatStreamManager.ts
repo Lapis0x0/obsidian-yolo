@@ -723,7 +723,8 @@ export function useChatStreamManager({
             chatMode === 'agent'
               ? selectedAssistant?.toolPreferences
               : undefined,
-          workspaceScope: resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
+          workspaceScope:
+            resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
           allowedSkillIds,
           allowedSkillNames,
           requestParams,

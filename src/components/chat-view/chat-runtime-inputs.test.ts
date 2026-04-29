@@ -26,9 +26,11 @@ describe('chat-runtime-inputs', () => {
   it('returns undefined workspace scope when assistant is missing or has none', () => {
     expect(resolveWorkspaceScopeForRuntimeInput(null)).toBeUndefined()
     expect(
-      resolveWorkspaceScopeForRuntimeInput(
-        { id: 'a', name: 'A', systemPrompt: '' } as Assistant,
-      ),
+      resolveWorkspaceScopeForRuntimeInput({
+        id: 'a',
+        name: 'A',
+        systemPrompt: '',
+      } as Assistant),
     ).toBeUndefined()
   })
 })
