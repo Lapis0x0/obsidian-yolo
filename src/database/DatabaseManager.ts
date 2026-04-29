@@ -114,7 +114,7 @@ export class DatabaseManager {
       const deleted = (result as unknown as { affectedRows?: number })
         .affectedRows
       if (deleted && deleted > 0) {
-        console.info(
+        console.debug(
           `[YOLO] Dropped ${deleted} legacy staging row(s) from embeddings.`,
         )
         await dbManager.vacuum()

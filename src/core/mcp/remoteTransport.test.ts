@@ -123,6 +123,7 @@ describe('remoteTransport', () => {
     > = {}
     for (const key of PROXY_ENV_KEYS) {
       previousProxyEnv[key] = process.env[key]
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- iterating a fixed allowlist of proxy env keys to isolate test state
       delete process.env[key]
     }
 
@@ -144,6 +145,7 @@ describe('remoteTransport', () => {
       for (const key of PROXY_ENV_KEYS) {
         const value = previousProxyEnv[key]
         if (value === undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- restoring the same fixed allowlist of proxy env keys
           delete process.env[key]
         } else {
           process.env[key] = value
