@@ -710,6 +710,7 @@ export const en: TranslationKeys = {
     },
     rag: {
       title: 'Knowledge base',
+      desc: 'Manage knowledge base indexing. RAG is invoked automatically when the Agent uses the Search tool in Hybrid or RAG mode.',
       enableRag: 'Enable knowledge base indexing',
       enableRagDesc: 'Build indexes for documents within the selected scope.',
       embeddingModel: 'Embedding model',

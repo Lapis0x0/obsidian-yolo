@@ -770,6 +770,15 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
   return (
     <div className="smtcmp-settings-section">
+      <div className="smtcmp-settings-header">
+        {t('settings.rag.title', '知识库')}
+      </div>
+      <div className="smtcmp-settings-desc">
+        {t(
+          'settings.rag.desc',
+          '管理知识库索引，当 Agent 使用「搜索」工具并选择混合 & RAG 模式时，会自动调用 RAG 能力。',
+        )}
+      </div>
       <div className="smtcmp-rag-layout">
         <RAGCard
           title={t('settings.rag.resourceCardTitle', 'PGlite 资源')}
