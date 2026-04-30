@@ -75,6 +75,7 @@ const MODEL_SAMPLING_DEFAULTS = {
 
 const MAX_CONTEXT_TOKENS_INPUT_MAX = 1000000
 const MAX_CONTEXT_TOKENS_SLIDER_STEP = 64
+const MAX_OUTPUT_TOKENS_SLIDER_MAX = 393216 // 384K, supports DeepSeek v4 and similar models
 
 const clampTemperature = (value: number): number =>
   Math.min(2, Math.max(0, value))
@@ -1175,10 +1176,10 @@ function AddChatModelModalComponent({
                 <input
                   type="range"
                   min={256}
-                  max={32768}
+                  max={MAX_OUTPUT_TOKENS_SLIDER_MAX}
                   step={256}
                   value={Math.min(
-                    32768,
+                    MAX_OUTPUT_TOKENS_SLIDER_MAX,
                     Math.max(
                       256,
                       formData.maxOutputTokens ??
