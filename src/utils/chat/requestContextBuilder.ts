@@ -1,5 +1,5 @@
 import type { App, TFile, TFolder } from 'obsidian'
-import { Notice, htmlToMarkdown, requestUrl } from 'obsidian'
+import { Notice } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
@@ -16,6 +16,7 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
+import { scrapeUrlGeneric } from '../../core/web-search'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
@@ -64,7 +65,6 @@ import {
   filterContextPrunedAssistantToolCalls,
   filterContextPrunedToolCalls,
 } from './tool-context-pruning'
-import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
 
 export type CurrentFileContextMode = 'full' | 'summary'
 
@@ -1395,29 +1395,10 @@ Title: ${currentFile.name}
     return linesWithNumbers.join('\n')
   }
 
-  /**
-   * TODO: Improve markdown conversion logic
-   * - filter visually hidden elements
-   * ...
-   */
   private async getWebsiteContent(url: string): Promise<string> {
-    if (isYoutubeUrl(url)) {
-      try {
-        // TODO: pass language based on user preferences
-        const { title, transcript } =
-          await YoutubeTranscript.fetchTranscriptAndMetadata(url)
-
-        return `Title: ${title}
-Video Transcript:
-${transcript.map((t) => `${t.offset}: ${t.text}`).join('\n')}`
-      } catch (error) {
-        console.error('Error fetching YouTube transcript', error)
-      }
-    }
-
     try {
-      const response = await requestUrl({ url })
-      return htmlToMarkdown(response.text)
+      const { content } = await scrapeUrlGeneric(url)
+      return content
     } catch (error) {
       const status = error instanceof Error ? error.message : String(error)
       console.warn(`Failed to fetch URL: ${url}`, error)

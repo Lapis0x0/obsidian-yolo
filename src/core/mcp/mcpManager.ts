@@ -21,7 +21,6 @@ import type { RAGEngine } from '../rag/ragEngine'
 import {
   WEB_SCRAPE_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
-  activeProviderSupportsScrape,
   isWebSearchToolReady,
 } from '../web-search'
 
@@ -113,13 +112,9 @@ export class McpManager {
       const splitToolDisabled =
         this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
       if (groupDisabled || splitToolDisabled) return false
+      // web_scrape is always available alongside web_search: providers
+      // without a specialized extract API fall back to a generic scraper.
       if (!isWebSearchToolReady(this.settings.webSearch)) return false
-      if (
-        toolName === WEB_SCRAPE_TOOL_NAME &&
-        !activeProviderSupportsScrape(this.settings.webSearch)
-      ) {
-        return false
-      }
       return true
     }
     const directDisabled =

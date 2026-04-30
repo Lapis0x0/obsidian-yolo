@@ -1,3 +1,4 @@
+import { scrapeUrlGeneric } from './genericScrape'
 import { getWebSearchProvider } from './registry'
 import type {
   WebSearchProviderOptions,
@@ -71,32 +72,27 @@ export async function runWebScrape({
   signal?: AbortSignal
 }): Promise<WebSearchScrapeResult & { providerName: string }> {
   const options = resolveActiveWebSearchProvider(settings)
-  if (!options) {
-    throw new Error('No web search provider is configured.')
+  if (options) {
+    const provider = getWebSearchProvider(options)
+    if (provider.supportsScrape && provider.scrape) {
+      const result = await provider.scrape(
+        { url },
+        options,
+        settings.common,
+        signal,
+      )
+      return { ...result, providerName: options.name || provider.displayName }
+    }
   }
-  const provider = getWebSearchProvider(options)
-  if (!provider.supportsScrape || !provider.scrape) {
-    throw new Error(
-      `Provider "${options.name}" (${provider.type}) does not support scraping.`,
-    )
-  }
-  const result = await provider.scrape(
-    { url },
-    options,
-    settings.common,
+  // Fall back to the generic static-HTML scraper so providers without a
+  // dedicated extract API (Bing, Zhipu, ...) still expose web_scrape.
+  const result = await scrapeUrlGeneric(url, {
+    timeoutMs: settings.common.scrapeTimeoutMs,
     signal,
-  )
-  return { ...result, providerName: options.name || provider.displayName }
+  })
+  return { ...result, providerName: 'Generic' }
 }
 
 export function isWebSearchToolReady(settings: WebSearchSettings): boolean {
   return resolveActiveWebSearchProvider(settings) !== undefined
-}
-
-export function activeProviderSupportsScrape(
-  settings: WebSearchSettings,
-): boolean {
-  const options = resolveActiveWebSearchProvider(settings)
-  if (!options) return false
-  return getWebSearchProvider(options).supportsScrape
 }
