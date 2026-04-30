@@ -395,6 +395,7 @@ export type TranslationKeys = {
         bing?: string
         'gemini-grounding'?: string
         grok?: string
+        zhipu?: string
       }
       fieldName?: string
       fieldApiKey?: string
@@ -409,6 +410,10 @@ export type TranslationKeys = {
       fieldModel?: string
       fieldSystemPrompt?: string
       fieldEnableX?: string
+      fieldZhipuEngine?: string
+      fieldZhipuContentSize?: string
+      fieldZhipuRecency?: string
+      fieldZhipuDomainFilter?: string
       bingNote?: string
     }
     providers: {

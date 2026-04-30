@@ -484,6 +484,7 @@ export const zh: TranslationKeys = {
         bing: 'Bing（无需 Key）',
         'gemini-grounding': 'Gemini Grounding',
         grok: 'Grok',
+        zhipu: '智谱网页搜索',
       },
       fieldName: '显示名称',
       fieldApiKey: 'API Key',
@@ -498,6 +499,10 @@ export const zh: TranslationKeys = {
       fieldModel: '模型',
       fieldSystemPrompt: 'System Prompt',
       fieldEnableX: '同时搜索 X',
+      fieldZhipuEngine: '搜索引擎',
+      fieldZhipuContentSize: '摘要长度',
+      fieldZhipuRecency: '时效过滤',
+      fieldZhipuDomainFilter: '域名过滤（可选）',
       bingNote:
         'Bing 无需 API Key，由插件直接抓取公开搜索结果页面，稳定性受 Bing 反爬策略影响。',
     },

@@ -26,6 +26,7 @@ export const WEB_SEARCH_PROVIDER_TYPES = [
   'bing',
   'gemini-grounding',
   'grok',
+  'zhipu',
 ] as const
 export type WebSearchProviderType = (typeof WEB_SEARCH_PROVIDER_TYPES)[number]
 
@@ -77,6 +78,31 @@ export const geminiGroundingOptionsSchema = z.object({
     ),
 })
 
+export const ZHIPU_SEARCH_ENGINES = [
+  'search_std',
+  'search_pro',
+  'search_pro_sogou',
+  'search_pro_quark',
+] as const
+
+export const ZHIPU_RECENCY_FILTERS = [
+  'noLimit',
+  'oneDay',
+  'oneWeek',
+  'oneMonth',
+  'oneYear',
+] as const
+
+export const zhipuOptionsSchema = z.object({
+  ...baseFields,
+  type: z.literal('zhipu'),
+  apiKey: z.string().default(''),
+  searchEngine: z.enum(ZHIPU_SEARCH_ENGINES).default('search_pro'),
+  contentSize: z.enum(['medium', 'high']).default('medium'),
+  searchRecencyFilter: z.enum(ZHIPU_RECENCY_FILTERS).default('noLimit'),
+  searchDomainFilter: z.string().default(''),
+})
+
 export const grokSearchOptionsSchema = z.object({
   ...baseFields,
   type: z.literal('grok'),
@@ -98,13 +124,14 @@ export const webSearchProviderOptionsSchema = z.discriminatedUnion('type', [
   bingOptionsSchema,
   geminiGroundingOptionsSchema,
   grokSearchOptionsSchema,
+  zhipuOptionsSchema,
 ])
 export type WebSearchProviderOptions = z.infer<
   typeof webSearchProviderOptionsSchema
 >
 
 export const webSearchCommonOptionsSchema = z.object({
-  resultSize: z.number().int().min(1).max(50).default(8),
+  resultSize: z.number().int().min(1).max(50).default(10),
   searchTimeoutMs: z.number().int().min(1000).max(120000).default(120000),
   scrapeTimeoutMs: z.number().int().min(1000).max(120000).default(20000),
 })
@@ -124,7 +151,7 @@ export const webSearchSettingsSchema = z.object({
     .catch([]),
   defaultProviderId: z.string().optional(),
   common: webSearchCommonOptionsSchema.catch({
-    resultSize: 8,
+    resultSize: 10,
     searchTimeoutMs: 120000,
     scrapeTimeoutMs: 20000,
   }),
@@ -218,6 +245,17 @@ export function createDefaultProviderOptions(
         systemPrompt:
           "You are a helpful search assistant. Search the web to find accurate and up-to-date information for the user's query. Provide a comprehensive answer with citations.",
         enableX: false,
+      }
+    case 'zhipu':
+      return {
+        id,
+        name: 'Zhipu Web Search',
+        type: 'zhipu',
+        apiKey: '',
+        searchEngine: 'search_pro',
+        contentSize: 'medium',
+        searchRecencyFilter: 'noLimit',
+        searchDomainFilter: '',
       }
   }
 }

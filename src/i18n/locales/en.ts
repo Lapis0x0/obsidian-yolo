@@ -527,6 +527,7 @@ export const en: TranslationKeys = {
         bing: 'Bing (no key)',
         'gemini-grounding': 'Gemini (Grounding)',
         grok: 'Grok',
+        zhipu: 'Zhipu Web Search',
       },
       fieldName: 'Display name',
       fieldApiKey: 'API key',
@@ -541,6 +542,10 @@ export const en: TranslationKeys = {
       fieldModel: 'Model',
       fieldSystemPrompt: 'System prompt',
       fieldEnableX: 'Also search X',
+      fieldZhipuEngine: 'Search engine',
+      fieldZhipuContentSize: 'Content size',
+      fieldZhipuRecency: 'Recency filter',
+      fieldZhipuDomainFilter: 'Domain filter (optional)',
       bingNote:
         'Bing requires no API key. The provider scrapes the public results page; reliability depends on Bing\u2019s anti-bot measures.',
     },

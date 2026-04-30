@@ -293,7 +293,7 @@ export const smartComposerSettingsSchema = z.object({
     providers: [],
     defaultProviderId: undefined,
     common: {
-      resultSize: 8,
+      resultSize: 10,
       searchTimeoutMs: 120000,
       scrapeTimeoutMs: 20000,
     },

@@ -12,6 +12,7 @@ import {
 } from '../../../core/web-search'
 import SmartComposerPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -146,16 +147,11 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
             onChange={(value) => update('apiKey', value)}
           />
           <ObsidianSetting name={t('settings.webSearch.fieldDepth', 'Depth')}>
-            <select
-              className="dropdown"
+            <ObsidianDropdown
               value={form.depth}
-              onChange={(e) =>
-                update('depth', e.target.value as 'basic' | 'advanced')
-              }
-            >
-              <option value="basic">basic</option>
-              <option value="advanced">advanced</option>
-            </select>
+              options={{ basic: 'basic', advanced: 'advanced' }}
+              onChange={(value) => update('depth', value)}
+            />
           </ObsidianSetting>
         </>
       )}
@@ -311,6 +307,65 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
             <ObsidianToggle
               value={form.enableX}
               onChange={(value) => update('enableX', value)}
+            />
+          </ObsidianSetting>
+        </>
+      )}
+
+      {form.type === 'zhipu' && (
+        <>
+          <ApiKeyField
+            value={form.apiKey}
+            onChange={(value) => update('apiKey', value)}
+          />
+          <ObsidianSetting
+            name={t('settings.webSearch.fieldZhipuEngine', 'Search engine')}
+          >
+            <ObsidianDropdown
+              value={form.searchEngine}
+              options={{
+                search_std: 'search_std',
+                search_pro: 'search_pro',
+                search_pro_sogou: 'search_pro_sogou',
+                search_pro_quark: 'search_pro_quark',
+              }}
+              onChange={(value) => update('searchEngine', value)}
+            />
+          </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.webSearch.fieldZhipuContentSize', 'Content size')}
+          >
+            <ObsidianDropdown
+              value={form.contentSize}
+              options={{ medium: 'medium', high: 'high' }}
+              onChange={(value) => update('contentSize', value)}
+            />
+          </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.webSearch.fieldZhipuRecency', 'Recency filter')}
+          >
+            <ObsidianDropdown
+              value={form.searchRecencyFilter}
+              options={{
+                noLimit: 'noLimit',
+                oneDay: 'oneDay',
+                oneWeek: 'oneWeek',
+                oneMonth: 'oneMonth',
+                oneYear: 'oneYear',
+              }}
+              onChange={(value) => update('searchRecencyFilter', value)}
+            />
+          </ObsidianSetting>
+          <ObsidianSetting
+            name={t(
+              'settings.webSearch.fieldZhipuDomainFilter',
+              'Domain filter (optional)',
+            )}
+          >
+            <ObsidianTextInput
+              value={form.searchDomainFilter}
+              placeholder="example.com"
+              onChange={(value) => update('searchDomainFilter', value)}
             />
           </ObsidianSetting>
         </>
