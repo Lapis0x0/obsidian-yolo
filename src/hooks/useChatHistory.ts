@@ -25,7 +25,11 @@ import {
   normalizeChatConversationCompactionState,
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'
-import { Mentionable } from '../types/mentionable'
+import {
+  Mentionable,
+  MentionableAssistantQuote,
+  MentionableBlock,
+} from '../types/mentionable'
 import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
   deserializeMentionable,
@@ -71,6 +75,20 @@ const formatSelectedSkillsForTitleInput = (
   return truncateForTitleInput(
     `[User selected skills: ${skillNames.join(', ')}]`,
   )
+}
+
+const formatMentionableContentForTitleInput = (
+  mentionables: Mentionable[],
+): string => {
+  const contentParts = mentionables
+    .filter(
+      (m): m is MentionableBlock | MentionableAssistantQuote =>
+        m.type === 'block' || m.type === 'assistant-quote',
+    )
+    .map((m) => m.content.trim())
+    .filter((c) => c.length > 0)
+
+  return contentParts.join('\n')
 }
 
 type UseChatHistory = {
@@ -543,12 +561,23 @@ export function useChatHistory(): UseChatHistory {
           return
         }
 
+        const referenceContent =
+          formatMentionableContentForTitleInput(userMentionables)
+
+        const contextParts: string[] = []
+        if (referenceContent.length > 0) {
+          contextParts.push(`[Referenced content:\n${referenceContent}]`)
+        }
+        if (normalizedUserText.length > 0) {
+          contextParts.push(normalizedUserText)
+        } else if (userSelectedSkills.length > 0) {
+          contextParts.push(formatSelectedSkillsForTitleInput(userSelectedSkills))
+        }
+
         const userContext =
-          normalizedUserText.length > 0
-            ? truncateForTitleInput(normalizedUserText)
-            : userSelectedSkills.length > 0
-              ? formatSelectedSkillsForTitleInput(userSelectedSkills)
-              : '[User shared only attachments/mentions without text.]'
+          contextParts.length > 0
+            ? truncateForTitleInput(contextParts.join('\n\n'))
+            : '[User shared only attachments/mentions without text.]'
 
         const titleInput = `User first message:\n${userContext}`
 
