@@ -1,6 +1,7 @@
 import {
   DndContext,
   type DragEndEvent,
+  type DragStartEvent,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -1089,6 +1090,9 @@ export function ProvidersAndModelsSection({
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(
     new Set(),
   )
+  const [draggingProviderId, setDraggingProviderId] = useState<string | null>(
+    null,
+  )
   const [deletingEmbeddingModelIds, setDeletingEmbeddingModelIds] = useState<
     Set<string>
   >(new Set())
@@ -1578,7 +1582,50 @@ export function ProvidersAndModelsSection({
           <DndContext
             sensors={providerSensors}
             collisionDetection={closestCenter}
-            onDragEnd={(event) => void handleProviderDragEnd(event)}
+            onDragStart={(event: DragStartEvent) => {
+              const id = String(event.active.id)
+              if (!expandedProviders.has(id)) {
+                return
+              }
+              setDraggingProviderId(id)
+              setExpandedProviders((prev) => {
+                if (!prev.has(id)) {
+                  return prev
+                }
+                const next = new Set(prev)
+                next.delete(id)
+                return next
+              })
+            }}
+            onDragEnd={(event) => {
+              void handleProviderDragEnd(event)
+              if (draggingProviderId) {
+                const idToRestore = draggingProviderId
+                setExpandedProviders((prev) => {
+                  if (prev.has(idToRestore)) {
+                    return prev
+                  }
+                  const next = new Set(prev)
+                  next.add(idToRestore)
+                  return next
+                })
+                setDraggingProviderId(null)
+              }
+            }}
+            onDragCancel={() => {
+              if (draggingProviderId) {
+                const idToRestore = draggingProviderId
+                setExpandedProviders((prev) => {
+                  if (prev.has(idToRestore)) {
+                    return prev
+                  }
+                  const next = new Set(prev)
+                  next.add(idToRestore)
+                  return next
+                })
+                setDraggingProviderId(null)
+              }
+            }}
           >
             <SortableContext
               items={providerIds}
