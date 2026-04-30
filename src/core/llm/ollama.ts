@@ -15,6 +15,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -74,7 +75,7 @@ export class OllamaProvider extends BaseLLMProvider<LLMProvider> {
       memoryKey: this.requestTransportMemoryKey,
     })
     const clientOptions = {
-      baseURL: `${provider.baseUrl ? provider.baseUrl.replace(/\/+$/, '') : 'http://127.0.0.1:11434'}/v1`,
+      baseURL: `${resolveProviderBaseUrl(provider)}/v1`,
       apiKey: provider.apiKey ?? '',
       dangerouslyAllowBrowser: true,
       defaultHeaders,

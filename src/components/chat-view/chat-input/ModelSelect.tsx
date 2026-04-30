@@ -114,9 +114,9 @@ export const ModelSelect = forwardRef<
       if (!target) return
       target.focus({ preventScroll: true })
 
-      // 手动滚动到选中项，确保其在可视区域内
+      // 打开时把选中项滚动到列表中部，避免贴边
       target.scrollIntoView({
-        block: 'nearest',
+        block: 'center',
         inline: 'nearest',
       })
     }, [selectedModelId])

@@ -170,7 +170,12 @@ describe('parseSmartComposerSettings', () => {
     expect(result.ragOptions.autoUpdateIntervalHours).toBe(0)
   })
 
-  it('keeps valid providers when one provider entry is invalid', () => {
+  // Regression: previously the entry with an unrecognized presetType was
+  // silently dropped by `resilientArraySchema`. When users sync settings from
+  // a newer plugin version (with a preset this version doesn't know yet),
+  // that drop was wiping providers across devices. Unknown presets must now
+  // degrade to `openai-compatible` and stay in the list.
+  it('preserves providers with unknown presetType by coercing to openai-compatible', () => {
     const result = parseSmartComposerSettings({
       version: SETTINGS_SCHEMA_VERSION,
       providers: [
@@ -180,7 +185,7 @@ describe('parseSmartComposerSettings', () => {
           apiKey: 'token',
         },
         {
-          id: 'broken',
+          id: 'from-future',
           presetType: 'not-a-provider',
         },
       ],
@@ -192,6 +197,11 @@ describe('parseSmartComposerSettings', () => {
         presetType: 'openai',
         apiType: 'openai-responses',
         apiKey: 'token',
+      },
+      {
+        id: 'from-future',
+        presetType: 'openai-compatible',
+        apiType: 'openai-compatible',
       },
     ])
   })

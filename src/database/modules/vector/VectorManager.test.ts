@@ -258,9 +258,8 @@ describe('VectorManager.reconcile', () => {
       insertVectors: jest.fn().mockResolvedValue(undefined),
       truncateModel: jest.fn().mockResolvedValue(undefined),
     }
-    ;(
-      manager as unknown as { repository: typeof repository }
-    ).repository = repository
+    ;(manager as unknown as { repository: typeof repository }).repository =
+      repository
     manager.setSaveCallback(async () => undefined)
     manager.setVacuumCallback(async () => undefined)
 

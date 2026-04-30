@@ -3,10 +3,15 @@ import { App, TFile, TFolder } from 'obsidian'
 
 import { MentionableFile, MentionableFolder } from '../types/mentionable'
 
+import { IMAGE_FILE_EXTENSIONS } from './llm/image'
 import { calculateFileDistance, getOpenFiles } from './obsidian'
 
 /** Extensions included in @ mention fuzzy search (vault files). */
-export const MENTION_SEARCHABLE_EXTENSIONS = new Set(['md', 'pdf'])
+export const MENTION_SEARCHABLE_EXTENSIONS = new Set([
+  'md',
+  'pdf',
+  ...IMAGE_FILE_EXTENSIONS,
+])
 
 export type SearchableMentionable = MentionableFile | MentionableFolder
 

@@ -43,6 +43,10 @@ import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
+import {
+  resolveCurrentFileContextModeForRuntime,
+  resolveWorkspaceScopeForRuntimeInput,
+} from './chat-runtime-inputs'
 import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {
@@ -530,7 +534,7 @@ export function useChatStreamManager({
             allowedSkillNames,
             maxContextOverride:
               conversationOverrides?.maxContextMessages ?? undefined,
-            currentFileContextMode: chatMode === 'agent' ? 'summary' : 'full',
+            currentFileContextMode: resolveCurrentFileContextModeForRuntime(),
             currentFileOverride,
           })
       } catch (error) {
@@ -704,8 +708,7 @@ export function useChatStreamManager({
         }
         const maxContextOverride =
           conversationOverrides?.maxContextMessages ?? undefined
-        const currentFileContextMode: 'full' | 'summary' =
-          chatMode === 'agent' ? 'summary' : 'full'
+        const currentFileContextMode = resolveCurrentFileContextModeForRuntime()
         const effectiveCompactionForRequest = compactionOverride ?? compaction
         const baseInput = {
           messages: chatMessages,
@@ -721,9 +724,7 @@ export function useChatStreamManager({
               ? selectedAssistant?.toolPreferences
               : undefined,
           workspaceScope:
-            chatMode === 'agent'
-              ? selectedAssistant?.workspaceScope
-              : undefined,
+            resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
           allowedSkillIds,
           allowedSkillNames,
           requestParams,

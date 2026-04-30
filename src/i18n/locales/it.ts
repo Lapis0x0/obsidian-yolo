@@ -704,6 +704,7 @@ export const it: TranslationKeys = {
     },
     rag: {
       title: 'RAG (Retrieval Augmented Generation)',
+      desc: "Gestisci gli indici della knowledge base. Il RAG viene attivato automaticamente quando l'Agent usa lo strumento Ricerca in modalità Ibrida o RAG.",
       enableRag: 'Abilita RAG',
       enableRagDesc:
         "Crea l'indice per i documenti inclusi nell'ambito selezionato.",

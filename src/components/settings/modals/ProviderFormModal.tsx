@@ -16,6 +16,7 @@ import {
   getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from '../../../types/provider.types'
+import { getDefaultBaseUrlForPreset } from '../../../utils/llm/provider-base-url'
 import {
   getRequestTransportModeValue,
   providerSupportsTransportModeSelection,
@@ -307,19 +308,16 @@ function ProviderFormComponent({
             ]),
           )}
           onChange={(value: string) =>
-            setFormData(
-              (prev) =>
-                ({
-                  ...prev,
-                  presetType: value as LLMProvider['presetType'],
-                  apiType: getDefaultApiTypeForPresetType(
-                    value as LLMProvider['presetType'],
-                  ),
-                  additionalSettings: getDefaultAdditionalSettings(
-                    value as LLMProvider['presetType'],
-                  ),
-                }) as LLMProvider,
-            )
+            setFormData((prev) => {
+              const nextPreset = value as LLMProvider['presetType']
+              return {
+                ...prev,
+                presetType: nextPreset,
+                apiType: getDefaultApiTypeForPresetType(nextPreset),
+                additionalSettings: getDefaultAdditionalSettings(nextPreset),
+                baseUrl: getDefaultBaseUrlForPreset(nextPreset) ?? '',
+              } as LLMProvider
+            })
           }
         />
       </ObsidianSetting>

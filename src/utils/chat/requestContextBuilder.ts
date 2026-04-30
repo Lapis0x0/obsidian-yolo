@@ -45,6 +45,7 @@ import {
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { collectWikilinkPaths } from '../llm/annotate-wikilinks'
+import { isImageTFile, tFileToImageDataUrl } from '../llm/image'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import {
   PDF_INDEX_MAX_BYTES,
@@ -751,10 +752,12 @@ ${message.annotations
         type: 'reading-mentionables',
       })
 
-      const files = message.mentionables
+      const allMentionedFiles = message.mentionables
         .filter((m): m is MentionableFile => m.type === 'file')
         .map((m) => this.app.vault.getFileByPath(m.file.path))
         .filter((file): file is TFile => Boolean(file))
+      const mentionedImageFiles = allMentionedFiles.filter(isImageTFile)
+      const files = allMentionedFiles.filter((f) => !isImageTFile(f))
       const folders = message.mentionables
         .filter((m): m is MentionableFolder => m.type === 'folder')
         .map((m) => this.app.vault.getFolderByPath(m.folder.path))
@@ -762,7 +765,14 @@ ${message.annotations
       const latestCurrentFile = getLatestValidCurrentFileMentionable(
         message.mentionables,
       )
-      const currentFiles = latestCurrentFile ? [latestCurrentFile] : []
+      // If the active file is an image, treat it as a vision attachment
+      // rather than a text file to avoid feeding raw binary into the prompt.
+      const currentFileImage =
+        latestCurrentFile && isImageTFile(latestCurrentFile)
+          ? latestCurrentFile
+          : null
+      const currentFiles =
+        latestCurrentFile && !currentFileImage ? [latestCurrentFile] : []
 
       const filePrompt = await this.buildMentionedFilePrompt({
         files,
@@ -813,9 +823,29 @@ ${await this.getWebsiteContent(url)}
 `
           : ''
 
-      const imageDataUrls = message.mentionables
+      const inlineImageDataUrls = message.mentionables
         .filter((m): m is MentionableImage => m.type === 'image')
         .map(({ data }) => data)
+      const vaultImageFiles = currentFileImage
+        ? [...mentionedImageFiles, currentFileImage]
+        : mentionedImageFiles
+      const vaultImageDataUrls = (
+        await Promise.all(
+          vaultImageFiles.map(async (file) => {
+            try {
+              return await tFileToImageDataUrl(this.app, file)
+            } catch (error) {
+              console.warn(
+                '[YOLO] Failed to read mentioned image file',
+                file.path,
+                error,
+              )
+              return null
+            }
+          }),
+        )
+      ).filter((url): url is string => url !== null)
+      const imageDataUrls = [...inlineImageDataUrls, ...vaultImageDataUrls]
       const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
         message.selectedSkills,
       )
@@ -1224,6 +1254,11 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     const fileEntries = await Promise.all(
       uniqueFiles.map(async (file) => {
         try {
+          // Image attachments are handled as image_url content parts in
+          // compileUserMessagePrompt; never inline their binary as text.
+          if (isImageTFile(file)) {
+            return null
+          }
           const ext = file.extension?.toLowerCase() ?? ''
           let rawContent: string
           if (ext === 'pdf') {

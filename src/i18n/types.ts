@@ -556,6 +556,7 @@ export type TranslationKeys = {
     }
     rag: {
       title: string
+      desc?: string
       enableRag: string
       enableRagDesc: string
       indexPdf?: string
