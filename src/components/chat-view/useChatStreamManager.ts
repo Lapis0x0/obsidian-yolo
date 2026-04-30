@@ -84,21 +84,22 @@ type BranchRetryTarget = {
   branchLabel?: string
 }
 
-const CHAT_SAFE_TOOL_NAMES = [
-  getToolName(getLocalFileToolServerName(), 'fs_search'),
-  getToolName(getLocalFileToolServerName(), 'fs_read'),
-  getToolName(getLocalFileToolServerName(), 'memory_add'),
-  getToolName(getLocalFileToolServerName(), 'memory_update'),
-  getToolName(getLocalFileToolServerName(), 'memory_delete'),
-  getToolName(getLocalFileToolServerName(), 'open_skill'),
+const CHAT_BLOCKED_TOOL_NAMES = [
+  getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
+  getToolName(getLocalFileToolServerName(), 'fs_edit'),
+  getToolName(getLocalFileToolServerName(), 'fs_create_file'),
+  getToolName(getLocalFileToolServerName(), 'fs_delete_file'),
+  getToolName(getLocalFileToolServerName(), 'fs_create_dir'),
+  getToolName(getLocalFileToolServerName(), 'fs_delete_dir'),
+  getToolName(getLocalFileToolServerName(), 'fs_move'),
 ]
 
-const intersectToolNames = (
+const excludeToolNames = (
   allowedToolNames: string[],
-  modeAllowedToolNames: string[],
+  blockedToolNames: string[],
 ): string[] => {
-  const modeAllowed = new Set(modeAllowedToolNames)
-  return allowedToolNames.filter((toolName) => modeAllowed.has(toolName))
+  const blocked = new Set(blockedToolNames)
+  return allowedToolNames.filter((toolName) => !blocked.has(toolName))
 }
 
 const buildRunSummary = ({
@@ -498,7 +499,7 @@ export function useChatStreamManager({
       const effectiveAllowedToolNames = effectiveEnableTools
         ? chatMode === 'agent'
           ? assistantEnabledToolNames
-          : intersectToolNames(assistantEnabledToolNames, CHAT_SAFE_TOOL_NAMES)
+          : excludeToolNames(assistantEnabledToolNames, CHAT_BLOCKED_TOOL_NAMES)
         : undefined
       const resolvedCompactionClient = resolveCompactionClient()
       const summary = await createConversationCompactionSummary({
@@ -687,9 +688,9 @@ export function useChatStreamManager({
         const effectiveAllowedToolNames = effectiveEnableTools
           ? chatMode === 'agent'
             ? assistantEnabledToolNames
-            : intersectToolNames(
+            : excludeToolNames(
                 assistantEnabledToolNames,
-                CHAT_SAFE_TOOL_NAMES,
+                CHAT_BLOCKED_TOOL_NAMES,
               )
           : undefined
 
