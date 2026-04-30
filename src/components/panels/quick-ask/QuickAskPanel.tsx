@@ -955,9 +955,6 @@ export function QuickAskPanel({
         }
       })
 
-      // Create user message with all required fields
-      // Note: promptContent is set to null so that compileUserMessagePrompt will be called
-      // to properly process mentionables and include file contents
       const userMessage: ChatUserMessage = {
         role: 'user',
         content: editorState,
@@ -974,11 +971,49 @@ export function QuickAskPanel({
         userMessage,
       ]
       setChatMessages(newMessages)
+
+      // Set up the abort controller before any awaits so that abortStream()
+      // works while we're still compiling mentionables.
+      const abortController = new AbortController()
+      abortControllerRef.current = abortController
+      let unsubscribeRunner: (() => void) | null = null
+
+      // Compile mentionables into promptContent up front so the title model
+      // and the chat model see the same expanded context. Mirrors Chat.tsx.
+      let compiledMessages: ChatMessage[] = newMessages
+      try {
+        const { promptContent } =
+          await requestContextBuilder.compileUserMessagePrompt({
+            message: userMessage,
+          })
+        const compiledUserMessage: ChatUserMessage = {
+          ...userMessage,
+          promptContent,
+        }
+        compiledMessages = [
+          ...(options?.baseMessages ?? chatMessages),
+          compiledUserMessage,
+        ]
+      } catch (error) {
+        console.error('Failed to compile quick ask user message prompt', error)
+      }
+
+      if (abortController.signal.aborted) {
+        // Only clear shared state if we still own it — a follow-up submit may
+        // have already replaced the controller while we were compiling.
+        if (abortControllerRef.current === abortController) {
+          setIsStreaming(false)
+          setRunStatus(null)
+          abortControllerRef.current = null
+        }
+        return
+      }
+
       void (async () => {
         try {
           await createOrUpdateConversationImmediately(
             conversationId,
-            newMessages,
+            compiledMessages,
           )
         } catch (error) {
           console.error('Failed to save quick ask conversation', error)
@@ -986,7 +1021,7 @@ export function QuickAskPanel({
         }
 
         try {
-          await generateConversationTitle(conversationId, newMessages)
+          await generateConversationTitle(conversationId, compiledMessages)
         } catch (error) {
           console.error(
             'Failed to generate quick ask conversation title',
@@ -994,11 +1029,6 @@ export function QuickAskPanel({
           )
         }
       })()
-
-      // Create abort controller
-      const abortController = new AbortController()
-      abortControllerRef.current = abortController
-      let unsubscribeRunner: (() => void) | null = null
 
       try {
         const mcpManager = await getMcpManager()
@@ -1040,7 +1070,7 @@ export function QuickAskPanel({
           input: {
             providerClient,
             model: effectiveModel,
-            messages: newMessages,
+            messages: compiledMessages,
             conversationId,
             requestContextBuilder,
             mcpManager,

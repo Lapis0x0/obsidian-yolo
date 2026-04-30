@@ -21,15 +21,12 @@ import {
   ChatConversationCompactionState,
   ChatMessage,
   ChatSelectedSkill,
+  ChatUserMessage,
   SerializedChatMessage,
   normalizeChatConversationCompactionState,
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'
-import {
-  Mentionable,
-  MentionableAssistantQuote,
-  MentionableBlock,
-} from '../types/mentionable'
+import { Mentionable } from '../types/mentionable'
 import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
   deserializeMentionable,
@@ -45,21 +42,12 @@ const LEGACY_UNTITLED_CONVERSATION_TITLES = new Set([
 const AUTO_TITLE_TIMEOUT_MS = 10000
 const AUTO_TITLE_MAX_RETRIES = 2
 const AUTO_TITLE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
-const AUTO_TITLE_INPUT_MAX_LENGTH = 1200
 const AUTO_TITLE_WAIT_CONVERSATION_RETRIES = 15
 const AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS = 200
 const CHAT_HISTORY_UPDATED_EVENT = 'smtcmp:chat-history-updated'
 
 const isUntitledConversationTitle = (title: string): boolean =>
   LEGACY_UNTITLED_CONVERSATION_TITLES.has(title)
-
-const truncateForTitleInput = (text: string): string => {
-  const normalized = text.trim()
-  if (normalized.length <= AUTO_TITLE_INPUT_MAX_LENGTH) {
-    return normalized
-  }
-  return `${normalized.slice(0, AUTO_TITLE_INPUT_MAX_LENGTH)}...`
-}
 
 const formatSelectedSkillsForTitleInput = (
   selectedSkills: ChatSelectedSkill[],
@@ -72,23 +60,19 @@ const formatSelectedSkillsForTitleInput = (
     return '[User selected only skills without text.]'
   }
 
-  return truncateForTitleInput(
-    `[User selected skills: ${skillNames.join(', ')}]`,
-  )
+  return `[User selected skills: ${skillNames.join(', ')}]`
 }
 
-const formatMentionableContentForTitleInput = (
-  mentionables: Mentionable[],
+const extractTextFromPromptContent = (
+  promptContent: ChatUserMessage['promptContent'],
 ): string => {
-  const contentParts = mentionables
-    .filter(
-      (m): m is MentionableBlock | MentionableAssistantQuote =>
-        m.type === 'block' || m.type === 'assistant-quote',
-    )
-    .map((m) => m.content.trim())
-    .filter((c) => c.length > 0)
-
-  return contentParts.join('\n')
+  if (!promptContent) return ''
+  if (typeof promptContent === 'string') return promptContent.trim()
+  return promptContent
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text.trim())
+    .filter((text) => text.length > 0)
+    .join('\n\n')
 }
 
 type UseChatHistory = {
@@ -561,23 +545,21 @@ export function useChatHistory(): UseChatHistory {
           return
         }
 
-        const referenceContent =
-          formatMentionableContentForTitleInput(userMentionables)
-
-        const contextParts: string[] = []
-        if (referenceContent.length > 0) {
-          contextParts.push(`[Referenced content:\n${referenceContent}]`)
-        }
-        if (normalizedUserText.length > 0) {
-          contextParts.push(normalizedUserText)
-        } else if (userSelectedSkills.length > 0) {
-          contextParts.push(formatSelectedSkillsForTitleInput(userSelectedSkills))
-        }
+        // Reuse the same expanded prompt that gets sent to the chat model so
+        // the title model sees referenced files / URLs / blocks / quotes
+        // without re-running compilation or doing extra I/O here.
+        const compiledText = extractTextFromPromptContent(
+          firstUserMessage.promptContent,
+        )
 
         const userContext =
-          contextParts.length > 0
-            ? truncateForTitleInput(contextParts.join('\n\n'))
-            : '[User shared only attachments/mentions without text.]'
+          compiledText.length > 0
+            ? compiledText
+            : normalizedUserText.length > 0
+              ? normalizedUserText
+              : userSelectedSkills.length > 0
+                ? formatSelectedSkillsForTitleInput(userSelectedSkills)
+                : '[User shared only attachments/mentions without text.]'
 
         const titleInput = `User first message:\n${userContext}`
 
