@@ -1160,6 +1160,7 @@ export type TranslationKeys = {
       readMode?: {
         full?: string
         linesSuffix?: string
+        pagesSuffix?: string
       }
       detail?: {
         target?: string

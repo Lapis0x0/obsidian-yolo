@@ -1273,6 +1273,7 @@ export const zh: TranslationKeys = {
       readMode: {
         full: '全文',
         linesSuffix: '行',
+        pagesSuffix: '页',
       },
       detail: {
         target: '目标',

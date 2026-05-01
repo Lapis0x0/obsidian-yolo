@@ -46,8 +46,8 @@ describe('ToolMessage headline helpers', () => {
       move: 'Move path',
     },
     readFull: '全文',
-    readLineRange: (startLine: number, endLine: number) =>
-      `${startLine}-${endLine}行`,
+    readLineRange: (startLine: number, endLine: number, isPdf: boolean) =>
+      `${startLine}-${endLine}${isPdf ? '页' : '行'}`,
     target: 'Target',
     scope: 'Scope',
     query: 'Query',
@@ -167,7 +167,7 @@ describe('ToolMessage headline helpers', () => {
     ).toBe('docs/plan.md | 全文')
   })
 
-  it('adds line-range mode to successful fs_read headlines', () => {
+  it('adds line-range mode to successful fs_read headlines (markdown)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -194,13 +194,88 @@ describe('ToolMessage headline helpers', () => {
                 endLine: null,
                 maxLines: 50,
               },
-              results: [],
+              results: [
+                {
+                  path: 'docs/plan.md',
+                  ok: true,
+                  totalLines: 200,
+                  returnedRange: { startLine: 12, endLine: 61, count: 50 },
+                  hasMoreAbove: true,
+                  hasMoreBelow: true,
+                  nextStartLine: 62,
+                  content: '...',
+                },
+              ],
             }),
           },
         },
         labels,
       }).summaryText,
     ).toBe('docs/plan.md | 12-61行')
+  })
+
+  it('uses 页 suffix and single-page range for PDF fs_read headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              paths: ['docs/paper.pdf'],
+              operation: {
+                type: 'lines',
+                startLine: 1,
+              },
+            },
+          }),
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: JSON.stringify({
+              tool: 'fs_read',
+              requestedOperation: {
+                type: 'lines',
+                startLine: 1,
+                endLine: null,
+                maxLines: 50,
+              },
+              results: [
+                {
+                  path: 'docs/paper.pdf',
+                  ok: true,
+                  totalLines: 7,
+                  returnedRange: { startLine: 1, endLine: 1, count: 1 },
+                  hasMoreAbove: false,
+                  hasMoreBelow: true,
+                  nextStartLine: 2,
+                  content: '',
+                },
+              ],
+            }),
+          },
+        },
+        labels,
+      }).summaryText,
+    ).toBe('docs/paper.pdf | 1-1页')
+  })
+
+  it('omits range while fs_read response is pending', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              paths: ['docs/plan.md'],
+              operation: { type: 'lines', startLine: 12 },
+            },
+          }),
+        },
+        labels,
+      }).summaryText,
+    ).toBe('docs/plan.md')
   })
 
   it('uses file path as summary for create-file headlines', () => {

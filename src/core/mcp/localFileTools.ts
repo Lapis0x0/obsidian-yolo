@@ -1,6 +1,7 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import { buildPdfPageImageCacheKey } from '../../database/json/chat/imageCacheStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
@@ -25,6 +26,7 @@ import {
   PDF_INDEX_MAX_PAGES,
   extractPdfText,
 } from '../../utils/pdf/extractPdfText'
+import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import {
   findPathOutsideScope,
   isPathAllowedByScope,
@@ -469,7 +471,7 @@ export function getLocalFileTools(): McpTool[] {
               },
               maxLines: {
                 type: 'integer',
-                description: `Max lines/pages when endLine unset. Defaults to ${DEFAULT_READ_MAX_LINES}, range 1-${MAX_READ_MAX_LINES}.`,
+                description: `Max lines when endLine unset. Defaults to ${DEFAULT_READ_MAX_LINES} for text files (range 1-${MAX_READ_MAX_LINES}). Ignored for PDFs — PDFs default to a single page (startLine) when endLine is unset.`,
               },
               endLine: {
                 type: 'integer',
@@ -2359,6 +2361,101 @@ export async function callLocalFileTool({
               })
               continue
             }
+
+            // PDF-as-images branch: render pages to PNG when the model accepts
+            // vision input and both image reading and PDF image mode are enabled.
+            const pdfImageMode =
+              chatModelAcceptsImages &&
+              (settings?.chatOptions?.imageReadingEnabled ?? true) &&
+              (settings?.chatOptions?.pdfReadAsImagesEnabled ?? false)
+
+            if (pdfImageMode) {
+              // Mirror text-mode semantics where it makes sense:
+              //   - `full`  → render every page (matches "full = whole file").
+              //   - `lines` without `endLine` → render only `startLine`. This
+              //     gives the model a cheap peek that returns `totalPages`,
+              //     so it can ask for a precise range on the next call
+              //     instead of guessing.
+              const reqStart =
+                operation.type === 'lines' ? operation.startLine : 1
+              const reqEnd =
+                operation.type === 'lines'
+                  ? (operation.endLine ?? operation.startLine)
+                  : undefined
+
+              let renderResult: Awaited<
+                ReturnType<typeof renderPdfPagesToImages>
+              >
+              try {
+                renderResult = await renderPdfPagesToImages(
+                  app,
+                  file,
+                  reqStart,
+                  reqEnd,
+                  settings,
+                )
+              } catch (error) {
+                results.push({
+                  path,
+                  ok: false,
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : 'Failed to render PDF pages as images.',
+                })
+                continue
+              }
+
+              const { totalPages, rendered } = renderResult
+              const rangeStartPage = reqStart
+              const rangeEndPageInclusive =
+                reqEnd === undefined ? totalPages : Math.min(reqEnd, totalPages)
+              const returnedCount = rendered.length
+              const returnedStartLine =
+                returnedCount > 0 ? rangeStartPage : null
+              const returnedEndLine =
+                returnedCount > 0 ? rangeEndPageInclusive : null
+              const hasMoreAbove = rangeStartPage > 1
+              const hasMoreBelow = rangeEndPageInclusive < totalPages
+              const nextStartLine = hasMoreBelow
+                ? rangeEndPageInclusive + 1
+                : null
+
+              results.push({
+                path,
+                ok: true,
+                totalLines: totalPages,
+                returnedRange: {
+                  startLine: returnedStartLine,
+                  endLine: returnedEndLine,
+                  count: returnedCount,
+                },
+                hasMoreAbove,
+                hasMoreBelow,
+                nextStartLine,
+                content: '',
+              })
+
+              if (rendered.length > 0) {
+                perFileImageParts.push({
+                  path,
+                  parts: rendered.map((r) => ({
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: r.dataUrl,
+                      cacheKey: buildPdfPageImageCacheKey(
+                        file.path,
+                        file.stat.mtime,
+                        file.stat.size,
+                        r.page,
+                      ),
+                    },
+                  })),
+                })
+              }
+              continue
+            }
+
             let pages: { page: number; text: string }[] = []
             try {
               const extracted = await extractPdfText(app, file, {
@@ -2391,12 +2488,14 @@ export async function callLocalFileTool({
             let rangeEndPageInclusive = totalPageCount
             if (operation.type === 'lines') {
               rangeStartPage = operation.startLine
-              rangeEndPageInclusive =
-                operation.endLine ??
-                Math.min(
-                  rangeStartPage + operation.maxLines - 1,
-                  totalPageCount,
-                )
+              // PDF defaults to a single page when endLine is omitted —
+              // a PDF page carries far more content than a markdown line,
+              // so the markdown-style `maxLines=50` default is too aggressive
+              // here. The model can paginate explicitly when it wants more.
+              rangeEndPageInclusive = Math.min(
+                operation.endLine ?? rangeStartPage,
+                totalPageCount,
+              )
               if (rangeEndPageInclusive < rangeStartPage) {
                 results.push({
                   path,

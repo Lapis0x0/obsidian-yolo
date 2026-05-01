@@ -1363,6 +1363,7 @@ export const en: TranslationKeys = {
       readMode: {
         full: 'Full',
         linesSuffix: ' lines',
+        pagesSuffix: ' pages',
       },
       detail: {
         target: 'Target',

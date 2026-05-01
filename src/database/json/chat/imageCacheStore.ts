@@ -46,6 +46,17 @@ export const buildImageCacheKey = (
   size: number,
 ): string => fnv1aHash(`${vaultPath}:${mtime}:${size}`)
 
+/**
+ * Build a cache key for a single rendered PDF page.
+ * Key space is separate from markdown image keys (different input format).
+ */
+export const buildPdfPageImageCacheKey = (
+  pdfPath: string,
+  mtime: number,
+  size: number,
+  page: number,
+): string => fnv1aHash(`pdf:${pdfPath}:${mtime}:${size}:p${page}`)
+
 const getCacheDirPath = async (
   app: App,
   settings?: YoloSettingsLike | null,
