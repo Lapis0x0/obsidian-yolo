@@ -106,6 +106,7 @@ import {
 } from './chatRetry'
 import Composer from './Composer'
 import ContextUsageRing from './ContextUsageRing'
+import { useActiveViewState } from './hooks/useActiveViewState'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
@@ -538,9 +539,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const [autoAttachCurrentFile, setAutoAttachCurrentFile] = useState(true)
   const conversationAutoAttachRef = useRef<Map<string, boolean>>(new Map())
-  const [activeFile, setActiveFile] = useState<TFile | null>(() =>
-    app.workspace.getActiveFile(),
-  )
+  const { file: activeFile, viewState: activeViewState } = useActiveViewState()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const headerRef = useRef<HTMLDivElement | null>(null)
   const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
@@ -1138,8 +1137,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMessage.mentionables,
       activeFile,
       shouldShowAutoAttachBadge,
+      activeViewState,
     )
-  }, [activeFile, inputMessage.mentionables, shouldShowAutoAttachBadge])
+  }, [
+    activeFile,
+    activeViewState,
+    inputMessage.mentionables,
+    shouldShowAutoAttachBadge,
+  ])
 
   const currentFileOverride = useMemo(() => {
     if (!settings.chatOptions.includeCurrentFileContent) return null
@@ -1196,6 +1201,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     modelId: conversationModelId,
     chatMode,
     currentFileOverride,
+    currentFileViewState: activeViewState,
     assistantIdOverride: conversationAssistantId,
     compaction: effectiveCompactionState,
   })
@@ -2482,6 +2488,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         inputMessage.mentionables,
         activeFile,
         shouldAttachCurrentFileBadge,
+        activeViewState,
       )
       return {
         ...inputMessage,
@@ -2494,6 +2501,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       activeFile,
+      activeViewState,
       autoAttachCurrentFile,
       hasUserMessages,
       inputMessage,
@@ -3294,23 +3302,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     isCurrentConversationRunActive,
     persistConversationImmediately,
   ])
-
-  const handleActiveLeafChange = useCallback(() => {
-    setActiveFile(app.workspace.getActiveFile())
-  }, [app.workspace])
-
-  useEffect(() => {
-    app.workspace.on('active-leaf-change', handleActiveLeafChange)
-    app.workspace.on('file-open', handleActiveLeafChange)
-    return () => {
-      app.workspace.off('active-leaf-change', handleActiveLeafChange)
-      app.workspace.off('file-open', handleActiveLeafChange)
-    }
-  }, [app.workspace, handleActiveLeafChange])
-
-  useEffect(() => {
-    handleActiveLeafChange()
-  }, [handleActiveLeafChange])
 
   const buildSelectionMentionable = useCallback(
     (selectedBlock: MentionableBlockData): MentionableBlock =>

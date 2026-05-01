@@ -233,8 +233,6 @@ export const zh: TranslationKeys = {
       title: '聊天偏好',
       chatFontScale: '聊天界面缩放',
       chatFontScaleDesc: '调整聊天界面的整体缩放比例（默认 100%）。',
-      includeCurrentFile: '自动添加当前页面文件',
-      includeCurrentFileDesc: '自动在聊天中包含当前文件的内容。',
       historyArchiveEnabled: '启用历史归档分组',
       historyArchiveEnabledDesc: '将较旧的未置顶会话折叠到归档分组中。',
       historyArchiveThreshold: '近期会话数量',
@@ -420,6 +418,9 @@ export const zh: TranslationKeys = {
       skillLoadAlways: '全量注入',
       skillLoadLazy: '按需加载',
       skillDisabledGlobally: '已全局禁用',
+      agentCapabilitiesBlockTitle: 'Agent 能力',
+      focusSyncTitle: '焦点同步',
+      focusSyncDesc: '启用后，AI 可以感知到你正在阅读的内容和位置。',
       imageReadingBlockTitle: '图片读取',
       imageReadingEnabled: '图片读取',
       imageReadingEnabledDesc:

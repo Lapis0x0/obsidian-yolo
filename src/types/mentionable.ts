@@ -8,9 +8,29 @@ export type MentionableFolder = {
   type: 'folder'
   folder: TFolder
 }
+
+export type CurrentFileViewState =
+  | {
+      kind: 'markdown-edit'
+      visibleStartLine: number // 1-indexed
+      visibleEndLine: number // 1-indexed, inclusive
+      cursorLine: number // 1-indexed
+      totalLines: number
+    }
+  | {
+      kind: 'pdf'
+      currentPage: number // 1-indexed
+      totalPages: number
+    }
+  | {
+      kind: 'other'
+      totalLines?: number
+    }
+
 export type MentionableCurrentFile = {
   type: 'current-file'
   file: TFile | null
+  viewState?: CurrentFileViewState
 }
 export type MentionableBlockData = {
   content: string

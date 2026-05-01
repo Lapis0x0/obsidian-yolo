@@ -158,8 +158,6 @@ export type TranslationKeys = {
       title: string
       chatFontScale?: string
       chatFontScaleDesc?: string
-      includeCurrentFile: string
-      includeCurrentFileDesc: string
       historyArchiveEnabled?: string
       historyArchiveEnabledDesc?: string
       historyArchiveThreshold?: string
@@ -340,6 +338,9 @@ export type TranslationKeys = {
       skillLoadAlways?: string
       skillLoadLazy?: string
       skillDisabledGlobally?: string
+      agentCapabilitiesBlockTitle?: string
+      focusSyncTitle?: string
+      focusSyncDesc?: string
       imageReadingBlockTitle?: string
       imageReadingEnabled?: string
       imageReadingEnabledDesc?: string

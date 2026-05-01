@@ -1,6 +1,7 @@
 import type { TFile } from 'obsidian'
 
 import type {
+  CurrentFileViewState,
   Mentionable,
   MentionableCurrentFile,
 } from '../../types/mentionable'
@@ -30,6 +31,7 @@ export function normalizeMentionablesWithAutoCurrentFile(
   mentionables: Mentionable[],
   activeFile: TFile | null,
   shouldAttachCurrentFile: boolean,
+  viewState?: CurrentFileViewState,
 ): Mentionable[] {
   const normalizedMentionables = mentionables.filter(
     (mentionable) => mentionable.type !== 'current-file',
@@ -43,6 +45,7 @@ export function normalizeMentionablesWithAutoCurrentFile(
     {
       type: 'current-file',
       file: activeFile,
+      viewState,
     },
     ...normalizedMentionables,
   ]

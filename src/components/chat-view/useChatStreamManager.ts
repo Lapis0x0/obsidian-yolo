@@ -43,10 +43,7 @@ import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
-import {
-  resolveCurrentFileContextModeForRuntime,
-  resolveWorkspaceScopeForRuntimeInput,
-} from './chat-runtime-inputs'
+import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {
@@ -64,6 +61,7 @@ type UseChatStreamManagerParams = {
   modelId: string
   chatMode: ChatMode
   currentFileOverride?: TFile | null
+  currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
   assistantIdOverride?: string
   compaction?: ChatConversationCompactionState
   onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
@@ -205,6 +203,7 @@ export function useChatStreamManager({
   modelId,
   chatMode,
   currentFileOverride,
+  currentFileViewState,
   assistantIdOverride,
   compaction,
   onRunSettled,
@@ -535,8 +534,8 @@ export function useChatStreamManager({
             allowedSkillNames,
             maxContextOverride:
               conversationOverrides?.maxContextMessages ?? undefined,
-            currentFileContextMode: resolveCurrentFileContextModeForRuntime(),
             currentFileOverride,
+            currentFileViewState,
           })
       } catch (error) {
         console.warn(
@@ -566,6 +565,7 @@ export function useChatStreamManager({
       conversationOverrides?.maxContextMessages,
       currentConversationId,
       currentFileOverride,
+      currentFileViewState,
       getMcpManager,
       handleAutoPromoteTransportMode,
       modelId,
@@ -709,7 +709,6 @@ export function useChatStreamManager({
         }
         const maxContextOverride =
           conversationOverrides?.maxContextMessages ?? undefined
-        const currentFileContextMode = resolveCurrentFileContextModeForRuntime()
         const effectiveCompactionForRequest = compactionOverride ?? compaction
         const baseInput = {
           messages: chatMessages,
@@ -730,8 +729,8 @@ export function useChatStreamManager({
           allowedSkillNames,
           requestParams,
           maxContextOverride,
-          currentFileContextMode,
           currentFileOverride,
+          currentFileViewState,
           geminiTools: {
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,

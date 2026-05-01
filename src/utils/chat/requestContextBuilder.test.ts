@@ -197,7 +197,9 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         '  - L2 ## Part A',
       ].join('\n'),
     )
-    expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
+    // current-file is no longer surfaced via the mention path; it is injected
+    // separately as a viewport pointer.
+    expect(textContent).not.toContain('notes/current.md')
     expect(textContent).toContain(
       [
         '- `docs/from-folder.md`',
@@ -276,7 +278,8 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     const textContent = getTextContent(result.promptContent)
 
     expect(textContent).toContain('- `notes/explicit.md`\n  - L1 # Explicit')
-    expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
+    // current-file is now a viewport pointer, not a mention entry.
+    expect(textContent).not.toContain('notes/current.md')
     expect(textContent).not.toContain('Body')
     expect(textContent).not.toContain('More')
   })
@@ -319,7 +322,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).not.toContain('`position`')
   })
 
-  it('uses full content for files and current file in full mode while keeping folders light', async () => {
+  it('uses full content for explicit files in full mode, but never inlines current-file (handled separately as a viewport pointer)', async () => {
     const explicitFile = createMockFile('notes/explicit.md')
     const currentFile = createMockFile('notes/current.md')
     const folderFile = createMockFile('docs/from-folder.md')
@@ -367,9 +370,10 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).toContain(
       '```notes/explicit.md\n1|# Explicit\n2|Body\n```',
     )
-    expect(textContent).toContain(
-      '```notes/current.md\n1|# Current\n2|More\n```',
-    )
+    // current-file content must NOT be inlined via the mention path; it is
+    // injected separately as a lightweight pointer by getCurrentFileMessage().
+    expect(textContent).not.toContain('# Current\n2|More')
+    expect(textContent).not.toContain('```notes/current.md')
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
     expect(textContent).toContain(
       '- `docs/from-folder.md`\n  - L1 ## Folder Heading',
@@ -377,7 +381,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).not.toContain('Folder body')
   })
 
-  it('uses only the latest valid current-file mention when old current-file references accumulated', async () => {
+  it('does not surface any current-file mention through compileUserMessagePrompt (handled separately as a pointer)', async () => {
     const staleCurrentFile = createMockFile('notes/stale.md')
     const latestCurrentFile = createMockFile('notes/latest.md')
 
@@ -403,8 +407,8 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
 
     const textContent = getTextContent(result.promptContent)
 
-    expect(textContent).toContain('- `notes/latest.md`\n  - L1 # Latest')
     expect(textContent).not.toContain('notes/stale.md')
+    expect(textContent).not.toContain('notes/latest.md')
   })
 })
 

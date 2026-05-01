@@ -8,6 +8,7 @@ import {
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage, RequestTool } from '../../types/llm/request'
+import { CurrentFileViewState } from '../../types/mentionable'
 import { LLMProvider } from '../../types/provider.types'
 import {
   ReasoningLevel,
@@ -54,8 +55,8 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   maxContextOverride?: number
-  currentFileContextMode?: 'full' | 'summary'
   currentFileOverride?: TFile | null
+  currentFileViewState?: CurrentFileViewState
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
@@ -115,8 +116,8 @@ export class AgentLlmTurnExecutor {
         model: this.input.model,
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,
-        currentFileContextMode: this.input.currentFileContextMode,
         currentFileOverride: this.input.currentFileOverride,
+        currentFileViewState: this.input.currentFileViewState,
       })
 
     this.logModelRequestContext({ requestMessages, tools })

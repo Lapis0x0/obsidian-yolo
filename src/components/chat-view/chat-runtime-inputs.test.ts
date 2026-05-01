@@ -1,15 +1,8 @@
 import type { Assistant } from '../../types/assistant.types'
 
-import {
-  resolveCurrentFileContextModeForRuntime,
-  resolveWorkspaceScopeForRuntimeInput,
-} from './chat-runtime-inputs'
+import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 
 describe('chat-runtime-inputs', () => {
-  it('uses summary current-file mode for both Chat and Agent runtimes', () => {
-    expect(resolveCurrentFileContextModeForRuntime()).toBe('summary')
-  })
-
   it('passes through assistant workspace scope when present', () => {
     const scope = {
       enabled: true,

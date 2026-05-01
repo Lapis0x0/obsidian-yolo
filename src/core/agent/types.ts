@@ -6,6 +6,7 @@ import {
   ChatMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
+import { CurrentFileViewState } from '../../types/mentionable'
 import { LLMProvider } from '../../types/provider.types'
 import { ReasoningLevel } from '../../types/reasoning'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
@@ -60,8 +61,8 @@ export type AgentRuntimeRunInput = {
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   maxContextOverride?: number
-  currentFileContextMode?: 'full' | 'summary'
   currentFileOverride?: TFile | null
+  currentFileViewState?: CurrentFileViewState
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean

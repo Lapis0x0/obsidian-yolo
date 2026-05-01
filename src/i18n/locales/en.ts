@@ -267,9 +267,6 @@ export const en: TranslationKeys = {
       chatFontScale: 'Chat UI scale',
       chatFontScaleDesc:
         'Adjust the overall scale of the chat interface (default 100%).',
-      includeCurrentFile: 'Auto-include current page',
-      includeCurrentFileDesc:
-        'Automatically include the content of your current file in chats.',
       historyArchiveEnabled: 'Enable history archive grouping',
       historyArchiveEnabledDesc:
         'Keep older non-pinned conversations collapsed under an archive section.',
@@ -460,6 +457,10 @@ export const en: TranslationKeys = {
       skillLoadAlways: 'Full inject',
       skillLoadLazy: 'On demand',
       skillDisabledGlobally: 'Disabled globally',
+      agentCapabilitiesBlockTitle: 'Agent capabilities',
+      focusSyncTitle: 'Focus sync',
+      focusSyncDesc:
+        'When enabled, the AI can sense which file you are reading and where you are in it.',
       imageReadingBlockTitle: 'Image reading',
       imageReadingEnabled: 'Image reading',
       imageReadingEnabledDesc:

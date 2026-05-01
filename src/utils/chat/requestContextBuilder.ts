@@ -31,6 +31,7 @@ import { getLatestChatConversationCompaction } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
+  CurrentFileViewState,
   MentionableAssistantQuote,
   MentionableBlock,
   MentionableFile,
@@ -65,8 +66,6 @@ import {
   filterContextPrunedAssistantToolCalls,
   filterContextPrunedToolCalls,
 } from './tool-context-pruning'
-
-export type CurrentFileContextMode = 'full' | 'summary'
 
 type RequestContextBuilderOptions = {
   includeSkills?: boolean
@@ -221,8 +220,8 @@ export class RequestContextBuilder {
     model: _model,
     conversationId,
     compaction,
-    currentFileContextMode = 'full',
     currentFileOverride,
+    currentFileViewState,
   }: {
     messages: ChatMessage[]
     hasTools?: boolean
@@ -231,8 +230,8 @@ export class RequestContextBuilder {
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
-    currentFileContextMode?: CurrentFileContextMode
     currentFileOverride?: TFile | null
+    currentFileViewState?: CurrentFileViewState
   }): Promise<RequestMessage[]> {
     if (messages.length === 0) {
       throw new Error('No messages provided')
@@ -313,7 +312,7 @@ export class RequestContextBuilder {
     const currentFile = currentFileOverride ?? null
     const currentFileMessage =
       currentFile && this.settings.chatOptions.includeCurrentFileContent
-        ? await this.getCurrentFileMessage(currentFile, currentFileContextMode)
+        ? this.getCurrentFileMessage(currentFile, currentFileViewState)
         : undefined
 
     const requestMessages: RequestMessage[] = [
@@ -765,19 +764,19 @@ ${message.annotations
       const latestCurrentFile = getLatestValidCurrentFileMentionable(
         message.mentionables,
       )
-      // If the active file is an image, treat it as a vision attachment
-      // rather than a text file to avoid feeding raw binary into the prompt.
+      // Current-file content is injected separately as a viewport pointer via
+      // getCurrentFileMessage(); do NOT re-inject its full text through the
+      // mention path. The only thing we still extract here is the image case:
+      // if the active file is an image, it must travel as a vision attachment.
       const currentFileImage =
         latestCurrentFile && isImageTFile(latestCurrentFile)
           ? latestCurrentFile
           : null
-      const currentFiles =
-        latestCurrentFile && !currentFileImage ? [latestCurrentFile] : []
 
       const filePrompt = await this.buildMentionedFilePrompt({
         files,
         folders,
-        currentFiles,
+        currentFiles: [],
       })
 
       const blocks = message.mentionables.filter(
@@ -1349,35 +1348,47 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     return collected
   }
 
-  private async getCurrentFileMessage(
+  private getCurrentFileMessage(
     currentFile: TFile,
-    currentFileContextMode: CurrentFileContextMode,
-  ): Promise<RequestMessage> {
-    if (currentFileContextMode === 'summary') {
-      return this.getCurrentFileSummaryMessage(currentFile)
-    }
-    const fileContent = await readTFileContent(currentFile, this.app.vault)
-    return {
-      role: 'user',
-      content: `# Inputs
-## Current File
-Here is the file I'm looking at.
-\`\`\`${currentFile.path}
-${fileContent}
-\`\`\`\n\n`,
-    }
-  }
+    viewState: CurrentFileViewState | undefined,
+  ): RequestMessage {
+    const lines: string[] = []
 
-  private async getCurrentFileSummaryMessage(
-    currentFile: TFile,
-  ): Promise<RequestMessage> {
+    if (!viewState || viewState.kind === 'other') {
+      lines.push(
+        '# Current Context (auto-attached, content NOT included)',
+        'The user is currently viewing this file. Use read_file if you need its content.',
+        '',
+        `File: ${currentFile.path}`,
+      )
+      if (viewState?.totalLines !== undefined) {
+        lines.push(`Total: ${viewState.totalLines} lines`)
+      }
+    } else if (viewState.kind === 'markdown-edit') {
+      lines.push(
+        '# Current Context (auto-attached, content NOT included)',
+        'The user is currently viewing this file. Use read_file if you need its content.',
+        '',
+        `File: ${currentFile.path}`,
+        `Total: ${viewState.totalLines} lines`,
+        `Visible: lines ${viewState.visibleStartLine}-${viewState.visibleEndLine}`,
+        `Cursor: line ${viewState.cursorLine}`,
+      )
+    } else {
+      // pdf
+      lines.push(
+        '# Current Context (auto-attached, content NOT included)',
+        'The user is currently viewing this PDF. Use read_file if you need its content.',
+        '',
+        `File: ${currentFile.path}`,
+        `Total: ${viewState.totalPages} pages`,
+        `Currently on: page ${viewState.currentPage}`,
+      )
+    }
+
     return {
       role: 'user',
-      content: `# Inputs
-## Current File (summary)
-Path: ${currentFile.path}
-Title: ${currentFile.name}
-\n\n`,
+      content: `${lines.join('\n')}\n\n`,
     }
   }
 

@@ -1088,7 +1088,6 @@ export function QuickAskPanel({
               streamFallbackRecoveryEnabled:
                 settings.continuationOptions.streamFallbackRecoveryEnabled,
             },
-            currentFileContextMode: 'summary',
           },
         })
 

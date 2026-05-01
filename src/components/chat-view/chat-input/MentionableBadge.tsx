@@ -196,7 +196,11 @@ function CurrentFileBadge({
           !mentionable.file && 'smtcmp-excluded-content',
         )}
       >
-        {' (Current file)'}
+        {mentionable.viewState?.kind === 'markdown-edit'
+          ? ` (Current · L${mentionable.viewState.visibleStartLine}-${mentionable.viewState.visibleEndLine})`
+          : mentionable.viewState?.kind === 'pdf'
+            ? ` (Current · p.${mentionable.viewState.currentPage}/${mentionable.viewState.totalPages})`
+            : ' (Current)'}
       </div>
     </BadgeBase>
   )

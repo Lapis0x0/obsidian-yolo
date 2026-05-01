@@ -32,6 +32,7 @@ import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
+import { AgentFocusSyncSection } from './AgentFocusSyncSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
@@ -538,19 +539,22 @@ export function AgentSection({ app }: AgentSectionProps) {
       <section className="smtcmp-agent-block">
         <div className="smtcmp-agent-block-head">
           <div className="smtcmp-settings-sub-header">
+            {t('settings.agent.agentCapabilitiesBlockTitle')}
+          </div>
+        </div>
+        <AgentFocusSyncSection />
+        <div className="yolo-agent-sub-card">
+          <div className="yolo-agent-sub-card-head">
             {t('settings.agent.imageReadingBlockTitle')}
           </div>
+          <AgentImageReadingSection />
         </div>
-        <AgentImageReadingSection />
-      </section>
-
-      <section className="smtcmp-agent-block">
-        <div className="smtcmp-agent-block-head">
-          <div className="smtcmp-settings-sub-header">
+        <div className="yolo-agent-sub-card">
+          <div className="yolo-agent-sub-card-head">
             {t('settings.agent.autoContextCompactionBlockTitle')}
           </div>
+          <AgentAutoContextCompactionSection />
         </div>
-        <AgentAutoContextCompactionSection />
       </section>
 
       <section className="smtcmp-agent-block">

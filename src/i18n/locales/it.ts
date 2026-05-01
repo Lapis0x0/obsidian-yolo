@@ -268,9 +268,6 @@ export const it: TranslationKeys = {
       chatFontScale: 'Scala interfaccia chat',
       chatFontScaleDesc:
         "Regola la scala complessiva dell'interfaccia chat (predefinito 100%).",
-      includeCurrentFile: 'Includi file corrente',
-      includeCurrentFileDesc:
-        'Include automaticamente il file correntemente aperto nel contesto della chat.',
       historyArchiveEnabled: 'Abilita raggruppamento archivio cronologia',
       historyArchiveEnabledDesc:
         'Mantiene le conversazioni non appuntate meno recenti compresse in una sezione archivio.',
@@ -453,6 +450,10 @@ export const it: TranslationKeys = {
       skillLoadAlways: 'Iniezione completa',
       skillLoadLazy: 'Su richiesta',
       skillDisabledGlobally: 'Disabilitata globalmente',
+      agentCapabilitiesBlockTitle: 'Capacità Agent',
+      focusSyncTitle: 'Sincronizzazione del focus',
+      focusSyncDesc:
+        "Se abilitato, l'AI percepisce quale file stai leggendo e dove ti trovi.",
       imageReadingBlockTitle: 'Lettura immagini',
       imageReadingEnabled: 'Lettura immagini',
       imageReadingEnabledDesc:
