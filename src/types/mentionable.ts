@@ -27,11 +27,6 @@ export type CurrentFileViewState =
       totalLines?: number
     }
 
-export type MentionableCurrentFile = {
-  type: 'current-file'
-  file: TFile | null
-  viewState?: CurrentFileViewState
-}
 export type MentionableBlockData = {
   content: string
   file: TFile
@@ -80,7 +75,6 @@ export type MentionableModel = {
 export type Mentionable =
   | MentionableFile
   | MentionableFolder
-  | MentionableCurrentFile
   | MentionableBlock
   | MentionableAssistantQuote
   | MentionableUrl
@@ -94,10 +88,6 @@ export type SerializedMentionableFile = {
 export type SerializedMentionableFolder = {
   type: 'folder'
   folder: string
-}
-export type SerializedMentionableCurrentFile = {
-  type: 'current-file'
-  file: string | null
 }
 export type SerializedMentionableBlock = {
   type: 'block'
@@ -126,7 +116,6 @@ export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
   | SerializedMentionableFolder
-  | SerializedMentionableCurrentFile
   | SerializedMentionableBlock
   | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl

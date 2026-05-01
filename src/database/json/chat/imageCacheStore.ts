@@ -25,7 +25,7 @@ const EMPTY_STORE: ImageCacheStore = {
   entries: {},
 }
 
-type YoloSettingsLike = {
+export type YoloSettingsLike = {
   yolo?: {
     baseDir?: string
   }

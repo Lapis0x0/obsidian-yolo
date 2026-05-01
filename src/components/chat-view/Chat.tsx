@@ -66,7 +66,6 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
-import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import {
   type GroupEditSummary,
   deriveToolEditUndoStatus,
@@ -537,8 +536,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     settings.chatOptions.reasoningLevelByModelId,
   ])
 
-  const [autoAttachCurrentFile, setAutoAttachCurrentFile] = useState(true)
-  const conversationAutoAttachRef = useRef<Map<string, boolean>>(new Map())
   const { file: activeFile, viewState: activeViewState } = useActiveViewState()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const headerRef = useRef<HTMLDivElement | null>(null)
@@ -1040,11 +1037,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessagesStateRef.current = chatMessages
   }, [chatMessages])
 
-  const hasUserMessages = useMemo(
-    () => chatMessages.some((message) => message.role === 'user'),
-    [chatMessages],
-  )
-
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
     [effectiveCompactionState],
@@ -1126,35 +1118,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     '正在整理上下文，稍后将从新的上下文继续。',
   )
 
-  const shouldShowAutoAttachBadge =
-    settings.chatOptions.includeCurrentFileContent &&
-    autoAttachCurrentFile &&
-    !hasUserMessages &&
-    Boolean(activeFile)
+  const displayMentionablesForInput = inputMessage.mentionables
 
-  const displayMentionablesForInput = useMemo(() => {
-    return normalizeMentionablesWithAutoCurrentFile(
-      inputMessage.mentionables,
-      activeFile,
-      shouldShowAutoAttachBadge,
-      activeViewState,
-    )
-  }, [
-    activeFile,
-    activeViewState,
-    inputMessage.mentionables,
-    shouldShowAutoAttachBadge,
-  ])
-
-  const currentFileOverride = useMemo(() => {
-    if (!settings.chatOptions.includeCurrentFileContent) return null
-    if (!autoAttachCurrentFile) return null
-    return activeFile
-  }, [
-    activeFile,
-    autoAttachCurrentFile,
-    settings.chatOptions.includeCurrentFileContent,
-  ])
+  const currentFileOverride = settings.chatOptions.includeCurrentFileContent
+    ? activeFile
+    : null
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
@@ -1843,14 +1811,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             conversation.compaction ?? [],
             { persistState: true },
           )
-        const storedAutoAttach = conversation.overrides?.autoAttachCurrentFile
-        const resolvedAutoAttach =
-          typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
-        setAutoAttachCurrentFile(resolvedAutoAttach)
-        conversationAutoAttachRef.current.set(
-          conversationId,
-          resolvedAutoAttach,
-        )
         setConversationOverrides(conversation.overrides ?? null)
         const loadedAssistantId =
           conversationAssistantIdRef.current.get(conversationId) ??
@@ -2021,8 +1981,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setCurrentConversationId(newId)
     conversationAssistantIdRef.current.set(newId, conversationAssistantId)
     setConversationAssistantId(conversationAssistantId)
-    conversationAutoAttachRef.current.set(newId, true)
-    setAutoAttachCurrentFile(true)
     setConversationOverrides(null)
     const defaultChatMode = chatMode
     setChatMode(defaultChatMode)
@@ -2155,9 +2113,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ? rawNextChatMode
           : chatMode
       const nextChatMode = resolvedNextChatMode
-      const storedAutoAttach = nextOverrides?.autoAttachCurrentFile
-      const resolvedAutoAttach =
-        typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
 
       const resolvedConversationModelId =
         conversationModelIdRef.current.get(currentConversationId) ??
@@ -2213,11 +2168,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       setChatMode(nextChatMode)
-      setAutoAttachCurrentFile(resolvedAutoAttach)
-      conversationAutoAttachRef.current.set(
-        newConversationId,
-        resolvedAutoAttach,
-      )
 
       setConversationAssistantId(conversationAssistantId)
       conversationAssistantIdRef.current.set(
@@ -2255,7 +2205,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           {
             ...(nextOverrides ?? {}),
             chatMode: nextChatMode,
-            autoAttachCurrentFile: resolvedAutoAttach,
           },
           resolvedConversationModelId,
           serializeMessageModelMap(nextMessages, nextMessageModelMap),
@@ -2458,38 +2407,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const updateAutoAttachCurrentFile = useCallback(
-    (value: boolean) => {
-      setAutoAttachCurrentFile(value)
-      conversationAutoAttachRef.current.set(currentConversationId, value)
-      setConversationOverrides((prev) => {
-        const nextOverrides = {
-          ...(prev ?? {}),
-          chatMode,
-          autoAttachCurrentFile: value,
-        }
-        conversationOverridesRef.current.set(
-          currentConversationId,
-          nextOverrides,
-        )
-        return nextOverrides
-      })
-    },
-    [chatMode, currentConversationId],
-  )
-
   const buildInputMessageForSubmit = useCallback(
     (content: ChatUserMessage['content']): ChatUserMessage => {
-      const shouldAttachCurrentFileBadge =
-        settings.chatOptions.includeCurrentFileContent &&
-        autoAttachCurrentFile &&
-        !hasUserMessages
-      const mentionables = normalizeMentionablesWithAutoCurrentFile(
-        inputMessage.mentionables,
-        activeFile,
-        shouldAttachCurrentFileBadge,
-        activeViewState,
-      )
+      const mentionables = inputMessage.mentionables
       return {
         ...inputMessage,
         content,
@@ -2499,15 +2419,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         selectedModelIds: extractSelectedModelIds(mentionables),
       }
     },
-    [
-      activeFile,
-      activeViewState,
-      autoAttachCurrentFile,
-      hasUserMessages,
-      inputMessage,
-      reasoningLevel,
-      settings.chatOptions.includeCurrentFileContent,
-    ],
+    [inputMessage, reasoningLevel],
   )
 
   const handleUserMessageSubmit = useCallback(
@@ -3515,9 +3427,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const mentionableKey = getMentionableKey(
         serializeMentionable(mentionable),
       )
-      if (mentionable.type === 'current-file') {
-        updateAutoAttachCurrentFile(false)
-      }
 
       // 从所有历史消息中删除
       const sourceMessages = chatMessagesStateRef.current
@@ -3625,7 +3534,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMessage.id,
       isUserMessageEffectivelyEmpty,
       persistConversation,
-      updateAutoAttachCurrentFile,
     ],
   )
 
@@ -4310,13 +4218,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <UserMessageItem
             message={messageOrGroup}
             isFocused={focusedMessageId === messageOrGroup.id}
-            displayMentionables={
-              messageOrGroup.id === firstUserMessageId
-                ? messageOrGroup.mentionables
-                : messageOrGroup.mentionables.filter(
-                    (mentionable) => mentionable.type !== 'current-file',
-                  )
-            }
+            displayMentionables={messageOrGroup.mentionables}
             chatUserInputRef={(ref) =>
               registerChatUserInputRef(messageOrGroup.id, ref)
             }

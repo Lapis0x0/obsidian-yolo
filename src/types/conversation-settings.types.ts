@@ -6,5 +6,4 @@ export type ConversationOverrideSettings = {
   stream?: boolean | null
   useWebSearch?: boolean | null
   useUrlContext?: boolean | null
-  autoAttachCurrentFile?: boolean | null
 }

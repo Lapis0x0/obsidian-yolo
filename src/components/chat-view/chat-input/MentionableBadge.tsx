@@ -1,14 +1,11 @@
-import cx from 'clsx'
 import { X } from 'lucide-react'
 import { PropsWithChildren } from 'react'
 
-import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import {
   Mentionable,
   MentionableAssistantQuote,
   MentionableBlock,
-  MentionableCurrentFile,
   MentionableFile,
   MentionableFolder,
   MentionableImage,
@@ -142,65 +139,6 @@ function FolderBadge({
           />
         )}
         <span>{mentionable.folder.name}</span>
-      </div>
-    </BadgeBase>
-  )
-}
-
-function CurrentFileBadge({
-  mentionable,
-  onDelete,
-  onClick,
-  isFocused,
-  isExpanded,
-  onToggleExpand,
-  showDeleteButton,
-}: {
-  mentionable: MentionableCurrentFile
-  onDelete: () => void
-  onClick: () => void
-  isFocused: boolean
-  isExpanded?: boolean
-  onToggleExpand?: () => void
-  showDeleteButton?: boolean
-}) {
-  const app = useApp()
-
-  const Icon = getMentionableIcon(mentionable)
-  return (
-    <BadgeBase
-      onDelete={onDelete}
-      onClick={onClick}
-      isFocused={isFocused}
-      isExpanded={isExpanded}
-      onToggleExpand={onToggleExpand}
-      showExpandButton={false}
-      showDeleteButton={showDeleteButton}
-    >
-      <div className="smtcmp-chat-user-input-file-badge-name">
-        {Icon && (
-          <Icon
-            size={12}
-            className="smtcmp-chat-user-input-file-badge-name-icon"
-          />
-        )}
-        <span className={cx(!mentionable.file && 'smtcmp-excluded-content')}>
-          {mentionable.file?.name ??
-            app.workspace.getActiveFile()?.name ??
-            'Current file'}
-        </span>
-      </div>
-      <div
-        className={cx(
-          'smtcmp-chat-user-input-file-badge-name-suffix',
-          !mentionable.file && 'smtcmp-excluded-content',
-        )}
-      >
-        {mentionable.viewState?.kind === 'markdown-edit'
-          ? ` (Current · L${mentionable.viewState.visibleStartLine}-${mentionable.viewState.visibleEndLine})`
-          : mentionable.viewState?.kind === 'pdf'
-            ? ` (Current · p.${mentionable.viewState.currentPage}/${mentionable.viewState.totalPages})`
-            : ' (Current)'}
       </div>
     </BadgeBase>
   )
@@ -481,18 +419,6 @@ export default function MentionableBadge({
           onDelete={onDelete}
           onClick={onClick}
           isFocused={isFocused}
-          showDeleteButton={showDeleteButton}
-        />
-      )
-    case 'current-file':
-      return (
-        <CurrentFileBadge
-          mentionable={mentionable}
-          onDelete={onDelete}
-          onClick={onClick}
-          isFocused={isFocused}
-          isExpanded={isExpanded}
-          onToggleExpand={onToggleExpand}
           showDeleteButton={showDeleteButton}
         />
       )

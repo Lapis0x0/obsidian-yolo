@@ -116,13 +116,6 @@ function mentionablesToMarkdownLines(
       case 'folder':
         lines.push(`Folder: \`${m.folder}\``)
         break
-      case 'current-file':
-        if (m.file) {
-          lines.push(`Current file: [[${m.file}]]`)
-        } else {
-          lines.push('Current file: (none)')
-        }
-        break
       case 'block':
         lines.push(`Block in \`${m.file}\` (lines ${m.startLine}–${m.endLine})`)
         break

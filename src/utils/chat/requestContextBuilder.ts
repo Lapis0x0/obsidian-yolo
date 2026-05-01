@@ -56,7 +56,6 @@ import {
 } from '../pdf/extractPdfText'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
-import { getLatestValidCurrentFileMentionable } from './currentFileMentionable'
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
@@ -84,7 +83,7 @@ type MentionedFileProperty = {
 
 type MentionedFileContextEntry = {
   file: TFile
-  source: 'file' | 'current-file' | 'folder'
+  source: 'file' | 'folder'
 }
 
 const MAX_MENTIONED_FILE_OUTLINES = 10
@@ -312,7 +311,7 @@ export class RequestContextBuilder {
     const currentFile = currentFileOverride ?? null
     const currentFileMessage =
       currentFile && this.settings.chatOptions.includeCurrentFileContent
-        ? this.getCurrentFileMessage(currentFile, currentFileViewState)
+        ? await this.getCurrentFileMessage(currentFile, currentFileViewState)
         : undefined
 
     const requestMessages: RequestMessage[] = [
@@ -323,8 +322,22 @@ export class RequestContextBuilder {
         snapshotEntries,
         compaction,
       })),
-      ...(currentFileMessage ? [currentFileMessage] : []),
     ]
+
+    if (currentFileMessage) {
+      const lastIdx = requestMessages.length - 1
+      const lastMsg = requestMessages[lastIdx]
+      if (lastMsg && lastMsg.role === 'user') {
+        requestMessages[lastIdx] = this.mergeCurrentFileIntoUserMessage(
+          lastMsg,
+          currentFileMessage,
+        )
+      } else {
+        // Agent loop continuation: tail may be assistant/tool. Append as
+        // independent user message — formatMessages won't merge across roles.
+        requestMessages.push(currentFileMessage)
+      }
+    }
 
     return requestMessages
   }
@@ -518,8 +531,7 @@ export class RequestContextBuilder {
           mentionable.type === 'file' ||
           mentionable.type === 'folder' ||
           mentionable.type === 'url' ||
-          mentionable.type === 'assistant-quote' ||
-          mentionable.type === 'current-file',
+          mentionable.type === 'assistant-quote',
       )
     )
   }
@@ -761,22 +773,10 @@ ${message.annotations
         .filter((m): m is MentionableFolder => m.type === 'folder')
         .map((m) => this.app.vault.getFolderByPath(m.folder.path))
         .filter((folder): folder is TFolder => Boolean(folder))
-      const latestCurrentFile = getLatestValidCurrentFileMentionable(
-        message.mentionables,
-      )
-      // Current-file content is injected separately as a viewport pointer via
-      // getCurrentFileMessage(); do NOT re-inject its full text through the
-      // mention path. The only thing we still extract here is the image case:
-      // if the active file is an image, it must travel as a vision attachment.
-      const currentFileImage =
-        latestCurrentFile && isImageTFile(latestCurrentFile)
-          ? latestCurrentFile
-          : null
 
       const filePrompt = await this.buildMentionedFilePrompt({
         files,
         folders,
-        currentFiles: [],
       })
 
       const blocks = message.mentionables.filter(
@@ -825,14 +825,13 @@ ${await this.getWebsiteContent(url)}
       const inlineImageDataUrls = message.mentionables
         .filter((m): m is MentionableImage => m.type === 'image')
         .map(({ data }) => data)
-      const vaultImageFiles = currentFileImage
-        ? [...mentionedImageFiles, currentFileImage]
-        : mentionedImageFiles
       const vaultImageDataUrls = (
         await Promise.all(
-          vaultImageFiles.map(async (file) => {
+          mentionedImageFiles.map(async (file) => {
             try {
-              return await tFileToImageDataUrl(this.app, file)
+              return await tFileToImageDataUrl(this.app, file, {
+                cache: { enabled: true, settings: this.settings },
+              })
             } catch (error) {
               console.warn(
                 '[YOLO] Failed to read mentioned image file',
@@ -1100,17 +1099,14 @@ ${customInstruction}
   private async buildMentionedPathsPrompt({
     files,
     folders,
-    currentFiles,
   }: {
     files: TFile[]
     folders: TFolder[]
-    currentFiles: TFile[]
   }): Promise<string> {
     const folderPathSet = new Set(folders.map((folder) => folder.path))
     const unifiedFiles = this.collectMentionedFiles({
       files,
       folders,
-      currentFiles,
     })
 
     if (unifiedFiles.length === 0 && folderPathSet.size === 0) {
@@ -1204,11 +1200,9 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
   private async buildMentionedFilePrompt({
     files,
     folders,
-    currentFiles,
   }: {
     files: TFile[]
     folders: TFolder[]
-    currentFiles: TFile[]
   }): Promise<string> {
     const mentionContextMode = this.getMentionContextMode()
 
@@ -1216,18 +1210,15 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
       return this.buildMentionedPathsPrompt({
         files,
         folders,
-        currentFiles,
       })
     }
 
     const folderPrompt = await this.buildMentionedPathsPrompt({
       files: [],
       folders,
-      currentFiles: [],
     })
     const fullFilePrompt = await this.buildFullMentionedFilesPrompt({
       files,
-      currentFiles,
     })
 
     return `${folderPrompt}${fullFilePrompt}`
@@ -1235,15 +1226,12 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
 
   private async buildFullMentionedFilesPrompt({
     files,
-    currentFiles,
   }: {
     files: TFile[]
-    currentFiles: TFile[]
   }): Promise<string> {
     const uniqueFiles = this.collectMentionedFiles({
       files,
       folders: [],
-      currentFiles,
     }).map(({ file }) => file)
 
     if (uniqueFiles.length === 0) {
@@ -1311,11 +1299,9 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
   private collectMentionedFiles({
     files,
     folders,
-    currentFiles,
   }: {
     files: TFile[]
     folders: TFolder[]
-    currentFiles: TFile[]
   }): MentionedFileContextEntry[] {
     const collected: MentionedFileContextEntry[] = []
     const seenPaths = new Set<string>()
@@ -1335,10 +1321,6 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
       pushFile(file, 'file')
     }
 
-    for (const file of currentFiles) {
-      pushFile(file, 'current-file')
-    }
-
     for (const folder of folders) {
       for (const file of getNestedFiles(folder, this.app.vault)) {
         pushFile(file, 'folder')
@@ -1348,10 +1330,60 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     return collected
   }
 
-  private getCurrentFileMessage(
+  private mergeCurrentFileIntoUserMessage(
+    userMsg: Extract<RequestMessage, { role: 'user' }>,
+    currentFileMsg: RequestMessage,
+  ): Extract<RequestMessage, { role: 'user' }> {
+    const toContentParts = (content: string | ContentPart[]): ContentPart[] => {
+      if (typeof content === 'string') {
+        return [{ type: 'text', text: content }]
+      }
+      return content
+    }
+
+    const userParts = toContentParts(userMsg.content)
+    const fileParts = toContentParts(currentFileMsg.content)
+    return { ...userMsg, content: [...userParts, ...fileParts] }
+  }
+
+  private async getCurrentFileMessage(
     currentFile: TFile,
     viewState: CurrentFileViewState | undefined,
-  ): RequestMessage {
+  ): Promise<RequestMessage> {
+    // Image files: attach as vision content + pointer text
+    if (isImageTFile(currentFile)) {
+      const pointerLines = [
+        '# Current Context (auto-attached image)',
+        'The user is currently viewing this image file.',
+        '',
+        `File: ${currentFile.path}`,
+      ]
+      const pointerText = `${pointerLines.join('\n')}\n\n`
+      try {
+        const dataUrl = await tFileToImageDataUrl(this.app, currentFile, {
+          cache: { enabled: true, settings: this.settings },
+        })
+        return {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: dataUrl } },
+            { type: 'text', text: pointerText },
+          ],
+        }
+      } catch (error) {
+        // Graceful degradation: if image can't be read, send pointer only
+        console.warn(
+          '[YOLO] Failed to read current file image, falling back to pointer',
+          currentFile.path,
+          error,
+        )
+        return {
+          role: 'user',
+          content: pointerText,
+        }
+      }
+    }
+
     const lines: string[] = []
 
     if (!viewState || viewState.kind === 'other') {
