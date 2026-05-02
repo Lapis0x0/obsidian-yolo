@@ -419,7 +419,8 @@ describe('local fs tool action helpers', () => {
       results: Array<{
         ok: boolean
         content: string
-        returnedRange: { startLine: number | null; endLine: number | null }
+        totalLines: number
+        returnedRange?: { startLine: number | null; endLine: number | null }
       }>
     }
     expect(payload.toolCallId).toBe('read-call-1')
@@ -427,11 +428,9 @@ describe('local fs tool action helpers', () => {
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: ['1|one', '2|two', '3|three'].join('\n'),
-      returnedRange: {
-        startLine: 1,
-        endLine: 3,
-      },
+      totalLines: 3,
     })
+    expect(payload.results[0].returnedRange).toBeUndefined()
   })
 
   describe('fs_read image reading gating by chat model modalities', () => {
@@ -615,29 +614,21 @@ describe('local fs tool action helpers', () => {
     }
     const payload = JSON.parse(result.text) as {
       toolCallId: string | null
-      requestedOperation: {
-        type: string
-        startLine: number | null
-        maxLines: number | null
-      }
+      requestedOperation: { type: string }
       results: Array<{
         ok: boolean
         content: string
-        hasMoreAbove: boolean
+        returnedRange?: { startLine: number | null; endLine: number | null }
         hasMoreBelow: boolean
         nextStartLine: number | null
       }>
     }
     expect(payload.toolCallId).toBeNull()
-    expect(payload.requestedOperation).toMatchObject({
-      type: 'lines',
-      startLine: 2,
-      maxLines: 2,
-    })
+    expect(payload.requestedOperation).toEqual({ type: 'lines' })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: ['2|two', '3|three'].join('\n'),
-      hasMoreAbove: true,
+      returnedRange: { startLine: 2, endLine: 3 },
       hasMoreBelow: true,
       nextStartLine: 4,
     })

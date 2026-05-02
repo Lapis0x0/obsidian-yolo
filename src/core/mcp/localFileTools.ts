@@ -2304,12 +2304,10 @@ export async function callLocalFileTool({
               path: string
               ok: true
               totalLines: number
-              returnedRange: {
+              returnedRange?: {
                 startLine: number | null
                 endLine: number | null
-                count: number
               }
-              hasMoreAbove: boolean
               hasMoreBelow: boolean
               nextStartLine: number | null
               content: string
@@ -2415,7 +2413,6 @@ export async function callLocalFileTool({
                 returnedCount > 0 ? rangeStartPage : null
               const returnedEndLine =
                 returnedCount > 0 ? rangeEndPageInclusive : null
-              const hasMoreAbove = rangeStartPage > 1
               const hasMoreBelow = rangeEndPageInclusive < totalPages
               const nextStartLine = hasMoreBelow
                 ? rangeEndPageInclusive + 1
@@ -2428,9 +2425,7 @@ export async function callLocalFileTool({
                 returnedRange: {
                   startLine: returnedStartLine,
                   endLine: returnedEndLine,
-                  count: returnedCount,
                 },
-                hasMoreAbove,
                 hasMoreBelow,
                 nextStartLine,
                 content: '',
@@ -2543,8 +2538,6 @@ export async function callLocalFileTool({
             const returnedStartLine = returnedCount > 0 ? rangeStartPage : null
             const returnedEndLine =
               returnedCount > 0 ? rangeEndPageInclusive : null
-            const hasMoreAbove =
-              operation.type === 'lines' && rangeStartPage > 1
             const hasMoreBelow =
               operation.type === 'lines' &&
               rangeEndPageInclusive < totalPageCount
@@ -2556,12 +2549,13 @@ export async function callLocalFileTool({
               path,
               ok: true,
               totalLines,
-              returnedRange: {
-                startLine: returnedStartLine,
-                endLine: returnedEndLine,
-                count: returnedCount,
-              },
-              hasMoreAbove,
+              returnedRange:
+                operation.type === 'lines'
+                  ? {
+                      startLine: returnedStartLine,
+                      endLine: returnedEndLine,
+                    }
+                  : undefined,
               hasMoreBelow,
               nextStartLine,
               content: outputContent,
@@ -2588,7 +2582,6 @@ export async function callLocalFileTool({
           let returnedStartLine: number | null = null
           let returnedEndLine: number | null = null
           let returnedCount = 0
-          let hasMoreAbove = false
           let hasMoreBelow = false
           let nextStartLine: number | null = null
 
@@ -2618,7 +2611,6 @@ export async function callLocalFileTool({
             returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
             returnedEndLine =
               returnedCount > 0 ? startIndex + returnedCount : null
-            hasMoreAbove = startIndex > 0
             hasMoreBelow = endExclusive < totalLines
             nextStartLine = hasMoreBelow ? endExclusive + 1 : null
           }
@@ -2632,12 +2624,13 @@ export async function callLocalFileTool({
             path,
             ok: true,
             totalLines,
-            returnedRange: {
-              startLine: returnedStartLine,
-              endLine: returnedEndLine,
-              count: returnedCount,
-            },
-            hasMoreAbove,
+            returnedRange:
+              operation.type === 'lines'
+                ? {
+                    startLine: returnedStartLine,
+                    endLine: returnedEndLine,
+                  }
+                : undefined,
             hasMoreBelow,
             nextStartLine,
             content: outputContent,
@@ -2676,67 +2669,19 @@ export async function callLocalFileTool({
         }
 
         const textResult = formatJsonResult({
-          tool: 'fs_read',
           toolCallId: toolCallId ?? null,
-          requestedOperation: {
-            type: operation.type,
-            startLine: operation.type === 'lines' ? operation.startLine : null,
-            endLine:
-              operation.type === 'lines' ? (operation.endLine ?? null) : null,
-            maxLines:
-              operation.type === 'lines' && operation.endLine === undefined
-                ? operation.maxLines
-                : null,
-          },
+          requestedOperation: { type: operation.type },
           results,
         })
 
-        // Build multimodal contentParts if any images were extracted.
-        // contentParts replaces the JSON blob with a clean structure:
-        // brief metadata header + interleaved text/images per file.
-        // No duplication with the JSON (which stays in `text` for
-        // UI display, compaction, and pruning consumers).
-        let contentParts: ContentPart[] | undefined
-        if (perFileImageParts.length > 0) {
-          const imageFilePathSet = new Set(perFileImageParts.map((p) => p.path))
-          contentParts = []
-
-          for (const result of results) {
-            if (!result.ok) {
-              contentParts.push({
-                type: 'text',
-                text: `[${result.path}] Error: ${result.error}`,
-              })
-              continue
-            }
-
-            const fileParts = imageFilePathSet.has(result.path)
-              ? perFileImageParts.find((p) => p.path === result.path)
-              : null
-
-            const rangeInfo =
-              result.returnedRange.startLine != null
-                ? result.path.toLowerCase().endsWith('.pdf')
-                  ? ` | pages ${result.returnedRange.startLine}-${result.returnedRange.endLine} of ${result.totalLines}`
-                  : ` | lines ${result.returnedRange.startLine}-${result.returnedRange.endLine} of ${result.totalLines}`
-                : ''
-
-            if (fileParts) {
-              // File with images: metadata header + interleaved content
-              contentParts.push({
-                type: 'text',
-                text: `[${result.path}${rangeInfo}]\n`,
-              })
-              contentParts.push(...fileParts.parts)
-            } else {
-              // File without images: metadata header + plain text
-              contentParts.push({
-                type: 'text',
-                text: `[${result.path}${rangeInfo}]\n${result.content}`,
-              })
-            }
-          }
-        }
+        // contentParts only carries image payloads — the request builder
+        // filters to image_url parts and ignores any text entries here, so we
+        // skip building per-file text headers that would just be discarded.
+        // The text JSON (above) is the source of truth for paths/ranges.
+        const contentParts: ContentPart[] | undefined =
+          perFileImageParts.length > 0
+            ? perFileImageParts.flatMap((p) => p.parts)
+            : undefined
 
         return {
           status: ToolCallResponseStatus.Success,

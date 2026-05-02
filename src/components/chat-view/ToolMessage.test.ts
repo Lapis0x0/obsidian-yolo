@@ -151,13 +151,7 @@ describe('ToolMessage headline helpers', () => {
           data: {
             type: 'text',
             text: JSON.stringify({
-              tool: 'fs_read',
-              requestedOperation: {
-                type: 'full',
-                startLine: null,
-                endLine: null,
-                maxLines: null,
-              },
+              requestedOperation: { type: 'full' },
               results: [],
             }),
           },
@@ -187,20 +181,13 @@ describe('ToolMessage headline helpers', () => {
           data: {
             type: 'text',
             text: JSON.stringify({
-              tool: 'fs_read',
-              requestedOperation: {
-                type: 'lines',
-                startLine: 12,
-                endLine: null,
-                maxLines: 50,
-              },
+              requestedOperation: { type: 'lines' },
               results: [
                 {
                   path: 'docs/plan.md',
                   ok: true,
                   totalLines: 200,
-                  returnedRange: { startLine: 12, endLine: 61, count: 50 },
-                  hasMoreAbove: true,
+                  returnedRange: { startLine: 12, endLine: 61 },
                   hasMoreBelow: true,
                   nextStartLine: 62,
                   content: '...',
@@ -234,20 +221,13 @@ describe('ToolMessage headline helpers', () => {
           data: {
             type: 'text',
             text: JSON.stringify({
-              tool: 'fs_read',
-              requestedOperation: {
-                type: 'lines',
-                startLine: 1,
-                endLine: null,
-                maxLines: 50,
-              },
+              requestedOperation: { type: 'lines' },
               results: [
                 {
                   path: 'docs/paper.pdf',
                   ok: true,
                   totalLines: 7,
-                  returnedRange: { startLine: 1, endLine: 1, count: 1 },
-                  hasMoreAbove: false,
+                  returnedRange: { startLine: 1, endLine: 1 },
                   hasMoreBelow: true,
                   nextStartLine: 2,
                   content: '',
