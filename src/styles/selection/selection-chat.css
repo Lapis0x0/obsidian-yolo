@@ -23,21 +23,21 @@
   z-index: 2;
 }
 
-.cm-editor .smtcmp-selection-persisted-inline {
+/* Layer-based highlight (replaces Decoration.mark to avoid DOM mutation) */
+.yolo-selection-persisted-layer {
   background: var(
     --text-selection,
     color-mix(in srgb, var(--interactive-accent) 18%, transparent)
   );
   border-radius: 2px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+  pointer-events: none;
 }
 
-.cm-editor .smtcmp-selection-persisted-inline-updated {
-  animation: smtcmp-selection-highlight-updated-fade 3s ease-out forwards;
+.yolo-selection-persisted-layer.yolo-selection-persisted-layer-updated {
+  animation: yolo-selection-highlight-updated-fade 3s ease-out forwards;
 }
 
-@keyframes smtcmp-selection-highlight-updated-fade {
+@keyframes yolo-selection-highlight-updated-fade {
   0% {
     background: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
   }

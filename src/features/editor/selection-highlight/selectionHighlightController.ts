@@ -1,11 +1,11 @@
 import type { ChangeSet, Extension } from '@codemirror/state'
-import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
+import { EditorSelection, StateEffect, StateField } from '@codemirror/state'
 import {
-  Decoration,
-  DecorationSet,
   EditorView,
+  RectangleMarker,
   ViewPlugin,
   ViewUpdate,
+  layer,
 } from '@codemirror/view'
 
 import type { HighlightOwner } from './pdfSelectionHighlightController'
@@ -41,52 +41,44 @@ type EffectPayload = Array<{
 }>
 
 // ──────────────────────────────────────────────────────────────────────────────
+// CSS class names (yolo- prefix per CLAUDE.md)
+// ──────────────────────────────────────────────────────────────────────────────
+
+const CLASS_SELECTION = 'yolo-selection-persisted-layer'
+const CLASS_UPDATED = 'yolo-selection-persisted-layer-updated'
+
+// ──────────────────────────────────────────────────────────────────────────────
 // CodeMirror state primitives
 // ──────────────────────────────────────────────────────────────────────────────
 
 const setSelectionHighlightEffect = StateEffect.define<EffectPayload | null>()
 
-const selectionHighlightField = StateField.define<DecorationSet>({
+/**
+ * StateField stores the current highlight payload as plain data.
+ * No longer stores a DecorationSet — rendering is done by the layer extension.
+ */
+const selectionHighlightField = StateField.define<EffectPayload>({
   create() {
-    return Decoration.none
+    return []
   },
-  update(decorations, tr) {
-    let next = decorations.map(tr.changes)
-
+  update(state, tr) {
     for (const effect of tr.effects) {
-      if (!effect.is(setSelectionHighlightEffect)) continue
-
-      const payload = effect.value?.filter((e) => e.from < e.to)
-      if (!payload || payload.length === 0) {
-        next = Decoration.none
-        continue
+      if (effect.is(setSelectionHighlightEffect)) {
+        return effect.value ?? []
       }
-
-      // Sort by from position (RangeSetBuilder requires non-overlapping, sorted ranges).
-      const sorted = [...payload].sort((a, b) => a.from - b.from)
-      const builder = new RangeSetBuilder<Decoration>()
-      for (const entry of sorted) {
-        builder.add(
-          entry.from,
-          entry.to,
-          Decoration.mark({
-            class: [
-              'smtcmp-selection-persisted-inline',
-              entry.visual === 'updated'
-                ? 'smtcmp-selection-persisted-inline-updated'
-                : '',
-            ]
-              .filter(Boolean)
-              .join(' '),
-          }),
-        )
-      }
-      next = builder.finish()
     }
-
-    return next
+    // No effect this transaction — keep payload but map offsets through
+    // any document changes so the layer renders at correct positions
+    // until the controller dispatches a fresh payload.
+    if (tr.docChanged && state.length > 0) {
+      return state.map((e) => ({
+        ...e,
+        from: tr.changes.mapPos(e.from, 1),
+        to: tr.changes.mapPos(e.to, -1),
+      }))
+    }
+    return state
   },
-  provide: (field) => EditorView.decorations.from(field),
 })
 
 const INTERACTIVE_OVERLAY_SELECTOR = [
@@ -110,49 +102,107 @@ export class SelectionHighlightController {
   // ── Public API ───────────────────────────────────────────────────────────────
 
   createExtension(): Extension {
-    const controller = this
-
     return [
       selectionHighlightField,
+      // Layer renders highlight rectangles using absolutely-positioned divs,
+      // without touching the document DOM (no text-node splitting).
+      layer({
+        above: true,
+        class: 'yolo-selection-highlight-layer',
+        update(update: ViewUpdate): boolean {
+          // Redraw whenever the stored payload changed or the viewport moved.
+          for (const effect of update.transactions.flatMap(
+            (tr) => tr.effects,
+          )) {
+            if (effect.is(setSelectionHighlightEffect)) return true
+          }
+          return update.geometryChanged || update.viewportChanged
+        },
+        markers(view: EditorView) {
+          const payload = view.state.field(selectionHighlightField)
+          if (!payload || payload.length === 0) return []
+
+          const markers: RectangleMarker[] = []
+          const { from: vpFrom, to: vpTo } = view.viewport
+          const doc = view.state.doc
+
+          for (const entry of payload) {
+            // Clamp to visible range — only generate markers for visible text.
+            const from = Math.max(entry.from, vpFrom)
+            const to = Math.min(entry.to, vpTo)
+            if (from >= to) continue
+
+            const className =
+              entry.visual === 'updated'
+                ? `${CLASS_SELECTION} ${CLASS_UPDATED}`
+                : CLASS_SELECTION
+
+            // Walk the range line-by-line so each line emits a text-tight
+            // rectangle (single-line forRange == glyph-tight). Empty lines
+            // yield from===to and are skipped, so blank lines between
+            // paragraphs don't get painted.
+            const startLine = doc.lineAt(from).number
+            const endLine = doc.lineAt(to).number
+            for (let n = startLine; n <= endLine; n++) {
+              const line = doc.line(n)
+              const segFrom = Math.max(from, line.from)
+              const segTo = Math.min(to, line.to)
+              if (segFrom >= segTo) continue
+              const range = EditorSelection.range(segFrom, segTo)
+              markers.push(
+                ...RectangleMarker.forRange(view, className, range),
+              )
+            }
+          }
+
+          return markers
+        },
+      }),
       EditorView.domEventHandlers({
         mousedown: (event, view) => {
-          if (controller.shouldIgnoreTarget(event.target)) return false
+          if (this.shouldIgnoreTarget(event.target)) return false
           // Fast-path: clear only sync entries for this view on mousedown.
-          controller.clearSyncForView(view)
+          this.clearSyncForView(view)
           return false
         },
         beforeinput: (_event, view) => {
-          controller.clearSyncForView(view)
+          this.clearSyncForView(view)
           return false
         },
         compositionstart: (_event, view) => {
-          controller.clearSyncForView(view)
+          this.clearSyncForView(view)
           return false
         },
       }),
-      ViewPlugin.fromClass(
-        class {
-          constructor(private readonly view: EditorView) {}
-
-          update(update: ViewUpdate) {
-            // Keep stored offsets in sync with document edits so future
-            // reconcile / dispatch rebuilds use mapped positions, not stale ones.
-            if (update.docChanged) {
-              controller.mapOffsetsForView(this.view, update.changes)
-            }
-            if (update.selectionSet && update.state.selection.main.empty) {
-              // Selection collapsed — clear sync entries for this view.
-              controller.clearSyncForView(this.view)
-            }
-          }
-
-          destroy() {
-            // Remove all entries for this view when it is torn down.
-            controller.clearAllForView(this.view)
-          }
-        },
-      ),
+      this._makeViewPlugin(),
     ]
+  }
+
+  private _makeViewPlugin(): Extension {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- ViewPlugin requires an inner class; arrow functions cannot be used as class constructors
+    const controller = this
+    return ViewPlugin.fromClass(
+      class {
+        constructor(private readonly view: EditorView) {}
+
+        update(update: ViewUpdate) {
+          // Keep stored offsets in sync with document edits so future
+          // reconcile / dispatch rebuilds use mapped positions, not stale ones.
+          if (update.docChanged) {
+            controller.mapOffsetsForView(this.view, update.changes)
+          }
+          if (update.selectionSet && update.state.selection.main.empty) {
+            // Selection collapsed — clear sync entries for this view.
+            controller.clearSyncForView(this.view)
+          }
+        }
+
+        destroy() {
+          // Remove all entries for this view when it is torn down.
+          controller.clearAllForView(this.view)
+        }
+      },
+    )
   }
 
   /**
@@ -284,9 +334,9 @@ export class SelectionHighlightController {
 
   /**
    * Map stored from/to offsets through a ChangeSet so they track document
-   * edits.  StateField already maps the live decorations, but our controller
-   * keeps its own copy of offsets used to rebuild payloads on dispatch — those
-   * would otherwise drift back to stale positions.
+   * edits.  The layer reads from the StateField which is rebuilt on each
+   * dispatch, so keeping our controller's own offset copy in sync ensures
+   * future dispatches use correct positions.
    */
   mapOffsetsForView(view: EditorView, changes: ChangeSet): void {
     for (const entry of this.entries.values()) {
