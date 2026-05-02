@@ -111,7 +111,11 @@ import {
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import type { Mentionable, MentionableBlockData, MentionableImage } from './types/mentionable'
+import type {
+  Mentionable,
+  MentionableBlockData,
+  MentionableImage,
+} from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
@@ -425,10 +429,6 @@ export default class SmartComposerPlugin extends Plugin {
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
         closeSmartSpace: () => this.closeSmartSpace(),
-        pinSelectionHighlight: (view) =>
-          selectionHighlightController.pinCurrentSelection(view),
-        clearSelectionHighlight: (view) =>
-          selectionHighlightController.clearHighlight(view),
       })
     }
     return this.quickAskController
@@ -562,10 +562,6 @@ export default class SmartComposerPlugin extends Plugin {
           )
         },
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
-        pinSelectionHighlight: (view) =>
-          selectionHighlightController.pinCurrentSelection(view),
-        clearSelectionHighlight: (view) =>
-          selectionHighlightController.clearHighlight(view),
       })
     }
     return this.selectionChatController
@@ -2348,13 +2344,31 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
     const editorView = this.getEditorView(editor)
+    const data = getMentionableBlockData(editor, view)
+    if (!data) return
+
+    const highlightId = crypto.randomUUID()
     if (
       editorView &&
       (this.settings.continuationOptions.persistSelectionHighlight ?? true)
     ) {
-      selectionHighlightController.pinCurrentSelection(editorView)
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
-    await this.getChatViewNavigator().addSelectionToChat(editor, view)
+
+    await this.getChatViewNavigator().addSelectionBlockToChat({
+      ...data,
+      source: 'selection-pinned',
+      highlightId,
+    })
   }
 
   async addFileToChat(file: TFile) {

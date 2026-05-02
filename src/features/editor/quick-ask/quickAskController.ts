@@ -7,6 +7,7 @@ import { QuickAskOverlay } from '../../../components/panels/quick-ask'
 import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { Mentionable } from '../../../types/mentionable'
+import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
 import type {
   QuickAskLaunchMode,
@@ -49,8 +50,6 @@ type QuickAskControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getActiveFileTitle: () => string
   closeSmartSpace: (restoreFocus?: boolean) => void
-  pinSelectionHighlight: (view: EditorView) => void
-  clearSelectionHighlight: (view?: EditorView) => void
 }
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
@@ -110,6 +109,8 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
 export class QuickAskController {
   private quickAskWidgetState: QuickAskWidgetState = null
   private highlightTakeoverToken = 0
+  /** id of the current quickask highlight, so we can clear it on close */
+  private currentHighlightId: string | null = null
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
@@ -120,7 +121,10 @@ export class QuickAskController {
     }
 
     this.highlightTakeoverToken += 1
-    this.deps.clearSelectionHighlight(state.view)
+    if (this.currentHighlightId) {
+      selectionHighlightController.clearById(this.currentHighlightId)
+      this.currentHighlightId = null
+    }
 
     if (!restoreFocus) {
       this.quickAskWidgetState = null
@@ -284,7 +288,15 @@ export class QuickAskController {
           return
         }
 
-        this.deps.pinSelectionHighlight(view)
+        const id = `quickask:${crypto.randomUUID()}`
+        this.currentHighlightId = id
+        selectionHighlightController.addHighlight(
+          view,
+          id,
+          { from: selection.from, to: selection.to },
+          'sync',
+          'quickask',
+        )
       })
     })
   }

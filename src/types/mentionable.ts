@@ -34,6 +34,7 @@ export type MentionableBlockData = {
   endLine: number
   pageNumber?: number // 1-indexed; present when selection originates from a PDF view
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
+  highlightId?: string // runtime-only; links this mention to its visual highlight; not persisted
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'

@@ -1,5 +1,12 @@
 import { EditorView } from '@codemirror/view'
-import { App, Editor, MarkdownView, Notice, type WorkspaceLeaf } from 'obsidian'
+import {
+  App,
+  Editor,
+  type EventRef,
+  MarkdownView,
+  Notice,
+  type WorkspaceLeaf,
+} from 'obsidian'
 
 import { ChatView } from '../../../ChatView'
 import type {
@@ -11,7 +18,6 @@ import {
   SelectionInfo,
   SelectionManager,
 } from '../../../components/selection/SelectionManager'
-import { CHAT_VIEW_TYPE } from '../../../constants'
 import type SmartComposerPlugin from '../../../main'
 import { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type {
@@ -22,8 +28,9 @@ import type {
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
-import { PdfSelectionManager } from './PdfSelectionManager'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
+import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
+import { PdfSelectionManager } from './PdfSelectionManager'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -73,8 +80,6 @@ type SelectionChatControllerDeps = {
     text: string,
   ) => Promise<void>
   isSmartSpaceOpen: () => boolean
-  pinSelectionHighlight: (view: EditorView) => void
-  clearSelectionHighlight: (view?: EditorView) => void
 }
 
 export class SelectionChatController {
@@ -118,20 +123,13 @@ export class SelectionChatController {
     text: string,
   ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
-  private readonly pinSelectionHighlight: (view: EditorView) => void
-  private readonly clearSelectionHighlight: (view?: EditorView) => void
 
   private selectionManager: SelectionManager | null = null
   private pdfSelectionManager: PdfSelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
   private pendingSelectionRewrite: PendingSelectionRewrite | null = null
   private enableSelectionChat = true
-  private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null
-  private lastActiveLeafWasMarkdown = false
-  // 自行跟踪当前激活 leaf，避免使用 workspace.activeLeaf（已标记 deprecated）
-  // 以及 getActiveViewOfType(...)?.leaf（语义不同，见 deferSelectionHighlightTakeover 注释）
-  private currentActiveLeaf: WorkspaceLeaf | null = null
-  private highlightTakeoverToken = 0
+  private layoutChangeEventRef: EventRef | null = null
 
   constructor(deps: SelectionChatControllerDeps) {
     this.plugin = deps.plugin
@@ -145,8 +143,6 @@ export class SelectionChatController {
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
-    this.pinSelectionHighlight = deps.pinSelectionHighlight
-    this.clearSelectionHighlight = deps.clearSelectionHighlight
   }
 
   isActive(): boolean {
@@ -164,15 +160,6 @@ export class SelectionChatController {
   }
 
   initialize() {
-    const activeLeaf =
-      this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? null
-    this.lastActiveLeafWasMarkdown = !!(
-      activeLeaf?.view instanceof MarkdownView
-    )
-    if (this.lastActiveLeafWasMarkdown && activeLeaf) {
-      this.lastActiveMarkdownLeaf = activeLeaf
-    }
-
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true
     this.enableSelectionChat = enableSelectionChat
@@ -212,8 +199,6 @@ export class SelectionChatController {
     }
 
     // PDF selection sync — works on both desktop and mobile.
-    // Selection APIs (window.getSelection + selectionchange) and PDF.js textLayer
-    // DOM are standard across platforms; touch selections fire selectionchange too.
     this.pdfSelectionManager = new PdfSelectionManager(this.app, {
       enabled: enableSelectionChat,
       debounceDelay: 300,
@@ -222,13 +207,17 @@ export class SelectionChatController {
       this.handlePdfSelectionChange(result)
     })
 
-    // Bug B: prune highlight entries for PDF leaves that get closed, preventing
-    // Map / eventBus listener leaks.
-    this.plugin.registerEvent(
-      this.app.workspace.on('layout-change', () => {
-        pdfSelectionHighlightController.pruneDetachedLeaves(this.app)
-      }),
-    )
+    // Prune highlight entries for PDF leaves that get closed. initialize() can
+    // be called multiple times (settings reload), so unregister the previous
+    // listener before adding a new one to avoid accumulating callbacks.
+    if (this.layoutChangeEventRef) {
+      this.app.workspace.offref(this.layoutChangeEventRef)
+      this.layoutChangeEventRef = null
+    }
+    this.layoutChangeEventRef = this.app.workspace.on('layout-change', () => {
+      pdfSelectionHighlightController.pruneDetachedLeaves(this.app)
+    })
+    this.plugin.registerEvent(this.layoutChangeEventRef)
   }
 
   destroy() {
@@ -244,39 +233,20 @@ export class SelectionChatController {
       this.pdfSelectionManager.destroy()
       this.pdfSelectionManager = null
     }
-
-    this.lastActiveMarkdownLeaf = null
-    this.lastActiveLeafWasMarkdown = false
-    this.highlightTakeoverToken += 1
+    if (this.layoutChangeEventRef) {
+      this.app.workspace.offref(this.layoutChangeEventRef)
+      this.layoutChangeEventRef = null
+    }
+    // Drop all highlights and detach PDF eventBus listeners.  Reconcile in
+    // Chat.tsx only clears 'chat' owner; here we want everything gone.
+    selectionHighlightController.clearAll()
     pdfSelectionHighlightController.clearAll()
   }
 
-  handleActiveLeafChange(leaf: WorkspaceLeaf | null) {
-    const prevWasMarkdown = this.lastActiveLeafWasMarkdown
-    const nextType = leaf?.getViewState().type ?? null
-    const nextIsMarkdown = !!(leaf?.view instanceof MarkdownView)
-
-    this.currentActiveLeaf = leaf
-    this.lastActiveLeafWasMarkdown = nextIsMarkdown
-    if (nextIsMarkdown && leaf) {
-      this.lastActiveMarkdownLeaf = leaf
-    }
-
-    if (nextType === CHAT_VIEW_TYPE && prevWasMarkdown) {
-      const editorView = this.getTrackedEditorView(true)
-      if (editorView) {
-        this.deferSelectionHighlightTakeover(editorView)
-      }
-      return
-    }
-
-    if (nextType !== CHAT_VIEW_TYPE) {
-      this.highlightTakeoverToken += 1
-      this.clearSelectionHighlight()
-      // PDF 高亮不在此清：用户切到其它非 chat leaf（如打开第二个文件）后
-      // 再回到 PDF 时仍应看到原高亮。真正的清理由 pin 替换 / leaf detach
-      // (pruneDetachedLeaves) / destroy / Markdown takeover 负责。
-    }
+  // Kept for the public API surface; selection highlight reconcile is now driven
+  // entirely by the chat mention list, so leaf changes need no special handling here.
+  handleActiveLeafChange(_leaf: WorkspaceLeaf | null) {
+    // no-op
   }
 
   private handleSelectionChange(
@@ -469,20 +439,33 @@ export class SelectionChatController {
       return
     }
 
-    chatView.syncSelectionToChat(data)
+    // Stamp a highlightId and pin the sync highlight immediately.
+    const highlightId = crypto.randomUUID()
+    const editorView = this.getEditorView(editor)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const selection = editorView.state.selection.main
+      if (!selection.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: selection.from, to: selection.to },
+          'sync',
+          'chat',
+        )
+      }
+    }
+
+    chatView.syncSelectionToChat({ ...data, highlightId })
   }
 
   /**
    * Called by PdfSelectionManager when the user's selection inside a PDF view
-   * changes.  Handles the three-state PdfSelectionResult:
-   *   - null           → selection is not in any PDF view; do nothing (let Markdown manager handle it)
-   *   - { kind:'empty' } → inside PDF but empty/collapsed; clear the badge
-   *   - { kind:'data' }  → valid PDF selection; sync the badge
+   * changes.
    */
   private handlePdfSelectionChange(
     result: import('./getPdfSelectionData').PdfSelectionResult,
   ): void {
-    // null means the selection is not inside any PDF at all — leave Markdown badges untouched.
+    // null means the selection is not inside any PDF at all.
     if (result === null) return
 
     const enableSelectionChat =
@@ -497,35 +480,36 @@ export class SelectionChatController {
 
     if (result.kind === 'empty') {
       chatView.clearSelectionFromChat()
-      // 高亮故意不清：与 Markdown 高亮一致——一旦 pin 就持续显示，
-      // 直到出现"新的非空选区"（pin 替换）、leaf 关闭、或插件卸载。
-      // 用户点击 chat 输入框会让 window selection 折叠，但他们的"选区
-      // 意图"还在；继续显示高亮才符合预期。
       return
     }
 
     // result.kind === 'data'
-    const blockData: import('../../../types/mentionable').MentionableBlockData =
-      {
-        content: result.content,
-        file: result.file,
-        startLine: 0,
-        endLine: 0,
-        pageNumber: result.pageNumber,
-        source: 'selection-sync',
-      }
-    chatView.syncSelectionToChat(blockData)
+    const highlightId = crypto.randomUUID()
 
     if (this.shouldPersistSelectionHighlight()) {
-      // Bug E: PDF selection replaces any active Markdown highlight.
-      this.clearSelectionHighlight()
-      pdfSelectionHighlightController.pin(
+      pdfSelectionHighlightController.addHighlight(
         result.leaf,
-        result.range,
-        result.pageNumber,
-        result.file,
+        highlightId,
+        {
+          range: result.range,
+          pageNumber: result.pageNumber,
+          file: result.file,
+        },
+        'sync',
+        'chat',
       )
     }
+
+    const blockData: MentionableBlockData = {
+      content: result.content,
+      file: result.file,
+      startLine: 0,
+      endLine: 0,
+      pageNumber: result.pageNumber,
+      source: 'selection-sync',
+      highlightId,
+    }
+    chatView.syncSelectionToChat(blockData)
   }
 
   private async rewriteSelection(
@@ -619,12 +603,26 @@ export class SelectionChatController {
     }
 
     const editorView = this.getEditorView(editor)
-    const resolvedPrompt = prompt?.trim() ?? ''
-    await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
+    const highlightId = crypto.randomUUID()
 
-    if (editorView) {
-      this.deferSelectionHighlightTakeover(editorView)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
+
+    const resolvedPrompt = prompt?.trim() ?? ''
+    await this.openChatWithSelectionAndPrefill(
+      { ...data, source: 'selection-pinned', highlightId },
+      resolvedPrompt,
+    )
   }
 
   private async addToSidebar(editor: Editor) {
@@ -640,12 +638,27 @@ export class SelectionChatController {
       return
     }
 
-    await this.addSelectionToSidebarChat(data)
-
     const editorView = this.getEditorView(editor)
-    if (editorView) {
-      this.deferSelectionHighlightTakeover(editorView)
+    const highlightId = crypto.randomUUID()
+
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
+
+    await this.addSelectionToSidebarChat({
+      ...data,
+      source: 'selection-pinned',
+      highlightId,
+    })
   }
 
   private async addToChatAndSend(editor: Editor, prompt?: string) {
@@ -661,76 +674,31 @@ export class SelectionChatController {
       return
     }
 
-    await this.openChatWithSelectionAndSend(data, prompt?.trim() ?? '')
-
     const editorView = this.getEditorView(editor)
-    if (editorView) {
-      this.deferSelectionHighlightTakeover(editorView)
+    const highlightId = crypto.randomUUID()
+
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
+
+    await this.openChatWithSelectionAndSend(
+      { ...data, source: 'selection-pinned', highlightId },
+      prompt?.trim() ?? '',
+    )
   }
 
   private shouldPersistSelectionHighlight(): boolean {
     return (
       this.getSettings().continuationOptions.persistSelectionHighlight ?? true
     )
-  }
-
-  private deferSelectionHighlightTakeover(view: EditorView) {
-    if (!this.shouldPersistSelectionHighlight()) {
-      return
-    }
-
-    const token = ++this.highlightTakeoverToken
-
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (token !== this.highlightTakeoverToken) {
-          return
-        }
-
-        const selection = view.state.selection.main
-        const targetLeaf = this.plugin
-          .getChatLeafSessionManager()
-          .resolveTargetLeaf()
-        // 判断 Chat 面板是否为当前激活 leaf。
-        // ⚠️ 这里故意用自行跟踪的 currentActiveLeaf（在 handleActiveLeafChange
-        // 中同步维护），不要替换成以下"看似等价"的写法：
-        //   - workspace.activeLeaf：语义正确但已标记 deprecated；
-        //   - getActiveViewOfType(MarkdownView)?.leaf：语义相反，返回的是
-        //     "最近活跃的 Markdown leaf"，焦点移到 Chat 后仍指向原编辑器，
-        //     会让条件永远短路（历史多次踩坑：d741d65 修过、a6e6fd7 refactor
-        //     又回归）；
-        //   - DOM activeElement 判定：点击 Chat 空白区域时 activeElement
-        //     会落到 body，无法识别"leaf 已激活但未聚焦输入框"。
-        if (
-          selection.empty ||
-          view.hasFocus ||
-          !targetLeaf ||
-          this.currentActiveLeaf !== targetLeaf
-        ) {
-          return
-        }
-
-        // Bug E: Markdown selection replaces any active PDF highlight.
-        pdfSelectionHighlightController.clearAll()
-        this.pinSelectionHighlight(view)
-      })
-    })
-  }
-
-  private getTrackedEditorView(allowFallback: boolean): EditorView | null {
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (activeView?.editor) {
-      return this.getEditorView(activeView.editor)
-    }
-
-    if (
-      allowFallback &&
-      this.lastActiveMarkdownLeaf?.view instanceof MarkdownView
-    ) {
-      return this.getEditorView(this.lastActiveMarkdownLeaf.view.editor)
-    }
-
-    return null
   }
 }

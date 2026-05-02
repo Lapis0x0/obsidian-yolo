@@ -1,40 +1,42 @@
 /**
  * pdfSelectionHighlightController.ts
  *
- * Persists a visual highlight over selected text in Obsidian's built-in PDF
- * viewer.  Mirrors the behaviour of SelectionHighlightController for Markdown
- * editors, but works around the fact that PDF.js tears down and recreates the
- * `.textLayer` <span> nodes on every page render (zoom, scroll out/back, etc.).
+ * Persists visual highlights over selected text in Obsidian's built-in PDF
+ * viewer using the CSS Custom Highlight API (`::highlight(yolo-pdf-selection)`).
  *
- * The only stable identifier that survives re-renders is:
+ * The highlight registry is keyed by an opaque string `id` rather than by
+ * WorkspaceLeaf, so the same leaf can hold multiple independent highlights
+ * (e.g. one sync + several pinned entries).
+ *
+ * The only stable identifier that survives PDF.js re-renders is:
  *   file + pageNumber + [startOffset, endOffset)
- * where offsets are character indices into the concatenated textContent of the
- * page's textLayer text nodes in DOM order.
+ * where offsets are character indices into the concatenated textContent of
+ * all text-leaf nodes in DOM order.
  *
- * Painting uses the CSS Custom Highlight API: a singleton `Highlight` is
- * registered as `yolo-pdf-selection` and styled via `::highlight(...)` in
- * pdf-selection.css.  This gives character-level granularity without mutating
- * the textLayer DOM (so it never fights PDF.js's own reconciliation).
- *
- * Lifecycle per leaf:
- *   1. pin(leaf, range, pageNumber, file) — compute offsets from the live
- *      Range, build per-text-node sub-ranges, add them to the global Highlight,
- *      and subscribe to `textlayerrendered`.
- *   2. On each `textlayerrendered` event for the pinned page, rebuild the
- *      sub-ranges (old text nodes are detached after re-render) and replace the
- *      leaf's ranges in the Highlight.
- *   3. clear(leaf) / clearAll() — remove the leaf's ranges and unsubscribe.
+ * Lifecycle per entry:
+ *   1. addHighlight(leaf, id, location, variant, owner) — compute offsets from
+ *      the live Range, build per-text-node sub-ranges, add to the global
+ *      Highlight, subscribe to `textlayerrendered` for re-render recovery.
+ *   2. On each `textlayerrendered` for the pinned page, rebuild sub-ranges
+ *      against freshly mounted text nodes.
+ *   3. clearById(id) / reconcileActiveIds(ids) / clearAll() — remove ranges
+ *      and unsubscribe from eventBus.
  */
 
 import type { App, TFile, WorkspaceLeaf } from 'obsidian'
 
 const HIGHLIGHT_NAME = 'yolo-pdf-selection'
 
-type PinnedHighlight = {
+export type HighlightOwner = 'chat' | 'quickask' | 'transient'
+
+type PdfHighlightEntry = {
+  leaf: WorkspaceLeaf
   pageNumber: number
   startOffset: number
   endOffset: number
   file: TFile
+  variant: 'sync' | 'pinned'
+  owner: HighlightOwner
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
   eventBus: any
   onTextLayerRendered: (evt: { pageNumber: number }) => void
@@ -52,8 +54,7 @@ type AnyHighlight = any
  * Lazily get-or-create the singleton Highlight registered under HIGHLIGHT_NAME.
  *
  * Returns null when the runtime does not support the CSS Custom Highlight API
- * (e.g. older mobile webviews) — callers should silently no-op in that case
- * rather than fall back to a different rendering path that might mis-paint.
+ * (e.g. older mobile webviews).
  */
 function getOrCreateHighlight(): AnyHighlight | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- feature detection
@@ -61,7 +62,9 @@ function getOrCreateHighlight(): AnyHighlight | null {
   if (typeof w.Highlight !== 'function' || !w.CSS || !w.CSS.highlights) {
     return null
   }
-  let highlight = w.CSS.highlights.get(HIGHLIGHT_NAME) as AnyHighlight | undefined
+  let highlight = w.CSS.highlights.get(HIGHLIGHT_NAME) as
+    | AnyHighlight
+    | undefined
   if (!highlight) {
     highlight = new w.Highlight()
     w.CSS.highlights.set(HIGHLIGHT_NAME, highlight)
@@ -76,11 +79,6 @@ function getOrCreateHighlight(): AnyHighlight | null {
 /**
  * Walk all text nodes inside the `.textLayer` element of `pageEl` in DOM order
  * via TreeWalker and return them as an ordered array.
- *
- * Using text nodes (not spans) avoids double-counting when PDF.js uses nested
- * span structure: outer markedContent spans contain text-leaf spans, so
- * iterating spans makes textContent appear multiple times in the cursor sum.
- * Text nodes are always leaves, so each character is counted exactly once.
  */
 function getTextNodes(pageEl: Element): Text[] {
   const textLayer = pageEl.querySelector('.textLayer')
@@ -96,14 +94,8 @@ function getTextNodes(pageEl: Element): Text[] {
 }
 
 /**
- * Given the text nodes of the page that contains `range`, compute the
- * character offsets of the selection into the concatenated text-node content.
- *
- * Text nodes are leaf nodes; `range.startContainer` / `range.endContainer`
- * point directly at them with character-index offsets, so there is no
- * double-counting risk.
- *
- * Returns null when the range does not overlap the textLayer at all.
+ * Given text nodes of the page, compute character offsets of the selection
+ * into the concatenated text-node content.
  */
 function computeOffsets(
   textNodes: Text[],
@@ -136,13 +128,8 @@ function computeOffsets(
 }
 
 /**
- * Build per-text-node sub-Ranges that together cover exactly
- * [startOffset, endOffset) of the page's concatenated text content.
- *
- * Each text node that overlaps the selection contributes one Range whose
- * start/end offsets are clipped to the selection bounds — so partial-word
- * selections inside a single PDF.js span produce a Range that covers only the
- * selected characters, not the whole span.
+ * Build per-text-node sub-Ranges covering exactly [startOffset, endOffset)
+ * of the page's concatenated text content.
  */
 function buildRanges(
   textNodes: Text[],
@@ -172,7 +159,6 @@ function buildRanges(
 
 /**
  * Resolve the PDF.js eventBus from a WorkspaceLeaf that holds a PDF view.
- * Returns null when the internal structure is unavailable.
  */
 function resolveEventBus(leaf: WorkspaceLeaf): unknown | null {
   try {
@@ -197,9 +183,8 @@ function resolvePageEl(
     const containerEl = (leaf.view as any)?.containerEl as Element | undefined
     if (!containerEl) return null
     return (
-      containerEl.querySelector(
-        `.page[data-page-number="${pageNumber}"]`,
-      ) ?? null
+      containerEl.querySelector(`.page[data-page-number="${pageNumber}"]`) ??
+      null
     )
   } catch {
     return null
@@ -211,61 +196,79 @@ function resolvePageEl(
 // ──────────────────────────────────────────────────────────────────────────────
 
 export class PdfSelectionHighlightController {
-  private pinned = new Map<WorkspaceLeaf, PinnedHighlight>()
+  /** Map from highlight id to its entry. */
+  private entries = new Map<string, PdfHighlightEntry>()
 
   /**
-   * Pin a highlight for the given leaf.
+   * Add (or replace) a highlight identified by `id`.
    *
-   * @param leaf        The WorkspaceLeaf that owns the PDF view.
-   * @param range       The live browser Range for the current selection.
-   *                    Must be captured before `window.getSelection()` changes.
-   * @param pageNumber  1-based page number that the selection lives on.
-   * @param file        The TFile being displayed in the leaf.
+   * - variant 'sync': at most one sync entry per leaf; adding a new sync entry
+   *   for the same leaf first removes the previous one.
+   * - variant 'pinned': entries accumulate; same id replaces, different id adds.
+   *
+   * @param leaf       The WorkspaceLeaf that owns the PDF view.
+   * @param id         Opaque id that links this highlight to a chat mention.
+   * @param location   The live browser Range + page number + TFile.
+   * @param variant    'sync' (auto-cleared on selection change) or 'pinned'.
+   * @param owner      Who manages this highlight; reconcile only clears 'chat' entries.
    */
-  pin(
+  addHighlight(
     leaf: WorkspaceLeaf,
-    range: Range,
-    pageNumber: number,
-    file: TFile,
+    id: string,
+    location: { range: Range; pageNumber: number; file: TFile },
+    variant: 'sync' | 'pinned',
+    owner: HighlightOwner,
   ): void {
-    // Clear any previous highlight on this leaf first.
-    this.clear(leaf)
+    // For sync variant: remove any existing sync entry on the same leaf first.
+    if (variant === 'sync') {
+      for (const [existingId, entry] of this.entries) {
+        if (entry.leaf === leaf && entry.variant === 'sync') {
+          this._removeEntry(existingId, entry)
+        }
+      }
+    } else {
+      // For pinned: if same id already exists, replace it.
+      const existing = this.entries.get(id)
+      if (existing) {
+        this._removeEntry(id, existing)
+      }
+    }
 
     const highlight = getOrCreateHighlight()
     if (!highlight) return // CSS Custom Highlight API unavailable — silent no-op.
 
-    const pageEl = resolvePageEl(leaf, pageNumber)
+    const pageEl = resolvePageEl(leaf, location.pageNumber)
     if (!pageEl) return
 
     const textNodes = getTextNodes(pageEl)
-    const offsets = computeOffsets(textNodes, range)
+    const offsets = computeOffsets(textNodes, location.range)
     if (!offsets) return
 
     const eventBus = resolveEventBus(leaf)
     if (!eventBus) return
 
     const { startOffset, endOffset } = offsets
-
     const ranges = buildRanges(textNodes, startOffset, endOffset)
     for (const r of ranges) highlight.add(r)
 
-    const entry: PinnedHighlight = {
-      pageNumber,
+    const entry: PdfHighlightEntry = {
+      leaf,
+      pageNumber: location.pageNumber,
       startOffset,
       endOffset,
-      file,
+      file: location.file,
+      variant,
+      owner,
       eventBus,
       ranges,
       onTextLayerRendered: () => {}, // assigned below
     }
 
     entry.onTextLayerRendered = (evt: { pageNumber: number }): void => {
-      if (evt.pageNumber !== pageNumber) return
-      const el = resolvePageEl(leaf, pageNumber)
+      if (evt.pageNumber !== location.pageNumber) return
+      const el = resolvePageEl(leaf, location.pageNumber)
       if (!el) return
 
-      // Old ranges point to detached text nodes after re-render — drop them
-      // and rebuild against the freshly mounted text nodes.
       const hl = getOrCreateHighlight()
       if (!hl) return
       for (const r of entry.ranges) hl.delete(r)
@@ -276,50 +279,62 @@ export class PdfSelectionHighlightController {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
     ;(eventBus as any).on('textlayerrendered', entry.onTextLayerRendered)
 
-    this.pinned.set(leaf, entry)
+    this.entries.set(id, entry)
   }
 
   /**
-   * Remove the highlight and event listener for the given leaf.
+   * Remove the highlight with the given id.
    */
-  clear(leaf: WorkspaceLeaf): void {
-    const entry = this.pinned.get(leaf)
+  clearById(id: string): void {
+    const entry = this.entries.get(id)
     if (!entry) return
+    this._removeEntry(id, entry)
+  }
 
-    const { eventBus, onTextLayerRendered, ranges } = entry
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
-    ;(eventBus as any).off('textlayerrendered', onTextLayerRendered)
-
-    const highlight = getOrCreateHighlight()
-    if (highlight) {
-      for (const r of ranges) highlight.delete(r)
+  /**
+   * Remove all highlights whose owner is 'chat' and whose id is NOT in `ids`.
+   * Highlights belonging to other owners (quickask, transient) are never touched.
+   */
+  reconcileActiveIds(ids: Set<string>): void {
+    for (const [id, entry] of Array.from(this.entries)) {
+      if (entry.owner === 'chat' && !ids.has(id)) {
+        this._removeEntry(id, entry)
+      }
     }
-
-    this.pinned.delete(leaf)
   }
 
   /**
    * Remove all pinned highlights (e.g. on plugin unload).
    */
   clearAll(): void {
-    for (const leaf of Array.from(this.pinned.keys())) {
-      this.clear(leaf)
+    for (const [id, entry] of Array.from(this.entries)) {
+      this._removeEntry(id, entry)
     }
   }
 
   /**
    * Remove pinned highlights for leaves that are no longer open in the
-   * workspace.  Call this on every `layout-change` event to avoid leaking
-   * Map entries and eventBus listeners when the user closes a PDF tab.
+   * workspace.  Call this on every `layout-change` event.
    */
   pruneDetachedLeaves(app: App): void {
     const openPdfLeaves = app.workspace.getLeavesOfType('pdf')
-    for (const leaf of Array.from(this.pinned.keys())) {
-      if (!openPdfLeaves.includes(leaf)) {
-        this.clear(leaf)
+    for (const [id, entry] of Array.from(this.entries)) {
+      if (!openPdfLeaves.includes(entry.leaf)) {
+        this._removeEntry(id, entry)
       }
     }
+  }
+
+  private _removeEntry(id: string, entry: PdfHighlightEntry): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
+    ;(entry.eventBus as any).off('textlayerrendered', entry.onTextLayerRendered)
+
+    const highlight = getOrCreateHighlight()
+    if (highlight) {
+      for (const r of entry.ranges) highlight.delete(r)
+    }
+
+    this.entries.delete(id)
   }
 }
 

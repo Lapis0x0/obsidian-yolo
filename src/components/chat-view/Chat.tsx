@@ -33,6 +33,7 @@ import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
+import { pdfSelectionHighlightController } from '../../features/editor/selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
@@ -1038,6 +1039,47 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   useEffect(() => {
     chatMessagesStateRef.current = chatMessages
   }, [chatMessages])
+
+  // Reconcile visual highlights with the current mention list.
+  // The chat mention list is the single source of truth: when a mention with a
+  // highlightId is removed (× button, mention text deletion, input clear), the
+  // matching highlight is dropped here.
+  // We scan both the input message and all user messages in chatMessages, since
+  // syncSelectionMentionable can attach selection mentions to either depending
+  // on which message currently has focus.
+  useEffect(() => {
+    const activeIds = new Set<string>()
+    const collectFrom = (mentionables: Mentionable[]) => {
+      for (const m of mentionables) {
+        if (
+          m.type === 'block' &&
+          (m.source === 'selection-sync' ||
+            m.source === 'selection-pinned' ||
+            m.source === 'selection') &&
+          m.highlightId
+        ) {
+          activeIds.add(m.highlightId)
+        }
+      }
+    }
+    collectFrom(inputMessage.mentionables)
+    for (const message of chatMessages) {
+      if (message.role === 'user') {
+        collectFrom(message.mentionables)
+      }
+    }
+    selectionHighlightController.reconcileActiveIds(activeIds)
+    pdfSelectionHighlightController.reconcileActiveIds(activeIds)
+  }, [inputMessage.mentionables, chatMessages])
+
+  // Clear chat-owned highlights when the chat view unmounts (tab closed).
+  // Lives in its own effect so it only fires on unmount, not on every mention change.
+  useEffect(() => {
+    return () => {
+      selectionHighlightController.reconcileActiveIds(new Set())
+      pdfSelectionHighlightController.reconcileActiveIds(new Set())
+    }
+  }, [])
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -2788,7 +2830,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               updatedRanges.map((range) => ({
                 from: range.start,
                 to: range.end,
-                variant: 'updated' as const,
+                visual: 'updated' as const,
               })),
               1050,
             )

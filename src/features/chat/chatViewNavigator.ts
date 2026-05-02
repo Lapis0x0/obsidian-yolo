@@ -10,7 +10,10 @@ import {
 import { ChatView } from '../../ChatView'
 import { CHAT_VIEW_TYPE } from '../../constants'
 import type SmartComposerPlugin from '../../main'
-import type { MentionableBlockData, MentionableImage } from '../../types/mentionable'
+import type {
+  MentionableBlockData,
+  MentionableImage,
+} from '../../types/mentionable'
 import { getMentionableBlockData } from '../../utils/obsidian'
 
 import {
