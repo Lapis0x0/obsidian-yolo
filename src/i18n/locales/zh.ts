@@ -22,6 +22,7 @@ export const zh: TranslationKeys = {
     triggerQuickAsk: '触发 Quick Ask',
     triggerTabCompletion: '触发 Tab 补全',
     acceptInlineSuggestion: '接受补全',
+    capturePdfRegion: '截取 PDF 区域到聊天',
   },
 
   common: {
@@ -1330,6 +1331,14 @@ export const zh: TranslationKeys = {
     settingsInvalid: '设置无效',
     transportModeAutoPromoted:
       '检测到网络/CORS 问题，已自动将该 Provider 切换为 {mode}。',
+    capturePdfNoLeaf: '当前没有打开的 PDF 文件。',
+    capturePdfFailed: '截取所选区域失败。',
+    capturePdfInjectFailed: '无法将截图添加到聊天。',
+  },
+
+  pdf: {
+    regionSelectorHint: '拖拽框选区域，ESC 取消。',
+    toolbarButtonTooltip: '截取 PDF 区域到聊天',
   },
 
   statusBar: {

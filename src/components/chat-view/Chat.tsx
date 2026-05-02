@@ -53,6 +53,7 @@ import type {
   MentionableAssistantQuote,
   MentionableBlock,
   MentionableBlockData,
+  MentionableImage,
 } from '../../types/mentionable'
 import {
   REASONING_LEVELS,
@@ -454,6 +455,7 @@ export type ChatRef = {
   clearSelectionFromChat: () => void
   addFileToChat: (file: TFile) => void
   addFolderToChat: (folder: TFolder) => void
+  addImageToChat: (image: MentionableImage) => void
   insertTextToInput: (text: string) => void
   appendTextToInput: (text: string) => void
   setMainInputText: (text: string) => void
@@ -3789,6 +3791,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           }),
         )
       }
+    },
+    addImageToChat: (image: MentionableImage) => {
+      addMentionableToFocusedMessage(image)
     },
     insertTextToInput: (text: string) => {
       if (!focusedMessageId) return

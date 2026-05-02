@@ -23,6 +23,7 @@ export type TranslationKeys = {
     triggerQuickAsk: string
     triggerTabCompletion: string
     acceptInlineSuggestion: string
+    capturePdfRegion?: string
   }
 
   // UI Common
@@ -1217,6 +1218,14 @@ export type TranslationKeys = {
     reloadingPlugin: string
     settingsInvalid: string
     transportModeAutoPromoted: string
+    capturePdfNoLeaf?: string
+    capturePdfFailed?: string
+    capturePdfInjectFailed?: string
+  }
+
+  pdf?: {
+    regionSelectorHint?: string
+    toolbarButtonTooltip?: string
   }
 
   statusBar?: {

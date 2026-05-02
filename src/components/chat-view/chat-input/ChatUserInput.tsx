@@ -123,6 +123,7 @@ const INLINE_MENTIONABLE_TYPES = [
   'block',
   'assistant-quote',
   'model',
+  'image',
 ]
 const DEFAULT_INPUT_HEIGHT = 80
 const MIN_INPUT_HEIGHT = 80

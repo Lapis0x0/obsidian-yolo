@@ -22,6 +22,7 @@ export const en: TranslationKeys = {
     triggerQuickAsk: 'Trigger quick ask',
     triggerTabCompletion: 'Trigger tab completion',
     acceptInlineSuggestion: 'Accept completion',
+    capturePdfRegion: 'Capture PDF region to chat',
   },
 
   common: {
@@ -1426,6 +1427,14 @@ export const en: TranslationKeys = {
     settingsInvalid: 'Invalid settings',
     transportModeAutoPromoted:
       'Detected network/CORS issue. Automatically switched this provider to {mode}.',
+    capturePdfNoLeaf: 'No PDF file is currently open.',
+    capturePdfFailed: 'Failed to capture the selected region.',
+    capturePdfInjectFailed: 'Failed to add the screenshot to chat.',
+  },
+
+  pdf: {
+    regionSelectorHint: 'Drag to select a region. Press ESC to cancel.',
+    toolbarButtonTooltip: 'Capture PDF region to chat',
   },
 
   statusBar: {

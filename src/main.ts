@@ -80,6 +80,7 @@ import {
 } from './features/chat/chatLeafSessionManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
+import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildFullReviewBlocks,
@@ -110,7 +111,7 @@ import {
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import type { Mentionable, MentionableBlockData } from './types/mentionable'
+import type { Mentionable, MentionableBlockData, MentionableImage } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
@@ -1588,6 +1589,8 @@ export default class SmartComposerPlugin extends Plugin {
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
     this.newTabEmptyStateEnhancer.enable()
 
+    enablePdfScreenshotFeature(this)
+
     this.registerEditorExtension(selectionHighlightController.createExtension())
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
@@ -2360,6 +2363,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
   async addFolderToChat(folder: TFolder) {
     await this.getChatViewNavigator().addFolderToChat(folder)
+  }
+
+  /**
+   * Inject a MentionableImage into the most recently active chat panel.
+   * If no chat panel is open, a new sidebar chat is created automatically.
+   * This is the typed public API used by the PDF screenshot feature.
+   */
+  async addImageToActiveChat(image: MentionableImage): Promise<void> {
+    await this.getChatViewNavigator().addImageToChat(image)
   }
 
   async getDbManager(): Promise<DatabaseManager> {

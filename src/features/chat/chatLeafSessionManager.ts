@@ -2,7 +2,10 @@ import { App, TFile, TFolder, WorkspaceLeaf, WorkspaceWindow } from 'obsidian'
 
 import { CHAT_VIEW_TYPE } from '../../constants'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
-import type { MentionableBlockData } from '../../types/mentionable'
+import type {
+  MentionableBlockData,
+  MentionableImage,
+} from '../../types/mentionable'
 
 export type ChatLeafPlacement = 'sidebar' | 'split' | 'tab' | 'window'
 
@@ -13,6 +16,7 @@ export type PendingChatOpenPayload = {
   autoSend?: boolean
   fileToAdd?: TFile
   folderToAdd?: TFolder
+  imageToAdd?: MentionableImage
   placement?: ChatLeafPlacement
 }
 

@@ -22,7 +22,7 @@ import { SettingsProvider } from './contexts/settings-context'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import SmartComposerPlugin from './main'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import { MentionableBlockData } from './types/mentionable'
+import { MentionableBlockData, MentionableImage } from './types/mentionable'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
@@ -220,6 +220,11 @@ export class ChatView extends ItemView {
     this.chatRef.current?.addFileToChat(file)
   }
 
+  addImageToChat(image: MentionableImage) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.addImageToChat(image)
+  }
+
   addFolderToChat(folder: TFolder) {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.addFolderToChat(folder)
@@ -300,6 +305,10 @@ export class ChatView extends ItemView {
       chatRef.addFolderToChat(payload.folderToAdd)
     }
 
+    if (payload.imageToAdd) {
+      chatRef.addImageToChat(payload.imageToAdd)
+    }
+
     if (payload.prefillText !== undefined && payload.selectedBlock) {
       chatRef.applySelectionToMainInput(
         payload.selectedBlock,
@@ -322,7 +331,7 @@ export class ChatView extends ItemView {
       return
     }
 
-    if (payload.fileToAdd || payload.folderToAdd) {
+    if (payload.fileToAdd || payload.folderToAdd || payload.imageToAdd) {
       chatRef.focusMessage()
     }
   }
