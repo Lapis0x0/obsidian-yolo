@@ -22,6 +22,7 @@ import type {
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
+import { PdfSelectionManager } from './PdfSelectionManager'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -120,6 +121,7 @@ export class SelectionChatController {
   private readonly clearSelectionHighlight: (view?: EditorView) => void
 
   private selectionManager: SelectionManager | null = null
+  private pdfSelectionManager: PdfSelectionManager | null = null
   private selectionChatWidget: SelectionChatWidget | null = null
   private pendingSelectionRewrite: PendingSelectionRewrite | null = null
   private enableSelectionChat = true
@@ -184,23 +186,39 @@ export class SelectionChatController {
       this.selectionManager = null
     }
 
+    if (this.pdfSelectionManager) {
+      this.pdfSelectionManager.destroy()
+      this.pdfSelectionManager = null
+    }
+
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!view) return
+    if (view) {
+      const editorContainer = view.containerEl.querySelector('.cm-editor')
+      if (editorContainer) {
+        this.selectionManager = new SelectionManager(
+          editorContainer as HTMLElement,
+          {
+            enabled: true,
+            minSelectionLength: 0,
+            debounceDelay: 300,
+          },
+        )
 
-    const editorContainer = view.containerEl.querySelector('.cm-editor')
-    if (!editorContainer) return
+        this.selectionManager.init((selection: SelectionInfo | null) => {
+          this.handleSelectionChange(selection, view.editor)
+        })
+      }
+    }
 
-    this.selectionManager = new SelectionManager(
-      editorContainer as HTMLElement,
-      {
-        enabled: true,
-        minSelectionLength: 0,
-        debounceDelay: 300,
-      },
-    )
-
-    this.selectionManager.init((selection: SelectionInfo | null) => {
-      this.handleSelectionChange(selection, view.editor)
+    // PDF selection sync — works on both desktop and mobile.
+    // Selection APIs (window.getSelection + selectionchange) and PDF.js textLayer
+    // DOM are standard across platforms; touch selections fire selectionchange too.
+    this.pdfSelectionManager = new PdfSelectionManager(this.app, {
+      enabled: enableSelectionChat,
+      debounceDelay: 300,
+    })
+    this.pdfSelectionManager.init((result) => {
+      this.handlePdfSelectionChange(result)
     })
   }
 
@@ -212,6 +230,10 @@ export class SelectionChatController {
     if (this.selectionManager) {
       this.selectionManager.destroy()
       this.selectionManager = null
+    }
+    if (this.pdfSelectionManager) {
+      this.pdfSelectionManager.destroy()
+      this.pdfSelectionManager = null
     }
 
     this.lastActiveMarkdownLeaf = null
@@ -435,6 +457,47 @@ export class SelectionChatController {
     }
 
     chatView.syncSelectionToChat(data)
+  }
+
+  /**
+   * Called by PdfSelectionManager when the user's selection inside a PDF view
+   * changes.  Handles the three-state PdfSelectionResult:
+   *   - null           → selection is not in any PDF view; do nothing (let Markdown manager handle it)
+   *   - { kind:'empty' } → inside PDF but empty/collapsed; clear the badge
+   *   - { kind:'data' }  → valid PDF selection; sync the badge
+   */
+  private handlePdfSelectionChange(
+    result: import('./getPdfSelectionData').PdfSelectionResult,
+  ): void {
+    // null means the selection is not inside any PDF at all — leave Markdown badges untouched.
+    if (result === null) return
+
+    const enableSelectionChat =
+      this.getSettings().continuationOptions?.enableSelectionChat ?? true
+    if (!enableSelectionChat) return
+
+    const targetLeaf = this.plugin
+      .getChatLeafSessionManager()
+      .resolveTargetLeaf()
+    if (!(targetLeaf?.view instanceof ChatView)) return
+    const chatView = targetLeaf.view
+
+    if (result.kind === 'empty') {
+      chatView.clearSelectionFromChat()
+      return
+    }
+
+    // result.kind === 'data'
+    const blockData: import('../../../types/mentionable').MentionableBlockData =
+      {
+        content: result.content,
+        file: result.file,
+        startLine: 0,
+        endLine: 0,
+        pageNumber: result.pageNumber,
+        source: 'selection-sync',
+      }
+    chatView.syncSelectionToChat(blockData)
   }
 
   private async rewriteSelection(

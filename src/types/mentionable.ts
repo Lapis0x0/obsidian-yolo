@@ -32,6 +32,7 @@ export type MentionableBlockData = {
   file: TFile
   startLine: number
   endLine: number
+  pageNumber?: number // 1-indexed; present when selection originates from a PDF view
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
   contentHash?: string
   contentCount?: number
@@ -95,6 +96,7 @@ export type SerializedMentionableBlock = {
   file: string
   startLine: number
   endLine: number
+  pageNumber?: number
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
   contentHash?: string
   contentCount?: number

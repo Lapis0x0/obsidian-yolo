@@ -1437,6 +1437,10 @@ export const en: TranslationKeys = {
     toolbarButtonTooltip: 'Capture PDF region to chat',
   },
 
+  mentionable: {
+    pdfPage: 'Page {{page}}',
+  },
+
   statusBar: {
     agentRunningWithApproval:
       'There are currently {count} running agents ({approvalCount} awaiting approval)',

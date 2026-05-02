@@ -1228,6 +1228,11 @@ export type TranslationKeys = {
     toolbarButtonTooltip?: string
   }
 
+  mentionable?: {
+    /** Badge suffix for a block selected from a PDF page. {{page}} is replaced with the page number. */
+    pdfPage?: string
+  }
+
   statusBar?: {
     agentRunningWithApproval?: string
     agentRunning?: string

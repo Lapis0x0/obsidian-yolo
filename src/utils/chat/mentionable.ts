@@ -35,6 +35,7 @@ export const serializeMentionable = (
         file: mentionable.file.path,
         startLine: mentionable.startLine,
         endLine: mentionable.endLine,
+        pageNumber: mentionable.pageNumber,
         source: mentionable.source,
         contentHash:
           mentionable.contentHash ?? getBlockContentHash(mentionable.content),
@@ -145,6 +146,7 @@ export const deserializeMentionable = (
           file: file,
           startLine: mentionable.startLine,
           endLine: mentionable.endLine,
+          pageNumber: mentionable.pageNumber,
           source: mentionable.source,
           contentHash:
             mentionable.contentHash ?? getBlockContentHash(mentionable.content),
@@ -214,8 +216,13 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `file:${mentionable.file}`
     case 'folder':
       return `folder:${mentionable.folder}`
-    case 'block':
-      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+    case 'block': {
+      const pageTag =
+        mentionable.pageNumber !== undefined
+          ? `:p${mentionable.pageNumber}`
+          : ''
+      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+    }
     case 'assistant-quote':
       return `assistant-quote:${mentionable.conversationId}:${mentionable.messageId}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
     case 'url':

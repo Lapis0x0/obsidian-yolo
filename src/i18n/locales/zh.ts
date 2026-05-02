@@ -1341,6 +1341,10 @@ export const zh: TranslationKeys = {
     toolbarButtonTooltip: '截取 PDF 区域到聊天',
   },
 
+  mentionable: {
+    pdfPage: '第 {{page}} 页',
+  },
+
   statusBar: {
     agentRunningWithApproval:
       '当前有 {count} 个 agent 正在运行（{approvalCount} 个待审批）',

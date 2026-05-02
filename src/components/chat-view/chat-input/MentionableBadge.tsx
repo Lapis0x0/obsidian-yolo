@@ -165,6 +165,13 @@ function BlockBadge({
   const { t } = useLanguage()
   const { count } = getBlockMentionableCountInfo(mentionable.content)
   const unitLabel = t('common.characters', 'chars')
+
+  // PDF selection: show "Page N" instead of character count
+  const suffix =
+    mentionable.pageNumber !== undefined
+      ? ` (${t('mentionable.pdfPage', 'Page {{page}}').replace('{{page}}', String(mentionable.pageNumber))})`
+      : ` (${count} ${unitLabel})`
+
   return (
     <BadgeBase
       onDelete={onDelete}
@@ -185,7 +192,7 @@ function BlockBadge({
         <span>{mentionable.file.name}</span>
       </div>
       <div className="smtcmp-chat-user-input-file-badge-name-suffix">
-        {` (${count} ${unitLabel})`}
+        {suffix}
       </div>
     </BadgeBase>
   )

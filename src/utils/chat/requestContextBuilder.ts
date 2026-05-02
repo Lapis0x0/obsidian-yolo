@@ -527,12 +527,19 @@ export class RequestContextBuilder {
       (m): m is MentionablePDF => m.type === 'pdf',
     )
     const blockPrompt = blocks
-      .map(({ file, content, startLine }) => {
+      .map(({ file, content, startLine, pageNumber }) => {
+        const pageTag =
+          pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+        const header = `${file.path}${pageTag}`
+        if (pageNumber !== undefined) {
+          // PDF block: skip line numbering (startLine/endLine are 0)
+          return `\`\`\`${header}\n${content}\n\`\`\`\n`
+        }
         const numberedContent = this.addLineNumbersToContent({
           content,
           startLine,
         })
-        return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+        return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
       })
       .join('')
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
@@ -821,12 +828,19 @@ ${message.annotations
         (m): m is MentionablePDF => m.type === 'pdf',
       )
       const blockPrompt = blocks
-        .map(({ file, content, startLine }) => {
+        .map(({ file, content, startLine, pageNumber }) => {
+          const pageTag =
+            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+          const header = `${file.path}${pageTag}`
+          if (pageNumber !== undefined) {
+            // PDF block: skip line numbering (startLine/endLine are 0)
+            return `\`\`\`${header}\n${content}\n\`\`\`\n`
+          }
           const numberedContent = this.addLineNumbersToContent({
             content,
             startLine,
           })
-          return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
         })
         .join('')
       const assistantQuotePrompt =
