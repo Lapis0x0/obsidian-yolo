@@ -374,8 +374,6 @@ export const smartComposerSettingsSchema = z.object({
       imageCompressionQuality: z.number().min(1).max(100).optional(),
       // Fetch external (http/https) image URLs referenced in Markdown
       externalImageFetchEnabled: z.boolean().optional(),
-      // Render PDF pages as images instead of extracting text
-      pdfReadAsImagesEnabled: z.boolean().optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -399,7 +397,6 @@ export const smartComposerSettingsSchema = z.object({
       imageCompressionEnabled: true,
       imageCompressionQuality: 85,
       externalImageFetchEnabled: false,
-      pdfReadAsImagesEnabled: false,
     }),
 
   notificationOptions: notificationOptionsSchema,

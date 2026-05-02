@@ -22,9 +22,6 @@ export function AgentImageReadingSection() {
   const isExternalFetchEnabled =
     settings.chatOptions.externalImageFetchEnabled ?? false
 
-  const isPdfReadAsImagesEnabled =
-    settings.chatOptions.pdfReadAsImagesEnabled ?? false
-
   const [qualityInput, setQualityInput] = useState(
     String(
       settings.chatOptions.imageCompressionQuality ??
@@ -152,22 +149,6 @@ export function AgentImageReadingSection() {
               />
             </ObsidianSetting>
           )}
-
-          <ObsidianSetting
-            name="PDF 以图像形式读取"
-            desc="启用后，fs_read 读取 PDF 时直接渲染为图像传给模型（需模型支持视觉输入）。忽略上方的图片压缩设置。"
-            className="smtcmp-settings-card"
-          >
-            <ObsidianToggle
-              value={isPdfReadAsImagesEnabled}
-              onChange={(value) => {
-                updateChatOptions(
-                  { pdfReadAsImagesEnabled: value },
-                  'pdfReadAsImagesEnabled',
-                )
-              }}
-            />
-          </ObsidianSetting>
         </>
       )}
     </>

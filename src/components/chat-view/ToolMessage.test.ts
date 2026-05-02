@@ -151,7 +151,7 @@ describe('ToolMessage headline helpers', () => {
           data: {
             type: 'text',
             text: JSON.stringify({
-              requestedOperation: { type: 'full' },
+              requestedOperation: { type: 'full', modality: 'text' },
               results: [],
             }),
           },
@@ -181,7 +181,7 @@ describe('ToolMessage headline helpers', () => {
           data: {
             type: 'text',
             text: JSON.stringify({
-              requestedOperation: { type: 'lines' },
+              requestedOperation: { type: 'lines', modality: 'text' },
               results: [
                 {
                   path: 'docs/plan.md',
@@ -221,7 +221,7 @@ describe('ToolMessage headline helpers', () => {
           data: {
             type: 'text',
             text: JSON.stringify({
-              requestedOperation: { type: 'lines' },
+              requestedOperation: { type: 'lines', modality: 'text' },
               results: [
                 {
                   path: 'docs/paper.pdf',

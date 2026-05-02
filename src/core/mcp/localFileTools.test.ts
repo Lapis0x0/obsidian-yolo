@@ -415,7 +415,7 @@ describe('local fs tool action helpers', () => {
     }
     const payload = JSON.parse(result.text) as {
       toolCallId: string | null
-      requestedOperation: { type: string }
+      requestedOperation: { type: string; modality: string }
       results: Array<{
         ok: boolean
         content: string
@@ -424,7 +424,10 @@ describe('local fs tool action helpers', () => {
       }>
     }
     expect(payload.toolCallId).toBe('read-call-1')
-    expect(payload.requestedOperation.type).toBe('full')
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'full',
+      modality: 'text',
+    })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: ['1|one', '2|two', '3|three'].join('\n'),
@@ -567,14 +570,17 @@ describe('local fs tool action helpers', () => {
     }
 
     const payload = JSON.parse(result.text) as {
-      requestedOperation: { type: string }
+      requestedOperation: { type: string; modality: string }
       results: Array<{
         ok: boolean
         content: string
       }>
     }
 
-    expect(payload.requestedOperation).toMatchObject({ type: 'full' })
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'full',
+      modality: 'text',
+    })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: `1|${longLine}`,
@@ -614,7 +620,7 @@ describe('local fs tool action helpers', () => {
     }
     const payload = JSON.parse(result.text) as {
       toolCallId: string | null
-      requestedOperation: { type: string }
+      requestedOperation: { type: string; modality: string }
       results: Array<{
         ok: boolean
         content: string
@@ -624,7 +630,10 @@ describe('local fs tool action helpers', () => {
       }>
     }
     expect(payload.toolCallId).toBeNull()
-    expect(payload.requestedOperation).toEqual({ type: 'lines' })
+    expect(payload.requestedOperation).toEqual({
+      type: 'lines',
+      modality: 'text',
+    })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: ['2|two', '3|three'].join('\n'),
@@ -660,6 +669,89 @@ describe('local fs tool action helpers', () => {
     if (result.status === ToolCallResponseStatus.Error) {
       expect(result.error).toContain('operation must be a nested JSON object')
     }
+  })
+
+  describe('fs_read modality parsing', () => {
+    const callRead = async (operation: unknown) => {
+      const file = Object.assign(new TFile(), {
+        path: 'note.md',
+        stat: { size: 5 },
+      })
+      const read = jest.fn().mockResolvedValue('hello')
+      return callLocalFileTool({
+        app: {
+          vault: {
+            getFileByPath: jest.fn().mockReturnValue(file),
+            read,
+          },
+        } as unknown as App,
+        toolName: 'fs_read',
+        args: { paths: ['note.md'], operation },
+      })
+    }
+
+    const expectModality = (
+      result: Awaited<ReturnType<typeof callRead>>,
+      expected: 'text' | 'image',
+    ) => {
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      if (result.status !== ToolCallResponseStatus.Success) {
+        throw new Error('expected success')
+      }
+      const payload = JSON.parse(result.text) as {
+        requestedOperation: { modality: string }
+      }
+      expect(payload.requestedOperation.modality).toBe(expected)
+    }
+
+    it('defaults to text when modality is omitted', async () => {
+      expectModality(await callRead({ type: 'full' }), 'text')
+    })
+
+    it('defaults to text when modality is null or empty string', async () => {
+      expectModality(
+        await callRead({ type: 'full', modality: null }),
+        'text',
+      )
+      expectModality(await callRead({ type: 'full', modality: '   ' }), 'text')
+    })
+
+    it('accepts modality case-insensitively and trims whitespace', async () => {
+      expectModality(
+        await callRead({ type: 'full', modality: 'IMAGE' }),
+        'image',
+      )
+      expectModality(
+        await callRead({ type: 'full', modality: '  Text  ' }),
+        'text',
+      )
+    })
+
+    it('rejects non-string modality values', async () => {
+      const result = await callRead({ type: 'full', modality: 123 })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toContain('operation.modality must be a string')
+      }
+    })
+
+    it('rejects unknown modality strings', async () => {
+      const result = await callRead({ type: 'full', modality: 'video' })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toContain('operation.modality must be one of')
+      }
+    })
+
+    it('echoes modality back for non-PDF files even when image is requested', async () => {
+      // Non-PDF files ignore modality at the rendering layer (no image branch
+      // exists for .md), but the request payload still echoes what the model
+      // asked for, so silent no-ops remain observable.
+      expectModality(
+        await callRead({ type: 'full', modality: 'image' }),
+        'image',
+      )
+    })
   })
 
   it('defaults fs_search to hybrid and falls back to keyword with explicit reason', async () => {

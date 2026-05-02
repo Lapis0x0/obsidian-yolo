@@ -127,15 +127,18 @@ type LegacyFsSearchItem =
   | { kind: 'dir'; path: string }
   | { kind: 'content_match'; path: string; line: number; snippet: string }
 type FsListScope = 'files' | 'dirs' | 'all'
+type FsReadModality = 'text' | 'image'
 type FsReadOperation =
   | {
       type: 'full'
+      modality: FsReadModality
     }
   | {
       type: 'lines'
       startLine: number
       endLine?: number
       maxLines: number
+      modality: FsReadModality
     }
 type ContextPruneMode = 'selected' | 'all'
 
@@ -445,7 +448,7 @@ export function getLocalFileTools(): McpTool[] {
     {
       name: 'fs_read',
       description:
-        'Read vault files. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Prefer lines for targeted reads.',
+        'Read vault files. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Prefer lines for targeted reads. PDFs default to text; switch modality to "image" only for a small page range that needs visual understanding (formulas, figures, scans, complex layout).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -477,6 +480,12 @@ export function getLocalFileTools(): McpTool[] {
                 type: 'integer',
                 description:
                   'Inclusive end line/page. If set, maxLines is ignored.',
+              },
+              modality: {
+                type: 'string',
+                enum: ['text', 'image'],
+                description:
+                  'Read modality (PDF only; ignored for non-PDF files). text (default): extract text per page, returned with <page N> tags — cheap, fast, works for full or multi-page reads. image: render the requested pages to images for the vision model — use only when text is insufficient (formulas, figures, scans, complex layout). Strongly avoid image with full or large page ranges: each page is a high-resolution image, transport may stall and token cost balloons. Recommended: image + lines + a small range (1-3 pages).',
               },
             },
             required: ['type'],
@@ -1739,8 +1748,27 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
   const parsedOperation = coerceOperationObject(args.operation)
   const type = asOptionalString(parsedOperation.type).trim().toLowerCase()
 
+  // Strict modality parsing: only accept undefined/null (→ default text) or a
+  // string that normalizes to 'text' / 'image'. Numbers, booleans, objects,
+  // arrays all reject — silently coercing them would hide model bugs.
+  const rawModalityValue = parsedOperation.modality
+  let modality: FsReadModality = 'text'
+  if (rawModalityValue !== undefined && rawModalityValue !== null) {
+    if (typeof rawModalityValue !== 'string') {
+      throw new Error('operation.modality must be a string: text or image.')
+    }
+    const normalized = rawModalityValue.trim().toLowerCase()
+    if (normalized === '') {
+      // Empty string is treated as "not provided" → default text.
+    } else if (normalized === 'text' || normalized === 'image') {
+      modality = normalized
+    } else {
+      throw new Error('operation.modality must be one of: text, image.')
+    }
+  }
+
   if (type === 'full') {
-    return { type: 'full' }
+    return { type: 'full', modality }
   }
 
   if (type === 'lines') {
@@ -1784,6 +1812,7 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
       startLine,
       endLine,
       maxLines,
+      modality,
     }
   }
 
@@ -2360,12 +2389,13 @@ export async function callLocalFileTool({
               continue
             }
 
-            // PDF-as-images branch: render pages to PNG when the model accepts
-            // vision input and both image reading and PDF image mode are enabled.
+            // PDF-as-images branch: render pages to PNG only when the model
+            // requested it (operation.modality === 'image'), the model accepts
+            // vision input, and the master image-reading switch is on.
             const pdfImageMode =
+              operation.modality === 'image' &&
               chatModelAcceptsImages &&
-              (settings?.chatOptions?.imageReadingEnabled ?? true) &&
-              (settings?.chatOptions?.pdfReadAsImagesEnabled ?? false)
+              (settings?.chatOptions?.imageReadingEnabled ?? true)
 
             if (pdfImageMode) {
               // Mirror text-mode semantics where it makes sense:
@@ -2670,7 +2700,12 @@ export async function callLocalFileTool({
 
         const textResult = formatJsonResult({
           toolCallId: toolCallId ?? null,
-          requestedOperation: { type: operation.type },
+          // Echo modality so silent fallbacks (model not vision-capable, or
+          // master image switch off) are observable in the response payload.
+          requestedOperation: {
+            type: operation.type,
+            modality: operation.modality,
+          },
           results,
         })
 
