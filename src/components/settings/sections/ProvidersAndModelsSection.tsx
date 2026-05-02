@@ -570,7 +570,11 @@ function ProviderSectionItem({
           {...listeners}
           onPointerDown={(e) => {
             onCollapseForDrag()
-            ;(listeners as Record<string, (e: React.PointerEvent) => void> | undefined)?.onPointerDown?.(e)
+            ;(
+              listeners as
+                | Record<string, (e: React.PointerEvent) => void>
+                | undefined
+            )?.onPointerDown?.(e)
           }}
         >
           <GripVertical />
