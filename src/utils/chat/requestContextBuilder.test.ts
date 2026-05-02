@@ -15,12 +15,15 @@ jest.mock('../llm/image', () => ({
 
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
+import type { ChatModel } from '../../types/chat-model.types'
+import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
 import {
   RequestContextBuilder,
   extractMarkdownAtxHeadings,
+  stripUnsupportedImages,
 } from './requestContextBuilder'
 
 function createMockFile(path: string): InstanceType<typeof TFile> {
@@ -1230,5 +1233,109 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
     // The original user message should still exist separately
     const userMessages = requestMessages.filter((m) => m.role === 'user')
     expect(userMessages.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('stripUnsupportedImages', () => {
+  const visionModel = {
+    id: 'v/vision',
+    modalities: ['text', 'vision'],
+  } as unknown as ChatModel
+
+  const textOnlyModel = {
+    id: 'v/text',
+    modalities: ['text'],
+  } as unknown as ChatModel
+
+  const imageUrlPart: ContentPart = {
+    type: 'image_url',
+    image_url: { url: 'data:image/png;base64,AAA' },
+  }
+  const textPart: ContentPart = { type: 'text', text: 'hello' }
+
+  it('returns messages unchanged when model supports vision', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart, textPart] },
+    ]
+    expect(stripUnsupportedImages(messages, visionModel)).toBe(messages)
+  })
+
+  it('replaces image_url parts with placeholder text for text-only model', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart, textPart] },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    expect(result).not.toBe(messages)
+    const content = result[0]?.content as ContentPart[]
+    expect(content).toHaveLength(2)
+    expect(content[0]).toEqual({
+      type: 'text',
+      text: '[图片已省略：模型不支持视觉]',
+    })
+    expect(content[1]).toEqual(textPart)
+  })
+
+  it('handles user message that is all images — result has only placeholder text parts', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart, imageUrlPart] },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    const content = result[0]?.content as ContentPart[]
+    expect(content).toHaveLength(2)
+    expect(content.every((p) => p.type === 'text')).toBe(true)
+  })
+
+  it('does not touch messages whose content is a string', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: 'plain text' },
+      { role: 'system', content: 'system prompt' },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    expect(result[0]?.content).toBe('plain text')
+    expect(result[1]?.content).toBe('system prompt')
+  })
+
+  it('strips images from a user message appended after tool calls (tool image path)', () => {
+    // Images from tool calls are appended as a user message with content array
+    const messages: RequestMessage[] = [
+      {
+        role: 'tool',
+        tool_call: {
+          id: 'tc1',
+          name: 'fs_read',
+          arguments: createCompleteToolCallArguments({ value: {} }),
+        },
+        content: 'text result',
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[Images from tool call: fs_read]' },
+          imageUrlPart,
+        ],
+      },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    // tool message untouched (string content)
+    expect(result[0]?.content).toBe('text result')
+    // user message: image replaced
+    const userContent = result[1]?.content as ContentPart[]
+    expect(userContent[1]).toEqual({
+      type: 'text',
+      text: '[图片已省略：模型不支持视觉]',
+    })
+  })
+
+  it('strips images when model is null (conservative: unknown model treated as text-only)', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart] },
+    ]
+    // null model → chatModelSupportsVision returns false → images stripped
+    const result = stripUnsupportedImages(messages, null)
+    const content = result[0]?.content as ContentPart[]
+    expect(content[0]).toEqual({
+      type: 'text',
+      text: '[图片已省略：模型不支持视觉]',
+    })
   })
 })

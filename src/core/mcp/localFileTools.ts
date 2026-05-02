@@ -2575,6 +2575,11 @@ export async function callLocalFileTool({
               ? rangeEndPageInclusive + 1
               : null
 
+            // When the model requested image modality but vision is not
+            // supported, signal the silent fallback so the model can observe it.
+            const visionDowngraded =
+              operation.modality === 'image' && !chatModelAcceptsImages
+
             results.push({
               path,
               ok: true,
@@ -2589,6 +2594,12 @@ export async function callLocalFileTool({
               hasMoreBelow,
               nextStartLine,
               content: outputContent,
+              ...(visionDowngraded
+                ? {
+                    effectiveModality: 'text' as const,
+                    warning: '当前模型不支持图像输入，已自动降级为文本读取',
+                  }
+                : {}),
             })
             continue
           }
@@ -2700,8 +2711,9 @@ export async function callLocalFileTool({
 
         const textResult = formatJsonResult({
           toolCallId: toolCallId ?? null,
-          // Echo modality so silent fallbacks (model not vision-capable, or
-          // master image switch off) are observable in the response payload.
+          // Echo the requested modality so the model can compare it against
+          // each result's `effectiveModality` (only set when we forcibly
+          // downgrade image→text because the model lacks vision capability).
           requestedOperation: {
             type: operation.type,
             modality: operation.modality,

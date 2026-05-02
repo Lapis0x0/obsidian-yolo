@@ -48,6 +48,7 @@ import {
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { collectWikilinkPaths } from '../llm/annotate-wikilinks'
 import { isImageTFile, tFileToImageDataUrl } from '../llm/image'
+import { chatModelSupportsVision } from '../llm/model-modalities'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import {
   PDF_INDEX_MAX_BYTES,
@@ -87,6 +88,37 @@ type MentionedFileContextEntry = {
 }
 
 const MAX_MENTIONED_FILE_OUTLINES = 10
+
+/**
+ * Strip image_url content parts from messages when the target model does not
+ * support vision input. Each removed image part is replaced with a placeholder
+ * text part so message structure remains valid. String-content messages are
+ * left untouched.
+ */
+export function stripUnsupportedImages(
+  messages: RequestMessage[],
+  chatModel: ChatModel | null | undefined,
+): RequestMessage[] {
+  if (chatModelSupportsVision(chatModel)) {
+    return messages
+  }
+
+  return messages.map((message) => {
+    // Only user messages can carry ContentPart[] content — other roles use string.
+    if (message.role !== 'user' || !Array.isArray(message.content)) {
+      return message
+    }
+
+    const stripped: ContentPart[] = message.content.flatMap((part) => {
+      if (part.type === 'image_url') {
+        return [{ type: 'text' as const, text: '[图片已省略：模型不支持视觉]' }]
+      }
+      return [part]
+    })
+
+    return { ...message, content: stripped }
+  })
+}
 
 type MentionContextMode = 'light' | 'full'
 
@@ -339,7 +371,7 @@ export class RequestContextBuilder {
       }
     }
 
-    return requestMessages
+    return stripUnsupportedImages(requestMessages, _model)
   }
 
   private async getChatHistoryMessages({

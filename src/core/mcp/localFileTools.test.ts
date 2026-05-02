@@ -2018,3 +2018,143 @@ describe('local fs tool action helpers', () => {
     })
   })
 })
+
+// ──────────────────────────────────────────────────────────────────
+// fs_read PDF vision-downgrade warning
+// ──────────────────────────────────────────────────────────────────
+
+jest.mock('../../utils/pdf/extractPdfText', () => ({
+  PDF_INDEX_MAX_BYTES: 50 * 1024 * 1024,
+  PDF_INDEX_MAX_PAGES: 500,
+  extractPdfText: jest.fn(),
+}))
+
+jest.mock('../../utils/pdf/renderPdfPagesToImages', () => ({
+  renderPdfPagesToImages: jest.fn(),
+}))
+
+import { extractPdfText } from '../../utils/pdf/extractPdfText'
+import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
+
+describe('fs_read PDF vision-downgrade warning', () => {
+  const extractMock = extractPdfText as jest.MockedFunction<typeof extractPdfText>
+  const renderMock = renderPdfPagesToImages as jest.MockedFunction<
+    typeof renderPdfPagesToImages
+  >
+
+  const makePdfFile = () =>
+    Object.assign(new TFile(), {
+      path: 'doc.pdf',
+      extension: 'pdf',
+      stat: { size: 1024, mtime: 0 },
+    })
+
+  const buildSettings = (
+    modalities: Array<'text' | 'vision'>,
+  ): SmartComposerSettings =>
+    ({
+      chatOptions: {
+        imageReadingEnabled: true,
+        imageCompressionEnabled: false,
+        imageCompressionQuality: 85,
+        externalImageFetchEnabled: false,
+      },
+      chatModels: [
+        {
+          id: 'provider/model',
+          providerId: 'provider',
+          model: 'model',
+          modalities,
+        },
+      ],
+    }) as unknown as SmartComposerSettings
+
+  beforeEach(() => {
+    extractMock.mockReset()
+    renderMock.mockReset()
+    extractMock.mockResolvedValue({
+      pages: [
+        { page: 1, text: 'page one content' },
+        { page: 2, text: 'page two content' },
+      ],
+    })
+    renderMock.mockResolvedValue({
+      totalPages: 2,
+      rendered: [{ page: 1, dataUrl: 'data:image/png;base64,AAA' }],
+    } as unknown as Awaited<ReturnType<typeof renderPdfPagesToImages>>)
+  })
+
+  const callPdfRead = (
+    modality: 'text' | 'image',
+    modalities: Array<'text' | 'vision'>,
+  ) => {
+    const file = makePdfFile()
+    return callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read: jest.fn().mockResolvedValue(''),
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      toolCallId: 'tc-pdf',
+      args: {
+        paths: ['doc.pdf'],
+        operation: { type: 'full', modality },
+      },
+      settings: buildSettings(modalities),
+      chatModelId: 'provider/model',
+    })
+  }
+
+  it('adds effectiveModality and warning when modality=image but model is text-only', async () => {
+    const result = await callPdfRead('image', ['text'])
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) throw new Error('expected success')
+    // Should have fallen back to text extraction
+    expect(extractMock).toHaveBeenCalled()
+    expect(renderMock).not.toHaveBeenCalled()
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        effectiveModality?: string
+        warning?: string
+      }>
+    }
+    expect(payload.results[0]?.effectiveModality).toBe('text')
+    expect(payload.results[0]?.warning).toBe(
+      '当前模型不支持图像输入，已自动降级为文本读取',
+    )
+  })
+
+  it('does NOT add effectiveModality/warning when modality=image and model supports vision', async () => {
+    const result = await callPdfRead('image', ['text', 'vision'])
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) throw new Error('expected success')
+    // Should have taken image path
+    expect(renderMock).toHaveBeenCalled()
+    expect(extractMock).not.toHaveBeenCalled()
+    // Image path builds a separate results entry without these fields
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        effectiveModality?: string
+        warning?: string
+      }>
+    }
+    expect(payload.results[0]?.effectiveModality).toBeUndefined()
+    expect(payload.results[0]?.warning).toBeUndefined()
+  })
+
+  it('does NOT add effectiveModality/warning when modality=text regardless of model', async () => {
+    const result = await callPdfRead('text', ['text'])
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) throw new Error('expected success')
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        effectiveModality?: string
+        warning?: string
+      }>
+    }
+    expect(payload.results[0]?.effectiveModality).toBeUndefined()
+    expect(payload.results[0]?.warning).toBeUndefined()
+  })
+})
