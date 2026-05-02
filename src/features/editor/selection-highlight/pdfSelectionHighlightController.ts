@@ -9,24 +9,26 @@
  * The only stable identifier that survives re-renders is:
  *   file + pageNumber + [startOffset, endOffset)
  * where offsets are character indices into the concatenated textContent of the
- * page's textLayer spans in DOM order.
+ * page's textLayer text nodes in DOM order.
+ *
+ * Painting uses the CSS Custom Highlight API: a singleton `Highlight` is
+ * registered as `yolo-pdf-selection` and styled via `::highlight(...)` in
+ * pdf-selection.css.  This gives character-level granularity without mutating
+ * the textLayer DOM (so it never fights PDF.js's own reconciliation).
  *
  * Lifecycle per leaf:
- *   1. pin(leaf, range, pageNumber, file)  — compute offsets from the live
- *      Range and subscribe to PDF.js `textlayerrendered` events.
- *   2. On each `textlayerrendered` event for the pinned page, walk the spans,
- *      find those that overlap [startOffset, endOffset), and add the CSS class
- *      `yolo-pdf-selection-persisted`.
- *   3. clear(leaf) / clearAll()  — remove the class and unsubscribe.
- *
- * Whole-span granularity is used for v1: a span that straddles the boundary is
- * highlighted in full rather than splitting it.  This is simpler and avoids
- * mutating the DOM more than necessary.
+ *   1. pin(leaf, range, pageNumber, file) — compute offsets from the live
+ *      Range, build per-text-node sub-ranges, add them to the global Highlight,
+ *      and subscribe to `textlayerrendered`.
+ *   2. On each `textlayerrendered` event for the pinned page, rebuild the
+ *      sub-ranges (old text nodes are detached after re-render) and replace the
+ *      leaf's ranges in the Highlight.
+ *   3. clear(leaf) / clearAll() — remove the leaf's ranges and unsubscribe.
  */
 
 import type { App, TFile, WorkspaceLeaf } from 'obsidian'
 
-const HIGHLIGHT_CLASS = 'yolo-pdf-selection-persisted'
+const HIGHLIGHT_NAME = 'yolo-pdf-selection'
 
 type PinnedHighlight = {
   pageNumber: number
@@ -36,6 +38,35 @@ type PinnedHighlight = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
   eventBus: any
   onTextLayerRendered: (evt: { pageNumber: number }) => void
+  ranges: Range[]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CSS Custom Highlight registry
+// ──────────────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Highlight / CSS.highlights are not in the TS DOM lib for ES6 target
+type AnyHighlight = any
+
+/**
+ * Lazily get-or-create the singleton Highlight registered under HIGHLIGHT_NAME.
+ *
+ * Returns null when the runtime does not support the CSS Custom Highlight API
+ * (e.g. older mobile webviews) — callers should silently no-op in that case
+ * rather than fall back to a different rendering path that might mis-paint.
+ */
+function getOrCreateHighlight(): AnyHighlight | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- feature detection
+  const w = window as any
+  if (typeof w.Highlight !== 'function' || !w.CSS || !w.CSS.highlights) {
+    return null
+  }
+  let highlight = w.CSS.highlights.get(HIGHLIGHT_NAME) as AnyHighlight | undefined
+  if (!highlight) {
+    highlight = new w.Highlight()
+    w.CSS.highlights.set(HIGHLIGHT_NAME, highlight)
+  }
+  return highlight
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -105,45 +136,38 @@ function computeOffsets(
 }
 
 /**
- * Given the text nodes of the pinned page, add the highlight CSS class to the
- * parent leaf span of every text node whose character range overlaps
- * [startOffset, endOffset).
+ * Build per-text-node sub-Ranges that together cover exactly
+ * [startOffset, endOffset) of the page's concatenated text content.
  *
- * We add the class to the immediate parent element (the leaf span) rather than
- * the text node itself because CSS background-color only applies to elements.
- * A Set deduplicates the case where a single span has multiple text nodes.
+ * Each text node that overlaps the selection contributes one Range whose
+ * start/end offsets are clipped to the selection bounds — so partial-word
+ * selections inside a single PDF.js span produce a Range that covers only the
+ * selected characters, not the whole span.
  */
-function applyHighlightToTextNodes(
+function buildRanges(
   textNodes: Text[],
   startOffset: number,
   endOffset: number,
-): void {
+): Range[] {
+  const ranges: Range[] = []
   let cursor = 0
-  const highlighted = new Set<Element>()
   for (const node of textNodes) {
     const nodeStart = cursor
     const nodeEnd = cursor + node.length
 
     if (nodeEnd > startOffset && nodeStart < endOffset) {
-      const parent = node.parentElement
-      if (parent && !highlighted.has(parent)) {
-        parent.classList.add(HIGHLIGHT_CLASS)
-        highlighted.add(parent)
-      }
+      const localStart = Math.max(0, startOffset - nodeStart)
+      const localEnd = Math.min(node.length, endOffset - nodeStart)
+      const r = document.createRange()
+      r.setStart(node, localStart)
+      r.setEnd(node, localEnd)
+      ranges.push(r)
     }
 
     cursor = nodeEnd
     if (cursor >= endOffset) break
   }
-}
-
-/**
- * Remove the highlight CSS class from all spans in a page element.
- */
-function removeHighlightFromPage(pageEl: Element): void {
-  pageEl
-    .querySelectorAll(`.${HIGHLIGHT_CLASS}`)
-    .forEach((el) => el.classList.remove(HIGHLIGHT_CLASS))
+  return ranges
 }
 
 /**
@@ -207,6 +231,9 @@ export class PdfSelectionHighlightController {
     // Clear any previous highlight on this leaf first.
     this.clear(leaf)
 
+    const highlight = getOrCreateHighlight()
+    if (!highlight) return // CSS Custom Highlight API unavailable — silent no-op.
+
     const pageEl = resolvePageEl(leaf, pageNumber)
     if (!pageEl) return
 
@@ -219,27 +246,37 @@ export class PdfSelectionHighlightController {
 
     const { startOffset, endOffset } = offsets
 
-    // Apply immediately to the already-rendered page.
-    applyHighlightToTextNodes(textNodes, startOffset, endOffset)
+    const ranges = buildRanges(textNodes, startOffset, endOffset)
+    for (const r of ranges) highlight.add(r)
 
-    const onTextLayerRendered = (evt: { pageNumber: number }): void => {
-      if (evt.pageNumber !== pageNumber) return
-      const el = resolvePageEl(leaf, pageNumber)
-      if (!el) return
-      applyHighlightToTextNodes(getTextNodes(el), startOffset, endOffset)
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
-    ;(eventBus as any).on('textlayerrendered', onTextLayerRendered)
-
-    this.pinned.set(leaf, {
+    const entry: PinnedHighlight = {
       pageNumber,
       startOffset,
       endOffset,
       file,
       eventBus,
-      onTextLayerRendered,
-    })
+      ranges,
+      onTextLayerRendered: () => {}, // assigned below
+    }
+
+    entry.onTextLayerRendered = (evt: { pageNumber: number }): void => {
+      if (evt.pageNumber !== pageNumber) return
+      const el = resolvePageEl(leaf, pageNumber)
+      if (!el) return
+
+      // Old ranges point to detached text nodes after re-render — drop them
+      // and rebuild against the freshly mounted text nodes.
+      const hl = getOrCreateHighlight()
+      if (!hl) return
+      for (const r of entry.ranges) hl.delete(r)
+      entry.ranges = buildRanges(getTextNodes(el), startOffset, endOffset)
+      for (const r of entry.ranges) hl.add(r)
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
+    ;(eventBus as any).on('textlayerrendered', entry.onTextLayerRendered)
+
+    this.pinned.set(leaf, entry)
   }
 
   /**
@@ -249,13 +286,15 @@ export class PdfSelectionHighlightController {
     const entry = this.pinned.get(leaf)
     if (!entry) return
 
-    const { pageNumber, eventBus, onTextLayerRendered } = entry
+    const { eventBus, onTextLayerRendered, ranges } = entry
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
     ;(eventBus as any).off('textlayerrendered', onTextLayerRendered)
 
-    const pageEl = resolvePageEl(leaf, pageNumber)
-    if (pageEl) removeHighlightFromPage(pageEl)
+    const highlight = getOrCreateHighlight()
+    if (highlight) {
+      for (const r of ranges) highlight.delete(r)
+    }
 
     this.pinned.delete(leaf)
   }

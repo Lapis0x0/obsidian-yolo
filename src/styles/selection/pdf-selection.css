@@ -1,19 +1,15 @@
 /* ============================================
-   PDF Selection - Persistent highlight for PDF text layer spans
+   PDF Selection - Persistent highlight for PDF text layer (CSS Custom Highlight API)
    ============================================ */
 
-/* Higher specificity via .textLayer ancestor ensures the rule wins over
-   PDF.js and Obsidian's own textLayer styles. */
-/* 不使用 var(--text-selection)：那是给 ::selection 伪元素的颜色，
-   在普通元素上常常解析为不可见。直接用 interactive-accent 派生色，
-   也不叠 mix-blend-mode（multiply 会把浅色压成几乎透明）。 */
-/* PDF.js textLayer 自带 blend-mode 会把任何带 alpha 的背景压没，
-   因此既不能用 color-mix(... transparent)，也不能给元素加 opacity。
-   直接上 100% 不透明的实色：textLayer 自身的 blend 会把它叠成半透明效果，
-   字体仍可读（与诊断阶段验证一致）。 */
-.textLayer .yolo-pdf-selection-persisted {
-  background-color: var(--interactive-accent) !important;
-  border-radius: 2px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+/* Painted by pdfSelectionHighlightController via the CSS Custom Highlight API.
+   Character-level granularity: only the selected characters are tinted, even
+   when the selection lives inside a single PDF.js textLayer span.
+
+   Note on color:
+   PDF.js textLayer applies its own blend mode that wipes any alpha background.
+   So we use a fully opaque accent color and let textLayer's blend produce the
+   translucent-looking effect — same trick the previous class-based rule used. */
+::highlight(yolo-pdf-selection) {
+  background-color: var(--interactive-accent);
 }
