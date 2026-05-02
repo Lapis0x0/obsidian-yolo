@@ -17,5 +17,6 @@
 @import './panels/quick-ask.css';
 
 @import './selection/selection-chat.css';
+@import './selection/pdf-selection.css';
 
 @import './pdf-screenshot.css';

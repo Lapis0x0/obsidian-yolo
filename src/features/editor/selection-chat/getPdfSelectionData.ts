@@ -17,8 +17,17 @@ import type { App, TFile, WorkspaceLeaf } from 'obsidian'
 
 export type PdfSelectionResult =
   | null // selection is not inside any PDF view — caller should not act
-  | { kind: 'empty' } // selection is inside a PDF view but collapsed / empty
-  | { kind: 'data'; content: string; file: TFile; pageNumber: number }
+  | { kind: 'empty'; leaf?: WorkspaceLeaf } // selection is inside a PDF view but collapsed / empty
+  | {
+      kind: 'data'
+      content: string
+      file: TFile
+      pageNumber: number
+      /** The WorkspaceLeaf that owns the PDF view. */
+      leaf: WorkspaceLeaf
+      /** Live browser Range at capture time — used by pdfSelectionHighlightController. */
+      range: Range
+    }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -151,9 +160,11 @@ export function getPdfSelectionData(app: App): PdfSelectionResult {
 
   // Check whether the selection lives inside a PDF leaf at all.
   // We use the commonAncestorContainer as the walk starting point.
+  let liveRange: Range | null = null
   let rangeContainer: Node | null = null
   try {
-    rangeContainer = selection.getRangeAt(0).commonAncestorContainer
+    liveRange = selection.getRangeAt(0)
+    rangeContainer = liveRange.commonAncestorContainer
   } catch {
     return null
   }
@@ -164,14 +175,17 @@ export function getPdfSelectionData(app: App): PdfSelectionResult {
     return null
   }
 
+  // Resolve the WorkspaceLeaf that owns this DOM subtree (needed for Bug D:
+  // empty result should carry the leaf so the caller only clears that leaf).
+  const leaf = findLeafByContentEl(app, owningLeafContent)
+
   // Selection is inside a PDF view; check whether it has content.
   const text = selection.toString()
   if (!text || text.trim().length === 0) {
-    return { kind: 'empty' }
+    // leaf may be undefined for embeds without a workspace leaf
+    return { kind: 'empty', leaf: leaf ?? undefined }
   }
 
-  // Resolve the WorkspaceLeaf that owns this DOM subtree.
-  const leaf = findLeafByContentEl(app, owningLeafContent)
   if (!leaf) {
     // Inside a PDF container (maybe an embed) but cannot map to a leaf.
     return { kind: 'empty' }
@@ -179,13 +193,15 @@ export function getPdfSelectionData(app: App): PdfSelectionResult {
 
   const file = getFileFromPdfLeaf(leaf)
   if (!file) {
-    return { kind: 'empty' }
+    return { kind: 'empty', leaf }
   }
 
-  // Page number from anchor node.
-  const pageNumber = getPageNumberFromNode(selection.anchorNode)
+  // Page number from the range's DOM-order start container, which is always
+  // the earlier end regardless of selection direction (unlike anchorNode,
+  // which can be the focus side of a reverse-direction selection).
+  const pageNumber = getPageNumberFromNode(liveRange.startContainer)
   if (pageNumber === null) {
-    return { kind: 'empty' }
+    return { kind: 'empty', leaf }
   }
 
   return {
@@ -193,5 +209,7 @@ export function getPdfSelectionData(app: App): PdfSelectionResult {
     content: text,
     file,
     pageNumber,
+    leaf,
+    range: liveRange!,
   }
 }

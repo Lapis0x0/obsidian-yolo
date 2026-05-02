@@ -199,14 +199,15 @@ describe('getPdfSelectionData', () => {
       toString: () => '', // empty selection
       anchorNode: span as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: span }) as unknown as Range,
+        ({ commonAncestorContainer: span, startContainer: span }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('notes/doc.pdf', leafContent)
     const app = makeApp([leaf])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
     const result = getPdfSelectionData(app as any)
-    expect(result).toEqual({ kind: 'empty' })
+    // Now returns { kind: 'empty', leaf } since the leaf can be resolved
+    expect(result).toMatchObject({ kind: 'empty' })
   })
 
   test('returns { kind: "data" } for a valid single-page PDF selection', () => {
@@ -217,7 +218,8 @@ describe('getPdfSelectionData', () => {
       toString: () => 'Selected text on page 3',
       anchorNode: textNode as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: span }) as unknown as Range,
+        // startContainer is the text node inside the .page[data-page-number=3] chain
+        ({ commonAncestorContainer: span, startContainer: textNode }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('docs/paper.pdf', leafContent)
@@ -234,16 +236,17 @@ describe('getPdfSelectionData', () => {
     expect((result as any).file.path).toBe('docs/paper.pdf')
   })
 
-  test('cross-page selection: pageNumber comes from anchorNode page', () => {
-    const { textNode: anchorText } = makePdfDomChain(2)
+  test('cross-page selection: pageNumber comes from range.startContainer page', () => {
+    const { textNode: startText } = makePdfDomChain(2)
     const { container, leafContent } = makePdfDomChain(3)
 
     mockGetSelection({
       rangeCount: 1,
       toString: () => 'Start of selection\nEnd of selection',
-      anchorNode: anchorText as unknown as Node,
+      anchorNode: startText as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: container }) as unknown as Range,
+        // startContainer is on page 2 — that is the DOM-order start
+        ({ commonAncestorContainer: container, startContainer: startText }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('book.pdf', leafContent)
@@ -252,7 +255,7 @@ describe('getPdfSelectionData', () => {
     const result = getPdfSelectionData(app as any)
     expect(result).not.toBeNull()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
-    expect((result as any).pageNumber).toBe(2) // anchor page, not focus page
+    expect((result as any).pageNumber).toBe(2) // range.startContainer page, not focus page
   })
 
   test('multi-PDF: attributes selection to leaf B when anchorNode is in leaf B DOM', () => {
@@ -265,7 +268,7 @@ describe('getPdfSelectionData', () => {
       toString: () => 'Text from document B',
       anchorNode: chainB.textNode as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: chainB.span }) as unknown as Range,
+        ({ commonAncestorContainer: chainB.span, startContainer: chainB.textNode }) as unknown as Range,
     } as Partial<Selection>)
 
     const leafA = makePdfLeaf('file_A.pdf', chainA.leafContent)
@@ -334,7 +337,7 @@ describe('getPdfSelectionData', () => {
       toString: () => 'Orphan text',
       anchorNode: textNode as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: span }) as unknown as Range,
+        ({ commonAncestorContainer: span, startContainer: textNode }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('orphan.pdf', leafContent)
@@ -342,6 +345,7 @@ describe('getPdfSelectionData', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
     const result = getPdfSelectionData(app as any)
     // Page number cannot be resolved → kind:'empty' (not null, since it IS inside PDF)
-    expect(result).toEqual({ kind: 'empty' })
+    // Now returns { kind: 'empty', leaf } since the leaf can be resolved
+    expect(result).toMatchObject({ kind: 'empty' })
   })
 })

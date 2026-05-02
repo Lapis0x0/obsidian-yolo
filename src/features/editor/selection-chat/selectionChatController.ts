@@ -23,6 +23,7 @@ import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
 import { PdfSelectionManager } from './PdfSelectionManager'
+import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -220,6 +221,14 @@ export class SelectionChatController {
     this.pdfSelectionManager.init((result) => {
       this.handlePdfSelectionChange(result)
     })
+
+    // Bug B: prune highlight entries for PDF leaves that get closed, preventing
+    // Map / eventBus listener leaks.
+    this.plugin.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        pdfSelectionHighlightController.pruneDetachedLeaves(this.app)
+      }),
+    )
   }
 
   destroy() {
@@ -239,6 +248,7 @@ export class SelectionChatController {
     this.lastActiveMarkdownLeaf = null
     this.lastActiveLeafWasMarkdown = false
     this.highlightTakeoverToken += 1
+    pdfSelectionHighlightController.clearAll()
   }
 
   handleActiveLeafChange(leaf: WorkspaceLeaf | null) {
@@ -263,6 +273,9 @@ export class SelectionChatController {
     if (nextType !== CHAT_VIEW_TYPE) {
       this.highlightTakeoverToken += 1
       this.clearSelectionHighlight()
+      // PDF 高亮不在此清：用户切到其它非 chat leaf（如打开第二个文件）后
+      // 再回到 PDF 时仍应看到原高亮。真正的清理由 pin 替换 / leaf detach
+      // (pruneDetachedLeaves) / destroy / Markdown takeover 负责。
     }
   }
 
@@ -484,6 +497,10 @@ export class SelectionChatController {
 
     if (result.kind === 'empty') {
       chatView.clearSelectionFromChat()
+      // 高亮故意不清：与 Markdown 高亮一致——一旦 pin 就持续显示，
+      // 直到出现"新的非空选区"（pin 替换）、leaf 关闭、或插件卸载。
+      // 用户点击 chat 输入框会让 window selection 折叠，但他们的"选区
+      // 意图"还在；继续显示高亮才符合预期。
       return
     }
 
@@ -498,6 +515,17 @@ export class SelectionChatController {
         source: 'selection-sync',
       }
     chatView.syncSelectionToChat(blockData)
+
+    if (this.shouldPersistSelectionHighlight()) {
+      // Bug E: PDF selection replaces any active Markdown highlight.
+      this.clearSelectionHighlight()
+      pdfSelectionHighlightController.pin(
+        result.leaf,
+        result.range,
+        result.pageNumber,
+        result.file,
+      )
+    }
   }
 
   private async rewriteSelection(
@@ -683,6 +711,8 @@ export class SelectionChatController {
           return
         }
 
+        // Bug E: Markdown selection replaces any active PDF highlight.
+        pdfSelectionHighlightController.clearAll()
         this.pinSelectionHighlight(view)
       })
     })
