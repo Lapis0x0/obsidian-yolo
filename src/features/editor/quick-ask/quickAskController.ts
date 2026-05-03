@@ -10,6 +10,7 @@ import {
 import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { Mentionable } from '../../../types/mentionable'
+import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
 import { getPdfLeafContentEl } from '../selection-chat/getPdfSelectionData'
@@ -121,6 +122,8 @@ export class QuickAskController {
   private highlightTakeoverToken = 0
   /** id of the current quickask highlight, so we can clear it on close */
   private currentHighlightId: string | null = null
+  /** id of the current quickask PDF highlight, so we can clear it on close */
+  private currentPdfHighlightId: string | null = null
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
@@ -130,6 +133,11 @@ export class QuickAskController {
       const { overlay } = this.pdfQuickAskInstance
       this.pdfQuickAskInstance = null
       overlay.destroy()
+    }
+
+    if (this.currentPdfHighlightId) {
+      pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
+      this.currentPdfHighlightId = null
     }
 
     const state = this.quickAskWidgetState
@@ -330,6 +338,10 @@ export class QuickAskController {
         this.pdfQuickAskInstance = null
         instance.overlay.destroy()
       }
+      if (this.currentPdfHighlightId) {
+        pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
+        this.currentPdfHighlightId = null
+      }
     }
 
     const overlay = new QuickAskOverlay({
@@ -349,6 +361,24 @@ export class QuickAskController {
 
     this.pdfQuickAskInstance = { overlay, leaf: args.leaf }
     overlay.mount()
+
+    // Mirror Markdown's persistence: register a 'sync' highlight on the PDF
+    // leaf so the selected range stays visually highlighted while the Quick
+    // Ask floats. Cleared in close()/onClose. Gated by the same setting.
+    if (
+      this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
+      true
+    ) {
+      const id = `quickask:${crypto.randomUUID()}`
+      this.currentPdfHighlightId = id
+      pdfSelectionHighlightController.addHighlight(
+        args.leaf,
+        id,
+        { range: args.range, pageNumber: args.pageNumber, file: args.file },
+        'sync',
+        'quickask',
+      )
+    }
   }
 
   /**

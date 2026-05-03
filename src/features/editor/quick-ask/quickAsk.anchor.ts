@@ -163,6 +163,40 @@ export function createPdfAnchor(
     },
 
     getContentBounds(): { left: number; width: number } {
+      // The "content column" must equal where text actually starts on the
+      // page, not the .page rect (which includes wide page margins) and not
+      // .pdf-viewer-container (which includes the thumbnail sidebar). We
+      // derive it from the selection's own glyph rects: the leftmost glyph
+      // is the column-left, mirroring how cm-sizer behaves for Markdown.
+      const startNode = range.startContainer
+      const startEl =
+        startNode.nodeType === 1
+          ? (startNode as Element)
+          : startNode.parentElement
+      const pageEl = startEl?.closest('.page')
+
+      const allRects = Array.from(range.getClientRects())
+      const glyphRects = allRects.filter(
+        (r) => r.width > 0 && r.height > 0 && r.height < 60,
+      )
+
+      if (glyphRects.length > 0 && pageEl instanceof HTMLElement) {
+        const pageRect = pageEl.getBoundingClientRect()
+        let minLeft = glyphRects[0].left
+        for (let i = 1; i < glyphRects.length; i += 1) {
+          if (glyphRects[i].left < minLeft) minLeft = glyphRects[i].left
+        }
+        const width = Math.max(120, pageRect.right - minLeft)
+        return { left: minLeft, width }
+      }
+
+      if (pageEl instanceof HTMLElement) {
+        const rect = pageEl.getBoundingClientRect()
+        if (rect.width > 0) {
+          return { left: rect.left, width: rect.width }
+        }
+      }
+
       const containerEl =
         leafContentEl.querySelector('.pdf-viewer-container') ?? leafContentEl
       const rect = containerEl.getBoundingClientRect()
