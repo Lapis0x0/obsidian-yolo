@@ -1,78 +1,64 @@
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import { getToolName } from '../../core/mcp/tool-name-utils'
 import type { Assistant } from '../../types/assistant.types'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
 
-type AssistantLoopOptions = Pick<
+type AssistantRuntimeOptions = Pick<
   Assistant,
-  'enableTools' | 'includeBuiltinTools'
+  'enableTools' | 'includeBuiltinTools' | 'toolPreferences'
 >
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
-export const QUICK_ASK_CHAT_MAX_AUTO_ITERATIONS = 1
-export const QUICK_ASK_AGENT_MAX_AUTO_ITERATIONS = 100
 
-export type ChatRuntimeProfile = {
-  id: 'chat-default' | 'quick-ask'
-  resolveLoopConfig: (input: {
-    mode: ChatMode
-    assistant?: AssistantLoopOptions | null
-  }) => AgentRuntimeLoopConfig
+export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
+  getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
+  getToolName(getLocalFileToolServerName(), 'fs_edit'),
+  getToolName(getLocalFileToolServerName(), 'fs_create_file'),
+  getToolName(getLocalFileToolServerName(), 'fs_delete_file'),
+  getToolName(getLocalFileToolServerName(), 'fs_create_dir'),
+  getToolName(getLocalFileToolServerName(), 'fs_delete_dir'),
+  getToolName(getLocalFileToolServerName(), 'fs_move'),
+]
+
+export type ChatModeRuntime = {
+  loopConfig: AgentRuntimeLoopConfig
+  allowedToolNames: string[] | undefined
+  toolPreferences: Assistant['toolPreferences']
 }
 
-function resolveAssistantToolOptions(assistant?: AssistantLoopOptions | null): {
-  enableTools: boolean
-  includeBuiltinTools: boolean
-} {
+export type ChatModeRuntimeInput = {
+  mode: ChatMode
+  assistant?: AssistantRuntimeOptions | null
+  assistantEnabledToolNames: string[]
+}
+
+export function resolveChatModeRuntime({
+  mode,
+  assistant,
+  assistantEnabledToolNames,
+}: ChatModeRuntimeInput): ChatModeRuntime {
   const enableTools = assistant?.enableTools ?? true
-  return {
-    enableTools,
-    includeBuiltinTools: enableTools
-      ? (assistant?.includeBuiltinTools ?? true)
-      : false,
-  }
-}
+  const includeBuiltinTools = enableTools
+    ? (assistant?.includeBuiltinTools ?? true)
+    : false
 
-export const CHAT_RUNTIME_PROFILE: ChatRuntimeProfile = {
-  id: 'chat-default',
-  resolveLoopConfig: ({ assistant }) => {
-    const { enableTools, includeBuiltinTools } =
-      resolveAssistantToolOptions(assistant)
-    return {
+  const isAgentMode = mode === 'agent'
+  const blocked = new Set(CHAT_BLOCKED_TOOL_NAMES)
+  const allowedToolNames = enableTools
+    ? isAgentMode
+      ? assistantEnabledToolNames
+      : assistantEnabledToolNames.filter((name) => !blocked.has(name))
+    : undefined
+
+  return {
+    loopConfig: {
       enableTools,
       includeBuiltinTools,
       maxAutoIterations: DEFAULT_AGENT_MAX_AUTO_ITERATIONS,
-    }
-  },
-}
-
-export const QUICK_ASK_RUNTIME_PROFILE: ChatRuntimeProfile = {
-  id: 'quick-ask',
-  resolveLoopConfig: ({ mode, assistant }) => {
-    const isAgentMode = mode === 'agent'
-    const enableTools = isAgentMode ? (assistant?.enableTools ?? true) : false
-    return {
-      enableTools,
-      includeBuiltinTools: enableTools
-        ? (assistant?.includeBuiltinTools ?? true)
-        : false,
-      maxAutoIterations: isAgentMode
-        ? QUICK_ASK_AGENT_MAX_AUTO_ITERATIONS
-        : QUICK_ASK_CHAT_MAX_AUTO_ITERATIONS,
-    }
-  },
-}
-
-export function resolveChatRuntimeLoopConfig(input: {
-  mode: ChatMode
-  assistant?: AssistantLoopOptions | null
-}) {
-  return CHAT_RUNTIME_PROFILE.resolveLoopConfig(input)
-}
-
-export function resolveQuickAskRuntimeLoopConfig(input: {
-  mode: ChatMode
-  assistant?: AssistantLoopOptions | null
-}) {
-  return QUICK_ASK_RUNTIME_PROFILE.resolveLoopConfig(input)
+    },
+    allowedToolNames,
+    toolPreferences: isAgentMode ? assistant?.toolPreferences : undefined,
+  }
 }

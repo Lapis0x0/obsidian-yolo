@@ -77,7 +77,7 @@ import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
-import { resolveQuickAskRuntimeLoopConfig } from '../../chat-view/chat-runtime-profiles'
+import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
 import { useAutoScroll } from '../../chat-view/useAutoScroll'
@@ -622,7 +622,7 @@ export function QuickAskPanel({
         systemPrompt: combinedSystemPrompt,
       },
       {
-        includeSkills: executionMode === 'agent',
+        includeSkills: executionMode === 'agent' || executionMode === 'chat',
       },
     )
   }, [
@@ -1034,23 +1034,23 @@ export function QuickAskPanel({
         const mcpManager = await getMcpManager()
 
         const isAgentMode = executionMode === 'agent'
-        const quickAskLoopConfig = resolveQuickAskRuntimeLoopConfig({
+        const chatModeRuntime = resolveChatModeRuntime({
           mode: isAgentMode ? 'agent' : 'chat',
           assistant: selectedAssistant,
+          assistantEnabledToolNames:
+            getEnabledAssistantToolNames(selectedAssistant),
         })
-        const effectiveEnableTools = quickAskLoopConfig.enableTools
         const effectiveModel = model
         const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
-        const enabledSkillEntries =
-          isAgentMode && selectedAssistant
-            ? listLiteSkillEntries(app, { settings }).filter((skill) =>
-                isSkillEnabledForAssistant({
-                  assistant: selectedAssistant,
-                  skillId: skill.id,
-                  disabledSkillIds,
-                }),
-              )
-            : []
+        const enabledSkillEntries = selectedAssistant
+          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+              isSkillEnabledForAssistant({
+                assistant: selectedAssistant,
+                skillId: skill.id,
+                disabledSkillIds,
+              }),
+            )
+          : []
         const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
@@ -1066,7 +1066,7 @@ export function QuickAskPanel({
 
         await agentService.run({
           conversationId,
-          loopConfig: quickAskLoopConfig,
+          loopConfig: chatModeRuntime.loopConfig,
           input: {
             providerClient,
             model: effectiveModel,
@@ -1075,10 +1075,8 @@ export function QuickAskPanel({
             requestContextBuilder,
             mcpManager,
             abortSignal: abortController.signal,
-            allowedToolNames: effectiveEnableTools
-              ? getEnabledAssistantToolNames(selectedAssistant)
-              : undefined,
-            toolPreferences: selectedAssistant?.toolPreferences,
+            allowedToolNames: chatModeRuntime.allowedToolNames,
+            toolPreferences: chatModeRuntime.toolPreferences,
             allowedSkillIds,
             allowedSkillNames,
             requestParams: {

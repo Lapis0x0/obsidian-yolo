@@ -64,9 +64,8 @@ YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, wri
 
 **Runtime Profiles**
 
-- Quick Ask: single-turn profile (`enableTools=false`, single iteration), routed to runtime fast path.
-- Smart Space / Write Assist: reuse `src/core/ai/single-turn.ts` directly for low-latency editor suggestions.
-- Agent Chat: multi-turn profile with `loop-worker` + `AgentToolGateway`.
+- Quick Ask / Sidebar Chat / Agent Chat: 三者共用同一个 agent runtime（`AgentService.run` → `loop-worker` + `AgentToolGateway`），并通过 `resolveChatModeRuntime`（`src/components/chat-view/chat-runtime-profiles.ts`）统一解析 `loopConfig` / `allowedToolNames` / `toolPreferences`。Chat 模式套用 `CHAT_BLOCKED_TOOL_NAMES` 黑名单（屏蔽 fs 改写类工具）且不传 `toolPreferences`；Agent 模式传完整工具集与偏好。`maxAutoIterations` 默认 100。Quick Ask 与侧边栏在 runtime 层面无差异，仅 UI 形态不同。
+- Smart Space / Write Assist: 低延迟编辑场景，直接复用 `src/core/ai/single-turn.ts`，不经过 agent runtime。
 
 **Legacy Removal**
 

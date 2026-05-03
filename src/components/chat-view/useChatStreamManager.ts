@@ -26,8 +26,6 @@ import {
 import { getChatModelClient } from '../../core/llm/manager'
 import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
-import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import {
@@ -44,7 +42,7 @@ import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
 import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
-import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
+import { resolveChatModeRuntime } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
@@ -80,24 +78,6 @@ type BranchRetryTarget = {
   sourceUserMessageId: string
   branchModelId?: string
   branchLabel?: string
-}
-
-const CHAT_BLOCKED_TOOL_NAMES = [
-  getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
-  getToolName(getLocalFileToolServerName(), 'fs_edit'),
-  getToolName(getLocalFileToolServerName(), 'fs_create_file'),
-  getToolName(getLocalFileToolServerName(), 'fs_delete_file'),
-  getToolName(getLocalFileToolServerName(), 'fs_create_dir'),
-  getToolName(getLocalFileToolServerName(), 'fs_delete_dir'),
-  getToolName(getLocalFileToolServerName(), 'fs_move'),
-]
-
-const excludeToolNames = (
-  allowedToolNames: string[],
-  blockedToolNames: string[],
-): string[] => {
-  const blocked = new Set(blockedToolNames)
-  return allowedToolNames.filter((toolName) => !blocked.has(toolName))
 }
 
 const buildRunSummary = ({
@@ -486,20 +466,16 @@ export function useChatStreamManager({
         : []
       const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
       const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
-      const assistantEnabledToolNames =
-        getEnabledAssistantToolNames(selectedAssistant)
-      const chatRuntimeLoopConfig = resolveChatRuntimeLoopConfig({
+      const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
         assistant: selectedAssistant,
+        assistantEnabledToolNames:
+          getEnabledAssistantToolNames(selectedAssistant),
       })
-      const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
+      const effectiveEnableTools = chatModeRuntime.loopConfig.enableTools
       const effectiveIncludeBuiltinTools =
-        chatRuntimeLoopConfig.includeBuiltinTools
-      const effectiveAllowedToolNames = effectiveEnableTools
-        ? chatMode === 'agent'
-          ? assistantEnabledToolNames
-          : excludeToolNames(assistantEnabledToolNames, CHAT_BLOCKED_TOOL_NAMES)
-        : undefined
+        chatModeRuntime.loopConfig.includeBuiltinTools
+      const effectiveAllowedToolNames = chatModeRuntime.allowedToolNames
       const resolvedCompactionClient = resolveCompactionClient()
       const summary = await createConversationCompactionSummary({
         providerClient: resolvedCompactionClient.providerClient,
@@ -678,25 +654,16 @@ export function useChatStreamManager({
         const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
-        const assistantEnabledToolNames =
-          getEnabledAssistantToolNames(selectedAssistant)
-        const chatRuntimeLoopConfig = resolveChatRuntimeLoopConfig({
+        const chatModeRuntime = resolveChatModeRuntime({
           mode: chatMode,
           assistant: selectedAssistant,
+          assistantEnabledToolNames:
+            getEnabledAssistantToolNames(selectedAssistant),
         })
-        const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
-        const effectiveAllowedToolNames = effectiveEnableTools
-          ? chatMode === 'agent'
-            ? assistantEnabledToolNames
-            : excludeToolNames(
-                assistantEnabledToolNames,
-                CHAT_BLOCKED_TOOL_NAMES,
-              )
-          : undefined
 
         const mcpManager = await getMcpManager()
 
-        const loopConfig = chatRuntimeLoopConfig
+        const loopConfig = chatModeRuntime.loopConfig
         const requestParams = {
           stream: shouldStreamResponse,
           temperature: conversationOverrides?.temperature ?? modelTemperature,
@@ -718,11 +685,8 @@ export function useChatStreamManager({
           compactionProviderClient: resolvedCompactionClient.providerClient,
           compactionModel: resolvedCompactionClient.model,
           reasoningLevel,
-          allowedToolNames: effectiveAllowedToolNames,
-          toolPreferences:
-            chatMode === 'agent'
-              ? selectedAssistant?.toolPreferences
-              : undefined,
+          allowedToolNames: chatModeRuntime.allowedToolNames,
+          toolPreferences: chatModeRuntime.toolPreferences,
           workspaceScope:
             resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
           allowedSkillIds,
