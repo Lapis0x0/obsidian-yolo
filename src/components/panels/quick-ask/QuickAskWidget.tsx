@@ -535,50 +535,63 @@ export class QuickAskOverlay {
     this.hasUserDragged = true
     this.isDockedTopRight = false
     this.dragPosition = { x, y }
-    this.updateDragPosition()
+    // 通过 rAF 节流;mousemove 在高刷屏可达 120Hz+,直接同步 updateDragPosition
+    // 会让每次都做 4 次 getBoundingClientRect + getComputedStyle + querySelector,
+    // 拖拽明显发卡。schedulePositionUpdate 会自动路由回 updateDragPosition。
+    this.schedulePositionUpdate()
   }
 
   private handleResize = (width: number, height: number) => {
     this.resizeSize = { width, height }
-    this.updateDragPosition() // Also update position when resizing
+    this.schedulePositionUpdate()
   }
 
   private updateDragPosition() {
     if (!this.overlayContainer || !this.dragPosition) return
 
+    const margin = 12
     const hostRect =
       this.overlayHost?.getBoundingClientRect() ??
       document.body.getBoundingClientRect()
 
-    const measuredWidth = this.getPanelWidth()
+    // Panel rect 一次读两个维度,避免对同一元素两次 getBoundingClientRect。
+    const panelRect = this.containerRef.current?.getBoundingClientRect() ?? null
+    const measuredWidth =
+      panelRect && Number.isFinite(panelRect.width) && panelRect.width > 0
+        ? panelRect.width
+        : null
+    const measuredHeight =
+      panelRect && Number.isFinite(panelRect.height) && panelRect.height > 0
+        ? panelRect.height
+        : null
 
-    // Get panel dimensions for width calculation
-    const scrollDom = this.options.view.scrollDOM
-    const scrollRect = scrollDom?.getBoundingClientRect()
-    const sizer = scrollDom?.querySelector('.cm-sizer')
-    const sizerRect = sizer?.getBoundingClientRect()
+    // editorContentWidth 这条 fallback 只在"用户没 resize 过、面板也没测出宽度"
+    // 时才用 —— 拖拽场景里 measuredWidth 永远存在,这条路径实际不命中。
+    // 包成 lambda 懒求值,常态拖拽帧省一次 querySelector + getComputedStyle +
+    // 两次 getBoundingClientRect。
+    const computeEditorContentWidth = () => {
+      const scrollDom = this.options.view.scrollDOM
+      const scrollRect = scrollDom?.getBoundingClientRect()
+      const sizer = scrollDom?.querySelector('.cm-sizer')
+      const sizerRect = sizer?.getBoundingClientRect()
+      const fallbackWidth = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--file-line-width',
+        ) || '720',
+        10,
+      )
+      return sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
+    }
 
-    const fallbackWidth = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue(
-        '--file-line-width',
-      ) || '720',
-      10,
-    )
-
-    const viewportWidth = hostRect.width
-    const margin = 12
-
-    const editorContentWidth =
-      sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
-
-    // Use resized width if available, otherwise use default max width
     const panelWidth =
       this.resizeSize?.width ??
       measuredWidth ??
-      Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
+      Math.max(
+        120,
+        Math.min(computeEditorContentWidth(), hostRect.width - margin * 2),
+      )
 
     const panelHeight = this.resizeSize?.height
-    const measuredHeight = this.getPanelHeight()
     const minTop = this.getMinimumTopOffset(margin)
     const minLeft = margin
     const maxLeft = Math.max(minLeft, hostRect.width - margin - panelWidth)
