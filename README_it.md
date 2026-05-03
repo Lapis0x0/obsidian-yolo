@@ -23,6 +23,8 @@
 
 ## Novita recenti
 
+- `1.5.7`: YOLO ora percepisce cosa stai leggendo—la sincronizzazione del focus mantiene l'AI aggiornata sul file e sulla posizione corrente, con supporto avanzato per PDF: lettura visiva, sincronizzazione della selezione e screenshot di regioni.
+- `1.5.6`: La ricerca web integrata è disponibile—gli Agent possono ora navigare su internet direttamente, con più provider di ricerca e scraping web unificato.
 - `1.5.5`: Motore della knowledge base rinnovato, ricerca ibrida e indicizzazione completamente aggiornate, con risultati di ricerca piu intelligenti.
 - `1.5.4`: Per sessioni lunghe e compiti complessi—introduzione di potatura e compressione del contesto, conversazioni multi-modello, timeline virtualizzata per chat lunghe e compressione automatica.
 - `1.5.3`: Chat multi-finestra nativa e Agent in background per un'automazione piu scorrevole.

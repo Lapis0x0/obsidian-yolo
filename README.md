@@ -23,6 +23,8 @@
 
 ## What's New
 
+- `1.5.7`: YOLO can now sense what you're reading—focus sync keeps the AI aware of your current file and position, with deep PDF support for vision reading, selection sync, and region screenshots.
+- `1.5.6`: Built-in web search is here—Agents can now browse the internet directly, with multiple search providers and unified web scraping.
 - `1.5.5`: Refreshed knowledge-base foundations with fully upgraded hybrid search and indexing—and smarter, more relevant results.
 - `1.5.4`: Built for long chats and complex tasks: smarter context pruning and compression, multi-model branches, a virtualized chat timeline, and automatic compression to keep agents running smoothly.
 - `1.5.3`: Native multi-window chat plus background Agents—automation that stays out of your way.
