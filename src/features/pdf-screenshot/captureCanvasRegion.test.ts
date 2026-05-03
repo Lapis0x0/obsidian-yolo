@@ -28,10 +28,16 @@ function makeOffscreenMockCanvas(): MockCanvas {
     width: 0,
     height: 0,
     getBoundingClientRect: () =>
-      ({ left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 }) as DOMRect,
+      ({
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
+        right: 0,
+        bottom: 0,
+      }) as DOMRect,
     getContext: (_type: string) => ctx,
-    toDataURL: (_type?: string) =>
-      'data:image/png;base64,AAAA', // minimal stub
+    toDataURL: (_type?: string) => 'data:image/png;base64,AAAA', // minimal stub
   }
   return canvas
 }
@@ -82,7 +88,6 @@ afterAll(() => {
 // Import AFTER setting up global.document so the module resolves correctly.
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line import/first -- must come after global setup
 import { captureCanvasRegion } from './captureCanvasRegion'
 
 // ---------------------------------------------------------------------------

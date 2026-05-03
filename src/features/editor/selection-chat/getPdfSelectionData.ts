@@ -109,7 +109,7 @@ function findLeafByContentEl(
     // Obsidian WorkspaceLeaf exposes `.view.containerEl` (the full leaf DOM)
     // and the inner `.view.contentEl`.  The `.workspace-leaf-content` element
     // is the `contentEl` of the leaf's view.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian private API
+
     const view = (leaf as any).view
     if (!view) continue
     if (view.containerEl && view.containerEl.contains(leafContentEl)) {
@@ -120,11 +120,33 @@ function findLeafByContentEl(
 }
 
 /**
+ * Locate the `.workspace-leaf-content[data-type="pdf"]` element of a PDF
+ * WorkspaceLeaf.  This is the natural mounting host for overlays that should
+ * sit visually inside the PDF view.
+ *
+ * For Obsidian's PDF view, `View.containerEl` IS this element (not its
+ * parent), so `querySelector` won't find the node itself — check it first
+ * and fall back to descendant lookup defensively.
+ *
+ * Uses the public `View.containerEl` field so no `as any` is needed.
+ */
+export function getPdfLeafContentEl(leaf: WorkspaceLeaf): HTMLElement | null {
+  const root = leaf.view?.containerEl
+  if (!(root instanceof HTMLElement)) return null
+  if (root.matches('.workspace-leaf-content[data-type="pdf"]')) {
+    return root
+  }
+  const contentEl = root.querySelector(
+    '.workspace-leaf-content[data-type="pdf"]',
+  )
+  return contentEl instanceof HTMLElement ? contentEl : null
+}
+
+/**
  * Given the PDF leaf, return the TFile it currently displays.
  */
 function getFileFromPdfLeaf(leaf: WorkspaceLeaf): TFile | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian private API
     const file = (leaf.view as any)?.file
     if (file && typeof file === 'object' && 'path' in file) {
       return file as TFile
@@ -210,6 +232,6 @@ export function getPdfSelectionData(app: App): PdfSelectionResult {
     file,
     pageNumber,
     leaf,
-    range: liveRange!,
+    range: liveRange,
   }
 }

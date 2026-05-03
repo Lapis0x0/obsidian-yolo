@@ -5,7 +5,10 @@
 
 import type { TFile } from 'obsidian'
 
-import type { Mentionable, SerializedMentionableBlock } from '../../types/mentionable'
+import type {
+  Mentionable,
+  SerializedMentionableBlock,
+} from '../../types/mentionable'
 
 import {
   deserializeMentionable,
@@ -89,7 +92,7 @@ describe('deserializeMentionable – block with pageNumber round-trip', () => {
     }
 
     const serialized = serializeMentionable(original)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const restored = deserializeMentionable(serialized, app as any)
 
     expect(restored).not.toBeNull()
@@ -111,7 +114,7 @@ describe('deserializeMentionable – block with pageNumber round-trip', () => {
     }
 
     const serialized = serializeMentionable(original)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const restored = deserializeMentionable(serialized, app as any)
 
     expect(restored?.type).toBe('block')

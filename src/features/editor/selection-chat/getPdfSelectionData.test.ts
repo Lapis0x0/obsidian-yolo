@@ -119,7 +119,11 @@ function makePdfDomChain(pageNum: number): {
 function makePdfLeaf(filePath: string, containerEl: FakeNode) {
   return {
     view: {
-      file: { path: filePath, basename: filePath.split('/').pop(), name: filePath.split('/').pop() },
+      file: {
+        path: filePath,
+        basename: filePath.split('/').pop(),
+        name: filePath.split('/').pop(),
+      },
       containerEl,
       getViewType: () => 'pdf',
     },
@@ -140,12 +144,10 @@ function makeApp(pdfLeaves: ReturnType<typeof makePdfLeaf>[]) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function mockGetSelection(sel: Partial<Selection> | null): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test shim
   ;(global as any).window = { getSelection: () => sel }
 }
 
 afterEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test shim
   delete (global as any).window
   jest.restoreAllMocks()
 })
@@ -160,7 +162,7 @@ describe('getPdfSelectionData', () => {
     const { leafContent } = makePdfDomChain(1)
     const leaf = makePdfLeaf('sample.pdf', leafContent)
     const app = makeApp([leaf])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     expect(getPdfSelectionData(app as any)).toBeNull()
   })
 
@@ -187,7 +189,7 @@ describe('getPdfSelectionData', () => {
     const leaf = makePdfLeaf('sample.pdf', leafContent)
     const app = makeApp([leaf])
     // Must be null (not { kind: 'empty' }) — Markdown badges must not be cleared
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     expect(getPdfSelectionData(app as any)).toBeNull()
   })
 
@@ -199,12 +201,15 @@ describe('getPdfSelectionData', () => {
       toString: () => '', // empty selection
       anchorNode: span as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: span, startContainer: span }) as unknown as Range,
+        ({
+          commonAncestorContainer: span,
+          startContainer: span,
+        }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('notes/doc.pdf', leafContent)
     const app = makeApp([leaf])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const result = getPdfSelectionData(app as any)
     // Now returns { kind: 'empty', leaf } since the leaf can be resolved
     expect(result).toMatchObject({ kind: 'empty' })
@@ -219,12 +224,15 @@ describe('getPdfSelectionData', () => {
       anchorNode: textNode as unknown as Node,
       getRangeAt: () =>
         // startContainer is the text node inside the .page[data-page-number=3] chain
-        ({ commonAncestorContainer: span, startContainer: textNode }) as unknown as Range,
+        ({
+          commonAncestorContainer: span,
+          startContainer: textNode,
+        }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('docs/paper.pdf', leafContent)
     const app = makeApp([leaf])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const result = getPdfSelectionData(app as any)
     expect(result).not.toBeNull()
     expect(result).toMatchObject({
@@ -232,7 +240,7 @@ describe('getPdfSelectionData', () => {
       content: 'Selected text on page 3',
       pageNumber: 3,
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     expect((result as any).file.path).toBe('docs/paper.pdf')
   })
 
@@ -246,15 +254,18 @@ describe('getPdfSelectionData', () => {
       anchorNode: startText as unknown as Node,
       getRangeAt: () =>
         // startContainer is on page 2 — that is the DOM-order start
-        ({ commonAncestorContainer: container, startContainer: startText }) as unknown as Range,
+        ({
+          commonAncestorContainer: container,
+          startContainer: startText,
+        }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('book.pdf', leafContent)
     const app = makeApp([leaf])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const result = getPdfSelectionData(app as any)
     expect(result).not.toBeNull()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     expect((result as any).pageNumber).toBe(2) // range.startContainer page, not focus page
   })
 
@@ -268,19 +279,22 @@ describe('getPdfSelectionData', () => {
       toString: () => 'Text from document B',
       anchorNode: chainB.textNode as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: chainB.span, startContainer: chainB.textNode }) as unknown as Range,
+        ({
+          commonAncestorContainer: chainB.span,
+          startContainer: chainB.textNode,
+        }) as unknown as Range,
     } as Partial<Selection>)
 
     const leafA = makePdfLeaf('file_A.pdf', chainA.leafContent)
     const leafB = makePdfLeaf('file_B.pdf', chainB.leafContent)
     // Both leaves present; leafA is listed first (like active leaf)
     const app = makeApp([leafA, leafB])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const result = getPdfSelectionData(app as any)
     expect(result).not.toBeNull()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     expect((result as any).file.path).toBe('file_B.pdf') // must be B, not A
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     expect((result as any).pageNumber).toBe(5)
   })
 
@@ -322,7 +336,10 @@ describe('getPdfSelectionData', () => {
       classList: { contains: () => false },
       matches: (sel) => sel.includes('pdf-viewer-container'),
       closest: (sel) => {
-        if (sel.includes('workspace-leaf-content') && sel.includes('data-type="pdf"]'))
+        if (
+          sel.includes('workspace-leaf-content') &&
+          sel.includes('data-type="pdf"]')
+        )
           return leafContent
         if (sel.includes('pdf-viewer-container')) return container
         return null
@@ -337,12 +354,15 @@ describe('getPdfSelectionData', () => {
       toString: () => 'Orphan text',
       anchorNode: textNode as unknown as Node,
       getRangeAt: () =>
-        ({ commonAncestorContainer: span, startContainer: textNode }) as unknown as Range,
+        ({
+          commonAncestorContainer: span,
+          startContainer: textNode,
+        }) as unknown as Range,
     } as Partial<Selection>)
 
     const leaf = makePdfLeaf('orphan.pdf', leafContent)
     const app = makeApp([leaf])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
+
     const result = getPdfSelectionData(app as any)
     // Page number cannot be resolved → kind:'empty' (not null, since it IS inside PDF)
     // Now returns { kind: 'empty', leaf } since the leaf can be resolved

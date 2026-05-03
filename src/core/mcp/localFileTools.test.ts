@@ -15,6 +15,8 @@ import {
 } from '../../types/tool-call.types'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
+import { extractPdfText } from '../../utils/pdf/extractPdfText'
+import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import {
@@ -709,10 +711,7 @@ describe('local fs tool action helpers', () => {
     })
 
     it('defaults to text when modality is null or empty string', async () => {
-      expectModality(
-        await callRead({ type: 'full', modality: null }),
-        'text',
-      )
+      expectModality(await callRead({ type: 'full', modality: null }), 'text')
       expectModality(await callRead({ type: 'full', modality: '   ' }), 'text')
     })
 
@@ -2033,11 +2032,10 @@ jest.mock('../../utils/pdf/renderPdfPagesToImages', () => ({
   renderPdfPagesToImages: jest.fn(),
 }))
 
-import { extractPdfText } from '../../utils/pdf/extractPdfText'
-import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
-
 describe('fs_read PDF vision-downgrade warning', () => {
-  const extractMock = extractPdfText as jest.MockedFunction<typeof extractPdfText>
+  const extractMock = extractPdfText as jest.MockedFunction<
+    typeof extractPdfText
+  >
   const renderMock = renderPdfPagesToImages as jest.MockedFunction<
     typeof renderPdfPagesToImages
   >
@@ -2110,7 +2108,8 @@ describe('fs_read PDF vision-downgrade warning', () => {
   it('adds effectiveModality and warning when modality=image but model is text-only', async () => {
     const result = await callPdfRead('image', ['text'])
     expect(result.status).toBe(ToolCallResponseStatus.Success)
-    if (result.status !== ToolCallResponseStatus.Success) throw new Error('expected success')
+    if (result.status !== ToolCallResponseStatus.Success)
+      throw new Error('expected success')
     // Should have fallen back to text extraction
     expect(extractMock).toHaveBeenCalled()
     expect(renderMock).not.toHaveBeenCalled()
@@ -2129,7 +2128,8 @@ describe('fs_read PDF vision-downgrade warning', () => {
   it('does NOT add effectiveModality/warning when modality=image and model supports vision', async () => {
     const result = await callPdfRead('image', ['text', 'vision'])
     expect(result.status).toBe(ToolCallResponseStatus.Success)
-    if (result.status !== ToolCallResponseStatus.Success) throw new Error('expected success')
+    if (result.status !== ToolCallResponseStatus.Success)
+      throw new Error('expected success')
     // Should have taken image path
     expect(renderMock).toHaveBeenCalled()
     expect(extractMock).not.toHaveBeenCalled()
@@ -2147,7 +2147,8 @@ describe('fs_read PDF vision-downgrade warning', () => {
   it('does NOT add effectiveModality/warning when modality=text regardless of model', async () => {
     const result = await callPdfRead('text', ['text'])
     expect(result.status).toBe(ToolCallResponseStatus.Success)
-    if (result.status !== ToolCallResponseStatus.Success) throw new Error('expected success')
+    if (result.status !== ToolCallResponseStatus.Success)
+      throw new Error('expected success')
     const payload = JSON.parse(result.text) as {
       results: Array<{
         effectiveModality?: string

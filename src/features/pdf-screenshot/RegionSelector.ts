@@ -59,10 +59,18 @@ export class RegionSelector {
     this.container = container
     this.callbacks = callbacks
 
-    this.boundMouseDown = (e) => { this.onMouseDown(e) }
-    this.boundMouseMove = (e) => { this.onMouseMove(e) }
-    this.boundMouseUp = (e) => { this.onMouseUp(e) }
-    this.boundKeyDown = (e) => { this.onKeyDown(e) }
+    this.boundMouseDown = (e) => {
+      this.onMouseDown(e)
+    }
+    this.boundMouseMove = (e) => {
+      this.onMouseMove(e)
+    }
+    this.boundMouseUp = (e) => {
+      this.onMouseUp(e)
+    }
+    this.boundKeyDown = (e) => {
+      this.onKeyDown(e)
+    }
   }
 
   mount(): void {
@@ -96,7 +104,9 @@ export class RegionSelector {
 
     document.removeEventListener('mousemove', this.boundMouseMove)
     document.removeEventListener('mouseup', this.boundMouseUp)
-    document.removeEventListener('keydown', this.boundKeyDown, { capture: true })
+    document.removeEventListener('keydown', this.boundKeyDown, {
+      capture: true,
+    })
 
     this.overlayEl.removeEventListener('mousedown', this.boundMouseDown)
     this.overlayEl.remove()

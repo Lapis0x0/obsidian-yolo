@@ -1,5 +1,5 @@
 import { Platform } from 'obsidian'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
@@ -32,6 +32,8 @@ type SelectionActionsMenuProps = {
     rewriteBehavior?: SelectionActionRewriteBehavior,
   ) => void | Promise<void>
   onHoverChange: (isHovering: boolean) => void
+  /** PDF selections cannot be rewritten — pass 'pdf' to hide rewrite actions. */
+  source?: 'markdown' | 'pdf'
 }
 
 export function SelectionActionsMenu({
@@ -41,6 +43,7 @@ export function SelectionActionsMenu({
   visible,
   onAction,
   onHoverChange,
+  source = 'markdown',
 }: SelectionActionsMenuProps) {
   const isMobile = !Platform.isDesktop
   const { t } = useLanguage()
@@ -120,11 +123,17 @@ export function SelectionActionsMenu({
       'custom-ask',
       'add-to-sidebar',
     ])
-    const displayActions = defaultActions
+    const allDisplayActions = defaultActions
       .filter((action) => fixedActionIds.has(action.id))
       .concat(
         resolvedActions.filter((action) => !fixedActionIds.has(action.id)),
       )
+
+    // PDF selections have no writable target: filter out all rewrite-mode actions.
+    const displayActions =
+      source === 'pdf'
+        ? allDisplayActions.filter((action) => action.mode !== 'rewrite')
+        : allDisplayActions
 
     return displayActions.map((action) => {
       const label = action.label?.trim() || ''
@@ -164,6 +173,7 @@ export function SelectionActionsMenu({
     defaultActions,
     onAction,
     settings?.continuationOptions?.selectionChatActions,
+    source,
   ])
 
   const getMenuSize = useCallback(() => {

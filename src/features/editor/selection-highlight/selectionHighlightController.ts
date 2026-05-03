@@ -149,9 +149,7 @@ export class SelectionHighlightController {
               const segTo = Math.min(to, line.to)
               if (segFrom >= segTo) continue
               const range = EditorSelection.range(segFrom, segTo)
-              markers.push(
-                ...RectangleMarker.forRange(view, className, range),
-              )
+              markers.push(...RectangleMarker.forRange(view, className, range))
             }
           }
 

@@ -142,10 +142,15 @@ type QuickAskRunStatus =
   | 'modifying'
   | null
 
-type QuickAskPanelProps = {
+/**
+ * QuickAskPanel props use a capabilities discriminated union so that
+ * edit-mode props (editor, view, editContextText, editSelectionFrom,
+ * selectionScope) are only accessible when capabilities.edit === true.
+ * This lets TypeScript enforce that PDF paths cannot accidentally invoke
+ * editor methods.
+ */
+type QuickAskPanelPropsBase = {
   plugin: SmartComposerPlugin
-  editor: Editor
-  view: EditorView
   contextText: string
   fileTitle: string
   sourceFilePath?: string
@@ -153,9 +158,6 @@ type QuickAskPanelProps = {
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
   initialInput?: string
-  editContextText?: string
-  editSelectionFrom?: { line: number; ch: number }
-  selectionScope?: QuickAskSelectionScope
   autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
@@ -165,8 +167,24 @@ type QuickAskPanelProps = {
   onDockToTopRight?: () => void
 }
 
+type QuickAskPanelProps =
+  | (QuickAskPanelPropsBase & {
+      capabilities: { edit: true }
+      editor: Editor
+      view: EditorView
+      editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
+    })
+  | (QuickAskPanelPropsBase & {
+      capabilities: { edit: false }
+      editor: null
+      view: null
+    })
+
 export function QuickAskPanel({
   plugin,
+  capabilities,
   editor: _editor,
   view: _view,
   contextText,
@@ -176,9 +194,6 @@ export function QuickAskPanel({
   initialMentionables,
   initialMode,
   initialInput,
-  editContextText,
-  editSelectionFrom,
-  selectionScope,
   autoSend,
   onClose,
   containerRef,
@@ -186,7 +201,18 @@ export function QuickAskPanel({
   onDragOffset,
   onResize,
   onDockToTopRight,
+  ...editProps
 }: QuickAskPanelProps) {
+  const editContextText = capabilities.edit
+    ? (editProps as { editContextText?: string }).editContextText
+    : undefined
+  const editSelectionFrom = capabilities.edit
+    ? (editProps as { editSelectionFrom?: { line: number; ch: number } })
+        .editSelectionFrom
+    : undefined
+  const selectionScope = capabilities.edit
+    ? (editProps as { selectionScope?: QuickAskSelectionScope }).selectionScope
+    : undefined
   const quickAskSurfacePreset = getChatSurfacePreset('quick-ask')
   const app = useApp()
   const { settings } = useSettings()
@@ -242,10 +268,19 @@ export function QuickAskPanel({
     ),
   )
   const [executionMode, setExecutionMode] = useState<QuickAskExecutionMode>(
-    () =>
-      normalizeQuickAskExecutionMode(
+    () => {
+      const resolved = normalizeQuickAskExecutionMode(
         initialMode ?? settings.continuationOptions?.quickAskMode,
-      ),
+      )
+      // PDF path: edit modes are unavailable; fall back to 'chat'
+      if (
+        !capabilities.edit &&
+        (resolved === 'edit' || resolved === 'edit-direct')
+      ) {
+        return 'chat'
+      }
+      return resolved
+    },
   )
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -271,9 +306,18 @@ export function QuickAskPanel({
   useEffect(() => {
     if (initialMode) {
       setMode(normalizeQuickAskVisibleMode(initialMode))
-      setExecutionMode(normalizeQuickAskExecutionMode(initialMode))
+      const resolved = normalizeQuickAskExecutionMode(initialMode)
+      // PDF path: edit modes are unavailable; fall back to 'chat'
+      if (
+        !capabilities.edit &&
+        (resolved === 'edit' || resolved === 'edit-direct')
+      ) {
+        setExecutionMode('chat')
+      } else {
+        setExecutionMode(resolved)
+      }
     }
-  }, [initialMode])
+  }, [capabilities.edit, initialMode])
 
   useEffect(() => {
     setMentionables(initialMentionables ?? [])
@@ -724,6 +768,8 @@ export function QuickAskPanel({
 
   const readEditBaseContent = useCallback(
     async (targetFilePath?: string): Promise<string> => {
+      // This callback is only called in edit mode where _editor is an Editor.
+      if (!capabilities.edit || !_editor) return ''
       const activeFilePath = app.workspace.getActiveFile()?.path
       if (
         targetFilePath &&
@@ -739,7 +785,8 @@ export function QuickAskPanel({
       }
       return readTFileContent(fallbackFile, app.vault)
     },
-    [_editor, app, sourceFilePath],
+
+    [capabilities.edit, _editor, app, sourceFilePath],
   )
 
   const buildSelectionScopedContent = useCallback(
@@ -762,6 +809,11 @@ export function QuickAskPanel({
         }
       }
 
+      // This callback is only reached in edit mode where _editor is an Editor.
+      if (!capabilities.edit || !_editor) {
+        return { editSourceText: currentContent, finalContent: currentContent }
+      }
+
       const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
       const tail = currentContent.slice(head.length + selectedContext.length)
 
@@ -770,7 +822,8 @@ export function QuickAskPanel({
         finalContent: head + selectedContext + tail,
       }
     },
-    [_editor],
+
+    [capabilities.edit, _editor],
   )
 
   const generatePlannedEdit = useCallback(
@@ -821,15 +874,17 @@ export function QuickAskPanel({
         plan,
       })
 
-      const finalContent = selectionFrom
-        ? (() => {
-            const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
-            const tail = currentContent.slice(
-              head.length + scopedContent.editSourceText.length,
-            )
-            return head + materialized.newContent + tail
-          })()
-        : materialized.newContent
+      // generatePlannedEdit is only called in edit mode where _editor is Editor.
+      const finalContent =
+        selectionFrom && capabilities.edit && _editor
+          ? (() => {
+              const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
+              const tail = currentContent.slice(
+                head.length + scopedContent.editSourceText.length,
+              )
+              return head + materialized.newContent + tail
+            })()
+          : materialized.newContent
 
       return {
         currentContent,
@@ -844,6 +899,7 @@ export function QuickAskPanel({
       }
     },
     [
+      capabilities.edit,
       _editor,
       buildSelectionScopedContent,
       selectionEditContextText,

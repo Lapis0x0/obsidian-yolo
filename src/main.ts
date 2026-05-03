@@ -80,7 +80,6 @@ import {
 } from './features/chat/chatLeafSessionManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
-import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildFullReviewBlocks,
@@ -99,6 +98,7 @@ import {
 } from './features/editor/smart-space/smartSpaceController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
+import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { Language, createTranslationFunction } from './i18n'
 import {
   SmartComposerSettings,
@@ -544,6 +544,12 @@ export default class SmartComposerPlugin extends Plugin {
           this.showQuickAskWithOptions(editor, view, options),
         showQuickAskWithAutoSend: (editor, view, options) =>
           this.showQuickAskWithAutoSend(editor, view, options),
+        showQuickAskFromPdf: (args) =>
+          this.getQuickAskController().showFromPdf(args),
+        pruneOrphanedQuickAskPdfInstance: (activePdfLeaves) =>
+          this.getQuickAskController().pruneOrphanedPdfInstance(
+            activePdfLeaves,
+          ),
         openChatWithSelectionAndPrefill: async (selectedBlock, text) => {
           await this.getChatViewNavigator().openChatWithSelectionAndPrefill(
             selectedBlock,

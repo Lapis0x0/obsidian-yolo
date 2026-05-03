@@ -23,8 +23,12 @@ function makeMouseEvent(
     clientY: options.clientY ?? 0,
     bubbles: true,
     cancelable: true,
-    preventDefault: () => { prevented.value = true },
-    stopPropagation: () => { stopped.value = true },
+    preventDefault: () => {
+      prevented.value = true
+    },
+    stopPropagation: () => {
+      stopped.value = true
+    },
   } as unknown as MouseEvent
 }
 
@@ -36,8 +40,12 @@ function makeKeyboardEvent(key: string): KeyboardEvent {
     key,
     bubbles: true,
     cancelable: true,
-    preventDefault: () => { prevented.value = true },
-    stopPropagation: () => { stopped.value = true },
+    preventDefault: () => {
+      prevented.value = true
+    },
+    stopPropagation: () => {
+      stopped.value = true
+    },
   } as unknown as KeyboardEvent
 }
 
@@ -55,7 +63,11 @@ type MockElement = {
   appendChild: (child: MockElement) => MockElement
   remove: () => void
   dispatchEvent: (event: unknown) => void
-  addEventListener: (type: string, handler: (e: unknown) => void, opts?: unknown) => void
+  addEventListener: (
+    type: string,
+    handler: (e: unknown) => void,
+    opts?: unknown,
+  ) => void
   removeEventListener: (type: string, handler: (e: unknown) => void) => void
   getBoundingClientRect: () => DOMRect
   innerHTML: string
@@ -88,7 +100,14 @@ function makeMockElement(): MockElement {
       listeners[e.type]?.forEach((h) => h(event))
     },
     getBoundingClientRect: () =>
-      ({ left: 0, top: 0, width: 800, height: 1000, right: 800, bottom: 1000 }) as DOMRect,
+      ({
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 1000,
+        right: 800,
+        bottom: 1000,
+      }) as DOMRect,
   }
   return el
 }
@@ -99,7 +118,11 @@ let sharedCanvas: MockElement
 let mockDoc: {
   createElement: (tag: string) => MockElement
   elementsFromPoint: (x: number, y: number) => MockElement[]
-  addEventListener: (type: string, h: (e: unknown) => void, opts?: unknown) => void
+  addEventListener: (
+    type: string,
+    h: (e: unknown) => void,
+    opts?: unknown,
+  ) => void
   removeEventListener: (type: string, h: (e: unknown) => void) => void
   dispatchEvent: (event: unknown) => void
 }
@@ -157,7 +180,6 @@ function teardownGlobalDocument() {
 // Import AFTER global stub setup helper is defined
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line import/first -- must come after stub helpers
 import { RegionSelector, SelectedRegion } from './RegionSelector'
 
 // ---------------------------------------------------------------------------
@@ -209,11 +231,17 @@ describe('RegionSelector', () => {
     const overlay = container.children[0]
 
     // Simulate mousedown on the overlay at viewport (150, 250)
-    overlay.dispatchEvent(makeMouseEvent('mousedown', { clientX: 150, clientY: 250 }))
+    overlay.dispatchEvent(
+      makeMouseEvent('mousedown', { clientX: 150, clientY: 250 }),
+    )
     // Simulate mousemove (registered on document)
-    mockDoc.dispatchEvent(makeMouseEvent('mousemove', { clientX: 250, clientY: 350 }))
+    mockDoc.dispatchEvent(
+      makeMouseEvent('mousemove', { clientX: 250, clientY: 350 }),
+    )
     // Simulate mouseup (registered on document)
-    mockDoc.dispatchEvent(makeMouseEvent('mouseup', { clientX: 250, clientY: 350 }))
+    mockDoc.dispatchEvent(
+      makeMouseEvent('mouseup', { clientX: 250, clientY: 350 }),
+    )
 
     expect(onComplete).toHaveBeenCalledTimes(1)
     expect(onCancel).not.toHaveBeenCalled()
@@ -224,7 +252,7 @@ describe('RegionSelector', () => {
     // region.x = 150 - 100 = 50, region.y = 250 - 200 = 50
     expect(region.x).toBe(50)
     expect(region.y).toBe(50)
-    expect(region.width).toBe(100)  // |250-150|
+    expect(region.width).toBe(100) // |250-150|
     expect(region.height).toBe(100) // |350-250|
     expect(region.pageNumber).toBe(3)
   })
@@ -240,7 +268,9 @@ describe('RegionSelector', () => {
     selector.mount()
 
     const overlay = container.children[0]
-    overlay.dispatchEvent(makeMouseEvent('mousedown', { clientX: 100, clientY: 100 }))
+    overlay.dispatchEvent(
+      makeMouseEvent('mousedown', { clientX: 100, clientY: 100 }),
+    )
     mockDoc.dispatchEvent(makeKeyboardEvent('Escape'))
 
     expect(onCancel).toHaveBeenCalledTimes(1)
@@ -258,8 +288,12 @@ describe('RegionSelector', () => {
     selector.mount()
 
     const overlay = container.children[0]
-    overlay.dispatchEvent(makeMouseEvent('mousedown', { clientX: 100, clientY: 100 }))
-    mockDoc.dispatchEvent(makeMouseEvent('mouseup', { clientX: 102, clientY: 102 }))
+    overlay.dispatchEvent(
+      makeMouseEvent('mousedown', { clientX: 100, clientY: 100 }),
+    )
+    mockDoc.dispatchEvent(
+      makeMouseEvent('mouseup', { clientX: 102, clientY: 102 }),
+    )
 
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onComplete).not.toHaveBeenCalled()

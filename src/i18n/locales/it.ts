@@ -1439,7 +1439,8 @@ export const it: TranslationKeys = {
   },
 
   pdf: {
-    regionSelectorHint: 'Trascina per selezionare una regione. Premi ESC per annullare.',
+    regionSelectorHint:
+      'Trascina per selezionare una regione. Premi ESC per annullare.',
     toolbarButtonTooltip: 'Cattura regione PDF nella chat',
   },
 

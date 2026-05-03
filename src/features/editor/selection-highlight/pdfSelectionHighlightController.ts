@@ -37,7 +37,7 @@ type PdfHighlightEntry = {
   file: TFile
   variant: 'sync' | 'pinned'
   owner: HighlightOwner
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
+
   eventBus: any
   onTextLayerRendered: (evt: { pageNumber: number }) => void
   ranges: Range[]
@@ -47,7 +47,6 @@ type PdfHighlightEntry = {
 // CSS Custom Highlight registry
 // ──────────────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Highlight / CSS.highlights are not in the TS DOM lib for ES6 target
 type AnyHighlight = any
 
 /**
@@ -57,14 +56,11 @@ type AnyHighlight = any
  * (e.g. older mobile webviews).
  */
 function getOrCreateHighlight(): AnyHighlight | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- feature detection
   const w = window as any
   if (typeof w.Highlight !== 'function' || !w.CSS || !w.CSS.highlights) {
     return null
   }
-  let highlight = w.CSS.highlights.get(HIGHLIGHT_NAME) as
-    | AnyHighlight
-    | undefined
+  let highlight = w.CSS.highlights.get(HIGHLIGHT_NAME)
   if (!highlight) {
     highlight = new w.Highlight()
     w.CSS.highlights.set(HIGHLIGHT_NAME, highlight)
@@ -162,7 +158,6 @@ function buildRanges(
  */
 function resolveEventBus(leaf: WorkspaceLeaf): unknown | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian private API
     const viewer = (leaf.view as any)?.viewer?.child?.pdfViewer
     return viewer?.eventBus ?? null
   } catch {
@@ -179,7 +174,6 @@ function resolvePageEl(
   pageNumber: number,
 ): Element | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian private API
     const containerEl = (leaf.view as any)?.containerEl as Element | undefined
     if (!containerEl) return null
     return (
@@ -275,8 +269,6 @@ export class PdfSelectionHighlightController {
       entry.ranges = buildRanges(getTextNodes(el), startOffset, endOffset)
       for (const r of entry.ranges) hl.add(r)
     }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
     ;(eventBus as any).on('textlayerrendered', entry.onTextLayerRendered)
 
     this.entries.set(id, entry)
@@ -326,8 +318,7 @@ export class PdfSelectionHighlightController {
   }
 
   private _removeEntry(id: string, entry: PdfHighlightEntry): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PDF.js eventBus is untyped
-    ;(entry.eventBus as any).off('textlayerrendered', entry.onTextLayerRendered)
+    entry.eventBus.off('textlayerrendered', entry.onTextLayerRendered)
 
     const highlight = getOrCreateHighlight()
     if (highlight) {

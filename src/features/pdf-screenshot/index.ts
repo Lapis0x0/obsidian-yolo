@@ -27,7 +27,7 @@ export function enablePdfScreenshotFeature(plugin: SmartComposerPlugin): void {
   // Inject the toolbar button as a secondary convenience trigger
   const toolbarManager = new PdfToolbarButtonManager(plugin, () => {
     // Trigger the same command programmatically
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian internal command API
+
     ;(plugin.app as any).commands?.executeCommandById(
       `${plugin.manifest.id}:capture-pdf-region`,
     )

@@ -112,14 +112,14 @@ function findActivePdfLeaf(plugin: SmartComposerPlugin) {
   const workspace = plugin.app.workspace
 
   // Check if the active leaf is a PDF view
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian private API
+
   const activeLeavesOfType = workspace.getLeavesOfType('pdf')
   if (activeLeavesOfType.length === 0) {
     return null
   }
 
   // Prefer the most recently active one (Obsidian keeps the active leaf on top)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Obsidian private API
+
   const activeLeaf = (workspace as any).activeLeaf
   if (activeLeaf && activeLeaf.view?.getViewType?.() === 'pdf') {
     return activeLeaf

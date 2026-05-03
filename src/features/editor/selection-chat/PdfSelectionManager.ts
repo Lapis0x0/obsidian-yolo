@@ -13,10 +13,7 @@
 
 import type { App } from 'obsidian'
 
-import {
-  PdfSelectionResult,
-  getPdfSelectionData,
-} from './getPdfSelectionData'
+import { PdfSelectionResult, getPdfSelectionData } from './getPdfSelectionData'
 
 type PdfSelectionCallback = (result: PdfSelectionResult) => void
 
