@@ -252,14 +252,6 @@ export function QuickAskPanel({
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const inputRowRef = useRef<HTMLDivElement | null>(null)
   const contentEditableRef = useRef<HTMLDivElement>(null)
-  const mentionPortalContainerRef = useMemo<React.RefObject<HTMLElement>>(
-    () => ({
-      get current() {
-        return getNodeBody(inputRowRef.current)
-      },
-    }),
-    [],
-  )
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
@@ -2188,7 +2180,6 @@ export function QuickAskPanel({
                   if (open) updateMentionMenuPlacement()
                 }}
                 onMentionNodeMutation={handleMentionNodeMutation}
-                mentionMenuContainerRef={mentionPortalContainerRef}
                 mentionMenuPlacement={mentionMenuPlacement}
                 autoFocus
                 contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"

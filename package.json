@@ -69,6 +69,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@electric-sql/pglite": "0.4.4",
+    "@floating-ui/dom": "^1.7.6",
     "@google/genai": "^1.18.0",
     "@google/generative-ai": "^0.24.0",
     "@lexical/clipboard": "^0.17.1",
