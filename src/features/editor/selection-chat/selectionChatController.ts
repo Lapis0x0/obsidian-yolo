@@ -28,9 +28,14 @@ import type {
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
+import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAskController'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
+import {
+  type PdfPageContextResult,
+  getPdfPageContextText,
+} from './getPdfPageContextText'
 import type { PdfSelectionResult } from './getPdfSelectionData'
 import { getPdfLeafContentEl } from './getPdfSelectionData'
 import { PdfSelectionManager } from './PdfSelectionManager'
@@ -80,6 +85,7 @@ type SelectionChatControllerDeps = {
     range: Range
     file: import('obsidian').TFile
     pageNumber: number
+    contextText?: string
     initialMentionables?: Mentionable[]
     initialPrompt?: string
     initialMode?: QuickAskLaunchMode
@@ -624,6 +630,30 @@ export class SelectionChatController {
 
     const pdfData = result
 
+    // Kick off async PDF page text extraction NOW so the result is ready
+    // (or close to ready) by the time the user submits an action.  Uses
+    // pdfjs-dist directly — DOM-based extraction proved too fragile (PDF.js
+    // recycles Text nodes, splits selection across spans, etc.).
+    const continuationOptions = this.getSettings().continuationOptions
+    const pdfPageContextPromise: Promise<PdfPageContextResult | null> =
+      getPdfPageContextText(
+        this.app,
+        result.file,
+        result.pageNumber,
+        result.content,
+        QUICK_ASK_CURSOR_MARKER,
+        {
+          beforeChars: Math.max(
+            0,
+            continuationOptions?.quickAskContextBeforeChars ?? 5000,
+          ),
+          afterChars: Math.max(
+            0,
+            continuationOptions?.quickAskContextAfterChars ?? 2000,
+          ),
+        },
+      ).catch(() => null)
+
     // For multi-line selections, range.getBoundingClientRect() returns the
     // outer box (right edge = widest line's right), which would position the
     // indicator at the page edge.  We want the rect at the visual *end* of
@@ -670,8 +700,7 @@ export class SelectionChatController {
         text: result.content,
         range: result.range,
         rect: lastRect,
-        isMultiLine:
-          glyphRects.length > 1 || result.content.includes('\n'),
+        isMultiLine: glyphRects.length > 1 || result.content.includes('\n'),
       },
       pdfData,
       hostEl: leafContentEl,
@@ -694,6 +723,7 @@ export class SelectionChatController {
           rewriteBehavior,
           pdfData,
           blockData,
+          pdfPageContextPromise,
         )
       },
     })
@@ -710,6 +740,7 @@ export class SelectionChatController {
     _rewriteBehavior: SelectionActionRewriteBehavior | undefined,
     pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
     blockData: MentionableBlockData,
+    pdfPageContextPromise: Promise<PdfPageContextResult | null>,
   ): Promise<void> {
     // rewrite is filtered out at the menu level — this branch is unreachable
     if (mode === 'rewrite') {
@@ -734,7 +765,11 @@ export class SelectionChatController {
           'pinned',
           'chat',
         )
-        return { ...blockData, source: 'selection-pinned', highlightId: pinnedId }
+        return {
+          ...blockData,
+          source: 'selection-pinned',
+          highlightId: pinnedId,
+        }
       }
       return { ...blockData, source: 'selection-pinned' }
     }
@@ -758,18 +793,30 @@ export class SelectionChatController {
     }
 
     // mode === 'ask' — open Quick Ask with PDF selection as mentionable
+    const prompt = instruction.trim()
+
+    // Wait for the eagerly-started page text extraction. By now (user typed
+    // a prompt and clicked send) the pdfjs load has likely completed.
+    const pdfPageContext = await pdfPageContextPromise
+    const contextText = pdfPageContext
+      ? `[PDF: ${pdfData.file.basename}, Page ${pdfData.pageNumber}]\n${pdfPageContext.contextText}`
+      : undefined
+
+    // Mention.content MUST match the substring inside contextText so
+    // `editorSnapshotContext` can inline-replace at the marker.
     const mentionable: MentionableBlock = {
       type: 'block',
       ...blockData,
+      content: pdfPageContext?.selectedText ?? blockData.content,
       source: 'selection',
     }
-    const prompt = instruction.trim()
 
     this.showQuickAskFromPdf({
       leaf: pdfData.leaf,
       range: pdfData.range,
       file: pdfData.file,
       pageNumber: pdfData.pageNumber,
+      contextText,
       initialMentionables: [mentionable],
       initialPrompt: prompt || undefined,
       initialMode: 'chat',

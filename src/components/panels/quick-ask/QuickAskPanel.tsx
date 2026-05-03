@@ -41,6 +41,7 @@ import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
+import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAskController'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -89,7 +90,6 @@ import { ModeSelect, QuickAskMode } from './ModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
 type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
-const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
 
 function normalizeQuickAskVisibleMode(
   mode?: QuickAskLaunchMode | null,

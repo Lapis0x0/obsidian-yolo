@@ -10,10 +10,9 @@ import {
 import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { Mentionable } from '../../../types/mentionable'
+import { getPdfLeafContentEl } from '../selection-chat/getPdfSelectionData'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
-
-import { getPdfLeafContentEl } from '../selection-chat/getPdfSelectionData'
 
 import { createCmAnchor, createPdfAnchor } from './quickAsk.anchor'
 import type {
@@ -61,7 +60,7 @@ type QuickAskControllerDeps = {
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
 const DEFAULT_QUICK_ASK_CONTEXT_AFTER_CHARS = 2000
-const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
+export const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
 
 const quickAskWidgetEffect = StateEffect.define<QuickAskWidgetPayload | null>()
 
@@ -304,6 +303,7 @@ export class QuickAskController {
     range: Range
     file: TFile
     pageNumber: number
+    contextText?: string
     initialMentionables?: Mentionable[]
     initialPrompt?: string
     initialMode?: QuickAskLaunchMode
@@ -348,7 +348,7 @@ export class QuickAskController {
       plugin: this.deps.plugin,
       anchor,
       capabilities,
-      contextText: '',
+      contextText: args.contextText ?? '',
       fileTitle: args.file.basename,
       sourceFilePath: args.file.path,
       initialPrompt: args.initialPrompt,
