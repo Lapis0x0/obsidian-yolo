@@ -188,7 +188,7 @@ export class SelectionChatController {
           {
             enabled: true,
             minSelectionLength: 0,
-            debounceDelay: 300,
+            debounceDelay: 150,
           },
         )
 
@@ -201,7 +201,7 @@ export class SelectionChatController {
     // PDF selection sync — works on both desktop and mobile.
     this.pdfSelectionManager = new PdfSelectionManager(this.app, {
       enabled: enableSelectionChat,
-      debounceDelay: 300,
+      debounceDelay: 150,
     })
     this.pdfSelectionManager.init((result) => {
       this.handlePdfSelectionChange(result)

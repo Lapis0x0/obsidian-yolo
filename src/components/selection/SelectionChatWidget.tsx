@@ -78,7 +78,7 @@ function SelectionChatWidgetBody({
       showTimeoutRef.current = window.setTimeout(() => {
         setShowMenu(true)
         showTimeoutRef.current = null
-      }, 150)
+      }, 80)
     } else {
       // Hide menu after a delay when not hovering
       hideTimeoutRef.current = window.setTimeout(() => {
