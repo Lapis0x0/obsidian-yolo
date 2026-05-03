@@ -59,6 +59,7 @@ import {
   SerializedMentionable,
 } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
+import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
@@ -115,49 +116,6 @@ function getSelectionMentionable(
         mentionable.type === 'block' && mentionable.source === 'selection',
     ) ?? null
   )
-}
-
-function buildSelectionContextSection({
-  fileTitle,
-  contextText,
-  selectionMentionable,
-}: {
-  fileTitle: string
-  contextText: string
-  selectionMentionable: MentionableBlock
-}): string {
-  const trimmedTitle = fileTitle.trim()
-  const selectedText = selectionMentionable.content.trim()
-  const context = contextText.trim()
-
-  if (!selectedText || !context) {
-    return ''
-  }
-
-  const [before, ...afterParts] = contextText.split(QUICK_ASK_CURSOR_MARKER)
-  const after = afterParts.join(QUICK_ASK_CURSOR_MARKER)
-  const wrappedSelection = `<selected_text_start>\n${selectionMentionable.content}\n</selected_text_end>`
-
-  const selectionContext =
-    afterParts.length > 0 && after.startsWith(selectionMentionable.content)
-      ? `${before}${wrappedSelection}${after.slice(selectionMentionable.content.length)}`
-      : `${contextText}\n\n${wrappedSelection}`
-
-  const titleSection = trimmedTitle ? `Document title: ${trimmedTitle}\n` : ''
-
-  return `\n\nYou are answering a request about a user-selected passage.
-
-Scope rules:
-1. The text between <selected_text_start> and </selected_text_end> is the only target of the user's request.
-2. Do not translate, rewrite, summarize, or explain text outside the selected text unless the user explicitly asks for broader context.
-3. Use the surrounding text only to understand the selected text.
-4. Your output should correspond only to the selected text.
-5. If the user's request is ambiguous, assume it applies only to the selected text.
-
-${titleSection}<selection_context path="${selectionMentionable.file.path}">
-${selectionContext}
-</selection_context>
-`
 }
 
 function getSelectionEndPosition(
@@ -586,33 +544,15 @@ export function QuickAskPanel({
     [app, mentionables, selectionMentionable],
   )
 
-  // Build requestContextBuilder with context
+  // System prompt is intentionally minimal: Quick Ask's "current editor scene"
+  // (file path/title, cursor context, selection) is injected via the agent
+  // runtime's `contextualInjections` channel — see editorSnapshotInjection
+  // built below in the submit path.
   const requestContextBuilder = useMemo(() => {
     const globalSystemPrompt = settings.systemPrompt || ''
     const assistantPrompt = selectedAssistant?.systemPrompt || ''
-    const trimmedTitle = fileTitle.trim()
-    const hasTitle = trimmedTitle.length > 0
-    const hasContext = contextText.trim().length > 0
-    const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
-    const promptSelectionMentionable =
-      selectionMentionable ?? getSelectionMentionable(mentionables)
-    const contextSection =
-      promptSelectionMentionable && hasContext
-        ? buildSelectionContextSection({
-            fileTitle,
-            contextText,
-            selectionMentionable: promptSelectionMentionable,
-          })
-        : hasTitle || hasContext
-          ? `\n\nThe user is asking a question in the context of their current document.\n${titleSection}${
-              hasContext
-                ? `Here is the text around the cursor (context). The marker ${QUICK_ASK_CURSOR_MARKER} indicates the cursor position:\n"""\n${contextText}\n"""\n`
-                : ''
-            }\nAnswer the user's question based on this context when relevant.`
-          : ''
-
     const combinedSystemPrompt =
-      `${globalSystemPrompt}\n\n${assistantPrompt}${contextSection}`.trim()
+      `${globalSystemPrompt}\n\n${assistantPrompt}`.trim()
 
     return new RequestContextBuilder(
       app,
@@ -625,16 +565,43 @@ export function QuickAskPanel({
         includeSkills: executionMode === 'agent' || executionMode === 'chat',
       },
     )
-  }, [
-    app,
-    contextText,
-    executionMode,
-    fileTitle,
-    mentionables,
-    selectionMentionable,
-    selectedAssistant,
-    settings,
-  ])
+  }, [app, executionMode, selectedAssistant, settings])
+
+  const editorSnapshotInjection =
+    useMemo<EditorSnapshotInjection | null>(() => {
+      const trimmedTitle = fileTitle.trim()
+      const trimmedPath = sourceFilePath?.trim() ?? ''
+      const hasContext = contextText.trim().length > 0
+      const promptSelectionMentionable =
+        selectionMentionable ?? getSelectionMentionable(mentionables)
+      const hasSelection = Boolean(
+        promptSelectionMentionable?.content.trim().length,
+      )
+
+      if (!trimmedTitle && !trimmedPath && !hasContext && !hasSelection) {
+        return null
+      }
+
+      return {
+        type: 'editor-snapshot',
+        filePath: trimmedPath,
+        fileTitle: trimmedTitle,
+        contextText,
+        cursorMarker: QUICK_ASK_CURSOR_MARKER,
+        selection: promptSelectionMentionable
+          ? {
+              content: promptSelectionMentionable.content,
+              filePath: promptSelectionMentionable.file.path,
+            }
+          : undefined,
+      }
+    }, [
+      contextText,
+      fileTitle,
+      mentionables,
+      selectionMentionable,
+      sourceFilePath,
+    ])
 
   const {
     autoScrollToBottom,
@@ -1079,6 +1046,9 @@ export function QuickAskPanel({
             toolPreferences: chatModeRuntime.toolPreferences,
             allowedSkillIds,
             allowedSkillNames,
+            contextualInjections: editorSnapshotInjection
+              ? [editorSnapshotInjection]
+              : [],
             requestParams: {
               stream: true,
               primaryRequestTimeoutMs:
@@ -1136,6 +1106,7 @@ export function QuickAskPanel({
       selectedAssistant,
       settings,
       t,
+      editorSnapshotInjection,
     ],
   )
 

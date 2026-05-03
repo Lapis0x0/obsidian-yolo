@@ -37,6 +37,7 @@ import {
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
 
@@ -125,6 +126,32 @@ export type UseChatStreamManager = {
 
 const isRunSummaryActive = (summary: AgentConversationRunSummary): boolean => {
   return summary.isRunning || summary.isWaitingApproval
+}
+
+/**
+ * Sidebar Chat focus sync → current-file-pointer injection.
+ * Returns an empty array when the user has disabled focus sync or no file
+ * is active.
+ */
+const buildChatContextualInjections = ({
+  includeCurrentFileContent,
+  currentFile,
+  currentFileViewState,
+}: {
+  includeCurrentFileContent: boolean
+  currentFile: TFile | null | undefined
+  currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
+}): ContextualInjection[] => {
+  if (!includeCurrentFileContent || !currentFile) {
+    return []
+  }
+  return [
+    {
+      type: 'current-file-pointer',
+      file: currentFile,
+      viewState: currentFileViewState,
+    },
+  ]
 }
 
 const annotateBranchMessages = (
@@ -510,8 +537,12 @@ export function useChatStreamManager({
             allowedSkillNames,
             maxContextOverride:
               conversationOverrides?.maxContextMessages ?? undefined,
-            currentFileOverride,
-            currentFileViewState,
+            contextualInjections: buildChatContextualInjections({
+              includeCurrentFileContent:
+                settings.chatOptions.includeCurrentFileContent,
+              currentFile: currentFileOverride,
+              currentFileViewState,
+            }),
           })
       } catch (error) {
         console.warn(
@@ -693,8 +724,12 @@ export function useChatStreamManager({
           allowedSkillNames,
           requestParams,
           maxContextOverride,
-          currentFileOverride,
-          currentFileViewState,
+          contextualInjections: buildChatContextualInjections({
+            includeCurrentFileContent:
+              settings.chatOptions.includeCurrentFileContent,
+            currentFile: currentFileOverride,
+            currentFileViewState,
+          }),
           geminiTools: {
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,

@@ -1,4 +1,3 @@
-import { TFile } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import {
@@ -8,13 +7,13 @@ import {
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { RequestMessage, RequestTool } from '../../types/llm/request'
-import { CurrentFileViewState } from '../../types/mentionable'
 import { LLMProvider } from '../../types/provider.types'
 import {
   ReasoningLevel,
   resolveRequestReasoningLevel,
 } from '../../types/reasoning'
 import { ToolCallRequest } from '../../types/tool-call.types'
+import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import {
   estimateJsonTokens,
@@ -55,8 +54,7 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   maxContextOverride?: number
-  currentFileOverride?: TFile | null
-  currentFileViewState?: CurrentFileViewState
+  contextualInjections?: ContextualInjection[]
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
@@ -116,8 +114,7 @@ export class AgentLlmTurnExecutor {
         model: this.input.model,
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,
-        currentFileOverride: this.input.currentFileOverride,
-        currentFileViewState: this.input.currentFileViewState,
+        contextualInjections: this.input.contextualInjections,
       })
 
     this.logModelRequestContext({ requestMessages, tools })

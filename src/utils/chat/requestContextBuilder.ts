@@ -31,7 +31,6 @@ import { getLatestChatConversationCompaction } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
-  CurrentFileViewState,
   MentionableAssistantQuote,
   MentionableBlock,
   MentionableFile,
@@ -57,6 +56,10 @@ import {
 } from '../pdf/extractPdfText'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
+import {
+  type ContextualInjection,
+  appendContextualInjectionsToLastUserMessage,
+} from './contextual-injections'
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
@@ -251,8 +254,7 @@ export class RequestContextBuilder {
     model: _model,
     conversationId,
     compaction,
-    currentFileOverride,
-    currentFileViewState,
+    contextualInjections,
   }: {
     messages: ChatMessage[]
     hasTools?: boolean
@@ -261,8 +263,7 @@ export class RequestContextBuilder {
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
-    currentFileOverride?: TFile | null
-    currentFileViewState?: CurrentFileViewState
+    contextualInjections?: ContextualInjection[]
   }): Promise<RequestMessage[]> {
     if (messages.length === 0) {
       throw new Error('No messages provided')
@@ -340,13 +341,7 @@ export class RequestContextBuilder {
 
     const systemMessage = await this.getSystemMessage(hasTools, hasMemoryTools)
 
-    const currentFile = currentFileOverride ?? null
-    const currentFileMessage =
-      currentFile && this.settings.chatOptions.includeCurrentFileContent
-        ? await this.getCurrentFileMessage(currentFile, currentFileViewState)
-        : undefined
-
-    const requestMessages: RequestMessage[] = [
+    const baseRequestMessages: RequestMessage[] = [
       ...(systemMessage ? [systemMessage] : []),
       ...(await this.getChatHistoryMessages({
         messages: compiledMessages,
@@ -356,20 +351,11 @@ export class RequestContextBuilder {
       })),
     ]
 
-    if (currentFileMessage) {
-      const lastIdx = requestMessages.length - 1
-      const lastMsg = requestMessages[lastIdx]
-      if (lastMsg && lastMsg.role === 'user') {
-        requestMessages[lastIdx] = this.mergeCurrentFileIntoUserMessage(
-          lastMsg,
-          currentFileMessage,
-        )
-      } else {
-        // Agent loop continuation: tail may be assistant/tool. Append as
-        // independent user message — formatMessages won't merge across roles.
-        requestMessages.push(currentFileMessage)
-      }
-    }
+    const requestMessages = await appendContextualInjectionsToLastUserMessage(
+      baseRequestMessages,
+      contextualInjections ?? [],
+      { app: this.app, settings: this.settings },
+    )
 
     return stripUnsupportedImages(requestMessages, _model)
   }
@@ -528,8 +514,7 @@ export class RequestContextBuilder {
     )
     const blockPrompt = blocks
       .map(({ file, content, startLine, pageNumber }) => {
-        const pageTag =
-          pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+        const pageTag = pageNumber !== undefined ? ` (page ${pageNumber})` : ''
         const header = `${file.path}${pageTag}`
         if (pageNumber !== undefined) {
           // PDF block: skip line numbering (startLine/endLine are 0)
@@ -1374,100 +1359,6 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     }
 
     return collected
-  }
-
-  private mergeCurrentFileIntoUserMessage(
-    userMsg: Extract<RequestMessage, { role: 'user' }>,
-    currentFileMsg: RequestMessage,
-  ): Extract<RequestMessage, { role: 'user' }> {
-    const toContentParts = (content: string | ContentPart[]): ContentPart[] => {
-      if (typeof content === 'string') {
-        return [{ type: 'text', text: content }]
-      }
-      return content
-    }
-
-    const userParts = toContentParts(userMsg.content)
-    const fileParts = toContentParts(currentFileMsg.content)
-    return { ...userMsg, content: [...userParts, ...fileParts] }
-  }
-
-  private async getCurrentFileMessage(
-    currentFile: TFile,
-    viewState: CurrentFileViewState | undefined,
-  ): Promise<RequestMessage> {
-    // Image files: attach as vision content + pointer text
-    if (isImageTFile(currentFile)) {
-      const pointerLines = [
-        '# Current Context (auto-attached image)',
-        'The user is currently viewing this image file.',
-        '',
-        `File: ${currentFile.path}`,
-      ]
-      const pointerText = `${pointerLines.join('\n')}\n\n`
-      try {
-        const dataUrl = await tFileToImageDataUrl(this.app, currentFile, {
-          cache: { enabled: true, settings: this.settings },
-        })
-        return {
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: dataUrl } },
-            { type: 'text', text: pointerText },
-          ],
-        }
-      } catch (error) {
-        // Graceful degradation: if image can't be read, send pointer only
-        console.warn(
-          '[YOLO] Failed to read current file image, falling back to pointer',
-          currentFile.path,
-          error,
-        )
-        return {
-          role: 'user',
-          content: pointerText,
-        }
-      }
-    }
-
-    const lines: string[] = []
-
-    if (!viewState || viewState.kind === 'other') {
-      lines.push(
-        '# Current Context (auto-attached, content NOT included)',
-        'The user is currently viewing this file. Use read_file if you need its content.',
-        '',
-        `File: ${currentFile.path}`,
-      )
-      if (viewState?.totalLines !== undefined) {
-        lines.push(`Total: ${viewState.totalLines} lines`)
-      }
-    } else if (viewState.kind === 'markdown-edit') {
-      lines.push(
-        '# Current Context (auto-attached, content NOT included)',
-        'The user is currently viewing this file. Use read_file if you need its content.',
-        '',
-        `File: ${currentFile.path}`,
-        `Total: ${viewState.totalLines} lines`,
-        `Visible: lines ${viewState.visibleStartLine}-${viewState.visibleEndLine}`,
-        `Cursor: line ${viewState.cursorLine}`,
-      )
-    } else {
-      // pdf
-      lines.push(
-        '# Current Context (auto-attached, content NOT included)',
-        'The user is currently viewing this PDF. Use read_file if you need its content.',
-        '',
-        `File: ${currentFile.path}`,
-        `Total: ${viewState.totalPages} pages`,
-        `Currently on: page ${viewState.currentPage}`,
-      )
-    }
-
-    return {
-      role: 'user',
-      content: `${lines.join('\n')}\n\n`,
-    }
   }
 
   private addLineNumbersToContent({

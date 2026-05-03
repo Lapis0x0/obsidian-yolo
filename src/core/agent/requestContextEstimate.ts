@@ -3,7 +3,7 @@ import type {
   ChatMessage,
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
-import type { CurrentFileViewState } from '../../types/mentionable'
+import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { McpManager } from '../mcp/mcpManager'
@@ -23,8 +23,7 @@ export const estimateContinuationRequestContextTokens = async ({
   allowedSkillIds,
   allowedSkillNames,
   maxContextOverride,
-  currentFileOverride,
-  currentFileViewState,
+  contextualInjections,
 }: {
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
@@ -38,8 +37,7 @@ export const estimateContinuationRequestContextTokens = async ({
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   maxContextOverride?: number
-  currentFileOverride?: import('obsidian').TFile | null
-  currentFileViewState?: CurrentFileViewState
+  contextualInjections?: ContextualInjection[]
 }): Promise<number> => {
   const availableTools = enableTools
     ? await mcpManager.listAvailableTools({ includeBuiltinTools })
@@ -59,8 +57,7 @@ export const estimateContinuationRequestContextTokens = async ({
     model,
     conversationId,
     compaction,
-    currentFileOverride,
-    currentFileViewState,
+    contextualInjections,
   })
 
   return estimateJsonTokens({

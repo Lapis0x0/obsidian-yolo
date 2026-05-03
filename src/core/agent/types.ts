@@ -1,14 +1,12 @@
-import { TFile } from 'obsidian'
-
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
   ChatMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
-import { CurrentFileViewState } from '../../types/mentionable'
 import { LLMProvider } from '../../types/provider.types'
 import { ReasoningLevel } from '../../types/reasoning'
+import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'
@@ -61,8 +59,7 @@ export type AgentRuntimeRunInput = {
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   maxContextOverride?: number
-  currentFileOverride?: TFile | null
-  currentFileViewState?: CurrentFileViewState
+  contextualInjections?: ContextualInjection[]
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean

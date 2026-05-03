@@ -1142,7 +1142,9 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
         name: 'gpt-test',
       } as never,
       conversationId: 'conv-1',
-      currentFileOverride: currentFile,
+      contextualInjections: [
+        { type: 'current-file-pointer', file: currentFile },
+      ],
     })
 
     // Should have system + 1 user (not system + 2 user)
@@ -1212,7 +1214,9 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
         name: 'gpt-test',
       } as never,
       conversationId: 'conv-2',
-      currentFileOverride: currentFile,
+      contextualInjections: [
+        { type: 'current-file-pointer', file: currentFile },
+      ],
     })
 
     // Last message should be an independent user message containing the current-file pointer
