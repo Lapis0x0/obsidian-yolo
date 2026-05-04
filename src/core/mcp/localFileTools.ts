@@ -974,7 +974,11 @@ export function getLocalFileTools(options?: {
         'Spawns a subprocess, streams its stdout back into the chat in real time, ' +
         'and returns the final output as the tool result. ' +
         'Desktop-only. ' +
-        'The subprocess inherits the current process environment (API keys, tokens, proxy settings).',
+        'The subprocess inherits the current process environment (API keys, tokens, proxy settings). ' +
+        'IMPORTANT: only use this tool when the user explicitly asks to delegate ' +
+        'to an external agent (e.g. "让 codex 去做", "派一个 claude-code 跑这个", ' +
+        '"use codex / claude-code for this"). For normal note edits or single-file ' +
+        'code changes inside the vault, use the local fs_* tools instead.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -996,8 +1000,17 @@ export function getLocalFileTools(options?: {
           sandboxMode: {
             type: 'string',
             description:
-              'codex: read-only | workspace-write | danger-full-access. ' +
-              'claude-code: default | acceptEdits | bypassPermissions | plan.',
+              'Required. Pick by task type, prefer the least-privilege mode that fits.\n' +
+              '- Read-only analysis / planning (no file writes, no commands): ' +
+              'codex → "read-only"; claude-code → "plan".\n' +
+              '- Edit files and run commands within the working directory ' +
+              '(typical coding task): ' +
+              'codex → "workspace-write"; claude-code → "acceptEdits".\n' +
+              '- Full access — network, arbitrary commands, system-wide writes ' +
+              '(only when the user clearly asks for it): ' +
+              'codex → "danger-full-access"; claude-code → "bypassPermissions".\n' +
+              'claude-code "default" behaves like interactive approval and is ' +
+              'rarely useful here; avoid it unless the user asks for it.',
           },
           prompt: {
             type: 'string',
@@ -1006,7 +1019,9 @@ export function getLocalFileTools(options?: {
           model: {
             type: 'string',
             description:
-              'Optional model override (e.g. o3, claude-opus-4-5). Only [A-Za-z0-9._-] characters allowed.',
+              'Optional model override. Pass this when the user explicitly names ' +
+              'a model (e.g. "用 o3 跑", "use claude-opus-4-5"); otherwise omit ' +
+              'and let the CLI use its own default. Only [A-Za-z0-9._-] characters allowed.',
           },
         },
         required: ['provider', 'sandboxMode', 'prompt'],
