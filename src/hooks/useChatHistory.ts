@@ -97,6 +97,7 @@ type UseChatHistory = {
     reasoningLevel?: string,
     compaction?: ChatConversationCompactionState,
     assistantGroupBoundaryMessageIds?: string[],
+    options?: { touchUpdatedAt?: boolean },
   ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
@@ -185,6 +186,7 @@ export function useChatHistory(): UseChatHistory {
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionLike | null,
       assistantGroupBoundaryMessageIds?: string[],
+      options?: { touchUpdatedAt?: boolean },
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
@@ -230,34 +232,40 @@ export function useChatHistory(): UseChatHistory {
         ) {
           return
         }
-        await chatManager.updateChat(existingConversation.id, {
-          messages: compactedMessages,
-          overrides:
-            overrides === undefined
-              ? (existingConversation.overrides ?? null)
-              : overrides,
-          conversationModelId:
-            conversationModelId === undefined
-              ? existingConversation.conversationModelId
-              : conversationModelId,
-          messageModelMap:
-            messageModelMap === undefined
-              ? existingConversation.messageModelMap
-              : messageModelMap,
-          activeBranchByUserMessageId:
-            activeBranchByUserMessageId === undefined
-              ? existingConversation.activeBranchByUserMessageId
-              : activeBranchByUserMessageId,
-          assistantGroupBoundaryMessageIds:
-            assistantGroupBoundaryMessageIds === undefined
-              ? existingConversation.assistantGroupBoundaryMessageIds
-              : assistantGroupBoundaryMessageIds,
-          reasoningLevel,
-          compaction:
-            compaction === undefined
-              ? existingCompaction
-              : normalizedCompaction,
-        })
+        await chatManager.updateChat(
+          existingConversation.id,
+          {
+            messages: compactedMessages,
+            overrides:
+              overrides === undefined
+                ? (existingConversation.overrides ?? null)
+                : overrides,
+            conversationModelId:
+              conversationModelId === undefined
+                ? existingConversation.conversationModelId
+                : conversationModelId,
+            messageModelMap:
+              messageModelMap === undefined
+                ? existingConversation.messageModelMap
+                : messageModelMap,
+            activeBranchByUserMessageId:
+              activeBranchByUserMessageId === undefined
+                ? existingConversation.activeBranchByUserMessageId
+                : activeBranchByUserMessageId,
+            assistantGroupBoundaryMessageIds:
+              assistantGroupBoundaryMessageIds === undefined
+                ? existingConversation.assistantGroupBoundaryMessageIds
+                : assistantGroupBoundaryMessageIds,
+            reasoningLevel,
+            compaction:
+              compaction === undefined
+                ? existingCompaction
+                : normalizedCompaction,
+          },
+          options?.touchUpdatedAt === undefined
+            ? undefined
+            : { touchUpdatedAt: options.touchUpdatedAt },
+        )
       } else {
         // 默认标题统一为"新对话"，待首条用户消息保存后由对话命名模型自动改名
         const defaultTitle = DEFAULT_UNTITLED_CONVERSATION_TITLE
@@ -334,6 +342,7 @@ export function useChatHistory(): UseChatHistory {
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionState,
       assistantGroupBoundaryMessageIds?: string[],
+      options?: { touchUpdatedAt?: boolean },
     ): Promise<void> => {
       debouncedCreateOrUpdateConversation.cancel()
       await persistConversationInternal(
@@ -346,6 +355,7 @@ export function useChatHistory(): UseChatHistory {
         reasoningLevel,
         compaction,
         assistantGroupBoundaryMessageIds,
+        options,
       )
     },
     [debouncedCreateOrUpdateConversation, persistConversationInternal],

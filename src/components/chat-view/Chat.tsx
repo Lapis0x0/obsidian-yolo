@@ -1853,7 +1853,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             conversationId,
             normalizedConversation.messages,
             conversation.compaction ?? [],
-            { persistState: true },
+            {
+              persistState: true,
+              reason: normalizedConversation.changed ? 'self-heal' : 'hydrate',
+            },
           )
         setConversationOverrides(conversation.overrides ?? null)
         const loadedAssistantId =
@@ -1941,6 +1944,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               normalizedConversation.messages,
               conversation.assistantGroupBoundaryMessageIds ?? [],
             ),
+            { touchUpdatedAt: false },
           )
         }
       } catch (error) {

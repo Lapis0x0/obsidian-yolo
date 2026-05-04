@@ -76,8 +76,14 @@ type AgentServiceOptions = {
     messages: ChatMessage[]
     compaction?: ChatConversationCompactionState
     status: AgentRunStatus
+    touchUpdatedAt?: boolean
   }) => Promise<void>
 }
+
+export type AgentReplaceConversationMessagesReason =
+  | 'mutation'
+  | 'hydrate'
+  | 'self-heal'
 
 const DEFAULT_BRANCH_ID = '__default__'
 
@@ -453,7 +459,10 @@ export class AgentService {
     conversationId: string,
     messages: ChatMessage[],
     compaction?: ChatConversationCompactionLike | null,
-    options?: { persistState?: boolean },
+    options?: {
+      persistState?: boolean
+      reason?: AgentReplaceConversationMessagesReason
+    },
   ): void {
     const entry = this.getOrCreateConversationEntry(conversationId)
     if (typeof options?.persistState === 'boolean') {
@@ -473,7 +482,7 @@ export class AgentService {
         ? 'running'
         : entry.state.status,
     }
-    this.notifyConversationSubscribers(conversationId)
+    this.notifyConversationSubscribers(conversationId, options?.reason)
   }
 
   async approveToolCall({
@@ -903,7 +912,10 @@ export class AgentService {
     this.notifyConversationSubscribers(conversationId)
   }
 
-  private notifyConversationSubscribers(conversationId: string): void {
+  private notifyConversationSubscribers(
+    conversationId: string,
+    persistReason: AgentReplaceConversationMessagesReason = 'mutation',
+  ): void {
     const entry = this.getOrCreateConversationEntry(conversationId)
     const state = this.cloneState(entry.state)
     for (const subscriber of entry.subscribers) {
@@ -912,7 +924,7 @@ export class AgentService {
     for (const subscriber of this.stateFeedSubscribers) {
       subscriber(state)
     }
-    this.schedulePersistence(state)
+    this.schedulePersistence(state, persistReason)
     this.notifyRunSummarySubscribers()
   }
 
@@ -952,12 +964,22 @@ export class AgentService {
     }
   }
 
-  private schedulePersistence(state: AgentConversationState): void {
+  private schedulePersistence(
+    state: AgentConversationState,
+    reason: AgentReplaceConversationMessagesReason = 'mutation',
+  ): void {
     if (!this.options.persistConversationMessages) {
       return
     }
     const entry = this.conversationEntries.get(state.conversationId)
     if (entry && !entry.persistState) {
+      return
+    }
+
+    // Hydration only loads existing messages into in-memory state; the disk
+    // copy is already authoritative. Skip persistence entirely so it does not
+    // touch updatedAt and re-rank the conversation in the history list.
+    if (reason === 'hydrate') {
       return
     }
 
@@ -974,6 +996,11 @@ export class AgentService {
         ? 0
         : 250
 
+    // Self-heal writes (e.g. normalizing aborted streaming residue) must
+    // persist the repaired payload but should not be treated as user activity
+    // for ordering purposes.
+    const touchUpdatedAt = reason === 'self-heal' ? false : undefined
+
     const timer = setTimeout(() => {
       this.persistTimers.delete(state.conversationId)
       void this.options
@@ -982,6 +1009,7 @@ export class AgentService {
           messages: state.messages,
           compaction: [...(state.compaction ?? [])],
           status: state.status,
+          touchUpdatedAt,
         })
         .catch((error) => {
           console.error('[YOLO] Failed to persist agent conversation state', {
