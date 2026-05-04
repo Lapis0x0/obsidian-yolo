@@ -472,76 +472,62 @@ const readPointerDataPath = async (app: App): Promise<string | null> => {
 }
 
 /**
- * Reads the vault-stored `data.json` mirror by first resolving the pointer
- * file at vault root, then reading the file it points to. Returns null when
- * the pointer or data file is missing or unparseable.
+ * Reads the vault-stored `data.json` mirror.
+ *
+ *   - If the pointer FILE EXISTS (regardless of whether its contents
+ *     parse), it is authoritative. We try to read what it points to;
+ *     any failure (target missing, unreadable, pointer JSON corrupt,
+ *     pointer schema invalid) returns null without touching the default
+ *     path. Falling back here would risk migrating a stale default
+ *     mirror that doesn't correspond to the user's actual `baseDir`.
+ *   - Only when the pointer file is ABSENT do we fall back to the
+ *     settings-derived default path. This handles the partial legacy
+ *     state where a user manually deleted the pointer but the mirror
+ *     file still lives at `YOLO/.yolo_data.json`.
+ *
+ * Used only by the one-time legacy-mirror migration in `main.ts`.
  */
 export const readVaultDataJson = async (
   app: App,
-): Promise<YoloDataReadResult | null> => {
-  const dataPath = await readPointerDataPath(app)
-  if (!dataPath) {
-    return null
-  }
-  if (!(await app.vault.adapter.exists(dataPath))) {
-    return null
-  }
-  try {
-    const raw = await app.vault.adapter.read(dataPath)
-    const parsed = JSON.parse(raw) as unknown
-    return extractYoloDataMeta(parsed)
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to read vault data mirror at "${dataPath}"; falling back to plugin data.`,
-      error,
-    )
-    return null
-  }
-}
-
-export const getVaultDataJsonResolvedPath = async (
-  app: App,
   settings?: YoloSettingsLike | null,
-): Promise<string> => {
-  const fromPointer = await readPointerDataPath(app)
-  return fromPointer ?? getYoloDataJsonPath(settings)
-}
-
-/**
- * Writes settings to the vault-stored `data.json` mirror under `baseDir`,
- * and refreshes the vault-root pointer so other devices can locate it.
- * Returns true on success; failures are non-fatal and logged.
- */
-export const writeVaultDataJson = async (
-  app: App,
-  settings: YoloSettingsLike | null,
-  data: unknown,
-  meta: YoloDataMeta,
-): Promise<boolean> => {
-  const dataPath = getYoloDataJsonPath(settings)
-  const pointerPath = getYoloSyncPointerPath()
-  try {
-    await ensureDir(app, getYoloBaseDir(settings))
-    const payload = stampYoloDataMeta(data, meta)
-    await app.vault.adapter.write(dataPath, JSON.stringify(payload, null, 2))
-    await app.vault.adapter.write(
-      pointerPath,
-      JSON.stringify({ dataPath }, null, 2),
-    )
-    return true
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to write vault data mirror at "${dataPath}".`,
-      error,
-    )
-    return false
+): Promise<YoloDataReadResult | null> => {
+  const readPath = async (
+    candidatePath: string,
+  ): Promise<YoloDataReadResult | null> => {
+    if (!(await app.vault.adapter.exists(candidatePath))) return null
+    try {
+      const raw = await app.vault.adapter.read(candidatePath)
+      const parsed = JSON.parse(raw) as unknown
+      return extractYoloDataMeta(parsed)
+    } catch (error) {
+      console.warn(
+        `[YOLO] Failed to read vault data mirror at "${candidatePath}".`,
+        error,
+      )
+      return null
+    }
   }
+  const pointerPath = getYoloSyncPointerPath()
+  const pointerExists = await app.vault.adapter.exists(pointerPath)
+  if (pointerExists) {
+    // Pointer file exists: trust it as authoritative. Resolve target
+    // path; any failure to do so (corrupt JSON, missing dataPath
+    // field, unreadable target) returns null — do NOT fall back.
+    const pointerDataPath = await readPointerDataPath(app)
+    if (pointerDataPath === null) return null
+    return readPath(pointerDataPath)
+  }
+  // Pointer file is genuinely absent: fall back to the settings-derived
+  // default path so partial legacy states are still recoverable.
+  return readPath(getYoloDataJsonPath(settings))
 }
 
 /**
  * Removes both the pointer file and the data mirror it points to. Falls back
  * to the settings-derived data path when the pointer is missing or invalid,
- * so a stale/partial state still gets cleaned up.
+ * so a stale/partial state still gets cleaned up. Used only by the
+ * one-time legacy-mirror migration in `main.ts`; no live code path writes
+ * to the mirror anymore.
  */
 export const removeVaultDataJson = async (
   app: App,

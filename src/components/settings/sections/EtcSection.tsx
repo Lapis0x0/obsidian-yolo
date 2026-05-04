@@ -352,31 +352,6 @@ export function EtcSection({ app, className }: EtcSectionProps) {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t(
-              'settings.etc.storeDataInVault',
-              '通过 vault 同步设置（实验性）',
-            )}
-            desc={t(
-              'settings.etc.storeDataInVaultDesc',
-              '开启后会把设置文件额外写入 {path}，使其可被 Obsidian Sync 同步。关闭时会从 vault 删除该文件。',
-            ).replace('{path}', `${yoloBaseDir}/.yolo_data.json`)}
-            className="smtcmp-settings-card"
-          >
-            <ObsidianToggle
-              value={settings.experimental?.storeDataInVault ?? false}
-              onChange={(value) => {
-                void setSettings({
-                  ...settings,
-                  experimental: {
-                    ...(settings.experimental ?? { storeDataInVault: false }),
-                    storeDataInVault: value,
-                  },
-                })
-              }}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
             name={t('settings.etc.logModelRequestContext')}
             desc={t('settings.etc.logModelRequestContextDesc')}
             className="smtcmp-settings-card"
