@@ -4,12 +4,13 @@ import {
   Editor,
   MarkdownView,
   Notice,
+  Platform,
   Plugin,
   TFile,
   TFolder,
+  getLanguage,
   normalizePath,
 } from 'obsidian'
-import { getLanguage } from 'obsidian'
 
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
@@ -900,10 +901,22 @@ export default class SmartComposerPlugin extends Plugin {
       this.getAgentService().subscribeToRunSummaries((summaries) => {
         this.syncAgentBackgroundActivities(summaries)
       })
+    // 异步派遣的子进程是 desktop-only，懒加载注册表后再订阅。
+    let unsubscribeAsyncTasks: (() => void) | null = null
+    if (Platform.isDesktopApp) {
+      void import('./core/agent/external-cli/async-task-registry').then(
+        ({ asyncTaskRegistry }) => {
+          unsubscribeAsyncTasks = asyncTaskRegistry.subscribe((records) => {
+            this.syncAsyncExternalAgentBackgroundActivities(records)
+          })
+        },
+      )
+    }
 
     this.register(() => {
       unsubscribeActivities()
       unsubscribeAgentSummaries()
+      unsubscribeAsyncTasks?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
       this.backgroundStatusBarLabel = null
@@ -916,6 +929,41 @@ export default class SmartComposerPlugin extends Plugin {
       this.backgroundActivityRegistry?.clear()
       this.backgroundActivityRegistry = null
     })
+  }
+
+  private syncAsyncExternalAgentBackgroundActivities(
+    records: import('./core/agent/external-cli/async-task-registry').AsyncTaskRecord[],
+  ): void {
+    const registry = this.getBackgroundActivityRegistry()
+    const nextActivityIds = new Set<string>()
+
+    for (const record of records) {
+      if (record.status !== 'running') continue
+      const id = `external-agent:${record.taskId}`
+      nextActivityIds.add(id)
+      registry.upsert({
+        id,
+        kind: 'agent',
+        title: record.title,
+        detail: record.provider,
+        status: 'running',
+        updatedAt: record.createdAt,
+        ...(record.conversationId
+          ? {
+              action: {
+                type: 'open-agent-conversation',
+                conversationId: record.conversationId,
+              },
+            }
+          : {}),
+      })
+    }
+
+    for (const activityId of this.latestBackgroundActivities.keys()) {
+      if (!activityId.startsWith('external-agent:')) continue
+      if (nextActivityIds.has(activityId)) continue
+      registry.remove(activityId)
+    }
   }
 
   private syncAgentBackgroundActivities(

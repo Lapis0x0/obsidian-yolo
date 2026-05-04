@@ -17,11 +17,17 @@ export type AsyncTaskRecord = {
   abortController: AbortController
 }
 
+export type AsyncTaskRegistrySubscriber = (
+  records: AsyncTaskRecord[],
+) => void
+
 export class AsyncTaskRegistry {
   private readonly tasks = new Map<string, AsyncTaskRecord>()
+  private readonly subscribers = new Set<AsyncTaskRegistrySubscriber>()
 
   register(record: AsyncTaskRecord): void {
     this.tasks.set(record.taskId, record)
+    this.emit()
   }
 
   update(
@@ -31,10 +37,15 @@ export class AsyncTaskRegistry {
     const existing = this.tasks.get(taskId)
     if (!existing) return
     this.tasks.set(taskId, { ...existing, ...patch })
+    this.emit()
   }
 
   get(taskId: string): AsyncTaskRecord | undefined {
     return this.tasks.get(taskId)
+  }
+
+  list(): AsyncTaskRecord[] {
+    return [...this.tasks.values()]
   }
 
   listByConversation(conversationId: string): AsyncTaskRecord[] {
@@ -65,6 +76,21 @@ export class AsyncTaskRegistry {
       if (record.status === 'running') {
         record.abortController.abort()
       }
+    }
+  }
+
+  subscribe(subscriber: AsyncTaskRegistrySubscriber): () => void {
+    this.subscribers.add(subscriber)
+    subscriber(this.list())
+    return () => {
+      this.subscribers.delete(subscriber)
+    }
+  }
+
+  private emit(): void {
+    const snapshot = this.list()
+    for (const subscriber of this.subscribers) {
+      subscriber(snapshot)
     }
   }
 }
