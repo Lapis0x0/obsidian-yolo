@@ -60,10 +60,13 @@ jest.mock('node:child_process', () => ({
   spawn: spawnMock,
 }))
 
-// 模拟 node:fs/promises（供 which 使用，已被 mock，这里只需不报错）
+// 模拟 node:fs/promises
+// - access/constants：供 which 使用（which 自身已被 mock，但保留兼容）
+// - stat：供 runner 校验 workingDirectory 使用，默认返回 isDirectory=true
 jest.mock('node:fs/promises', () => ({
   access: jest.fn().mockResolvedValue(undefined),
   constants: { X_OK: 1 },
+  stat: jest.fn().mockResolvedValue({ isDirectory: () => true }),
 }))
 
 // 模拟 node:path

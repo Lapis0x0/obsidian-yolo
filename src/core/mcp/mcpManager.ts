@@ -1,5 +1,5 @@
 import isEqual from 'lodash.isequal'
-import { App, Platform } from 'obsidian'
+import { App, FileSystemAdapter, Platform } from 'obsidian'
 
 import { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
@@ -48,6 +48,11 @@ import {
 } from './tool-name-utils'
 
 type RemoteTransportModule = typeof import('./remoteTransport')
+
+const getVaultBasePath = (app: App): string | undefined => {
+  const adapter = app.vault.adapter
+  return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined
+}
 
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =
   'Tool arguments must be valid JSON. Please escape quotes/newlines inside string values and retry.'
@@ -516,7 +521,9 @@ export class McpManager {
     const nextTools = includeBuiltinTools
       ? [
           ...availableTools,
-          ...getLocalFileTools()
+          ...getLocalFileTools({
+            vaultBasePath: getVaultBasePath(this.app),
+          })
             .filter((tool) => this.isLocalToolEnabled(tool.name))
             .map((tool) => ({
               ...tool,

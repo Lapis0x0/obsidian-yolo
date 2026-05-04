@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, normalizePath } from 'obsidian'
+import { App, FileSystemAdapter, TFile, TFolder, normalizePath } from 'obsidian'
 
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { saveExternalAgentProgress } from '../../database/json/chat/externalAgentProgressStore'
@@ -377,7 +377,10 @@ export function getLocalFileToolServerName(): string {
   return LOCAL_FILE_TOOL_SERVER
 }
 
-export function getLocalFileTools(): McpTool[] {
+export function getLocalFileTools(options?: {
+  vaultBasePath?: string
+}): McpTool[] {
+  const vaultBasePath = options?.vaultBasePath
   return [
     {
       name: 'fs_list',
@@ -970,7 +973,7 @@ export function getLocalFileTools(): McpTool[] {
         'Delegate a task to a local CLI agent (codex exec or claude -p). ' +
         'Spawns a subprocess, streams its stdout back into the chat in real time, ' +
         'and returns the final output as the tool result. ' +
-        'Desktop-only. Requires manual approval every time. ' +
+        'Desktop-only. ' +
         'The subprocess inherits the current process environment (API keys, tokens, proxy settings).',
       inputSchema: {
         type: 'object',
@@ -983,7 +986,12 @@ export function getLocalFileTools(): McpTool[] {
           workingDirectory: {
             type: 'string',
             description:
-              'Absolute path to the working directory for the subprocess.',
+              'Optional. Absolute path to the working directory for the subprocess. ' +
+              (vaultBasePath
+                ? `The current Obsidian vault root is: ${vaultBasePath}. ` +
+                  'Default to this unless the user explicitly asks the agent ' +
+                  'to operate on a different folder or repository (e.g. an external git repo).'
+                : 'Defaults to the current Obsidian vault root if omitted.'),
           },
           sandboxMode: {
             type: 'string',
@@ -1001,7 +1009,7 @@ export function getLocalFileTools(): McpTool[] {
               'Optional model override (e.g. o3, claude-opus-4-5). Only [A-Za-z0-9._-] characters allowed.',
           },
         },
-        required: ['provider', 'workingDirectory', 'sandboxMode', 'prompt'],
+        required: ['provider', 'sandboxMode', 'prompt'],
       },
     },
   ]
@@ -3551,10 +3559,24 @@ export async function callLocalFileTool({
             `provider must be "codex" or "claude-code", got "${provider}"`,
           )
         }
-        const workingDirectory = getTextArg(args, 'workingDirectory').trim()
+
+        // workingDirectory: 可选；LLM 没传或传空则回退到 vault 根目录。
+        // 路径有效性校验（绝对路径 / 存在 / isDirectory）放在 runner 内部做，
+        // 因为 runner 是 desktop-only 模块，可以安全静态 import node:fs/path。
+        let workingDirectory =
+          getOptionalTextArg(args, 'workingDirectory')?.trim() ?? ''
         if (!workingDirectory) {
-          throw new Error('workingDirectory cannot be empty.')
+          const adapter = app.vault.adapter
+          if (adapter instanceof FileSystemAdapter) {
+            workingDirectory = adapter.getBasePath()
+          }
         }
+        if (!workingDirectory) {
+          throw new Error(
+            'workingDirectory is required because vault base path is unavailable on this platform.',
+          )
+        }
+
         const sandboxMode = getTextArg(args, 'sandboxMode').trim()
         if (!sandboxMode) {
           throw new Error('sandboxMode is required.')

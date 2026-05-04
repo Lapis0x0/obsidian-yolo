@@ -7,6 +7,8 @@
 // "Failed to fetch dynamically imported module: node:xxx"
 import { spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { stat } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 
 import { shellEnvSync } from 'shell-env'
@@ -291,6 +293,46 @@ export async function runExternalAgent(
   if (model !== undefined && !MODEL_PATTERN.test(model)) {
     throw new Error(
       `model "${model}" contains invalid characters. Only [A-Za-z0-9._-] are allowed.`,
+    )
+  }
+
+  // ── workingDirectory 校验：必须是绝对路径，且指向存在的目录 ──
+  // 在并发占槽之前抛错，避免泄漏占槽；错误信息明确，避免 spawn 报 ENOENT 时
+  // 把锅甩给 cli 二进制路径（实际 cwd 不存在）造成误导。
+  if (!isAbsolute(workingDirectory)) {
+    throw new Error(
+      `workingDirectory must be an absolute path: ${workingDirectory}`,
+    )
+  }
+  try {
+    const stats = await stat(workingDirectory)
+    if (!stats.isDirectory()) {
+      throw new Error(
+        `workingDirectory is not a directory: ${workingDirectory}`,
+      )
+    }
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.startsWith('workingDirectory is not a directory')
+    ) {
+      throw err
+    }
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      throw new Error(
+        `workingDirectory does not exist: ${workingDirectory}`,
+      )
+    }
+    if (code === 'EACCES') {
+      throw new Error(
+        `workingDirectory is not accessible (permission denied): ${workingDirectory}`,
+      )
+    }
+    throw new Error(
+      `Failed to access workingDirectory "${workingDirectory}": ${
+        err instanceof Error ? err.message : String(err)
+      }`,
     )
   }
 

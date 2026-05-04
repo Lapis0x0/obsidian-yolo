@@ -71,6 +71,15 @@ export function ExternalAgentToolCard({
   if (stream !== null && stream.source === 'live') {
     stderrText = stream.stderr || undefined
     stdoutText = stream.stdout || undefined
+    // 边角：spawn 失败这类场景，runner 已 push 了 starting/running 但 stdout/stderr 都为空，
+    // 这时 stream !== null 会吃掉 response.error 的显示。回退到 fallbackText 让真实错误浮上来。
+    if (
+      response.status === ToolCallResponseStatus.Error &&
+      !stderrText &&
+      !stdoutText
+    ) {
+      fallbackText = response.error
+    }
   } else if (stream !== null && stream.source === 'historical') {
     stderrText = stream.stderr || undefined
     progressTruncated = stream.truncated
