@@ -1,6 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
 
-import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
+import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 
 const RING_RADIUS = 8
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS

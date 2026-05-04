@@ -60,7 +60,7 @@ export const estimateContinuationRequestContextTokens = async ({
     contextualInjections,
   })
 
-  return estimateJsonTokens({
+  return await estimateJsonTokens({
     messages: requestMessages,
     tools: requestTools,
   })

@@ -15,10 +15,8 @@ import {
 import { ToolCallRequest } from '../../types/tool-call.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
-import {
-  estimateJsonTokens,
-  formatTokenCount,
-} from '../../utils/llm/contextTokenEstimate'
+import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
+import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
@@ -117,7 +115,7 @@ export class AgentLlmTurnExecutor {
         contextualInjections: this.input.contextualInjections,
       })
 
-    this.logModelRequestContext({ requestMessages, tools })
+    await this.logModelRequestContext({ requestMessages, tools })
     const responseStart = Date.now()
     const model = this.input.model
     const assistantMessage: ChatAssistantMessage = {
@@ -279,20 +277,20 @@ export class AgentLlmTurnExecutor {
     return `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
   }
 
-  private logModelRequestContext({
+  private async logModelRequestContext({
     requestMessages,
     tools,
   }: {
     requestMessages: RequestMessage[]
     tools: RequestTool[] | undefined
-  }): void {
+  }): Promise<void> {
     if (
       !this.input.requestContextBuilder.isModelRequestContextLoggingEnabled?.()
     ) {
       return
     }
 
-    const estimatedTokens = estimateJsonTokens({
+    const estimatedTokens = await estimateJsonTokens({
       messages: requestMessages,
       tools,
     })
