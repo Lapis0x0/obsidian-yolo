@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { getBuiltinToolUiMeta } from '../../core/agent/builtinToolUiMeta'
+import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -23,6 +24,7 @@ import {
 import { SplitButton } from '../common/SplitButton'
 
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
+import { ExternalAgentToolCard } from './tool-cards/ExternalAgentToolCard'
 import {
   type ToolDisplayInfo,
   getToolHeadlineParts,
@@ -157,6 +159,10 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       memory_delete: translateBuiltinToolLabel('memory_delete', translate),
       web_search: translateBuiltinToolLabel('web_search', translate),
       web_scrape: translateBuiltinToolLabel('web_scrape', translate),
+      delegate_external_agent: translateBuiltinToolLabel(
+        'delegate_external_agent',
+        translate,
+      ),
     },
     writeActionLabels: {
       create_file: translate(
@@ -203,6 +209,19 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'chat.toolCall.allowForThisChat',
       'Allow for this chat',
     ),
+  }
+}
+
+/**
+ * 判断工具调用是否为 delegate_external_agent。
+ * 完整 tool name 形如 yolo_local__delegate_external_agent。
+ */
+const isDelegateExternalAgentRequest = (request: ToolRequestLike): boolean => {
+  try {
+    const { toolName } = parseToolName(request.name)
+    return toolName === 'delegate_external_agent'
+  } catch {
+    return false
   }
 }
 
@@ -792,6 +811,15 @@ function ToolCallItem({
       getToolCallArgumentsText(request.arguments) ?? toolLabels.noParameters
     )
   }, [request.arguments, toolLabels.noParameters])
+  // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
+  const isAlwaysAllowDisabled = useMemo(() => {
+    try {
+      const { toolName } = parseToolName(request.name)
+      return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
+    } catch {
+      return false
+    }
+  }, [request.name])
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [isStatusTransitioning, setIsStatusTransitioning] = useState(false)
   const [renderFooter, setRenderFooter] = useState(
@@ -978,17 +1006,28 @@ function ToolCallItem({
             <div>{toolLabels.parameters}:</div>
             <ObsidianCodeBlock language="json" content={parameters} />
           </div>
-          {response.status === ToolCallResponseStatus.Success && (
-            <div className="smtcmp-toolcall-content-section">
-              <div>{toolLabels.result}:</div>
-              <ObsidianCodeBlock content={response.data.text} />
-            </div>
-          )}
-          {response.status === ToolCallResponseStatus.Error && (
-            <div className="smtcmp-toolcall-content-section">
-              <div>{toolLabels.error}:</div>
-              <ObsidianCodeBlock content={response.error} />
-            </div>
+          {isDelegateExternalAgentRequest(request) ? (
+            // delegate_external_agent 专属卡片：流式输出 + 状态徽章
+            <ExternalAgentToolCard
+              toolCallId={request.id}
+              response={response}
+              onAbort={handleAbort}
+            />
+          ) : (
+            <>
+              {response.status === ToolCallResponseStatus.Success && (
+                <div className="smtcmp-toolcall-content-section">
+                  <div>{toolLabels.result}:</div>
+                  <ObsidianCodeBlock content={response.data.text} />
+                </div>
+              )}
+              {response.status === ToolCallResponseStatus.Error && (
+                <div className="smtcmp-toolcall-content-section">
+                  <div>{toolLabels.error}:</div>
+                  <ObsidianCodeBlock content={response.error} />
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1024,22 +1063,35 @@ function ToolCallItem({
         >
           {displayFooterMode === 'pending' && (
             <div className="smtcmp-toolcall-footer-actions">
-              <SplitButton
-                primaryText={toolLabels.allow}
-                onPrimaryClick={() => {
-                  void handleToolCall()
-                  setIsOpen(false)
-                }}
-                menuOptions={[
-                  {
-                    label: toolLabels.allowForThisChat,
-                    onClick: () => {
-                      void handleAllowForConversation()
-                      setIsOpen(false)
+              {isAlwaysAllowDisabled ? (
+                // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleToolCall()
+                    setIsOpen(false)
+                  }}
+                >
+                  {toolLabels.allow}
+                </button>
+              ) : (
+                <SplitButton
+                  primaryText={toolLabels.allow}
+                  onPrimaryClick={() => {
+                    void handleToolCall()
+                    setIsOpen(false)
+                  }}
+                  menuOptions={[
+                    {
+                      label: toolLabels.allowForThisChat,
+                      onClick: () => {
+                        void handleAllowForConversation()
+                        setIsOpen(false)
+                      },
                     },
-                  },
-                ]}
-              />
+                  ]}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => {

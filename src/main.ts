@@ -1944,6 +1944,10 @@ export default class SmartComposerPlugin extends Plugin {
     this.ragAutoUpdateService = null
     this.agentService?.abortAll()
     this.agentService = null
+    // 终止所有活跃的外部 CLI 子进程（desktop-only，mobile 为空操作）
+    void import('./core/agent/external-cli/index').then(
+      ({ killAllActiveExternalCli }) => killAllActiveExternalCli(),
+    )
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
     this.clearTabCompletionTimer()

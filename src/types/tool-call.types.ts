@@ -110,6 +110,7 @@ export type ToolCallResponse =
         metadata?: {
           editSummary?: ToolEditSummary
           appliedAt?: number
+          truncated?: { totalBytes: number; omittedBytes: number }
         }
       }
     }
@@ -119,6 +120,14 @@ export type ToolCallResponse =
     }
   | {
       status: ToolCallResponseStatus.Aborted
+      /** 中断时已采集的输出（可选）。存在时表示已有部分输出；不存在时表示启动前就被取消。 */
+      data?: {
+        type: 'text'
+        text: string
+        metadata?: {
+          truncated?: { totalBytes: number; omittedBytes: number }
+        }
+      }
     }
 
 export enum ToolCallResponseStatus {

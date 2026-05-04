@@ -352,6 +352,9 @@ export const zh: TranslationKeys = {
       builtinWebScrapeDesc: '通过配置的搜索服务抓取单个 URL 的完整正文。',
       builtinWebOpsLabel: '联网搜索工具集',
       builtinWebOpsDesc: '网页搜索与正文抓取',
+      builtinDelegateExternalAgentLabel: '派遣外部 Agent',
+      builtinDelegateExternalAgentDesc:
+        '以子进程方式启动本机 CLI Agent（codex exec 或 claude -p），将其实时输出流式回灌到聊天窗口，并把最终结果传给 LLM 继续推理。仅桌面端可用，每次调用都需人工审批。',
       editorDefaultName: '新建 Agent',
       editorIntro: '配置此 Agent 的能力、模型与行为。',
       editorTabProfile: '资料',

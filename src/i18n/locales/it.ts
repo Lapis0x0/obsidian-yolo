@@ -398,6 +398,9 @@ export const it: TranslationKeys = {
         'Recupera il contenuto completo di un singolo URL tramite il provider configurato.',
       builtinWebOpsLabel: 'Set strumenti ricerca web',
       builtinWebOpsDesc: 'Ricerca web e scraping di pagine',
+      builtinDelegateExternalAgentLabel: 'Delega a agente esterno',
+      builtinDelegateExternalAgentDesc:
+        'Avvia un agente CLI locale (codex exec o claude -p) come sottoprocesso, trasmette il suo output in chat e passa il risultato finale al LLM. Solo desktop. Richiede approvazione manuale ogni volta.',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',

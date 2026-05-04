@@ -120,6 +120,7 @@ type LocalFileToolName =
   | 'open_skill'
   | 'web_search'
   | 'web_scrape'
+  | 'delegate_external_agent'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsSearchMode = 'keyword' | 'rag' | 'hybrid'
 type LegacyFsSearchItem =
@@ -157,6 +158,7 @@ type LocalToolCallResult =
       metadata?: {
         editSummary?: ToolEditSummary
         appliedAt?: number
+        truncated?: { totalBytes: number; omittedBytes: number }
       }
     }
   | {
@@ -168,6 +170,14 @@ type LocalToolCallResult =
     }
   | {
       status: ToolCallResponseStatus.Aborted
+      /** 中断时已采集的部分输出（可选） */
+      data?: {
+        type: 'text'
+        text: string
+        metadata?: {
+          truncated?: { totalBytes: number; omittedBytes: number }
+        }
+      }
     }
 
 type FsResultItem = {
@@ -951,6 +961,52 @@ export function getLocalFileTools(): McpTool[] {
           },
         },
         required: ['url'],
+      },
+    },
+    {
+      name: 'delegate_external_agent',
+      description:
+        'Delegate a task to a local CLI agent (codex exec or claude -p). ' +
+        'Spawns a subprocess, streams its stdout back into the chat in real time, ' +
+        'and returns the final output as the tool result. ' +
+        'Desktop-only. Requires manual approval every time. ' +
+        'The subprocess inherits the current process environment (API keys, tokens, proxy settings).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          provider: {
+            type: 'string',
+            enum: ['codex', 'claude-code'],
+            description: 'Which CLI agent to invoke.',
+          },
+          workingDirectory: {
+            type: 'string',
+            description:
+              'Absolute path to the working directory for the subprocess.',
+          },
+          sandboxMode: {
+            type: 'string',
+            description:
+              'codex: read-only | workspace-write | danger-full-access. ' +
+              'claude-code: default | acceptEdits | bypassPermissions | plan.',
+          },
+          prompt: {
+            type: 'string',
+            description: 'Task prompt sent via stdin to the CLI agent.',
+          },
+          model: {
+            type: 'string',
+            description:
+              'Optional model override (e.g. o3, claude-opus-4-5). Only [A-Za-z0-9._-] characters allowed.',
+          },
+          timeoutSeconds: {
+            type: 'integer',
+            description: 'Timeout in seconds (30–3600). Defaults to 600.',
+            minimum: 30,
+            maximum: 3600,
+          },
+        },
+        required: ['provider', 'workingDirectory', 'sandboxMode', 'prompt'],
       },
     },
   ]
@@ -3487,6 +3543,97 @@ export async function callLocalFileTool({
             scope: result.scope,
             filePath: result.filePath,
           }),
+        }
+      }
+
+      case 'delegate_external_agent': {
+        // 所有 node:child_process 相关代码都在 external-cli/index.ts 里懒加载
+        const { runExternalAgent } = await import('../agent/external-cli/index')
+
+        const provider = getTextArg(args, 'provider').trim()
+        if (provider !== 'codex' && provider !== 'claude-code') {
+          throw new Error(
+            `provider must be "codex" or "claude-code", got "${provider}"`,
+          )
+        }
+        const workingDirectory = getTextArg(args, 'workingDirectory').trim()
+        if (!workingDirectory) {
+          throw new Error('workingDirectory cannot be empty.')
+        }
+        const sandboxMode = getTextArg(args, 'sandboxMode').trim()
+        if (!sandboxMode) {
+          throw new Error('sandboxMode is required.')
+        }
+        const prompt = getTextArg(args, 'prompt')
+        const model = getOptionalTextArg(args, 'model')
+        const timeoutSeconds = getOptionalIntegerArg({
+          args,
+          key: 'timeoutSeconds',
+          defaultValue: 600,
+          min: 30,
+          max: 3600,
+        })
+
+        let result: Awaited<ReturnType<typeof runExternalAgent>>
+        try {
+          result = await runExternalAgent({
+            toolCallId: toolCallId ?? '',
+            provider,
+            workingDirectory,
+            sandboxMode,
+            prompt,
+            model,
+            timeoutSeconds,
+            signal,
+          })
+        } catch (runError) {
+          // 启动失败或被中止信号在 runner 里作为 reject 抛出
+          if (signal?.aborted) {
+            return { status: ToolCallResponseStatus.Aborted }
+          }
+          throw runError
+        }
+
+        // 进程被外部 abort 时 runner 通过 close 事件 resolve（而非 reject），
+        // signal.aborted 为 true 时视为 Aborted（携带已采集输出）
+        if (signal?.aborted) {
+          return {
+            status: ToolCallResponseStatus.Aborted,
+            data: {
+              type: 'text',
+              text: result.stdout,
+              metadata: result.truncated
+                ? { truncated: result.truncated }
+                : undefined,
+            },
+          }
+        }
+
+        // 超时：返回 Error 状态但携带已采集的 stdout（必修 4）
+        if (result.timedOut) {
+          const outputText = result.stdout || result.stderr || '（无输出）'
+          return {
+            status: ToolCallResponseStatus.Error,
+            error: `Exit code timeout. Output:\n${outputText}`,
+          }
+        }
+
+        const exitOk = result.exitCode === 0
+        const outputText = result.stdout || result.stderr || '（无输出）'
+
+        if (!exitOk) {
+          return {
+            status: ToolCallResponseStatus.Error,
+            error: `Exit code ${result.exitCode ?? 'null'}. Output:\n${outputText}`,
+          }
+        }
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: result.stdout,
+          metadata: result.truncated
+            ? { truncated: result.truncated }
+            : undefined,
         }
       }
 
