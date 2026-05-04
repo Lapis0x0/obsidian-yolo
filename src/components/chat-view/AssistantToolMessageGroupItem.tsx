@@ -33,7 +33,7 @@ import AssistantMessageEditor from './AssistantMessageEditor'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
-import { ExternalAgentResultCard } from './tool-cards/ExternalAgentResultCard'
+import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
 import ToolMessage from './ToolMessage'
 
 const getBranchStateLabel = (
@@ -208,7 +208,6 @@ export type AssistantToolMessageGroupItemProps = {
     conversationId: string
     content: string
   }) => void
-  onFocusMessage?: (messageId: string) => void
   onOpenEditSummaryFile: (file: GroupEditSummary['files'][number]) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
@@ -246,7 +245,6 @@ export default function AssistantToolMessageGroupItem({
   onBranchGroup,
   onActiveBranchChange,
   onQuoteAssistantSelection,
-  onFocusMessage,
   onOpenEditSummaryFile,
   onUndoEditSummary,
   undoingEditSummaryTarget,
@@ -686,9 +684,14 @@ export default function AssistantToolMessageGroupItem({
           ) : null
         ) : message.role === 'external_agent_result' ? (
           <div key={message.id}>
-            <ExternalAgentResultCard
-              message={message}
-              onFocusDelegateMessage={onFocusMessage}
+            <ToolMessage
+              message={buildSynthToolMessageFromResult(message)}
+              conversationId={effectiveConversationId}
+              showRunningFooter={false}
+              onMessageUpdate={() => {
+                // 异步派遣结果是终态消息，UI 内部不会触发 update；
+                // 万一调到这里也不持久化（result message 有自己的存储路径）。
+              }}
             />
           </div>
         ) : (

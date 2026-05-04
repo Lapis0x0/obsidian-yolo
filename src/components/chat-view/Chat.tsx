@@ -4154,6 +4154,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return null
   }, [chatTimelineItems])
 
+  // 异步派遣结果作为独立 timeline 项追加到对话流；在派遣消息和结果之间
+  // 显示 footer 信息栏会切断「派遣 → 等结果 → 结果到达」这条逻辑流。
+  // 因此凡是后面紧跟一个 external_agent_result group 的 assistant-group，
+  // 都把它的 footer 抑制掉。
+  const renderKeysWithSuppressedAsyncFollowUpFooter = useMemo(() => {
+    const set = new Set<string>()
+    for (let i = 0; i < chatTimelineItems.length - 1; i++) {
+      const current = chatTimelineItems[i]
+      const next = chatTimelineItems[i + 1]
+      if (current.kind !== 'assistant-group') continue
+      if (next.kind !== 'assistant-group') continue
+      const nextFirst = next.messages[0]
+      if (nextFirst && nextFirst.role === 'external_agent_result') {
+        set.add(current.renderKey)
+      }
+    }
+    return set
+  }, [chatTimelineItems])
+
   const renderChatTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
       if (timelineItem.kind === 'compaction-pending') {
@@ -4218,7 +4237,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             activeBranchKey={activeBranchByUserMessageId.get(
               getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
             )}
-            suppressFooter={shouldSuppressCompactionAnchorFooter}
+            suppressFooter={
+              shouldSuppressCompactionAnchorFooter ||
+              renderKeysWithSuppressedAsyncFollowUpFooter.has(
+                timelineItem.renderKey,
+              )
+            }
             showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
             showRetryAction={chatSurfacePreset.assistantActions.showRetryAction}
             showInsertAction={
@@ -4263,11 +4287,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               void persistConversation(chatMessagesStateRef.current)
             }}
             onQuoteAssistantSelection={handleQuoteAssistantSelection}
-            onFocusMessage={(messageId) => {
-              document
-                .querySelector(`[data-message-id="${messageId}"]`)
-                ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-            }}
             onOpenEditSummaryFile={handleOpenEditSummaryFile}
             onUndoEditSummary={handleUndoEditSummary}
             undoingEditSummaryTarget={undoingEditSummaryTarget}
@@ -4534,6 +4553,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       persistConversation,
       queryProgress,
       reasoningLevel,
+      renderKeysWithSuppressedAsyncFollowUpFooter,
       shouldHidePendingAssistantPlaceholders,
       undoingEditSummaryTarget,
       updateHistoricalUserMessage,
