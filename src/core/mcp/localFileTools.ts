@@ -999,12 +999,6 @@ export function getLocalFileTools(): McpTool[] {
             description:
               'Optional model override (e.g. o3, claude-opus-4-5). Only [A-Za-z0-9._-] characters allowed.',
           },
-          timeoutSeconds: {
-            type: 'integer',
-            description: 'Timeout in seconds (30–3600). Defaults to 600.',
-            minimum: 30,
-            maximum: 3600,
-          },
         },
         required: ['provider', 'workingDirectory', 'sandboxMode', 'prompt'],
       },
@@ -3566,13 +3560,6 @@ export async function callLocalFileTool({
         }
         const prompt = getTextArg(args, 'prompt')
         const model = getOptionalTextArg(args, 'model')
-        const timeoutSeconds = getOptionalIntegerArg({
-          args,
-          key: 'timeoutSeconds',
-          defaultValue: 600,
-          min: 30,
-          max: 3600,
-        })
 
         let result: Awaited<ReturnType<typeof runExternalAgent>>
         try {
@@ -3583,7 +3570,6 @@ export async function callLocalFileTool({
             sandboxMode,
             prompt,
             model,
-            timeoutSeconds,
             signal,
           })
         } catch (runError) {

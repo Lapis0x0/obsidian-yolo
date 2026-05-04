@@ -261,7 +261,7 @@ export async function runExternalAgent(
     sandboxMode,
     prompt,
     model,
-    timeoutSeconds = 600,
+    timeoutSeconds,
     signal,
   } = params
 
@@ -417,12 +417,16 @@ export async function runExternalAgent(
 
   // ── 返回 Promise ──
   return new Promise<RunExternalAgentResult>((resolve, reject) => {
-    // 超时标志（必修 4）：不在 setTimeout 里 reject，让 close 事件正常 resolve
+    // 超时标志（必修 4）：不在 setTimeout 里 reject，让 close 事件正常 resolve。
+    // 仅当显式传入 timeoutSeconds 时启用 timer；不传则不超时（劳务派遣类任务可能跑很久，由用户主动取消）。
     let timedOut = false
-    const timeoutId = setTimeout(() => {
-      timedOut = true
-      killProcess()
-    }, timeoutSeconds * 1000)
+    const timeoutId: ReturnType<typeof setTimeout> | undefined =
+      timeoutSeconds !== undefined
+        ? setTimeout(() => {
+            timedOut = true
+            killProcess()
+          }, timeoutSeconds * 1000)
+        : undefined
 
     // 外部 abort signal
     const onAbort = () => {

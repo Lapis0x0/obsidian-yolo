@@ -28,21 +28,23 @@ export function ExternalAgentToolCard({
   const isRunning = response.status === ToolCallResponseStatus.Running
 
   // 决定要渲染的文本内容
-  let consoleText: string | undefined
+  // 实时路径下 stderr 是进度日志（codex 的"思考中/调用工具"等输出走 stderr），
+  // stdout 是最终结果；历史/落库路径目前只保留了 stdout 文本。
+  let stderrText: string | undefined
+  let stdoutText: string | undefined
+  let fallbackText: string | undefined
   if (stream !== null) {
-    // 实时路径：从 bus 拿 stdout
-    consoleText = stream.stdout || undefined
+    stderrText = stream.stderr || undefined
+    stdoutText = stream.stdout || undefined
   } else if (response.status === ToolCallResponseStatus.Success) {
-    // 历史路径：从落库结果读
-    consoleText = response.data.text
+    fallbackText = response.data.text
   } else if (
     response.status === ToolCallResponseStatus.Aborted &&
     response.data
   ) {
-    // 中断但有部分输出
-    consoleText = response.data.text
+    fallbackText = response.data.text
   } else if (response.status === ToolCallResponseStatus.Error) {
-    consoleText = response.error
+    fallbackText = response.error
   }
 
   return (
@@ -63,9 +65,29 @@ export function ExternalAgentToolCard({
         )}
       </div>
 
-      {/* 控制台输出块 */}
-      {consoleText !== undefined && (
-        <pre className="yolo-external-agent-card__console">{consoleText}</pre>
+      {/* stderr 进度块（实时路径专用） */}
+      {stderrText !== undefined && (
+        <div className="yolo-external-agent-card__stream-section yolo-external-agent-card__stream-section--stderr">
+          <div className="yolo-external-agent-card__stream-label">
+            {t('chat.externalAgent.progress', 'Progress (stderr)')}
+          </div>
+          <pre className="yolo-external-agent-card__console">{stderrText}</pre>
+        </div>
+      )}
+
+      {/* stdout 最终输出块（实时路径） */}
+      {stdoutText !== undefined && (
+        <div className="yolo-external-agent-card__stream-section">
+          <div className="yolo-external-agent-card__stream-label">
+            {t('chat.externalAgent.output', 'Output (stdout)')}
+          </div>
+          <pre className="yolo-external-agent-card__console">{stdoutText}</pre>
+        </div>
+      )}
+
+      {/* 历史/错误路径单块输出 */}
+      {fallbackText !== undefined && (
+        <pre className="yolo-external-agent-card__console">{fallbackText}</pre>
       )}
 
       {/* Aborted 无输出时的文案 */}
