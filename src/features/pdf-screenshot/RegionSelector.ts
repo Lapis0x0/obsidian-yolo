@@ -138,6 +138,7 @@ export class RegionSelector {
       : 1
 
     if (this.selectionEl) {
+      // eslint-disable-next-line obsidianmd/no-static-styles-assignment -- transient overlay visibility, not theming-relevant
       this.selectionEl.style.display = 'none'
     }
   }
@@ -154,6 +155,7 @@ export class RegionSelector {
     )
 
     const selEl = this.selectionEl
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment -- transient overlay visibility, not theming-relevant
     selEl.style.display = 'block'
     selEl.style.left = `${left}px`
     selEl.style.top = `${top}px`

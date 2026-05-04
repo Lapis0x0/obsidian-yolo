@@ -55,7 +55,7 @@ type AnyHighlight = any
  * Returns null when the runtime does not support the CSS Custom Highlight API
  * (e.g. older mobile webviews).
  */
-function getOrCreateHighlight(): AnyHighlight | null {
+function getOrCreateHighlight(): AnyHighlight {
   const w = window as any
   if (typeof w.Highlight !== 'function' || !w.CSS || !w.CSS.highlights) {
     return null
@@ -156,7 +156,7 @@ function buildRanges(
 /**
  * Resolve the PDF.js eventBus from a WorkspaceLeaf that holds a PDF view.
  */
-function resolveEventBus(leaf: WorkspaceLeaf): unknown | null {
+function resolveEventBus(leaf: WorkspaceLeaf): unknown {
   try {
     const viewer = (leaf.view as any)?.viewer?.child?.pdfViewer
     return viewer?.eventBus ?? null

@@ -5,11 +5,13 @@
 // node 内置模块（esbuild 已外部化为 require）；不要改用 dynamic `await import('node:...')`，
 // 那会被 cjs 输出保留为 ES dynamic import 并在 Electron renderer 里失败：
 // "Failed to fetch dynamically imported module: node:xxx"
+/* eslint-disable import/no-nodejs-modules -- desktop-only module, lazy-loaded behind Platform.isDesktop */
 import { spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
+/* eslint-enable import/no-nodejs-modules */
 
 import { shellEnvSync } from 'shell-env'
 

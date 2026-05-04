@@ -17,9 +17,7 @@ export type AsyncTaskRecord = {
   abortController: AbortController
 }
 
-export type AsyncTaskRegistrySubscriber = (
-  records: AsyncTaskRecord[],
-) => void
+export type AsyncTaskRegistrySubscriber = (records: AsyncTaskRecord[]) => void
 
 export class AsyncTaskRegistry {
   private readonly tasks = new Map<string, AsyncTaskRecord>()

@@ -40,10 +40,7 @@ function buildSynthRequest(
     // 必须用完整 server-qualified 名（如 yolo_local__delegate_external_agent），
     // 否则 ToolMessage 的 parseToolName / displayNames 找不到友好标签，
     // headline 会退化成 raw tool name。
-    name: getToolName(
-      getLocalFileToolServerName(),
-      'delegate_external_agent',
-    ),
+    name: getToolName(getLocalFileToolServerName(), 'delegate_external_agent'),
     arguments: {
       kind: 'complete',
       value: {

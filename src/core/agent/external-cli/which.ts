@@ -7,8 +7,10 @@
 // 标记为 external，cjs 输出会转换为 `require()`，可被 Electron renderer 正确解析。
 // 反之 dynamic `await import('node:...')` 在 cjs 下会保留为 ES dynamic import，
 // 浏览器引擎会把 node: 前缀当 URL fetch 而失败。
+/* eslint-disable import/no-nodejs-modules -- desktop-only module, lazy-loaded behind Platform.isDesktop */
 import { access, constants } from 'node:fs/promises'
 import * as path from 'node:path'
+/* eslint-enable import/no-nodejs-modules */
 
 /**
  * 在 PATH 中查找可执行文件的完整路径。

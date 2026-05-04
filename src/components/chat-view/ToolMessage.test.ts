@@ -12,6 +12,10 @@ jest.mock('./ObsidianMarkdown', () => ({
   ObsidianCodeBlock: () => null,
 }))
 
+jest.mock('./tool-cards/ExternalAgentToolCard', () => ({
+  ExternalAgentToolCard: () => null,
+}))
+
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,

@@ -147,8 +147,9 @@ export function getPdfLeafContentEl(leaf: WorkspaceLeaf): HTMLElement | null {
  */
 function getFileFromPdfLeaf(leaf: WorkspaceLeaf): TFile | null {
   try {
-    const file = (leaf.view as any)?.file
+    const file = (leaf.view as { file?: unknown })?.file
     if (file && typeof file === 'object' && 'path' in file) {
+      // eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast -- duck-typed via 'path' property; instanceof check breaks unit tests using plain mocks
       return file as TFile
     }
     return null

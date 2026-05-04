@@ -21,6 +21,7 @@ import {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function makeMockFile(path: string): TFile {
+  // eslint-disable-next-line obsidianmd/no-tfile-tfolder-cast -- test mock, not a real TFile instance
   return { path, name: path.split('/').pop() ?? path } as unknown as TFile
 }
 
