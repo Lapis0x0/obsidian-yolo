@@ -445,11 +445,9 @@ export const getHeadlineDisplayInfo = ({
 }): ToolDisplayInfo => {
   const displayInfo = getToolDisplayInfo(request, labels)
 
+  let parsedToolName: { serverName: string; toolName: string }
   try {
-    const { serverName, toolName } = parseToolName(request.name)
-    if (serverName !== getLocalFileToolServerName() || toolName !== 'fs_read') {
-      return displayInfo
-    }
+    parsedToolName = parseToolName(request.name)
   } catch (error) {
     if (!(error instanceof InvalidToolNameException)) {
       throw error
@@ -457,20 +455,86 @@ export const getHeadlineDisplayInfo = ({
     return displayInfo
   }
 
-  const modeText = formatFsReadHeadlineMode(
-    getFsReadOperationSummary({ request, response }),
-    labels,
-  )
-  if (!modeText) {
+  const { serverName, toolName } = parsedToolName
+  if (serverName !== getLocalFileToolServerName()) {
     return displayInfo
   }
 
-  return {
-    ...displayInfo,
-    summaryText: displayInfo.summaryText
-      ? `${displayInfo.summaryText} | ${modeText}`
-      : modeText,
+  if (toolName === 'fs_read') {
+    const modeText = formatFsReadHeadlineMode(
+      getFsReadOperationSummary({ request, response }),
+      labels,
+    )
+    if (!modeText) {
+      return displayInfo
+    }
+    return {
+      ...displayInfo,
+      summaryText: displayInfo.summaryText
+        ? `${displayInfo.summaryText} | ${modeText}`
+        : modeText,
+    }
   }
+
+  if (toolName === 'delegate_external_agent') {
+    return {
+      ...displayInfo,
+      summaryText: getDelegateExternalAgentSummary({ request, response }),
+    }
+  }
+
+  return displayInfo
+}
+
+/**
+ * delegate_external_agent 折叠态 summary：
+ * - Running/Pending：provider | prompt 前 80 字（让用户一眼看到派了啥任务）
+ * - Success：provider | stdout 前 80 字（直接看模型最终回答）
+ * - Aborted（含已采集输出）：provider | stdout 前 80 字
+ * - Error：provider | error 前 80 字（直接看为啥失败）
+ */
+const DELEGATE_SUMMARY_MAX_CHARS = 80
+
+const getDelegateExternalAgentSummary = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): string | undefined => {
+  const argsObject = parseToolArguments(request.arguments)
+  const provider =
+    typeof argsObject?.provider === 'string' ? argsObject.provider : ''
+
+  let mainText = ''
+  if (response?.status === ToolCallResponseStatus.Success) {
+    mainText = response.data.text?.trim() ?? ''
+  } else if (response?.status === ToolCallResponseStatus.Error) {
+    mainText = response.error?.trim() ?? ''
+  } else if (
+    response?.status === ToolCallResponseStatus.Aborted &&
+    response.data
+  ) {
+    mainText = response.data.text?.trim() ?? ''
+  }
+  // Running / PendingApproval / Aborted-without-data / 没拿到 mainText 时回退 prompt
+  if (!mainText) {
+    const prompt =
+      typeof argsObject?.prompt === 'string' ? argsObject.prompt.trim() : ''
+    mainText = prompt
+  }
+
+  // 多行折叠成单行，避免 headline 被换行符撑高
+  const collapsedMain = mainText
+    ? truncateText(mainText.replace(/\s+/g, ' '), DELEGATE_SUMMARY_MAX_CHARS)
+    : ''
+
+  if (!provider && !collapsedMain) {
+    return undefined
+  }
+  if (!provider) return collapsedMain
+  if (!collapsedMain) return provider
+  return `${provider} | ${collapsedMain}`
 }
 
 const getLocalToolSummaryText = ({
