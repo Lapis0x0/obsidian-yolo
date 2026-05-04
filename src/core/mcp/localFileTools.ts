@@ -1,6 +1,7 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import { saveExternalAgentProgress } from '../../database/json/chat/externalAgentProgressStore'
 import { buildPdfPageImageCacheKey } from '../../database/json/chat/imageCacheStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
@@ -3578,6 +3579,21 @@ export async function callLocalFileTool({
             return { status: ToolCallResponseStatus.Aborted }
           }
           throw runError
+        }
+
+        // best-effort: save progress log to disk cache; failure must not pollute result
+        if (conversationId && toolCallId && result.stderr) {
+          try {
+            await saveExternalAgentProgress({
+              app,
+              settings,
+              conversationId,
+              toolCallId,
+              progressText: result.stderr,
+            })
+          } catch (err) {
+            console.warn('[external-cli] failed to save progress cache:', err)
+          }
         }
 
         // 进程被外部 abort 时 runner 通过 close 事件 resolve（而非 reject），

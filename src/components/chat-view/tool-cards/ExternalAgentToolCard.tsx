@@ -5,7 +5,9 @@
 import cx from 'clsx'
 import { Check, Loader2, Square, X } from 'lucide-react'
 
+import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
+import { useSettings } from '../../../contexts/settings-context'
 import { useExternalCliStream } from '../../../hooks/useExternalCliStream'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type { ToolCallResponse } from '../../../types/tool-call.types'
@@ -23,19 +25,39 @@ export function ExternalAgentToolCard({
   onAbort,
 }: ExternalAgentCardProps) {
   const { t } = useLanguage()
-  const stream = useExternalCliStream(toolCallId)
+  const app = useApp()
+  const { settings } = useSettings()
+  const stream = useExternalCliStream(toolCallId, { app, settings })
 
   const isRunning = response.status === ToolCallResponseStatus.Running
 
-  // 决定要渲染的文本内容
-  // 实时路径下 stderr 是进度日志（codex 的"思考中/调用工具"等输出走 stderr），
-  // stdout 是最终结果；历史/落库路径目前只保留了 stdout 文本。
+  // 决定要渲染的文本内容：
+  // live 路径：stderr 进度日志 + stdout 最终输出
+  // historical 路径：stderr 磁盘缓存 + response.data.text 作为 stdout
+  // null（无缓存）：fallback 到单块输出
   let stderrText: string | undefined
   let stdoutText: string | undefined
   let fallbackText: string | undefined
-  if (stream !== null) {
+  let progressTruncated:
+    | { totalBytes: number; omittedBytes: number }
+    | undefined
+  if (stream !== null && stream.source === 'live') {
     stderrText = stream.stderr || undefined
     stdoutText = stream.stdout || undefined
+  } else if (stream !== null && stream.source === 'historical') {
+    stderrText = stream.stderr || undefined
+    progressTruncated = stream.truncated
+    if (response.status === ToolCallResponseStatus.Success) {
+      stdoutText = response.data.text || undefined
+    } else if (
+      response.status === ToolCallResponseStatus.Aborted &&
+      response.data
+    ) {
+      stdoutText = response.data.text || undefined
+    } else if (response.status === ToolCallResponseStatus.Error) {
+      // Error 状态下保留错误文本，否则进度缓存会把原本的错误信息盖掉
+      fallbackText = response.error
+    }
   } else if (response.status === ToolCallResponseStatus.Success) {
     fallbackText = response.data.text
   } else if (
@@ -65,13 +87,21 @@ export function ExternalAgentToolCard({
         )}
       </div>
 
-      {/* stderr 进度块（实时路径专用） */}
+      {/* stderr 进度块（live 路径和 historical 路径均可渲染） */}
       {stderrText !== undefined && (
         <div className="yolo-external-agent-card__stream-section yolo-external-agent-card__stream-section--stderr">
           <div className="yolo-external-agent-card__stream-label">
-            {t('chat.externalAgent.progress', 'Progress (stderr)')}
+            {t('chat.externalAgent.progress', 'Progress')}
           </div>
           <pre className="yolo-external-agent-card__console">{stderrText}</pre>
+          {progressTruncated && (
+            <div className="yolo-external-agent-card__truncation-notice">
+              {t(
+                'chat.externalAgent.progressTruncated',
+                `Progress truncated: ${progressTruncated.omittedBytes.toLocaleString()} bytes omitted.`,
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -79,7 +109,7 @@ export function ExternalAgentToolCard({
       {stdoutText !== undefined && (
         <div className="yolo-external-agent-card__stream-section">
           <div className="yolo-external-agent-card__stream-label">
-            {t('chat.externalAgent.output', 'Output (stdout)')}
+            {t('chat.externalAgent.output', 'Output')}
           </div>
           <pre className="yolo-external-agent-card__console">{stdoutText}</pre>
         </div>

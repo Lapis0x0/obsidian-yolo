@@ -7,9 +7,11 @@
 // "Failed to fetch dynamically imported module: node:xxx"
 import { spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 
 import { shellEnvSync } from 'shell-env'
 
+import { ClaudeStreamParser } from './claudeStreamParser'
 import { externalCliStreamBus } from './streamBus'
 import { stripAnsi } from './stripAnsi'
 import { which } from './which'
@@ -337,8 +339,17 @@ export async function runExternalAgent(
       '-', // prompt 通过 stdin 传入
     ]
   } else {
-    // claude-code
-    args = ['-p', '--permission-mode', sandboxMode, ...modelArgs]
+    // claude-code：启用 stream-json 模式以获取实时进度
+    args = [
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--include-partial-messages',
+      '--permission-mode',
+      sandboxMode,
+      ...modelArgs,
+    ]
   }
 
   // ── 初始化流式总线状态 ──
@@ -368,18 +379,155 @@ export async function runExternalAgent(
   externalCliStreamBus.push({ type: 'status', toolCallId, status: 'running' })
 
   // ── 采集输出（字节级，内存上限 ≈ 512KB per stream） ──
-  const stdoutCollector = new CappedOutputCollector()
   const stderrCollector = new CappedOutputCollector()
 
-  child.stdout?.on('data', (chunk: Buffer) => {
-    stdoutCollector.push(chunk)
-    // 流式推给前端（剥 ANSI 后）
-    externalCliStreamBus.push({
-      type: 'stdout',
-      toolCallId,
-      chunk: stripAnsi(chunk.toString('utf8')),
-      ts: Date.now(),
+  if (provider === 'codex') {
+    // codex：stdout 直接作为最终结果文本
+    const stdoutCollector = new CappedOutputCollector()
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdoutCollector.push(chunk)
+      externalCliStreamBus.push({
+        type: 'stdout',
+        toolCallId,
+        chunk: stripAnsi(chunk.toString('utf8')),
+        ts: Date.now(),
+      })
     })
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrCollector.push(chunk)
+      externalCliStreamBus.push({
+        type: 'stderr',
+        toolCallId,
+        chunk: stripAnsi(chunk.toString('utf8')),
+        ts: Date.now(),
+      })
+    })
+
+    // ── 进程树 kill 函数 ──
+    let killTimer: ReturnType<typeof setTimeout> | null = null
+    const killProcess = () => {
+      if (child.pid === undefined) return
+      try {
+        process.kill(-child.pid, 'SIGTERM')
+      } catch {
+        // 进程可能已退出，忽略
+      }
+      killTimer = setTimeout(() => {
+        if (child.pid === undefined) return
+        try {
+          process.kill(-child.pid, 'SIGKILL')
+        } catch {
+          // 已退出，忽略
+        }
+      }, SIGKILL_DELAY_MS)
+    }
+
+    // 将占位符替换为真实 kill 函数
+    activeProcesses.delete(placeholder)
+    activeProcesses.add(killProcess)
+
+    // ── 返回 Promise ──
+    return new Promise<RunExternalAgentResult>((resolve, reject) => {
+      let timedOut = false
+      const timeoutId: ReturnType<typeof setTimeout> | undefined =
+        timeoutSeconds !== undefined
+          ? setTimeout(() => {
+              timedOut = true
+              killProcess()
+            }, timeoutSeconds * 1000)
+          : undefined
+
+      const onAbort = () => {
+        killProcess()
+        clearTimeout(timeoutId)
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+
+      child.on('error', (err) => {
+        clearTimeout(timeoutId)
+        clearTimeout(killTimer ?? 0)
+        signal?.removeEventListener('abort', onAbort)
+        activeProcesses.delete(killProcess)
+        externalCliStreamBus.push({
+          type: 'status',
+          toolCallId,
+          status: 'done',
+        })
+        reject(err)
+      })
+
+      child.on('close', (code) => {
+        clearTimeout(timeoutId)
+        if (killTimer) clearTimeout(killTimer)
+        signal?.removeEventListener('abort', onAbort)
+        activeProcesses.delete(killProcess)
+        externalCliStreamBus.push({
+          type: 'status',
+          toolCallId,
+          status: 'done',
+        })
+
+        const { text: stdoutText, truncated } = stdoutCollector.finalize()
+        const { text: stderrText, truncated: stderrTruncated } =
+          stderrCollector.finalize()
+
+        resolve({
+          stdout: stdoutText,
+          stderr: stderrText,
+          exitCode: code,
+          truncated,
+          stderrTruncated,
+          ...(timedOut ? { timedOut: true } : {}),
+        })
+      })
+    })
+  }
+
+  // ── claude-code 分支：stream-json 解析 ──
+  const finalTextCollector = new CappedOutputCollector()
+
+  const claudeParser = new ClaudeStreamParser({
+    onProgress: (line) => {
+      const progressChunk = line + '\n'
+      stderrCollector.push(Buffer.from(progressChunk, 'utf8'))
+      externalCliStreamBus.push({
+        type: 'stderr',
+        toolCallId,
+        chunk: progressChunk,
+        ts: Date.now(),
+      })
+    },
+    onText: (chunk) => {
+      finalTextCollector.push(Buffer.from(chunk, 'utf8'))
+      externalCliStreamBus.push({
+        type: 'stdout',
+        toolCallId,
+        chunk,
+        ts: Date.now(),
+      })
+    },
+  })
+
+  // 用 StringDecoder 流式解码，避免 Buffer 切在多字节字符（中文/emoji）中间产生 �。
+  const stdoutDecoder = new StringDecoder('utf8')
+  let parserFinished = false
+  const finishParserOnce = () => {
+    if (parserFinished) return
+    parserFinished = true
+    const tail = stdoutDecoder.end()
+    if (tail) claudeParser.feed(tail)
+    claudeParser.finish()
+  }
+
+  child.stdout?.on('data', (chunk: Buffer) => {
+    const text = stdoutDecoder.write(chunk)
+    if (text) claudeParser.feed(text)
+  })
+
+  child.stdout?.on('end', () => {
+    finishParserOnce()
   })
 
   child.stderr?.on('data', (chunk: Buffer) => {
@@ -441,6 +589,7 @@ export async function runExternalAgent(
       clearTimeout(killTimer ?? 0)
       signal?.removeEventListener('abort', onAbort)
       activeProcesses.delete(killProcess)
+      finishParserOnce()
       externalCliStreamBus.push({ type: 'status', toolCallId, status: 'done' })
       reject(err)
     })
@@ -450,9 +599,10 @@ export async function runExternalAgent(
       if (killTimer) clearTimeout(killTimer)
       signal?.removeEventListener('abort', onAbort)
       activeProcesses.delete(killProcess)
+      finishParserOnce()
       externalCliStreamBus.push({ type: 'status', toolCallId, status: 'done' })
 
-      const { text: stdoutText, truncated } = stdoutCollector.finalize()
+      const { text: stdoutText, truncated } = finalTextCollector.finalize()
       const { text: stderrText, truncated: stderrTruncated } =
         stderrCollector.finalize()
 
