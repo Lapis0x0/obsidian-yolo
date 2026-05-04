@@ -809,14 +809,21 @@ export function AgentsSectionContent({
     return counts
   }, [draftAgent, visibleToolGroups])
 
-  const [estimatedToolContextTokens, setEstimatedToolContextTokens] =
-    useState<number | null>(null)
+  // Estimated tokens are scoped to a specific agent identity. Stale values
+  // from a previous agent must NOT leak across an agent switch (would mislead
+  // the user). Within the same agent, we still keep the prior value visible
+  // during recomputation to avoid flickering on tool toggles.
+  const [estimatedToolContextTokens, setEstimatedToolContextTokens] = useState<{
+    agentId: string | null
+    value: number | null
+  }>({ agentId: null, value: null })
 
   useEffect(() => {
     let cancelled = false
+    const currentAgentId = draftAgent?.id ?? null
 
     if (!draftAgent?.enableTools) {
-      setEstimatedToolContextTokens(0)
+      setEstimatedToolContextTokens({ agentId: currentAgentId, value: 0 })
       return
     }
 
@@ -837,11 +844,17 @@ export function AgentsSectionContent({
     })
 
     if (eligibleTools.length === 0) {
-      setEstimatedToolContextTokens(0)
+      setEstimatedToolContextTokens({ agentId: currentAgentId, value: 0 })
       return
     }
 
-    setEstimatedToolContextTokens(null)
+    // Reset to loading only when agent identity changed; same agent keeps
+    // its previous value visible while the new sum resolves.
+    setEstimatedToolContextTokens((prev) =>
+      prev.agentId === currentAgentId
+        ? prev
+        : { agentId: currentAgentId, value: null },
+    )
 
     void Promise.all(
       eligibleTools.map((tool) =>
@@ -849,9 +862,10 @@ export function AgentsSectionContent({
       ),
     ).then((counts) => {
       if (cancelled) return
-      setEstimatedToolContextTokens(
-        counts.reduce((sum, count) => sum + count, 0),
-      )
+      setEstimatedToolContextTokens({
+        agentId: currentAgentId,
+        value: counts.reduce((sum, count) => sum + count, 0),
+      })
     })
 
     return () => {
@@ -870,7 +884,10 @@ export function AgentsSectionContent({
     [app, settings],
   )
 
-  const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+  const disabledSkillIds = useMemo(
+    () => settings.skills?.disabledSkillIds ?? [],
+    [settings.skills?.disabledSkillIds],
+  )
   const skillsDir = getYoloSkillsDir(settings)
   const disabledSkillIdSet = useMemo(
     () => getDisabledSkillIdSet(disabledSkillIds),
@@ -895,8 +912,12 @@ export function AgentsSectionContent({
     })
   }, [disabledSkillIdSet, draftAgent, skillEntries])
 
+  // Same agent-scoped pattern as estimatedToolContextTokens above.
   const [estimatedSkillContextTokens, setEstimatedSkillContextTokens] =
-    useState<number | null>(null)
+    useState<{ agentId: string | null; value: number | null }>({
+      agentId: null,
+      value: null,
+    })
 
   const alwaysSkillRows = useMemo(
     () =>
@@ -911,18 +932,26 @@ export function AgentsSectionContent({
 
   useEffect(() => {
     let cancelled = false
+    const currentAgentId = draftAgent?.id ?? null
 
     const run = async () => {
       const enabledSkillRows = skillRows.filter((skill) => skill.enabled)
       if (enabledSkillRows.length === 0) {
         if (!cancelled) {
-          setEstimatedSkillContextTokens(0)
+          setEstimatedSkillContextTokens({
+            agentId: currentAgentId,
+            value: 0,
+          })
         }
         return
       }
 
       if (!cancelled) {
-        setEstimatedSkillContextTokens(null)
+        setEstimatedSkillContextTokens((prev) =>
+          prev.agentId === currentAgentId
+            ? prev
+            : { agentId: currentAgentId, value: null },
+        )
       }
 
       const counts = await Promise.all(
@@ -936,9 +965,10 @@ export function AgentsSectionContent({
       )
 
       if (!cancelled) {
-        setEstimatedSkillContextTokens(
-          counts.reduce((sum, count) => sum + count, 0),
-        )
+        setEstimatedSkillContextTokens({
+          agentId: currentAgentId,
+          value: counts.reduce((sum, count) => sum + count, 0),
+        })
       }
     }
 
@@ -947,7 +977,7 @@ export function AgentsSectionContent({
     return () => {
       cancelled = true
     }
-  }, [app, settings, skillRows])
+  }, [app, settings, skillRows, draftAgent?.id])
   const toolApprovalOptions = useMemo(
     () => [
       {
@@ -1245,14 +1275,14 @@ export function AgentsSectionContent({
                     <div className="smtcmp-agent-tools-panel-title">
                       {t('settings.agent.tools', 'Tools')}
                     </div>
-                    {estimatedToolContextTokens !== null && (
+                    {estimatedToolContextTokens.value !== null && (
                       <div className="smtcmp-agent-tools-panel-estimate">
                         {t(
                           'settings.agent.editorEstimatedContextTokens',
                           '~{count} tokens',
                         ).replace(
                           '{count}',
-                          formatTokenCount(estimatedToolContextTokens),
+                          formatTokenCount(estimatedToolContextTokens.value),
                         )}
                       </div>
                     )}
@@ -1350,14 +1380,14 @@ export function AgentsSectionContent({
                     <div className="smtcmp-agent-tools-panel-title">
                       {t('settings.agent.skills', 'Skills')}
                     </div>
-                    {estimatedSkillContextTokens !== null && (
+                    {estimatedSkillContextTokens.value !== null && (
                       <div className="smtcmp-agent-tools-panel-estimate">
                         {t(
                           'settings.agent.editorEstimatedContextTokens',
                           '~{count} tokens',
                         ).replace(
                           '{count}',
-                          formatTokenCount(estimatedSkillContextTokens),
+                          formatTokenCount(estimatedSkillContextTokens.value),
                         )}
                       </div>
                     )}

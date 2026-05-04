@@ -1,7 +1,110 @@
-import * as LucideIcons from 'lucide-react'
+import {
+  Award,
+  Bell,
+  BookOpen,
+  Bot,
+  Brain,
+  Briefcase,
+  Camera,
+  Code,
+  Coffee,
+  Compass,
+  Cpu,
+  Crown,
+  Database,
+  Eye,
+  File,
+  Filter,
+  Flame,
+  Folder,
+  GitBranch,
+  Gift,
+  Globe,
+  Hammer,
+  Heart,
+  Image,
+  Key,
+  Lightbulb,
+  Lock,
+  type LucideIcon,
+  Mail,
+  Map,
+  MessageSquare,
+  Music,
+  Navigation,
+  Package,
+  Phone,
+  Rocket,
+  Search,
+  Send,
+  Settings,
+  Shield,
+  Smile,
+  Sparkles,
+  Star,
+  Target,
+  Terminal,
+  Trophy,
+  Umbrella,
+  Wand2,
+  Wrench,
+  Zap,
+} from 'lucide-react'
 import React from 'react'
 
 import { AssistantIcon } from '../types/assistant.types'
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  Bot,
+  Sparkles,
+  Brain,
+  Zap,
+  Wand2,
+  MessageSquare,
+  Lightbulb,
+  Rocket,
+  Star,
+  Heart,
+  Smile,
+  Coffee,
+  Flame,
+  Crown,
+  Target,
+  BookOpen,
+  Cpu,
+  Database,
+  Code,
+  Terminal,
+  GitBranch,
+  Package,
+  Settings,
+  Wrench,
+  Hammer,
+  Shield,
+  Lock,
+  Key,
+  Eye,
+  Bell,
+  Music,
+  Camera,
+  Image,
+  File,
+  Folder,
+  Search,
+  Filter,
+  Send,
+  Mail,
+  Phone,
+  Globe,
+  Map,
+  Compass,
+  Navigation,
+  Briefcase,
+  Award,
+  Trophy,
+  Gift,
+  Umbrella,
+}
 
 /**
  * 默认助手图标
@@ -14,57 +117,7 @@ export const DEFAULT_ASSISTANT_ICON: AssistantIcon = {
 /**
  * 常用的 Lucide 图标列表（用于图标选择器）
  */
-export const PRESET_LUCIDE_ICONS = [
-  'Bot',
-  'Sparkles',
-  'Brain',
-  'Zap',
-  'Wand2',
-  'MessageSquare',
-  'Lightbulb',
-  'Rocket',
-  'Star',
-  'Heart',
-  'Smile',
-  'Coffee',
-  'Flame',
-  'Crown',
-  'Target',
-  'BookOpen',
-  'Cpu',
-  'Database',
-  'Code',
-  'Terminal',
-  'GitBranch',
-  'Package',
-  'Settings',
-  'Wrench',
-  'Hammer',
-  'Shield',
-  'Lock',
-  'Key',
-  'Eye',
-  'Bell',
-  'Music',
-  'Camera',
-  'Image',
-  'File',
-  'Folder',
-  'Search',
-  'Filter',
-  'Send',
-  'Mail',
-  'Phone',
-  'Globe',
-  'Map',
-  'Compass',
-  'Navigation',
-  'Briefcase',
-  'Award',
-  'Trophy',
-  'Gift',
-  'Umbrella',
-] as const
+export const PRESET_LUCIDE_ICONS = Object.keys(ICON_MAP) as readonly string[]
 
 /**
  * 常用的 Emoji 列表（用于图标选择器）
@@ -123,10 +176,6 @@ export const PRESET_EMOJIS = [
 
 /**
  * 渲染助手图标
- * @param icon - 图标配置对象，如果为 undefined 则使用默认图标
- * @param size - 图标大小（像素）
- * @param className - 额外的 CSS 类名
- * @returns React 元素
  */
 export const renderAssistantIcon = (
   icon: AssistantIcon | undefined,
@@ -135,7 +184,6 @@ export const renderAssistantIcon = (
 ): React.ReactElement => {
   const iconConfig = icon || DEFAULT_ASSISTANT_ICON
 
-  // 为不同类型的图标添加不同的类名
   const iconTypeClass =
     iconConfig.type === 'emoji' ? 'smtcmp-icon-emoji' : 'smtcmp-icon-lucide'
   const combinedClassName = className
@@ -150,29 +198,7 @@ export const renderAssistantIcon = (
     )
   }
 
-  // Lucide 图标
-  type LucideIconComponent = React.ComponentType<{
-    size?: number
-    className?: string
-  }>
-  const lucideIconMap = LucideIcons as unknown as Record<
-    string,
-    LucideIconComponent
-  >
-  const IconComponent = lucideIconMap[iconConfig.value]
-
-  if (!IconComponent) {
-    // 如果图标不存在，降级到默认图标
-    const DefaultIcon = lucideIconMap[DEFAULT_ASSISTANT_ICON.value]
-    return <DefaultIcon size={size} className={combinedClassName} />
-  }
-
+  const IconComponent =
+    ICON_MAP[iconConfig.value] ?? ICON_MAP[DEFAULT_ASSISTANT_ICON.value]
   return <IconComponent size={size} className={combinedClassName} />
-}
-
-/**
- * 检查 Lucide 图标名称是否有效
- */
-export const isValidLucideIcon = (iconName: string): boolean => {
-  return iconName in LucideIcons
 }
