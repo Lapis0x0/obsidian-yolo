@@ -1,6 +1,8 @@
 // 外部 CLI 流式事件总线
 // runner 往里 push，前端 hook 订阅后续事件并通过 getSnapshot 补齐历史
 
+import type { AsyncTaskRecord } from './async-task-registry'
+
 /** snapshot 中 stdout/stderr 字段的最大字符数（超出时从前端截断） */
 const SNAPSHOT_MAX_CHARS = 1 * 1024 * 1024 // 1MB chars
 const SNAPSHOT_TRUNCATION_MARKER = '... [front truncated] ...\n'
@@ -11,6 +13,12 @@ export type ExternalCliEvent =
   | { type: 'stdout'; toolCallId: string; chunk: string; ts: number }
   | { type: 'stderr'; toolCallId: string; chunk: string; ts: number }
   | { type: 'status'; toolCallId: string; status: ExternalCliStatus }
+  | {
+      type: 'task-completed'
+      taskId: string
+      conversationId: string
+      record: AsyncTaskRecord
+    }
 
 export type ExternalCliSnapshot = {
   stdout: string
@@ -30,9 +38,14 @@ function cappedSnapshotString(s: string): string {
   return SNAPSHOT_TRUNCATION_MARKER + s.slice(s.length - SNAPSHOT_MAX_CHARS)
 }
 
+type TaskCompletedSubscriber = (
+  event: Extract<ExternalCliEvent, { type: 'task-completed' }>,
+) => void
+
 export class ExternalCliStreamBus {
   private readonly snapshots = new Map<string, ExternalCliSnapshot>()
   private readonly subscribers = new Map<string, Set<Subscriber>>()
+  private readonly taskCompletedSubscribers = new Set<TaskCompletedSubscriber>()
 
   /** 订阅指定 toolCallId 的后续事件，返回取消订阅函数 */
   subscribe(toolCallId: string, fn: Subscriber): () => void {
@@ -50,8 +63,23 @@ export class ExternalCliStreamBus {
     }
   }
 
+  /** 订阅所有 task-completed 事件（供 ChatStore 使用） */
+  subscribeTaskCompleted(fn: TaskCompletedSubscriber): () => void {
+    this.taskCompletedSubscribers.add(fn)
+    return () => {
+      this.taskCompletedSubscribers.delete(fn)
+    }
+  }
+
   /** runner 推送事件；同时更新内存快照 */
   push(event: ExternalCliEvent): void {
+    if (event.type === 'task-completed') {
+      for (const fn of this.taskCompletedSubscribers) {
+        fn(event)
+      }
+      return
+    }
+
     const { toolCallId } = event
     const snap = this.snapshots.get(toolCallId) ?? {
       stdout: '',

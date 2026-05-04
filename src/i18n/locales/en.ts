@@ -1395,6 +1395,15 @@ export const en: TranslationKeys = {
       output: 'Output',
       abortedBeforeOutput: 'Aborted before any output was collected.',
     },
+    externalAgentResult: {
+      statusCompleted: 'Completed',
+      statusFailed: 'Failed',
+      statusCancelled: 'Cancelled',
+      statusTimedOut: 'Timed out',
+      statusKilledByShutdown: 'Stopped',
+      showOutput: 'Show output',
+      jumpToDelegate: 'Jump to original delegate message',
+    },
     conversationSettings: {
       openAria: 'Conversation settings',
       chatMemory: 'Chat memory',

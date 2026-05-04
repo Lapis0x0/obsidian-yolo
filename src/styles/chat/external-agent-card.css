@@ -2,6 +2,131 @@
  * 布局：状态条 → Progress（始终展开+自动滚底） → Output → metadata chips
  */
 
+/* ══════════════════════════════════════════════════════
+   异步派遣结果卡（external_agent_result message）
+   ══════════════════════════════════════════════════════ */
+
+.yolo-external-agent-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  padding: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  font-size: var(--font-ui-small);
+  background: var(--background-secondary);
+}
+
+.yolo-external-agent-result-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex-wrap: wrap;
+}
+
+.yolo-external-agent-result-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: 2px var(--size-2-2);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.yolo-external-agent-result-card__badge--completed {
+  background-color: var(--background-modifier-success);
+  color: var(--text-success);
+}
+
+.yolo-external-agent-result-card__badge--failed {
+  background-color: var(--background-modifier-error);
+  color: var(--text-error);
+}
+
+.yolo-external-agent-result-card__badge--cancelled {
+  background-color: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.yolo-external-agent-result-card__title {
+  font-weight: var(--font-medium);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-external-agent-result-card__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-external-agent-result-card__link-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  flex-shrink: 0;
+}
+
+.yolo-external-agent-result-card__link-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.yolo-external-agent-result-card__details {
+  margin: 0;
+}
+
+.yolo-external-agent-result-card__summary {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.yolo-external-agent-result-card__summary:hover {
+  color: var(--text-normal);
+}
+
+.yolo-external-agent-result-card__section {
+  margin-top: var(--size-4-2);
+}
+
+.yolo-external-agent-result-card__section-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: var(--size-2-1);
+}
+
+.yolo-external-agent-result-card__console {
+  margin: 0;
+  padding: var(--size-4-2);
+  background: var(--code-background);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  font-family: var(--font-monospace);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.yolo-external-agent-result-card__console--progress {
+  color: var(--text-muted);
+}
+
 .yolo-external-agent-card {
   display: flex;
   flex-direction: column;

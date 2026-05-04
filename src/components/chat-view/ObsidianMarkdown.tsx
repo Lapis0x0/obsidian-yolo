@@ -94,33 +94,53 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
   const chatView = useChatView()
   const containerRef = useRef<HTMLDivElement>(null)
   const previousContentRef = useRef('')
+  const renderTokenRef = useRef(0)
 
   const renderMarkdown = useCallback(async () => {
-    if (containerRef.current) {
-      const appendedTextLength = animateIncrementalText
-        ? getAppendedTextLength(previousContentRef.current, content)
-        : 0
-
-      // Use safe DOM API to clear existing children instead of assigning innerHTML
-      containerRef.current.replaceChildren()
-      await MarkdownRenderer.render(
-        app,
-        content,
-        containerRef.current,
-        app.workspace.getActiveFile()?.path ?? '',
-        chatView,
-      )
-
-      setupMarkdownLinks(
-        app,
-        containerRef.current,
-        app.workspace.getActiveFile()?.path ?? '',
-      )
-      annotateRenderedLatex(containerRef.current, content)
-      syncRenderedLatexSelection(containerRef.current)
-
-      highlightTrailingFreshText(containerRef.current, appendedTextLength)
+    const containerEl = containerRef.current
+    if (!containerEl) {
+      return
     }
+
+    const appendedTextLength = animateIncrementalText
+      ? getAppendedTextLength(previousContentRef.current, content)
+      : 0
+
+    const renderToken = ++renderTokenRef.current
+
+    // Render into a detached staging element so the live container keeps its
+    // current children (and therefore its scrollHeight) throughout the async
+    // render. The previous "replaceChildren() then await render()" pattern
+    // briefly emptied the container, which let the browser clamp scrollTop —
+    // surfacing as a scroll-jump to the top of long message bubbles when the
+    // user scrolled past one (issue #258).
+    const staging = document.createElement('div')
+    await MarkdownRenderer.render(
+      app,
+      content,
+      staging,
+      app.workspace.getActiveFile()?.path ?? '',
+      chatView,
+    )
+
+    // Drop stale renders (a newer invocation has taken over) and guard against
+    // unmount during the await.
+    if (renderToken !== renderTokenRef.current || !containerRef.current) {
+      return
+    }
+
+    // Atomic swap: scrollHeight transitions oldHeight → newHeight in one frame
+    // with no zero-height window, so the scroll position is preserved.
+    containerRef.current.replaceChildren(...Array.from(staging.childNodes))
+
+    setupMarkdownLinks(
+      app,
+      containerRef.current,
+      app.workspace.getActiveFile()?.path ?? '',
+    )
+    annotateRenderedLatex(containerRef.current, content)
+    syncRenderedLatexSelection(containerRef.current)
+    highlightTrailingFreshText(containerRef.current, appendedTextLength)
 
     previousContentRef.current = content
   }, [animateIncrementalText, app, content, chatView])

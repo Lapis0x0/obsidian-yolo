@@ -29,6 +29,22 @@ jest.mock('./streamBus', () => ({
   },
 }))
 
+// ── 模拟 async-task-registry ──
+const registerMock = jest.fn()
+const updateMock = jest.fn()
+const getMock = jest.fn()
+jest.mock('./async-task-registry', () => ({
+  asyncTaskRegistry: {
+    register: registerMock,
+    update: updateMock,
+    get: getMock,
+    abort: jest.fn(),
+    abortAll: jest.fn(),
+    listByConversation: jest.fn().mockReturnValue([]),
+    abortAllForConversation: jest.fn(),
+  },
+}))
+
 // ── 模拟 child_process ──
 let mockChild: MockChild
 const allMockChildren: MockChild[] = []
@@ -73,6 +89,7 @@ jest.mock('node:fs/promises', () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory 需要 require 语法
 jest.mock('node:path', () => require('path'))
 
+import type { RunExternalAgentResult } from './runner'
 import { killAllActiveExternalCli, runExternalAgent } from './runner'
 
 // 阻止真实 process.kill 调用（进程树 kill 需要负 PID，在测试中不可用）
@@ -118,7 +135,7 @@ describe('runExternalAgent', () => {
       prompt: 'hello',
     })
     simulateSuccess('output text')
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     expect(result.stdout).toBe('output text')
     expect(result.exitCode).toBe(0)
     expect(result.truncated).toBeUndefined()
@@ -136,7 +153,7 @@ describe('runExternalAgent', () => {
       mockChild.stdout.emit('data', Buffer.from('partial output'))
       mockChild.emit('close', 1)
     })
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     expect(result.stdout).toBe('partial output')
     expect(result.exitCode).toBe(1)
   })
@@ -161,7 +178,7 @@ describe('runExternalAgent', () => {
       })
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     expect(result.stdout).toBe('some output')
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest spy 断言必须引用原始方法
     expect(process.kill).toHaveBeenCalledWith(-mockChild.pid, 'SIGTERM')
@@ -213,7 +230,7 @@ describe('runExternalAgent', () => {
       mockChild.emit('close', 0)
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     expect(result.truncated).toBeDefined()
     expect(result.truncated?.totalBytes).toBe(MB + 100)
     expect(result.truncated?.omittedBytes).toBeGreaterThan(0)
@@ -239,7 +256,7 @@ describe('runExternalAgent', () => {
       mockChild.emit('close', 0)
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
 
     // truncated 应存在，且 totalBytes 等于实际输入
     expect(result.truncated).toBeDefined()
@@ -354,7 +371,7 @@ describe('runExternalAgent', () => {
       mockChild.emit('close', 0)
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     // 应该被截断（总大小 > 1MB）
     expect(result.truncated).toBeDefined()
     // 截断结果应为合法 UTF-8（能正常解码而不出现 replacement char 问题）
@@ -382,7 +399,7 @@ describe('runExternalAgent', () => {
       mockChild.emit('close', 0)
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     // 800KB < 1MB，应该全量保留，不截断
     expect(result.truncated).toBeUndefined()
     // 输出长度应等于原始大小（ASCII 字符，字节 == 字符数）
@@ -415,7 +432,7 @@ describe('runExternalAgent', () => {
       mockChild.emit('close', 0)
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     expect(result.truncated).toBeDefined()
     // 不含 UTF-8 replacement char（U+FFFD）
     expect(result.stdout).not.toContain('�')
@@ -446,8 +463,131 @@ describe('runExternalAgent', () => {
       }, 200)
     })
 
-    const result = await promise
+    const result = (await promise) as RunExternalAgentResult
     expect(result.timedOut).toBe(true)
     expect(result.stdout).toBe('partial output before timeout')
   }, 5000)
+})
+
+describe('runExternalAgent — async mode', () => {
+  beforeEach(() => {
+    registerMock.mockClear()
+    updateMock.mockClear()
+    getMock.mockClear()
+  })
+
+  it('mode=async — 立刻返回占位结果，不等待进程', async () => {
+    const abortController = new AbortController()
+    getMock.mockReturnValue({
+      taskId: 'ext_test001',
+      conversationId: 'conv-1',
+      provider: 'codex',
+      title: 'test task',
+      status: 'completed',
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+      stdoutBuffer: 'output text',
+      stderrBuffer: '',
+      exitCode: 0,
+      abortController,
+      source: {
+        type: 'llm_tool_call',
+        toolCallId: 'tc-async',
+        assistantMessageId: 'msg-1',
+      },
+    })
+
+    const promise = runExternalAgent({
+      toolCallId: 'tc-async',
+      provider: 'codex',
+      workingDirectory: '/tmp',
+      sandboxMode: 'read-only',
+      prompt: 'async test task prompt',
+      mode: 'async',
+      taskId: 'ext_test001',
+      conversationId: 'conv-1',
+      source: {
+        type: 'llm_tool_call',
+        toolCallId: 'tc-async',
+        assistantMessageId: 'msg-1',
+      },
+    })
+
+    // mode=async 应立刻 resolve，无需等待 close 事件
+    const result = await promise
+    expect('accepted' in result).toBe(true)
+    if ('accepted' in result) {
+      expect(result.accepted).toBe(true)
+      expect(result.taskId).toBe('ext_test001')
+      expect(result.status).toBe('running')
+    }
+
+    // registry.register 应该被调用
+    expect(registerMock).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: 'ext_test001' }),
+    )
+
+    // 模拟进程完成（后台）
+    simulateSuccess('output text')
+  })
+
+  it('mode=async — 进程完成后 emit task-completed 事件', async () => {
+    const abortController = new AbortController()
+    const completedRecord = {
+      taskId: 'ext_test002',
+      conversationId: 'conv-2',
+      provider: 'codex' as const,
+      title: 'another task',
+      status: 'completed' as const,
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+      stdoutBuffer: 'done output',
+      stderrBuffer: '',
+      exitCode: 0,
+      abortController,
+      source: {
+        type: 'llm_tool_call' as const,
+        toolCallId: 'tc-async2',
+        assistantMessageId: 'msg-2',
+      },
+    }
+    getMock.mockReturnValue(completedRecord)
+
+    const promise = runExternalAgent({
+      toolCallId: 'tc-async2',
+      provider: 'codex',
+      workingDirectory: '/tmp',
+      sandboxMode: 'read-only',
+      prompt: 'task 2',
+      mode: 'async',
+      taskId: 'ext_test002',
+      conversationId: 'conv-2',
+      source: {
+        type: 'llm_tool_call',
+        toolCallId: 'tc-async2',
+        assistantMessageId: 'msg-2',
+      },
+    })
+    await promise
+
+    // 模拟进程完成
+    await new Promise<void>((resolve) => {
+      simulateSuccess('done output')
+      setImmediate(resolve)
+    })
+
+    // registry.update 应该被调用
+    expect(updateMock).toHaveBeenCalledWith(
+      'ext_test002',
+      expect.objectContaining({ status: 'completed', exitCode: 0 }),
+    )
+
+    // streamBus.push 应该有 task-completed 事件
+    expect(pushMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'task-completed',
+        taskId: 'ext_test002',
+      }),
+    )
+  })
 })

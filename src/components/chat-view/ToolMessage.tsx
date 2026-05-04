@@ -227,10 +227,13 @@ const isDelegateExternalAgentRequest = (request: ToolRequestLike): boolean => {
 
 const extractExternalAgentArgs = (
   rawArguments?: ToolCallRequest['arguments'],
-): { provider?: string; model?: string; workingDirectory?: string } | undefined => {
+):
+  | { provider?: string; model?: string; workingDirectory?: string }
+  | undefined => {
   const parsed = getToolCallArgumentsObject(rawArguments)
   if (!parsed) return undefined
-  const provider = typeof parsed.provider === 'string' ? parsed.provider : undefined
+  const provider =
+    typeof parsed.provider === 'string' ? parsed.provider : undefined
   const model = typeof parsed.model === 'string' ? parsed.model : undefined
   const workingDirectory =
     typeof parsed.workingDirectory === 'string'

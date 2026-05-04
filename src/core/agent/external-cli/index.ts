@@ -2,9 +2,14 @@
 // Platform.isDesktop 守卫 + 懒加载 runner（保持 mobile 安全）
 import { Platform } from 'obsidian'
 
-import type { RunExternalAgentParams, RunExternalAgentResult } from './runner'
+import type {
+  AsyncPlaceholderResult,
+  RunExternalAgentParams,
+  RunExternalAgentResult,
+} from './runner'
 
 export type {
+  AsyncPlaceholderResult,
   ExternalAgentProvider,
   RunExternalAgentParams,
   RunExternalAgentResult,
@@ -22,7 +27,7 @@ export type {
  */
 export async function runExternalAgent(
   params: RunExternalAgentParams,
-): Promise<RunExternalAgentResult> {
+): Promise<RunExternalAgentResult | AsyncPlaceholderResult> {
   if (!Platform.isDesktop) {
     throw new Error('External agent delegation is only available on desktop.')
   }

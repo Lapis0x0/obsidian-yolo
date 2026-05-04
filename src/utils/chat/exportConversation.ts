@@ -151,6 +151,8 @@ function groupSerializedAssistantAndToolMessages(
     ) => {
       if (message.role === 'user') {
         acc.push(message)
+      } else if (message.role === 'external_agent_result') {
+        // external_agent_result messages are not exported to markdown
       } else {
         const lastItem = acc[acc.length - 1]
         if (

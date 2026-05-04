@@ -13,6 +13,9 @@ import { StringDecoder } from 'node:string_decoder'
 
 import { shellEnvSync } from 'shell-env'
 
+import type { TaskSource } from '../../../types/chat'
+
+import { type AsyncTaskRecord, asyncTaskRegistry } from './async-task-registry'
 import { ClaudeStreamParser } from './claudeStreamParser'
 import { externalCliStreamBus } from './streamBus'
 import { stripAnsi } from './stripAnsi'
@@ -55,6 +58,25 @@ export type RunExternalAgentParams = {
   model?: string
   timeoutSeconds?: number
   signal?: AbortSignal
+  /** 执行模式；默认 sync */
+  mode?: 'sync' | 'async'
+  /** async 模式必需：任务唯一 ID */
+  taskId?: string
+  /** async 模式必需：关联的会话 ID */
+  conversationId?: string
+  /** async 模式必需：任务来源 */
+  source?: TaskSource
+  /** async 模式：供 UI 显示的短标题（从 prompt 截取） */
+  title?: string
+}
+
+export type AsyncPlaceholderResult = {
+  accepted: true
+  taskId: string
+  title: string
+  provider: ExternalAgentProvider
+  status: 'running'
+  note: string
 }
 
 export type RunExternalAgentResult = {
@@ -254,10 +276,15 @@ class CappedOutputCollector {
   }
 }
 
+// 从 prompt 截取短标题（去换行合并空白，最多 60 字符）
+function deriveTitleFromPrompt(prompt: string): string {
+  return prompt.replace(/\s+/g, ' ').trim().slice(0, 60)
+}
+
 // ────────── 主函数 ──────────
 export async function runExternalAgent(
   params: RunExternalAgentParams,
-): Promise<RunExternalAgentResult> {
+): Promise<RunExternalAgentResult | AsyncPlaceholderResult> {
   const {
     toolCallId,
     provider,
@@ -266,7 +293,12 @@ export async function runExternalAgent(
     prompt,
     model,
     timeoutSeconds,
-    signal,
+    signal: externalSignal,
+    mode,
+    taskId,
+    conversationId,
+    source,
+    title,
   } = params
 
   // ── 平台守卫 ──
@@ -275,7 +307,7 @@ export async function runExternalAgent(
   }
 
   // ── signal.aborted 早检查（必修 5）──
-  if (signal?.aborted) {
+  if (externalSignal?.aborted) {
     throw new Error('Aborted before start')
   }
 
@@ -320,9 +352,7 @@ export async function runExternalAgent(
     }
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ENOENT' || code === 'ENOTDIR') {
-      throw new Error(
-        `workingDirectory does not exist: ${workingDirectory}`,
-      )
+      throw new Error(`workingDirectory does not exist: ${workingDirectory}`)
     }
     if (code === 'EACCES') {
       throw new Error(
@@ -420,6 +450,36 @@ export async function runExternalAgent(
 
   externalCliStreamBus.push({ type: 'status', toolCallId, status: 'running' })
 
+  // ── async 模式：注册 registry，最终 resolve 后在后台继续跑 ──
+  const isAsync = mode === 'async'
+  const resolvedTitle = title ?? deriveTitleFromPrompt(prompt)
+
+  let asyncRecord: AsyncTaskRecord | undefined
+  let effectiveSignal = externalSignal
+  if (isAsync && taskId && conversationId && source) {
+    const abortController = new AbortController()
+    // 如果外部传了 signal，串联到我们自己的 abortController
+    externalSignal?.addEventListener('abort', () => abortController.abort(), {
+      once: true,
+    })
+    asyncRecord = {
+      taskId,
+      source,
+      conversationId,
+      provider,
+      title: resolvedTitle,
+      status: 'running',
+      createdAt: Date.now(),
+      stdoutBuffer: '',
+      stderrBuffer: '',
+      exitCode: null,
+      abortController,
+    }
+    asyncTaskRegistry.register(asyncRecord)
+    // 用 asyncRecord 的 abortController.signal 作为进程中止信号
+    effectiveSignal = abortController.signal
+  }
+
   // ── 采集输出（字节级，内存上限 ≈ 512KB per stream） ──
   const stderrCollector = new CappedOutputCollector()
 
@@ -435,6 +495,9 @@ export async function runExternalAgent(
         chunk: stripAnsi(chunk.toString('utf8')),
         ts: Date.now(),
       })
+      if (asyncRecord) {
+        asyncRecord.stdoutBuffer += stripAnsi(chunk.toString('utf8'))
+      }
     })
 
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -445,6 +508,9 @@ export async function runExternalAgent(
         chunk: stripAnsi(chunk.toString('utf8')),
         ts: Date.now(),
       })
+      if (asyncRecord) {
+        asyncRecord.stderrBuffer += stripAnsi(chunk.toString('utf8'))
+      }
     })
 
     // ── 进程树 kill 函数 ──
@@ -470,61 +536,123 @@ export async function runExternalAgent(
     activeProcesses.delete(placeholder)
     activeProcesses.add(killProcess)
 
-    // ── 返回 Promise ──
-    return new Promise<RunExternalAgentResult>((resolve, reject) => {
-      let timedOut = false
-      const timeoutId: ReturnType<typeof setTimeout> | undefined =
-        timeoutSeconds !== undefined
-          ? setTimeout(() => {
-              timedOut = true
-              killProcess()
-            }, timeoutSeconds * 1000)
-          : undefined
+    // ── 后台完成处理（async 模式 close 后 emit task-completed）──
+    const handleClose = (code: number | null, timedOut: boolean) => {
+      if (!asyncRecord) return
+      const { text: stdoutText } = stdoutCollector.finalize()
+      const { text: stderrText } = stderrCollector.finalize()
+      const completedAt = Date.now()
 
-      const onAbort = () => {
-        killProcess()
-        clearTimeout(timeoutId)
+      let finalStatus: AsyncTaskRecord['status']
+      if (asyncRecord.abortController.signal.aborted) {
+        // 判断是 plugin unload 导致的 abortAll 还是用户主动取消
+        finalStatus = 'cancelled'
+      } else if (timedOut) {
+        finalStatus = 'timed_out'
+      } else if (code === 0) {
+        finalStatus = 'completed'
+      } else {
+        finalStatus = 'failed'
       }
-      signal?.addEventListener('abort', onAbort, { once: true })
 
-      child.on('error', (err) => {
-        clearTimeout(timeoutId)
-        clearTimeout(killTimer ?? 0)
-        signal?.removeEventListener('abort', onAbort)
-        activeProcesses.delete(killProcess)
-        externalCliStreamBus.push({
-          type: 'status',
-          toolCallId,
-          status: 'done',
-        })
-        reject(err)
+      asyncTaskRegistry.update(asyncRecord.taskId, {
+        status: finalStatus,
+        completedAt,
+        stdoutBuffer: stdoutText,
+        stderrBuffer: stderrText,
+        exitCode: code,
       })
 
-      child.on('close', (code) => {
-        clearTimeout(timeoutId)
-        if (killTimer) clearTimeout(killTimer)
-        signal?.removeEventListener('abort', onAbort)
-        activeProcesses.delete(killProcess)
+      const updatedRecord = asyncTaskRegistry.get(asyncRecord.taskId)
+      if (updatedRecord) {
         externalCliStreamBus.push({
-          type: 'status',
-          toolCallId,
-          status: 'done',
+          type: 'task-completed',
+          taskId: asyncRecord.taskId,
+          conversationId: asyncRecord.conversationId,
+          record: updatedRecord,
+        })
+      }
+    }
+
+    // ── 返回 Promise ──
+    const syncPromise = new Promise<RunExternalAgentResult>(
+      (resolve, reject) => {
+        let timedOut = false
+        const timeoutId: ReturnType<typeof setTimeout> | undefined =
+          timeoutSeconds !== undefined
+            ? setTimeout(() => {
+                timedOut = true
+                killProcess()
+              }, timeoutSeconds * 1000)
+            : undefined
+
+        const onAbort = () => {
+          killProcess()
+          clearTimeout(timeoutId)
+        }
+        effectiveSignal?.addEventListener('abort', onAbort, { once: true })
+
+        child.on('error', (err) => {
+          clearTimeout(timeoutId)
+          clearTimeout(killTimer ?? 0)
+          effectiveSignal?.removeEventListener('abort', onAbort)
+          activeProcesses.delete(killProcess)
+          externalCliStreamBus.push({
+            type: 'status',
+            toolCallId,
+            status: 'done',
+          })
+          if (asyncRecord) {
+            handleClose(null, false)
+          }
+          reject(err)
         })
 
-        const { text: stdoutText, truncated } = stdoutCollector.finalize()
-        const { text: stderrText, truncated: stderrTruncated } =
-          stderrCollector.finalize()
+        child.on('close', (code) => {
+          clearTimeout(timeoutId)
+          if (killTimer) clearTimeout(killTimer)
+          effectiveSignal?.removeEventListener('abort', onAbort)
+          activeProcesses.delete(killProcess)
+          externalCliStreamBus.push({
+            type: 'status',
+            toolCallId,
+            status: 'done',
+          })
 
-        resolve({
-          stdout: stdoutText,
-          stderr: stderrText,
-          exitCode: code,
-          truncated,
-          stderrTruncated,
-          ...(timedOut ? { timedOut: true } : {}),
+          const { text: stdoutText, truncated } = stdoutCollector.finalize()
+          const { text: stderrText, truncated: stderrTruncated } =
+            stderrCollector.finalize()
+
+          if (asyncRecord) {
+            handleClose(code, timedOut)
+          }
+
+          resolve({
+            stdout: stdoutText,
+            stderr: stderrText,
+            exitCode: code,
+            truncated,
+            stderrTruncated,
+            ...(timedOut ? { timedOut: true } : {}),
+          })
         })
-      })
-    })
+      },
+    )
+
+    if (isAsync && asyncRecord) {
+      // 后台跑，不 await；错误不上抛（子进程失败已通过 task-completed 事件传出）
+      syncPromise.catch(() => {})
+      return {
+        accepted: true,
+        taskId: asyncRecord.taskId,
+        title: resolvedTitle,
+        provider,
+        status: 'running',
+        note: 'Task started asynchronously. The result will arrive as a follow-up event when the subprocess completes.',
+      } satisfies AsyncPlaceholderResult
+    }
+
+    return syncPromise
   }
 
   // ── claude-code 分支：stream-json 解析 ──
@@ -540,6 +668,9 @@ export async function runExternalAgent(
         chunk: progressChunk,
         ts: Date.now(),
       })
+      if (asyncRecord) {
+        asyncRecord.stderrBuffer += progressChunk
+      }
     },
     onText: (chunk) => {
       finalTextCollector.push(Buffer.from(chunk, 'utf8'))
@@ -549,6 +680,9 @@ export async function runExternalAgent(
         chunk,
         ts: Date.now(),
       })
+      if (asyncRecord) {
+        asyncRecord.stdoutBuffer += chunk
+      }
     },
   })
 
@@ -605,57 +739,125 @@ export async function runExternalAgent(
   activeProcesses.delete(placeholder)
   activeProcesses.add(killProcess)
 
-  // ── 返回 Promise ──
-  return new Promise<RunExternalAgentResult>((resolve, reject) => {
-    // 超时标志（必修 4）：不在 setTimeout 里 reject，让 close 事件正常 resolve。
-    // 仅当显式传入 timeoutSeconds 时启用 timer；不传则不超时（劳务派遣类任务可能跑很久，由用户主动取消）。
-    let timedOut = false
-    const timeoutId: ReturnType<typeof setTimeout> | undefined =
-      timeoutSeconds !== undefined
-        ? setTimeout(() => {
-            timedOut = true
-            killProcess()
-          }, timeoutSeconds * 1000)
-        : undefined
+  // ── 后台完成处理（async 模式 close 后 emit task-completed）──
+  const handleCloseAsync = (code: number | null, timedOut: boolean) => {
+    if (!asyncRecord) return
+    const { text: stdoutText } = finalTextCollector.finalize()
+    const { text: stderrText } = stderrCollector.finalize()
+    const completedAt = Date.now()
 
-    // 外部 abort signal
-    const onAbort = () => {
-      killProcess()
-      // resolve（而非 reject）以便调用方获取已采集的输出
-      clearTimeout(timeoutId)
+    let finalStatus: AsyncTaskRecord['status']
+    if (asyncRecord.abortController.signal.aborted) {
+      finalStatus = 'cancelled'
+    } else if (timedOut) {
+      finalStatus = 'timed_out'
+    } else if (code === 0) {
+      finalStatus = 'completed'
+    } else {
+      finalStatus = 'failed'
     }
-    signal?.addEventListener('abort', onAbort, { once: true })
 
-    child.on('error', (err) => {
-      clearTimeout(timeoutId)
-      clearTimeout(killTimer ?? 0)
-      signal?.removeEventListener('abort', onAbort)
-      activeProcesses.delete(killProcess)
-      finishParserOnce()
-      externalCliStreamBus.push({ type: 'status', toolCallId, status: 'done' })
-      reject(err)
+    asyncTaskRegistry.update(asyncRecord.taskId, {
+      status: finalStatus,
+      completedAt,
+      stdoutBuffer: stdoutText,
+      stderrBuffer: stderrText,
+      exitCode: code,
     })
 
-    child.on('close', (code) => {
-      clearTimeout(timeoutId)
-      if (killTimer) clearTimeout(killTimer)
-      signal?.removeEventListener('abort', onAbort)
-      activeProcesses.delete(killProcess)
-      finishParserOnce()
-      externalCliStreamBus.push({ type: 'status', toolCallId, status: 'done' })
-
-      const { text: stdoutText, truncated } = finalTextCollector.finalize()
-      const { text: stderrText, truncated: stderrTruncated } =
-        stderrCollector.finalize()
-
-      resolve({
-        stdout: stdoutText,
-        stderr: stderrText,
-        exitCode: code,
-        truncated,
-        stderrTruncated,
-        ...(timedOut ? { timedOut: true } : {}),
+    const updatedRecord = asyncTaskRegistry.get(asyncRecord.taskId)
+    if (updatedRecord) {
+      externalCliStreamBus.push({
+        type: 'task-completed',
+        taskId: asyncRecord.taskId,
+        conversationId: asyncRecord.conversationId,
+        record: updatedRecord,
       })
-    })
-  })
+    }
+  }
+
+  // ── 返回 Promise ──
+  const claudeSyncPromise = new Promise<RunExternalAgentResult>(
+    (resolve, reject) => {
+      // 超时标志（必修 4）：不在 setTimeout 里 reject，让 close 事件正常 resolve。
+      // 仅当显式传入 timeoutSeconds 时启用 timer；不传则不超时（劳务派遣类任务可能跑很久，由用户主动取消）。
+      let timedOut = false
+      const timeoutId: ReturnType<typeof setTimeout> | undefined =
+        timeoutSeconds !== undefined
+          ? setTimeout(() => {
+              timedOut = true
+              killProcess()
+            }, timeoutSeconds * 1000)
+          : undefined
+
+      // 外部 abort signal
+      const onAbort = () => {
+        killProcess()
+        // resolve（而非 reject）以便调用方获取已采集的输出
+        clearTimeout(timeoutId)
+      }
+      effectiveSignal?.addEventListener('abort', onAbort, { once: true })
+
+      child.on('error', (err) => {
+        clearTimeout(timeoutId)
+        clearTimeout(killTimer ?? 0)
+        effectiveSignal?.removeEventListener('abort', onAbort)
+        activeProcesses.delete(killProcess)
+        finishParserOnce()
+        externalCliStreamBus.push({
+          type: 'status',
+          toolCallId,
+          status: 'done',
+        })
+        if (asyncRecord) {
+          handleCloseAsync(null, false)
+        }
+        reject(err)
+      })
+
+      child.on('close', (code) => {
+        clearTimeout(timeoutId)
+        if (killTimer) clearTimeout(killTimer)
+        effectiveSignal?.removeEventListener('abort', onAbort)
+        activeProcesses.delete(killProcess)
+        finishParserOnce()
+        externalCliStreamBus.push({
+          type: 'status',
+          toolCallId,
+          status: 'done',
+        })
+
+        const { text: stdoutText, truncated } = finalTextCollector.finalize()
+        const { text: stderrText, truncated: stderrTruncated } =
+          stderrCollector.finalize()
+
+        if (asyncRecord) {
+          handleCloseAsync(code, timedOut)
+        }
+
+        resolve({
+          stdout: stdoutText,
+          stderr: stderrText,
+          exitCode: code,
+          truncated,
+          stderrTruncated,
+          ...(timedOut ? { timedOut: true } : {}),
+        })
+      })
+    },
+  )
+
+  if (isAsync && asyncRecord) {
+    claudeSyncPromise.catch(() => {})
+    return {
+      accepted: true,
+      taskId: asyncRecord.taskId,
+      title: resolvedTitle,
+      provider,
+      status: 'running',
+      note: 'Task started asynchronously. The result will arrive as a follow-up event when the subprocess completes.',
+    } satisfies AsyncPlaceholderResult
+  }
+
+  return claudeSyncPromise
 }

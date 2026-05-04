@@ -1364,6 +1364,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [agentService])
 
+  // Auto-run when external agent results arrive for the current conversation
+  useEffect(() => {
+    const unsubscribe = agentService.subscribeToPendingExternalAgentResults(
+      (conversationId) => {
+        if (conversationId !== currentConversationId) return
+        if (agentService.isRunning(conversationId)) return
+        // Pull the latest messages directly from AgentService — the React
+        // closure's `chatMessages` is stale at this point because the result
+        // was just appended synchronously and React hasn't re-rendered yet.
+        const latestMessages = agentService.getState(conversationId).messages
+        submitChatMutation.mutate({
+          chatMessages: latestMessages,
+          conversationId,
+        })
+      },
+    )
+    return () => {
+      unsubscribe()
+    }
+  }, [agentService, currentConversationId, submitChatMutation])
+
   const serializeMessageModelMap = useCallback(
     (
       messages: ChatMessage[],
@@ -4242,6 +4263,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               void persistConversation(chatMessagesStateRef.current)
             }}
             onQuoteAssistantSelection={handleQuoteAssistantSelection}
+            onFocusMessage={(messageId) => {
+              document
+                .querySelector(`[data-message-id="${messageId}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+            }}
             onOpenEditSummaryFile={handleOpenEditSummaryFile}
             onUndoEditSummary={handleUndoEditSummary}
             undoingEditSummaryTarget={undoingEditSummaryTarget}

@@ -33,6 +33,7 @@ import AssistantMessageEditor from './AssistantMessageEditor'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
+import { ExternalAgentResultCard } from './tool-cards/ExternalAgentResultCard'
 import ToolMessage from './ToolMessage'
 
 const getBranchStateLabel = (
@@ -87,7 +88,10 @@ const getBranchTabState = (
   messages: AssistantToolMessageGroup,
 ): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
-  const latestMetadata = latestMessage?.metadata
+  const latestMetadata =
+    latestMessage?.role !== 'external_agent_result'
+      ? latestMessage?.metadata
+      : undefined
 
   if (latestMetadata?.branchWaitingApproval) {
     return 'waiting-approval'
@@ -122,7 +126,10 @@ const getMessageGroupRunState = ({
   conversationRunSummary?: AgentConversationRunSummary
 }): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
-  const latestMetadata = latestMessage?.metadata
+  const latestMetadata =
+    latestMessage?.role !== 'external_agent_result'
+      ? latestMessage?.metadata
+      : undefined
 
   if (latestMetadata?.branchWaitingApproval) {
     return 'waiting-approval'
@@ -201,6 +208,7 @@ export type AssistantToolMessageGroupItemProps = {
     conversationId: string
     content: string
   }) => void
+  onFocusMessage?: (messageId: string) => void
   onOpenEditSummaryFile: (file: GroupEditSummary['files'][number]) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
@@ -238,6 +246,7 @@ export default function AssistantToolMessageGroupItem({
   onBranchGroup,
   onActiveBranchChange,
   onQuoteAssistantSelection,
+  onFocusMessage,
   onOpenEditSummaryFile,
   onUndoEditSummary,
   undoingEditSummaryTarget,
@@ -265,21 +274,15 @@ export default function AssistantToolMessageGroupItem({
       }
     >()
     messages.forEach((message) => {
-      const branchId =
-        message.role === 'assistant'
-          ? message.metadata?.branchId
-          : message.metadata?.branchId
+      const branchId = message.metadata?.branchId
       if (!branchId) {
         return
       }
       const branchLabel =
-        message.role === 'assistant'
+        message.role !== 'external_agent_result'
           ? message.metadata?.branchLabel
-          : message.metadata?.branchLabel
-      const branchConversationId =
-        message.role === 'assistant'
-          ? message.metadata?.branchConversationId
-          : message.metadata?.branchConversationId
+          : undefined
+      const branchConversationId = message.metadata?.branchConversationId
       const existing = groups.get(branchId)
       if (existing) {
         existing.messages.push(message)
@@ -681,6 +684,13 @@ export default function AssistantToolMessageGroupItem({
                 )}
             </div>
           ) : null
+        ) : message.role === 'external_agent_result' ? (
+          <div key={message.id}>
+            <ExternalAgentResultCard
+              message={message}
+              onFocusDelegateMessage={onFocusMessage}
+            />
+          </div>
         ) : (
           <div key={message.id}>
             <ToolMessage

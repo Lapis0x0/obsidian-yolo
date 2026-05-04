@@ -36,9 +36,7 @@ async function getDirPath(
   settings?: YoloSettingsLike | null,
 ): Promise<string> {
   const rootDir = await ensureJsonDbRootDir(app, settings)
-  return normalizePath(
-    `${rootDir}/${CHAT_DIR}/${EXTERNAL_AGENT_PROGRESS_DIR}`,
-  )
+  return normalizePath(`${rootDir}/${CHAT_DIR}/${EXTERNAL_AGENT_PROGRESS_DIR}`)
 }
 
 async function getFilePath(

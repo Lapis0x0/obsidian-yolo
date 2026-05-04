@@ -22,6 +22,7 @@ import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
+  ChatExternalAgentResultMessage,
   ChatMessage,
   ChatSelectedSkill,
   ChatToolMessage,
@@ -60,6 +61,7 @@ import {
   type ContextualInjection,
   appendContextualInjectionsToLastUserMessage,
 } from './contextual-injections'
+import { serializeExternalAgentResultToUserMessage } from './externalAgentResultSerializer'
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
@@ -423,6 +425,11 @@ export class RequestContextBuilder {
             continue
           }
 
+          if (message.role === 'external_agent_result') {
+            requestMessages.push(this.parseExternalAgentResultMessage(message))
+            continue
+          }
+
           requestMessages.push(
             ...this.parseToolMessage({ message, prunedToolCallIds }),
           )
@@ -456,6 +463,11 @@ export class RequestContextBuilder {
         requestMessages.push(
           ...this.parseAssistantMessage({ message, prunedToolCallIds }),
         )
+        continue
+      }
+
+      if (message.role === 'external_agent_result') {
+        requestMessages.push(this.parseExternalAgentResultMessage(message))
         continue
       }
 
@@ -669,6 +681,12 @@ ${message.annotations
       name,
       arguments: createCompleteToolCallArguments({ value: args }),
     }
+  }
+
+  private parseExternalAgentResultMessage(
+    message: ChatExternalAgentResultMessage,
+  ): RequestMessage {
+    return serializeExternalAgentResultToUserMessage(message)
   }
 
   private parseToolMessage({

@@ -141,6 +141,10 @@ function estimateAssistantGroupHeight(
       return sum + estimateAssistantMessageHeight(message)
     }
 
+    if (message.role === 'external_agent_result') {
+      return sum + 120 // estimated height for external agent result card
+    }
+
     return sum + estimateToolMessageHeight(message)
   }, 0)
 

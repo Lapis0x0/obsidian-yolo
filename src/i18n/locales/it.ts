@@ -1401,6 +1401,15 @@ export const it: TranslationKeys = {
       output: 'Output',
       abortedBeforeOutput: 'Interrotto prima di produrre output.',
     },
+    externalAgentResult: {
+      statusCompleted: 'Completato',
+      statusFailed: 'Fallito',
+      statusCancelled: 'Annullato',
+      statusTimedOut: 'Timeout',
+      statusKilledByShutdown: 'Fermato',
+      showOutput: 'Mostra output',
+      jumpToDelegate: 'Vai al messaggio di delega originale',
+    },
     conversationSettings: {
       openAria: 'Impostazioni conversazione',
       chatMemory: 'Memoria chat',

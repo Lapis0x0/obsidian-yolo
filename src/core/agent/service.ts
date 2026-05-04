@@ -1,6 +1,9 @@
+import { v4 as uuidv4 } from 'uuid'
+
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
+  ChatExternalAgentResultMessage,
   ChatMessage,
   normalizeChatConversationCompactionState,
 } from '../../types/chat'
@@ -11,6 +14,8 @@ import {
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 
+import type { AsyncTaskRecord } from './external-cli/async-task-registry'
+import type { ExternalCliEvent } from './external-cli/streamBus'
 import { NativeAgentRuntime } from './native-runtime'
 import { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from './types'
 
@@ -86,6 +91,31 @@ export type AgentReplaceConversationMessagesReason =
   | 'self-heal'
 
 const DEFAULT_BRANCH_ID = '__default__'
+
+function buildExternalAgentResultMessage(
+  record: AsyncTaskRecord,
+): ChatExternalAgentResultMessage {
+  const completedAt = record.completedAt ?? Date.now()
+  return {
+    role: 'external_agent_result',
+    id: uuidv4(),
+    taskId: record.taskId,
+    source: record.source,
+    provider: record.provider,
+    title: record.title,
+    status: record.status === 'running' ? 'completed' : record.status,
+    exitCode: record.exitCode,
+    stdout: record.stdoutBuffer,
+    stderr: record.stderrBuffer,
+    durationMs: completedAt - record.createdAt,
+    delegateAssistantMessageId:
+      record.source.type === 'llm_tool_call'
+        ? record.source.assistantMessageId
+        : '',
+    delegateToolCallId:
+      record.source.type === 'llm_tool_call' ? record.source.toolCallId : '',
+  }
+}
 
 const reconcileAssistantGenerationState = (
   previousMessages: ChatMessage[],
@@ -303,8 +333,8 @@ const buildBranchAggregateMessages = ({
       break
     }
     const currentSourceUserMessageId =
-      currentMessage.role === 'assistant'
-        ? currentMessage.metadata?.sourceUserMessageId
+      currentMessage.role === 'external_agent_result'
+        ? undefined
         : currentMessage.metadata?.sourceUserMessageId
     if (currentSourceUserMessageId !== sourceUserMessageId) {
       break
@@ -367,14 +397,141 @@ const buildBranchAggregateMessages = ({
   ]
 }
 
+export type PendingExternalAgentResultsSubscriber = (
+  conversationId: string,
+) => void
+
 export class AgentService {
   private conversationEntries = new Map<string, ConversationEntry>()
   private runEntriesByKey = new Map<string, AgentRunEntry>()
   private summarySubscribers = new Set<AgentConversationRunSummarySubscriber>()
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** pending external agent results per conversation (queued while streaming) */
+  private pendingExternalAgentResults = new Map<string, AsyncTaskRecord[]>()
+  private pendingResultsSubscribers =
+    new Set<PendingExternalAgentResultsSubscriber>()
+  private unsubscribeTaskCompleted: (() => void) | null = null
+  // Generation token: incremented on each start/stop so a late-resolving lazy
+  // import can detect that it was superseded and bail out.
+  private listenerStartId = 0
+  // Conversations that have notified subscribers about an auto-run trigger but
+  // whose run hasn't yet flipped `isRunning` to true. Prevents duplicate
+  // auto-runs when multiple task-completed events arrive in the gap between
+  // `submitChatMutation.mutate` and `agentService.run` actually starting.
+  private autoRunScheduled = new Set<string>()
 
   constructor(private readonly options: AgentServiceOptions = {}) {}
+
+  /** Subscribe to be notified when pending external agent results are ready to drain */
+  subscribeToPendingExternalAgentResults(
+    fn: PendingExternalAgentResultsSubscriber,
+  ): () => void {
+    this.pendingResultsSubscribers.add(fn)
+    return () => {
+      this.pendingResultsSubscribers.delete(fn)
+    }
+  }
+
+  /**
+   * Start listening for task-completed events from the external CLI stream bus.
+   * Call once after construction (desktop-only, called lazily).
+   */
+  startExternalAgentResultListener(): void {
+    if (this.unsubscribeTaskCompleted) return
+    const myStartId = ++this.listenerStartId
+    // Lazy import to avoid importing desktop-only module on mobile
+    void import('./external-cli/streamBus').then(({ externalCliStreamBus }) => {
+      // Bail out if stop was called (or another start invalidated us) before
+      // the dynamic import resolved.
+      if (myStartId !== this.listenerStartId) return
+      this.unsubscribeTaskCompleted =
+        externalCliStreamBus.subscribeTaskCompleted(
+          (event: Extract<ExternalCliEvent, { type: 'task-completed' }>) => {
+            this.handleTaskCompleted(event.record)
+          },
+        )
+    })
+  }
+
+  stopExternalAgentResultListener(): void {
+    // Bump generation to invalidate any in-flight lazy import.
+    this.listenerStartId++
+    this.unsubscribeTaskCompleted?.()
+    this.unsubscribeTaskCompleted = null
+  }
+
+  private handleTaskCompleted(record: AsyncTaskRecord): void {
+    const { conversationId } = record
+    const isRunning = this.isRunning(conversationId)
+    const autoRunPending = this.autoRunScheduled.has(conversationId)
+
+    if (isRunning || autoRunPending) {
+      // Queue: the next finalize will drain it and emit a single auto-run.
+      const queue = this.pendingExternalAgentResults.get(conversationId) ?? []
+      queue.push(record)
+      this.pendingExternalAgentResults.set(conversationId, queue)
+    } else {
+      // Idle and no auto-run scheduled: append immediately and notify.
+      this.autoRunScheduled.add(conversationId)
+      this.appendExternalAgentResultRecord(conversationId, record)
+      this.notifyPendingResultsSubscribers(conversationId)
+    }
+  }
+
+  private appendExternalAgentResultRecord(
+    conversationId: string,
+    record: AsyncTaskRecord,
+  ): void {
+    const msg = buildExternalAgentResultMessage(record)
+    const entry = this.getOrCreateConversationEntry(conversationId)
+    const nextMessages = [...entry.state.messages, msg]
+    entry.baseMessages = nextMessages
+    entry.state = { ...entry.state, messages: nextMessages }
+    this.notifyConversationSubscribers(conversationId)
+  }
+
+  /**
+   * Drain any pending external agent results for the conversation.
+   * Returns the appended messages (empty if nothing was queued).
+   * Call this after a run completes (idle transition).
+   */
+  drainPendingExternalAgentResults(
+    conversationId: string,
+  ): ChatExternalAgentResultMessage[] {
+    const queue = this.pendingExternalAgentResults.get(conversationId)
+    if (!queue || queue.length === 0) return []
+
+    // Sort by completedAt ascending
+    queue.sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
+    this.pendingExternalAgentResults.delete(conversationId)
+
+    const appended: ChatExternalAgentResultMessage[] = []
+    for (const record of queue) {
+      const msg = buildExternalAgentResultMessage(record)
+      appended.push(msg)
+    }
+
+    const entry = this.getOrCreateConversationEntry(conversationId)
+    const nextMessages = [...entry.state.messages, ...appended]
+    entry.baseMessages = nextMessages
+    entry.state = { ...entry.state, messages: nextMessages }
+    this.notifyConversationSubscribers(conversationId)
+
+    return appended
+  }
+
+  hasPendingExternalAgentResults(conversationId: string): boolean {
+    return (
+      (this.pendingExternalAgentResults.get(conversationId)?.length ?? 0) > 0
+    )
+  }
+
+  private notifyPendingResultsSubscribers(conversationId: string): void {
+    for (const fn of this.pendingResultsSubscribers) {
+      fn(conversationId)
+    }
+  }
 
   subscribe(
     conversationId: string,
@@ -910,6 +1067,17 @@ export class AgentService {
       })
     }
     this.notifyConversationSubscribers(conversationId)
+
+    // Run has finalized — release the auto-run latch so a fresh idle event
+    // (or drained queue) can schedule the next auto-run.
+    this.autoRunScheduled.delete(conversationId)
+
+    // Drain pending external agent results after run completes
+    const drained = this.drainPendingExternalAgentResults(conversationId)
+    if (drained.length > 0) {
+      this.autoRunScheduled.add(conversationId)
+      this.notifyPendingResultsSubscribers(conversationId)
+    }
   }
 
   private notifyConversationSubscribers(

@@ -1305,6 +1305,15 @@ export const zh: TranslationKeys = {
       output: '输出',
       abortedBeforeOutput: '已中止，未产生任何输出。',
     },
+    externalAgentResult: {
+      statusCompleted: '已完成',
+      statusFailed: '失败',
+      statusCancelled: '已取消',
+      statusTimedOut: '已超时',
+      statusKilledByShutdown: '已停止',
+      showOutput: '查看输出',
+      jumpToDelegate: '跳转到原派遣消息',
+    },
     conversationSettings: {
       openAria: '对话设置',
       chatMemory: '聊天记忆',

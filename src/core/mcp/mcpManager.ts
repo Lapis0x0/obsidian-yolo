@@ -51,7 +51,9 @@ type RemoteTransportModule = typeof import('./remoteTransport')
 
 const getVaultBasePath = (app: App): string | undefined => {
   const adapter = app.vault.adapter
-  return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined
+  return adapter instanceof FileSystemAdapter
+    ? adapter.getBasePath()
+    : undefined
 }
 
 export const INVALID_TOOL_ARGUMENTS_JSON_ERROR =

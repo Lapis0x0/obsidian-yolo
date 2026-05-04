@@ -183,9 +183,7 @@ export function ExternalAgentToolCard({
       )}
 
       {/* 历史/错误路径单块输出 */}
-      {fallbackText !== undefined && (
-        <ConsoleBlock text={fallbackText} />
-      )}
+      {fallbackText !== undefined && <ConsoleBlock text={fallbackText} />}
 
       {/* Aborted 无输出文案 */}
       {response.status === ToolCallResponseStatus.Aborted &&
@@ -302,8 +300,7 @@ function progressLineClass(line: string): string | undefined {
   // ── codex 原生格式 ──
   const trimmed = line.trim()
   if (trimmed === '') return undefined
-  if (/^-{3,}$/.test(trimmed))
-    return 'yolo-external-agent-card__line--system'
+  if (/^-{3,}$/.test(trimmed)) return 'yolo-external-agent-card__line--system'
   if (
     trimmed === 'user' ||
     trimmed === 'codex' ||
@@ -422,9 +419,7 @@ function StatusBadge({
           )}
         >
           <Loader2 size={12} className="smtcmp-spinner" />
-          <span>
-            {t('chat.externalAgent.statusRunning', 'Running')}
-          </span>
+          <span>{t('chat.externalAgent.statusRunning', 'Running')}</span>
         </span>
       )
     case ToolCallResponseStatus.Success:
@@ -448,9 +443,7 @@ function StatusBadge({
           )}
         >
           <X size={12} />
-          <span>
-            {t('chat.externalAgent.statusAborted', 'Aborted')}
-          </span>
+          <span>{t('chat.externalAgent.statusAborted', 'Aborted')}</span>
         </span>
       )
     case ToolCallResponseStatus.Error:

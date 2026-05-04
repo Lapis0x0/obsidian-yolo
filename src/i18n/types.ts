@@ -1191,6 +1191,18 @@ export type TranslationKeys = {
       progress?: string
       output?: string
       abortedBeforeOutput?: string
+      progressTruncated?: string
+      truncated?: string
+    }
+    // async external agent result card
+    externalAgentResult?: {
+      statusCompleted?: string
+      statusFailed?: string
+      statusCancelled?: string
+      statusTimedOut?: string
+      statusKilledByShutdown?: string
+      showOutput?: string
+      jumpToDelegate?: string
     }
     // conversation settings popover
     conversationSettings?: {
