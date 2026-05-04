@@ -1386,6 +1386,15 @@ export const en: TranslationKeys = {
       alwaysAllowThisTool: 'Always allow this tool',
       allowForThisChat: 'Allow for this chat',
     },
+    externalAgent: {
+      statusRunning: 'Running',
+      statusDone: 'Done',
+      statusAborted: 'Aborted',
+      statusError: 'Error',
+      progress: 'Progress',
+      output: 'Output',
+      abortedBeforeOutput: 'Aborted before any output was collected.',
+    },
     conversationSettings: {
       openAria: 'Conversation settings',
       chatMemory: 'Chat memory',

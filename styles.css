@@ -1295,7 +1295,7 @@
   align-items: stretch;
   font-size: var(--font-smallest);
   gap: var(--size-4-1);
-  max-height: 280px;
+  max-height: 600px;
   overflow: auto;
   padding: 0 var(--size-2-3) var(--size-2-2) 24px;
   margin-top: 2px;
@@ -11878,6 +11878,209 @@ button.smtcmp-chat-input-model-select {
 
 .yolo-popover-surface.yolo-popover-view-toggle-mode {
   width: var(--radix-dropdown-menu-trigger-width);
+}
+
+/* 外部 Agent 工具卡：终端样式
+ * 布局：状态条 → Progress（始终展开+自动滚底） → Output → metadata chips
+ */
+
+.yolo-external-agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  font-size: var(--font-ui-small);
+}
+
+/* ── 状态条 ── */
+
+.yolo-external-agent-card__status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex-wrap: wrap;
+}
+
+.yolo-external-agent-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: 2px var(--size-2-2);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  line-height: 1;
+}
+
+.yolo-external-agent-card__badge--running {
+  background: var(--background-modifier-active-hover);
+  color: var(--text-accent);
+}
+
+.yolo-external-agent-card__badge--success {
+  background: color-mix(in srgb, var(--color-green) 15%, transparent);
+  color: var(--color-green);
+}
+
+.yolo-external-agent-card__badge--aborted {
+  background: color-mix(in srgb, var(--color-yellow) 15%, transparent);
+  color: var(--color-yellow);
+}
+
+.yolo-external-agent-card__badge--error {
+  background: color-mix(in srgb, var(--color-red) 15%, transparent);
+  color: var(--color-red);
+}
+
+.yolo-external-agent-card__meta-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-external-agent-card__meta-inline-sep {
+  opacity: 0.5;
+}
+
+.yolo-external-agent-card__cwd {
+  font-family: var(--font-monospace);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.yolo-external-agent-card__abort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  margin-left: auto;
+  padding: var(--size-2-1) var(--size-2-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.yolo-external-agent-card__abort-btn:hover {
+  background: color-mix(in srgb, var(--color-red) 15%, transparent);
+  border-color: var(--color-red);
+  color: var(--color-red);
+}
+
+/* ── 输出块（Progress / Output 共用） ── */
+
+.yolo-external-agent-card__stream-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.yolo-external-agent-card__stream-label {
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.yolo-external-agent-card__console {
+  margin: 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.yolo-external-agent-card__console--progress {
+  color: var(--text-muted);
+}
+
+/* progress 中按行渲染的容器（用于 claude 标签着色） */
+
+.yolo-external-agent-card__line {
+  display: block;
+}
+
+.yolo-external-agent-card__line--system {
+  color: var(--text-faint);
+}
+
+.yolo-external-agent-card__line--thinking {
+  color: var(--text-accent);
+  font-style: italic;
+}
+
+.yolo-external-agent-card__line--tool {
+  color: var(--color-blue);
+}
+
+.yolo-external-agent-card__line--tool-result {
+  color: var(--color-green);
+}
+
+.yolo-external-agent-card__line--done {
+  color: var(--text-success);
+  font-weight: var(--font-medium);
+}
+
+.yolo-external-agent-card__line--section {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-external-agent-card__line--parse-error {
+  color: var(--text-error);
+  opacity: 0.7;
+}
+
+/* ── metadata chips（底部） ── */
+
+.yolo-external-agent-card__meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  padding-top: var(--size-2-2);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-external-agent-card__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+}
+
+.yolo-external-agent-card__chip-icon {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* ── 截断/无输出提示 ── */
+
+.yolo-external-agent-card__truncation-notice {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-warning);
+  padding: var(--size-2-1) 0;
+}
+
+.yolo-external-agent-card__no-output {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* Custom continue inline panel */

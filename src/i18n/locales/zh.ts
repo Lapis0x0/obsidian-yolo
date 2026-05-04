@@ -1296,6 +1296,15 @@ export const zh: TranslationKeys = {
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '仅本次对话允许',
     },
+    externalAgent: {
+      statusRunning: '执行中',
+      statusDone: '已完成',
+      statusAborted: '已中止',
+      statusError: '错误',
+      progress: '进度',
+      output: '输出',
+      abortedBeforeOutput: '已中止，未产生任何输出。',
+    },
     conversationSettings: {
       openAria: '对话设置',
       chatMemory: '聊天记忆',

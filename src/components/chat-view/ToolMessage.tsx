@@ -225,6 +225,21 @@ const isDelegateExternalAgentRequest = (request: ToolRequestLike): boolean => {
   }
 }
 
+const extractExternalAgentArgs = (
+  rawArguments?: ToolCallRequest['arguments'],
+): { provider?: string; model?: string; workingDirectory?: string } | undefined => {
+  const parsed = getToolCallArgumentsObject(rawArguments)
+  if (!parsed) return undefined
+  const provider = typeof parsed.provider === 'string' ? parsed.provider : undefined
+  const model = typeof parsed.model === 'string' ? parsed.model : undefined
+  const workingDirectory =
+    typeof parsed.workingDirectory === 'string'
+      ? parsed.workingDirectory
+      : undefined
+  if (!provider && !model && !workingDirectory) return undefined
+  return { provider, model, workingDirectory }
+}
+
 const translateBuiltinToolLabel = (
   toolName: string,
   translate: TranslateFn,
@@ -1011,6 +1026,7 @@ function ToolCallItem({
             <ExternalAgentToolCard
               toolCallId={request.id}
               response={response}
+              args={extractExternalAgentArgs(request.arguments)}
               onAbort={handleAbort}
             />
           ) : (

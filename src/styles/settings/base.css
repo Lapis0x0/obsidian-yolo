@@ -1252,7 +1252,7 @@
   align-items: stretch;
   font-size: var(--font-smallest);
   gap: var(--size-4-1);
-  max-height: 280px;
+  max-height: 600px;
   overflow: auto;
   padding: 0 var(--size-2-3) var(--size-2-2) 24px;
   margin-top: 2px;

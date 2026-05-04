@@ -12,6 +12,7 @@
 @import './chat/input.css';
 @import './chat/message.css';
 @import './chat/popover.css';
+@import './chat/external-agent-card.css';
 
 @import './panels/smart-space.css';
 @import './panels/quick-ask.css';

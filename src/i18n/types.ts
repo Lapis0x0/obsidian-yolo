@@ -1182,6 +1182,16 @@ export type TranslationKeys = {
       alwaysAllowThisTool?: string
       allowForThisChat?: string
     }
+    // delegate_external_agent tool card
+    externalAgent?: {
+      statusRunning?: string
+      statusDone?: string
+      statusAborted?: string
+      statusError?: string
+      progress?: string
+      output?: string
+      abortedBeforeOutput?: string
+    }
     // conversation settings popover
     conversationSettings?: {
       openAria?: string
