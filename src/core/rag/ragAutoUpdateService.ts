@@ -71,13 +71,15 @@ export class RagAutoUpdateService {
     this.requiresFullScan = false
   }
 
-  restoreRetryScheduled(retryAt?: number): void {
+  restoreRetryScheduled(retryAt?: number, minDelayMs = 0): void {
     const settings = this.getSettings()
     if (!this.isAutoUpdateEnabled(settings)) return
 
     this.hasRecoveredRetry = true
-    const delayMs =
-      retryAt === undefined ? 0 : Math.max(0, retryAt - Date.now())
+    const delayMs = Math.max(
+      retryAt === undefined ? 0 : retryAt - Date.now(),
+      minDelayMs,
+    )
     this.scheduleAutoUpdate(delayMs)
   }
 

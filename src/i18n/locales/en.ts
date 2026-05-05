@@ -835,6 +835,11 @@ export const en: TranslationKeys = {
       pgliteDeliveryManual: 'Manual download',
       pgliteDownload: 'Download resources',
       pgliteRedownload: 'Download again',
+      pgliteVerifyIntegrity: 'Verify integrity',
+      pgliteVerifyingIntegrity: 'Verifying…',
+      pgliteIntegrityOk: 'PGlite runtime integrity check passed.',
+      pgliteIntegrityFailed: 'Integrity check failed',
+      pgliteIntegrityFailedHint: 'Please re-download the runtime.',
       pgliteRecheck: 'Check again',
       pgliteDeleteLocal: 'Delete local resources',
       pgliteDownloadPlaceholder:

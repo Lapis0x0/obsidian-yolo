@@ -120,10 +120,7 @@ const writeLocalStorage = async (
   if (typeof appWithLocalStorage.saveLocalStorage !== 'function') {
     return
   }
-  const result = appWithLocalStorage.saveLocalStorage(key, value)
-  if (isPromiseLike(result)) {
-    await result
-  }
+  await Promise.resolve(appWithLocalStorage.saveLocalStorage(key, value))
 }
 
 export class RagIndexBusyError extends Error {
@@ -222,7 +219,7 @@ export class RagIndexService {
    * losslessly because we don't persist the path list — they fall back to a
    * full sync, which is correct (sync is idempotent and self-converging).
    */
-  restoreRetryScheduledRun(): void {
+  restoreRetryScheduledRun(minDelayMs = 0): void {
     if (
       this.snapshot.status !== 'retry_scheduled' ||
       this.snapshot.trigger !== 'manual' ||
@@ -232,12 +229,15 @@ export class RagIndexService {
       return
     }
 
-    this.scheduleRetry({
-      mode: this.snapshot.mode,
-      scope: { kind: 'all' },
-      trigger: this.snapshot.trigger,
-      retryPolicy: this.snapshot.retryPolicy,
-    })
+    this.scheduleRetry(
+      {
+        mode: this.snapshot.mode,
+        scope: { kind: 'all' },
+        trigger: this.snapshot.trigger,
+        retryPolicy: this.snapshot.retryPolicy,
+      },
+      minDelayMs,
+    )
   }
 
   async runIndex(options: RagIndexRunOptions): Promise<void> {
@@ -414,11 +414,11 @@ export class RagIndexService {
     this.emit()
   }
 
-  private scheduleRetry(options: RagIndexRunOptions): void {
+  private scheduleRetry(options: RagIndexRunOptions, minDelayMs = 0): void {
     this.clearRetryTimer()
     const delayMs = Math.max(
-      0,
       (this.snapshot.retryAt ?? Date.now()) - Date.now(),
+      minDelayMs,
     )
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null
