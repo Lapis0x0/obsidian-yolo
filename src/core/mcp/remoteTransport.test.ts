@@ -129,7 +129,7 @@ describe('remoteTransport', () => {
 
     expect(context).not.toBeNull()
     expect(getMcpRemoteTransportDiagnostics(context!)).toEqual({
-      remoteTransport: 'node',
+      remoteTransport: 'chromium-fetch',
       transport: 'http',
       protocol: 'https:',
       host: 'example.com',
@@ -148,7 +148,7 @@ describe('remoteTransport', () => {
     })
 
     expect(wrapped.message).toContain(
-      'Failed to connect to MCP server demo via Node HTTP transport',
+      'Failed to connect to MCP server demo via HTTP transport',
     )
     expect(wrapped.message).toContain('(https://example.com)')
     expect(wrapped.message).toContain('network connection failed')

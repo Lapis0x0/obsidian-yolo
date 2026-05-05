@@ -184,7 +184,7 @@ export function getMcpRemoteTransportDiagnostics(
   context: McpRemoteTransportContext,
 ) {
   return {
-    remoteTransport: 'node',
+    remoteTransport: 'chromium-fetch',
     transport: context.transport,
     protocol: context.url.protocol,
     host: context.url.host,
@@ -196,9 +196,11 @@ export function createMcpRemoteTransportFactory({
 }: {
   env: Record<string, string>
 }): McpRemoteTransportFactory {
-  // Issue #252: switched from `node-fetch@2` to undici-backed fetch so the
-  // MCP SDK's `StreamableHTTPClientTransport` receives a WHATWG ReadableStream
-  // body (with `pipeThrough`/`getReader`) and can consume the SSE channel.
+  // Backed by Chromium's `globalThis.fetch` (via createDesktopMcpFetch) so
+  // the MCP SDK's `StreamableHTTPClientTransport` receives a working WHATWG
+  // ReadableStream body for SSE streaming. Earlier attempts using
+  // `node-fetch@2` (no streams) and `undici` (renderer-incompatible) both
+  // failed in the Electron renderer environment.
   const fetch = createDesktopMcpFetch({ env })
 
   return {
@@ -231,6 +233,6 @@ export function createMcpRemoteTransportError({
   const actionLabel = action === 'connect' ? 'connect to' : 'list tools for'
 
   return new Error(
-    `Failed to ${actionLabel} MCP server ${serverName} via Node ${context.transport.toUpperCase()} transport (${context.url.protocol}//${context.url.host}): ${category}. ${detail}`,
+    `Failed to ${actionLabel} MCP server ${serverName} via ${context.transport.toUpperCase()} transport (${context.url.protocol}//${context.url.host}): ${category}. ${detail}`,
   )
 }
