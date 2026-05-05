@@ -1,0 +1,54 @@
+/* PDF region screenshot overlay */
+
+.yolo-pdf-region-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  cursor: crosshair;
+  background: rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+
+.yolo-pdf-region-hint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--background-primary, #fff);
+  color: var(--text-normal, #333);
+  border: 1px solid var(--background-modifier-border, #ccc);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.yolo-pdf-region-selection {
+  position: absolute;
+  display: none;
+  border: 2px solid var(--interactive-accent, #4a90e2);
+  background: rgba(74, 144, 226, 0.1);
+  pointer-events: none;
+}
+
+/* PDF toolbar button */
+.yolo-pdf-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.yolo-pdf-toolbar-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}

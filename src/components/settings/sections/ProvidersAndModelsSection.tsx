@@ -70,6 +70,7 @@ type ProviderSectionItemProps = {
   handleToggleEnableChatModel: (modelId: string, value: boolean) => void
   handleChatModelDragEnd: (event: DragEndEvent) => void
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
+  onCollapseForDrag: () => void
 }
 
 function getProviderDisplayBaseUrl(provider: LLMProvider): string {
@@ -529,6 +530,7 @@ function ProviderSectionItem({
   handleToggleEnableChatModel,
   handleChatModelDragEnd,
   handleEmbeddingModelDragEnd,
+  onCollapseForDrag,
 }: ProviderSectionItemProps) {
   const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
   const isGeminiOAuth = provider.presetType === 'gemini-oauth'
@@ -566,6 +568,14 @@ function ProviderSectionItem({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           {...listeners}
+          onPointerDown={(e) => {
+            onCollapseForDrag()
+            ;(
+              listeners as
+                | Record<string, (e: React.PointerEvent) => void>
+                | undefined
+            )?.onPointerDown?.(e)
+          }}
         >
           <GripVertical />
         </button>
@@ -1618,6 +1628,14 @@ export function ProvidersAndModelsSection({
                     }
                     handleEmbeddingModelDragEnd={(event) =>
                       void handleEmbeddingModelDragEnd(provider.id, event)
+                    }
+                    onCollapseForDrag={() =>
+                      setExpandedProviders((prev) => {
+                        if (!prev.has(provider.id)) return prev
+                        const next = new Set(prev)
+                        next.delete(provider.id)
+                        return next
+                      })
                     }
                   />
                 )

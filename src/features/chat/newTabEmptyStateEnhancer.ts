@@ -79,6 +79,9 @@ export class NewTabEmptyStateEnhancer {
       template instanceof HTMLElement
         ? template.className
         : 'empty-state-action'
+    // Obsidian 在捕获阶段拦截 .tappable 事件做 action 派发，会让我们自己的
+    // click 监听完全收不到事件。这里去掉 tappable，仅保留视觉 class。
+    action.classList.remove('tappable')
     action.removeAttribute('href')
     action.removeAttribute('target')
     action.removeAttribute('rel')

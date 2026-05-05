@@ -145,8 +145,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   reasoningLevel: input.reasoningLevel,
                   requestParams: input.requestParams,
                   maxContextOverride: input.maxContextOverride,
-                  currentFileContextMode: input.currentFileContextMode,
-                  currentFileOverride: input.currentFileOverride,
+                  contextualInjections: input.contextualInjections,
                   geminiTools: input.geminiTools,
                   onAssistantMessage: (assistantMessage) => {
                     this.upsertAssistantMessage(assistantMessage)
@@ -256,9 +255,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                             allowedSkillIds: input.allowedSkillIds,
                             allowedSkillNames: input.allowedSkillNames,
                             maxContextOverride: input.maxContextOverride,
-                            currentFileContextMode:
-                              input.currentFileContextMode,
-                            currentFileOverride: input.currentFileOverride,
+                            contextualInjections: input.contextualInjections,
                           })
                       } catch (error) {
                         console.warn(
@@ -404,8 +401,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       reasoningLevel: input.reasoningLevel,
       requestParams: input.requestParams,
       maxContextOverride: input.maxContextOverride,
-      currentFileContextMode: input.currentFileContextMode,
-      currentFileOverride: input.currentFileOverride,
+      contextualInjections: input.contextualInjections,
       geminiTools: input.geminiTools,
       onAssistantMessage: (assistantMessage) => {
         this.upsertAssistantMessage(assistantMessage)

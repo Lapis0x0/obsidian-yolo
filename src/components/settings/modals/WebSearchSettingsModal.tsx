@@ -69,6 +69,7 @@ const PROVIDER_MONO: Record<WebSearchProviderType, string> = {
   bing: 'B',
   'gemini-grounding': 'G',
   grok: 'X',
+  zhipu: 'Z',
 }
 
 function Content({ app, plugin }: { app: App; plugin: SmartComposerPlugin }) {
@@ -393,5 +394,7 @@ function defaultTypeLabel(type: WebSearchProviderType): string {
       return 'Gemini (Grounding)'
     case 'grok':
       return 'Grok'
+    case 'zhipu':
+      return 'Zhipu Web Search'
   }
 }

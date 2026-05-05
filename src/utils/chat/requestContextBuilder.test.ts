@@ -8,14 +8,22 @@ jest.mock('../../core/memory/memoryManager', () => ({
   getMemoryPromptContext: jest.fn(async () => ''),
 }))
 
+jest.mock('../llm/image', () => ({
+  isImageTFile: jest.fn(() => false),
+  tFileToImageDataUrl: jest.fn(async () => 'data:image/png;base64,fake'),
+}))
+
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
+import type { ChatModel } from '../../types/chat-model.types'
+import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
 import {
   RequestContextBuilder,
   extractMarkdownAtxHeadings,
+  stripUnsupportedImages,
 } from './requestContextBuilder'
 
 function createMockFile(path: string): InstanceType<typeof TFile> {
@@ -179,7 +187,6 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([
         { type: 'file', file: explicitFile },
-        { type: 'current-file', file: currentFile },
         { type: 'folder', folder },
       ]),
     })
@@ -197,7 +204,8 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         '  - L2 ## Part A',
       ].join('\n'),
     )
-    expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
+    // current-file is no longer surfaced via the mention path.
+    expect(textContent).not.toContain('notes/current.md')
     expect(textContent).toContain(
       [
         '- `docs/from-folder.md`',
@@ -267,16 +275,12 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     const result = await builder.compileUserMessagePrompt({
-      message: createUserMessage([
-        { type: 'file', file: explicitFile },
-        { type: 'current-file', file: currentFile },
-      ]),
+      message: createUserMessage([{ type: 'file', file: explicitFile }]),
     })
 
     const textContent = getTextContent(result.promptContent)
 
     expect(textContent).toContain('- `notes/explicit.md`\n  - L1 # Explicit')
-    expect(textContent).toContain('- `notes/current.md`\n  - L1 # Current')
     expect(textContent).not.toContain('Body')
     expect(textContent).not.toContain('More')
   })
@@ -319,20 +323,18 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).not.toContain('`position`')
   })
 
-  it('uses full content for files and current file in full mode while keeping folders light', async () => {
+  it('uses full content for explicit files in full mode', async () => {
     const explicitFile = createMockFile('notes/explicit.md')
-    const currentFile = createMockFile('notes/current.md')
     const folderFile = createMockFile('docs/from-folder.md')
     const folder = createMockFolder('docs', [folderFile])
 
     const fileContents = new Map<string, string>([
       [explicitFile.path, '# Explicit\nBody'],
-      [currentFile.path, '# Current\nMore'],
       [folderFile.path, '## Folder Heading\nFolder body'],
     ])
 
     const app = createMockApp({
-      files: [explicitFile, currentFile, folderFile],
+      files: [explicitFile, folderFile],
       folders: [folder],
       fileContents,
     })
@@ -351,7 +353,6 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     const result = await builder.compileUserMessagePrompt({
       message: createUserMessage([
         { type: 'file', file: explicitFile },
-        { type: 'current-file', file: currentFile },
         { type: 'folder', folder },
       ]),
     })
@@ -367,44 +368,11 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     expect(textContent).toContain(
       '```notes/explicit.md\n1|# Explicit\n2|Body\n```',
     )
-    expect(textContent).toContain(
-      '```notes/current.md\n1|# Current\n2|More\n```',
-    )
     expect(textContent).toContain('## Mentioned Vault Folders\n- `docs`')
     expect(textContent).toContain(
       '- `docs/from-folder.md`\n  - L1 ## Folder Heading',
     )
     expect(textContent).not.toContain('Folder body')
-  })
-
-  it('uses only the latest valid current-file mention when old current-file references accumulated', async () => {
-    const staleCurrentFile = createMockFile('notes/stale.md')
-    const latestCurrentFile = createMockFile('notes/latest.md')
-
-    const fileContents = new Map<string, string>([
-      [staleCurrentFile.path, '# Stale'],
-      [latestCurrentFile.path, '# Latest'],
-    ])
-
-    const app = createMockApp({
-      files: [staleCurrentFile, latestCurrentFile],
-      fileContents,
-    })
-
-    const builder = new RequestContextBuilder(app as never, settings)
-
-    const result = await builder.compileUserMessagePrompt({
-      message: createUserMessage([
-        { type: 'current-file', file: staleCurrentFile },
-        { type: 'current-file', file: null },
-        { type: 'current-file', file: latestCurrentFile },
-      ]),
-    })
-
-    const textContent = getTextContent(result.promptContent)
-
-    expect(textContent).toContain('- `notes/latest.md`\n  - L1 # Latest')
-    expect(textContent).not.toContain('notes/stale.md')
   })
 })
 
@@ -1121,5 +1089,257 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         content: 'answer 2',
       },
     ])
+  })
+})
+
+describe('RequestContextBuilder generateRequestMessages currentFile merging', () => {
+  const baseSettings = {
+    systemPrompt: '',
+    currentAssistantId: undefined,
+    assistants: [],
+    chatOptions: {
+      includeCurrentFileContent: true,
+      mentionContextMode: 'light',
+    },
+    skills: {},
+  } as unknown as SmartComposerSettings
+
+  function makeApp() {
+    return {
+      metadataCache: { getFileCache: jest.fn(() => null) },
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+        cachedRead: jest.fn(async () => ''),
+        getFileByPath: jest.fn(() => null),
+        getFolderByPath: jest.fn(() => null),
+      },
+    }
+  }
+
+  it('merges currentFileMessage into last user message content parts when last history message is user', async () => {
+    const app = makeApp()
+    const builder = new RequestContextBuilder(app as never, baseSettings)
+    const currentFile = createMockFile('notes/focus.md')
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'hello',
+          mentionables: [],
+        },
+      ],
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conv-1',
+      contextualInjections: [
+        { type: 'current-file-pointer', file: currentFile },
+      ],
+    })
+
+    // Should have system + 1 user (not system + 2 user)
+    const userMessages = requestMessages.filter((m) => m.role === 'user')
+    expect(userMessages).toHaveLength(1)
+
+    // The single user message content must be an array (merged ContentPart[])
+    const lastUser = userMessages[0]
+    expect(Array.isArray(lastUser.content)).toBe(true)
+    const parts = lastUser.content as Array<{ type: string; text?: string }>
+    const textParts = parts.filter((p) => p.type === 'text')
+    // Original promptContent text
+    expect(textParts.some((p) => p.text?.includes('hello'))).toBe(true)
+    // Current-file pointer text
+    expect(textParts.some((p) => p.text?.includes('notes/focus.md'))).toBe(true)
+  })
+
+  it('appends currentFileMessage as independent user message when last history message is not user (agent loop continuation)', async () => {
+    const app = makeApp()
+    const emptyArgs = createCompleteToolCallArguments({ value: {} })
+    const builder = new RequestContextBuilder(app as never, baseSettings)
+    const currentFile = createMockFile('notes/focus.md')
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'do something',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'tool-call-1',
+              name: 'yolo_local__fs_read',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'tool-call-1',
+                name: 'yolo_local__fs_read',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: 'file content' },
+              },
+            },
+          ],
+        },
+      ],
+      hasTools: true,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conv-2',
+      contextualInjections: [
+        { type: 'current-file-pointer', file: currentFile },
+      ],
+    })
+
+    // Last message should be an independent user message containing the current-file pointer
+    const lastMsg = requestMessages.at(-1)
+    expect(lastMsg?.role).toBe('user')
+    const content = lastMsg?.content
+    const text =
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? (content as Array<{ type: string; text?: string }>)
+              .filter((p) => p.type === 'text')
+              .map((p) => p.text)
+              .join('')
+          : ''
+    expect(text).toContain('notes/focus.md')
+
+    // The original user message should still exist separately
+    const userMessages = requestMessages.filter((m) => m.role === 'user')
+    expect(userMessages.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('stripUnsupportedImages', () => {
+  const visionModel = {
+    id: 'v/vision',
+    modalities: ['text', 'vision'],
+  } as unknown as ChatModel
+
+  const textOnlyModel = {
+    id: 'v/text',
+    modalities: ['text'],
+  } as unknown as ChatModel
+
+  const imageUrlPart: ContentPart = {
+    type: 'image_url',
+    image_url: { url: 'data:image/png;base64,AAA' },
+  }
+  const textPart: ContentPart = { type: 'text', text: 'hello' }
+
+  it('returns messages unchanged when model supports vision', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart, textPart] },
+    ]
+    expect(stripUnsupportedImages(messages, visionModel)).toBe(messages)
+  })
+
+  it('replaces image_url parts with placeholder text for text-only model', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart, textPart] },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    expect(result).not.toBe(messages)
+    const content = result[0]?.content as ContentPart[]
+    expect(content).toHaveLength(2)
+    expect(content[0]).toEqual({
+      type: 'text',
+      text: '[图片已省略：模型不支持视觉]',
+    })
+    expect(content[1]).toEqual(textPart)
+  })
+
+  it('handles user message that is all images — result has only placeholder text parts', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart, imageUrlPart] },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    const content = result[0]?.content as ContentPart[]
+    expect(content).toHaveLength(2)
+    expect(content.every((p) => p.type === 'text')).toBe(true)
+  })
+
+  it('does not touch messages whose content is a string', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: 'plain text' },
+      { role: 'system', content: 'system prompt' },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    expect(result[0]?.content).toBe('plain text')
+    expect(result[1]?.content).toBe('system prompt')
+  })
+
+  it('strips images from a user message appended after tool calls (tool image path)', () => {
+    // Images from tool calls are appended as a user message with content array
+    const messages: RequestMessage[] = [
+      {
+        role: 'tool',
+        tool_call: {
+          id: 'tc1',
+          name: 'fs_read',
+          arguments: createCompleteToolCallArguments({ value: {} }),
+        },
+        content: 'text result',
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[Images from tool call: fs_read]' },
+          imageUrlPart,
+        ],
+      },
+    ]
+    const result = stripUnsupportedImages(messages, textOnlyModel)
+    // tool message untouched (string content)
+    expect(result[0]?.content).toBe('text result')
+    // user message: image replaced
+    const userContent = result[1]?.content as ContentPart[]
+    expect(userContent[1]).toEqual({
+      type: 'text',
+      text: '[图片已省略：模型不支持视觉]',
+    })
+  })
+
+  it('strips images when model is null (conservative: unknown model treated as text-only)', () => {
+    const messages: RequestMessage[] = [
+      { role: 'user', content: [imageUrlPart] },
+    ]
+    // null model → chatModelSupportsVision returns false → images stripped
+    const result = stripUnsupportedImages(messages, null)
+    const content = result[0]?.content as ContentPart[]
+    expect(content[0]).toEqual({
+      type: 'text',
+      text: '[图片已省略：模型不支持视觉]',
+    })
   })
 })

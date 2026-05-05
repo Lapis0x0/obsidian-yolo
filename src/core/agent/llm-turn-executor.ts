@@ -1,4 +1,3 @@
-import { TFile } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import {
@@ -14,11 +13,10 @@ import {
   resolveRequestReasoningLevel,
 } from '../../types/reasoning'
 import { ToolCallRequest } from '../../types/tool-call.types'
+import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
-import {
-  estimateJsonTokens,
-  formatTokenCount,
-} from '../../utils/llm/contextTokenEstimate'
+import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
+import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
@@ -54,8 +52,7 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   maxContextOverride?: number
-  currentFileContextMode?: 'full' | 'summary'
-  currentFileOverride?: TFile | null
+  contextualInjections?: ContextualInjection[]
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
@@ -115,11 +112,10 @@ export class AgentLlmTurnExecutor {
         model: this.input.model,
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,
-        currentFileContextMode: this.input.currentFileContextMode,
-        currentFileOverride: this.input.currentFileOverride,
+        contextualInjections: this.input.contextualInjections,
       })
 
-    this.logModelRequestContext({ requestMessages, tools })
+    await this.logModelRequestContext({ requestMessages, tools })
     const responseStart = Date.now()
     const model = this.input.model
     const assistantMessage: ChatAssistantMessage = {
@@ -281,20 +277,20 @@ export class AgentLlmTurnExecutor {
     return `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
   }
 
-  private logModelRequestContext({
+  private async logModelRequestContext({
     requestMessages,
     tools,
   }: {
     requestMessages: RequestMessage[]
     tools: RequestTool[] | undefined
-  }): void {
+  }): Promise<void> {
     if (
       !this.input.requestContextBuilder.isModelRequestContextLoggingEnabled?.()
     ) {
       return
     }
 
-    const estimatedTokens = estimateJsonTokens({
+    const estimatedTokens = await estimateJsonTokens({
       messages: requestMessages,
       tools,
     })

@@ -60,7 +60,7 @@ function addCacheControlToMessageTail(message: MessageParam): MessageParam {
  *   1. Last text block of `system`
  *   2. Last entry of `tools`
  *   3. Last content block of `messages[len-2]`  (stable across volatile tail changes,
- *      e.g. an auto-appended current-file user message)
+ *      e.g. auto-appended current-file content part inside the last user message)
  *   4. Last content block of `messages[len-1]`  (rolling tail — extends cache across
  *      agent loop iterations that append assistant/tool turns)
  *

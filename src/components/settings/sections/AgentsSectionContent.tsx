@@ -58,8 +58,8 @@ import { McpTool } from '../../../types/mcp.types'
 import {
   estimateJsonTokens,
   estimateTextTokens,
-  formatTokenCount,
 } from '../../../utils/llm/contextTokenEstimate'
+import { formatTokenCount } from '../../../utils/llm/formatTokenCount'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
@@ -154,7 +154,7 @@ async function estimateSkillDefaultContextTokens({
   skill: SkillRowView
 }): Promise<number> {
   if (skill.loadMode === 'lazy') {
-    return estimateTextTokens(buildSkillMetadataPrompt(skill))
+    return await estimateTextTokens(buildSkillMetadataPrompt(skill))
   }
 
   const abstractFile = app.vault.getAbstractFileByPath(skill.path)
@@ -176,7 +176,7 @@ async function estimateSkillDefaultContextTokens({
     return 0
   }
 
-  const count = estimateTextTokens(
+  const count = await estimateTextTokens(
     buildAlwaysOnSkillPrompt({
       entry: document.entry,
       content: document.content,
@@ -809,31 +809,68 @@ export function AgentsSectionContent({
     return counts
   }, [draftAgent, visibleToolGroups])
 
-  const estimatedToolContextTokens = useMemo(() => {
+  // Estimated tokens are scoped to a specific agent identity. Stale values
+  // from a previous agent must NOT leak across an agent switch (would mislead
+  // the user). Within the same agent, we still keep the prior value visible
+  // during recomputation to avoid flickering on tool toggles.
+  const [estimatedToolContextTokens, setEstimatedToolContextTokens] = useState<{
+    agentId: string | null
+    value: number | null
+  }>({ agentId: null, value: null })
+
+  useEffect(() => {
+    let cancelled = false
+    const currentAgentId = draftAgent?.id ?? null
+
     if (!draftAgent?.enableTools) {
-      return 0
+      setEstimatedToolContextTokens({ agentId: currentAgentId, value: 0 })
+      return
     }
 
-    return availableTools.reduce((sum, tool) => {
+    const eligibleTools = availableTools.filter((tool) => {
       let serverName = localFsServerName
       try {
         serverName = parseToolName(tool.name).serverName
       } catch {
         serverName = localFsServerName
       }
-
       if (
         serverName === localFsServerName &&
         draftAgent.includeBuiltinTools === false
       ) {
-        return sum
+        return false
       }
-      if (!isAssistantToolEnabled(draftAgent, tool.name)) {
-        return sum
-      }
+      return isAssistantToolEnabled(draftAgent, tool.name)
+    })
 
-      return sum + estimateJsonTokens(buildToolTokenPayload(tool))
-    }, 0)
+    if (eligibleTools.length === 0) {
+      setEstimatedToolContextTokens({ agentId: currentAgentId, value: 0 })
+      return
+    }
+
+    // Reset to loading only when agent identity changed; same agent keeps
+    // its previous value visible while the new sum resolves.
+    setEstimatedToolContextTokens((prev) =>
+      prev.agentId === currentAgentId
+        ? prev
+        : { agentId: currentAgentId, value: null },
+    )
+
+    void Promise.all(
+      eligibleTools.map((tool) =>
+        estimateJsonTokens(buildToolTokenPayload(tool)),
+      ),
+    ).then((counts) => {
+      if (cancelled) return
+      setEstimatedToolContextTokens({
+        agentId: currentAgentId,
+        value: counts.reduce((sum, count) => sum + count, 0),
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [
     availableTools,
     draftAgent,
@@ -847,7 +884,10 @@ export function AgentsSectionContent({
     [app, settings],
   )
 
-  const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+  const disabledSkillIds = useMemo(
+    () => settings.skills?.disabledSkillIds ?? [],
+    [settings.skills?.disabledSkillIds],
+  )
   const skillsDir = getYoloSkillsDir(settings)
   const disabledSkillIdSet = useMemo(
     () => getDisabledSkillIdSet(disabledSkillIds),
@@ -872,8 +912,12 @@ export function AgentsSectionContent({
     })
   }, [disabledSkillIdSet, draftAgent, skillEntries])
 
+  // Same agent-scoped pattern as estimatedToolContextTokens above.
   const [estimatedSkillContextTokens, setEstimatedSkillContextTokens] =
-    useState<number | null>(null)
+    useState<{ agentId: string | null; value: number | null }>({
+      agentId: null,
+      value: null,
+    })
 
   const alwaysSkillRows = useMemo(
     () =>
@@ -888,18 +932,26 @@ export function AgentsSectionContent({
 
   useEffect(() => {
     let cancelled = false
+    const currentAgentId = draftAgent?.id ?? null
 
     const run = async () => {
       const enabledSkillRows = skillRows.filter((skill) => skill.enabled)
       if (enabledSkillRows.length === 0) {
         if (!cancelled) {
-          setEstimatedSkillContextTokens(0)
+          setEstimatedSkillContextTokens({
+            agentId: currentAgentId,
+            value: 0,
+          })
         }
         return
       }
 
       if (!cancelled) {
-        setEstimatedSkillContextTokens(null)
+        setEstimatedSkillContextTokens((prev) =>
+          prev.agentId === currentAgentId
+            ? prev
+            : { agentId: currentAgentId, value: null },
+        )
       }
 
       const counts = await Promise.all(
@@ -913,9 +965,10 @@ export function AgentsSectionContent({
       )
 
       if (!cancelled) {
-        setEstimatedSkillContextTokens(
-          counts.reduce((sum, count) => sum + count, 0),
-        )
+        setEstimatedSkillContextTokens({
+          agentId: currentAgentId,
+          value: counts.reduce((sum, count) => sum + count, 0),
+        })
       }
     }
 
@@ -924,7 +977,7 @@ export function AgentsSectionContent({
     return () => {
       cancelled = true
     }
-  }, [app, settings, skillRows])
+  }, [app, settings, skillRows, draftAgent?.id])
   const toolApprovalOptions = useMemo(
     () => [
       {
@@ -1222,15 +1275,17 @@ export function AgentsSectionContent({
                     <div className="smtcmp-agent-tools-panel-title">
                       {t('settings.agent.tools', 'Tools')}
                     </div>
-                    <div className="smtcmp-agent-tools-panel-estimate">
-                      {t(
-                        'settings.agent.editorEstimatedContextTokens',
-                        '~{count} tokens',
-                      ).replace(
-                        '{count}',
-                        formatTokenCount(estimatedToolContextTokens),
-                      )}
-                    </div>
+                    {estimatedToolContextTokens.value !== null && (
+                      <div className="smtcmp-agent-tools-panel-estimate">
+                        {t(
+                          'settings.agent.editorEstimatedContextTokens',
+                          '~{count} tokens',
+                        ).replace(
+                          '{count}',
+                          formatTokenCount(estimatedToolContextTokens.value),
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="smtcmp-agent-tools-panel-count">
                     {`${enabledVisibleToolsCount} / ${visibleToolsCount} ${t(
@@ -1325,14 +1380,14 @@ export function AgentsSectionContent({
                     <div className="smtcmp-agent-tools-panel-title">
                       {t('settings.agent.skills', 'Skills')}
                     </div>
-                    {estimatedSkillContextTokens !== null && (
+                    {estimatedSkillContextTokens.value !== null && (
                       <div className="smtcmp-agent-tools-panel-estimate">
                         {t(
                           'settings.agent.editorEstimatedContextTokens',
                           '~{count} tokens',
                         ).replace(
                           '{count}',
-                          formatTokenCount(estimatedSkillContextTokens),
+                          formatTokenCount(estimatedSkillContextTokens.value),
                         )}
                       </div>
                     )}

@@ -19,6 +19,27 @@
   margin-bottom: var(--size-4-3);
 }
 
+.yolo-agent-sub-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  padding: var(--size-4-3) var(--size-4-4);
+  margin-top: var(--size-4-3);
+}
+
+.yolo-agent-sub-card-head {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  margin-bottom: var(--size-4-2);
+}
+
+/* Focus-sync card — pure white background like the Models block cards. */
+.yolo-focus-sync-card.setting-item {
+  background: var(--background-primary) !important;
+  border: 1px solid var(--background-modifier-border) !important;
+}
+
 .smtcmp-agent-block-head-title-row {
   display: flex;
   align-items: center;

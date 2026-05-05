@@ -116,13 +116,6 @@ function mentionablesToMarkdownLines(
       case 'folder':
         lines.push(`Folder: \`${m.folder}\``)
         break
-      case 'current-file':
-        if (m.file) {
-          lines.push(`Current file: [[${m.file}]]`)
-        } else {
-          lines.push('Current file: (none)')
-        }
-        break
       case 'block':
         lines.push(`Block in \`${m.file}\` (lines ${m.startLine}–${m.endLine})`)
         break
@@ -158,6 +151,8 @@ function groupSerializedAssistantAndToolMessages(
     ) => {
       if (message.role === 'user') {
         acc.push(message)
+      } else if (message.role === 'external_agent_result') {
+        // external_agent_result messages are not exported to markdown
       } else {
         const lastItem = acc[acc.length - 1]
         if (

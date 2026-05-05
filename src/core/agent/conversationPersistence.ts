@@ -70,6 +70,8 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         id: message.id,
         metadata: message.metadata,
       }
+    case 'external_agent_result':
+      return message
   }
 }
 
@@ -82,10 +84,12 @@ export const createAgentConversationPersistence = (
       conversationId,
       messages,
       compaction,
+      touchUpdatedAt,
     }: {
       conversationId: string
       messages: ChatMessage[]
       compaction?: ChatConversationCompactionState
+      touchUpdatedAt?: boolean
     }): Promise<void> => {
       const settings = getSettings()
       const chatManager = new ChatManager(app, settings)
@@ -100,14 +104,18 @@ export const createAgentConversationPersistence = (
       })
 
       if (existingConversation) {
-        await chatManager.updateChat(conversationId, {
-          messages: compactedMessages,
-          compaction:
-            compaction ??
-            normalizeChatConversationCompactionState(
-              existingConversation.compaction,
-            ),
-        })
+        await chatManager.updateChat(
+          conversationId,
+          {
+            messages: compactedMessages,
+            compaction:
+              compaction ??
+              normalizeChatConversationCompactionState(
+                existingConversation.compaction,
+              ),
+          },
+          touchUpdatedAt === undefined ? undefined : { touchUpdatedAt },
+        )
       } else {
         await chatManager.createChat({
           id: conversationId,

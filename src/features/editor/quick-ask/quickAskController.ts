@@ -1,13 +1,20 @@
 import type { Extension } from '@codemirror/state'
 import { StateEffect } from '@codemirror/state'
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view'
-import type { Editor, MarkdownView } from 'obsidian'
+import type { Editor, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian'
 
-import { QuickAskOverlay } from '../../../components/panels/quick-ask'
+import {
+  QuickAskCapabilities,
+  QuickAskOverlay,
+} from '../../../components/panels/quick-ask'
 import type SmartComposerPlugin from '../../../main'
 import type { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type { Mentionable } from '../../../types/mentionable'
+import { getPdfLeafContentEl } from '../selection-chat/getPdfSelectionData'
+import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
+import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
+import { createCmAnchor, createPdfAnchor } from './quickAsk.anchor'
 import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
@@ -18,8 +25,8 @@ type QuickAskWidgetPayload = {
   pos: number
   options: {
     plugin: SmartComposerPlugin
-    editor: Editor
-    view: EditorView
+    capabilities: QuickAskCapabilities
+    anchor: ReturnType<typeof createCmAnchor>
     contextText: string
     fileTitle: string
     sourceFilePath?: string
@@ -49,13 +56,11 @@ type QuickAskControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getActiveFileTitle: () => string
   closeSmartSpace: (restoreFocus?: boolean) => void
-  pinSelectionHighlight: (view: EditorView) => void
-  clearSelectionHighlight: (view?: EditorView) => void
 }
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
 const DEFAULT_QUICK_ASK_CONTEXT_AFTER_CHARS = 2000
-const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
+export const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
 
 const quickAskWidgetEffect = StateEffect.define<QuickAskWidgetPayload | null>()
 
@@ -65,7 +70,7 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
     private pos: number | null = null
     private selectionAnchor: { from: number; to: number } | null = null
 
-    constructor(private readonly view: EditorView) {}
+    constructor(_view: EditorView) {}
 
     update(update: ViewUpdate) {
       for (const tr of update.transactions) {
@@ -109,18 +114,41 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
 
 export class QuickAskController {
   private quickAskWidgetState: QuickAskWidgetState = null
+  private pdfQuickAskInstance: {
+    overlay: QuickAskOverlay
+    leaf: WorkspaceLeaf
+  } | null = null
   private highlightTakeoverToken = 0
+  /** id of the current quickask highlight, so we can clear it on close */
+  private currentHighlightId: string | null = null
+  /** id of the current quickask PDF highlight, so we can clear it on close */
+  private currentPdfHighlightId: string | null = null
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
   close(restoreFocus = true) {
+    // Destroy PDF instance if present
+    if (this.pdfQuickAskInstance) {
+      const { overlay } = this.pdfQuickAskInstance
+      this.pdfQuickAskInstance = null
+      overlay.destroy()
+    }
+
+    if (this.currentPdfHighlightId) {
+      pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
+      this.currentPdfHighlightId = null
+    }
+
     const state = this.quickAskWidgetState
     if (!state) {
       return
     }
 
     this.highlightTakeoverToken += 1
-    this.deps.clearSelectionHighlight(state.view)
+    if (this.currentHighlightId) {
+      selectionHighlightController.clearById(this.currentHighlightId)
+      this.currentHighlightId = null
+    }
 
     if (!restoreFocus) {
       this.quickAskWidgetState = null
@@ -207,7 +235,7 @@ export class QuickAskController {
     const selectionScope = options?.selectionScope
     const autoSend = options?.autoSend
 
-    // Close any existing Quick Ask panel
+    // Close any existing Quick Ask panel (CM or PDF)
     this.close(false)
     // Also close Smart Space if open
     this.deps.closeSmartSpace(false)
@@ -228,6 +256,13 @@ export class QuickAskController {
       }
     }
 
+    const anchor = createCmAnchor(view, pos, selectionAnchor ?? null)
+    const capabilities: QuickAskCapabilities = {
+      edit: true,
+      editor,
+      view,
+    }
+
     view.dispatch({
       effects: [
         quickAskWidgetEffect.of(null),
@@ -235,8 +270,8 @@ export class QuickAskController {
           pos,
           options: {
             plugin: this.deps.plugin,
-            editor,
-            view,
+            capabilities,
+            anchor,
             contextText,
             fileTitle,
             sourceFilePath,
@@ -257,6 +292,107 @@ export class QuickAskController {
 
     this.quickAskWidgetState = { view, pos, close }
     this.deferSelectionHighlightTakeover(view, ++this.highlightTakeoverToken)
+  }
+
+  /**
+   * Launch a Quick Ask overlay from a PDF selection.
+   * Bypasses the CodeMirror ViewPlugin path entirely.
+   */
+  showFromPdf(args: {
+    leaf: WorkspaceLeaf
+    range: Range
+    file: TFile
+    pageNumber: number
+    contextText?: string
+    initialMentionables?: Mentionable[]
+    initialPrompt?: string
+    initialMode?: QuickAskLaunchMode
+    initialInput?: string
+    autoSend?: boolean
+  }): void {
+    const hostEl = getPdfLeafContentEl(args.leaf)
+    if (!hostEl) {
+      // PDF leaf DOM not in expected shape — refuse to mount rather than
+      // falling back to document.body (would float in wrong coordinate space).
+      return
+    }
+
+    const anchor = createPdfAnchor(args.range, hostEl)
+    if (!anchor.isValid()) {
+      return
+    }
+
+    // Close any existing Quick Ask (CM or PDF) and Smart Space
+    this.close(false)
+    this.deps.closeSmartSpace(false)
+
+    const capabilities: QuickAskCapabilities = {
+      edit: false,
+      editor: null,
+      view: null,
+    }
+
+    const onClose = () => {
+      const instance = this.pdfQuickAskInstance
+      if (instance) {
+        this.pdfQuickAskInstance = null
+        instance.overlay.destroy()
+      }
+      if (this.currentPdfHighlightId) {
+        pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
+        this.currentPdfHighlightId = null
+      }
+    }
+
+    const overlay = new QuickAskOverlay({
+      plugin: this.deps.plugin,
+      anchor,
+      capabilities,
+      contextText: args.contextText ?? '',
+      fileTitle: args.file.basename,
+      sourceFilePath: args.file.path,
+      initialPrompt: args.initialPrompt,
+      initialMentionables: args.initialMentionables,
+      initialMode: args.initialMode ?? 'chat',
+      initialInput: args.initialInput,
+      autoSend: args.autoSend,
+      onClose,
+    })
+
+    this.pdfQuickAskInstance = { overlay, leaf: args.leaf }
+    overlay.mount()
+
+    // Mirror Markdown's persistence: register a 'sync' highlight on the PDF
+    // leaf so the selected range stays visually highlighted while the Quick
+    // Ask floats. Cleared in close()/onClose. Gated by the same setting.
+    if (
+      this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
+      true
+    ) {
+      const id = `quickask:${crypto.randomUUID()}`
+      this.currentPdfHighlightId = id
+      pdfSelectionHighlightController.addHighlight(
+        args.leaf,
+        id,
+        { range: args.range, pageNumber: args.pageNumber, file: args.file },
+        'sync',
+        'quickask',
+      )
+    }
+  }
+
+  /**
+   * If the owning PDF leaf is no longer in the workspace, drop the lingering
+   * Quick Ask instance.  Caller (SelectionChatController) drives this from
+   * `layout-change`.
+   */
+  pruneOrphanedPdfInstance(activePdfLeaves: Set<WorkspaceLeaf>): void {
+    const instance = this.pdfQuickAskInstance
+    if (!instance) return
+    if (!activePdfLeaves.has(instance.leaf)) {
+      this.pdfQuickAskInstance = null
+      instance.overlay.destroy()
+    }
   }
 
   private deferSelectionHighlightTakeover(view: EditorView, token: number) {
@@ -284,7 +420,15 @@ export class QuickAskController {
           return
         }
 
-        this.deps.pinSelectionHighlight(view)
+        const id = `quickask:${crypto.randomUUID()}`
+        this.currentHighlightId = id
+        selectionHighlightController.addHighlight(
+          view,
+          id,
+          { from: selection.from, to: selection.to },
+          'sync',
+          'quickask',
+        )
       })
     })
   }

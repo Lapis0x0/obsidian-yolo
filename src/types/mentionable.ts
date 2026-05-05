@@ -8,16 +8,33 @@ export type MentionableFolder = {
   type: 'folder'
   folder: TFolder
 }
-export type MentionableCurrentFile = {
-  type: 'current-file'
-  file: TFile | null
-}
+
+export type CurrentFileViewState =
+  | {
+      kind: 'markdown-edit'
+      visibleStartLine: number // 1-indexed
+      visibleEndLine: number // 1-indexed, inclusive
+      cursorLine: number // 1-indexed
+      totalLines: number
+    }
+  | {
+      kind: 'pdf'
+      currentPage: number // 1-indexed
+      totalPages: number
+    }
+  | {
+      kind: 'other'
+      totalLines?: number
+    }
+
 export type MentionableBlockData = {
   content: string
   file: TFile
   startLine: number
   endLine: number
+  pageNumber?: number // 1-indexed; present when selection originates from a PDF view
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
+  highlightId?: string // runtime-only; links this mention to its visual highlight; not persisted
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
@@ -60,7 +77,6 @@ export type MentionableModel = {
 export type Mentionable =
   | MentionableFile
   | MentionableFolder
-  | MentionableCurrentFile
   | MentionableBlock
   | MentionableAssistantQuote
   | MentionableUrl
@@ -75,16 +91,13 @@ export type SerializedMentionableFolder = {
   type: 'folder'
   folder: string
 }
-export type SerializedMentionableCurrentFile = {
-  type: 'current-file'
-  file: string | null
-}
 export type SerializedMentionableBlock = {
   type: 'block'
   content?: string
   file: string
   startLine: number
   endLine: number
+  pageNumber?: number
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
   contentHash?: string
   contentCount?: number
@@ -106,7 +119,6 @@ export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
   | SerializedMentionableFolder
-  | SerializedMentionableCurrentFile
   | SerializedMentionableBlock
   | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl

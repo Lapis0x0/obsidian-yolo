@@ -1,6 +1,9 @@
 import { App } from 'obsidian'
 
-import { Mentionable, SerializedMentionable } from '../../types/mentionable'
+import type {
+  Mentionable,
+  SerializedMentionable,
+} from '../../types/mentionable'
 
 export function getBlockContentHash(content: string): string {
   let hash = 2166136261
@@ -25,11 +28,6 @@ export const serializeMentionable = (
         type: 'folder',
         folder: mentionable.folder.path,
       }
-    case 'current-file':
-      return {
-        type: 'current-file',
-        file: mentionable.file?.path ?? null,
-      }
     case 'block':
       return {
         type: 'block',
@@ -37,6 +35,7 @@ export const serializeMentionable = (
         file: mentionable.file.path,
         startLine: mentionable.startLine,
         endLine: mentionable.endLine,
+        pageNumber: mentionable.pageNumber,
         source: mentionable.source,
         contentHash:
           mentionable.contentHash ?? getBlockContentHash(mentionable.content),
@@ -92,8 +91,9 @@ export const deserializeMentionable = (
     switch (mentionable.type) {
       default:
         // Unknown/legacy types persisted in old conversations (e.g. 'vault'
-        // from the removed Vault similarity search feature) are silently
-        // dropped so they disappear on next save.
+        // from the removed Vault similarity search feature, or 'current-file'
+        // from the removed focus-sync badge path) are silently dropped so
+        // they disappear on next save.
         return null
       case 'file': {
         const filePath =
@@ -125,19 +125,6 @@ export const deserializeMentionable = (
           folder: folder,
         }
       }
-      case 'current-file': {
-        if (!mentionable.file || typeof mentionable.file !== 'string') {
-          return {
-            type: 'current-file',
-            file: null,
-          }
-        }
-        const file = app.vault.getFileByPath(mentionable.file)
-        return {
-          type: 'current-file',
-          file: file,
-        }
-      }
       case 'block': {
         const filePath =
           typeof mentionable.file === 'string' ? mentionable.file : null
@@ -159,6 +146,7 @@ export const deserializeMentionable = (
           file: file,
           startLine: mentionable.startLine,
           endLine: mentionable.endLine,
+          pageNumber: mentionable.pageNumber,
           source: mentionable.source,
           contentHash:
             mentionable.contentHash ?? getBlockContentHash(mentionable.content),
@@ -228,10 +216,13 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `file:${mentionable.file}`
     case 'folder':
       return `folder:${mentionable.folder}`
-    case 'current-file':
-      return `current-file:${mentionable.file ?? 'current'}`
-    case 'block':
-      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+    case 'block': {
+      const pageTag =
+        mentionable.pageNumber !== undefined
+          ? `:p${mentionable.pageNumber}`
+          : ''
+      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+    }
     case 'assistant-quote':
       return `assistant-quote:${mentionable.conversationId}:${mentionable.messageId}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
     case 'url':
@@ -318,10 +309,6 @@ export function getMentionableName(
       return mentionable.file.name
     case 'folder':
       return mentionable.folder.name
-    case 'current-file':
-      return (
-        mentionable.file?.name ?? options?.currentFileLabel ?? 'Current file'
-      )
     case 'block': {
       const count =
         mentionable.contentCount ??

@@ -1,10 +1,11 @@
 import { Editor, Platform } from 'obsidian'
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
 import { SettingsProvider } from '../../contexts/settings-context'
+import type { PdfSelectionResult } from '../../features/editor/selection-chat/getPdfSelectionData'
 import SmartComposerPlugin from '../../main'
 
 import type {
@@ -15,11 +16,15 @@ import { SelectionActionsMenu } from './SelectionActionsMenu'
 import { SelectionIndicator, getIndicatorPosition } from './SelectionIndicator'
 import type { SelectionInfo } from './SelectionManager'
 
-type SelectionChatWidgetProps = {
+// ─── Discriminated union for widget options ──────────────────────────────────
+
+type MarkdownWidgetOptions = {
+  source: 'markdown'
   plugin: SmartComposerPlugin
   editor: Editor
   selection: SelectionInfo
-  editorContainer: HTMLElement
+  /** The .cm-editor element — used as host and for scroll listeners. */
+  hostEl: HTMLElement
   onClose: () => void
   onAction: (
     actionId: string,
@@ -30,14 +35,48 @@ type SelectionChatWidgetProps = {
   ) => void | Promise<void>
 }
 
+type PdfWidgetOptions = {
+  source: 'pdf'
+  plugin: SmartComposerPlugin
+  selection: SelectionInfo
+  pdfData: Extract<PdfSelectionResult, { kind: 'data' }>
+  /** The PDF leaf content element — used as host and for scroll listeners. */
+  hostEl: HTMLElement
+  onClose: () => void
+  onAction: (
+    actionId: string,
+    instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
+  ) => void | Promise<void>
+}
+
+type SelectionChatWidgetOptions = MarkdownWidgetOptions | PdfWidgetOptions
+
+// ─── Body component (source-agnostic) ───────────────────────────────────────
+
+type SelectionChatWidgetBodyProps = {
+  plugin: SmartComposerPlugin
+  selection: SelectionInfo
+  hostEl: HTMLElement
+  source: 'markdown' | 'pdf'
+  onClose: () => void
+  onAction: (
+    actionId: string,
+    instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
+  ) => void | Promise<void>
+}
+
 function SelectionChatWidgetBody({
   plugin: _plugin,
-  editor: _editor,
   selection,
-  editorContainer,
+  hostEl,
+  source,
   onClose,
   onAction,
-}: SelectionChatWidgetProps) {
+}: SelectionChatWidgetBodyProps) {
   const isMobile = !Platform.isDesktop
   const [showMenu, setShowMenu] = useState(false)
   const [menuPinned, setMenuPinned] = useState(false)
@@ -52,8 +91,8 @@ function SelectionChatWidgetBody({
 
   useEffect(() => {
     // Calculate indicator position for menu positioning
-    setIndicatorPosition(getIndicatorPosition(selection, editorContainer, 8))
-  }, [editorContainer, selection])
+    setIndicatorPosition(getIndicatorPosition(selection, hostEl, 8))
+  }, [hostEl, selection])
 
   useEffect(() => {
     if (isMobile && menuPinned) {
@@ -78,7 +117,7 @@ function SelectionChatWidgetBody({
       showTimeoutRef.current = window.setTimeout(() => {
         setShowMenu(true)
         showTimeoutRef.current = null
-      }, 150)
+      }, 80)
     } else {
       // Hide menu after a delay when not hovering
       hideTimeoutRef.current = window.setTimeout(() => {
@@ -104,7 +143,7 @@ function SelectionChatWidgetBody({
     rewriteBehavior?: SelectionActionRewriteBehavior,
   ) => {
     onClose()
-    await onAction(actionId, selection, instruction, mode, rewriteBehavior)
+    await onAction(actionId, instruction, mode, rewriteBehavior)
   }
 
   const handleIndicatorPress = () => {
@@ -122,21 +161,24 @@ function SelectionChatWidgetBody({
     <>
       <SelectionIndicator
         selection={selection}
-        containerEl={editorContainer}
+        containerEl={hostEl}
         onHoverChange={setIsHoveringIndicator}
         onPress={isMobile ? handleIndicatorPress : undefined}
       />
       <SelectionActionsMenu
         selection={selection}
-        containerEl={editorContainer}
+        containerEl={hostEl}
         indicatorPosition={indicatorPosition}
         visible={showMenu || (isMobile && menuPinned)}
         onAction={handleAction}
         onHoverChange={setIsHoveringMenu}
+        source={source}
       />
     </>
   )
 }
+
+// ─── Widget class ─────────────────────────────────────────────────────────────
 
 export class SelectionChatWidget {
   private static overlayRoot: HTMLElement | null = null
@@ -151,27 +193,12 @@ export class SelectionChatWidget {
   private scrollThrottle: number | null = null
   private preserveUntil = 0
 
-  constructor(
-    private readonly options: {
-      plugin: SmartComposerPlugin
-      editor: Editor
-      selection: SelectionInfo
-      editorContainer: HTMLElement
-      onClose: () => void
-      onAction: (
-        actionId: string,
-        selection: SelectionInfo,
-        instruction: string,
-        mode: SelectionActionMode,
-        rewriteBehavior?: SelectionActionRewriteBehavior,
-      ) => void | Promise<void>
-    },
-  ) {
+  constructor(private readonly options: SelectionChatWidgetOptions) {
     this.currentSelection = options.selection
   }
 
   mount(): void {
-    this.overlayHost = this.options.editorContainer
+    this.overlayHost = this.options.hostEl
     const overlayRoot = SelectionChatWidget.getOverlayRoot(this.overlayHost)
     const overlayContainer = document.createElement('div')
     overlayContainer.className = 'smtcmp-selection-chat-overlay'
@@ -275,7 +302,7 @@ export class SelectionChatWidget {
       }
     }
 
-    // Recompute position when the editor scrolls; close only if selection is invalid
+    // Recompute position when the host scrolls; close only if selection is invalid
     const handleScroll = () => {
       if (this.scrollThrottle !== null) {
         return
@@ -288,16 +315,12 @@ export class SelectionChatWidget {
 
     window.addEventListener('pointerdown', handlePointerDown, true)
     window.addEventListener('keydown', handleKeyDown, true)
-    this.options.editorContainer.addEventListener('scroll', handleScroll, true)
+    this.options.hostEl.addEventListener('scroll', handleScroll, true)
 
     this.cleanupListeners = () => {
       window.removeEventListener('pointerdown', handlePointerDown, true)
       window.removeEventListener('keydown', handleKeyDown, true)
-      this.options.editorContainer.removeEventListener(
-        'scroll',
-        handleScroll,
-        true,
-      )
+      this.options.hostEl.removeEventListener('scroll', handleScroll, true)
       this.cleanupListeners = null
     }
   }
@@ -310,7 +333,7 @@ export class SelectionChatWidget {
     }
 
     const range = selection.getRangeAt(0)
-    if (!this.isInEditor(range.commonAncestorContainer)) {
+    if (!this.isInsideHost(range.commonAncestorContainer)) {
       this.handleClose()
       return
     }
@@ -334,10 +357,10 @@ export class SelectionChatWidget {
     this.render()
   }
 
-  private isInEditor(node: Node): boolean {
+  private isInsideHost(node: Node): boolean {
     let current: Node | null = node
     while (current) {
-      if (current === this.options.editorContainer) {
+      if (current === this.options.hostEl) {
         return true
       }
       current = current.parentNode
@@ -345,8 +368,31 @@ export class SelectionChatWidget {
     return false
   }
 
+  private buildOnAction(): (
+    actionId: string,
+    instruction: string,
+    mode: SelectionActionMode,
+    rewriteBehavior?: SelectionActionRewriteBehavior,
+  ) => void | Promise<void> {
+    const opts = this.options
+    if (opts.source === 'markdown') {
+      // For markdown, we pass the selection to the onAction callback
+      return (actionId, instruction, mode, rewriteBehavior) =>
+        opts.onAction(
+          actionId,
+          this.currentSelection,
+          instruction,
+          mode,
+          rewriteBehavior,
+        )
+    }
+    // For PDF, onAction doesn't need selection (it's already captured in pdfData)
+    return opts.onAction
+  }
+
   private render(): void {
     if (!this.root) return
+    const onAction = this.buildOnAction()
     this.root.render(
       <PluginProvider plugin={this.options.plugin}>
         <LanguageProvider>
@@ -361,11 +407,11 @@ export class SelectionChatWidget {
           >
             <SelectionChatWidgetBody
               plugin={this.options.plugin}
-              editor={this.options.editor}
               selection={this.currentSelection}
-              editorContainer={this.options.editorContainer}
+              hostEl={this.options.hostEl}
+              source={this.options.source}
               onClose={this.handleClose}
-              onAction={this.options.onAction}
+              onAction={onAction}
             />
           </SettingsProvider>
         </LanguageProvider>

@@ -11,6 +11,7 @@ import { McpProvider } from '../../../contexts/mcp-context'
 import { PluginProvider } from '../../../contexts/plugin-context'
 import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
+import type { QuickAskAnchor } from '../../../features/editor/quick-ask/quickAsk.anchor'
 import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
@@ -24,7 +25,34 @@ import {
 
 import { QuickAskPanel } from './QuickAskPanel'
 
-type EditorRect = ReturnType<EditorView['coordsAtPos']>
+/**
+ * Capabilities discriminated union.
+ *
+ * When edit=true, editor and view must be provided.
+ * When edit=false, editor and view must be null (PDF path).
+ * TypeScript enforces this at the call site.
+ */
+export type QuickAskCapabilities =
+  | { edit: true; editor: Editor; view: EditorView }
+  | { edit: false; editor: null; view: null }
+
+type QuickAskOverlayOptions = {
+  plugin: SmartComposerPlugin
+  anchor: QuickAskAnchor
+  capabilities: QuickAskCapabilities
+  contextText: string
+  fileTitle: string
+  sourceFilePath?: string
+  initialPrompt?: string
+  initialMentionables?: Mentionable[]
+  initialMode?: QuickAskLaunchMode
+  initialInput?: string
+  editContextText?: string
+  editSelectionFrom?: { line: number; ch: number }
+  selectionScope?: QuickAskSelectionScope
+  autoSend?: boolean
+  onClose: () => void
+}
 
 export class QuickAskOverlay {
   private static overlayRoot: HTMLElement | null = null
@@ -49,34 +77,13 @@ export class QuickAskOverlay {
   private dragPosition: { x: number; y: number } | null = null
   // Resize state - when set, override panel size
   private resizeSize: { width: number; height: number } | null = null
+  // pos is only meaningful for CM-based anchors (ViewPlugin route)
   private pos: number | null = null
-  private selectionAnchor: { from: number; to: number } | null = null
 
-  constructor(
-    private readonly options: {
-      plugin: SmartComposerPlugin
-      editor: Editor
-      view: EditorView
-      contextText: string
-      fileTitle: string
-      sourceFilePath?: string
-      initialPrompt?: string
-      initialMentionables?: Mentionable[]
-      initialMode?: QuickAskLaunchMode
-      initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
-      selectionScope?: QuickAskSelectionScope
-      selectionAnchor?: { from: number; to: number }
-      autoSend?: boolean
-      onClose: () => void
-    },
-  ) {
-    this.selectionAnchor = options.selectionAnchor ?? null
-  }
+  constructor(private readonly options: QuickAskOverlayOptions) {}
 
-  mount(pos: number): void {
-    this.pos = pos
+  mount(pos?: number): void {
+    this.pos = pos ?? 0
     QuickAskOverlay.currentInstance = this
     this.mountOverlay()
     this.setupGlobalListeners()
@@ -188,7 +195,7 @@ export class QuickAskOverlay {
   }
 
   private mountOverlay() {
-    const overlayHost = this.resolveOverlayHost()
+    const overlayHost = this.options.anchor.hostEl
     this.overlayHost = overlayHost
 
     const overlayRoot = QuickAskOverlay.getOverlayRoot(overlayHost)
@@ -196,6 +203,8 @@ export class QuickAskOverlay {
     overlayContainer.className = 'smtcmp-quick-ask-overlay'
     overlayRoot.appendChild(overlayContainer)
     this.overlayContainer = overlayContainer
+
+    const { capabilities } = this.options
 
     this.root = createRoot(overlayContainer)
     this.root.render(
@@ -218,28 +227,52 @@ export class QuickAskOverlay {
                   <McpProvider
                     getMcpManager={() => this.options.plugin.getMcpManager()}
                   >
-                    <QuickAskPanel
-                      plugin={this.options.plugin}
-                      editor={this.options.editor}
-                      view={this.options.view}
-                      contextText={this.options.contextText}
-                      fileTitle={this.options.fileTitle}
-                      sourceFilePath={this.options.sourceFilePath}
-                      initialPrompt={this.options.initialPrompt}
-                      initialMentionables={this.options.initialMentionables}
-                      initialMode={this.options.initialMode}
-                      initialInput={this.options.initialInput}
-                      editContextText={this.options.editContextText}
-                      editSelectionFrom={this.options.editSelectionFrom}
-                      selectionScope={this.options.selectionScope}
-                      autoSend={this.options.autoSend}
-                      onClose={this.closeWithAnimation}
-                      containerRef={this.containerRef}
-                      onOverlayStateChange={this.handleOverlayStateChange}
-                      onDragOffset={this.handleDragOffset}
-                      onResize={this.handleResize}
-                      onDockToTopRight={this.handleDockToTopRight}
-                    />
+                    {capabilities.edit ? (
+                      <QuickAskPanel
+                        plugin={this.options.plugin}
+                        capabilities={{ edit: true }}
+                        editor={capabilities.editor}
+                        view={capabilities.view}
+                        contextText={this.options.contextText}
+                        fileTitle={this.options.fileTitle}
+                        sourceFilePath={this.options.sourceFilePath}
+                        initialPrompt={this.options.initialPrompt}
+                        initialMentionables={this.options.initialMentionables}
+                        initialMode={this.options.initialMode}
+                        initialInput={this.options.initialInput}
+                        editContextText={this.options.editContextText}
+                        editSelectionFrom={this.options.editSelectionFrom}
+                        selectionScope={this.options.selectionScope}
+                        autoSend={this.options.autoSend}
+                        onClose={this.closeWithAnimation}
+                        containerRef={this.containerRef}
+                        onOverlayStateChange={this.handleOverlayStateChange}
+                        onDragOffset={this.handleDragOffset}
+                        onResize={this.handleResize}
+                        onDockToTopRight={this.handleDockToTopRight}
+                      />
+                    ) : (
+                      <QuickAskPanel
+                        plugin={this.options.plugin}
+                        capabilities={{ edit: false }}
+                        editor={null}
+                        view={null}
+                        contextText={this.options.contextText}
+                        fileTitle={this.options.fileTitle}
+                        sourceFilePath={this.options.sourceFilePath}
+                        initialPrompt={this.options.initialPrompt}
+                        initialMentionables={this.options.initialMentionables}
+                        initialMode={this.options.initialMode}
+                        initialInput={this.options.initialInput}
+                        autoSend={this.options.autoSend}
+                        onClose={this.closeWithAnimation}
+                        containerRef={this.containerRef}
+                        onOverlayStateChange={this.handleOverlayStateChange}
+                        onDragOffset={this.handleDragOffset}
+                        onResize={this.handleResize}
+                        onDockToTopRight={this.handleDockToTopRight}
+                      />
+                    )}
                   </McpProvider>
                 </RAGProvider>
               </AppProvider>
@@ -261,70 +294,22 @@ export class QuickAskOverlay {
       window.removeEventListener('resize', handleResize),
     )
 
-    const scrollDom = this.options.view?.scrollDOM
-    if (scrollDom) {
-      scrollDom.addEventListener('scroll', handleScroll)
+    const scrollEl = this.options.anchor.scrollEl
+    if (scrollEl) {
+      scrollEl.addEventListener('scroll', handleScroll)
       this.cleanupCallbacks.push(() =>
-        scrollDom.removeEventListener('scroll', handleScroll),
+        scrollEl.removeEventListener('scroll', handleScroll),
       )
     }
 
     this.resizeObserver = new ResizeObserver(() =>
       this.schedulePositionUpdate(),
     )
-    if (scrollDom) this.resizeObserver.observe(scrollDom)
-  }
-
-  private resolveOverlayHost(): HTMLElement {
-    const viewDom = this.options.view.dom
-    if (!viewDom) {
-      return document.body
-    }
-
-    const workspaceRoot =
-      viewDom.closest('.workspace') ?? viewDom.closest('.app-container')
-    if (workspaceRoot instanceof HTMLElement) {
-      return workspaceRoot
-    }
-
-    const leafContent = viewDom.closest('.workspace-leaf-content')
-    if (leafContent instanceof HTMLElement) {
-      return leafContent
-    }
-
-    const workspaceLeaf = viewDom.closest('.workspace-leaf')
-    if (workspaceLeaf instanceof HTMLElement) {
-      return workspaceLeaf
-    }
-
-    return viewDom
+    if (scrollEl) this.resizeObserver.observe(scrollEl)
   }
 
   private getMinimumTopOffset(margin: number): number {
     return margin
-  }
-
-  private getDockReferenceRect(): DOMRect {
-    const viewDom = this.options.view.dom
-    const leafContent = viewDom?.closest('.workspace-leaf-content')
-    if (leafContent instanceof HTMLElement) {
-      return leafContent.getBoundingClientRect()
-    }
-
-    const scrollRect = this.options.view.scrollDOM?.getBoundingClientRect()
-    if (scrollRect) {
-      return scrollRect
-    }
-
-    const viewRect = viewDom?.getBoundingClientRect()
-    if (viewRect) {
-      return viewRect
-    }
-
-    return (
-      this.overlayHost?.getBoundingClientRect() ??
-      document.body.getBoundingClientRect()
-    )
   }
 
   private getPanelHeight(): number | null {
@@ -367,9 +352,9 @@ export class QuickAskOverlay {
     if (typeof pos === 'number') {
       this.pos = pos
     }
-    if (selectionAnchor !== undefined) {
-      this.selectionAnchor = selectionAnchor
-    }
+    // selectionAnchor updates are handled by the CM ViewPlugin via the anchor;
+    // PDF anchors capture the range at construction time and don't need updates.
+    void selectionAnchor
 
     // Opening position is anchored once. After the panel becomes an
     // independent floating window, document edits should no longer pull it
@@ -379,28 +364,6 @@ export class QuickAskOverlay {
     }
 
     this.schedulePositionUpdate()
-  }
-
-  private getSelectionAnchorRects(): {
-    startRect: NonNullable<EditorRect>
-    endRect: NonNullable<EditorRect>
-  } | null {
-    if (!this.selectionAnchor) {
-      return null
-    }
-
-    const { from, to } = this.selectionAnchor
-    if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) {
-      return null
-    }
-
-    const startRect = this.options.view.coordsAtPos(from)
-    const endRect = this.options.view.coordsAtPos(to)
-    if (!startRect || !endRect) {
-      return null
-    }
-
-    return { startRect, endRect }
   }
 
   private updateOverlayPosition() {
@@ -417,9 +380,9 @@ export class QuickAskOverlay {
       return
     }
 
-    const selectionAnchorRects = this.getSelectionAnchorRects()
-    const fallbackRect = this.options.view.coordsAtPos(this.pos)
-    const anchorRect = selectionAnchorRects?.endRect ?? fallbackRect
+    const anchor = this.options.anchor
+    const selectionRects = anchor.getSelectionRects()
+    const anchorRect = selectionRects?.endRect ?? anchor.getAnchorRect()
     if (!anchorRect) {
       return
     }
@@ -432,28 +395,14 @@ export class QuickAskOverlay {
     const margin = 12
     const offsetY = 6
 
-    const scrollDom = this.options.view.scrollDOM
-    const scrollRect = scrollDom?.getBoundingClientRect()
-    const sizer = scrollDom?.querySelector('.cm-sizer')
-    const sizerRect = sizer?.getBoundingClientRect()
-
-    const fallbackWidth = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue(
-        '--file-line-width',
-      ) || '720',
-      10,
-    )
-
-    const editorContentWidth =
-      sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
+    const contentBounds = anchor.getContentBounds()
+    const editorContentWidth = contentBounds.width
     const maxPanelWidth = Math.max(
       120,
       Math.min(editorContentWidth, viewportWidth - margin * 2),
     )
 
-    const contentLeft =
-      (sizerRect?.left ?? scrollRect?.left ?? hostRect.left + margin) -
-      hostRect.left
+    const contentLeft = contentBounds.left - hostRect.left
     const contentRight = contentLeft + editorContentWidth
     const panelHeight = this.resizeSize?.height ?? this.getPanelHeight()
 
@@ -466,7 +415,7 @@ export class QuickAskOverlay {
     const minTop = this.getMinimumTopOffset(margin)
     const preferredBelowTop = anchorRect.bottom - hostRect.top + offsetY
     const preferredAboveTop =
-      (selectionAnchorRects?.startRect.top ?? anchorRect.top) -
+      (selectionRects?.startRect.top ?? anchorRect.top) -
       hostRect.top -
       offsetY -
       (panelHeight ?? 0)
@@ -535,50 +484,52 @@ export class QuickAskOverlay {
     this.hasUserDragged = true
     this.isDockedTopRight = false
     this.dragPosition = { x, y }
-    this.updateDragPosition()
+    // 通过 rAF 节流;mousemove 在高刷屏可达 120Hz+,直接同步 updateDragPosition
+    // 会让每次都做 4 次 getBoundingClientRect + getComputedStyle + querySelector,
+    // 拖拽明显发卡。schedulePositionUpdate 会自动路由回 updateDragPosition。
+    this.schedulePositionUpdate()
   }
 
   private handleResize = (width: number, height: number) => {
     this.resizeSize = { width, height }
-    this.updateDragPosition() // Also update position when resizing
+    this.schedulePositionUpdate()
   }
 
   private updateDragPosition() {
     if (!this.overlayContainer || !this.dragPosition) return
 
+    const margin = 12
     const hostRect =
       this.overlayHost?.getBoundingClientRect() ??
       document.body.getBoundingClientRect()
 
-    const measuredWidth = this.getPanelWidth()
+    // Panel rect 一次读两个维度,避免对同一元素两次 getBoundingClientRect。
+    const panelRect = this.containerRef.current?.getBoundingClientRect() ?? null
+    const measuredWidth =
+      panelRect && Number.isFinite(panelRect.width) && panelRect.width > 0
+        ? panelRect.width
+        : null
+    const measuredHeight =
+      panelRect && Number.isFinite(panelRect.height) && panelRect.height > 0
+        ? panelRect.height
+        : null
 
-    // Get panel dimensions for width calculation
-    const scrollDom = this.options.view.scrollDOM
-    const scrollRect = scrollDom?.getBoundingClientRect()
-    const sizer = scrollDom?.querySelector('.cm-sizer')
-    const sizerRect = sizer?.getBoundingClientRect()
+    // Content width fallback — only needed when user hasn't resized and panel
+    // width isn't measured yet. Lazily evaluated to avoid unnecessary DOM reads.
+    const computeContentWidth = () => {
+      const bounds = this.options.anchor.getContentBounds()
+      return bounds.width
+    }
 
-    const fallbackWidth = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue(
-        '--file-line-width',
-      ) || '720',
-      10,
-    )
-
-    const viewportWidth = hostRect.width
-    const margin = 12
-
-    const editorContentWidth =
-      sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
-
-    // Use resized width if available, otherwise use default max width
     const panelWidth =
       this.resizeSize?.width ??
       measuredWidth ??
-      Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
+      Math.max(
+        120,
+        Math.min(computeContentWidth(), hostRect.width - margin * 2),
+      )
 
     const panelHeight = this.resizeSize?.height
-    const measuredHeight = this.getPanelHeight()
     const minTop = this.getMinimumTopOffset(margin)
     const minLeft = margin
     const maxLeft = Math.max(minLeft, hostRect.width - margin - panelWidth)
@@ -613,27 +564,15 @@ export class QuickAskOverlay {
     const hostRect =
       this.overlayHost?.getBoundingClientRect() ??
       document.body.getBoundingClientRect()
-    const dockRect = this.getDockReferenceRect()
+    const dockRect = this.options.anchor.getDockReferenceRect()
 
     const measuredWidth = this.getPanelWidth()
 
-    const scrollDom = this.options.view.scrollDOM
-    const scrollRect = scrollDom?.getBoundingClientRect()
-    const sizer = scrollDom?.querySelector('.cm-sizer')
-    const sizerRect = sizer?.getBoundingClientRect()
-
-    const fallbackWidth = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue(
-        '--file-line-width',
-      ) || '720',
-      10,
-    )
+    const contentBounds = this.options.anchor.getContentBounds()
+    const editorContentWidth = contentBounds.width
 
     const viewportWidth = hostRect.width
     const margin = 12
-
-    const editorContentWidth =
-      sizerRect?.width ?? scrollRect?.width ?? fallbackWidth
 
     const panelWidth =
       this.resizeSize?.width ??

@@ -8,6 +8,7 @@
  * - Added custom positioning logic for menu placement
  */
 
+import { autoUpdate } from '@floating-ui/dom'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { mergeRegister } from '@lexical/utils'
 import {
@@ -218,25 +219,30 @@ export function useDynamicPositioning(
   useEffect(() => {
     if (targetElement != null && resolution != null) {
       const ownerDocument = getNodeDocument(targetElement)
-      const ownerWindow = getNodeWindow(targetElement)
       const rootElement = editor.getRootElement()
       const rootScrollParent =
         rootElement != null
           ? getScrollParent(rootElement, false)
           : getNodeBody(targetElement)
-      let ticking = false
+
+      // Position tracking: 由 Floating UI 的 autoUpdate 统一处理 resize、
+      // 祖先 scroll、ResizeObserver,以及 animationFrame 轮询
+      // (后者是关键 —— Quick Ask 浮窗拖拽改的是内联 left/top,既不触发 resize
+      // 也不触发 scroll,只能靠 rAF 比对 getBoundingClientRect 才能感知)。
+      const cleanupAutoUpdate = autoUpdate(
+        targetElement,
+        targetElement,
+        onReposition,
+        { animationFrame: true },
+      )
+
+      // Visibility tracking: trigger 滚出最近 scroll container 时关闭菜单。
+      // autoUpdate 不负责这个语义,所以单独保留一个轻量 scroll handler。
       let previousIsInView = isTriggerVisibleInNearestScrollContainer(
         targetElement,
         rootScrollParent,
       )
-      const handleScroll = function () {
-        if (!ticking) {
-          ownerWindow.requestAnimationFrame(function () {
-            onReposition()
-            ticking = false
-          })
-          ticking = true
-        }
+      const handleVisibilityScroll = () => {
         const isInView = isTriggerVisibleInNearestScrollContainer(
           targetElement,
           rootScrollParent,
@@ -248,17 +254,18 @@ export function useDynamicPositioning(
           }
         }
       }
-      const resizeObserver = new ResizeObserver(onReposition)
-      ownerWindow.addEventListener('resize', onReposition)
-      ownerDocument.addEventListener('scroll', handleScroll, {
+      ownerDocument.addEventListener('scroll', handleVisibilityScroll, {
         capture: true,
         passive: true,
       })
-      resizeObserver.observe(targetElement)
+
       return () => {
-        resizeObserver.unobserve(targetElement)
-        ownerWindow.removeEventListener('resize', onReposition)
-        ownerDocument.removeEventListener('scroll', handleScroll, true)
+        cleanupAutoUpdate()
+        ownerDocument.removeEventListener(
+          'scroll',
+          handleVisibilityScroll,
+          true,
+        )
       }
     }
   }, [targetElement, editor, onVisibilityChange, onReposition, resolution])
@@ -537,6 +544,15 @@ export function useMenuAnchorRef(
 ): MutableRefObject<HTMLElement> {
   const [editor] = useLexicalComposerContext()
   const anchorElementRef = useRef<HTMLElement>(document.createElement('div'))
+  // 缓存上一次写入 containerDiv 的位置,autoUpdate animationFrame 模式下每帧都会
+  // 调用 positionMenu;若坐标未变则跳过 updateDynamicStyleClass,避免样式 churn。
+  // 菜单关闭时(useEffect cleanup)必须重置为 null —— containerDiv 会被 remove,
+  // 重新打开时若坐标恰好相同会被错误跳过,导致新 containerDiv 无内联样式。
+  const lastWrittenPositionRef = useRef<{
+    left: number
+    top: number
+    width: number
+  } | null>(null)
   const positionMenu = useCallback(() => {
     const rootElement = editor.getRootElement()
     if (rootElement === null || resolution === null) {
@@ -583,7 +599,7 @@ export function useMenuAnchorRef(
       const offsetTop = 4
       const margin = 8
       const containerEl = rootElement.closest(
-        '.smtcmp-chat-user-input-container, .smtcmp-quick-ask-panel',
+        '.smtcmp-chat-user-input-container, .smtcmp-quick-ask-input-row',
       )
       const centeredChatContainer = rootElement.closest(
         '.smtcmp-chat-container--centered',
@@ -618,17 +634,33 @@ export function useMenuAnchorRef(
         }
 
         // Position menu to align with the outermost edge of the focus ring
-        const menuLeft = rect.left - ring
-        const menuWidth = rect.width + ring * 2
-        const menuTop = rect.top - offsetTop
+        const menuLeft = Math.round(rect.left - ring)
+        const menuWidth = Math.round(rect.width + ring * 2)
+        const menuTop = Math.round(rect.top - offsetTop)
 
-        updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
-          position: 'fixed',
-          left: Math.round(menuLeft),
-          top: Math.round(menuTop),
-          width: Math.round(menuWidth),
-          zIndex: '1000',
-        })
+        // 与上次写入的坐标相同则跳过,避免 animationFrame 模式下每帧重写样式。
+        // menuEle 也要复检 —— 它的 absolute 定位完全依赖 containerDiv,
+        // 但 menuEle 的内容/可见性可能变,所以这里只跳过 containerDiv 的写。
+        const last = lastWrittenPositionRef.current
+        const positionUnchanged =
+          last !== null &&
+          last.left === menuLeft &&
+          last.top === menuTop &&
+          last.width === menuWidth
+        if (!positionUnchanged) {
+          lastWrittenPositionRef.current = {
+            left: menuLeft,
+            top: menuTop,
+            width: menuWidth,
+          }
+          updateDynamicStyleClass(containerDiv, 'smtcmp-typeahead-menu-pos', {
+            position: 'fixed',
+            left: menuLeft,
+            top: menuTop,
+            width: menuWidth,
+            zIndex: '1000',
+          })
+        }
 
         if (menuEle) {
           const available = Math.max(margin, Math.floor(rect.top - margin))
@@ -727,6 +759,8 @@ export function useMenuAnchorRef(
         if (containerDiv?.firstChild instanceof HTMLElement) {
           clearDynamicStyleClass(containerDiv.firstChild)
         }
+        // 重置位置缓存:containerDiv 已被 remove,下次打开必须重新写样式。
+        lastWrittenPositionRef.current = null
       }
     }
   }, [editor, positionMenu, resolution])

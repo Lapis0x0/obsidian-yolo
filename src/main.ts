@@ -4,12 +4,13 @@ import {
   Editor,
   MarkdownView,
   Notice,
+  Platform,
   Plugin,
   TFile,
   TFolder,
+  getLanguage,
   normalizePath,
 } from 'obsidian'
-import { getLanguage } from 'obsidian'
 
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
@@ -46,14 +47,11 @@ import { NotificationService } from './core/notifications/notificationService'
 import {
   type YoloDataMeta,
   extractYoloDataMeta,
-  getVaultDataJsonResolvedPath,
   readVaultDataJson,
   relocateYoloManagedData,
   removeVaultDataJson,
   stampYoloDataMeta,
-  writeVaultDataJson,
 } from './core/paths/yoloManagedData'
-import { getYoloSyncPointerPath } from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -98,6 +96,7 @@ import {
 } from './features/editor/smart-space/smartSpaceController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
+import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { Language, createTranslationFunction } from './i18n'
 import {
   SmartComposerSettings,
@@ -110,7 +109,11 @@ import {
 import { SmartComposerSettingTab } from './settings/SettingTab'
 import type { ApplyViewState } from './types/apply-view.types'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import type { Mentionable, MentionableBlockData } from './types/mentionable'
+import type {
+  Mentionable,
+  MentionableBlockData,
+  MentionableImage,
+} from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
@@ -121,9 +124,6 @@ export default class SmartComposerPlugin extends Plugin {
   settingsChangeListeners: ((newSettings: SmartComposerSettings) => void)[] = []
   private deviceId: string | null = null
   private currentSettingsMeta: YoloDataMeta | null = null
-  private lastWrittenVaultMirrorMeta: YoloDataMeta | null = null
-  private vaultMirrorPath: string | null = null
-  private vaultMirrorReloadTimer: ReturnType<typeof setTimeout> | null = null
   updateCheckResult: UpdateCheckResult | null = null
   private hasCheckedForUpdate = false
   private updateBannerDismissed = false
@@ -424,10 +424,6 @@ export default class SmartComposerPlugin extends Plugin {
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
         closeSmartSpace: () => this.closeSmartSpace(),
-        pinSelectionHighlight: (view) =>
-          selectionHighlightController.pinCurrentSelection(view),
-        clearSelectionHighlight: (view) =>
-          selectionHighlightController.clearHighlight(view),
       })
     }
     return this.quickAskController
@@ -543,6 +539,12 @@ export default class SmartComposerPlugin extends Plugin {
           this.showQuickAskWithOptions(editor, view, options),
         showQuickAskWithAutoSend: (editor, view, options) =>
           this.showQuickAskWithAutoSend(editor, view, options),
+        showQuickAskFromPdf: (args) =>
+          this.getQuickAskController().showFromPdf(args),
+        pruneOrphanedQuickAskPdfInstance: (activePdfLeaves) =>
+          this.getQuickAskController().pruneOrphanedPdfInstance(
+            activePdfLeaves,
+          ),
         openChatWithSelectionAndPrefill: async (selectedBlock, text) => {
           await this.getChatViewNavigator().openChatWithSelectionAndPrefill(
             selectedBlock,
@@ -561,10 +563,6 @@ export default class SmartComposerPlugin extends Plugin {
           )
         },
         isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
-        pinSelectionHighlight: (view) =>
-          selectionHighlightController.pinCurrentSelection(view),
-        clearSelectionHighlight: (view) =>
-          selectionHighlightController.clearHighlight(view),
       })
     }
     return this.selectionChatController
@@ -793,6 +791,8 @@ export default class SmartComposerPlugin extends Plugin {
       this.agentService = new AgentService({
         persistConversationMessages,
       })
+      // Start listening for async external agent task-completed events (desktop-only, no-op on mobile)
+      this.agentService.startExternalAgentResultListener()
     }
     return this.agentService
   }
@@ -895,10 +895,22 @@ export default class SmartComposerPlugin extends Plugin {
       this.getAgentService().subscribeToRunSummaries((summaries) => {
         this.syncAgentBackgroundActivities(summaries)
       })
+    // 异步派遣的子进程是 desktop-only，懒加载注册表后再订阅。
+    let unsubscribeAsyncTasks: (() => void) | null = null
+    if (Platform.isDesktopApp) {
+      void import('./core/agent/external-cli/async-task-registry').then(
+        ({ asyncTaskRegistry }) => {
+          unsubscribeAsyncTasks = asyncTaskRegistry.subscribe((records) => {
+            this.syncAsyncExternalAgentBackgroundActivities(records)
+          })
+        },
+      )
+    }
 
     this.register(() => {
       unsubscribeActivities()
       unsubscribeAgentSummaries()
+      unsubscribeAsyncTasks?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
       this.backgroundStatusBarLabel = null
@@ -911,6 +923,41 @@ export default class SmartComposerPlugin extends Plugin {
       this.backgroundActivityRegistry?.clear()
       this.backgroundActivityRegistry = null
     })
+  }
+
+  private syncAsyncExternalAgentBackgroundActivities(
+    records: import('./core/agent/external-cli/async-task-registry').AsyncTaskRecord[],
+  ): void {
+    const registry = this.getBackgroundActivityRegistry()
+    const nextActivityIds = new Set<string>()
+
+    for (const record of records) {
+      if (record.status !== 'running') continue
+      const id = `external-agent:${record.taskId}`
+      nextActivityIds.add(id)
+      registry.upsert({
+        id,
+        kind: 'agent',
+        title: record.title,
+        detail: record.provider,
+        status: 'running',
+        updatedAt: record.createdAt,
+        ...(record.conversationId
+          ? {
+              action: {
+                type: 'open-agent-conversation',
+                conversationId: record.conversationId,
+              },
+            }
+          : {}),
+      })
+    }
+
+    for (const activityId of this.latestBackgroundActivities.keys()) {
+      if (!activityId.startsWith('external-agent:')) continue
+      if (nextActivityIds.has(activityId)) continue
+      registry.remove(activityId)
+    }
   }
 
   private syncAgentBackgroundActivities(
@@ -1548,9 +1595,9 @@ export default class SmartComposerPlugin extends Plugin {
     clearRequestTransportMemory()
 
     await this.loadSettings()
+    await this.migrateLegacyVaultMirrorIfNeeded()
     this.warnIfInstallationIncomplete()
     this.syncOAuthRuntimesFromSettings()
-    this.registerVaultMirrorWatcher()
 
     // Prune stale image cache entries (>30 days) on startup
     void pruneImageCache(this.app, 30, this.settings)
@@ -1587,6 +1634,8 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
     this.newTabEmptyStateEnhancer.enable()
+
+    enablePdfScreenshotFeature(this)
 
     this.registerEditorExtension(selectionHighlightController.createExtension())
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
@@ -1937,8 +1986,17 @@ export default class SmartComposerPlugin extends Plugin {
     this.mcpManager = null
     this.ragAutoUpdateService?.cleanup()
     this.ragAutoUpdateService = null
+    this.agentService?.stopExternalAgentResultListener()
     this.agentService?.abortAll()
     this.agentService = null
+    // 终止所有活跃的外部 CLI 子进程（desktop-only，mobile 为空操作）
+    void import('./core/agent/external-cli/index').then(
+      ({ killAllActiveExternalCli }) => killAllActiveExternalCli(),
+    )
+    // 终止所有异步派遣任务，标记为 killed_by_shutdown
+    void import('./core/agent/external-cli/async-task-registry').then(
+      ({ asyncTaskRegistry }) => asyncTaskRegistry.abortAll(),
+    )
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
     this.clearTabCompletionTimer()
@@ -1947,75 +2005,32 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   async loadSettings() {
-    // Read both the plugin-dir copy and the optional vault-synced mirror, then
-    // pick whichever has the newer `__meta.updatedAt`. This gives "newest wins"
-    // semantics across devices instead of the older "mirror always wins" rule,
-    // which could let a stale boot overwrite fresh settings the user changed
-    // on another device.
-    const [rawPluginData, vaultRead] = await Promise.all([
-      this.loadData() as Promise<unknown>,
-      readVaultDataJson(this.app),
-    ])
+    // Read-only loader. The on-disk `data.json` in the plugin directory is
+    // the single source of truth for settings; `this.settings` is just a
+    // process-local view of it. Cross-device sync is delegated to whatever
+    // tool the user is using (Obsidian Sync, remotely-save, syncthing, git,
+    // …) — they all replicate the plugin-dir file directly. We never write
+    // back during load, so a backup pasted into `data.json` while the
+    // plugin was off can't be silently overwritten by startup
+    // normalization, and a Sync push that lands during boot can't be
+    // clobbered by a stale in-memory snapshot.
+    const rawPluginData = (await this.loadData()) as unknown
     const pluginExtract = extractYoloDataMeta(rawPluginData)
-    const pluginMeta = pluginExtract?.meta ?? null
-    const pluginRaw = pluginExtract?.raw ?? null
-    const vaultMeta = vaultRead?.meta ?? null
-    const vaultRaw = vaultRead?.raw ?? null
-
-    const vaultIsNewer =
-      vaultRaw !== null &&
-      (pluginMeta === null ||
-        (vaultMeta !== null && vaultMeta.updatedAt > pluginMeta.updatedAt))
-    const usedVaultSource = vaultIsNewer
-    const sourceRaw = usedVaultSource ? vaultRaw : pluginRaw
-    const sourceMeta = usedVaultSource ? vaultMeta : pluginMeta
+    const sourceRaw = pluginExtract?.raw ?? null
+    const sourceMeta = pluginExtract?.meta ?? null
 
     const parsedSettings = parseSmartComposerSettings(sourceRaw)
-
     const settingsWithDefaultAssistant =
       ensureDefaultAssistantInSettings(parsedSettings)
     const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
       settingsWithDefaultAssistant.chatModels,
     )
     const normalizedSettings = changed
-      ? {
-          ...settingsWithDefaultAssistant,
-          chatModels,
-        }
+      ? { ...settingsWithDefaultAssistant, chatModels }
       : settingsWithDefaultAssistant
 
     this.settings = normalizedSettings
     this.currentSettingsMeta = sourceMeta
-    if (vaultMeta) {
-      this.lastWrittenVaultMirrorMeta = vaultMeta
-    }
-    this.vaultMirrorPath = await getVaultDataJsonResolvedPath(
-      this.app,
-      normalizedSettings,
-    )
-
-    const migrated = await relocateYoloManagedData({
-      app: this.app,
-      fromSettings: parsedSettings,
-      toSettings: normalizedSettings,
-    })
-    if (!migrated) {
-      new Notice(
-        'Failed to migrate YOLO managed data during startup. Using existing data location.',
-      )
-    }
-
-    const normalizationChanged =
-      JSON.stringify(parsedSettings) !== JSON.stringify(normalizedSettings)
-
-    // Persist to plugin-dir when: normalization changed anything, OR vault was
-    // authoritative (so the local copy is refreshed and subsequent boots stay
-    // consistent). Don't touch the vault mirror here — startup writes risk
-    // racing with in-flight Obsidian Sync downloads. The mirror is only
-    // refreshed via setSettings() once the user actually changes something.
-    if (normalizationChanged || usedVaultSource) {
-      await this.persistPluginDirSettings(normalizedSettings)
-    }
   }
 
   private getDeviceId(): string {
@@ -2044,9 +2059,34 @@ export default class SmartComposerPlugin extends Plugin {
     return id
   }
 
+  /**
+   * Total ordering on `YoloDataMeta`. Returns true iff `b` beats `a`.
+   *   - Strictly newer `updatedAt` wins.
+   *   - Equal `updatedAt` ties are broken by lexically larger `deviceId`,
+   *     so all devices observing a millisecond-coincident race converge
+   *     on the same winner deterministically.
+   * `metaBeats(self, self)` is false.
+   */
+  private metaBeats(a: YoloDataMeta, b: YoloDataMeta): boolean {
+    if (b.updatedAt > a.updatedAt) return true
+    if (b.updatedAt < a.updatedAt) return false
+    return b.deviceId > a.deviceId
+  }
+
+  /**
+   * Builds a fresh `__meta` for our own writes. Monotonic against the
+   * meta we last observed in memory: prevents a device whose clock lags
+   * behind a freshly-synced peer from emitting a write whose `updatedAt`
+   * is below `currentSettingsMeta`, which other devices would then
+   * legitimately reject as stale.
+   */
   private buildSettingsMeta(): YoloDataMeta {
+    const baseTime = Date.now()
+    const monotonic = this.currentSettingsMeta
+      ? Math.max(baseTime, this.currentSettingsMeta.updatedAt + 1)
+      : baseTime
     return {
-      updatedAt: Date.now(),
+      updatedAt: monotonic,
       deviceId: this.getDeviceId(),
     }
   }
@@ -2060,100 +2100,60 @@ export default class SmartComposerPlugin extends Plugin {
     return meta
   }
 
-  private async persistVaultMirror(
-    settings: SmartComposerSettings,
-    meta: YoloDataMeta,
+  /**
+   * Adopt an externally-written `data.json` payload into in-memory state.
+   *
+   * Called from two places:
+   *   - `onExternalSettingsChange()` — Obsidian's official hook fires when
+   *     it detects the plugin's `data.json` was modified by something
+   *     other than `saveData` (Obsidian Sync push, remotely-save replay,
+   *     manual paste, git pull, …).
+   *   - `setSettings()` conflict path — when a write-attempt detects the
+   *     on-disk file is newer than what we last committed in memory.
+   *
+   * Protocol invariant:
+   *   Every legitimate write to `data.json` MUST stamp it with a
+   *   `__meta.updatedAt` strictly greater than the last meta this client
+   *   observed (or, on a millisecond-coincident race from another
+   *   device, a different `deviceId` so the lex tie-break in
+   *   `metaBeats` resolves the winner). `buildSettingsMeta` enforces
+   *   monotonicity for our own writes; cross-device sync naturally
+   *   satisfies it via `Date.now()` advancement. A user who hand-edits
+   *   `data.json` without bumping `__meta.updatedAt` falls outside the
+   *   protocol — we accept that such an edit may be missed until the
+   *   next external-change event re-reads the file.
+   */
+  private async applyExternalSettingsUpdate(
+    raw: Record<string, unknown>,
+    incomingMeta: YoloDataMeta | null,
   ): Promise<void> {
-    const ok = await writeVaultDataJson(this.app, settings, settings, meta)
-    if (ok) {
-      this.lastWrittenVaultMirrorMeta = meta
-      this.vaultMirrorPath = await getVaultDataJsonResolvedPath(
-        this.app,
-        settings,
-      )
-    }
-  }
-
-  private registerVaultMirrorWatcher(): void {
-    const pointerPath = getYoloSyncPointerPath()
-    const scheduleReload = () => {
-      if (this.vaultMirrorReloadTimer) {
-        clearTimeout(this.vaultMirrorReloadTimer)
-      }
-      // Debounce: Sync may emit multiple `modify` events as it streams the
-      // file. Wait briefly so we read the final content once.
-      this.vaultMirrorReloadTimer = setTimeout(() => {
-        this.vaultMirrorReloadTimer = null
-        void this.handleExternalMirrorChange()
-      }, 250)
-    }
-    const handle = (path: string) => {
-      // Pointer changes must always trigger a reload, since they relocate the
-      // mirror to a new file path (e.g. when another device changed
-      // `yolo.baseDir`). Without this we'd only see modify events on the
-      // stale path and miss the new mirror entirely.
-      if (path === pointerPath) {
-        scheduleReload()
-        return
-      }
-      if (this.vaultMirrorPath && path === this.vaultMirrorPath) {
-        scheduleReload()
-      }
-    }
-    this.registerEvent(this.app.vault.on('modify', (file) => handle(file.path)))
-    this.registerEvent(this.app.vault.on('create', (file) => handle(file.path)))
-    this.register(() => {
-      if (this.vaultMirrorReloadTimer) {
-        clearTimeout(this.vaultMirrorReloadTimer)
-        this.vaultMirrorReloadTimer = null
-      }
-    })
-  }
-
-  private async handleExternalMirrorChange(): Promise<void> {
-    // Re-resolve via the pointer first, since the mirror may have moved to a
-    // new path (remote `yolo.baseDir` change).
-    const resolvedPath = await getVaultDataJsonResolvedPath(
-      this.app,
-      this.settings,
-    )
-    if (resolvedPath !== this.vaultMirrorPath) {
-      this.vaultMirrorPath = resolvedPath
-    }
-
-    const vaultRead = await readVaultDataJson(this.app)
-    if (!vaultRead) {
-      return
-    }
-    const incomingMeta = vaultRead.meta
-    // Skip self-triggered events: same device + same updatedAt is the write we
-    // just made. A different deviceId means the change came from another
-    // synced client and must propagate.
+    // Self-write echo: same device + same updatedAt means this event is
+    // the reflection of our own most recent saveData. Suppress.
     if (
       incomingMeta &&
-      this.lastWrittenVaultMirrorMeta &&
-      incomingMeta.deviceId === this.lastWrittenVaultMirrorMeta.deviceId &&
-      incomingMeta.updatedAt === this.lastWrittenVaultMirrorMeta.updatedAt
+      this.currentSettingsMeta &&
+      incomingMeta.deviceId === this.currentSettingsMeta.deviceId &&
+      incomingMeta.updatedAt === this.currentSettingsMeta.updatedAt
     ) {
       return
     }
-    // Refuse to apply an incoming mirror that lacks `__meta` whenever we
-    // already hold a meta-stamped version locally. A meta-less mirror is
-    // either pre-upgrade legacy or written by a client that doesn't honor
-    // the protocol, and we can't reason about its freshness — preferring
-    // local avoids a stale Sync replay clobbering newer settings.
+    // Meta-less incoming with a meta-stamped local copy: refuse, per
+    // protocol — we can't compare freshness so preferring local avoids
+    // stale replays clobbering newer settings.
     if (!incomingMeta && this.currentSettingsMeta) {
       return
     }
+    // Reject anything our current in-memory state already beats under
+    // the total `metaBeats` ordering (older OR equal-and-loser).
     if (
       this.currentSettingsMeta &&
       incomingMeta &&
-      incomingMeta.updatedAt <= this.currentSettingsMeta.updatedAt
+      !this.metaBeats(this.currentSettingsMeta, incomingMeta)
     ) {
       return
     }
 
-    const parsedSettings = parseSmartComposerSettings(vaultRead.raw)
+    const parsedSettings = parseSmartComposerSettings(raw)
     const settingsWithDefaultAssistant =
       ensureDefaultAssistantInSettings(parsedSettings)
     const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
@@ -2169,44 +2169,193 @@ export default class SmartComposerPlugin extends Plugin {
 
     this.settings = normalizedSettings
     this.currentSettingsMeta = incomingMeta
-    if (incomingMeta) {
-      this.lastWrittenVaultMirrorMeta = incomingMeta
-    }
 
     if (baseDirChanged) {
-      // Another device moved YOLO managed data to a new `baseDir`. Sync has
-      // already replicated the files to the new path on disk, so we must
-      // NOT call `relocateYoloManagedData` (that would treat the synced
-      // copy as a source and try to move it again). Instead, tear down the
-      // active runtime so the next access re-inits against the new paths.
+      // External payload references a different `baseDir`. Don't call
+      // `relocateYoloManagedData` here — the on-disk YOLO/ folder either
+      // already lives at the new path because Sync replicated it, or (in
+      // the manual paste case) corresponds to the user's pre-restore
+      // state and would be wrong to move. Tear down the active runtime
+      // and let the next access re-init against the new paths.
       if (this.dbManager) {
         await this.dbManager.cleanup()
         this.dbManager = null
         this.dbManagerInitPromise = null
       }
-      this.vaultMirrorPath = await getVaultDataJsonResolvedPath(
-        this.app,
-        normalizedSettings,
-      )
       new Notice(
-        'YOLO: detected a `baseDir` change synced from another device. Reloaded settings against the new path.',
+        'YOLO: detected a `baseDir` change in data.json. Reloaded settings against the new path.',
       )
     }
-
-    // Refresh the plugin-dir copy so the next cold start picks up the new
-    // settings even if the mirror is missing.
-    await this.saveData(
-      stampYoloDataMeta(
-        normalizedSettings,
-        incomingMeta ?? this.buildSettingsMeta(),
-      ),
-    )
 
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
     this.ragCoordinator?.updateSettings(normalizedSettings)
     this.settingsChangeListeners.forEach((listener) => {
       listener(normalizedSettings)
     })
+  }
+
+  /**
+   * Obsidian's official hook for "data.json was modified outside of
+   * saveData()". Fires for Obsidian Sync pushes, remotely-save replays,
+   * manual user pastes, etc. — platform-agnostic and reliable, no
+   * fs.watch needed. https://docs.obsidian.md/Reference/TypeScript+API/Plugin/onExternalSettingsChange
+   */
+  async onExternalSettingsChange(): Promise<void> {
+    let raw: unknown
+    try {
+      raw = await this.loadData()
+    } catch (error) {
+      console.warn(
+        '[YOLO] Failed to re-read data.json after external change.',
+        error,
+      )
+      return
+    }
+    const extract = extractYoloDataMeta(raw)
+    if (!extract) {
+      return
+    }
+    await this.applyExternalSettingsUpdate(extract.raw, extract.meta)
+  }
+
+  /**
+   * Returns the on-disk settings + meta when the plugin-dir file has
+   * been mutated externally since we last wrote/loaded it; otherwise
+   * null. Used by `setSettings` to refuse stale full-object writes.
+   */
+  private async detectExternalSettingsConflict(): Promise<{
+    raw: Record<string, unknown>
+    meta: YoloDataMeta
+  } | null> {
+    let raw: unknown
+    try {
+      raw = await this.loadData()
+    } catch (error) {
+      console.warn('[YOLO] Failed to read data.json before write.', error)
+      return null
+    }
+    const extract = extractYoloDataMeta(raw)
+    if (!extract?.meta) {
+      return null
+    }
+    const diskMeta = extract.meta
+    const currentMeta = this.currentSettingsMeta
+    // Self-write: same device + same updatedAt is the write we just made.
+    if (
+      currentMeta &&
+      diskMeta.deviceId === currentMeta.deviceId &&
+      diskMeta.updatedAt === currentMeta.updatedAt
+    ) {
+      return null
+    }
+    // Conflict iff disk beats current memory (newer OR equal-but-foreign
+    // by deviceId tie-break).
+    if (currentMeta && !this.metaBeats(currentMeta, diskMeta)) {
+      return null
+    }
+    return { raw: extract.raw, meta: diskMeta }
+  }
+
+  /**
+   * One-shot migration of the deprecated "vault mirror" feature. Earlier
+   * versions optionally mirrored `data.json` into a vault-visible folder
+   * so that Obsidian Sync (which historically didn't sync plugin configs)
+   * could carry the settings. Modern Obsidian Sync replicates
+   * `.obsidian/plugins/<id>/data.json` natively, and the mirror was the
+   * source of considerable concurrency pain — so we removed it.
+   *
+   * Trigger: presence of the legacy mirror file (or its pointer) on disk.
+   * The legacy `experimental.storeDataInVault` flag has already been
+   * dropped from the schema, so it gets stripped on parse and isn't a
+   * reliable signal anymore — the file's existence is.
+   *
+   * Steps:
+   *   1. Read mirror via the pointer (which honors a custom baseDir).
+   *   2. If the mirror beats plugin-dir under `metaBeats`, adopt mirror
+   *      payload into memory + plugin-dir (verified via re-stamp).
+   *   3. Best-effort delete pointer + mirror file.
+   *   4. Notify the user once.
+   *
+   * Idempotent: a second run finds no mirror and exits silently.
+   */
+  private async migrateLegacyVaultMirrorIfNeeded(): Promise<void> {
+    let mirrorRead
+    try {
+      // Pass current settings so the reader can fall back to the
+      // default mirror path ONLY when the pointer file is genuinely
+      // absent — this covers the partial legacy state where a user
+      // manually deleted the pointer but left `YOLO/.yolo_data.json`
+      // behind. A pointer that exists but is corrupt is treated as
+      // authoritative and yields null, deferring to the next launch
+      // rather than risking a stale default-path mirror.
+      mirrorRead = await readVaultDataJson(this.app, this.settings)
+    } catch (error) {
+      console.warn('[YOLO] Legacy mirror read failed during migration.', error)
+      return
+    }
+    if (!mirrorRead) {
+      return
+    }
+
+    const mirrorMeta = mirrorRead.meta
+    const currentMeta = this.currentSettingsMeta
+    // Adopt mirror only when it strictly beats plugin-dir under the
+    // total `metaBeats` ordering. Both meta-less or local-meta-only =>
+    // keep plugin-dir (it's the new source of truth).
+    const shouldAdoptMirror = !!(
+      mirrorMeta &&
+      (!currentMeta || this.metaBeats(currentMeta, mirrorMeta))
+    )
+
+    if (shouldAdoptMirror && mirrorMeta) {
+      await this.applyExternalSettingsUpdate(mirrorRead.raw, mirrorMeta)
+      try {
+        await this.saveData(stampYoloDataMeta(this.settings, mirrorMeta))
+        this.currentSettingsMeta = mirrorMeta
+      } catch (error) {
+        console.warn(
+          '[YOLO] Failed to persist plugin-dir during legacy mirror migration; aborting cleanup so the mirror remains as the canonical copy.',
+          error,
+        )
+        return
+      }
+      // Read-after-write verify before deleting the canonical mirror
+      // copy. Catches half-committed FS state where `saveData` reported
+      // success but the file isn't actually persisted as expected. On
+      // verification failure, leave the mirror in place so the next
+      // launch retries the migration.
+      try {
+        const verify = extractYoloDataMeta(await this.loadData())
+        if (
+          !verify?.meta ||
+          verify.meta.deviceId !== mirrorMeta.deviceId ||
+          verify.meta.updatedAt !== mirrorMeta.updatedAt
+        ) {
+          console.warn(
+            '[YOLO] Plugin-dir verification failed after legacy mirror migration write; leaving mirror in place for next launch.',
+          )
+          return
+        }
+      } catch (error) {
+        console.warn(
+          '[YOLO] Plugin-dir verification read failed during legacy mirror migration; leaving mirror in place.',
+          error,
+        )
+        return
+      }
+    }
+
+    // Best-effort cleanup of mirror + pointer. Failures are logged but
+    // never block startup.
+    try {
+      await removeVaultDataJson(this.app, this.settings)
+    } catch (error) {
+      console.warn('[YOLO] Failed to remove legacy mirror files.', error)
+    }
+
+    new Notice(
+      'YOLO: migrated legacy vault-mirror settings. Cross-device sync now uses Obsidian Sync (or your sync tool of choice) on the plugin data file directly.',
+    )
   }
 
   async setSettings(newSettings: SmartComposerSettings) {
@@ -2222,13 +2371,28 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       return
     }
 
+    // Read-before-write conflict check. If the file on disk has been
+    // mutated externally (Sync push, third-party sync replay, manual
+    // paste, …) since we last committed memory, the in-memory
+    // `newSettings` was constructed against a stale base. Blindly
+    // writing it back would silently revert whatever fields the external
+    // writer changed. Adopt the disk version into memory and notify the
+    // user to redo their edit. We intentionally don't auto-merge: most
+    // call sites pass a full settings object via `{ ...this.settings,
+    // foo: 'x' }` spreads, so we cannot tell which fields were the
+    // user's actual intent and which are stale snapshot.
+    const conflict = await this.detectExternalSettingsConflict()
+    if (conflict) {
+      await this.applyExternalSettingsUpdate(conflict.raw, conflict.meta)
+      new Notice(
+        'YOLO: settings were updated externally (sync, another device, or manual edit). Your last change was not saved — please redo it.',
+      )
+      return
+    }
+
     const previousSettings = this.settings
     const yoloBaseDirChanged =
       previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
-    const previousStoreDataInVault =
-      previousSettings?.experimental?.storeDataInVault ?? false
-    const nextStoreDataInVault =
-      normalizedSettings.experimental?.storeDataInVault ?? false
 
     if (yoloBaseDirChanged) {
       if (this.dbManager) {
@@ -2253,16 +2417,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     this.settings = normalizedSettings
-    const meta = await this.persistPluginDirSettings(normalizedSettings)
+    await this.persistPluginDirSettings(normalizedSettings)
 
-    if (nextStoreDataInVault) {
-      await this.persistVaultMirror(normalizedSettings, meta)
-    } else if (previousStoreDataInVault) {
-      // Flag turned off: clean up the vault mirror so future loads use the
-      // plugin-directory copy exclusively.
-      await removeVaultDataJson(this.app, normalizedSettings)
-      this.lastWrittenVaultMirrorMeta = null
-    }
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
     this.ragCoordinator?.updateSettings(normalizedSettings)
 
@@ -2345,13 +2501,31 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
   async addSelectionToChat(editor: Editor, view: MarkdownView) {
     const editorView = this.getEditorView(editor)
+    const data = getMentionableBlockData(editor, view)
+    if (!data) return
+
+    const highlightId = crypto.randomUUID()
     if (
       editorView &&
       (this.settings.continuationOptions.persistSelectionHighlight ?? true)
     ) {
-      selectionHighlightController.pinCurrentSelection(editorView)
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
-    await this.getChatViewNavigator().addSelectionToChat(editor, view)
+
+    await this.getChatViewNavigator().addSelectionBlockToChat({
+      ...data,
+      source: 'selection-pinned',
+      highlightId,
+    })
   }
 
   async addFileToChat(file: TFile) {
@@ -2360,6 +2534,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
   async addFolderToChat(folder: TFolder) {
     await this.getChatViewNavigator().addFolderToChat(folder)
+  }
+
+  /**
+   * Inject a MentionableImage into the most recently active chat panel.
+   * If no chat panel is open, a new sidebar chat is created automatically.
+   * This is the typed public API used by the PDF screenshot feature.
+   */
+  async addImageToActiveChat(image: MentionableImage): Promise<void> {
+    await this.getChatViewNavigator().addImageToChat(image)
   }
 
   async getDbManager(): Promise<DatabaseManager> {

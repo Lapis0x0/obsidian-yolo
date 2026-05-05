@@ -1,5 +1,5 @@
 import type { App, TFile, TFolder } from 'obsidian'
-import { Notice, htmlToMarkdown, requestUrl } from 'obsidian'
+import { Notice } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
@@ -16,11 +16,13 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
+import { scrapeUrlGeneric } from '../../core/web-search'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
+  ChatExternalAgentResultMessage,
   ChatMessage,
   ChatSelectedSkill,
   ChatToolMessage,
@@ -46,6 +48,7 @@ import {
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { collectWikilinkPaths } from '../llm/annotate-wikilinks'
 import { isImageTFile, tFileToImageDataUrl } from '../llm/image'
+import { chatModelSupportsVision } from '../llm/model-modalities'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import {
   PDF_INDEX_MAX_BYTES,
@@ -54,7 +57,11 @@ import {
 } from '../pdf/extractPdfText'
 import { resolvePromptVariables } from '../prompt/promptVariables'
 
-import { getLatestValidCurrentFileMentionable } from './currentFileMentionable'
+import {
+  type ContextualInjection,
+  appendContextualInjectionsToLastUserMessage,
+} from './contextual-injections'
+import { serializeExternalAgentResultToUserMessage } from './externalAgentResultSerializer'
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
@@ -64,9 +71,6 @@ import {
   filterContextPrunedAssistantToolCalls,
   filterContextPrunedToolCalls,
 } from './tool-context-pruning'
-import { YoutubeTranscript, isYoutubeUrl } from './youtube-transcript'
-
-export type CurrentFileContextMode = 'full' | 'summary'
 
 type RequestContextBuilderOptions = {
   includeSkills?: boolean
@@ -85,10 +89,41 @@ type MentionedFileProperty = {
 
 type MentionedFileContextEntry = {
   file: TFile
-  source: 'file' | 'current-file' | 'folder'
+  source: 'file' | 'folder'
 }
 
 const MAX_MENTIONED_FILE_OUTLINES = 10
+
+/**
+ * Strip image_url content parts from messages when the target model does not
+ * support vision input. Each removed image part is replaced with a placeholder
+ * text part so message structure remains valid. String-content messages are
+ * left untouched.
+ */
+export function stripUnsupportedImages(
+  messages: RequestMessage[],
+  chatModel: ChatModel | null | undefined,
+): RequestMessage[] {
+  if (chatModelSupportsVision(chatModel)) {
+    return messages
+  }
+
+  return messages.map((message) => {
+    // Only user messages can carry ContentPart[] content — other roles use string.
+    if (message.role !== 'user' || !Array.isArray(message.content)) {
+      return message
+    }
+
+    const stripped: ContentPart[] = message.content.flatMap((part) => {
+      if (part.type === 'image_url') {
+        return [{ type: 'text' as const, text: '[图片已省略：模型不支持视觉]' }]
+      }
+      return [part]
+    })
+
+    return { ...message, content: stripped }
+  })
+}
 
 type MentionContextMode = 'light' | 'full'
 
@@ -221,8 +256,7 @@ export class RequestContextBuilder {
     model: _model,
     conversationId,
     compaction,
-    currentFileContextMode = 'full',
-    currentFileOverride,
+    contextualInjections,
   }: {
     messages: ChatMessage[]
     hasTools?: boolean
@@ -231,8 +265,7 @@ export class RequestContextBuilder {
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
-    currentFileContextMode?: CurrentFileContextMode
-    currentFileOverride?: TFile | null
+    contextualInjections?: ContextualInjection[]
   }): Promise<RequestMessage[]> {
     if (messages.length === 0) {
       throw new Error('No messages provided')
@@ -310,13 +343,7 @@ export class RequestContextBuilder {
 
     const systemMessage = await this.getSystemMessage(hasTools, hasMemoryTools)
 
-    const currentFile = currentFileOverride ?? null
-    const currentFileMessage =
-      currentFile && this.settings.chatOptions.includeCurrentFileContent
-        ? await this.getCurrentFileMessage(currentFile, currentFileContextMode)
-        : undefined
-
-    const requestMessages: RequestMessage[] = [
+    const baseRequestMessages: RequestMessage[] = [
       ...(systemMessage ? [systemMessage] : []),
       ...(await this.getChatHistoryMessages({
         messages: compiledMessages,
@@ -324,10 +351,15 @@ export class RequestContextBuilder {
         snapshotEntries,
         compaction,
       })),
-      ...(currentFileMessage ? [currentFileMessage] : []),
     ]
 
-    return requestMessages
+    const requestMessages = await appendContextualInjectionsToLastUserMessage(
+      baseRequestMessages,
+      contextualInjections ?? [],
+      { app: this.app, settings: this.settings },
+    )
+
+    return stripUnsupportedImages(requestMessages, _model)
   }
 
   private async getChatHistoryMessages({
@@ -393,6 +425,11 @@ export class RequestContextBuilder {
             continue
           }
 
+          if (message.role === 'external_agent_result') {
+            requestMessages.push(this.parseExternalAgentResultMessage(message))
+            continue
+          }
+
           requestMessages.push(
             ...this.parseToolMessage({ message, prunedToolCallIds }),
           )
@@ -426,6 +463,11 @@ export class RequestContextBuilder {
         requestMessages.push(
           ...this.parseAssistantMessage({ message, prunedToolCallIds }),
         )
+        continue
+      }
+
+      if (message.role === 'external_agent_result') {
+        requestMessages.push(this.parseExternalAgentResultMessage(message))
         continue
       }
 
@@ -483,12 +525,18 @@ export class RequestContextBuilder {
       (m): m is MentionablePDF => m.type === 'pdf',
     )
     const blockPrompt = blocks
-      .map(({ file, content, startLine }) => {
+      .map(({ file, content, startLine, pageNumber }) => {
+        const pageTag = pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+        const header = `${file.path}${pageTag}`
+        if (pageNumber !== undefined) {
+          // PDF block: skip line numbering (startLine/endLine are 0)
+          return `\`\`\`${header}\n${content}\n\`\`\`\n`
+        }
         const numberedContent = this.addLineNumbersToContent({
           content,
           startLine,
         })
-        return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+        return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
       })
       .join('')
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
@@ -519,8 +567,7 @@ export class RequestContextBuilder {
           mentionable.type === 'file' ||
           mentionable.type === 'folder' ||
           mentionable.type === 'url' ||
-          mentionable.type === 'assistant-quote' ||
-          mentionable.type === 'current-file',
+          mentionable.type === 'assistant-quote',
       )
     )
   }
@@ -634,6 +681,12 @@ ${message.annotations
       name,
       arguments: createCompleteToolCallArguments({ value: args }),
     }
+  }
+
+  private parseExternalAgentResultMessage(
+    message: ChatExternalAgentResultMessage,
+  ): RequestMessage {
+    return serializeExternalAgentResultToUserMessage(message)
   }
 
   private parseToolMessage({
@@ -762,22 +815,10 @@ ${message.annotations
         .filter((m): m is MentionableFolder => m.type === 'folder')
         .map((m) => this.app.vault.getFolderByPath(m.folder.path))
         .filter((folder): folder is TFolder => Boolean(folder))
-      const latestCurrentFile = getLatestValidCurrentFileMentionable(
-        message.mentionables,
-      )
-      // If the active file is an image, treat it as a vision attachment
-      // rather than a text file to avoid feeding raw binary into the prompt.
-      const currentFileImage =
-        latestCurrentFile && isImageTFile(latestCurrentFile)
-          ? latestCurrentFile
-          : null
-      const currentFiles =
-        latestCurrentFile && !currentFileImage ? [latestCurrentFile] : []
 
       const filePrompt = await this.buildMentionedFilePrompt({
         files,
         folders,
-        currentFiles,
       })
 
       const blocks = message.mentionables.filter(
@@ -790,12 +831,19 @@ ${message.annotations
         (m): m is MentionablePDF => m.type === 'pdf',
       )
       const blockPrompt = blocks
-        .map(({ file, content, startLine }) => {
+        .map(({ file, content, startLine, pageNumber }) => {
+          const pageTag =
+            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+          const header = `${file.path}${pageTag}`
+          if (pageNumber !== undefined) {
+            // PDF block: skip line numbering (startLine/endLine are 0)
+            return `\`\`\`${header}\n${content}\n\`\`\`\n`
+          }
           const numberedContent = this.addLineNumbersToContent({
             content,
             startLine,
           })
-          return `\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n`
+          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
         })
         .join('')
       const assistantQuotePrompt =
@@ -826,14 +874,13 @@ ${await this.getWebsiteContent(url)}
       const inlineImageDataUrls = message.mentionables
         .filter((m): m is MentionableImage => m.type === 'image')
         .map(({ data }) => data)
-      const vaultImageFiles = currentFileImage
-        ? [...mentionedImageFiles, currentFileImage]
-        : mentionedImageFiles
       const vaultImageDataUrls = (
         await Promise.all(
-          vaultImageFiles.map(async (file) => {
+          mentionedImageFiles.map(async (file) => {
             try {
-              return await tFileToImageDataUrl(this.app, file)
+              return await tFileToImageDataUrl(this.app, file, {
+                cache: { enabled: true, settings: this.settings },
+              })
             } catch (error) {
               console.warn(
                 '[YOLO] Failed to read mentioned image file',
@@ -1101,17 +1148,14 @@ ${customInstruction}
   private async buildMentionedPathsPrompt({
     files,
     folders,
-    currentFiles,
   }: {
     files: TFile[]
     folders: TFolder[]
-    currentFiles: TFile[]
   }): Promise<string> {
     const folderPathSet = new Set(folders.map((folder) => folder.path))
     const unifiedFiles = this.collectMentionedFiles({
       files,
       folders,
-      currentFiles,
     })
 
     if (unifiedFiles.length === 0 && folderPathSet.size === 0) {
@@ -1205,11 +1249,9 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
   private async buildMentionedFilePrompt({
     files,
     folders,
-    currentFiles,
   }: {
     files: TFile[]
     folders: TFolder[]
-    currentFiles: TFile[]
   }): Promise<string> {
     const mentionContextMode = this.getMentionContextMode()
 
@@ -1217,18 +1259,15 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
       return this.buildMentionedPathsPrompt({
         files,
         folders,
-        currentFiles,
       })
     }
 
     const folderPrompt = await this.buildMentionedPathsPrompt({
       files: [],
       folders,
-      currentFiles: [],
     })
     const fullFilePrompt = await this.buildFullMentionedFilesPrompt({
       files,
-      currentFiles,
     })
 
     return `${folderPrompt}${fullFilePrompt}`
@@ -1236,15 +1275,12 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
 
   private async buildFullMentionedFilesPrompt({
     files,
-    currentFiles,
   }: {
     files: TFile[]
-    currentFiles: TFile[]
   }): Promise<string> {
     const uniqueFiles = this.collectMentionedFiles({
       files,
       folders: [],
-      currentFiles,
     }).map(({ file }) => file)
 
     if (uniqueFiles.length === 0) {
@@ -1312,11 +1348,9 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
   private collectMentionedFiles({
     files,
     folders,
-    currentFiles,
   }: {
     files: TFile[]
     folders: TFolder[]
-    currentFiles: TFile[]
   }): MentionedFileContextEntry[] {
     const collected: MentionedFileContextEntry[] = []
     const seenPaths = new Set<string>()
@@ -1336,10 +1370,6 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
       pushFile(file, 'file')
     }
 
-    for (const file of currentFiles) {
-      pushFile(file, 'current-file')
-    }
-
     for (const folder of folders) {
       for (const file of getNestedFiles(folder, this.app.vault)) {
         pushFile(file, 'folder')
@@ -1347,38 +1377,6 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
     }
 
     return collected
-  }
-
-  private async getCurrentFileMessage(
-    currentFile: TFile,
-    currentFileContextMode: CurrentFileContextMode,
-  ): Promise<RequestMessage> {
-    if (currentFileContextMode === 'summary') {
-      return this.getCurrentFileSummaryMessage(currentFile)
-    }
-    const fileContent = await readTFileContent(currentFile, this.app.vault)
-    return {
-      role: 'user',
-      content: `# Inputs
-## Current File
-Here is the file I'm looking at.
-\`\`\`${currentFile.path}
-${fileContent}
-\`\`\`\n\n`,
-    }
-  }
-
-  private async getCurrentFileSummaryMessage(
-    currentFile: TFile,
-  ): Promise<RequestMessage> {
-    return {
-      role: 'user',
-      content: `# Inputs
-## Current File (summary)
-Path: ${currentFile.path}
-Title: ${currentFile.name}
-\n\n`,
-    }
   }
 
   private addLineNumbersToContent({
@@ -1395,29 +1393,10 @@ Title: ${currentFile.name}
     return linesWithNumbers.join('\n')
   }
 
-  /**
-   * TODO: Improve markdown conversion logic
-   * - filter visually hidden elements
-   * ...
-   */
   private async getWebsiteContent(url: string): Promise<string> {
-    if (isYoutubeUrl(url)) {
-      try {
-        // TODO: pass language based on user preferences
-        const { title, transcript } =
-          await YoutubeTranscript.fetchTranscriptAndMetadata(url)
-
-        return `Title: ${title}
-Video Transcript:
-${transcript.map((t) => `${t.offset}: ${t.text}`).join('\n')}`
-      } catch (error) {
-        console.error('Error fetching YouTube transcript', error)
-      }
-    }
-
     try {
-      const response = await requestUrl({ url })
-      return htmlToMarkdown(response.text)
+      const { content } = await scrapeUrlGeneric(url)
+      return content
     } catch (error) {
       const status = error instanceof Error ? error.message : String(error)
       console.warn(`Failed to fetch URL: ${url}`, error)

@@ -43,7 +43,6 @@ import {
   ReasoningLevel,
   getDefaultReasoningLevel,
 } from '../../../types/reasoning'
-import { getDisplayOnlyCurrentFileMentionables } from '../../../utils/chat/currentFileMentionable'
 import {
   deserializeMentionable,
   getMentionableKey,
@@ -121,10 +120,10 @@ export type ChatUserInputProps = {
 const INLINE_MENTIONABLE_TYPES = [
   'file',
   'folder',
-  'current-file',
   'block',
   'assistant-quote',
   'model',
+  'image',
 ]
 const DEFAULT_INPUT_HEIGHT = 80
 const MIN_INPUT_HEIGHT = 80
@@ -208,30 +207,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
-    const displayOnlyCurrentFileMentionables = useMemo(
-      () =>
-        getDisplayOnlyCurrentFileMentionables(
-          mentionables,
-          displayMentionables,
-        ),
-      [displayMentionables, mentionables],
-    )
-    const displayOnlyCurrentFileMentionableKeys = useMemo(
-      () =>
-        new Set(
-          displayOnlyCurrentFileMentionables.map((mentionable) =>
-            getMentionableKey(serializeMentionable(mentionable)),
-          ),
-        ),
-      [displayOnlyCurrentFileMentionables],
-    )
     const inlineMentionables = useMemo(() => {
       if (mentionDisplayMode !== 'inline') {
         return [] as Mentionable[]
       }
 
-      return [...displayOnlyCurrentFileMentionables, ...mentionables]
-    }, [displayOnlyCurrentFileMentionables, mentionDisplayMode, mentionables])
+      return [...mentionables]
+    }, [mentionDisplayMode, mentionables])
     const effectiveSelectedSkills = useMemo(
       () => selectedSkills,
       [selectedSkills],
@@ -452,13 +434,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             destroyedMentionableKeys.push(mentionableKey)
           }
         } else if (mutation.mutation === 'created') {
-          if (
-            mentionable.type === 'current-file' &&
-            displayOnlyCurrentFileMentionableKeys.has(mentionableKey)
-          ) {
-            return
-          }
-
           if (
             mentionable.type === 'block' &&
             typeof mentionable.content !== 'string'

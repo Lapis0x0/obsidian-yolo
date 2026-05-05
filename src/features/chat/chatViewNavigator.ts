@@ -10,7 +10,10 @@ import {
 import { ChatView } from '../../ChatView'
 import { CHAT_VIEW_TYPE } from '../../constants'
 import type SmartComposerPlugin from '../../main'
-import type { MentionableBlockData } from '../../types/mentionable'
+import type {
+  MentionableBlockData,
+  MentionableImage,
+} from '../../types/mentionable'
 import { getMentionableBlockData } from '../../utils/obsidian'
 
 import {
@@ -231,6 +234,26 @@ export class ChatViewNavigator {
     targetLeaf.view.applySelectionToMainInput(pinnedSelection, text, {
       submit: true,
     })
+  }
+
+  async addImageToChat(image: MentionableImage) {
+    const existingLeaf = this.resolveTargetChatLeaf()
+    const targetLeaf =
+      existingLeaf ??
+      (await this.createChatLeaf('sidebar', {
+        imageToAdd: image,
+      }))
+    if (!targetLeaf || !(targetLeaf.view instanceof ChatView)) {
+      return
+    }
+
+    await this.activateChatLeaf(targetLeaf)
+    if (!existingLeaf) {
+      // Fresh leaf: applyDeferredPayload (via waitForChatRef) handles injection.
+      return
+    }
+    targetLeaf.view.addImageToChat(image)
+    targetLeaf.view.focusMessage()
   }
 
   async addFileToChat(file: TFile) {

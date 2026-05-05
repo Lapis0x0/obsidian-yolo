@@ -13,6 +13,10 @@ import { useSettings } from '../../../contexts/settings-context'
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
+import {
+  EXTERNAL_AGENT_PROGRESS_DIR,
+  clearAllExternalAgentProgressStores,
+} from '../../../database/json/chat/externalAgentProgressStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
 import { clearPdfTextCache } from '../../../database/json/chat/pdfTextCacheStore'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
@@ -42,6 +46,8 @@ const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
+// re-exported from store so EtcSection doesn't hardcode the dir name
+const AGENT_PROGRESS_DIR = EXTERNAL_AGENT_PROGRESS_DIR
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) {
@@ -101,6 +107,7 @@ const loadStorageUsage = async (
     timelineHeightCacheBytes,
     imageCacheBytes,
     pdfCacheBytes,
+    agentProgressBytes,
   ] = await Promise.all([
     getPathSize(app, chatDir),
     getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
@@ -108,6 +115,7 @@ const loadStorageUsage = async (
     getPathSize(app, normalizePath(`${chatDir}/${TIMELINE_HEIGHT_CACHE_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${IMAGE_CACHE_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${PDF_CACHE_DIR}`)),
+    getPathSize(app, normalizePath(`${chatDir}/${AGENT_PROGRESS_DIR}`)),
   ])
 
   const snapshotAndCacheBytes =
@@ -115,7 +123,8 @@ const loadStorageUsage = async (
     editReviewSnapshotBytes +
     timelineHeightCacheBytes +
     imageCacheBytes +
-    pdfCacheBytes
+    pdfCacheBytes +
+    agentProgressBytes
 
   return {
     chatHistoryBytes: Math.max(0, chatHistoryBytes - snapshotAndCacheBytes),
@@ -276,6 +285,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
           await clearAllTimelineHeightCacheStores(app, settings)
           await clearImageCache(app, settings)
           await clearPdfTextCache(app, settings)
+          await clearAllExternalAgentProgressStores(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
@@ -338,31 +348,6 @@ export function EtcSection({ app, className }: EtcSectionProps) {
               placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
               onChange={setYoloBaseDirInput}
               onBlur={handleYoloBaseDirBlur}
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t(
-              'settings.etc.storeDataInVault',
-              '通过 vault 同步设置（实验性）',
-            )}
-            desc={t(
-              'settings.etc.storeDataInVaultDesc',
-              '开启后会把设置文件额外写入 {path}，使其可被 Obsidian Sync 同步。关闭时会从 vault 删除该文件。',
-            ).replace('{path}', `${yoloBaseDir}/.yolo_data.json`)}
-            className="smtcmp-settings-card"
-          >
-            <ObsidianToggle
-              value={settings.experimental?.storeDataInVault ?? false}
-              onChange={(value) => {
-                void setSettings({
-                  ...settings,
-                  experimental: {
-                    ...(settings.experimental ?? { storeDataInVault: false }),
-                    storeDataInVault: value,
-                  },
-                })
-              }}
             />
           </ObsidianSetting>
 

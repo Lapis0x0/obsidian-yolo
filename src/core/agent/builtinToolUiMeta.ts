@@ -116,6 +116,13 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Fetch the full content of a single URL through a configured search provider.',
   },
+  delegate_external_agent: {
+    labelKey: 'settings.agent.builtinDelegateExternalAgentLabel',
+    descKey: 'settings.agent.builtinDelegateExternalAgentDesc',
+    labelFallback: 'Delegate to External Agent',
+    descFallback:
+      'Spawn a local CLI agent (codex exec or claude -p) as a subprocess, stream its output back into the chat, and feed the result to the LLM. Desktop-only. Requires manual approval every time.',
+  },
 }
 
 export const getBuiltinToolUiMeta = (
@@ -143,6 +150,7 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   [MEMORY_OPS_GROUP_TOOL_NAME]: 'context',
   [WEB_OPS_GROUP_TOOL_NAME]: 'external',
   open_skill: 'external',
+  delegate_external_agent: 'external',
 }
 
 export const getBuiltinToolCategory = (

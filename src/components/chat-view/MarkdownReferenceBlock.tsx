@@ -1,6 +1,13 @@
 import cx from 'clsx'
 import { ChevronDown, ChevronUp, Eye } from 'lucide-react'
-import { PropsWithChildren, useEffect, useMemo, useState } from 'react'
+import {
+  PropsWithChildren,
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useDarkModeContext } from '../../contexts/dark-mode-context'
@@ -12,7 +19,15 @@ import {
 } from '../../utils/obsidian'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
-import { MemoizedSyntaxHighlighterWrapper } from './SyntaxHighlighterWrapper'
+
+// Defer react-syntax-highlighter (refractor + prism langs, ~600KB) until a
+// reference block actually renders highlighted code. esbuild keeps the bytes
+// in main.js but skips top-level evaluation until the dynamic import resolves.
+const LazySyntaxHighlighterWrapper = lazy(() =>
+  import('./SyntaxHighlighterWrapper').then((mod) => ({
+    default: mod.MemoizedSyntaxHighlighterWrapper,
+  })),
+)
 
 export default function MarkdownReferenceBlock({
   filename,
@@ -143,14 +158,32 @@ export default function MarkdownReferenceBlock({
             <ObsidianMarkdown content={displayContent} scale="sm" />
           </div>
         ) : (
-          <MemoizedSyntaxHighlighterWrapper
-            isDarkMode={isDarkMode}
-            language={language}
-            hasFilename={!!filename}
-            wrapLines={wrapLines}
+          <Suspense
+            fallback={
+              <pre
+                className={cx(
+                  'smtcmp-syntax-highlighter',
+                  filename
+                    ? 'smtcmp-syntax-highlighter--with-filename'
+                    : 'smtcmp-syntax-highlighter--standalone',
+                  language === 'markdown'
+                    ? 'smtcmp-syntax-highlighter--markdown'
+                    : null,
+                )}
+              >
+                {displayContent}
+              </pre>
+            }
           >
-            {displayContent}
-          </MemoizedSyntaxHighlighterWrapper>
+            <LazySyntaxHighlighterWrapper
+              isDarkMode={isDarkMode}
+              language={language}
+              hasFilename={!!filename}
+              wrapLines={wrapLines}
+            >
+              {displayContent}
+            </LazySyntaxHighlighterWrapper>
+          </Suspense>
         )}
       </div>
     )

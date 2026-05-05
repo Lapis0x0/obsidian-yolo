@@ -1,14 +1,11 @@
-import cx from 'clsx'
 import { X } from 'lucide-react'
 import { PropsWithChildren } from 'react'
 
-import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import {
   Mentionable,
   MentionableAssistantQuote,
   MentionableBlock,
-  MentionableCurrentFile,
   MentionableFile,
   MentionableFolder,
   MentionableImage,
@@ -147,61 +144,6 @@ function FolderBadge({
   )
 }
 
-function CurrentFileBadge({
-  mentionable,
-  onDelete,
-  onClick,
-  isFocused,
-  isExpanded,
-  onToggleExpand,
-  showDeleteButton,
-}: {
-  mentionable: MentionableCurrentFile
-  onDelete: () => void
-  onClick: () => void
-  isFocused: boolean
-  isExpanded?: boolean
-  onToggleExpand?: () => void
-  showDeleteButton?: boolean
-}) {
-  const app = useApp()
-
-  const Icon = getMentionableIcon(mentionable)
-  return (
-    <BadgeBase
-      onDelete={onDelete}
-      onClick={onClick}
-      isFocused={isFocused}
-      isExpanded={isExpanded}
-      onToggleExpand={onToggleExpand}
-      showExpandButton={false}
-      showDeleteButton={showDeleteButton}
-    >
-      <div className="smtcmp-chat-user-input-file-badge-name">
-        {Icon && (
-          <Icon
-            size={12}
-            className="smtcmp-chat-user-input-file-badge-name-icon"
-          />
-        )}
-        <span className={cx(!mentionable.file && 'smtcmp-excluded-content')}>
-          {mentionable.file?.name ??
-            app.workspace.getActiveFile()?.name ??
-            'Current file'}
-        </span>
-      </div>
-      <div
-        className={cx(
-          'smtcmp-chat-user-input-file-badge-name-suffix',
-          !mentionable.file && 'smtcmp-excluded-content',
-        )}
-      >
-        {' (Current file)'}
-      </div>
-    </BadgeBase>
-  )
-}
-
 function BlockBadge({
   mentionable,
   onDelete,
@@ -223,6 +165,13 @@ function BlockBadge({
   const { t } = useLanguage()
   const { count } = getBlockMentionableCountInfo(mentionable.content)
   const unitLabel = t('common.characters', 'chars')
+
+  // PDF selection: show "Page N" instead of character count
+  const suffix =
+    mentionable.pageNumber !== undefined
+      ? ` (${t('mentionable.pdfPage', 'Page {{page}}').replace('{{page}}', String(mentionable.pageNumber))})`
+      : ` (${count} ${unitLabel})`
+
   return (
     <BadgeBase
       onDelete={onDelete}
@@ -243,7 +192,7 @@ function BlockBadge({
         <span>{mentionable.file.name}</span>
       </div>
       <div className="smtcmp-chat-user-input-file-badge-name-suffix">
-        {` (${count} ${unitLabel})`}
+        {suffix}
       </div>
     </BadgeBase>
   )
@@ -477,18 +426,6 @@ export default function MentionableBadge({
           onDelete={onDelete}
           onClick={onClick}
           isFocused={isFocused}
-          showDeleteButton={showDeleteButton}
-        />
-      )
-    case 'current-file':
-      return (
-        <CurrentFileBadge
-          mentionable={mentionable}
-          onDelete={onDelete}
-          onClick={onClick}
-          isFocused={isFocused}
-          isExpanded={isExpanded}
-          onToggleExpand={onToggleExpand}
           showDeleteButton={showDeleteButton}
         />
       )

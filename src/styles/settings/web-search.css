@@ -179,6 +179,9 @@
     var(--background-primary)
   );
 }
+.smtcmp-ws-monogram--zhipu {
+  background: var(--color-red, #c8553d);
+}
 
 .smtcmp-ws-provider-name-row {
   display: flex;

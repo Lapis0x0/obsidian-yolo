@@ -15,6 +15,8 @@ import {
 } from '../../types/tool-call.types'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
+import { extractPdfText } from '../../utils/pdf/extractPdfText'
+import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import {
@@ -415,23 +417,25 @@ describe('local fs tool action helpers', () => {
     }
     const payload = JSON.parse(result.text) as {
       toolCallId: string | null
-      requestedOperation: { type: string }
+      requestedOperation: { type: string; modality: string }
       results: Array<{
         ok: boolean
         content: string
-        returnedRange: { startLine: number | null; endLine: number | null }
+        totalLines: number
+        returnedRange?: { startLine: number | null; endLine: number | null }
       }>
     }
     expect(payload.toolCallId).toBe('read-call-1')
-    expect(payload.requestedOperation.type).toBe('full')
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'full',
+      modality: 'text',
+    })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: ['1|one', '2|two', '3|three'].join('\n'),
-      returnedRange: {
-        startLine: 1,
-        endLine: 3,
-      },
+      totalLines: 3,
     })
+    expect(payload.results[0].returnedRange).toBeUndefined()
   })
 
   describe('fs_read image reading gating by chat model modalities', () => {
@@ -568,14 +572,17 @@ describe('local fs tool action helpers', () => {
     }
 
     const payload = JSON.parse(result.text) as {
-      requestedOperation: { type: string }
+      requestedOperation: { type: string; modality: string }
       results: Array<{
         ok: boolean
         content: string
       }>
     }
 
-    expect(payload.requestedOperation).toMatchObject({ type: 'full' })
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'full',
+      modality: 'text',
+    })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: `1|${longLine}`,
@@ -615,29 +622,24 @@ describe('local fs tool action helpers', () => {
     }
     const payload = JSON.parse(result.text) as {
       toolCallId: string | null
-      requestedOperation: {
-        type: string
-        startLine: number | null
-        maxLines: number | null
-      }
+      requestedOperation: { type: string; modality: string }
       results: Array<{
         ok: boolean
         content: string
-        hasMoreAbove: boolean
+        returnedRange?: { startLine: number | null; endLine: number | null }
         hasMoreBelow: boolean
         nextStartLine: number | null
       }>
     }
     expect(payload.toolCallId).toBeNull()
-    expect(payload.requestedOperation).toMatchObject({
+    expect(payload.requestedOperation).toEqual({
       type: 'lines',
-      startLine: 2,
-      maxLines: 2,
+      modality: 'text',
     })
     expect(payload.results[0]).toMatchObject({
       ok: true,
       content: ['2|two', '3|three'].join('\n'),
-      hasMoreAbove: true,
+      returnedRange: { startLine: 2, endLine: 3 },
       hasMoreBelow: true,
       nextStartLine: 4,
     })
@@ -669,6 +671,86 @@ describe('local fs tool action helpers', () => {
     if (result.status === ToolCallResponseStatus.Error) {
       expect(result.error).toContain('operation must be a nested JSON object')
     }
+  })
+
+  describe('fs_read modality parsing', () => {
+    const callRead = async (operation: unknown) => {
+      const file = Object.assign(new TFile(), {
+        path: 'note.md',
+        stat: { size: 5 },
+      })
+      const read = jest.fn().mockResolvedValue('hello')
+      return callLocalFileTool({
+        app: {
+          vault: {
+            getFileByPath: jest.fn().mockReturnValue(file),
+            read,
+          },
+        } as unknown as App,
+        toolName: 'fs_read',
+        args: { paths: ['note.md'], operation },
+      })
+    }
+
+    const expectModality = (
+      result: Awaited<ReturnType<typeof callRead>>,
+      expected: 'text' | 'image',
+    ) => {
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      if (result.status !== ToolCallResponseStatus.Success) {
+        throw new Error('expected success')
+      }
+      const payload = JSON.parse(result.text) as {
+        requestedOperation: { modality: string }
+      }
+      expect(payload.requestedOperation.modality).toBe(expected)
+    }
+
+    it('defaults to text when modality is omitted', async () => {
+      expectModality(await callRead({ type: 'full' }), 'text')
+    })
+
+    it('defaults to text when modality is null or empty string', async () => {
+      expectModality(await callRead({ type: 'full', modality: null }), 'text')
+      expectModality(await callRead({ type: 'full', modality: '   ' }), 'text')
+    })
+
+    it('accepts modality case-insensitively and trims whitespace', async () => {
+      expectModality(
+        await callRead({ type: 'full', modality: 'IMAGE' }),
+        'image',
+      )
+      expectModality(
+        await callRead({ type: 'full', modality: '  Text  ' }),
+        'text',
+      )
+    })
+
+    it('rejects non-string modality values', async () => {
+      const result = await callRead({ type: 'full', modality: 123 })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toContain('operation.modality must be a string')
+      }
+    })
+
+    it('rejects unknown modality strings', async () => {
+      const result = await callRead({ type: 'full', modality: 'video' })
+      expect(result.status).toBe(ToolCallResponseStatus.Error)
+      if (result.status === ToolCallResponseStatus.Error) {
+        expect(result.error).toContain('operation.modality must be one of')
+      }
+    })
+
+    it('echoes modality back for non-PDF files even when image is requested', async () => {
+      // Non-PDF files ignore modality at the rendering layer (no image branch
+      // exists for .md), but the request payload still echoes what the model
+      // asked for, so silent no-ops remain observable.
+      expectModality(
+        await callRead({ type: 'full', modality: 'image' }),
+        'image',
+      )
+    })
   })
 
   it('defaults fs_search to hybrid and falls back to keyword with explicit reason', async () => {
@@ -1993,5 +2075,147 @@ describe('local fs tool action helpers', () => {
       })
       expect(result.status).toBe(ToolCallResponseStatus.Success)
     })
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────
+// fs_read PDF vision-downgrade warning
+// ──────────────────────────────────────────────────────────────────
+
+jest.mock('../../utils/pdf/extractPdfText', () => ({
+  PDF_INDEX_MAX_BYTES: 50 * 1024 * 1024,
+  PDF_INDEX_MAX_PAGES: 500,
+  extractPdfText: jest.fn(),
+}))
+
+jest.mock('../../utils/pdf/renderPdfPagesToImages', () => ({
+  renderPdfPagesToImages: jest.fn(),
+}))
+
+describe('fs_read PDF vision-downgrade warning', () => {
+  const extractMock = extractPdfText as jest.MockedFunction<
+    typeof extractPdfText
+  >
+  const renderMock = renderPdfPagesToImages as jest.MockedFunction<
+    typeof renderPdfPagesToImages
+  >
+
+  const makePdfFile = () =>
+    Object.assign(new TFile(), {
+      path: 'doc.pdf',
+      extension: 'pdf',
+      stat: { size: 1024, mtime: 0 },
+    })
+
+  const buildSettings = (
+    modalities: Array<'text' | 'vision'>,
+  ): SmartComposerSettings =>
+    ({
+      chatOptions: {
+        imageReadingEnabled: true,
+        imageCompressionEnabled: false,
+        imageCompressionQuality: 85,
+        externalImageFetchEnabled: false,
+      },
+      chatModels: [
+        {
+          id: 'provider/model',
+          providerId: 'provider',
+          model: 'model',
+          modalities,
+        },
+      ],
+    }) as unknown as SmartComposerSettings
+
+  beforeEach(() => {
+    extractMock.mockReset()
+    renderMock.mockReset()
+    extractMock.mockResolvedValue({
+      pages: [
+        { page: 1, text: 'page one content' },
+        { page: 2, text: 'page two content' },
+      ],
+    })
+    renderMock.mockResolvedValue({
+      totalPages: 2,
+      rendered: [{ page: 1, dataUrl: 'data:image/png;base64,AAA' }],
+    } as unknown as Awaited<ReturnType<typeof renderPdfPagesToImages>>)
+  })
+
+  const callPdfRead = (
+    modality: 'text' | 'image',
+    modalities: Array<'text' | 'vision'>,
+  ) => {
+    const file = makePdfFile()
+    return callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read: jest.fn().mockResolvedValue(''),
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      toolCallId: 'tc-pdf',
+      args: {
+        paths: ['doc.pdf'],
+        operation: { type: 'full', modality },
+      },
+      settings: buildSettings(modalities),
+      chatModelId: 'provider/model',
+    })
+  }
+
+  it('adds effectiveModality and warning when modality=image but model is text-only', async () => {
+    const result = await callPdfRead('image', ['text'])
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success)
+      throw new Error('expected success')
+    // Should have fallen back to text extraction
+    expect(extractMock).toHaveBeenCalled()
+    expect(renderMock).not.toHaveBeenCalled()
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        effectiveModality?: string
+        warning?: string
+      }>
+    }
+    expect(payload.results[0]?.effectiveModality).toBe('text')
+    expect(payload.results[0]?.warning).toBe(
+      '当前模型不支持图像输入，已自动降级为文本读取',
+    )
+  })
+
+  it('does NOT add effectiveModality/warning when modality=image and model supports vision', async () => {
+    const result = await callPdfRead('image', ['text', 'vision'])
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success)
+      throw new Error('expected success')
+    // Should have taken image path
+    expect(renderMock).toHaveBeenCalled()
+    expect(extractMock).not.toHaveBeenCalled()
+    // Image path builds a separate results entry without these fields
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        effectiveModality?: string
+        warning?: string
+      }>
+    }
+    expect(payload.results[0]?.effectiveModality).toBeUndefined()
+    expect(payload.results[0]?.warning).toBeUndefined()
+  })
+
+  it('does NOT add effectiveModality/warning when modality=text regardless of model', async () => {
+    const result = await callPdfRead('text', ['text'])
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success)
+      throw new Error('expected success')
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        effectiveModality?: string
+        warning?: string
+      }>
+    }
+    expect(payload.results[0]?.effectiveModality).toBeUndefined()
+    expect(payload.results[0]?.warning).toBeUndefined()
   })
 })

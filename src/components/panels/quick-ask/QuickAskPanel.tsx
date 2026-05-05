@@ -41,6 +41,7 @@ import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
+import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAskController'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import SmartComposerPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
@@ -59,6 +60,7 @@ import {
   SerializedMentionable,
 } from '../../../types/mentionable'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
+import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   deserializeMentionable,
@@ -77,7 +79,7 @@ import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
-import { resolveQuickAskRuntimeLoopConfig } from '../../chat-view/chat-runtime-profiles'
+import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
 import { useAutoScroll } from '../../chat-view/useAutoScroll'
@@ -88,7 +90,6 @@ import { ModeSelect, QuickAskMode } from './ModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
 type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
-const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
 
 function normalizeQuickAskVisibleMode(
   mode?: QuickAskLaunchMode | null,
@@ -117,49 +118,6 @@ function getSelectionMentionable(
   )
 }
 
-function buildSelectionContextSection({
-  fileTitle,
-  contextText,
-  selectionMentionable,
-}: {
-  fileTitle: string
-  contextText: string
-  selectionMentionable: MentionableBlock
-}): string {
-  const trimmedTitle = fileTitle.trim()
-  const selectedText = selectionMentionable.content.trim()
-  const context = contextText.trim()
-
-  if (!selectedText || !context) {
-    return ''
-  }
-
-  const [before, ...afterParts] = contextText.split(QUICK_ASK_CURSOR_MARKER)
-  const after = afterParts.join(QUICK_ASK_CURSOR_MARKER)
-  const wrappedSelection = `<selected_text_start>\n${selectionMentionable.content}\n</selected_text_end>`
-
-  const selectionContext =
-    afterParts.length > 0 && after.startsWith(selectionMentionable.content)
-      ? `${before}${wrappedSelection}${after.slice(selectionMentionable.content.length)}`
-      : `${contextText}\n\n${wrappedSelection}`
-
-  const titleSection = trimmedTitle ? `Document title: ${trimmedTitle}\n` : ''
-
-  return `\n\nYou are answering a request about a user-selected passage.
-
-Scope rules:
-1. The text between <selected_text_start> and </selected_text_end> is the only target of the user's request.
-2. Do not translate, rewrite, summarize, or explain text outside the selected text unless the user explicitly asks for broader context.
-3. Use the surrounding text only to understand the selected text.
-4. Your output should correspond only to the selected text.
-5. If the user's request is ambiguous, assume it applies only to the selected text.
-
-${titleSection}<selection_context path="${selectionMentionable.file.path}">
-${selectionContext}
-</selection_context>
-`
-}
-
 function getSelectionEndPosition(
   from: { line: number; ch: number },
   text: string,
@@ -184,10 +142,15 @@ type QuickAskRunStatus =
   | 'modifying'
   | null
 
-type QuickAskPanelProps = {
+/**
+ * QuickAskPanel props use a capabilities discriminated union so that
+ * edit-mode props (editor, view, editContextText, editSelectionFrom,
+ * selectionScope) are only accessible when capabilities.edit === true.
+ * This lets TypeScript enforce that PDF paths cannot accidentally invoke
+ * editor methods.
+ */
+type QuickAskPanelPropsBase = {
   plugin: SmartComposerPlugin
-  editor: Editor
-  view: EditorView
   contextText: string
   fileTitle: string
   sourceFilePath?: string
@@ -195,9 +158,6 @@ type QuickAskPanelProps = {
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
   initialInput?: string
-  editContextText?: string
-  editSelectionFrom?: { line: number; ch: number }
-  selectionScope?: QuickAskSelectionScope
   autoSend?: boolean
   onClose: () => void
   containerRef?: React.RefObject<HTMLDivElement>
@@ -207,8 +167,24 @@ type QuickAskPanelProps = {
   onDockToTopRight?: () => void
 }
 
+type QuickAskPanelProps =
+  | (QuickAskPanelPropsBase & {
+      capabilities: { edit: true }
+      editor: Editor
+      view: EditorView
+      editContextText?: string
+      editSelectionFrom?: { line: number; ch: number }
+      selectionScope?: QuickAskSelectionScope
+    })
+  | (QuickAskPanelPropsBase & {
+      capabilities: { edit: false }
+      editor: null
+      view: null
+    })
+
 export function QuickAskPanel({
   plugin,
+  capabilities,
   editor: _editor,
   view: _view,
   contextText,
@@ -218,9 +194,6 @@ export function QuickAskPanel({
   initialMentionables,
   initialMode,
   initialInput,
-  editContextText,
-  editSelectionFrom,
-  selectionScope,
   autoSend,
   onClose,
   containerRef,
@@ -228,7 +201,18 @@ export function QuickAskPanel({
   onDragOffset,
   onResize,
   onDockToTopRight,
+  ...editProps
 }: QuickAskPanelProps) {
+  const editContextText = capabilities.edit
+    ? (editProps as { editContextText?: string }).editContextText
+    : undefined
+  const editSelectionFrom = capabilities.edit
+    ? (editProps as { editSelectionFrom?: { line: number; ch: number } })
+        .editSelectionFrom
+    : undefined
+  const selectionScope = capabilities.edit
+    ? (editProps as { selectionScope?: QuickAskSelectionScope }).selectionScope
+    : undefined
   const quickAskSurfacePreset = getChatSurfacePreset('quick-ask')
   const app = useApp()
   const { settings } = useSettings()
@@ -284,24 +268,25 @@ export function QuickAskPanel({
     ),
   )
   const [executionMode, setExecutionMode] = useState<QuickAskExecutionMode>(
-    () =>
-      normalizeQuickAskExecutionMode(
+    () => {
+      const resolved = normalizeQuickAskExecutionMode(
         initialMode ?? settings.continuationOptions?.quickAskMode,
-      ),
+      )
+      // PDF path: edit modes are unavailable; fall back to 'chat'
+      if (
+        !capabilities.edit &&
+        (resolved === 'edit' || resolved === 'edit-direct')
+      ) {
+        return 'chat'
+      }
+      return resolved
+    },
   )
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const inputRowRef = useRef<HTMLDivElement | null>(null)
   const contentEditableRef = useRef<HTMLDivElement>(null)
-  const mentionPortalContainerRef = useMemo<React.RefObject<HTMLElement>>(
-    () => ({
-      get current() {
-        return getNodeBody(inputRowRef.current)
-      },
-    }),
-    [],
-  )
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
@@ -321,9 +306,18 @@ export function QuickAskPanel({
   useEffect(() => {
     if (initialMode) {
       setMode(normalizeQuickAskVisibleMode(initialMode))
-      setExecutionMode(normalizeQuickAskExecutionMode(initialMode))
+      const resolved = normalizeQuickAskExecutionMode(initialMode)
+      // PDF path: edit modes are unavailable; fall back to 'chat'
+      if (
+        !capabilities.edit &&
+        (resolved === 'edit' || resolved === 'edit-direct')
+      ) {
+        setExecutionMode('chat')
+      } else {
+        setExecutionMode(resolved)
+      }
     }
-  }, [initialMode])
+  }, [capabilities.edit, initialMode])
 
   useEffect(() => {
     setMentionables(initialMentionables ?? [])
@@ -586,33 +580,15 @@ export function QuickAskPanel({
     [app, mentionables, selectionMentionable],
   )
 
-  // Build requestContextBuilder with context
+  // System prompt is intentionally minimal: Quick Ask's "current editor scene"
+  // (file path/title, cursor context, selection) is injected via the agent
+  // runtime's `contextualInjections` channel — see editorSnapshotInjection
+  // built below in the submit path.
   const requestContextBuilder = useMemo(() => {
     const globalSystemPrompt = settings.systemPrompt || ''
     const assistantPrompt = selectedAssistant?.systemPrompt || ''
-    const trimmedTitle = fileTitle.trim()
-    const hasTitle = trimmedTitle.length > 0
-    const hasContext = contextText.trim().length > 0
-    const titleSection = hasTitle ? `File title: ${trimmedTitle}\n` : ''
-    const promptSelectionMentionable =
-      selectionMentionable ?? getSelectionMentionable(mentionables)
-    const contextSection =
-      promptSelectionMentionable && hasContext
-        ? buildSelectionContextSection({
-            fileTitle,
-            contextText,
-            selectionMentionable: promptSelectionMentionable,
-          })
-        : hasTitle || hasContext
-          ? `\n\nThe user is asking a question in the context of their current document.\n${titleSection}${
-              hasContext
-                ? `Here is the text around the cursor (context). The marker ${QUICK_ASK_CURSOR_MARKER} indicates the cursor position:\n"""\n${contextText}\n"""\n`
-                : ''
-            }\nAnswer the user's question based on this context when relevant.`
-          : ''
-
     const combinedSystemPrompt =
-      `${globalSystemPrompt}\n\n${assistantPrompt}${contextSection}`.trim()
+      `${globalSystemPrompt}\n\n${assistantPrompt}`.trim()
 
     return new RequestContextBuilder(
       app,
@@ -622,19 +598,46 @@ export function QuickAskPanel({
         systemPrompt: combinedSystemPrompt,
       },
       {
-        includeSkills: executionMode === 'agent',
+        includeSkills: executionMode === 'agent' || executionMode === 'chat',
       },
     )
-  }, [
-    app,
-    contextText,
-    executionMode,
-    fileTitle,
-    mentionables,
-    selectionMentionable,
-    selectedAssistant,
-    settings,
-  ])
+  }, [app, executionMode, selectedAssistant, settings])
+
+  const editorSnapshotInjection =
+    useMemo<EditorSnapshotInjection | null>(() => {
+      const trimmedTitle = fileTitle.trim()
+      const trimmedPath = sourceFilePath?.trim() ?? ''
+      const hasContext = contextText.trim().length > 0
+      const promptSelectionMentionable =
+        selectionMentionable ?? getSelectionMentionable(mentionables)
+      const hasSelection = Boolean(
+        promptSelectionMentionable?.content.trim().length,
+      )
+
+      if (!trimmedTitle && !trimmedPath && !hasContext && !hasSelection) {
+        return null
+      }
+
+      return {
+        type: 'editor-snapshot',
+        filePath: trimmedPath,
+        fileTitle: trimmedTitle,
+        contextText,
+        cursorMarker: QUICK_ASK_CURSOR_MARKER,
+        selection: promptSelectionMentionable
+          ? {
+              content: promptSelectionMentionable.content,
+              filePath: promptSelectionMentionable.file.path,
+            }
+          : undefined,
+      }
+    }, [
+      contextText,
+      fileTitle,
+      mentionables,
+      selectionMentionable,
+      sourceFilePath,
+    ])
 
   const {
     autoScrollToBottom,
@@ -765,6 +768,8 @@ export function QuickAskPanel({
 
   const readEditBaseContent = useCallback(
     async (targetFilePath?: string): Promise<string> => {
+      // This callback is only called in edit mode where _editor is an Editor.
+      if (!capabilities.edit || !_editor) return ''
       const activeFilePath = app.workspace.getActiveFile()?.path
       if (
         targetFilePath &&
@@ -780,7 +785,8 @@ export function QuickAskPanel({
       }
       return readTFileContent(fallbackFile, app.vault)
     },
-    [_editor, app, sourceFilePath],
+
+    [capabilities.edit, _editor, app, sourceFilePath],
   )
 
   const buildSelectionScopedContent = useCallback(
@@ -803,6 +809,11 @@ export function QuickAskPanel({
         }
       }
 
+      // This callback is only reached in edit mode where _editor is an Editor.
+      if (!capabilities.edit || !_editor) {
+        return { editSourceText: currentContent, finalContent: currentContent }
+      }
+
       const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
       const tail = currentContent.slice(head.length + selectedContext.length)
 
@@ -811,7 +822,8 @@ export function QuickAskPanel({
         finalContent: head + selectedContext + tail,
       }
     },
-    [_editor],
+
+    [capabilities.edit, _editor],
   )
 
   const generatePlannedEdit = useCallback(
@@ -862,15 +874,17 @@ export function QuickAskPanel({
         plan,
       })
 
-      const finalContent = selectionFrom
-        ? (() => {
-            const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
-            const tail = currentContent.slice(
-              head.length + scopedContent.editSourceText.length,
-            )
-            return head + materialized.newContent + tail
-          })()
-        : materialized.newContent
+      // generatePlannedEdit is only called in edit mode where _editor is Editor.
+      const finalContent =
+        selectionFrom && capabilities.edit && _editor
+          ? (() => {
+              const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
+              const tail = currentContent.slice(
+                head.length + scopedContent.editSourceText.length,
+              )
+              return head + materialized.newContent + tail
+            })()
+          : materialized.newContent
 
       return {
         currentContent,
@@ -885,6 +899,7 @@ export function QuickAskPanel({
       }
     },
     [
+      capabilities.edit,
       _editor,
       buildSelectionScopedContent,
       selectionEditContextText,
@@ -955,9 +970,6 @@ export function QuickAskPanel({
         }
       })
 
-      // Create user message with all required fields
-      // Note: promptContent is set to null so that compileUserMessagePrompt will be called
-      // to properly process mentionables and include file contents
       const userMessage: ChatUserMessage = {
         role: 'user',
         content: editorState,
@@ -974,11 +986,49 @@ export function QuickAskPanel({
         userMessage,
       ]
       setChatMessages(newMessages)
+
+      // Set up the abort controller before any awaits so that abortStream()
+      // works while we're still compiling mentionables.
+      const abortController = new AbortController()
+      abortControllerRef.current = abortController
+      let unsubscribeRunner: (() => void) | null = null
+
+      // Compile mentionables into promptContent up front so the title model
+      // and the chat model see the same expanded context. Mirrors Chat.tsx.
+      let compiledMessages: ChatMessage[] = newMessages
+      try {
+        const { promptContent } =
+          await requestContextBuilder.compileUserMessagePrompt({
+            message: userMessage,
+          })
+        const compiledUserMessage: ChatUserMessage = {
+          ...userMessage,
+          promptContent,
+        }
+        compiledMessages = [
+          ...(options?.baseMessages ?? chatMessages),
+          compiledUserMessage,
+        ]
+      } catch (error) {
+        console.error('Failed to compile quick ask user message prompt', error)
+      }
+
+      if (abortController.signal.aborted) {
+        // Only clear shared state if we still own it — a follow-up submit may
+        // have already replaced the controller while we were compiling.
+        if (abortControllerRef.current === abortController) {
+          setIsStreaming(false)
+          setRunStatus(null)
+          abortControllerRef.current = null
+        }
+        return
+      }
+
       void (async () => {
         try {
           await createOrUpdateConversationImmediately(
             conversationId,
-            newMessages,
+            compiledMessages,
           )
         } catch (error) {
           console.error('Failed to save quick ask conversation', error)
@@ -986,7 +1036,7 @@ export function QuickAskPanel({
         }
 
         try {
-          await generateConversationTitle(conversationId, newMessages)
+          await generateConversationTitle(conversationId, compiledMessages)
         } catch (error) {
           console.error(
             'Failed to generate quick ask conversation title',
@@ -995,32 +1045,27 @@ export function QuickAskPanel({
         }
       })()
 
-      // Create abort controller
-      const abortController = new AbortController()
-      abortControllerRef.current = abortController
-      let unsubscribeRunner: (() => void) | null = null
-
       try {
         const mcpManager = await getMcpManager()
 
         const isAgentMode = executionMode === 'agent'
-        const quickAskLoopConfig = resolveQuickAskRuntimeLoopConfig({
+        const chatModeRuntime = resolveChatModeRuntime({
           mode: isAgentMode ? 'agent' : 'chat',
           assistant: selectedAssistant,
+          assistantEnabledToolNames:
+            getEnabledAssistantToolNames(selectedAssistant),
         })
-        const effectiveEnableTools = quickAskLoopConfig.enableTools
         const effectiveModel = model
         const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
-        const enabledSkillEntries =
-          isAgentMode && selectedAssistant
-            ? listLiteSkillEntries(app, { settings }).filter((skill) =>
-                isSkillEnabledForAssistant({
-                  assistant: selectedAssistant,
-                  skillId: skill.id,
-                  disabledSkillIds,
-                }),
-              )
-            : []
+        const enabledSkillEntries = selectedAssistant
+          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+              isSkillEnabledForAssistant({
+                assistant: selectedAssistant,
+                skillId: skill.id,
+                disabledSkillIds,
+              }),
+            )
+          : []
         const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
@@ -1036,21 +1081,22 @@ export function QuickAskPanel({
 
         await agentService.run({
           conversationId,
-          loopConfig: quickAskLoopConfig,
+          loopConfig: chatModeRuntime.loopConfig,
           input: {
             providerClient,
             model: effectiveModel,
-            messages: newMessages,
+            messages: compiledMessages,
             conversationId,
             requestContextBuilder,
             mcpManager,
             abortSignal: abortController.signal,
-            allowedToolNames: effectiveEnableTools
-              ? getEnabledAssistantToolNames(selectedAssistant)
-              : undefined,
-            toolPreferences: selectedAssistant?.toolPreferences,
+            allowedToolNames: chatModeRuntime.allowedToolNames,
+            toolPreferences: chatModeRuntime.toolPreferences,
             allowedSkillIds,
             allowedSkillNames,
+            contextualInjections: editorSnapshotInjection
+              ? [editorSnapshotInjection]
+              : [],
             requestParams: {
               stream: true,
               primaryRequestTimeoutMs:
@@ -1058,7 +1104,6 @@ export function QuickAskPanel({
               streamFallbackRecoveryEnabled:
                 settings.continuationOptions.streamFallbackRecoveryEnabled,
             },
-            currentFileContextMode: 'summary',
           },
         })
 
@@ -1109,6 +1154,7 @@ export function QuickAskPanel({
       selectedAssistant,
       settings,
       t,
+      editorSnapshotInjection,
     ],
   )
 
@@ -2190,7 +2236,6 @@ export function QuickAskPanel({
                   if (open) updateMentionMenuPlacement()
                 }}
                 onMentionNodeMutation={handleMentionNodeMutation}
-                mentionMenuContainerRef={mentionPortalContainerRef}
                 mentionMenuPlacement={mentionMenuPlacement}
                 autoFocus
                 contentClassName="smtcmp-obsidian-textarea smtcmp-content-editable smtcmp-quick-ask-content-editable"

@@ -76,24 +76,6 @@ export function ChatPreferencesSection({
       </ObsidianSetting>
 
       <ObsidianSetting
-        name={t('settings.chatPreferences.includeCurrentFile')}
-        desc={t('settings.chatPreferences.includeCurrentFileDesc')}
-        className="smtcmp-settings-card"
-      >
-        <ObsidianToggle
-          value={settings.chatOptions.includeCurrentFileContent}
-          onChange={(value) => {
-            updateChatOptions(
-              {
-                includeCurrentFileContent: value,
-              },
-              'includeCurrentFileContent',
-            )
-          }}
-        />
-      </ObsidianSetting>
-
-      <ObsidianSetting
         name={t('settings.chatPreferences.historyArchiveEnabled')}
         desc={t('settings.chatPreferences.historyArchiveEnabledDesc')}
         className="smtcmp-settings-card"

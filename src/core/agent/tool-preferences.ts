@@ -12,6 +12,24 @@ import { parseToolName } from '../mcp/tool-name-utils'
 export const DEFAULT_ASSISTANT_TOOL_APPROVAL_MODE: AssistantToolApprovalMode =
   'require_approval'
 
+/**
+ * 这些工具永远不允许"始终允许"（always-allow）模式。
+ * UI 侧应隐藏这些工具的 allowForThisChat 按钮。
+ */
+export const ALWAYS_ALLOW_DISABLED_TOOL_NAMES: readonly string[] = [
+  'delegate_external_agent',
+]
+
+/**
+ * local tool 中需要 require_approval 的工具名集合。
+ * delegate_external_agent 是高风险工具（执行外部 CLI），必须在此列表中。
+ */
+const REQUIRE_APPROVAL_LOCAL_TOOLS: ReadonlySet<string> = new Set([
+  'fs_file_ops',
+  ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  'delegate_external_agent',
+])
+
 export const getDefaultApprovalModeForTool = (
   toolName: string,
 ): AssistantToolApprovalMode => {
@@ -21,10 +39,7 @@ export const getDefaultApprovalModeForTool = (
       return 'require_approval'
     }
 
-    return parsedToolName === 'fs_file_ops' ||
-      LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.includes(
-        parsedToolName as (typeof LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)[number],
-      )
+    return REQUIRE_APPROVAL_LOCAL_TOOLS.has(parsedToolName)
       ? 'require_approval'
       : 'full_access'
   } catch {

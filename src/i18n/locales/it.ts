@@ -22,6 +22,7 @@ export const it: TranslationKeys = {
     triggerQuickAsk: 'Attiva quick ask',
     triggerTabCompletion: 'Attiva completamento tab',
     acceptInlineSuggestion: 'Accetta completamento',
+    capturePdfRegion: 'Cattura regione PDF nella chat',
   },
 
   common: {
@@ -268,9 +269,6 @@ export const it: TranslationKeys = {
       chatFontScale: 'Scala interfaccia chat',
       chatFontScaleDesc:
         "Regola la scala complessiva dell'interfaccia chat (predefinito 100%).",
-      includeCurrentFile: 'Includi file corrente',
-      includeCurrentFileDesc:
-        'Include automaticamente il file correntemente aperto nel contesto della chat.',
       historyArchiveEnabled: 'Abilita raggruppamento archivio cronologia',
       historyArchiveEnabledDesc:
         'Mantiene le conversazioni non appuntate meno recenti compresse in una sezione archivio.',
@@ -400,6 +398,9 @@ export const it: TranslationKeys = {
         'Recupera il contenuto completo di un singolo URL tramite il provider configurato.',
       builtinWebOpsLabel: 'Set strumenti ricerca web',
       builtinWebOpsDesc: 'Ricerca web e scraping di pagine',
+      builtinDelegateExternalAgentLabel: 'Delega a agente esterno',
+      builtinDelegateExternalAgentDesc:
+        'Avvia un agente CLI locale (codex exec o claude -p) come sottoprocesso, trasmette il suo output in chat e passa il risultato finale al LLM. Solo desktop. Richiede approvazione manuale ogni volta.',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',
@@ -453,6 +454,10 @@ export const it: TranslationKeys = {
       skillLoadAlways: 'Iniezione completa',
       skillLoadLazy: 'Su richiesta',
       skillDisabledGlobally: 'Disabilitata globalmente',
+      agentCapabilitiesBlockTitle: 'Capacità Agent',
+      focusSyncTitle: 'Sincronizzazione del focus',
+      focusSyncDesc:
+        "Se abilitato, l'AI percepisce quale file stai leggendo e dove ti trovi.",
       imageReadingBlockTitle: 'Lettura immagini',
       imageReadingEnabled: 'Lettura immagini',
       imageReadingEnabledDesc:
@@ -523,6 +528,7 @@ export const it: TranslationKeys = {
         bing: 'Bing (senza chiave)',
         'gemini-grounding': 'Gemini (Grounding)',
         grok: 'Grok',
+        zhipu: 'Zhipu Web Search',
       },
       fieldName: 'Nome visualizzato',
       fieldApiKey: 'API key',
@@ -537,6 +543,10 @@ export const it: TranslationKeys = {
       fieldModel: 'Modello',
       fieldSystemPrompt: 'System prompt',
       fieldEnableX: 'Cerca anche su X',
+      fieldZhipuEngine: 'Motore di ricerca',
+      fieldZhipuContentSize: 'Dimensione contenuto',
+      fieldZhipuRecency: 'Filtro temporale',
+      fieldZhipuDomainFilter: 'Filtro dominio (opzionale)',
       bingNote:
         'Bing non richiede API key. Il provider effettua scraping della pagina pubblica dei risultati; l’affidabilità dipende dalle misure anti-bot di Bing.',
     },
@@ -1080,10 +1090,6 @@ export const it: TranslationKeys = {
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
-      storeDataInVault:
-        'Sincronizza le impostazioni tramite vault (sperimentale)',
-      storeDataInVaultDesc:
-        'Se attivo, le impostazioni vengono scritte anche in {path} così da poter essere sincronizzate da Obsidian Sync; disattivandolo il file nel vault viene rimosso. ⚠️ Il file contiene chiavi API e altri dati sensibili. Assicurati che il tuo vault NON sia sincronizzato tramite canali pubblici (ad esempio repository Git pubblici o cloud drive pubblici) e di fidarti pienamente di tutti i plugin che possono leggere il vault.',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",
@@ -1363,6 +1369,7 @@ export const it: TranslationKeys = {
       readMode: {
         full: 'Intero testo',
         linesSuffix: ' righe',
+        pagesSuffix: ' pagine',
       },
       detail: {
         target: 'Destinazione',
@@ -1380,6 +1387,24 @@ export const it: TranslationKeys = {
       abort: 'Interrompi',
       alwaysAllowThisTool: 'Consenti sempre questo strumento',
       allowForThisChat: 'Consenti per questa chat',
+    },
+    externalAgent: {
+      statusRunning: 'In esecuzione',
+      statusDone: 'Completato',
+      statusAborted: 'Interrotto',
+      statusError: 'Errore',
+      progress: 'Avanzamento',
+      output: 'Output',
+      abortedBeforeOutput: 'Interrotto prima di produrre output.',
+    },
+    externalAgentResult: {
+      statusCompleted: 'Completato',
+      statusFailed: 'Fallito',
+      statusCancelled: 'Annullato',
+      statusTimedOut: 'Timeout',
+      statusKilledByShutdown: 'Fermato',
+      showOutput: 'Mostra output',
+      jumpToDelegate: 'Vai al messaggio di delega originale',
     },
     conversationSettings: {
       openAria: 'Impostazioni conversazione',
@@ -1425,6 +1450,19 @@ export const it: TranslationKeys = {
     settingsInvalid: 'Impostazioni non valide',
     transportModeAutoPromoted:
       'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su {mode}.',
+    capturePdfNoLeaf: 'Nessun file PDF aperto al momento.',
+    capturePdfFailed: 'Impossibile catturare la regione selezionata.',
+    capturePdfInjectFailed: 'Impossibile aggiungere lo screenshot alla chat.',
+  },
+
+  pdf: {
+    regionSelectorHint:
+      'Trascina per selezionare una regione. Premi ESC per annullare.',
+    toolbarButtonTooltip: 'Cattura regione PDF nella chat',
+  },
+
+  mentionable: {
+    pdfPage: 'Pagina {{page}}',
   },
 
   statusBar: {

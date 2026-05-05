@@ -22,6 +22,7 @@ export const zh: TranslationKeys = {
     triggerQuickAsk: '触发 Quick Ask',
     triggerTabCompletion: '触发 Tab 补全',
     acceptInlineSuggestion: '接受补全',
+    capturePdfRegion: '截取 PDF 区域到聊天',
   },
 
   common: {
@@ -233,8 +234,6 @@ export const zh: TranslationKeys = {
       title: '聊天偏好',
       chatFontScale: '聊天界面缩放',
       chatFontScaleDesc: '调整聊天界面的整体缩放比例（默认 100%）。',
-      includeCurrentFile: '自动添加当前页面文件',
-      includeCurrentFileDesc: '自动在聊天中包含当前文件的内容。',
       historyArchiveEnabled: '启用历史归档分组',
       historyArchiveEnabledDesc: '将较旧的未置顶会话折叠到归档分组中。',
       historyArchiveThreshold: '近期会话数量',
@@ -353,6 +352,9 @@ export const zh: TranslationKeys = {
       builtinWebScrapeDesc: '通过配置的搜索服务抓取单个 URL 的完整正文。',
       builtinWebOpsLabel: '联网搜索工具集',
       builtinWebOpsDesc: '网页搜索与正文抓取',
+      builtinDelegateExternalAgentLabel: '派遣外部 Agent',
+      builtinDelegateExternalAgentDesc:
+        '以子进程方式启动本机 CLI Agent（codex exec 或 claude -p），将其实时输出流式回灌到聊天窗口，并把最终结果传给 LLM 继续推理。仅桌面端可用，每次调用都需人工审批。',
       editorDefaultName: '新建 Agent',
       editorIntro: '配置此 Agent 的能力、模型与行为。',
       editorTabProfile: '资料',
@@ -420,6 +422,9 @@ export const zh: TranslationKeys = {
       skillLoadAlways: '全量注入',
       skillLoadLazy: '按需加载',
       skillDisabledGlobally: '已全局禁用',
+      agentCapabilitiesBlockTitle: 'Agent 能力',
+      focusSyncTitle: '焦点同步',
+      focusSyncDesc: '启用后，AI 可以感知到你正在阅读的内容和位置。',
       imageReadingBlockTitle: '图片读取',
       imageReadingEnabled: '图片读取',
       imageReadingEnabledDesc:
@@ -484,6 +489,7 @@ export const zh: TranslationKeys = {
         bing: 'Bing（无需 Key）',
         'gemini-grounding': 'Gemini Grounding',
         grok: 'Grok',
+        zhipu: '智谱网页搜索',
       },
       fieldName: '显示名称',
       fieldApiKey: 'API Key',
@@ -498,6 +504,10 @@ export const zh: TranslationKeys = {
       fieldModel: '模型',
       fieldSystemPrompt: 'System Prompt',
       fieldEnableX: '同时搜索 X',
+      fieldZhipuEngine: '搜索引擎',
+      fieldZhipuContentSize: '摘要长度',
+      fieldZhipuRecency: '时效过滤',
+      fieldZhipuDomainFilter: '域名过滤（可选）',
       bingNote:
         'Bing 无需 API Key，由插件直接抓取公开搜索结果页面，稳定性受 Bing 反爬策略影响。',
     },
@@ -1003,9 +1013,6 @@ export const zh: TranslationKeys = {
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
       yoloBaseDirPlaceholder: 'YOLO',
-      storeDataInVault: '通过 vault 同步设置（实验性）',
-      storeDataInVaultDesc:
-        '开启后会把设置文件额外写入 {path}，使其可被 Obsidian Sync 同步；关闭时会从 vault 删除该文件。⚠️ 该文件包含 API 密钥等敏感信息，请务必确认你的 vault 未通过公开渠道同步（如公共 Git 仓库、公共网盘），并充分信任所有可读取 vault 的插件。',
       mentionDisplayMode: '引用内容显示位置',
       mentionDisplayModeDesc:
         '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',
@@ -1267,6 +1274,7 @@ export const zh: TranslationKeys = {
       readMode: {
         full: '全文',
         linesSuffix: '行',
+        pagesSuffix: '页',
       },
       detail: {
         target: '目标',
@@ -1284,6 +1292,24 @@ export const zh: TranslationKeys = {
       abort: '停止执行',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '仅本次对话允许',
+    },
+    externalAgent: {
+      statusRunning: '执行中',
+      statusDone: '已完成',
+      statusAborted: '已中止',
+      statusError: '错误',
+      progress: '进度',
+      output: '输出',
+      abortedBeforeOutput: '已中止，未产生任何输出。',
+    },
+    externalAgentResult: {
+      statusCompleted: '已完成',
+      statusFailed: '失败',
+      statusCancelled: '已取消',
+      statusTimedOut: '已超时',
+      statusKilledByShutdown: '已停止',
+      showOutput: '查看输出',
+      jumpToDelegate: '跳转到原派遣消息',
     },
     conversationSettings: {
       openAria: '对话设置',
@@ -1323,6 +1349,18 @@ export const zh: TranslationKeys = {
     settingsInvalid: '设置无效',
     transportModeAutoPromoted:
       '检测到网络/CORS 问题，已自动将该 Provider 切换为 {mode}。',
+    capturePdfNoLeaf: '当前没有打开的 PDF 文件。',
+    capturePdfFailed: '截取所选区域失败。',
+    capturePdfInjectFailed: '无法将截图添加到聊天。',
+  },
+
+  pdf: {
+    regionSelectorHint: '拖拽框选区域，ESC 取消。',
+    toolbarButtonTooltip: '截取 PDF 区域到聊天',
+  },
+
+  mentionable: {
+    pdfPage: '第 {{page}} 页',
   },
 
   statusBar: {

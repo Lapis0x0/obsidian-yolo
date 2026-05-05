@@ -33,6 +33,7 @@ import AssistantMessageEditor from './AssistantMessageEditor'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
+import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
 import ToolMessage from './ToolMessage'
 
 const getBranchStateLabel = (
@@ -87,7 +88,10 @@ const getBranchTabState = (
   messages: AssistantToolMessageGroup,
 ): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
-  const latestMetadata = latestMessage?.metadata
+  const latestMetadata =
+    latestMessage?.role !== 'external_agent_result'
+      ? latestMessage?.metadata
+      : undefined
 
   if (latestMetadata?.branchWaitingApproval) {
     return 'waiting-approval'
@@ -122,7 +126,10 @@ const getMessageGroupRunState = ({
   conversationRunSummary?: AgentConversationRunSummary
 }): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
-  const latestMetadata = latestMessage?.metadata
+  const latestMetadata =
+    latestMessage?.role !== 'external_agent_result'
+      ? latestMessage?.metadata
+      : undefined
 
   if (latestMetadata?.branchWaitingApproval) {
     return 'waiting-approval'
@@ -265,21 +272,15 @@ export default function AssistantToolMessageGroupItem({
       }
     >()
     messages.forEach((message) => {
-      const branchId =
-        message.role === 'assistant'
-          ? message.metadata?.branchId
-          : message.metadata?.branchId
+      const branchId = message.metadata?.branchId
       if (!branchId) {
         return
       }
       const branchLabel =
-        message.role === 'assistant'
+        message.role !== 'external_agent_result'
           ? message.metadata?.branchLabel
-          : message.metadata?.branchLabel
-      const branchConversationId =
-        message.role === 'assistant'
-          ? message.metadata?.branchConversationId
-          : message.metadata?.branchConversationId
+          : undefined
+      const branchConversationId = message.metadata?.branchConversationId
       const existing = groups.get(branchId)
       if (existing) {
         existing.messages.push(message)
@@ -681,6 +682,18 @@ export default function AssistantToolMessageGroupItem({
                 )}
             </div>
           ) : null
+        ) : message.role === 'external_agent_result' ? (
+          <div key={message.id}>
+            <ToolMessage
+              message={buildSynthToolMessageFromResult(message)}
+              conversationId={effectiveConversationId}
+              showRunningFooter={false}
+              onMessageUpdate={() => {
+                // 异步派遣结果是终态消息，UI 内部不会触发 update；
+                // 万一调到这里也不持久化（result message 有自己的存储路径）。
+              }}
+            />
+          </div>
         ) : (
           <div key={message.id}>
             <ToolMessage

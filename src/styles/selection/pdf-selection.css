@@ -1,0 +1,15 @@
+/* ============================================
+   PDF Selection - Persistent highlight for PDF text layer (CSS Custom Highlight API)
+   ============================================ */
+
+/* Painted by pdfSelectionHighlightController via the CSS Custom Highlight API.
+   Character-level granularity: only the selected characters are tinted, even
+   when the selection lives inside a single PDF.js textLayer span.
+
+   Note on color:
+   PDF.js textLayer applies its own blend mode that wipes any alpha background.
+   So we use a fully opaque accent color and let textLayer's blend produce the
+   translucent-looking effect — same trick the previous class-based rule used. */
+::highlight(yolo-pdf-selection) {
+  background-color: var(--interactive-accent);
+}

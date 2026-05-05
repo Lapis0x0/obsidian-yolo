@@ -23,6 +23,7 @@ export type TranslationKeys = {
     triggerQuickAsk: string
     triggerTabCompletion: string
     acceptInlineSuggestion: string
+    capturePdfRegion?: string
   }
 
   // UI Common
@@ -158,8 +159,6 @@ export type TranslationKeys = {
       title: string
       chatFontScale?: string
       chatFontScaleDesc?: string
-      includeCurrentFile: string
-      includeCurrentFileDesc: string
       historyArchiveEnabled?: string
       historyArchiveEnabledDesc?: string
       historyArchiveThreshold?: string
@@ -276,6 +275,8 @@ export type TranslationKeys = {
       builtinWebScrapeDesc?: string
       builtinWebOpsLabel?: string
       builtinWebOpsDesc?: string
+      builtinDelegateExternalAgentLabel?: string
+      builtinDelegateExternalAgentDesc?: string
       editorDefaultName?: string
       editorIntro?: string
       editorTabProfile?: string
@@ -340,6 +341,9 @@ export type TranslationKeys = {
       skillLoadAlways?: string
       skillLoadLazy?: string
       skillDisabledGlobally?: string
+      agentCapabilitiesBlockTitle?: string
+      focusSyncTitle?: string
+      focusSyncDesc?: string
       imageReadingBlockTitle?: string
       imageReadingEnabled?: string
       imageReadingEnabledDesc?: string
@@ -395,6 +399,7 @@ export type TranslationKeys = {
         bing?: string
         'gemini-grounding'?: string
         grok?: string
+        zhipu?: string
       }
       fieldName?: string
       fieldApiKey?: string
@@ -409,6 +414,10 @@ export type TranslationKeys = {
       fieldModel?: string
       fieldSystemPrompt?: string
       fieldEnableX?: string
+      fieldZhipuEngine?: string
+      fieldZhipuContentSize?: string
+      fieldZhipuRecency?: string
+      fieldZhipuDomainFilter?: string
       bingNote?: string
     }
     providers: {
@@ -851,8 +860,6 @@ export type TranslationKeys = {
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
-      storeDataInVault?: string
-      storeDataInVaultDesc?: string
       mentionDisplayMode?: string
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
@@ -1154,6 +1161,7 @@ export type TranslationKeys = {
       readMode?: {
         full?: string
         linesSuffix?: string
+        pagesSuffix?: string
       }
       detail?: {
         target?: string
@@ -1171,6 +1179,28 @@ export type TranslationKeys = {
       abort?: string
       alwaysAllowThisTool?: string
       allowForThisChat?: string
+    }
+    // delegate_external_agent tool card
+    externalAgent?: {
+      statusRunning?: string
+      statusDone?: string
+      statusAborted?: string
+      statusError?: string
+      progress?: string
+      output?: string
+      abortedBeforeOutput?: string
+      progressTruncated?: string
+      truncated?: string
+    }
+    // async external agent result card
+    externalAgentResult?: {
+      statusCompleted?: string
+      statusFailed?: string
+      statusCancelled?: string
+      statusTimedOut?: string
+      statusKilledByShutdown?: string
+      showOutput?: string
+      jumpToDelegate?: string
     }
     // conversation settings popover
     conversationSettings?: {
@@ -1210,6 +1240,19 @@ export type TranslationKeys = {
     reloadingPlugin: string
     settingsInvalid: string
     transportModeAutoPromoted: string
+    capturePdfNoLeaf?: string
+    capturePdfFailed?: string
+    capturePdfInjectFailed?: string
+  }
+
+  pdf?: {
+    regionSelectorHint?: string
+    toolbarButtonTooltip?: string
+  }
+
+  mentionable?: {
+    /** Badge suffix for a block selected from a PDF page. {{page}} is replaced with the page number. */
+    pdfPage?: string
   }
 
   statusBar?: {

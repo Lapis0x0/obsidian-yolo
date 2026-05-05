@@ -83,7 +83,7 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           },
         })
         if (!value) {
-          selectionHighlightController.clearHighlight()
+          selectionHighlightController.clearAll()
         }
       } catch (error: unknown) {
         console.error('Failed to update selection highlight setting', error)

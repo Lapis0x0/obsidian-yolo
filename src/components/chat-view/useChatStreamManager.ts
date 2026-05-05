@@ -26,8 +26,6 @@ import {
 import { getChatModelClient } from '../../core/llm/manager'
 import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
-import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import {
@@ -39,15 +37,13 @@ import {
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
-import {
-  resolveCurrentFileContextModeForRuntime,
-  resolveWorkspaceScopeForRuntimeInput,
-} from './chat-runtime-inputs'
-import { resolveChatRuntimeLoopConfig } from './chat-runtime-profiles'
+import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
+import { resolveChatModeRuntime } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
@@ -64,6 +60,7 @@ type UseChatStreamManagerParams = {
   modelId: string
   chatMode: ChatMode
   currentFileOverride?: TFile | null
+  currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
   assistantIdOverride?: string
   compaction?: ChatConversationCompactionState
   onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
@@ -82,24 +79,6 @@ type BranchRetryTarget = {
   sourceUserMessageId: string
   branchModelId?: string
   branchLabel?: string
-}
-
-const CHAT_BLOCKED_TOOL_NAMES = [
-  getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
-  getToolName(getLocalFileToolServerName(), 'fs_edit'),
-  getToolName(getLocalFileToolServerName(), 'fs_create_file'),
-  getToolName(getLocalFileToolServerName(), 'fs_delete_file'),
-  getToolName(getLocalFileToolServerName(), 'fs_create_dir'),
-  getToolName(getLocalFileToolServerName(), 'fs_delete_dir'),
-  getToolName(getLocalFileToolServerName(), 'fs_move'),
-]
-
-const excludeToolNames = (
-  allowedToolNames: string[],
-  blockedToolNames: string[],
-): string[] => {
-  const blocked = new Set(blockedToolNames)
-  return allowedToolNames.filter((toolName) => !blocked.has(toolName))
 }
 
 const buildRunSummary = ({
@@ -147,6 +126,32 @@ export type UseChatStreamManager = {
 
 const isRunSummaryActive = (summary: AgentConversationRunSummary): boolean => {
   return summary.isRunning || summary.isWaitingApproval
+}
+
+/**
+ * Sidebar Chat focus sync → current-file-pointer injection.
+ * Returns an empty array when the user has disabled focus sync or no file
+ * is active.
+ */
+const buildChatContextualInjections = ({
+  includeCurrentFileContent,
+  currentFile,
+  currentFileViewState,
+}: {
+  includeCurrentFileContent: boolean
+  currentFile: TFile | null | undefined
+  currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
+}): ContextualInjection[] => {
+  if (!includeCurrentFileContent || !currentFile) {
+    return []
+  }
+  return [
+    {
+      type: 'current-file-pointer',
+      file: currentFile,
+      viewState: currentFileViewState,
+    },
+  ]
 }
 
 const annotateBranchMessages = (
@@ -205,6 +210,7 @@ export function useChatStreamManager({
   modelId,
   chatMode,
   currentFileOverride,
+  currentFileViewState,
   assistantIdOverride,
   compaction,
   onRunSettled,
@@ -487,20 +493,16 @@ export function useChatStreamManager({
         : []
       const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
       const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
-      const assistantEnabledToolNames =
-        getEnabledAssistantToolNames(selectedAssistant)
-      const chatRuntimeLoopConfig = resolveChatRuntimeLoopConfig({
+      const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
         assistant: selectedAssistant,
+        assistantEnabledToolNames:
+          getEnabledAssistantToolNames(selectedAssistant),
       })
-      const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
+      const effectiveEnableTools = chatModeRuntime.loopConfig.enableTools
       const effectiveIncludeBuiltinTools =
-        chatRuntimeLoopConfig.includeBuiltinTools
-      const effectiveAllowedToolNames = effectiveEnableTools
-        ? chatMode === 'agent'
-          ? assistantEnabledToolNames
-          : excludeToolNames(assistantEnabledToolNames, CHAT_BLOCKED_TOOL_NAMES)
-        : undefined
+        chatModeRuntime.loopConfig.includeBuiltinTools
+      const effectiveAllowedToolNames = chatModeRuntime.allowedToolNames
       const resolvedCompactionClient = resolveCompactionClient()
       const summary = await createConversationCompactionSummary({
         providerClient: resolvedCompactionClient.providerClient,
@@ -535,8 +537,12 @@ export function useChatStreamManager({
             allowedSkillNames,
             maxContextOverride:
               conversationOverrides?.maxContextMessages ?? undefined,
-            currentFileContextMode: resolveCurrentFileContextModeForRuntime(),
-            currentFileOverride,
+            contextualInjections: buildChatContextualInjections({
+              includeCurrentFileContent:
+                settings.chatOptions.includeCurrentFileContent,
+              currentFile: currentFileOverride,
+              currentFileViewState,
+            }),
           })
       } catch (error) {
         console.warn(
@@ -566,6 +572,7 @@ export function useChatStreamManager({
       conversationOverrides?.maxContextMessages,
       currentConversationId,
       currentFileOverride,
+      currentFileViewState,
       getMcpManager,
       handleAutoPromoteTransportMode,
       modelId,
@@ -678,25 +685,16 @@ export function useChatStreamManager({
         const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
-        const assistantEnabledToolNames =
-          getEnabledAssistantToolNames(selectedAssistant)
-        const chatRuntimeLoopConfig = resolveChatRuntimeLoopConfig({
+        const chatModeRuntime = resolveChatModeRuntime({
           mode: chatMode,
           assistant: selectedAssistant,
+          assistantEnabledToolNames:
+            getEnabledAssistantToolNames(selectedAssistant),
         })
-        const effectiveEnableTools = chatRuntimeLoopConfig.enableTools
-        const effectiveAllowedToolNames = effectiveEnableTools
-          ? chatMode === 'agent'
-            ? assistantEnabledToolNames
-            : excludeToolNames(
-                assistantEnabledToolNames,
-                CHAT_BLOCKED_TOOL_NAMES,
-              )
-          : undefined
 
         const mcpManager = await getMcpManager()
 
-        const loopConfig = chatRuntimeLoopConfig
+        const loopConfig = chatModeRuntime.loopConfig
         const requestParams = {
           stream: shouldStreamResponse,
           temperature: conversationOverrides?.temperature ?? modelTemperature,
@@ -709,7 +707,6 @@ export function useChatStreamManager({
         }
         const maxContextOverride =
           conversationOverrides?.maxContextMessages ?? undefined
-        const currentFileContextMode = resolveCurrentFileContextModeForRuntime()
         const effectiveCompactionForRequest = compactionOverride ?? compaction
         const baseInput = {
           messages: chatMessages,
@@ -719,19 +716,20 @@ export function useChatStreamManager({
           compactionProviderClient: resolvedCompactionClient.providerClient,
           compactionModel: resolvedCompactionClient.model,
           reasoningLevel,
-          allowedToolNames: effectiveAllowedToolNames,
-          toolPreferences:
-            chatMode === 'agent'
-              ? selectedAssistant?.toolPreferences
-              : undefined,
+          allowedToolNames: chatModeRuntime.allowedToolNames,
+          toolPreferences: chatModeRuntime.toolPreferences,
           workspaceScope:
             resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
           allowedSkillIds,
           allowedSkillNames,
           requestParams,
           maxContextOverride,
-          currentFileContextMode,
-          currentFileOverride,
+          contextualInjections: buildChatContextualInjections({
+            includeCurrentFileContent:
+              settings.chatOptions.includeCurrentFileContent,
+            currentFile: currentFileOverride,
+            currentFileViewState,
+          }),
           geminiTools: {
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,

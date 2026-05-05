@@ -16,8 +16,6 @@ export const getMentionableIcon = (mentionable: Mentionable) => {
       return FileIcon
     case 'folder':
       return FolderClosedIcon
-    case 'current-file':
-      return FileText
     case 'block':
       return FileIcon
     case 'assistant-quote':

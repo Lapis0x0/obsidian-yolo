@@ -21,6 +21,7 @@ import {
   ChatConversationCompactionState,
   ChatMessage,
   ChatSelectedSkill,
+  ChatUserMessage,
   SerializedChatMessage,
   normalizeChatConversationCompactionState,
 } from '../types/chat'
@@ -41,21 +42,12 @@ const LEGACY_UNTITLED_CONVERSATION_TITLES = new Set([
 const AUTO_TITLE_TIMEOUT_MS = 10000
 const AUTO_TITLE_MAX_RETRIES = 2
 const AUTO_TITLE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
-const AUTO_TITLE_INPUT_MAX_LENGTH = 1200
 const AUTO_TITLE_WAIT_CONVERSATION_RETRIES = 15
 const AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS = 200
 const CHAT_HISTORY_UPDATED_EVENT = 'smtcmp:chat-history-updated'
 
 const isUntitledConversationTitle = (title: string): boolean =>
   LEGACY_UNTITLED_CONVERSATION_TITLES.has(title)
-
-const truncateForTitleInput = (text: string): string => {
-  const normalized = text.trim()
-  if (normalized.length <= AUTO_TITLE_INPUT_MAX_LENGTH) {
-    return normalized
-  }
-  return `${normalized.slice(0, AUTO_TITLE_INPUT_MAX_LENGTH)}...`
-}
 
 const formatSelectedSkillsForTitleInput = (
   selectedSkills: ChatSelectedSkill[],
@@ -68,9 +60,19 @@ const formatSelectedSkillsForTitleInput = (
     return '[User selected only skills without text.]'
   }
 
-  return truncateForTitleInput(
-    `[User selected skills: ${skillNames.join(', ')}]`,
-  )
+  return `[User selected skills: ${skillNames.join(', ')}]`
+}
+
+const extractTextFromPromptContent = (
+  promptContent: ChatUserMessage['promptContent'],
+): string => {
+  if (!promptContent) return ''
+  if (typeof promptContent === 'string') return promptContent.trim()
+  return promptContent
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text.trim())
+    .filter((text) => text.length > 0)
+    .join('\n\n')
 }
 
 type UseChatHistory = {
@@ -95,6 +97,7 @@ type UseChatHistory = {
     reasoningLevel?: string,
     compaction?: ChatConversationCompactionState,
     assistantGroupBoundaryMessageIds?: string[],
+    options?: { touchUpdatedAt?: boolean },
   ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
@@ -183,6 +186,7 @@ export function useChatHistory(): UseChatHistory {
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionLike | null,
       assistantGroupBoundaryMessageIds?: string[],
+      options?: { touchUpdatedAt?: boolean },
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
@@ -228,34 +232,40 @@ export function useChatHistory(): UseChatHistory {
         ) {
           return
         }
-        await chatManager.updateChat(existingConversation.id, {
-          messages: compactedMessages,
-          overrides:
-            overrides === undefined
-              ? (existingConversation.overrides ?? null)
-              : overrides,
-          conversationModelId:
-            conversationModelId === undefined
-              ? existingConversation.conversationModelId
-              : conversationModelId,
-          messageModelMap:
-            messageModelMap === undefined
-              ? existingConversation.messageModelMap
-              : messageModelMap,
-          activeBranchByUserMessageId:
-            activeBranchByUserMessageId === undefined
-              ? existingConversation.activeBranchByUserMessageId
-              : activeBranchByUserMessageId,
-          assistantGroupBoundaryMessageIds:
-            assistantGroupBoundaryMessageIds === undefined
-              ? existingConversation.assistantGroupBoundaryMessageIds
-              : assistantGroupBoundaryMessageIds,
-          reasoningLevel,
-          compaction:
-            compaction === undefined
-              ? existingCompaction
-              : normalizedCompaction,
-        })
+        await chatManager.updateChat(
+          existingConversation.id,
+          {
+            messages: compactedMessages,
+            overrides:
+              overrides === undefined
+                ? (existingConversation.overrides ?? null)
+                : overrides,
+            conversationModelId:
+              conversationModelId === undefined
+                ? existingConversation.conversationModelId
+                : conversationModelId,
+            messageModelMap:
+              messageModelMap === undefined
+                ? existingConversation.messageModelMap
+                : messageModelMap,
+            activeBranchByUserMessageId:
+              activeBranchByUserMessageId === undefined
+                ? existingConversation.activeBranchByUserMessageId
+                : activeBranchByUserMessageId,
+            assistantGroupBoundaryMessageIds:
+              assistantGroupBoundaryMessageIds === undefined
+                ? existingConversation.assistantGroupBoundaryMessageIds
+                : assistantGroupBoundaryMessageIds,
+            reasoningLevel,
+            compaction:
+              compaction === undefined
+                ? existingCompaction
+                : normalizedCompaction,
+          },
+          options?.touchUpdatedAt === undefined
+            ? undefined
+            : { touchUpdatedAt: options.touchUpdatedAt },
+        )
       } else {
         // 默认标题统一为"新对话"，待首条用户消息保存后由对话命名模型自动改名
         const defaultTitle = DEFAULT_UNTITLED_CONVERSATION_TITLE
@@ -332,6 +342,7 @@ export function useChatHistory(): UseChatHistory {
       reasoningLevel?: string,
       compaction?: ChatConversationCompactionState,
       assistantGroupBoundaryMessageIds?: string[],
+      options?: { touchUpdatedAt?: boolean },
     ): Promise<void> => {
       debouncedCreateOrUpdateConversation.cancel()
       await persistConversationInternal(
@@ -344,6 +355,7 @@ export function useChatHistory(): UseChatHistory {
         reasoningLevel,
         compaction,
         assistantGroupBoundaryMessageIds,
+        options,
       )
     },
     [debouncedCreateOrUpdateConversation, persistConversationInternal],
@@ -543,12 +555,21 @@ export function useChatHistory(): UseChatHistory {
           return
         }
 
+        // Reuse the same expanded prompt that gets sent to the chat model so
+        // the title model sees referenced files / URLs / blocks / quotes
+        // without re-running compilation or doing extra I/O here.
+        const compiledText = extractTextFromPromptContent(
+          firstUserMessage.promptContent,
+        )
+
         const userContext =
-          normalizedUserText.length > 0
-            ? truncateForTitleInput(normalizedUserText)
-            : userSelectedSkills.length > 0
-              ? formatSelectedSkillsForTitleInput(userSelectedSkills)
-              : '[User shared only attachments/mentions without text.]'
+          compiledText.length > 0
+            ? compiledText
+            : normalizedUserText.length > 0
+              ? normalizedUserText
+              : userSelectedSkills.length > 0
+                ? formatSelectedSkillsForTitleInput(userSelectedSkills)
+                : '[User shared only attachments/mentions without text.]'
 
         const titleInput = `User first message:\n${userContext}`
 
@@ -710,6 +731,8 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         id: message.id,
         metadata: message.metadata,
       }
+    case 'external_agent_result':
+      return message
   }
 }
 
@@ -750,6 +773,8 @@ const deserializeChatMessage = (
         id: message.id,
         metadata: message.metadata,
       }
+    case 'external_agent_result':
+      return message
   }
 }
 

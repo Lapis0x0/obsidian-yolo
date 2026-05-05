@@ -14,9 +14,17 @@ export type SelectionAction = {
   handler: (selection: SelectionInfo, editor: Editor) => void | Promise<void>
 }
 
+type RangeSnapshot = {
+  startContainer: Node
+  startOffset: number
+  endContainer: Node
+  endOffset: number
+}
+
 export class SelectionManager {
   private debounceTimer: number | null = null
   private currentSelection: SelectionInfo | null = null
+  private lastRangeSnapshot: RangeSnapshot | null = null
   private onSelectionChange:
     | ((selection: SelectionInfo | null) => void)
     | null = null
@@ -54,6 +62,7 @@ export class SelectionManager {
     document.removeEventListener('selectionchange', this.handleSelectionChange)
     this.onSelectionChange = null
     this.currentSelection = null
+    this.lastRangeSnapshot = null
   }
 
   setEnabled(enabled: boolean): void {
@@ -65,6 +74,7 @@ export class SelectionManager {
 
   clearSelection(): void {
     this.currentSelection = null
+    this.lastRangeSnapshot = null
     this.onSelectionChange?.call(null, null)
   }
 
@@ -104,6 +114,25 @@ export class SelectionManager {
 
     try {
       const range = selection.getRangeAt(0)
+
+      // Echo guard: if the new range is semantically identical to the last
+      // forwarded selection, skip the callback. This prevents highlight
+      // decorations (or other sync side-effects) from re-triggering a
+      // selectionchange echo that would cause widget flicker.
+      // We compare against an immutable snapshot, not a live Range — the
+      // browser may sync a stored Range to new endpoints, which would
+      // produce false positives.
+      const prev = this.lastRangeSnapshot
+      if (
+        prev &&
+        range.startContainer === prev.startContainer &&
+        range.startOffset === prev.startOffset &&
+        range.endContainer === prev.endContainer &&
+        range.endOffset === prev.endOffset
+      ) {
+        return
+      }
+
       const rects = range.getClientRects()
 
       if (rects.length === 0) {
@@ -120,6 +149,12 @@ export class SelectionManager {
         range,
         rect,
         isMultiLine,
+      }
+      this.lastRangeSnapshot = {
+        startContainer: range.startContainer,
+        startOffset: range.startOffset,
+        endContainer: range.endContainer,
+        endOffset: range.endOffset,
       }
 
       this.onSelectionChange?.call(null, this.currentSelection)

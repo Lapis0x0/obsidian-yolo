@@ -103,14 +103,49 @@ export type ChatToolMessage = {
   }
 }
 
+export type AsyncTaskStatus =
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out'
+  | 'killed_by_shutdown'
+
+export type TaskSource = {
+  type: 'llm_tool_call'
+  toolCallId: string
+  assistantMessageId: string
+}
+
+export type ChatExternalAgentResultMessage = {
+  role: 'external_agent_result'
+  id: string
+  taskId: string
+  source: TaskSource
+  provider: 'codex' | 'claude-code'
+  title: string
+  status: AsyncTaskStatus
+  exitCode: number | null
+  stdout: string
+  stderr: string
+  durationMs: number
+  delegateAssistantMessageId: string
+  delegateToolCallId: string
+  metadata?: {
+    branchId?: string
+    branchConversationId?: string
+  }
+}
+
 export type ChatMessage =
   | ChatUserMessage
   | ChatAssistantMessage
   | ChatToolMessage
+  | ChatExternalAgentResultMessage
 
 export type AssistantToolMessageGroup = (
   | ChatAssistantMessage
   | ChatToolMessage
+  | ChatExternalAgentResultMessage
 )[]
 
 export type SerializedChatUserMessage = {
@@ -164,10 +199,14 @@ export type SerializedChatToolMessage = {
     branchWaitingApproval?: boolean
   }
 }
+export type SerializedChatExternalAgentResultMessage =
+  ChatExternalAgentResultMessage
+
 export type SerializedChatMessage =
   | SerializedChatUserMessage
   | SerializedChatAssistantMessage
   | SerializedChatToolMessage
+  | SerializedChatExternalAgentResultMessage
 
 export type ChatConversation = {
   schemaVersion: number

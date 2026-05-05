@@ -33,6 +33,7 @@ import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
+import { pdfSelectionHighlightController } from '../../features/editor/selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
@@ -53,6 +54,7 @@ import type {
   MentionableAssistantQuote,
   MentionableBlock,
   MentionableBlockData,
+  MentionableImage,
 } from '../../types/mentionable'
 import {
   REASONING_LEVELS,
@@ -66,7 +68,6 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
-import { normalizeMentionablesWithAutoCurrentFile } from '../../utils/chat/currentFileMentionable'
 import {
   type GroupEditSummary,
   deriveToolEditUndoStatus,
@@ -82,7 +83,7 @@ import {
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
-import { formatTokenCount } from '../../utils/llm/contextTokenEstimate'
+import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { readTFileContent } from '../../utils/obsidian'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
@@ -106,6 +107,7 @@ import {
 } from './chatRetry'
 import Composer from './Composer'
 import ContextUsageRing from './ContextUsageRing'
+import { useActiveViewState } from './hooks/useActiveViewState'
 import { syncRenderedLatexSelection } from './latex-copy'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
@@ -454,6 +456,7 @@ export type ChatRef = {
   clearSelectionFromChat: () => void
   addFileToChat: (file: TFile) => void
   addFolderToChat: (folder: TFolder) => void
+  addImageToChat: (image: MentionableImage) => void
   insertTextToInput: (text: string) => void
   appendTextToInput: (text: string) => void
   setMainInputText: (text: string) => void
@@ -536,11 +539,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     settings.chatOptions.reasoningLevelByModelId,
   ])
 
-  const [autoAttachCurrentFile, setAutoAttachCurrentFile] = useState(true)
-  const conversationAutoAttachRef = useRef<Map<string, boolean>>(new Map())
-  const [activeFile, setActiveFile] = useState<TFile | null>(() =>
-    app.workspace.getActiveFile(),
-  )
+  const { file: activeFile, viewState: activeViewState } = useActiveViewState()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const headerRef = useRef<HTMLDivElement | null>(null)
   const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
@@ -1041,10 +1040,46 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessagesStateRef.current = chatMessages
   }, [chatMessages])
 
-  const hasUserMessages = useMemo(
-    () => chatMessages.some((message) => message.role === 'user'),
-    [chatMessages],
-  )
+  // Reconcile visual highlights with the current mention list.
+  // The chat mention list is the single source of truth: when a mention with a
+  // highlightId is removed (× button, mention text deletion, input clear), the
+  // matching highlight is dropped here.
+  // We scan both the input message and all user messages in chatMessages, since
+  // syncSelectionMentionable can attach selection mentions to either depending
+  // on which message currently has focus.
+  useEffect(() => {
+    const activeIds = new Set<string>()
+    const collectFrom = (mentionables: Mentionable[]) => {
+      for (const m of mentionables) {
+        if (
+          m.type === 'block' &&
+          (m.source === 'selection-sync' ||
+            m.source === 'selection-pinned' ||
+            m.source === 'selection') &&
+          m.highlightId
+        ) {
+          activeIds.add(m.highlightId)
+        }
+      }
+    }
+    collectFrom(inputMessage.mentionables)
+    for (const message of chatMessages) {
+      if (message.role === 'user') {
+        collectFrom(message.mentionables)
+      }
+    }
+    selectionHighlightController.reconcileActiveIds(activeIds)
+    pdfSelectionHighlightController.reconcileActiveIds(activeIds)
+  }, [inputMessage.mentionables, chatMessages])
+
+  // Clear chat-owned highlights when the chat view unmounts (tab closed).
+  // Lives in its own effect so it only fires on unmount, not on every mention change.
+  useEffect(() => {
+    return () => {
+      selectionHighlightController.reconcileActiveIds(new Set())
+      pdfSelectionHighlightController.reconcileActiveIds(new Set())
+    }
+  }, [])
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -1127,29 +1162,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     '正在整理上下文，稍后将从新的上下文继续。',
   )
 
-  const shouldShowAutoAttachBadge =
-    settings.chatOptions.includeCurrentFileContent &&
-    autoAttachCurrentFile &&
-    !hasUserMessages &&
-    Boolean(activeFile)
+  const displayMentionablesForInput = inputMessage.mentionables
 
-  const displayMentionablesForInput = useMemo(() => {
-    return normalizeMentionablesWithAutoCurrentFile(
-      inputMessage.mentionables,
-      activeFile,
-      shouldShowAutoAttachBadge,
-    )
-  }, [activeFile, inputMessage.mentionables, shouldShowAutoAttachBadge])
-
-  const currentFileOverride = useMemo(() => {
-    if (!settings.chatOptions.includeCurrentFileContent) return null
-    if (!autoAttachCurrentFile) return null
-    return activeFile
-  }, [
-    activeFile,
-    autoAttachCurrentFile,
-    settings.chatOptions.includeCurrentFileContent,
-  ])
+  const currentFileOverride = settings.chatOptions.includeCurrentFileContent
+    ? activeFile
+    : null
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
@@ -1196,6 +1213,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     modelId: conversationModelId,
     chatMode,
     currentFileOverride,
+    currentFileViewState: activeViewState,
     assistantIdOverride: conversationAssistantId,
     compaction: effectiveCompactionState,
   })
@@ -1345,6 +1363,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       unsubscribe()
     }
   }, [agentService])
+
+  // Auto-run when external agent results arrive for the current conversation
+  useEffect(() => {
+    const unsubscribe = agentService.subscribeToPendingExternalAgentResults(
+      (conversationId) => {
+        if (conversationId !== currentConversationId) return
+        if (agentService.isRunning(conversationId)) return
+        // Pull the latest messages directly from AgentService — the React
+        // closure's `chatMessages` is stale at this point because the result
+        // was just appended synchronously and React hasn't re-rendered yet.
+        const latestMessages = agentService.getState(conversationId).messages
+        submitChatMutation.mutate({
+          chatMessages: latestMessages,
+          conversationId,
+        })
+      },
+    )
+    return () => {
+      unsubscribe()
+    }
+  }, [agentService, currentConversationId, submitChatMutation])
 
   const serializeMessageModelMap = useCallback(
     (
@@ -1835,16 +1874,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             conversationId,
             normalizedConversation.messages,
             conversation.compaction ?? [],
-            { persistState: true },
+            {
+              persistState: true,
+              reason: normalizedConversation.changed ? 'self-heal' : 'hydrate',
+            },
           )
-        const storedAutoAttach = conversation.overrides?.autoAttachCurrentFile
-        const resolvedAutoAttach =
-          typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
-        setAutoAttachCurrentFile(resolvedAutoAttach)
-        conversationAutoAttachRef.current.set(
-          conversationId,
-          resolvedAutoAttach,
-        )
         setConversationOverrides(conversation.overrides ?? null)
         const loadedAssistantId =
           conversationAssistantIdRef.current.get(conversationId) ??
@@ -1931,6 +1965,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               normalizedConversation.messages,
               conversation.assistantGroupBoundaryMessageIds ?? [],
             ),
+            { touchUpdatedAt: false },
           )
         }
       } catch (error) {
@@ -2015,8 +2050,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setCurrentConversationId(newId)
     conversationAssistantIdRef.current.set(newId, conversationAssistantId)
     setConversationAssistantId(conversationAssistantId)
-    conversationAutoAttachRef.current.set(newId, true)
-    setAutoAttachCurrentFile(true)
     setConversationOverrides(null)
     const defaultChatMode = chatMode
     setChatMode(defaultChatMode)
@@ -2149,9 +2182,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ? rawNextChatMode
           : chatMode
       const nextChatMode = resolvedNextChatMode
-      const storedAutoAttach = nextOverrides?.autoAttachCurrentFile
-      const resolvedAutoAttach =
-        typeof storedAutoAttach === 'boolean' ? storedAutoAttach : true
 
       const resolvedConversationModelId =
         conversationModelIdRef.current.get(currentConversationId) ??
@@ -2207,11 +2237,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       setChatMode(nextChatMode)
-      setAutoAttachCurrentFile(resolvedAutoAttach)
-      conversationAutoAttachRef.current.set(
-        newConversationId,
-        resolvedAutoAttach,
-      )
 
       setConversationAssistantId(conversationAssistantId)
       conversationAssistantIdRef.current.set(
@@ -2249,7 +2274,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           {
             ...(nextOverrides ?? {}),
             chatMode: nextChatMode,
-            autoAttachCurrentFile: resolvedAutoAttach,
           },
           resolvedConversationModelId,
           serializeMessageModelMap(nextMessages, nextMessageModelMap),
@@ -2452,37 +2476,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const updateAutoAttachCurrentFile = useCallback(
-    (value: boolean) => {
-      setAutoAttachCurrentFile(value)
-      conversationAutoAttachRef.current.set(currentConversationId, value)
-      setConversationOverrides((prev) => {
-        const nextOverrides = {
-          ...(prev ?? {}),
-          chatMode,
-          autoAttachCurrentFile: value,
-        }
-        conversationOverridesRef.current.set(
-          currentConversationId,
-          nextOverrides,
-        )
-        return nextOverrides
-      })
-    },
-    [chatMode, currentConversationId],
-  )
-
   const buildInputMessageForSubmit = useCallback(
     (content: ChatUserMessage['content']): ChatUserMessage => {
-      const shouldAttachCurrentFileBadge =
-        settings.chatOptions.includeCurrentFileContent &&
-        autoAttachCurrentFile &&
-        !hasUserMessages
-      const mentionables = normalizeMentionablesWithAutoCurrentFile(
-        inputMessage.mentionables,
-        activeFile,
-        shouldAttachCurrentFileBadge,
-      )
+      const mentionables = inputMessage.mentionables
       return {
         ...inputMessage,
         content,
@@ -2492,14 +2488,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         selectedModelIds: extractSelectedModelIds(mentionables),
       }
     },
-    [
-      activeFile,
-      autoAttachCurrentFile,
-      hasUserMessages,
-      inputMessage,
-      reasoningLevel,
-      settings.chatOptions.includeCurrentFileContent,
-    ],
+    [inputMessage, reasoningLevel],
   )
 
   const handleUserMessageSubmit = useCallback(
@@ -2866,7 +2855,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               updatedRanges.map((range) => ({
                 from: range.start,
                 to: range.end,
-                variant: 'updated' as const,
+                visual: 'updated' as const,
               })),
               1050,
             )
@@ -3295,23 +3284,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     persistConversationImmediately,
   ])
 
-  const handleActiveLeafChange = useCallback(() => {
-    setActiveFile(app.workspace.getActiveFile())
-  }, [app.workspace])
-
-  useEffect(() => {
-    app.workspace.on('active-leaf-change', handleActiveLeafChange)
-    app.workspace.on('file-open', handleActiveLeafChange)
-    return () => {
-      app.workspace.off('active-leaf-change', handleActiveLeafChange)
-      app.workspace.off('file-open', handleActiveLeafChange)
-    }
-  }, [app.workspace, handleActiveLeafChange])
-
-  useEffect(() => {
-    handleActiveLeafChange()
-  }, [handleActiveLeafChange])
-
   const buildSelectionMentionable = useCallback(
     (selectedBlock: MentionableBlockData): MentionableBlock =>
       createSelectionBlockMentionable(selectedBlock),
@@ -3524,9 +3496,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const mentionableKey = getMentionableKey(
         serializeMentionable(mentionable),
       )
-      if (mentionable.type === 'current-file') {
-        updateAutoAttachCurrentFile(false)
-      }
 
       // 从所有历史消息中删除
       const sourceMessages = chatMessagesStateRef.current
@@ -3634,7 +3603,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMessage.id,
       isUserMessageEffectivelyEmpty,
       persistConversation,
-      updateAutoAttachCurrentFile,
     ],
   )
 
@@ -3890,6 +3858,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           }),
         )
       }
+    },
+    addImageToChat: (image: MentionableImage) => {
+      addMentionableToFocusedMessage(image)
     },
     insertTextToInput: (text: string) => {
       if (!focusedMessageId) return
@@ -4183,6 +4154,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return null
   }, [chatTimelineItems])
 
+  // 异步派遣结果作为独立 timeline 项追加到对话流；在派遣消息和结果之间
+  // 显示 footer 信息栏会切断「派遣 → 等结果 → 结果到达」这条逻辑流。
+  // 因此凡是后面紧跟一个 external_agent_result group 的 assistant-group，
+  // 都把它的 footer 抑制掉。
+  const renderKeysWithSuppressedAsyncFollowUpFooter = useMemo(() => {
+    const set = new Set<string>()
+    for (let i = 0; i < chatTimelineItems.length - 1; i++) {
+      const current = chatTimelineItems[i]
+      const next = chatTimelineItems[i + 1]
+      if (current.kind !== 'assistant-group') continue
+      if (next.kind !== 'assistant-group') continue
+      const nextFirst = next.messages[0]
+      if (nextFirst && nextFirst.role === 'external_agent_result') {
+        set.add(current.renderKey)
+      }
+    }
+    return set
+  }, [chatTimelineItems])
+
   const renderChatTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
       if (timelineItem.kind === 'compaction-pending') {
@@ -4247,7 +4237,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             activeBranchKey={activeBranchByUserMessageId.get(
               getSourceUserMessageIdForGroup(messageOrGroup) ?? '',
             )}
-            suppressFooter={shouldSuppressCompactionAnchorFooter}
+            suppressFooter={
+              shouldSuppressCompactionAnchorFooter ||
+              renderKeysWithSuppressedAsyncFollowUpFooter.has(
+                timelineItem.renderKey,
+              )
+            }
             showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
             showRetryAction={chatSurfacePreset.assistantActions.showRetryAction}
             showInsertAction={
@@ -4319,13 +4314,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <UserMessageItem
             message={messageOrGroup}
             isFocused={focusedMessageId === messageOrGroup.id}
-            displayMentionables={
-              messageOrGroup.id === firstUserMessageId
-                ? messageOrGroup.mentionables
-                : messageOrGroup.mentionables.filter(
-                    (mentionable) => mentionable.type !== 'current-file',
-                  )
-            }
+            displayMentionables={messageOrGroup.mentionables}
             chatUserInputRef={(ref) =>
               registerChatUserInputRef(messageOrGroup.id, ref)
             }
@@ -4564,6 +4553,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       persistConversation,
       queryProgress,
       reasoningLevel,
+      renderKeysWithSuppressedAsyncFollowUpFooter,
       shouldHidePendingAssistantPlaceholders,
       undoingEditSummaryTarget,
       updateHistoricalUserMessage,

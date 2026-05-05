@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { getBuiltinToolUiMeta } from '../../core/agent/builtinToolUiMeta'
+import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -23,6 +24,7 @@ import {
 import { SplitButton } from '../common/SplitButton'
 
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
+import { ExternalAgentToolCard } from './tool-cards/ExternalAgentToolCard'
 import {
   type ToolDisplayInfo,
   getToolHeadlineParts,
@@ -37,7 +39,7 @@ export type ToolLabels = {
   displayNames: Record<string, string>
   writeActionLabels: Record<string, string>
   readFull: string
-  readLineRange: (startLine: number, endLine: number) => string
+  readLineRange: (startLine: number, endLine: number, isPdf: boolean) => string
   target: string
   scope: string
   query: string
@@ -70,12 +72,13 @@ type ToolRequestLike = {
 type FsReadOperationSummary =
   | {
       type: 'full'
+      isPdf: boolean
     }
   | {
       type: 'lines'
       startLine: number
-      endLine?: number
-      maxLines?: number
+      endLine: number
+      isPdf: boolean
     }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -156,6 +159,10 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       memory_delete: translateBuiltinToolLabel('memory_delete', translate),
       web_search: translateBuiltinToolLabel('web_search', translate),
       web_scrape: translateBuiltinToolLabel('web_scrape', translate),
+      delegate_external_agent: translateBuiltinToolLabel(
+        'delegate_external_agent',
+        translate,
+      ),
     },
     writeActionLabels: {
       create_file: translate(
@@ -180,8 +187,12 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       ),
     },
     readFull: translate('chat.toolCall.readMode.full', 'Full'),
-    readLineRange: (startLine: number, endLine: number) =>
-      `${startLine}-${endLine}${translate('chat.toolCall.readMode.linesSuffix', ' lines')}`,
+    readLineRange: (startLine: number, endLine: number, isPdf: boolean) =>
+      `${startLine}-${endLine}${
+        isPdf
+          ? translate('chat.toolCall.readMode.pagesSuffix', ' pages')
+          : translate('chat.toolCall.readMode.linesSuffix', ' lines')
+      }`,
     target: translate('chat.toolCall.detail.target', 'Target'),
     scope: translate('chat.toolCall.detail.scope', 'Scope'),
     query: translate('chat.toolCall.detail.query', 'Query'),
@@ -199,6 +210,37 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'Allow for this chat',
     ),
   }
+}
+
+/**
+ * 判断工具调用是否为 delegate_external_agent。
+ * 完整 tool name 形如 yolo_local__delegate_external_agent。
+ */
+const isDelegateExternalAgentRequest = (request: ToolRequestLike): boolean => {
+  try {
+    const { toolName } = parseToolName(request.name)
+    return toolName === 'delegate_external_agent'
+  } catch {
+    return false
+  }
+}
+
+const extractExternalAgentArgs = (
+  rawArguments?: ToolCallRequest['arguments'],
+):
+  | { provider?: string; model?: string; workingDirectory?: string }
+  | undefined => {
+  const parsed = getToolCallArgumentsObject(rawArguments)
+  if (!parsed) return undefined
+  const provider =
+    typeof parsed.provider === 'string' ? parsed.provider : undefined
+  const model = typeof parsed.model === 'string' ? parsed.model : undefined
+  const workingDirectory =
+    typeof parsed.workingDirectory === 'string'
+      ? parsed.workingDirectory
+      : undefined
+  if (!provider && !model && !workingDirectory) return undefined
+  return { provider, model, workingDirectory }
 }
 
 const translateBuiltinToolLabel = (
@@ -323,49 +365,55 @@ const getFsReadOperationSummary = ({
   request: ToolRequestLike
   response?: ToolCallResponse
 }): FsReadOperationSummary | undefined => {
+  // Single source of truth: the backend response. Pre-response we omit the
+  // range entirely — better to render no range for half a second than to
+  // guess from request defaults that the backend may override (e.g. PDFs
+  // ignore `maxLines`, image mode forces single page).
+  if (response?.status !== ToolCallResponseStatus.Success) {
+    return undefined
+  }
+
+  // Determine isPdf from the first request path (used purely for the label
+  // suffix — "页" vs "行"). Mixed batches use the first path's extension; the
+  // headline only renders a single batch summary anyway, not per-file ranges.
   const requestArguments = parseToolArguments(request.arguments)
-  const requestOperation = asRecord(requestArguments?.operation)
+  const rawPaths = requestArguments?.paths
+  const firstPath =
+    Array.isArray(rawPaths) && typeof rawPaths[0] === 'string'
+      ? rawPaths[0]
+      : null
+  const isPdf =
+    typeof firstPath === 'string' && firstPath.toLowerCase().endsWith('.pdf')
 
-  if (response?.status === ToolCallResponseStatus.Success) {
-    try {
-      const payload = JSON.parse(response.data.text) as unknown
-      const requestedOperation = asRecord(asRecord(payload)?.requestedOperation)
-      const type = requestedOperation?.type
+  try {
+    const payload = JSON.parse(response.data.text) as unknown
+    const payloadRecord = asRecord(payload)
+    const requestedOperation = asRecord(payloadRecord?.requestedOperation)
+    const type = requestedOperation?.type
 
-      if (type === 'full') {
-        return { type: 'full' }
-      }
-
-      if (type === 'lines') {
-        const startLine = asInteger(requestedOperation?.startLine)
-        if (typeof startLine !== 'number') {
-          return undefined
-        }
-        return {
-          type: 'lines',
-          startLine,
-          endLine: asInteger(requestedOperation?.endLine),
-          maxLines: asInteger(requestedOperation?.maxLines),
-        }
-      }
-    } catch {
-      // Fall back to request arguments when the response text is unavailable or malformed.
+    if (type === 'full') {
+      return { type: 'full', isPdf }
     }
-  }
 
-  const requestType = requestOperation?.type
-  if (requestType === 'full') {
-    return { type: 'full' }
-  }
-
-  if (requestType === 'lines') {
-    const startLine = asInteger(requestOperation?.startLine) ?? 1
-    return {
-      type: 'lines',
-      startLine,
-      endLine: asInteger(requestOperation?.endLine),
-      maxLines: asInteger(requestOperation?.maxLines),
+    if (type === 'lines') {
+      // The truth about what was read lives in `results[0].returnedRange` —
+      // not in `requestedOperation`, which echoes resolved defaults that may
+      // not reflect actual behavior (PDF ignores maxLines, image mode forces
+      // single page, etc.).
+      const results = payloadRecord?.results
+      if (!Array.isArray(results) || results.length === 0) {
+        return undefined
+      }
+      const firstResult = asRecord(results[0])
+      const returnedRange = asRecord(firstResult?.returnedRange)
+      const startLine = asInteger(returnedRange?.startLine)
+      const endLine = asInteger(returnedRange?.endLine)
+      if (typeof startLine === 'number' && typeof endLine === 'number') {
+        return { type: 'lines', startLine, endLine, isPdf }
+      }
     }
+  } catch {
+    // Malformed payload — drop the range silently.
   }
 
   return undefined
@@ -382,19 +430,11 @@ const formatFsReadHeadlineMode = (
   if (operation.type === 'full') {
     return labels.readFull
   }
-
-  if (typeof operation.endLine === 'number') {
-    return labels.readLineRange(operation.startLine, operation.endLine)
-  }
-
-  if (typeof operation.maxLines === 'number') {
-    return labels.readLineRange(
-      operation.startLine,
-      operation.startLine + operation.maxLines - 1,
-    )
-  }
-
-  return labels.readLineRange(operation.startLine, operation.startLine)
+  return labels.readLineRange(
+    operation.startLine,
+    operation.endLine,
+    operation.isPdf,
+  )
 }
 
 export const getHeadlineDisplayInfo = ({
@@ -408,11 +448,9 @@ export const getHeadlineDisplayInfo = ({
 }): ToolDisplayInfo => {
   const displayInfo = getToolDisplayInfo(request, labels)
 
+  let parsedToolName: { serverName: string; toolName: string }
   try {
-    const { serverName, toolName } = parseToolName(request.name)
-    if (serverName !== getLocalFileToolServerName() || toolName !== 'fs_read') {
-      return displayInfo
-    }
+    parsedToolName = parseToolName(request.name)
   } catch (error) {
     if (!(error instanceof InvalidToolNameException)) {
       throw error
@@ -420,20 +458,86 @@ export const getHeadlineDisplayInfo = ({
     return displayInfo
   }
 
-  const modeText = formatFsReadHeadlineMode(
-    getFsReadOperationSummary({ request, response }),
-    labels,
-  )
-  if (!modeText) {
+  const { serverName, toolName } = parsedToolName
+  if (serverName !== getLocalFileToolServerName()) {
     return displayInfo
   }
 
-  return {
-    ...displayInfo,
-    summaryText: displayInfo.summaryText
-      ? `${displayInfo.summaryText} | ${modeText}`
-      : modeText,
+  if (toolName === 'fs_read') {
+    const modeText = formatFsReadHeadlineMode(
+      getFsReadOperationSummary({ request, response }),
+      labels,
+    )
+    if (!modeText) {
+      return displayInfo
+    }
+    return {
+      ...displayInfo,
+      summaryText: displayInfo.summaryText
+        ? `${displayInfo.summaryText} | ${modeText}`
+        : modeText,
+    }
   }
+
+  if (toolName === 'delegate_external_agent') {
+    return {
+      ...displayInfo,
+      summaryText: getDelegateExternalAgentSummary({ request, response }),
+    }
+  }
+
+  return displayInfo
+}
+
+/**
+ * delegate_external_agent 折叠态 summary：
+ * - Running/Pending：provider | prompt 前 80 字（让用户一眼看到派了啥任务）
+ * - Success：provider | stdout 前 80 字（直接看模型最终回答）
+ * - Aborted（含已采集输出）：provider | stdout 前 80 字
+ * - Error：provider | error 前 80 字（直接看为啥失败）
+ */
+const DELEGATE_SUMMARY_MAX_CHARS = 80
+
+const getDelegateExternalAgentSummary = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): string | undefined => {
+  const argsObject = parseToolArguments(request.arguments)
+  const provider =
+    typeof argsObject?.provider === 'string' ? argsObject.provider : ''
+
+  let mainText = ''
+  if (response?.status === ToolCallResponseStatus.Success) {
+    mainText = response.data.text?.trim() ?? ''
+  } else if (response?.status === ToolCallResponseStatus.Error) {
+    mainText = response.error?.trim() ?? ''
+  } else if (
+    response?.status === ToolCallResponseStatus.Aborted &&
+    response.data
+  ) {
+    mainText = response.data.text?.trim() ?? ''
+  }
+  // Running / PendingApproval / Aborted-without-data / 没拿到 mainText 时回退 prompt
+  if (!mainText) {
+    const prompt =
+      typeof argsObject?.prompt === 'string' ? argsObject.prompt.trim() : ''
+    mainText = prompt
+  }
+
+  // 多行折叠成单行，避免 headline 被换行符撑高
+  const collapsedMain = mainText
+    ? truncateText(mainText.replace(/\s+/g, ' '), DELEGATE_SUMMARY_MAX_CHARS)
+    : ''
+
+  if (!provider && !collapsedMain) {
+    return undefined
+  }
+  if (!provider) return collapsedMain
+  if (!collapsedMain) return provider
+  return `${provider} | ${collapsedMain}`
 }
 
 const getLocalToolSummaryText = ({
@@ -789,6 +893,15 @@ function ToolCallItem({
       getToolCallArgumentsText(request.arguments) ?? toolLabels.noParameters
     )
   }, [request.arguments, toolLabels.noParameters])
+  // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
+  const isAlwaysAllowDisabled = useMemo(() => {
+    try {
+      const { toolName } = parseToolName(request.name)
+      return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
+    } catch {
+      return false
+    }
+  }, [request.name])
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [isStatusTransitioning, setIsStatusTransitioning] = useState(false)
   const [renderFooter, setRenderFooter] = useState(
@@ -975,17 +1088,29 @@ function ToolCallItem({
             <div>{toolLabels.parameters}:</div>
             <ObsidianCodeBlock language="json" content={parameters} />
           </div>
-          {response.status === ToolCallResponseStatus.Success && (
-            <div className="smtcmp-toolcall-content-section">
-              <div>{toolLabels.result}:</div>
-              <ObsidianCodeBlock content={response.data.text} />
-            </div>
-          )}
-          {response.status === ToolCallResponseStatus.Error && (
-            <div className="smtcmp-toolcall-content-section">
-              <div>{toolLabels.error}:</div>
-              <ObsidianCodeBlock content={response.error} />
-            </div>
+          {isDelegateExternalAgentRequest(request) ? (
+            // delegate_external_agent 专属卡片：流式输出 + 状态徽章
+            <ExternalAgentToolCard
+              toolCallId={request.id}
+              response={response}
+              args={extractExternalAgentArgs(request.arguments)}
+              onAbort={handleAbort}
+            />
+          ) : (
+            <>
+              {response.status === ToolCallResponseStatus.Success && (
+                <div className="smtcmp-toolcall-content-section">
+                  <div>{toolLabels.result}:</div>
+                  <ObsidianCodeBlock content={response.data.text} />
+                </div>
+              )}
+              {response.status === ToolCallResponseStatus.Error && (
+                <div className="smtcmp-toolcall-content-section">
+                  <div>{toolLabels.error}:</div>
+                  <ObsidianCodeBlock content={response.error} />
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1021,22 +1146,35 @@ function ToolCallItem({
         >
           {displayFooterMode === 'pending' && (
             <div className="smtcmp-toolcall-footer-actions">
-              <SplitButton
-                primaryText={toolLabels.allow}
-                onPrimaryClick={() => {
-                  void handleToolCall()
-                  setIsOpen(false)
-                }}
-                menuOptions={[
-                  {
-                    label: toolLabels.allowForThisChat,
-                    onClick: () => {
-                      void handleAllowForConversation()
-                      setIsOpen(false)
+              {isAlwaysAllowDisabled ? (
+                // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleToolCall()
+                    setIsOpen(false)
+                  }}
+                >
+                  {toolLabels.allow}
+                </button>
+              ) : (
+                <SplitButton
+                  primaryText={toolLabels.allow}
+                  onPrimaryClick={() => {
+                    void handleToolCall()
+                    setIsOpen(false)
+                  }}
+                  menuOptions={[
+                    {
+                      label: toolLabels.allowForThisChat,
+                      onClick: () => {
+                        void handleAllowForConversation()
+                        setIsOpen(false)
+                      },
                     },
-                  },
-                ]}
-              />
+                  ]}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => {

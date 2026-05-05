@@ -5,5 +5,10 @@ export const Platform = { isDesktop: true }
 export const TFile = jest.fn()
 export const TFolder = jest.fn()
 export const Vault = jest.fn()
+export class FileSystemAdapter {
+  getBasePath(): string {
+    return ''
+  }
+}
 export const normalizePath = jest.fn((path: string) => path)
 export const htmlToMarkdown = jest.fn((html: string) => html)

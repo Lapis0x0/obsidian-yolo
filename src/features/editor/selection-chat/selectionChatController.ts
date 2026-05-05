@@ -1,5 +1,12 @@
 import { EditorView } from '@codemirror/view'
-import { App, Editor, MarkdownView, Notice, type WorkspaceLeaf } from 'obsidian'
+import {
+  App,
+  Editor,
+  type EventRef,
+  MarkdownView,
+  Notice,
+  type WorkspaceLeaf,
+} from 'obsidian'
 
 import { ChatView } from '../../../ChatView'
 import type {
@@ -11,7 +18,6 @@ import {
   SelectionInfo,
   SelectionManager,
 } from '../../../components/selection/SelectionManager'
-import { CHAT_VIEW_TYPE } from '../../../constants'
 import type SmartComposerPlugin from '../../../main'
 import { SmartComposerSettings } from '../../../settings/schema/setting.types'
 import type {
@@ -22,6 +28,17 @@ import type {
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
+import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAskController'
+import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
+import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
+
+import {
+  type PdfPageContextResult,
+  getPdfPageContextText,
+} from './getPdfPageContextText'
+import type { PdfSelectionResult } from './getPdfSelectionData'
+import { getPdfLeafContentEl } from './getPdfSelectionData'
+import { PdfSelectionManager } from './PdfSelectionManager'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -59,6 +76,28 @@ type SelectionChatControllerDeps = {
       selectionScope?: QuickAskSelectionScope
     },
   ) => void
+  /**
+   * Show a Quick Ask overlay from a PDF selection.
+   * Does not require an editor — handles anchor and context internally.
+   */
+  showQuickAskFromPdf: (args: {
+    leaf: WorkspaceLeaf
+    range: Range
+    file: import('obsidian').TFile
+    pageNumber: number
+    contextText?: string
+    initialMentionables?: Mentionable[]
+    initialPrompt?: string
+    initialMode?: QuickAskLaunchMode
+    autoSend?: boolean
+  }) => void
+  /**
+   * Drop any PDF Quick Ask instance whose owning leaf is no longer in
+   * `activePdfLeaves`.  Called from `layout-change` to avoid orphan overlays.
+   */
+  pruneOrphanedQuickAskPdfInstance: (
+    activePdfLeaves: Set<WorkspaceLeaf>,
+  ) => void
   openChatWithSelectionAndPrefill: (
     selectedBlock: MentionableBlockData,
     text: string,
@@ -71,8 +110,6 @@ type SelectionChatControllerDeps = {
     text: string,
   ) => Promise<void>
   isSmartSpaceOpen: () => boolean
-  pinSelectionHighlight: (view: EditorView) => void
-  clearSelectionHighlight: (view?: EditorView) => void
 }
 
 export class SelectionChatController {
@@ -104,6 +141,8 @@ export class SelectionChatController {
       selectionScope?: QuickAskSelectionScope
     },
   ) => void
+  private readonly showQuickAskFromPdf: SelectionChatControllerDeps['showQuickAskFromPdf']
+  private readonly pruneOrphanedQuickAskPdfInstance: SelectionChatControllerDeps['pruneOrphanedQuickAskPdfInstance']
   private readonly openChatWithSelectionAndPrefill: (
     selectedBlock: MentionableBlockData,
     text: string,
@@ -116,19 +155,32 @@ export class SelectionChatController {
     text: string,
   ) => Promise<void>
   private readonly isSmartSpaceOpen: () => boolean
-  private readonly pinSelectionHighlight: (view: EditorView) => void
-  private readonly clearSelectionHighlight: (view?: EditorView) => void
 
   private selectionManager: SelectionManager | null = null
+  private pdfSelectionManager: PdfSelectionManager | null = null
+  /**
+   * Single shared widget instance (markdown or pdf source).
+   * Only one widget can exist at a time because SelectionChatWidget uses a
+   * static overlayRoot; concurrent widgets would corrupt each other's DOM.
+   */
   private selectionChatWidget: SelectionChatWidget | null = null
+  /**
+   * The PDF leaf the current `selectionChatWidget` belongs to, when its source
+   * is `'pdf'`.  Used by `layout-change` to drop the widget if the leaf was
+   * closed.  Always null when the widget's source is `'markdown'`.
+   */
+  private currentWidgetPdfLeaf: WorkspaceLeaf | null = null
+  /**
+   * Stable identity of the most recent PDF selection we've synced to chat
+   * (file + page + content).  Used to skip the addHighlight + sync + remount
+   * cycle when PdfSelectionManager re-fires for the same logical selection,
+   * which would otherwise leave the chat mention pointing at a stale
+   * highlight id and cause the highlight to disappear on next reconcile.
+   */
+  private lastSyncedPdfKey: string | null = null
   private pendingSelectionRewrite: PendingSelectionRewrite | null = null
   private enableSelectionChat = true
-  private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null
-  private lastActiveLeafWasMarkdown = false
-  // 自行跟踪当前激活 leaf，避免使用 workspace.activeLeaf（已标记 deprecated）
-  // 以及 getActiveViewOfType(...)?.leaf（语义不同，见 deferSelectionHighlightTakeover 注释）
-  private currentActiveLeaf: WorkspaceLeaf | null = null
-  private highlightTakeoverToken = 0
+  private layoutChangeEventRef: EventRef | null = null
 
   constructor(deps: SelectionChatControllerDeps) {
     this.plugin = deps.plugin
@@ -138,12 +190,13 @@ export class SelectionChatController {
     this.getEditorView = deps.getEditorView
     this.showQuickAskWithOptions = deps.showQuickAskWithOptions
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
+    this.showQuickAskFromPdf = deps.showQuickAskFromPdf
+    this.pruneOrphanedQuickAskPdfInstance =
+      deps.pruneOrphanedQuickAskPdfInstance
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
     this.isSmartSpaceOpen = deps.isSmartSpaceOpen
-    this.pinSelectionHighlight = deps.pinSelectionHighlight
-    this.clearSelectionHighlight = deps.clearSelectionHighlight
   }
 
   isActive(): boolean {
@@ -161,15 +214,6 @@ export class SelectionChatController {
   }
 
   initialize() {
-    const activeLeaf =
-      this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? null
-    this.lastActiveLeafWasMarkdown = !!(
-      activeLeaf?.view instanceof MarkdownView
-    )
-    if (this.lastActiveLeafWasMarkdown && activeLeaf) {
-      this.lastActiveMarkdownLeaf = activeLeaf
-    }
-
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true
     this.enableSelectionChat = enableSelectionChat
@@ -184,24 +228,63 @@ export class SelectionChatController {
       this.selectionManager = null
     }
 
+    if (this.pdfSelectionManager) {
+      this.pdfSelectionManager.destroy()
+      this.pdfSelectionManager = null
+    }
+
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!view) return
+    if (view) {
+      const editorContainer = view.containerEl.querySelector('.cm-editor')
+      if (editorContainer) {
+        this.selectionManager = new SelectionManager(
+          editorContainer as HTMLElement,
+          {
+            enabled: true,
+            minSelectionLength: 0,
+            debounceDelay: 150,
+          },
+        )
 
-    const editorContainer = view.containerEl.querySelector('.cm-editor')
-    if (!editorContainer) return
+        this.selectionManager.init((selection: SelectionInfo | null) => {
+          this.handleSelectionChange(selection, view.editor)
+        })
+      }
+    }
 
-    this.selectionManager = new SelectionManager(
-      editorContainer as HTMLElement,
-      {
-        enabled: true,
-        minSelectionLength: 0,
-        debounceDelay: 300,
-      },
-    )
-
-    this.selectionManager.init((selection: SelectionInfo | null) => {
-      this.handleSelectionChange(selection, view.editor)
+    // PDF selection sync — works on both desktop and mobile.
+    this.pdfSelectionManager = new PdfSelectionManager(this.app, {
+      enabled: enableSelectionChat,
+      debounceDelay: 150,
     })
+    this.pdfSelectionManager.init((result) => {
+      this.handlePdfSelectionChange(result)
+    })
+
+    // Prune highlight entries for PDF leaves that get closed. initialize() can
+    // be called multiple times (settings reload), so unregister the previous
+    // listener before adding a new one to avoid accumulating callbacks.
+    if (this.layoutChangeEventRef) {
+      this.app.workspace.offref(this.layoutChangeEventRef)
+      this.layoutChangeEventRef = null
+    }
+    this.layoutChangeEventRef = this.app.workspace.on('layout-change', () => {
+      pdfSelectionHighlightController.pruneDetachedLeaves(this.app)
+
+      // Drop our PDF cursor-chat widget if its leaf was closed.
+      const activePdfLeaves = new Set(this.app.workspace.getLeavesOfType('pdf'))
+      if (
+        this.currentWidgetPdfLeaf &&
+        !activePdfLeaves.has(this.currentWidgetPdfLeaf)
+      ) {
+        this.destroyCurrentWidget()
+        this.lastSyncedPdfKey = null
+      }
+
+      // Drop the PDF Quick Ask overlay if its leaf was closed.
+      this.pruneOrphanedQuickAskPdfInstance(activePdfLeaves)
+    })
+    this.plugin.registerEvent(this.layoutChangeEventRef)
   }
 
   destroy() {
@@ -213,35 +296,38 @@ export class SelectionChatController {
       this.selectionManager.destroy()
       this.selectionManager = null
     }
-
-    this.lastActiveMarkdownLeaf = null
-    this.lastActiveLeafWasMarkdown = false
-    this.highlightTakeoverToken += 1
+    if (this.pdfSelectionManager) {
+      this.pdfSelectionManager.destroy()
+      this.pdfSelectionManager = null
+    }
+    if (this.layoutChangeEventRef) {
+      this.app.workspace.offref(this.layoutChangeEventRef)
+      this.layoutChangeEventRef = null
+    }
+    // Drop all highlights and detach PDF eventBus listeners.  Reconcile in
+    // Chat.tsx only clears 'chat' owner; here we want everything gone.
+    selectionHighlightController.clearAll()
+    pdfSelectionHighlightController.clearAll()
   }
 
-  handleActiveLeafChange(leaf: WorkspaceLeaf | null) {
-    const prevWasMarkdown = this.lastActiveLeafWasMarkdown
-    const nextType = leaf?.getViewState().type ?? null
-    const nextIsMarkdown = !!(leaf?.view instanceof MarkdownView)
+  // Kept for the public API surface; selection highlight reconcile is now driven
+  // entirely by the chat mention list, so leaf changes need no special handling here.
+  handleActiveLeafChange(_leaf: WorkspaceLeaf | null) {
+    // no-op
+  }
 
-    this.currentActiveLeaf = leaf
-    this.lastActiveLeafWasMarkdown = nextIsMarkdown
-    if (nextIsMarkdown && leaf) {
-      this.lastActiveMarkdownLeaf = leaf
+  private destroyCurrentWidget(): void {
+    if (this.selectionChatWidget) {
+      this.selectionChatWidget.destroy()
+      this.selectionChatWidget = null
     }
+    this.currentWidgetPdfLeaf = null
+  }
 
-    if (nextType === CHAT_VIEW_TYPE && prevWasMarkdown) {
-      const editorView = this.getTrackedEditorView(true)
-      if (editorView) {
-        this.deferSelectionHighlightTakeover(editorView)
-      }
-      return
-    }
-
-    if (nextType !== CHAT_VIEW_TYPE) {
-      this.highlightTakeoverToken += 1
-      this.clearSelectionHighlight()
-    }
+  private static buildPdfSelectionKey(
+    data: Extract<PdfSelectionResult, { kind: 'data' }>,
+  ): string {
+    return `${data.file.path}#${data.pageNumber}#${data.content}`
   }
 
   private handleSelectionChange(
@@ -257,10 +343,10 @@ export class SelectionChatController {
 
     this.syncSelectionBadge(selection, editor)
 
-    if (this.selectionChatWidget) {
-      this.selectionChatWidget.destroy()
-      this.selectionChatWidget = null
-    }
+    // Switching to a markdown selection invalidates any sticky PDF state.
+    this.lastSyncedPdfKey = null
+
+    this.destroyCurrentWidget()
 
     if (this.isSmartSpaceOpen()) {
       return
@@ -274,22 +360,19 @@ export class SelectionChatController {
 
     if (selection) {
       const currentView = this.app.workspace.getActiveViewOfType(MarkdownView)
-      const editorContainer =
-        currentView?.containerEl.querySelector('.cm-editor')
-      if (!editorContainer) {
+      const hostEl = currentView?.containerEl.querySelector('.cm-editor')
+      if (!hostEl) {
         return
       }
 
       this.selectionChatWidget = new SelectionChatWidget({
+        source: 'markdown',
         plugin: this.plugin,
         editor,
         selection,
-        editorContainer: editorContainer as HTMLElement,
+        hostEl: hostEl as HTMLElement,
         onClose: () => {
-          if (this.selectionChatWidget) {
-            this.selectionChatWidget.destroy()
-            this.selectionChatWidget = null
-          }
+          this.destroyCurrentWidget()
         },
         onAction: (
           actionId: string,
@@ -434,7 +517,311 @@ export class SelectionChatController {
       return
     }
 
-    chatView.syncSelectionToChat(data)
+    // Stamp a highlightId and pin the sync highlight immediately.
+    const highlightId = crypto.randomUUID()
+    const editorView = this.getEditorView(editor)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const selection = editorView.state.selection.main
+      if (!selection.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: selection.from, to: selection.to },
+          'sync',
+          'chat',
+        )
+      }
+    }
+
+    chatView.syncSelectionToChat({ ...data, highlightId })
+  }
+
+  /**
+   * Called by PdfSelectionManager when the user's selection inside a PDF view
+   * changes.
+   */
+  private handlePdfSelectionChange(result: PdfSelectionResult): void {
+    // null means the selection is not inside any PDF at all.
+    if (result === null) return
+
+    const enableSelectionChat =
+      this.getSettings().continuationOptions?.enableSelectionChat ?? true
+    if (!enableSelectionChat) return
+
+    if (result.kind === 'empty') {
+      // Destroy the PDF widget if there was one
+      this.destroyCurrentWidget()
+      this.lastSyncedPdfKey = null
+
+      // Also sync the sidebar badge (existing behaviour)
+      const targetLeaf = this.plugin
+        .getChatLeafSessionManager()
+        .resolveTargetLeaf()
+      if (targetLeaf?.view instanceof ChatView) {
+        targetLeaf.view.clearSelectionFromChat()
+      }
+      return
+    }
+
+    // result.kind === 'data'
+    // Re-firing PdfSelectionManager for the *same* logical selection (e.g.
+    // because mounting our overlay nudges the selection observer) used to
+    // re-run addHighlight + syncSelectionToChat.  syncSelectionMentionable
+    // keys mentions by content (not by highlightId), so the re-sync was a
+    // no-op while the new highlight in the registry got a fresh id — leaving
+    // the chat mention pointing at the *old* id.  The next reconcile wiped
+    // the new highlight, breaking persistence.  Skip the whole cycle when
+    // the selection identity is unchanged.
+    const selectionKey = SelectionChatController.buildPdfSelectionKey(result)
+    if (
+      this.lastSyncedPdfKey === selectionKey &&
+      this.selectionChatWidget &&
+      this.currentWidgetPdfLeaf === result.leaf
+    ) {
+      return
+    }
+
+    // Mount PDF widget — generate fresh highlight id only for genuinely new
+    // selections.
+    const highlightId = crypto.randomUUID()
+
+    if (this.shouldPersistSelectionHighlight()) {
+      pdfSelectionHighlightController.addHighlight(
+        result.leaf,
+        highlightId,
+        {
+          range: result.range,
+          pageNumber: result.pageNumber,
+          file: result.file,
+        },
+        'sync',
+        'chat',
+      )
+    }
+
+    const blockData: MentionableBlockData = {
+      content: result.content,
+      file: result.file,
+      startLine: 0,
+      endLine: 0,
+      pageNumber: result.pageNumber,
+      source: 'selection-sync',
+      highlightId,
+    }
+
+    // Sync to sidebar chat badge (existing behaviour, conditional on ChatView)
+    const targetLeaf = this.plugin
+      .getChatLeafSessionManager()
+      .resolveTargetLeaf()
+    if (targetLeaf?.view instanceof ChatView) {
+      targetLeaf.view.syncSelectionToChat(blockData)
+    }
+
+    // Determine host element for the PDF widget BEFORE destroying the old one.
+    // If the leaf DOM is not in the expected shape, leave the existing widget
+    // (whatever it is) intact rather than destroying it then bailing out.
+    const leafContentEl = getPdfLeafContentEl(result.leaf)
+    if (!leafContentEl) return
+
+    // Now safe to swap widgets.
+    this.destroyCurrentWidget()
+    this.lastSyncedPdfKey = selectionKey
+    this.currentWidgetPdfLeaf = result.leaf
+
+    const pdfData = result
+
+    // Kick off async PDF page text extraction NOW so the result is ready
+    // (or close to ready) by the time the user submits an action.  Uses
+    // pdfjs-dist directly — DOM-based extraction proved too fragile (PDF.js
+    // recycles Text nodes, splits selection across spans, etc.).
+    const continuationOptions = this.getSettings().continuationOptions
+    const pdfPageContextPromise: Promise<PdfPageContextResult | null> =
+      getPdfPageContextText(
+        this.app,
+        result.file,
+        result.pageNumber,
+        result.content,
+        QUICK_ASK_CURSOR_MARKER,
+        {
+          beforeChars: Math.max(
+            0,
+            continuationOptions?.quickAskContextBeforeChars ?? 5000,
+          ),
+          afterChars: Math.max(
+            0,
+            continuationOptions?.quickAskContextAfterChars ?? 2000,
+          ),
+        },
+      ).catch(() => null)
+
+    // For multi-line selections, range.getBoundingClientRect() returns the
+    // outer box (right edge = widest line's right), which would position the
+    // indicator at the page edge.  We want the rect at the visual *end* of
+    // the selection (last line, rightmost glyph).
+    //
+    // SelectionManager (markdown) just takes `rects[rects.length - 1]`
+    // because CodeMirror keeps spans in document = visual order.  PDF.js's
+    // textLayer behaves differently:
+    //   - it inserts hidden helper spans (e.g. an `endOfContent` element)
+    //     whose rect may span the full page height, so the literal last
+    //     rect or the geometrically lowest rect can both be misleading;
+    //   - hyphenation / column flow can put DOM-last spans at unexpected
+    //     visual positions.
+    // Filter to rects that look like real text glyphs (non-zero area, line
+    // height under 60px), then pick the geometrically bottom-rightmost.
+    const allRects = result.range.getClientRects()
+    const glyphRects: DOMRect[] = []
+    for (let i = 0; i < allRects.length; i += 1) {
+      const r = allRects[i]
+      if (r.width > 0 && r.height > 0 && r.height < 60) {
+        glyphRects.push(r)
+      }
+    }
+    let lastRect: DOMRect = result.range.getBoundingClientRect()
+    if (glyphRects.length > 0) {
+      lastRect = glyphRects[0]
+      for (let i = 1; i < glyphRects.length; i += 1) {
+        const r = glyphRects[i]
+        // Treat lines as same when bottoms differ by < 2px (sub-pixel jitter).
+        const onSameLine = Math.abs(r.bottom - lastRect.bottom) < 2
+        if (
+          r.bottom > lastRect.bottom + 1 ||
+          (onSameLine && r.right > lastRect.right)
+        ) {
+          lastRect = r
+        }
+      }
+    }
+
+    this.selectionChatWidget = new SelectionChatWidget({
+      source: 'pdf',
+      plugin: this.plugin,
+      selection: {
+        text: result.content,
+        range: result.range,
+        rect: lastRect,
+        isMultiLine: glyphRects.length > 1 || result.content.includes('\n'),
+      },
+      pdfData,
+      hostEl: leafContentEl,
+      onClose: () => {
+        // User dismissed the indicator/menu (Esc or click outside).  Drop the
+        // widget but do NOT clear lastSyncedPdfKey: the chat mention + PDF
+        // highlight should persist until the underlying selection changes.
+        this.destroyCurrentWidget()
+      },
+      onAction: (
+        actionId: string,
+        instruction: string,
+        mode: SelectionActionMode,
+        rewriteBehavior?: SelectionActionRewriteBehavior,
+      ) => {
+        void this.handlePdfSelectionAction(
+          actionId,
+          mode,
+          instruction,
+          rewriteBehavior,
+          pdfData,
+          blockData,
+          pdfPageContextPromise,
+        )
+      },
+    })
+    this.selectionChatWidget.mount()
+  }
+
+  /**
+   * Routes a PDF selection action to the appropriate handler.
+   */
+  private async handlePdfSelectionAction(
+    actionId: string,
+    mode: SelectionActionMode,
+    instruction: string,
+    _rewriteBehavior: SelectionActionRewriteBehavior | undefined,
+    pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
+    blockData: MentionableBlockData,
+    pdfPageContextPromise: Promise<PdfPageContextResult | null>,
+  ): Promise<void> {
+    // rewrite is filtered out at the menu level — this branch is unreachable
+    if (mode === 'rewrite') {
+      return
+    }
+
+    // Mirror the markdown chat-input/chat-send paths: register a NEW 'pinned'
+    // highlight (with a fresh id, independent from the transient 'sync' one
+    // currently tracked in chat).  This way subsequent selections that sweep
+    // 'sync' entries on the leaf cannot wipe the pinned highlight.
+    const buildPinnedBlock = (): MentionableBlockData => {
+      if (this.shouldPersistSelectionHighlight()) {
+        const pinnedId = crypto.randomUUID()
+        pdfSelectionHighlightController.addHighlight(
+          pdfData.leaf,
+          pinnedId,
+          {
+            range: pdfData.range,
+            pageNumber: pdfData.pageNumber,
+            file: pdfData.file,
+          },
+          'pinned',
+          'chat',
+        )
+        return {
+          ...blockData,
+          source: 'selection-pinned',
+          highlightId: pinnedId,
+        }
+      }
+      return { ...blockData, source: 'selection-pinned' }
+    }
+
+    if (mode === 'chat-input') {
+      const pinned = buildPinnedBlock()
+      if (actionId === 'add-to-sidebar') {
+        await this.addSelectionToSidebarChat(pinned)
+        return
+      }
+      await this.openChatWithSelectionAndPrefill(pinned, instruction.trim())
+      return
+    }
+
+    if (mode === 'chat-send') {
+      await this.openChatWithSelectionAndSend(
+        buildPinnedBlock(),
+        instruction.trim(),
+      )
+      return
+    }
+
+    // mode === 'ask' — open Quick Ask with PDF selection as mentionable
+    const prompt = instruction.trim()
+
+    // Wait for the eagerly-started page text extraction. By now (user typed
+    // a prompt and clicked send) the pdfjs load has likely completed.
+    const pdfPageContext = await pdfPageContextPromise
+    const contextText = pdfPageContext
+      ? `[PDF: ${pdfData.file.basename}, Page ${pdfData.pageNumber}]\n${pdfPageContext.contextText}`
+      : undefined
+
+    // Mention.content MUST match the substring inside contextText so
+    // `editorSnapshotContext` can inline-replace at the marker.
+    const mentionable: MentionableBlock = {
+      type: 'block',
+      ...blockData,
+      content: pdfPageContext?.selectedText ?? blockData.content,
+      source: 'selection',
+    }
+
+    this.showQuickAskFromPdf({
+      leaf: pdfData.leaf,
+      range: pdfData.range,
+      file: pdfData.file,
+      pageNumber: pdfData.pageNumber,
+      contextText,
+      initialMentionables: [mentionable],
+      initialPrompt: prompt || undefined,
+      initialMode: 'chat',
+      autoSend: prompt.length > 0,
+    })
   }
 
   private async rewriteSelection(
@@ -528,12 +915,26 @@ export class SelectionChatController {
     }
 
     const editorView = this.getEditorView(editor)
-    const resolvedPrompt = prompt?.trim() ?? ''
-    await this.openChatWithSelectionAndPrefill(data, resolvedPrompt)
+    const highlightId = crypto.randomUUID()
 
-    if (editorView) {
-      this.deferSelectionHighlightTakeover(editorView)
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
+
+    const resolvedPrompt = prompt?.trim() ?? ''
+    await this.openChatWithSelectionAndPrefill(
+      { ...data, source: 'selection-pinned', highlightId },
+      resolvedPrompt,
+    )
   }
 
   private async addToSidebar(editor: Editor) {
@@ -549,12 +950,27 @@ export class SelectionChatController {
       return
     }
 
-    await this.addSelectionToSidebarChat(data)
-
     const editorView = this.getEditorView(editor)
-    if (editorView) {
-      this.deferSelectionHighlightTakeover(editorView)
+    const highlightId = crypto.randomUUID()
+
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
+
+    await this.addSelectionToSidebarChat({
+      ...data,
+      source: 'selection-pinned',
+      highlightId,
+    })
   }
 
   private async addToChatAndSend(editor: Editor, prompt?: string) {
@@ -570,74 +986,31 @@ export class SelectionChatController {
       return
     }
 
-    await this.openChatWithSelectionAndSend(data, prompt?.trim() ?? '')
-
     const editorView = this.getEditorView(editor)
-    if (editorView) {
-      this.deferSelectionHighlightTakeover(editorView)
+    const highlightId = crypto.randomUUID()
+
+    if (editorView && this.shouldPersistSelectionHighlight()) {
+      const sel = editorView.state.selection.main
+      if (!sel.empty) {
+        selectionHighlightController.addHighlight(
+          editorView,
+          highlightId,
+          { from: sel.from, to: sel.to },
+          'pinned',
+          'chat',
+        )
+      }
     }
+
+    await this.openChatWithSelectionAndSend(
+      { ...data, source: 'selection-pinned', highlightId },
+      prompt?.trim() ?? '',
+    )
   }
 
   private shouldPersistSelectionHighlight(): boolean {
     return (
       this.getSettings().continuationOptions.persistSelectionHighlight ?? true
     )
-  }
-
-  private deferSelectionHighlightTakeover(view: EditorView) {
-    if (!this.shouldPersistSelectionHighlight()) {
-      return
-    }
-
-    const token = ++this.highlightTakeoverToken
-
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (token !== this.highlightTakeoverToken) {
-          return
-        }
-
-        const selection = view.state.selection.main
-        const targetLeaf = this.plugin
-          .getChatLeafSessionManager()
-          .resolveTargetLeaf()
-        // 判断 Chat 面板是否为当前激活 leaf。
-        // ⚠️ 这里故意用自行跟踪的 currentActiveLeaf（在 handleActiveLeafChange
-        // 中同步维护），不要替换成以下"看似等价"的写法：
-        //   - workspace.activeLeaf：语义正确但已标记 deprecated；
-        //   - getActiveViewOfType(MarkdownView)?.leaf：语义相反，返回的是
-        //     "最近活跃的 Markdown leaf"，焦点移到 Chat 后仍指向原编辑器，
-        //     会让条件永远短路（历史多次踩坑：d741d65 修过、a6e6fd7 refactor
-        //     又回归）；
-        //   - DOM activeElement 判定：点击 Chat 空白区域时 activeElement
-        //     会落到 body，无法识别"leaf 已激活但未聚焦输入框"。
-        if (
-          selection.empty ||
-          view.hasFocus ||
-          !targetLeaf ||
-          this.currentActiveLeaf !== targetLeaf
-        ) {
-          return
-        }
-
-        this.pinSelectionHighlight(view)
-      })
-    })
-  }
-
-  private getTrackedEditorView(allowFallback: boolean): EditorView | null {
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (activeView?.editor) {
-      return this.getEditorView(activeView.editor)
-    }
-
-    if (
-      allowFallback &&
-      this.lastActiveMarkdownLeaf?.view instanceof MarkdownView
-    ) {
-      return this.getEditorView(this.lastActiveMarkdownLeaf.view.editor)
-    }
-
-    return null
   }
 }

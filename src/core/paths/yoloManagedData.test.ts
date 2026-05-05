@@ -8,7 +8,6 @@ import {
   readVaultDataJson,
   relocateYoloManagedData,
   stampYoloDataMeta,
-  writeVaultDataJson,
 } from './yoloManagedData'
 
 type Listing = {
@@ -432,22 +431,26 @@ describe('yoloManagedData meta helpers', () => {
   })
 })
 
-describe('readVaultDataJson + writeVaultDataJson roundtrip', () => {
-  test('round trip preserves meta and the pointer points at the mirror', async () => {
+describe('readVaultDataJson (legacy mirror reader, used only for one-time migration)', () => {
+  test('roundtrips meta-stamped data when set up via the legacy on-disk layout', async () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
-    const settings = { yolo: { baseDir: 'YOLO' } }
     const meta = { updatedAt: 12345, deviceId: 'pc-1' }
 
-    const ok = await writeVaultDataJson(app, settings, { hello: 'world' }, meta)
-    expect(ok).toBe(true)
+    await adapter.mkdir('YOLO')
+    await adapter.write(
+      'YOLO/.yolo_data.json',
+      JSON.stringify({ hello: 'world', [YOLO_DATA_META_KEY]: meta }),
+    )
+    await adapter.write(
+      '.yolo_sync',
+      JSON.stringify({ dataPath: 'YOLO/.yolo_data.json' }),
+    )
 
     const result = await readVaultDataJson(app)
     expect(result).not.toBeNull()
     expect(result?.meta).toEqual(meta)
     expect(result?.raw).toEqual({ hello: 'world' })
-    // pointer file at vault root
-    await expect(adapter.exists('.yolo_sync')).resolves.toBe(true)
   })
 
   test('returns null when pointer is missing', async () => {
@@ -461,6 +464,60 @@ describe('readVaultDataJson + writeVaultDataJson roundtrip', () => {
     const app = createMockApp(adapter)
     await adapter.write('.yolo_sync', JSON.stringify({ dataPath: 'gone.json' }))
     await expect(readVaultDataJson(app)).resolves.toBeNull()
+  })
+
+  test('does NOT fall back to default path when pointer exists but target is missing', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    // Pointer points to a custom-baseDir mirror that doesn't exist.
+    await adapter.write(
+      '.yolo_sync',
+      JSON.stringify({ dataPath: 'CustomDir/.yolo_data.json' }),
+    )
+    // A stale default-path mirror is left behind from an even older
+    // setup — must NOT be picked up since pointer is authoritative.
+    await adapter.mkdir('YOLO')
+    await adapter.write('YOLO/.yolo_data.json', JSON.stringify({ stale: true }))
+    const result = await readVaultDataJson(app, { yolo: { baseDir: 'YOLO' } })
+    expect(result).toBeNull()
+  })
+
+  test('does NOT fall back when pointer file exists but contents are corrupt', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    // Pointer file present but unparseable.
+    await adapter.write('.yolo_sync', '{not valid json')
+    // Stale default mirror present — must NOT be picked up since the
+    // pointer file exists (even if corrupt) and is treated as
+    // authoritative.
+    await adapter.mkdir('YOLO')
+    await adapter.write('YOLO/.yolo_data.json', JSON.stringify({ stale: true }))
+    const result = await readVaultDataJson(app, { yolo: { baseDir: 'YOLO' } })
+    expect(result).toBeNull()
+  })
+
+  test('does NOT fall back when pointer file exists with invalid schema', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    // Pointer parses as JSON but lacks `dataPath`.
+    await adapter.write('.yolo_sync', JSON.stringify({ wrongField: 'X' }))
+    await adapter.mkdir('YOLO')
+    await adapter.write('YOLO/.yolo_data.json', JSON.stringify({ stale: true }))
+    const result = await readVaultDataJson(app, { yolo: { baseDir: 'YOLO' } })
+    expect(result).toBeNull()
+  })
+
+  test('falls back to settings-derived default path only when pointer is absent', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.mkdir('YOLO')
+    await adapter.write(
+      'YOLO/.yolo_data.json',
+      JSON.stringify({ recovered: true }),
+    )
+    const result = await readVaultDataJson(app, { yolo: { baseDir: 'YOLO' } })
+    expect(result).not.toBeNull()
+    expect(result?.raw).toEqual({ recovered: true })
   })
 
   test('legacy mirror without meta still parses with meta=null', async () => {
