@@ -57,7 +57,12 @@ type OpenAICompatibleStreamingRequest = LLMRequestStreaming &
   Record<string, unknown> &
   OpenAICompatibleExtras
 
+const isEmbeddingDimensionRejectionError = (error: unknown): boolean =>
+  error instanceof OpenAI.APIError &&
+  (error.status === 400 || error.status === 422)
+
 export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
+  private static embeddingDimensionsSupportCache = new Map<string, boolean>()
   private adapter: OpenAIMessageAdapter
   private browserClient: OpenAI
   private obsidianClient: OpenAI
@@ -66,6 +71,10 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
   private requestTransportMode: RequestTransportMode
   private requestTransportMemoryKey: string
   private onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
+
+  static clearEmbeddingDimensionsSupportCache() {
+    OpenAICompatibleProvider.embeddingDimensionsSupportCache.clear()
+  }
 
   private promoteTransportMode = (mode: AutoPromotedTransportMode) => {
     if (this.requestTransportMode === mode) {
@@ -127,6 +136,17 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       ...clientOptions,
       fetch: createDesktopNodeFetch(),
     })
+  }
+
+  private getEmbeddingDimensionsSupportKey(model: string, dimensions?: number) {
+    return [
+      this.provider.apiType,
+      this.provider.presetType,
+      this.provider.id,
+      this.resolvedBaseUrl ?? '',
+      model,
+      dimensions ?? 'default',
+    ].join(':')
   }
 
   async generateResponse(
@@ -354,35 +374,73 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
     text: string,
     options?: { dimensions?: number },
   ): Promise<number[]> {
-    const dimensionsParam = options?.dimensions
-      ? { dimensions: options.dimensions }
-      : {}
-    const embedding = await runWithRequestTransport({
-      mode: this.requestTransportMode,
-      memoryKey: this.requestTransportMemoryKey,
-      onAutoPromoteTransportMode: this.promoteTransportMode,
-      runBrowser: () =>
-        this.browserClient.embeddings.create({
-          model: model,
-          input: text,
-          encoding_format: 'float',
-          ...dimensionsParam,
-        }),
-      runObsidian: () =>
-        this.obsidianClient.embeddings.create({
-          model: model,
-          input: text,
-          encoding_format: 'float',
-          ...dimensionsParam,
-        }),
-      runNode: () =>
-        this.nodeClient.embeddings.create({
-          model: model,
-          input: text,
-          encoding_format: 'float',
-          ...dimensionsParam,
-        }),
-    })
+    const runEmbedding = async (dimensions?: number) =>
+      runWithRequestTransport({
+        mode: this.requestTransportMode,
+        memoryKey: this.requestTransportMemoryKey,
+        onAutoPromoteTransportMode: this.promoteTransportMode,
+        runBrowser: () =>
+          this.browserClient.embeddings.create({
+            model,
+            input: text,
+            encoding_format: 'float',
+            ...(dimensions ? { dimensions } : {}),
+          }),
+        runObsidian: () =>
+          this.obsidianClient.embeddings.create({
+            model,
+            input: text,
+            encoding_format: 'float',
+            ...(dimensions ? { dimensions } : {}),
+          }),
+        runNode: () =>
+          this.nodeClient.embeddings.create({
+            model,
+            input: text,
+            encoding_format: 'float',
+            ...(dimensions ? { dimensions } : {}),
+          }),
+      })
+
+    const dimensions = options?.dimensions
+    const supportKey = this.getEmbeddingDimensionsSupportKey(model, dimensions)
+    let embedding
+
+    if (!dimensions) {
+      embedding = await runEmbedding()
+      return extractEmbeddingVector(embedding)
+    }
+
+    const knownSupport =
+      OpenAICompatibleProvider.embeddingDimensionsSupportCache.get(supportKey)
+
+    if (knownSupport === false) {
+      embedding = await runEmbedding()
+      return extractEmbeddingVector(embedding)
+    }
+
+    try {
+      embedding = await runEmbedding(dimensions)
+      OpenAICompatibleProvider.embeddingDimensionsSupportCache.set(
+        supportKey,
+        true,
+      )
+    } catch (errorWithDimensions) {
+      if (!isEmbeddingDimensionRejectionError(errorWithDimensions)) {
+        throw errorWithDimensions
+      }
+
+      try {
+        embedding = await runEmbedding()
+        OpenAICompatibleProvider.embeddingDimensionsSupportCache.set(
+          supportKey,
+          false,
+        )
+      } catch {
+        throw errorWithDimensions
+      }
+    }
+
     return extractEmbeddingVector(embedding)
   }
 }

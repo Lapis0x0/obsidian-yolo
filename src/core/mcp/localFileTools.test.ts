@@ -953,6 +953,77 @@ describe('local fs tool action helpers', () => {
     })
   })
 
+  it('falls back to keyword results when hybrid rag query fails', async () => {
+    const warnSpy = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    const root = Object.assign(new TFolder(), { path: '' })
+    const file = Object.assign(new TFile(), {
+      path: 'workflow.md',
+      basename: 'workflow',
+      stat: { size: 200 },
+    })
+
+    try {
+      const result = await callLocalFileTool({
+        app: {
+          vault: {
+            getRoot: jest.fn().mockReturnValue(root),
+            getFiles: jest.fn().mockReturnValue([file]),
+            getAllLoadedFiles: jest.fn().mockReturnValue([root]),
+            getMarkdownFiles: jest.fn().mockReturnValue([file]),
+            read: jest.fn().mockResolvedValue('workflow fallback content'),
+          },
+        } as unknown as App,
+        settings: {
+          ragOptions: {
+            enabled: true,
+            limit: 10,
+          },
+          embeddingModelId: 'test-embedding',
+        } as unknown as SmartComposerSettings,
+        getRagEngine: async () =>
+          ({
+            processQuery: jest
+              .fn()
+              .mockRejectedValue(new Error('400 status code (no body)')),
+          }) as unknown as RAGEngine,
+        toolName: 'fs_search',
+        args: {
+          mode: 'hybrid',
+          query: 'workflow',
+          maxResults: 10,
+        },
+      })
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      if (result.status !== ToolCallResponseStatus.Success) {
+        throw new Error('expected success')
+      }
+
+      expect(JSON.parse(result.text)).toMatchObject({
+        tool: 'fs_search',
+        requestedMode: 'hybrid',
+        effectiveMode: 'keyword',
+        fallbackReason:
+          'Semantic search failed: 400 status code (no body). Fell back to keyword search.',
+        results: [
+          {
+            kind: 'content_group',
+            path: 'workflow.md',
+            source: 'keyword',
+          },
+        ],
+      })
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[YOLO] fs_search hybrid semantic search failed; falling back to keyword search.',
+        { error: expect.any(Error) },
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
   it('supports context prune tool results for any successful text tool output', async () => {
     const result = await callLocalFileTool({
       app: {
