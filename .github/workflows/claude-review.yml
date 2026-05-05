@@ -1,7 +1,13 @@
 name: Claude PR Review
 
+# 使用 pull_request_target 而非 pull_request：
+# fork 提交的 PR 在 pull_request 触发时拿不到 secrets（CLAUDE_CODE_OAUTH_TOKEN 为空），
+# 因而 review job 会被 GitHub 跳过，外部贡献者的 PR 无法触发自动审查。
+# pull_request_target 在 base repo 上下文中执行（workflow 文件来自 base 分支，fork 改不了），
+# 可以拿到 secrets 与写权限。安全前提：本 workflow 仅做只读 diff 审查，
+# 严禁在此处执行 PR 中的代码（如 npm ci / build / test），否则会泄漏 secrets。
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize]
     branches: [main]
   issue_comment:
@@ -20,6 +26,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          # pull_request_target 默认 checkout base 分支；显式指向 PR head 让 Claude 能读到改动后的代码。
+          # 注意：仅用于静态阅读，不要在后续 step 中执行 PR 代码。
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
       - uses: anthropics/claude-code-action@v1
         with:
