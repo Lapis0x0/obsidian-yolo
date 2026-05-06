@@ -214,7 +214,6 @@ export type AssistantToolMessageGroupItemProps = {
   pendingCompactionAnchorMessageId?: string | null
   hidePendingAssistantPlaceholders?: boolean
   showRunningToolFooter?: boolean
-  showPendingAssistantSpacer?: boolean
 }
 
 export default function AssistantToolMessageGroupItem({
@@ -251,7 +250,6 @@ export default function AssistantToolMessageGroupItem({
   pendingCompactionAnchorMessageId,
   hidePendingAssistantPlaceholders = false,
   showRunningToolFooter = true,
-  showPendingAssistantSpacer = true,
 }: AssistantToolMessageGroupItemProps) {
   const app = useApp()
   const { t } = useLanguage()
@@ -608,20 +606,7 @@ export default function AssistantToolMessageGroupItem({
           !shouldShowAssistantToolPreview
 
         if (shouldHideAssistantPendingState) {
-          const shouldRenderPendingPlaceholder =
-            message.metadata?.generationState === 'streaming'
-
-          if (!shouldRenderPendingPlaceholder || !showPendingAssistantSpacer) {
-            return null
-          }
-
-          return (
-            <div
-              key={message.id}
-              className="smtcmp-chat-messages-assistant smtcmp-assistant-pending-spacer"
-              aria-hidden="true"
-            />
-          )
+          return null
         }
 
         return message.role === 'assistant' ? (

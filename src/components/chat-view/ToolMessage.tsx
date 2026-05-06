@@ -1,4 +1,5 @@
 import cx from 'clsx'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import { Notice } from 'obsidian'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
@@ -782,32 +783,40 @@ const ToolMessage = memo(function ToolMessage({
 }) {
   return (
     <div className="smtcmp-toolcall-container">
-      {message.toolCalls.map((toolCall, index) => (
-        <div
-          key={toolCall.request.id}
-          className={cx(index > 0 && 'smtcmp-toolcall-border-top')}
-        >
-          <ToolCallItem
-            request={toolCall.request}
-            response={toolCall.response}
-            conversationId={conversationId}
-            toolMessageId={message.id}
-            showCompactionPendingHint={
-              isCompactionPending && index === message.toolCalls.length - 1
-            }
-            showRunningFooter={showRunningFooter}
-            onRecoverToolCall={onRecoverToolCall}
-            onResponseUpdate={(response) =>
-              onMessageUpdate({
-                ...message,
-                toolCalls: message.toolCalls.map((t) =>
-                  t.request.id === toolCall.request.id ? { ...t, response } : t,
-                ),
-              })
-            }
-          />
-        </div>
-      ))}
+      <AnimatePresence initial={false}>
+        {message.toolCalls.map((toolCall, index) => (
+          <motion.div
+            key={toolCall.request.id}
+            className={cx(index > 0 && 'smtcmp-toolcall-border-top')}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <ToolCallItem
+              request={toolCall.request}
+              response={toolCall.response}
+              conversationId={conversationId}
+              toolMessageId={message.id}
+              showCompactionPendingHint={
+                isCompactionPending && index === message.toolCalls.length - 1
+              }
+              showRunningFooter={showRunningFooter}
+              onRecoverToolCall={onRecoverToolCall}
+              onResponseUpdate={(response) =>
+                onMessageUpdate({
+                  ...message,
+                  toolCalls: message.toolCalls.map((t) =>
+                    t.request.id === toolCall.request.id
+                      ? { ...t, response }
+                      : t,
+                  ),
+                })
+              }
+            />
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 })
@@ -836,8 +845,9 @@ function ToolCallItem({
   }) => Promise<boolean>
   onResponseUpdate: (response: ToolCallResponse) => void
 }) {
-  const STATUS_TRANSITION_MS = 180
   const COMPACTION_PENDING_EXIT_MS = 180
+  const reduceMotion = useReducedMotion()
+  const motionDuration = reduceMotion ? 0 : 0.16
   const {
     handleToolCall,
     handleAllowForConversation,
@@ -903,20 +913,6 @@ function ToolCallItem({
     }
   }, [request.name])
   const [showRunningActions, setShowRunningActions] = useState(false)
-  const [isStatusTransitioning, setIsStatusTransitioning] = useState(false)
-  const [renderFooter, setRenderFooter] = useState(
-    response.status === ToolCallResponseStatus.PendingApproval,
-  )
-  const [isFooterVisible, setIsFooterVisible] = useState(
-    response.status === ToolCallResponseStatus.PendingApproval,
-  )
-  const [displayFooterMode, setDisplayFooterMode] = useState<
-    'pending' | 'running' | null
-  >(
-    response.status === ToolCallResponseStatus.PendingApproval
-      ? 'pending'
-      : null,
-  )
   const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
     useState(
       showCompactionPendingHint &&
@@ -941,20 +937,6 @@ function ToolCallItem({
       window.clearTimeout(timer)
     }
   }, [response.status, showRunningFooter])
-
-  useEffect(() => {
-    const statusAtTransitionStart = response.status
-    setIsStatusTransitioning(true)
-    const timer = window.setTimeout(() => {
-      if (statusAtTransitionStart === response.status) {
-        setIsStatusTransitioning(false)
-      }
-    }, STATUS_TRANSITION_MS)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [response.status])
 
   const shouldShowPendingFooter =
     response.status === ToolCallResponseStatus.PendingApproval
@@ -994,30 +976,6 @@ function ToolCallItem({
     }
   }, [renderCompactionPendingHint, response.status, showCompactionPendingHint])
 
-  useEffect(() => {
-    if (footerMode) {
-      setDisplayFooterMode(footerMode)
-      setRenderFooter(true)
-      setIsFooterVisible(true)
-      return
-    }
-
-    if (!renderFooter) {
-      setDisplayFooterMode(null)
-      return
-    }
-
-    setIsFooterVisible(false)
-    const timer = window.setTimeout(() => {
-      setRenderFooter(false)
-      setDisplayFooterMode(null)
-    }, STATUS_TRANSITION_MS)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [footerMode, renderFooter])
-
   return (
     <div className="smtcmp-toolcall">
       <button
@@ -1027,33 +985,41 @@ function ToolCallItem({
         aria-expanded={isOpen}
         aria-controls={`smtcmp-toolcall-content-${request.id}`}
       >
-        <div
-          className={cx(
-            'smtcmp-toolcall-header-icon smtcmp-toolcall-header-icon--status-inline',
-            isStatusTransitioning && 'smtcmp-toolcall-status-transition',
-          )}
-        >
-          <StatusIcon status={response.status} />
+        <div className="smtcmp-toolcall-header-icon smtcmp-toolcall-header-icon--status-inline">
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={response.status}
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: motionDuration }}
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              <StatusIcon status={response.status} />
+            </motion.span>
+          </AnimatePresence>
         </div>
         <div className="smtcmp-toolcall-header-content">
-          <span
-            className={cx(
-              'smtcmp-toolcall-header-tool-name',
-              isStatusTransitioning && 'smtcmp-toolcall-status-transition',
-            )}
-          >
+          <span className="smtcmp-toolcall-header-tool-name">
             <span className="smtcmp-toolcall-header-title">
               {headlineParts.titleText}
             </span>
             {headlineParts.summaryText && (
               <>
                 <span className="smtcmp-toolcall-header-separator">: </span>
-                <span
-                  className="smtcmp-toolcall-header-summary"
-                  title={headlineParts.summaryText}
-                >
-                  {headlineParts.summaryText}
-                </span>
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={response.status}
+                    className="smtcmp-toolcall-header-summary"
+                    title={headlineParts.summaryText}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: motionDuration }}
+                  >
+                    {headlineParts.summaryText}
+                  </motion.span>
+                </AnimatePresence>
               </>
             )}
             {typeof headlineParts.addedLines === 'number' &&
@@ -1135,71 +1101,77 @@ function ToolCallItem({
           </span>
         </div>
       )}
-      {renderFooter && (
-        <div
-          className={cx(
-            'smtcmp-toolcall-footer',
-            isFooterVisible
-              ? 'smtcmp-toolcall-footer--visible'
-              : 'smtcmp-toolcall-footer--hiding',
-          )}
-        >
-          {displayFooterMode === 'pending' && (
-            <div className="smtcmp-toolcall-footer-actions">
-              {isAlwaysAllowDisabled ? (
-                // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
+      <AnimatePresence initial={false}>
+        {footerMode && (
+          <motion.div
+            key={footerMode}
+            className="smtcmp-toolcall-footer"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{
+              duration: reduceMotion ? 0 : 0.18,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            style={{ overflow: 'hidden' }}
+          >
+            {footerMode === 'pending' && (
+              <div className="smtcmp-toolcall-footer-actions">
+                {isAlwaysAllowDisabled ? (
+                  // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleToolCall()
+                      setIsOpen(false)
+                    }}
+                  >
+                    {toolLabels.allow}
+                  </button>
+                ) : (
+                  <SplitButton
+                    primaryText={toolLabels.allow}
+                    onPrimaryClick={() => {
+                      void handleToolCall()
+                      setIsOpen(false)
+                    }}
+                    menuOptions={[
+                      {
+                        label: toolLabels.allowForThisChat,
+                        onClick: () => {
+                          void handleAllowForConversation()
+                          setIsOpen(false)
+                        },
+                      },
+                    ]}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => {
-                    void handleToolCall()
+                    handleReject()
                     setIsOpen(false)
                   }}
                 >
-                  {toolLabels.allow}
+                  {toolLabels.reject}
                 </button>
-              ) : (
-                <SplitButton
-                  primaryText={toolLabels.allow}
-                  onPrimaryClick={() => {
-                    void handleToolCall()
-                    setIsOpen(false)
+              </div>
+            )}
+            {footerMode === 'running' && (
+              <div className="smtcmp-toolcall-footer-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleAbort()
                   }}
-                  menuOptions={[
-                    {
-                      label: toolLabels.allowForThisChat,
-                      onClick: () => {
-                        void handleAllowForConversation()
-                        setIsOpen(false)
-                      },
-                    },
-                  ]}
-                />
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  handleReject()
-                  setIsOpen(false)
-                }}
-              >
-                {toolLabels.reject}
-              </button>
-            </div>
-          )}
-          {displayFooterMode === 'running' && (
-            <div className="smtcmp-toolcall-footer-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  void handleAbort()
-                }}
-              >
-                {toolLabels.abort}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+                >
+                  {toolLabels.abort}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
