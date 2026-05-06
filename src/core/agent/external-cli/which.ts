@@ -13,6 +13,20 @@ import * as path from 'node:path'
 /* eslint-enable import/no-nodejs-modules */
 
 /**
+ * 取多个候选值中第一个非空字符串。
+ * `??` 不会跳过 ''，但 Windows env 在跨工具合并/规范化时可能出现某个变体为空串、
+ * 另一个有值的情况（如 process.env 兼容层、childProcess 父子环境合并）。
+ */
+function firstNonEmpty(
+  ...values: Array<string | undefined>
+): string | undefined {
+  for (const v of values) {
+    if (v !== undefined && v !== '') return v
+  }
+  return undefined
+}
+
+/**
  * 在 PATH 中查找可执行文件的完整路径。
  * macOS/Linux：直接按 PATH 顺序搜索。
  * Windows：对每个路径条目依次附加 PATHEXT 扩展名尝试。
@@ -23,13 +37,21 @@ export async function which(
   name: string,
   env: NodeJS.ProcessEnv,
 ): Promise<string | null> {
-  const envPath = env.PATH ?? ''
+  // Windows 环境变量名大小写不敏感（PATH 实际可能叫 Path 或 path），
+  // 而 shell-env 在 Windows 上直接返回 process.env，不做规范化。
+  // 同理 PATHEXT 也兼容大小写。
+  const envPath = firstNonEmpty(env.PATH, env.Path, env.path) ?? ''
   const pathDirs = envPath.split(path.delimiter).filter(Boolean)
 
   const isWindows = process.platform === 'win32'
   // Windows 下从环境变量取扩展名列表，默认兜底
   const pathext = isWindows
-    ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+    ? (
+        firstNonEmpty(env.PATHEXT, env.Pathext, env.pathext) ??
+        '.COM;.EXE;.BAT;.CMD'
+      )
+        .split(';')
+        .filter(Boolean)
     : ['']
 
   for (const dir of pathDirs) {

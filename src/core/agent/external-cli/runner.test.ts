@@ -2,7 +2,6 @@
 // 使用 Jest 模拟 node:child_process 和相关依赖
 /* eslint-disable import/no-nodejs-modules -- 测试文件允许直接引入 node 内置模块进行 mock */
 
-import type { ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 
 // ── 模拟 shell-env ──
@@ -48,12 +47,14 @@ jest.mock('./async-task-registry', () => ({
 // ── 模拟 child_process ──
 let mockChild: MockChild
 const allMockChildren: MockChild[] = []
+const taskkillCalls: Array<{ args: readonly string[] }> = []
 
 class MockChild extends EventEmitter {
   stdin: EventEmitter & { write: jest.Mock; end: jest.Mock }
   stdout: EventEmitter
   stderr: EventEmitter
   pid: number
+  kill: jest.Mock
 
   constructor() {
     super()
@@ -64,16 +65,39 @@ class MockChild extends EventEmitter {
     })
     this.stdout = new EventEmitter()
     this.stderr = new EventEmitter()
+    this.kill = jest.fn()
   }
 }
 
-const spawnMock = jest.fn().mockImplementation(() => {
+// taskkill 的 mock 返回值：仅需 EventEmitter 接口（监听 error 事件）
+function makeTaskkillMock(): EventEmitter {
+  return new EventEmitter()
+}
+
+// 主子进程 spawn：taskkill 返回独立 EE，其他返回 MockChild
+function defaultSpawnImpl(
+  command: string,
+  args?: readonly string[],
+  _options?: unknown,
+): unknown {
+  if (command === 'taskkill') {
+    taskkillCalls.push({ args: args ?? [] })
+    return makeTaskkillMock()
+  }
   mockChild = new MockChild()
-  return mockChild as unknown as ChildProcess
-})
+  allMockChildren.push(mockChild)
+  return mockChild
+}
+
+const spawnMock = jest.fn(defaultSpawnImpl)
+const crossSpawnMock = jest.fn(defaultSpawnImpl)
 
 jest.mock('node:child_process', () => ({
   spawn: spawnMock,
+}))
+
+jest.mock('cross-spawn', () => ({
+  spawn: crossSpawnMock,
 }))
 
 // 模拟 node:fs/promises
@@ -104,13 +128,10 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks()
   allMockChildren.length = 0
+  taskkillCalls.length = 0
   // clearAllMocks 会清空 mockImplementation，需要在每个测试前重新设置
-  spawnMock.mockImplementation(() => {
-    mockChild = new MockChild()
-    allMockChildren.push(mockChild)
-    return mockChild as unknown as ChildProcess
-  })
-  // which mock 也需要重新设置（clearAllMocks 会清空 mockResolvedValue）
+  spawnMock.mockImplementation(defaultSpawnImpl)
+  crossSpawnMock.mockImplementation(defaultSpawnImpl)
   // which mock 也需要重新设置（clearAllMocks 会清空 mockResolvedValue）
   jest.requireMock('./which').which.mockResolvedValue('/usr/local/bin/codex')
   // 重置活跃进程集合（通过连续调用 killAll）
@@ -269,27 +290,204 @@ describe('runExternalAgent', () => {
     expect(Buffer.byteLength(result.stdout, 'utf8')).toBeLessThan(600 * 1024)
   })
 
-  it('Windows 平台 — 直接 reject', async () => {
+  it('Windows 平台 — 主子进程走 cross-spawn，options 含 windowsHide 不含 detached', async () => {
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', {
       value: 'win32',
       configurable: true,
     })
-
-    await expect(
-      runExternalAgent({
-        toolCallId: 'tc-6',
+    try {
+      const promise = runExternalAgent({
+        toolCallId: 'tc-win-spawn',
         provider: 'codex',
         workingDirectory: '/tmp',
         sandboxMode: 'read-only',
         prompt: 'test',
-      }),
-    ).rejects.toThrow('Windows support coming in a future release')
+      })
+      simulateSuccess('output')
+      await promise
 
+      // Windows 下应只通过 cross-spawn 启动主子进程；node:child_process.spawn 不应被调用
+      expect(crossSpawnMock).toHaveBeenCalledTimes(1)
+      expect(spawnMock).not.toHaveBeenCalled()
+      const opts = crossSpawnMock.mock.calls[0][2] as Record<string, unknown>
+      expect(opts.windowsHide).toBe(true)
+      expect(opts.detached).toBeUndefined()
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: origPlatform,
+        configurable: true,
+      })
+    }
+  })
+
+  it('Windows 平台 + abort — 调 taskkill /T /F /PID 而非 process.kill(-pid)', async () => {
+    const origPlatform = process.platform
     Object.defineProperty(process, 'platform', {
-      value: origPlatform,
+      value: 'win32',
       configurable: true,
     })
+    try {
+      const controller = new AbortController()
+      const promise = runExternalAgent({
+        toolCallId: 'tc-win-kill',
+        provider: 'codex',
+        workingDirectory: '/tmp',
+        sandboxMode: 'read-only',
+        prompt: 'test',
+        signal: controller.signal,
+      })
+
+      setImmediate(() => {
+        mockChild.stdout.emit('data', Buffer.from('partial'))
+        controller.abort()
+        setImmediate(() => mockChild.emit('close', null))
+      })
+      await promise
+
+      // 应通过 spawnMock 调用 taskkill（cross-spawn 不参与 kill 路径）
+      expect(taskkillCalls).toHaveLength(1)
+      expect(taskkillCalls[0].args).toEqual([
+        '/T',
+        '/F',
+        '/PID',
+        String(mockChild.pid),
+      ])
+      // 不应使用 POSIX 进程组 kill
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest spy 断言
+      expect(process.kill).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: origPlatform,
+        configurable: true,
+      })
+    }
+  })
+
+  it('Windows 平台 — killProcess 幂等：abort 后 killAll 不再 spawn 第二次 taskkill', async () => {
+    // 真正覆盖 createKillProcess 的 killed 标志。abort 触发后，runner 内部
+    // 会清掉 timeoutId，所以 timer 不会再调 killProcess；但 killAllActiveExternalCli
+    // 仍会调用同一个 closure 的 killProcess，此时 killed=true 必须把它拦下。
+    const origPlatform = process.platform
+    Object.defineProperty(process, 'platform', {
+      value: 'win32',
+      configurable: true,
+    })
+    try {
+      const controller = new AbortController()
+      const promise = runExternalAgent({
+        toolCallId: 'tc-win-idemp',
+        provider: 'codex',
+        workingDirectory: '/tmp',
+        sandboxMode: 'read-only',
+        prompt: 'test',
+        signal: controller.signal,
+      })
+
+      // 等子进程注册到 activeProcesses
+      await new Promise((r) => setImmediate(r))
+      controller.abort()
+      // 同 tick 内再触发 killAll —— 此时 abort handler 已调用过 killProcess 一次，
+      // killAll 是第二次调用：幂等保证 taskkill 只 spawn 1 次。
+      killAllActiveExternalCli()
+      setImmediate(() => mockChild.emit('close', null))
+      await promise
+
+      expect(taskkillCalls).toHaveLength(1)
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: origPlatform,
+        configurable: true,
+      })
+    }
+  }, 5000)
+
+  it('Windows 平台 — taskkill close 非 0 时 fallback 到 child.kill()', async () => {
+    const origPlatform = process.platform
+    Object.defineProperty(process, 'platform', {
+      value: 'win32',
+      configurable: true,
+    })
+    // 让 taskkill mock 返回的 EE 立刻 emit close(1)
+    const taskkillEEs: EventEmitter[] = []
+    spawnMock.mockImplementation((command, args) => {
+      if (command === 'taskkill') {
+        taskkillCalls.push({ args: args ?? [] })
+        const ee = makeTaskkillMock()
+        taskkillEEs.push(ee)
+        // 异步 emit close(1) 模拟 taskkill 启动成功但执行失败
+        setImmediate(() => ee.emit('close', 1))
+        return ee as never
+      }
+      mockChild = new MockChild()
+      allMockChildren.push(mockChild)
+      return mockChild as never
+    })
+    try {
+      const controller = new AbortController()
+      const promise = runExternalAgent({
+        toolCallId: 'tc-win-tkfail',
+        provider: 'codex',
+        workingDirectory: '/tmp',
+        sandboxMode: 'read-only',
+        prompt: 'test',
+        signal: controller.signal,
+      })
+
+      await new Promise((r) => setImmediate(r))
+      controller.abort()
+      // 等 taskkill close 事件传播 + fallback
+      await new Promise((r) => setImmediate(r))
+      await new Promise((r) => setImmediate(r))
+      setImmediate(() => mockChild.emit('close', null))
+      await promise
+
+      expect(taskkillCalls).toHaveLength(1)
+      // close 非 0 应触发 child.kill() 兜底
+      expect(mockChild.kill).toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: origPlatform,
+        configurable: true,
+      })
+    }
+  })
+
+  it('Windows 平台 — killAllActiveExternalCli 也走 taskkill', async () => {
+    const origPlatform = process.platform
+    Object.defineProperty(process, 'platform', {
+      value: 'win32',
+      configurable: true,
+    })
+    try {
+      const promise = runExternalAgent({
+        toolCallId: 'tc-win-killall',
+        provider: 'codex',
+        workingDirectory: '/tmp',
+        sandboxMode: 'read-only',
+        prompt: 'long',
+        timeoutSeconds: 3600,
+      })
+      // 等子进程注册到 activeProcesses
+      await new Promise((r) => setImmediate(r))
+      killAllActiveExternalCli()
+      // 触发 close 让 promise 收尾
+      setImmediate(() => mockChild.emit('close', null))
+      await promise
+
+      expect(taskkillCalls).toHaveLength(1)
+      expect(taskkillCalls[0].args).toEqual([
+        '/T',
+        '/F',
+        '/PID',
+        String(mockChild.pid),
+      ])
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: origPlatform,
+        configurable: true,
+      })
+    }
   })
 
   it('sandboxMode 不合法 — reject', async () => {
