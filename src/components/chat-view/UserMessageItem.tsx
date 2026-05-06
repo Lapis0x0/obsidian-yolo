@@ -1,14 +1,6 @@
 import { SerializedEditorState } from 'lexical'
 import { Check, CopyIcon, Pencil, Trash2 } from 'lucide-react'
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -80,17 +72,11 @@ function UserMessageActions({
   onEdit,
   onDelete,
   isDisabled,
-  isActive,
-  onMouseEnter,
-  onMouseLeave,
 }: {
   text: string
   onEdit: () => void
   onDelete?: () => void
   isDisabled?: boolean
-  isActive: boolean
-  onMouseEnter: () => void
-  onMouseLeave: () => void
 }) {
   const { t } = useLanguage()
   const [copied, setCopied] = useState(false)
@@ -129,11 +115,7 @@ function UserMessageActions({
   }
 
   return (
-    <div
-      className={`yolo-user-message-actions${isActive ? ' is-active' : ''}`}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+    <div className="yolo-user-message-actions">
       <UserActionButton
         label={copyLabel}
         onClick={copied ? () => undefined : handleCopy}
@@ -204,42 +186,6 @@ function UserMessageItem({
     ],
   )
 
-  const [actionsActive, setActionsActive] = useState(false)
-  const closeTimerRef = useRef<number | null>(null)
-
-  const cancelClose = useCallback(() => {
-    if (closeTimerRef.current !== null) {
-      window.clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
-  }, [])
-
-  const handleHoverEnter = useCallback(() => {
-    cancelClose()
-    setActionsActive(true)
-  }, [cancelClose])
-
-  const handleHoverLeave = useCallback(() => {
-    cancelClose()
-    closeTimerRef.current = window.setTimeout(() => {
-      setActionsActive(false)
-      closeTimerRef.current = null
-    }, 280)
-  }, [cancelClose])
-
-  useEffect(() => {
-    return () => {
-      cancelClose()
-    }
-  }, [cancelClose])
-
-  useEffect(() => {
-    if (isFocused) {
-      cancelClose()
-      setActionsActive(false)
-    }
-  }, [isFocused, cancelClose])
-
   return (
     <div
       className="smtcmp-chat-messages-user"
@@ -270,20 +216,12 @@ function UserMessageItem({
         />
       ) : (
         <>
-          <UserMessageCard
-            snapshot={snapshot}
-            onClick={onFocus}
-            onMouseEnter={handleHoverEnter}
-            onMouseLeave={handleHoverLeave}
-          />
+          <UserMessageCard snapshot={snapshot} onClick={onFocus} />
           <UserMessageActions
             text={snapshot.text}
             onEdit={onFocus}
             onDelete={onDelete}
             isDisabled={isActionDisabled}
-            isActive={actionsActive}
-            onMouseEnter={handleHoverEnter}
-            onMouseLeave={handleHoverLeave}
           />
         </>
       )}

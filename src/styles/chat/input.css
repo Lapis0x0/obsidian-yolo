@@ -1109,6 +1109,7 @@
   margin-block: calc(var(--size-4-1) * -1);
 
   .smtcmp-chat-messages-user {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0;
