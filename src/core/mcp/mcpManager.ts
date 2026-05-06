@@ -77,6 +77,7 @@ export class McpManager {
     null
 
   private servers: McpServerState[] = [] // IMPORTANT: Always use this.updateServers() to update this array
+  private connectionAborts: Map<string, AbortController> = new Map()
   private activeToolCalls: Map<string, AbortController> = new Map()
   private allowedToolsByConversation: Map<string, Set<string>> = new Map()
   private subscribers = new Set<(servers: McpServerState[]) => void>()
@@ -186,16 +187,21 @@ export class McpManager {
         env: this.defaultEnv,
       })
 
-    // Create MCP servers
-    const servers = await Promise.all(
-      this.settings.mcp.servers.map((serverConfig) =>
-        this.connectServer(serverConfig),
-      ),
-    )
-    this.updateServers(servers)
+    // Connect via the shared settings-update path so initial probes also
+    // participate in the per-server abort/discard model. Without this, a
+    // toggle-off during startup could be clobbered by the initial probe
+    // resolving with the stale enabled:true config.
+    await this.handleSettingsUpdate(this.settings)
   }
 
   public cleanup() {
+    // Cancel any in-flight connection attempts so their late results don't
+    // try to mutate this manager after teardown.
+    for (const controller of this.connectionAborts.values()) {
+      controller.abort()
+    }
+    this.connectionAborts.clear()
+
     // Disconnect all clients
     void Promise.all(
       this.servers
@@ -249,6 +255,15 @@ export class McpManager {
             config: serverConfig,
           }
         }
+        // Disabled servers don't probe — emit Disconnected directly so the UI
+        // doesn't briefly flash Connecting before settling.
+        if (!serverConfig.enabled) {
+          return {
+            name: serverConfig.id,
+            config: serverConfig,
+            status: McpServerStatus.Disconnected,
+          }
+        }
         return {
           name: serverConfig.id,
           config: serverConfig,
@@ -257,13 +272,51 @@ export class McpManager {
       },
     )
 
+    // Cancel in-flight attempts for servers that won't probe in this round —
+    // either removed from settings entirely, or kept but no longer Connecting
+    // (e.g. just disabled, or unchanged and reused). The Promise.all below
+    // only registers controllers for Connecting entries, so anything else
+    // must release its previous controller here.
+    const stillProbing = new Set(
+      updatedServers
+        .filter((s) => s.status === McpServerStatus.Connecting)
+        .map((s) => s.name),
+    )
+    for (const [name, controller] of this.connectionAborts) {
+      if (!stillProbing.has(name)) {
+        controller.abort()
+        this.connectionAborts.delete(name)
+      }
+    }
+
     this.updateServers(updatedServers)
 
     await Promise.all(
       updatedServers
         .filter((s) => s.status === McpServerStatus.Connecting)
         .map(async (s) => {
-          const server = await this.connectServer(s.config)
+          // Supersede any in-flight attempt for this server. Whatever it ends
+          // up returning will be discarded by the signal check below.
+          this.connectionAborts.get(s.name)?.abort()
+          const controller = new AbortController()
+          this.connectionAborts.set(s.name, controller)
+
+          const server = await this.connectServer(s.config, controller.signal)
+
+          if (controller.signal.aborted) {
+            // A newer settings update (or cleanup) has invalidated this attempt.
+            // If we managed to connect anyway, close the orphan client.
+            if (server.status === McpServerStatus.Connected) {
+              void server.client.close()
+            }
+            return
+          }
+
+          // Only clear the map entry if we are still the current attempt.
+          if (this.connectionAborts.get(s.name) === controller) {
+            this.connectionAborts.delete(s.name)
+          }
+
           this.updateServers((prevServers) =>
             prevServers.map((prevServer) =>
               prevServer.name === server.name ? server : prevServer,
@@ -313,6 +366,7 @@ export class McpManager {
 
   private async connectServer(
     serverConfig: McpServerConfig,
+    signal?: AbortSignal,
   ): Promise<McpServerState> {
     if (this.remoteMcpDisabled) {
       throw new McpNotAvailableException()
@@ -343,10 +397,32 @@ export class McpManager {
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
     const client = new Client({ name, version: '1.0.0' })
 
+    // The SDK only forwards `signal` to the initialize request, not to
+    // `transport.start()`. Bind an abort listener that force-closes the client
+    // so SSE/WS handshakes and stdio spawns are torn down promptly.
+    const abortListener = () => {
+      void client.close().catch(() => {
+        /* best-effort teardown */
+      })
+    }
+    signal?.addEventListener('abort', abortListener, { once: true })
+
+    // The dynamic import above is awaited, so `signal` may already have aborted
+    // before the listener was attached. Bail out before opening a transport.
+    if (signal?.aborted) {
+      signal.removeEventListener('abort', abortListener)
+      return {
+        name,
+        config: serverConfig,
+        status: McpServerStatus.Disconnected,
+      }
+    }
+
     try {
       const transport = await this.createClientTransport(serverParams)
-      await client.connect(transport)
+      await client.connect(transport, signal ? { signal } : undefined)
     } catch (error) {
+      signal?.removeEventListener('abort', abortListener)
       const remoteTransport = await this.loadRemoteTransportModule()
       const remoteTransportContext =
         remoteTransport.getMcpRemoteTransportContext(serverParams)
@@ -377,7 +453,11 @@ export class McpManager {
     }
 
     try {
-      const toolList = await client.listTools()
+      const toolList = await client.listTools(
+        undefined,
+        signal ? { signal } : undefined,
+      )
+      signal?.removeEventListener('abort', abortListener)
       return {
         name,
         config: serverConfig,
@@ -386,6 +466,13 @@ export class McpManager {
         tools: toolList.tools,
       }
     } catch (error) {
+      signal?.removeEventListener('abort', abortListener)
+      // The connect step succeeded, so the transport is live. The Error state
+      // we return below has no `client` field, which means updateServers()'s
+      // diff cannot reach it — close it here to avoid leaking the transport.
+      void client.close().catch(() => {
+        /* best-effort teardown */
+      })
       const remoteTransport = await this.loadRemoteTransportModule()
       const remoteTransportContext =
         remoteTransport.getMcpRemoteTransportContext(serverParams)

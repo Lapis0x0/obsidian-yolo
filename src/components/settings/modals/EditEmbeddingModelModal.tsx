@@ -113,6 +113,8 @@ function EditEmbeddingModelModalComponent({
               ? formData.name
               : formData.model,
           dimension,
+          nativeDimension:
+            embeddingModels[modelIndex].nativeDimension ?? model.dimension,
         }
 
         await plugin.setSettings({

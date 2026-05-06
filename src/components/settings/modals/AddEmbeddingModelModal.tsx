@@ -342,6 +342,7 @@ function AddEmbeddingModelModalComponent({
             ? formData.name
             : formData.model,
         dimension,
+        nativeDimension: dimension,
       }
 
       const validationResult = embeddingModelSchema.safeParse(embeddingModel)

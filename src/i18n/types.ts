@@ -652,6 +652,11 @@ export type TranslationKeys = {
       pgliteDeliveryManual?: string
       pgliteDownload?: string
       pgliteRedownload?: string
+      pgliteVerifyIntegrity?: string
+      pgliteVerifyingIntegrity?: string
+      pgliteIntegrityOk?: string
+      pgliteIntegrityFailed?: string
+      pgliteIntegrityFailedHint?: string
       pgliteRecheck?: string
       pgliteDeleteLocal?: string
       pgliteDownloadPlaceholder?: string

@@ -119,6 +119,8 @@ import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capabi
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
 
+const STARTUP_GRACE_MS = 30 * 1000
+
 export default class SmartComposerPlugin extends Plugin {
   settings: SmartComposerSettings
   settingsChangeListeners: ((newSettings: SmartComposerSettings) => void)[] = []
@@ -377,26 +379,6 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   // Compute a robust panel anchor position just below the caret line
-  private getCaretPanelPosition(
-    editor: Editor,
-    dy = 8,
-  ): { x: number; y: number } | undefined {
-    try {
-      const view = this.getEditorView(editor)
-      if (!view) return undefined
-      const head = view.state.selection.main.head
-      const rect = view.coordsAtPos(head)
-      if (!rect) return undefined
-      const base = typeof rect.bottom === 'number' ? rect.bottom : rect.top
-      if (typeof base !== 'number') return undefined
-      const y = base + dy
-      return { x: rect.left, y }
-    } catch {
-      // ignore
-    }
-    return undefined
-  }
-
   private getSmartSpaceController(): SmartSpaceController {
     if (!this.smartSpaceController) {
       this.smartSpaceController = new SmartSpaceController({
@@ -442,10 +424,6 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   // Quick Ask methods
-  private closeQuickAsk() {
-    this.getQuickAskController().close()
-  }
-
   private showQuickAsk(editor: Editor, view: EditorView) {
     const selectionOptions = this.getQuickAskSelectionOptions(editor)
     if (selectionOptions) {
@@ -665,16 +643,6 @@ export default class SmartComposerPlugin extends Plugin {
       return undefined
     }
     return leaf.view.getCurrentConversationOverrides()
-  }
-
-  private getActiveConversationModelId(): string | undefined {
-    const leaf = this.getChatViewNavigator().resolveTargetChatLeaf({
-      allowCreate: false,
-    })
-    if (!(leaf?.view instanceof ChatView)) {
-      return undefined
-    }
-    return leaf.view.getCurrentConversationModelId()
   }
 
   private resolveContinuationParams(overrides?: ConversationOverrideSettings): {
@@ -1603,12 +1571,15 @@ export default class SmartComposerPlugin extends Plugin {
     void pruneImageCache(this.app, 30, this.settings)
     void prunePdfTextCache(this.app, 30, this.settings)
     await this.getRagIndexService().initialize()
-    const initialRagIndexSnapshot = this.getRagIndexSnapshot()
-    if (
-      this.settings?.ragOptions?.enabled &&
-      initialRagIndexSnapshot.status === 'retry_scheduled' &&
-      initialRagIndexSnapshot.retryPolicy === 'transient'
-    ) {
+    this.app.workspace.onLayoutReady(() => {
+      if (!this.settings?.ragOptions?.enabled) return
+      const snapshot = this.getRagIndexSnapshot()
+      if (
+        snapshot.status !== 'retry_scheduled' ||
+        snapshot.retryPolicy !== 'transient'
+      ) {
+        return
+      }
       const hasValidEmbeddingModel =
         !!this.settings?.embeddingModelId &&
         this.settings.embeddingModels.some(
@@ -1616,19 +1587,17 @@ export default class SmartComposerPlugin extends Plugin {
         )
       if (
         hasValidEmbeddingModel &&
-        this.settings?.ragOptions?.autoUpdateEnabled &&
-        initialRagIndexSnapshot.trigger === 'auto'
+        this.settings.ragOptions.autoUpdateEnabled &&
+        snapshot.trigger === 'auto'
       ) {
         this.getRagAutoUpdateService().restoreRetryScheduled(
-          initialRagIndexSnapshot.retryAt,
+          snapshot.retryAt,
+          STARTUP_GRACE_MS,
         )
-      } else if (
-        hasValidEmbeddingModel &&
-        initialRagIndexSnapshot.trigger === 'manual'
-      ) {
-        this.getRagIndexService().restoreRetryScheduledRun()
+      } else if (hasValidEmbeddingModel && snapshot.trigger === 'manual') {
+        this.getRagIndexService().restoreRetryScheduledRun(STARTUP_GRACE_MS)
       }
-    }
+    })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
 
@@ -2701,31 +2670,5 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       geminiTools,
       mentionables,
     )
-  }
-
-  // removed migrateToJsonStorage (templates)
-
-  private async reloadChatView() {
-    const records = this.getChatLeafSessionManager().getAllLeafRecords()
-    if (records.length === 0) {
-      return
-    }
-    new Notice('Reloading "next-composer" due to migration', 1000)
-    const snapshots = records.map((record) => ({
-      placement: record.placement,
-      currentConversationId: record.currentConversationId,
-    }))
-
-    for (const record of records) {
-      record.leaf.detach()
-    }
-
-    for (const snapshot of snapshots) {
-      await this.openChatView({
-        placement: snapshot.placement,
-        initialConversationId: snapshot.currentConversationId,
-        forceNewLeaf: snapshot.placement !== 'sidebar',
-      })
-    }
   }
 }

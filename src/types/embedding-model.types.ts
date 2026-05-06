@@ -19,6 +19,9 @@ export const embeddingModelSchema = z.object({
   // Optional display name for UI. When absent, UI should fallback to showing `model`.
   name: z.string().optional(),
   dimension: z.number(),
+  // Native output dimension probed when the model was first added.
+  // Used to decide whether to send `dimensions` parameter at runtime.
+  nativeDimension: z.number().int().positive().optional(),
 })
 
 export type EmbeddingModel = z.infer<typeof embeddingModelSchema>

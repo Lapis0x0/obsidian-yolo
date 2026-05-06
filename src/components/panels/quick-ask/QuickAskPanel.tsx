@@ -2030,7 +2030,6 @@ export function QuickAskPanel({
               quickAskSurfacePreset.assistantActions.showQuoteAction
             }
             showRunningToolFooter={false}
-            showPendingAssistantSpacer={false}
           />
         )
       }

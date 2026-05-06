@@ -25,10 +25,16 @@ export const getEmbeddingModelClient = ({
     id: embeddingModel.id,
     dimension: embeddingModel.dimension,
     getEmbedding: async (text: string) => {
+      const shouldSendDimensions =
+        embeddingModel.nativeDimension != null &&
+        embeddingModel.dimension !== embeddingModel.nativeDimension
+
       const vector = await providerClient.getEmbedding(
         embeddingModel.model,
         text,
-        { dimensions: embeddingModel.dimension },
+        shouldSendDimensions
+          ? { dimensions: embeddingModel.dimension }
+          : undefined,
       )
       if (vector.length !== embeddingModel.dimension) {
         throw new Error(

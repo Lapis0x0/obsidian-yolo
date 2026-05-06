@@ -2,13 +2,13 @@
  * MCP-only desktop fetch with automatic fallback.
  *
  * 1. `globalThis.fetch` (primary):
- *    - Chromium networking → system proxy, TLS.
+ *    - Chromium networking -> system proxy, TLS.
  *    - Native WHATWG `ReadableStream` body (`pipeThrough` / `getReader`).
  *    - Supports Streamable HTTP SSE streaming.
  *    - Fails on CORS if the server lacks `Access-Control-Allow-*` headers.
  *
  * 2. `node-fetch@2` (fallback):
- *    - Node.js `http`/`https` → no CORS, works in any Electron renderer.
+ *    - Node.js `http`/`https` -> no CORS, works in any Electron renderer.
  *    - Body is a Node.js `Readable` (no `pipeThrough`), so SSE streaming
  *      may not work, but standard MCP JSON request/response always succeeds.
  *
@@ -37,9 +37,7 @@ const isSocksProxy = (uri: string): boolean =>
 class UnsupportedSocksProxyError extends Error {
   readonly code = 'YOLO_MCP_SOCKS_UNSUPPORTED'
   constructor(uri: string) {
-    super(
-      `SOCKS proxy is not supported (node-fetch, proxy: ${uri}).`,
-    )
+    super(`SOCKS proxy is not supported (node-fetch, proxy: ${uri}).`)
     this.name = 'UnsupportedSocksProxyError'
   }
 }
@@ -144,7 +142,7 @@ export const createDesktopMcpFetch = (
     input: RequestInfo | URL,
     init: RequestInit | undefined,
   ): Promise<Response> => {
-    // SOCKS fail-fast — must happen before creating proxy-agent.
+    // SOCKS fail-fast - must happen before creating proxy-agent.
     const targetUrl =
       typeof input === 'string'
         ? input
@@ -188,12 +186,12 @@ export const createDesktopMcpFetch = (
     // node-fetch on CORS / network failures.
     try {
       const res = await globalThis.fetch(input, init)
-      // Success — cache that globalThis.fetch works for this host.
+      // Success - cache that globalThis.fetch works for this host.
       hostTransportCache.set(host, true)
       return res
     } catch (error) {
       if (isCorsLikeError(error)) {
-        // CORS blocked — fall back to node-fetch and cache the decision.
+        // CORS blocked - fall back to node-fetch and cache the decision.
         hostTransportCache.set(host, false)
         return makeNodeFetchRequest(input, init)
       }

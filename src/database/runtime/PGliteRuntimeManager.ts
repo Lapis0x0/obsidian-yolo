@@ -179,7 +179,8 @@ export class PGliteRuntimeManager {
     const status = await this.getStatus()
     if (status.kind === 'ready') {
       try {
-        await this.verifyVersionDir(status.dir)
+        // Must stay lightweight: only stat-based size check, no readBinary / SHA.
+        await this.verifySizes(status.dir)
         return {
           version: status.version,
           dir: status.dir,
@@ -279,7 +280,20 @@ export class PGliteRuntimeManager {
     return true
   }
 
-  private async verifyVersionDir(versionDir: string): Promise<void> {
+  private async verifySizes(versionDir: string): Promise<void> {
+    for (const file of this.manifest.files) {
+      const filePath = normalizePath(`${versionDir}/${file.name}`)
+      const stat = await this.app.vault.adapter.stat(filePath)
+      if (stat === null) {
+        throw new Error(`Runtime file missing: ${file.name}`)
+      }
+      if (stat.size !== file.size) {
+        throw new Error(`Runtime file size mismatch: ${file.name}`)
+      }
+    }
+  }
+
+  async verifyIntegrity(versionDir: string): Promise<void> {
     for (const file of this.manifest.files) {
       const filePath = normalizePath(`${versionDir}/${file.name}`)
       const content = await this.app.vault.adapter.readBinary(filePath)

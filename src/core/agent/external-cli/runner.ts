@@ -7,12 +7,20 @@
 // "Failed to fetch dynamically imported module: node:xxx"
 /* eslint-disable import/no-nodejs-modules -- desktop-only module, lazy-loaded behind Platform.isDesktop */
 import { spawn } from 'node:child_process'
-import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import type {
+  ChildProcessWithoutNullStreams,
+  SpawnOptions,
+} from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 /* eslint-enable import/no-nodejs-modules */
 
+// cross-spawn 仅在 Windows 分支调用：npm 全局安装的 claude / codex 是 .cmd
+// 包装脚本，Node 17+ 出于 CVE-2024-27980 默认拒绝直接 spawn .cmd/.bat。
+// cross-spawn 处理了 Windows 下 .cmd quoting（含空格、非 ASCII、shell 元字符）
+// 的边角情况，比 `shell: true` 更可靠，是 Node 生态事实标准。
+import { spawn as crossSpawn } from 'cross-spawn'
 import { shellEnvSync } from 'shell-env'
 
 import type { TaskSource } from '../../../types/chat'
@@ -283,6 +291,86 @@ function deriveTitleFromPrompt(prompt: string): string {
   return prompt.replace(/\s+/g, ' ').trim().slice(0, 60)
 }
 
+/**
+ * 创建跨平台进程树 kill 函数。
+ *
+ * - POSIX: 子进程以 `detached: true` 启动成为新进程组 leader，发负 PID 信号
+ *   能覆盖整个进程组（SIGTERM 温和，3s 后 SIGKILL 强制）。
+ * - Windows: 没有进程组语义，且 .cmd 包装会再 fork node.exe。用 `taskkill /T /F`
+ *   递归强杀整个进程树。Windows 没有"温柔退出"对应物，直接强杀务实，无两段式。
+ *
+ * 幂等：多次调用（timeout / abort / unload 同时触发）只会发一次 kill。
+ *
+ * 兜底：Windows 下若 taskkill spawn 失败（极端情况：PATH 没 taskkill），
+ * 退化到 `child.kill()`（runtime 等价于 TerminateProcess），至少能让 close 触发。
+ */
+function createKillProcess(child: ChildProcessWithoutNullStreams): {
+  killProcess: () => void
+  cancelPendingKill: () => void
+} {
+  let killed = false
+  let killTimer: ReturnType<typeof setTimeout> | null = null
+
+  const cancelPendingKill = () => {
+    if (killTimer) {
+      clearTimeout(killTimer)
+      killTimer = null
+    }
+  }
+
+  const killProcess = () => {
+    if (killed) return
+    killed = true
+    if (child.pid === undefined) return
+
+    if (process.platform === 'win32') {
+      // Windows: taskkill /T 递归杀进程树，/F 强制（无温和信号语义）
+      const fallbackKill = () => {
+        // child.kill() 在 Windows runtime 等价 TerminateProcess，对 cmd.exe 顶层
+        // 进程仍然有效；子进程残留极少见，不再做更进一步兜底。
+        try {
+          child.kill()
+        } catch {
+          // 已退出，忽略
+        }
+      }
+      try {
+        const tk = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
+          windowsHide: true,
+          stdio: 'ignore',
+        })
+        // 'error' 事件：taskkill 二进制找不到 / 启动失败
+        tk.once('error', fallbackKill)
+        // 'close' 事件：taskkill 启动成功但退出码非 0（如权限不足、PID 已退出）
+        // PID 已退出场景下 child.kill() 是 no-op，无害；否则给一次额外杀机会。
+        tk.once('close', (code) => {
+          if (code !== 0) fallbackKill()
+        })
+      } catch {
+        fallbackKill()
+      }
+      return
+    }
+
+    // POSIX: SIGTERM 进程组 → 3s 后 SIGKILL 兜底
+    try {
+      process.kill(-child.pid, 'SIGTERM')
+    } catch {
+      // 进程可能已退出，忽略
+    }
+    killTimer = setTimeout(() => {
+      if (child.pid === undefined) return
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {
+        // 已退出，忽略
+      }
+    }, SIGKILL_DELAY_MS)
+  }
+
+  return { killProcess, cancelPendingKill }
+}
+
 // ────────── 主函数 ──────────
 export async function runExternalAgent(
   params: RunExternalAgentParams,
@@ -302,11 +390,6 @@ export async function runExternalAgent(
     source,
     title,
   } = params
-
-  // ── 平台守卫 ──
-  if (process.platform === 'win32') {
-    throw new Error('Windows support coming in a future release')
-  }
 
   // ── signal.aborted 早检查（必修 5）──
   if (externalSignal?.aborted) {
@@ -431,17 +514,43 @@ export async function runExternalAgent(
 
   // ── spawn 与 stdin.write 也必须释放 placeholder，否则 spawn 同步抛错
   // / pipe 错误都会泄漏并发槽。 ──
+  //
+  // 平台分支：
+  //  - POSIX: detached: true 让子进程成为新进程组 leader，配合
+  //    `process.kill(-pid)` 进程组语义实现进程树 kill。
+  //  - Windows: 用 cross-spawn 处理 .cmd 包装脚本与 quoting；不需要 detached
+  //    （Windows 没有进程组语义），杀进程树由 taskkill /T 完成；windowsHide
+  //    避免弹独立控制台窗口。
+  const isWindows = process.platform === 'win32'
+  const spawnOptions: SpawnOptions = isWindows
+    ? {
+        cwd: workingDirectory,
+        env,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    : {
+        cwd: workingDirectory,
+        env,
+        detached: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
   let child: ChildProcessWithoutNullStreams
   try {
-    child = spawn(cliPath, args, {
-      cwd: workingDirectory,
-      env,
-      detached: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    const spawnFn = isWindows ? crossSpawn : spawn
+    child = spawnFn(
+      cliPath,
+      args,
+      spawnOptions,
+    ) as ChildProcessWithoutNullStreams
 
     // 向 stdin 写入 prompt，写完立即关闭防止死锁
     if (child.stdin) {
+      // 监听 stdin error（如目标进程秒退导致 EPIPE），避免冒泡成
+      // unhandled rejection。子进程退出码会通过 close 事件如实反映失败。
+      child.stdin.on('error', () => {
+        // 静默：错误信息已通过 stderr/exitCode 传出，stdin 错误本身无需上报
+      })
       child.stdin.write(prompt, 'utf8')
       child.stdin.end()
     }
@@ -515,24 +624,8 @@ export async function runExternalAgent(
       }
     })
 
-    // ── 进程树 kill 函数 ──
-    let killTimer: ReturnType<typeof setTimeout> | null = null
-    const killProcess = () => {
-      if (child.pid === undefined) return
-      try {
-        process.kill(-child.pid, 'SIGTERM')
-      } catch {
-        // 进程可能已退出，忽略
-      }
-      killTimer = setTimeout(() => {
-        if (child.pid === undefined) return
-        try {
-          process.kill(-child.pid, 'SIGKILL')
-        } catch {
-          // 已退出，忽略
-        }
-      }, SIGKILL_DELAY_MS)
-    }
+    // ── 进程树 kill 函数（跨平台 + 幂等）──
+    const { killProcess, cancelPendingKill } = createKillProcess(child)
 
     // 将占位符替换为真实 kill 函数
     activeProcesses.delete(placeholder)
@@ -596,7 +689,7 @@ export async function runExternalAgent(
 
         child.on('error', (err) => {
           clearTimeout(timeoutId)
-          clearTimeout(killTimer ?? 0)
+          cancelPendingKill()
           effectiveSignal?.removeEventListener('abort', onAbort)
           activeProcesses.delete(killProcess)
           externalCliStreamBus.push({
@@ -612,7 +705,7 @@ export async function runExternalAgent(
 
         child.on('close', (code) => {
           clearTimeout(timeoutId)
-          if (killTimer) clearTimeout(killTimer)
+          cancelPendingKill()
           effectiveSignal?.removeEventListener('abort', onAbort)
           activeProcesses.delete(killProcess)
           externalCliStreamBus.push({
@@ -718,24 +811,8 @@ export async function runExternalAgent(
     })
   })
 
-  // ── 进程树 kill 函数 ──
-  let killTimer: ReturnType<typeof setTimeout> | null = null
-  const killProcess = () => {
-    if (child.pid === undefined) return
-    try {
-      process.kill(-child.pid, 'SIGTERM')
-    } catch {
-      // 进程可能已退出，忽略
-    }
-    killTimer = setTimeout(() => {
-      if (child.pid === undefined) return
-      try {
-        process.kill(-child.pid, 'SIGKILL')
-      } catch {
-        // 已退出，忽略
-      }
-    }, SIGKILL_DELAY_MS)
-  }
+  // ── 进程树 kill 函数（跨平台 + 幂等）──
+  const { killProcess, cancelPendingKill } = createKillProcess(child)
 
   // 将占位符替换为真实 kill 函数
   activeProcesses.delete(placeholder)
@@ -802,7 +879,7 @@ export async function runExternalAgent(
 
       child.on('error', (err) => {
         clearTimeout(timeoutId)
-        clearTimeout(killTimer ?? 0)
+        cancelPendingKill()
         effectiveSignal?.removeEventListener('abort', onAbort)
         activeProcesses.delete(killProcess)
         finishParserOnce()
@@ -819,7 +896,7 @@ export async function runExternalAgent(
 
       child.on('close', (code) => {
         clearTimeout(timeoutId)
-        if (killTimer) clearTimeout(killTimer)
+        cancelPendingKill()
         effectiveSignal?.removeEventListener('abort', onAbort)
         activeProcesses.delete(killProcess)
         finishParserOnce()

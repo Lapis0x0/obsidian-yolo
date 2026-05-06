@@ -1,67 +1,99 @@
 import { getEmbeddingModelClient } from './embedding'
 
+const mockGetEmbedding = jest.fn()
+
 jest.mock('../llm/manager', () => ({
-  getProviderClient: jest.fn(),
+  getProviderClient: jest.fn(() => ({
+    getEmbedding: mockGetEmbedding,
+  })),
 }))
 
-import { getProviderClient } from '../llm/manager'
+const baseModel = {
+  id: 'test/model',
+  providerId: 'test-provider',
+  model: 'text-embedding-test',
+  name: 'Test Model',
+  dimension: 1536,
+}
+
+const baseSettings: any = {
+  providers: [{ id: 'test-provider' }],
+  embeddingModels: [baseModel],
+}
 
 describe('getEmbeddingModelClient', () => {
-  const settings = {
-    providers: [{ id: 'provider-a' }],
-    embeddingModels: [
-      {
-        id: 'embed-a',
-        providerId: 'provider-a',
-        model: 'text-embedding-3-small',
-        dimension: 1536,
-      },
-    ],
-  } as never
-
   beforeEach(() => {
-    jest.resetAllMocks()
+    mockGetEmbedding.mockReset()
   })
 
-  it('passes the configured dimensions to the provider embedding call', async () => {
-    const getEmbedding = jest.fn().mockResolvedValue(new Array(1536).fill(0))
-    ;(getProviderClient as jest.Mock).mockReturnValue({
-      getEmbedding,
-    })
+  it('(a) nativeDimension absent: calls provider without dimensions option', async () => {
+    mockGetEmbedding.mockResolvedValue(new Array(1536).fill(0))
 
     const client = getEmbeddingModelClient({
-      settings,
-      embeddingModelId: 'embed-a',
+      settings: baseSettings,
+      embeddingModelId: 'test/model',
     })
-
     await client.getEmbedding('hello')
 
-    expect(getEmbedding).toHaveBeenCalledWith(
-      'text-embedding-3-small',
+    expect(mockGetEmbedding).toHaveBeenCalledWith(
+      'text-embedding-test',
       'hello',
-      { dimensions: 1536 },
+      undefined,
     )
   })
 
-  it('keeps the dimension mismatch guard after provider returns a fallback-sized vector', async () => {
-    const getEmbedding = jest.fn().mockResolvedValue([0.1, 0.2, 0.3])
-    ;(getProviderClient as jest.Mock).mockReturnValue({
-      getEmbedding,
-    })
+  it('(b) dimension === nativeDimension: calls provider without dimensions option', async () => {
+    const settings: any = {
+      ...baseSettings,
+      embeddingModels: [{ ...baseModel, nativeDimension: 1536 }],
+    }
+
+    mockGetEmbedding.mockResolvedValue(new Array(1536).fill(0))
 
     const client = getEmbeddingModelClient({
       settings,
-      embeddingModelId: 'embed-a',
+      embeddingModelId: 'test/model',
+    })
+    await client.getEmbedding('hello')
+
+    expect(mockGetEmbedding).toHaveBeenCalledWith(
+      'text-embedding-test',
+      'hello',
+      undefined,
+    )
+  })
+
+  it('(c) dimension !== nativeDimension: calls provider with { dimensions } option (also covers legacy data after EditEmbeddingModelModal backfills nativeDimension)', async () => {
+    const settings: any = {
+      ...baseSettings,
+      embeddingModels: [{ ...baseModel, dimension: 512, nativeDimension: 1536 }],
+    }
+
+    mockGetEmbedding.mockResolvedValue(new Array(512).fill(0))
+
+    const client = getEmbeddingModelClient({
+      settings,
+      embeddingModelId: 'test/model',
+    })
+    await client.getEmbedding('hello')
+
+    expect(mockGetEmbedding).toHaveBeenCalledWith(
+      'text-embedding-test',
+      'hello',
+      { dimensions: 512 },
+    )
+  })
+
+  it('(d) throws when provider returns wrong vector length', async () => {
+    mockGetEmbedding.mockResolvedValue(new Array(768).fill(0))
+
+    const client = getEmbeddingModelClient({
+      settings: baseSettings,
+      embeddingModelId: 'test/model',
     })
 
     await expect(client.getEmbedding('hello')).rejects.toThrow(
-      'returned 3-dimensional vector, but it is configured as 1536-dimensional',
-    )
-    expect(getEmbedding).toHaveBeenNthCalledWith(
-      1,
-      'text-embedding-3-small',
-      'hello',
-      { dimensions: 1536 },
+      /returned 768-dimensional vector/,
     )
   })
 })
