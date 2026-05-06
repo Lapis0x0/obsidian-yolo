@@ -18,6 +18,8 @@ type UserMessageCardProps = {
   snapshot: UserMessageDisplaySnapshot
   onClick: () => void
   className?: string
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }
 
 const ReadOnlyBadge = memo(function ReadOnlyBadge({
@@ -53,6 +55,8 @@ function UserMessageCard({
   snapshot,
   onClick,
   className,
+  onMouseEnter,
+  onMouseLeave,
 }: UserMessageCardProps) {
   const { settings } = useSettings()
   const mentionDisplayMode = settings.chatOptions.mentionDisplayMode ?? 'inline'
@@ -81,6 +85,8 @@ function UserMessageCard({
       className={`smtcmp-user-message-card smtcmp-chat-user-input-wrapper smtcmp-chat-user-input-wrapper--compact${className ? ` ${className}` : ''}`}
       onClick={onClick}
       onKeyDown={handleKeyDown}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       {mentionDisplayMode === 'badge' &&
         (snapshot.mentionables.length > 0 ||

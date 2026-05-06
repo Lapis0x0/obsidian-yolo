@@ -2141,6 +2141,78 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleHistoricalUserMessageDelete = useCallback(
+    (userMessageId: string) => {
+      if (isCurrentConversationRunActive) return
+      const sourceMessages = chatMessagesStateRef.current
+      const startIdx = sourceMessages.findIndex(
+        (m) => m.id === userMessageId && m.role === 'user',
+      )
+      if (startIdx < 0) return
+      let endIdx = sourceMessages.length
+      for (let i = startIdx + 1; i < sourceMessages.length; i += 1) {
+        if (sourceMessages[i].role === 'user') {
+          endIdx = i
+          break
+        }
+      }
+      const removedIds = new Set(
+        sourceMessages.slice(startIdx, endIdx).map((m) => m.id),
+      )
+      const nextMessages = sourceMessages.filter((m) => !removedIds.has(m.id))
+      const nextAssistantGroupBoundaryMessageIds =
+        normalizeAssistantGroupBoundaryMessageIds(
+          nextMessages,
+          assistantGroupBoundaryMessageIds,
+        )
+      chatMessagesStateRef.current = nextMessages
+      setChatMessages(nextMessages)
+      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
+
+      setMessageModelMap((prev) => {
+        if (!prev.has(userMessageId)) return prev
+        const next = new Map(prev)
+        next.delete(userMessageId)
+        return next
+      })
+      setMessageReasoningMap((prev) => {
+        if (!prev.has(userMessageId)) return prev
+        const next = new Map(prev)
+        next.delete(userMessageId)
+        return next
+      })
+      if (activeBranchByUserMessageIdRef.current.has(userMessageId)) {
+        const nextBranchMap = new Map(activeBranchByUserMessageIdRef.current)
+        nextBranchMap.delete(userMessageId)
+        activeBranchByUserMessageIdRef.current = nextBranchMap
+        setActiveBranchByUserMessageId(nextBranchMap)
+      }
+      setEditingAssistantMessageId((prev) =>
+        prev && removedIds.has(prev) ? null : prev,
+      )
+      setFocusedMessageId((prev) =>
+        prev && removedIds.has(prev) ? inputMessage.id : prev,
+      )
+      if (nextMessages.length === 0) {
+        void deleteConversation(currentConversationId)
+        return
+      }
+      void persistConversation(
+        nextMessages,
+        nextAssistantGroupBoundaryMessageIds,
+      )
+    },
+    [
+      assistantGroupBoundaryMessageIds,
+      currentConversationId,
+      deleteConversation,
+      inputMessage.id,
+      isCurrentConversationRunActive,
+      normalizeAssistantGroupBoundaryMessageIds,
+      persistConversation,
+    ],
+  )
+
   const handleAssistantMessageGroupBranch = useCallback(
     (messageIds: string[]) => {
       if (messageIds.length === 0) return
@@ -4314,6 +4386,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <UserMessageItem
             message={messageOrGroup}
             isFocused={focusedMessageId === messageOrGroup.id}
+            isActionDisabled={isCurrentConversationRunActive}
+            onDelete={() => {
+              handleHistoricalUserMessageDelete(messageOrGroup.id)
+            }}
             displayMentionables={messageOrGroup.mentionables}
             chatUserInputRef={(ref) =>
               registerChatUserInputRef(messageOrGroup.id, ref)
@@ -4536,6 +4612,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       handleApply,
       handleAssistantMessageEditCancel,
       handleAssistantMessageEditSave,
+      handleHistoricalUserMessageDelete,
       handleChatModeChange,
       handleContinueResponse,
       handleOpenEditSummaryFile,

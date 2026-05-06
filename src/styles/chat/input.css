@@ -1111,7 +1111,7 @@
   .smtcmp-chat-messages-user {
     display: flex;
     flex-direction: column;
-    gap: var(--size-4-1);
+    gap: 0;
     align-items: flex-end;
   }
 
