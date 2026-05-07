@@ -1086,6 +1086,7 @@ export function AgentsSectionContent({
     >
       {draftAgent && (
         <div className="smtcmp-agent-editor-sheet">
+          <div className="smtcmp-agent-editor-sheet-top">
           <div className="smtcmp-agent-editor-sheet-header">
             <div>
               <div className="smtcmp-settings-sub-header">
@@ -1168,6 +1169,7 @@ export function AgentsSectionContent({
                 </button>
               )
             })}
+          </div>
           </div>
 
           {activeTab === 'profile' && (

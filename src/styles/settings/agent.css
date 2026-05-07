@@ -976,8 +976,24 @@ button.smtcmp-agent-chip--more:hover {
   display: none;
 }
 
+/* Direct-edit modal owns its own flex layout: body grows, footer pinned at
+ * the bottom. Avoid relying on `position: sticky` against the modal scroll
+ * container — Obsidian's modal-content is not a stable sticky ancestor and
+ * the footer drifts into the middle of the page when content overflows.
+ */
 .smtcmp-modal--agent-direct-edit .modal-content {
   padding-top: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.smtcmp-modal--agent-direct-edit .modal-content > .smtcmp-agent-editor-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .smtcmp-agent-editor-panel--direct .smtcmp-agent-editor-sheet {
@@ -985,21 +1001,58 @@ button.smtcmp-agent-chip--more:hover {
   border: none;
   border-radius: 0;
   background: transparent;
-  overflow: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .smtcmp-agent-editor-panel--direct .smtcmp-agent-editor-sheet-header {
   padding-top: var(--size-4-2);
+  flex: 0 0 auto;
+}
+
+.smtcmp-agent-editor-panel--direct .smtcmp-agent-editor-sheet-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--size-4-2) var(--size-4-3);
+  flex: 0 0 auto;
+}
+
+.smtcmp-agent-editor-panel--direct
+  .smtcmp-agent-editor-sheet-top
+  > .smtcmp-agent-editor-sheet-header {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.smtcmp-agent-editor-panel--direct
+  .smtcmp-agent-editor-sheet-top
+  > .smtcmp-agent-editor-tabs {
+  flex: 0 1 auto;
+  width: auto;
+}
+
+.smtcmp-agent-editor-panel--direct .smtcmp-agent-editor-tabs {
+  flex: 0 0 auto;
+}
+
+.smtcmp-agent-editor-panel--direct .smtcmp-agent-editor-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
 }
 
 .smtcmp-agent-editor-direct-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  flex: 0 0 auto;
   padding: var(--size-4-2) var(--size-4-3);
   border-top: 1px solid var(--background-modifier-border);
-  background: color-mix(in srgb, var(--background-primary) 95%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--background-primary);
 }
 
 .smtcmp-agent-editor-direct-footer-actions {
