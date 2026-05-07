@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import { App } from '../../../runtime/react-compat'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

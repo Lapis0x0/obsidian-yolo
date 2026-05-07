@@ -1,4 +1,4 @@
-import { htmlToMarkdown } from 'obsidian'
+import { htmlToMarkdown } from '../../runtime/react-compat'
 
 const LATEX_SOURCE_ATTR = 'data-smtcmp-latex-source'
 const LATEX_SELECTED_CLASS = 'smtcmp-latex-selected'

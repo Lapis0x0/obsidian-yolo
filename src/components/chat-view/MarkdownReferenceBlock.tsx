@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react'
 
-import { useApp } from '../../contexts/app-context'
+import { useApp } from '../../runtime/react-compat'
 import { useDarkModeContext } from '../../contexts/dark-mode-context'
 import { useLanguage } from '../../contexts/language-context'
 import {

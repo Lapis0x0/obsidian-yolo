@@ -30,7 +30,7 @@ import {
 import React, { useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
+import { usePlugin } from '../../runtime/react-compat'
 import { useSettings } from '../../contexts/settings-context'
 import { ObsidianButton } from '../common/ObsidianButton'
 import { ObsidianDropdown } from '../common/ObsidianDropdown'

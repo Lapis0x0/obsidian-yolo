@@ -14,7 +14,7 @@ import {
   type VirtuosoHandle,
 } from 'react-virtuoso'
 
-import { useApp } from '../../contexts/app-context'
+import { useApp } from '../../runtime/react-compat'
 import { useSettings } from '../../contexts/settings-context'
 import {
   flushPersistedTimelineHeightCache,

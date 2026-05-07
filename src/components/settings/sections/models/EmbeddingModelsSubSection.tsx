@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../../runtime/react-compat'
 
 import { DEFAULT_EMBEDDING_MODELS } from '../../../../constants'
 import { useSettings } from '../../../../contexts/settings-context'

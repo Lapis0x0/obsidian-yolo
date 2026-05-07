@@ -1,4 +1,4 @@
-import { Setting } from 'obsidian'
+import { Setting } from '../../runtime/react-compat'
 import React, {
   createContext,
   useContext,

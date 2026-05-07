@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import { App } from '../../runtime/react-compat'
 import React, {
   type FC,
   useEffect,

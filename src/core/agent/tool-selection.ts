@@ -5,8 +5,9 @@ import {
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
-import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+
+const MCP_TOOL_NAME_DELIMITER = '__'
 
 const LOCAL_MEMORY_TOOL_NAMES = new Set([
   'memory_ops',
@@ -36,8 +37,8 @@ export const expandAllowedToolNames = (
 
   const expanded = new Set<string>(toolNames)
   const localServer = getLocalFileToolServerName()
-  const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
-  const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
+  const localFileOpsTool = `${localServer}${MCP_TOOL_NAME_DELIMITER}fs_file_ops`
+  const localMemoryOpsTool = `${localServer}${MCP_TOOL_NAME_DELIMITER}memory_ops`
   const hasFileOpsGroup =
     expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
   const hasMemoryOpsGroup =
@@ -46,7 +47,7 @@ export const expandAllowedToolNames = (
   if (hasFileOpsGroup) {
     for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
       expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+        `${localServer}${MCP_TOOL_NAME_DELIMITER}${splitToolName}`,
       )
       expanded.add(splitToolName)
     }
@@ -55,7 +56,7 @@ export const expandAllowedToolNames = (
   if (hasMemoryOpsGroup) {
     for (const splitToolName of LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES) {
       expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+        `${localServer}${MCP_TOOL_NAME_DELIMITER}${splitToolName}`,
       )
       expanded.add(splitToolName)
     }

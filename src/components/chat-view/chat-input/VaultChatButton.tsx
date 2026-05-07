@@ -5,7 +5,7 @@ import {
   Command,
   CornerDownLeftIcon,
 } from 'lucide-react'
-import { Platform } from 'obsidian'
+import { Platform } from '../../../runtime/react-compat'
 
 export function VaultChatButton({ onClick }: { onClick: () => void }) {
   return (

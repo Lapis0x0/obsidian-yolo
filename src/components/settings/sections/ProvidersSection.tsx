@@ -1,5 +1,5 @@
 import { Settings, Trash2 } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../runtime/react-compat'
 import React from 'react'
 
 import { DEFAULT_PROVIDERS, PROVIDER_TYPES_INFO } from '../../../constants'

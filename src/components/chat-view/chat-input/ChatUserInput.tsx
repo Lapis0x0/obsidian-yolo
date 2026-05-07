@@ -12,7 +12,6 @@ import {
   type ParagraphNode,
   SerializedEditorState,
 } from 'lexical'
-import { Notice } from 'obsidian'
 import {
   type CSSProperties,
   type FocusEvent,
@@ -26,7 +25,7 @@ import {
   useState,
 } from 'react'
 
-import { useApp } from '../../../contexts/app-context'
+import { Notice, useApp } from '../../../runtime/react-compat'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'

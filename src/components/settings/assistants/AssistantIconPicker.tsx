@@ -1,4 +1,4 @@
-import { type App, Modal } from 'obsidian'
+import { type App, Modal } from '../../../runtime/react-compat'
 import React, { useState } from 'react'
 
 import { AssistantIcon } from '../../../types/assistant.types'

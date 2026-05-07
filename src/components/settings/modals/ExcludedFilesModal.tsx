@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian'
+import { App, TFile } from '../../../runtime/react-compat'
 
 import { ReactModal } from '../../common/ReactModal'
 

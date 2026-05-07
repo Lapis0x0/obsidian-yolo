@@ -1,4 +1,4 @@
-import { Platform } from 'obsidian'
+import { Platform } from '../../runtime/react-compat'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'

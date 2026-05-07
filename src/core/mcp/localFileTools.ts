@@ -3213,12 +3213,48 @@ export async function callLocalFileTool({
           RAG_FETCH_LIMIT_MAX,
         )
 
-        const ragRows = await ragEngine.processQuery({
-          query,
-          scope: ragScope,
-          minSimilarity: ragMinSimilarity,
-          limit: effectiveRagLimit,
-        })
+        let ragRows: Awaited<ReturnType<RAGEngine['processQuery']>>
+        try {
+          ragRows = await ragEngine.processQuery({
+            query,
+            scope: ragScope,
+            minSimilarity: ragMinSimilarity,
+            limit: effectiveRagLimit,
+          })
+        } catch (error) {
+          if (effectiveMode !== 'hybrid') {
+            throw error
+          }
+
+          const keywordLegacy = await collectKeywordFsSearchResults({
+            app,
+            scopeTarget,
+            scope: 'content',
+            query,
+            maxResults,
+            caseSensitive,
+            signal,
+          })
+          if (signal?.aborted) {
+            return { status: ToolCallResponseStatus.Aborted }
+          }
+          const results = legacyFsSearchItemsToSuper(keywordLegacy, 'keyword')
+          return {
+            status: ToolCallResponseStatus.Success,
+            text: formatJsonResult({
+              tool: 'fs_search',
+              requestedMode,
+              effectiveMode: 'keyword',
+              fallbackReason: `Semantic search failed: ${
+                error instanceof Error ? error.message : String(error)
+              }. Fell back to keyword search.`,
+              scope: 'content',
+              query,
+              path: scopeTarget.normalizedPath,
+              results: aggregateSearchResults({ results, maxResults }),
+            }),
+          }
+        }
 
         const ragMapped = applyWorkspaceScopeFilter(
           mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag'),

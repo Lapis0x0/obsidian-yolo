@@ -1,6 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { Info } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../runtime/react-compat'
 import { useCallback, useEffect, useState } from 'react'
 import TextareaAutosize from 'react-textarea-autosize'
 import * as z from 'zod'

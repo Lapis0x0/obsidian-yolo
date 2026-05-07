@@ -15,7 +15,7 @@ import { serializeMentionable } from '../../utils/chat/mentionable'
 const DEFAULT_UNTITLED_CONVERSATION_TITLE = '新对话'
 const CHAT_HISTORY_UPDATED_EVENT = 'smtcmp:chat-history-updated'
 
-const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
+export const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
   switch (message.role) {
     case 'user':
       return {

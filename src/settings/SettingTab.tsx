@@ -1,4 +1,4 @@
-import { App, PluginSettingTab } from 'obsidian'
+import { App, PluginSettingTab } from '../runtime/react-compat'
 import { Root, createRoot } from 'react-dom/client'
 
 import { SettingsTabRoot } from '../components/settings/SettingsTabRoot'

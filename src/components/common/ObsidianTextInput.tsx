@@ -1,4 +1,4 @@
-import { TextComponent } from 'obsidian'
+import { TextComponent } from '../../runtime/react-compat'
 import { type HTMLAttributes, useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'

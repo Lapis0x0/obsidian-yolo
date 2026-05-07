@@ -1,5 +1,5 @@
 import { Image as ImageIcon, Type } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../runtime/react-compat'
 import React, { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

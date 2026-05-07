@@ -1,5 +1,4 @@
 import { BookOpen, FolderOpen, User, Wrench } from 'lucide-react'
-import { App, TFile } from 'obsidian'
 import {
   useCallback,
   useEffect,
@@ -10,7 +9,7 @@ import {
 } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import { usePlugin } from '../../../contexts/plugin-context'
+import { type App, TFile, usePlugin } from '../../../runtime/react-compat'
 import { useSettings } from '../../../contexts/settings-context'
 import {
   BUILTIN_TOOL_CATEGORY_I18N,

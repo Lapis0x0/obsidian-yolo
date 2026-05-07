@@ -33,13 +33,14 @@ import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
 import { PROVIDER_PRESET_INFO } from '../../../../../constants'
-import { useApp } from '../../../../../contexts/app-context'
+import { useApp } from '../../../../../runtime/react-compat'
 import { useLanguage } from '../../../../../contexts/language-context'
 import { useSettings } from '../../../../../contexts/settings-context'
 import { Assistant } from '../../../../../types/assistant.types'
 import { ChatModel } from '../../../../../types/chat-model.types'
 import {
   Mentionable,
+  MentionableFile,
   MentionableFolder,
   MentionableModel,
 } from '../../../../../types/mentionable'
@@ -413,6 +414,7 @@ export default function NewMentionsPlugin({
   allowAgentModeOption = true,
   models = [],
   selectedModelIds = [],
+  searchFilesByQuery,
   searchFoldersByQuery,
 }: {
   searchResultByQuery: (query: string) => SearchableMentionable[]
@@ -430,6 +432,7 @@ export default function NewMentionsPlugin({
   allowAgentModeOption?: boolean
   models?: ChatModel[]
   selectedModelIds?: string[]
+  searchFilesByQuery?: (query: string) => MentionableFile[]
   searchFoldersByQuery?: (query: string) => MentionableFolder[]
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
@@ -483,6 +486,12 @@ export default function NewMentionsPlugin({
     }
     return searchFoldersByQuery(queryString)
   }, [queryString, searchFoldersByQuery])
+  const fileResults = useMemo(() => {
+    if (queryString == null || !searchFilesByQuery) {
+      return null
+    }
+    return searchFilesByQuery(queryString)
+  }, [queryString, searchFilesByQuery])
   const modelMentionables = useMemo<MentionableModel[]>(
     () =>
       models.map((model) => ({
@@ -753,10 +762,12 @@ export default function NewMentionsPlugin({
       ]
     }
 
-    const mentionables = results.filter(
-      (result): result is SearchableMentionable & { type: 'file' } =>
-        result.type === 'file',
-    )
+    const mentionables =
+      fileResults ??
+      results.filter(
+        (result): result is SearchableMentionable & { type: 'file' } =>
+          result.type === 'file',
+      )
 
     const mentionableOptions = mentionables.map(
       (mentionable) =>
@@ -788,6 +799,7 @@ export default function NewMentionsPlugin({
     queryString,
     results,
     searchFoldersByQuery,
+    searchFilesByQuery,
     selectedModelIds,
     t,
   ])

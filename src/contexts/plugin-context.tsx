@@ -1,6 +1,6 @@
 import React from 'react'
 
-import SmartComposerPlugin from '../main'
+import type SmartComposerPlugin from '../main'
 
 // Plugin context
 const PluginContext = React.createContext<SmartComposerPlugin | undefined>(

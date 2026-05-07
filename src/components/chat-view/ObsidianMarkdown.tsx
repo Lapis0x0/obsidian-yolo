@@ -1,7 +1,6 @@
-import { App, Keymap, MarkdownRenderer } from 'obsidian'
+import { type App, Keymap, MarkdownRenderer, useApp} from '../../runtime/react-compat'
 import { memo, useCallback, useEffect, useRef } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useChatView } from '../../contexts/chat-view-context'
 
 import {

@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react'
 
-import { useApp } from '../../contexts/app-context'
+import { useApp } from '../../runtime/react-compat'
 import { useLanguage } from '../../contexts/language-context'
 import {
   getStreamingTextEditPlanPreviewContent,

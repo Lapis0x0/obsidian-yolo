@@ -66,9 +66,7 @@ describe('getEmbeddingModelClient', () => {
   it('(c) dimension !== nativeDimension: calls provider with { dimensions } option (also covers legacy data after EditEmbeddingModelModal backfills nativeDimension)', async () => {
     const settings: any = {
       ...baseSettings,
-      embeddingModels: [
-        { ...baseModel, dimension: 512, nativeDimension: 1536 },
-      ],
+      embeddingModels: [{ ...baseModel, dimension: 512, nativeDimension: 1536 }],
     }
 
     mockGetEmbedding.mockResolvedValue(new Array(512).fill(0))

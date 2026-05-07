@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
 import { Image as ImageIcon, Type } from 'lucide-react'
-import { App, Notice, requestUrl } from 'obsidian'
+import { App, Notice, requestUrl } from '../../../runtime/react-compat'
 import { useEffect, useRef, useState } from 'react'
 
 import { DEFAULT_CHAT_MODELS } from '../../../constants'

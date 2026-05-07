@@ -23,7 +23,7 @@ import {
   Table,
   Workflow,
 } from 'lucide-react'
-import { Editor } from 'obsidian'
+import { Editor } from '../../runtime/react-compat'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Root, createRoot } from 'react-dom/client'
 

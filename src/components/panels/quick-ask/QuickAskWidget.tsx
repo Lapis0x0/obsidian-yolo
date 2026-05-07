@@ -1,5 +1,5 @@
 import { EditorView } from '@codemirror/view'
-import { Editor } from 'obsidian'
+import { Editor } from '../../../runtime/react-compat'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 

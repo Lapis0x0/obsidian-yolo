@@ -1,5 +1,5 @@
 import { Check, FileText, Folder, Plus, X } from 'lucide-react'
-import { App, TFile, TFolder, Vault } from 'obsidian'
+import { App, TFile, TFolder, Vault } from '../../../runtime/react-compat'
 import { useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

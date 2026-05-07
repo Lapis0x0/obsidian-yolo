@@ -8,11 +8,10 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react'
-import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
+import { MarkdownView, Notice, htmlToMarkdown, useApp } from '../../runtime/react-compat'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
   AssistantToolMessageGroup,

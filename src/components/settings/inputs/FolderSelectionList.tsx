@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, Vault } from 'obsidian'
+import { App, TFile, TFolder, Vault } from '../../../runtime/react-compat'
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

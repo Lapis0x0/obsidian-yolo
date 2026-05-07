@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import type { App } from '../runtime/react-compat'
 import React from 'react'
 
 // App context

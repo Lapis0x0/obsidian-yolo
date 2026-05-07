@@ -1,4 +1,4 @@
-import { App, Notice, normalizePath } from 'obsidian'
+import { App, Notice, normalizePath } from '../../../runtime/react-compat'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
@@ -23,8 +23,13 @@ import { clearAllPromptSnapshotStores } from '../../../database/json/chat/prompt
 import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
 import SmartComposerPlugin from '../../../main'
-import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
+import {
+  createDefaultWebRuntimeServerSettings,
+  createWebRuntimeServerToken,
+  smartComposerSettingsSchema,
+} from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -150,6 +155,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
     chatHistoryBytes: null,
     chatSnapshotBytes: null,
   })
+  const [webTokenInput, setWebTokenInput] = useState('')
   const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
 
   useEffect(() => {
@@ -319,6 +325,96 @@ export function EtcSection({ app, className }: EtcSectionProps) {
     }).open()
   }
 
+  const webConfig =
+    settings.webRuntimeServer ?? createDefaultWebRuntimeServerSettings()
+
+  useEffect(() => {
+    setWebTokenInput(webConfig.token ?? '')
+  }, [webConfig.token])
+
+  const handleWebToggleEnabled = (enabled: boolean) => {
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          enabled,
+        },
+      })
+    })()
+  }
+
+  const handleWebPortChange = (value: string) => {
+    const port = parseInt(value, 10)
+    if (isNaN(port) || port < 1024 || port > 65535) return
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          port,
+        },
+      })
+    })()
+  }
+
+  const handleWebHostChange = (value: string) => {
+    const host = value === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1'
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          host,
+        },
+      })
+    })()
+  }
+
+  const handleWebTokenBlur = (value: string) => {
+    if ((webConfig.token ?? '') === value) return
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          token: value,
+        },
+      })
+    })()
+  }
+
+  const handleWebTokenRefresh = () => {
+    const token = createWebRuntimeServerToken()
+    setWebTokenInput(token)
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          token,
+        },
+      })
+    })()
+  }
+
+  const handleCopyWebAccessUrl = useCallback(() => {
+    const url = new URL(`http://${webConfig.host}:${webConfig.port}/`)
+    const token = (webConfig.token ?? '').trim()
+    if (token) {
+      url.searchParams.set('token', token)
+    }
+    void navigator.clipboard
+      .writeText(url.toString())
+      .then(() => {
+        new Notice(t('common.copied', 'Copied to clipboard'))
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to copy web access url', error)
+        new Notice(t('common.error'))
+      })
+  }, [t, webConfig.host, webConfig.port, webConfig.token])
+
   return (
     <div
       className={['smtcmp-settings-section', className]
@@ -430,6 +526,92 @@ export function EtcSection({ app, className }: EtcSectionProps) {
               warning
               onClick={handleResetSettings}
             />
+          </ObsidianSetting>
+        </div>
+      </section>
+
+      <section
+        className="smtcmp-settings-block"
+        style={{ marginTop: 'var(--size-4-4)' }}
+      >
+        <div className="smtcmp-settings-block-head">
+          <div className="smtcmp-settings-block-head-title-row">
+            <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+              Web Runtime Server
+            </div>
+          </div>
+        </div>
+
+        <div className="smtcmp-settings-block-content">
+          <ObsidianSetting
+            name="启用 Web 服务"
+            desc="为浏览器端界面启动内置 HTTP 服务。"
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={webConfig.enabled}
+              onChange={handleWebToggleEnabled}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name="端口"
+            desc="HTTP 服务端口，默认 18789。"
+            className="smtcmp-settings-card"
+          >
+            <ObsidianTextInput
+              value={String(webConfig.port)}
+              onChange={handleWebPortChange}
+              placeholder="18789"
+              type="number"
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name="监听地址"
+            desc="127.0.0.1 仅允许本机访问，0.0.0.0 可用于局域网访问或内网穿透。"
+            className="smtcmp-settings-card"
+          >
+            <ObsidianDropdown
+              value={webConfig.host ?? '127.0.0.1'}
+              options={{
+                '127.0.0.1': '127.0.0.1（仅本机）',
+                '0.0.0.0': '0.0.0.0（局域网 / 穿透）',
+              }}
+              onChange={handleWebHostChange}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name="访问令牌"
+            desc="留空表示不校验；设置后，页面地址以及所有 API / SSE 请求都必须携带 ?token=..."
+            className="smtcmp-settings-card"
+          >
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
+                width: '100%',
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <ObsidianTextInput
+                  value={webTokenInput}
+                  onChange={setWebTokenInput}
+                  onBlur={handleWebTokenBlur}
+                  placeholder="留空表示不校验"
+                />
+              </div>
+              <ObsidianButton
+                text="刷新令牌"
+                onClick={handleWebTokenRefresh}
+              />
+              <ObsidianButton
+                text="复制链接"
+                onClick={handleCopyWebAccessUrl}
+              />
+            </div>
           </ObsidianSetting>
         </div>
       </section>

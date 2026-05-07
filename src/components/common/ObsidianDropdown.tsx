@@ -1,4 +1,4 @@
-import { DropdownComponent } from 'obsidian'
+import { DropdownComponent } from '../../runtime/react-compat'
 import { useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'

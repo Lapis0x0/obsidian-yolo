@@ -15,7 +15,7 @@ import {
   Square,
   X,
 } from 'lucide-react'
-import { Editor, Notice, TFile } from 'obsidian'
+import { Editor, Notice, TFile } from '../../../runtime/react-compat'
 import React, {
   useCallback,
   useEffect,

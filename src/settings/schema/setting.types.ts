@@ -17,6 +17,17 @@ import { REASONING_LEVELS } from '../../types/reasoning'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
+export const createWebRuntimeServerToken = (): string =>
+  `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`
+
+export const createDefaultWebRuntimeServerSettings = () => ({
+  enabled: false,
+  host: '127.0.0.1' as const,
+  port: 18789,
+  serveStatic: true,
+  token: createWebRuntimeServerToken(),
+})
+
 const resilientArraySchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .array(z.unknown())
@@ -538,6 +549,16 @@ export const smartComposerSettingsSchema = z.object({
 
   // Quick Ask selected assistant ID
   quickAskAssistantId: z.string().optional(),
+
+  // Web Runtime Server configuration
+  webRuntimeServer: z.object({
+    enabled: z.boolean().catch(false),
+    host: z.enum(['127.0.0.1', '0.0.0.0']).catch('127.0.0.1'),
+    port: z.number().int().min(1024).max(65535).catch(18789),
+    serveStatic: z.boolean().catch(true),
+    token: z.string().catch(() => createWebRuntimeServerToken()),
+  }).catch(() => createDefaultWebRuntimeServerSettings()),
+
 })
 export type SmartComposerSettings = z.infer<typeof smartComposerSettingsSchema>
 

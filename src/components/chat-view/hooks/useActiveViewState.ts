@@ -1,8 +1,7 @@
 import { EditorView } from '@codemirror/view'
-import { MarkdownView, TFile } from 'obsidian'
+import { MarkdownView, TFile, useApp } from '../../../runtime/react-compat'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { useApp } from '../../../contexts/app-context'
 import type { CurrentFileViewState } from '../../../types/mentionable'
 
 export type ActiveViewState = {

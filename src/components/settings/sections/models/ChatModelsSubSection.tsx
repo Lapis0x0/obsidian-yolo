@@ -1,5 +1,5 @@
 import { GripVertical, Trash2 } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../../runtime/react-compat'
 import { type DragEvent, useRef } from 'react'
 import { ObsidianToggle } from 'src/components/common/ObsidianToggle'
 

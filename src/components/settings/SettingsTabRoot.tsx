@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import { App } from '../../runtime/react-compat'
 
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'

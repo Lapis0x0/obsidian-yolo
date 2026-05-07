@@ -118,6 +118,11 @@ import { MentionableFile, MentionableFolder } from './types/mentionable'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
+import {
+  buildAgentRuntimeInput as buildAgentRuntimeInputHelper,
+  type BuildAgentRuntimeResult,
+} from './core/agent/buildAgentRuntimeInput'
+import type { RunYoloAgentInput } from './runtime/yoloRuntime.types'
 
 const STARTUP_GRACE_MS = 30 * 1000
 
@@ -763,6 +768,12 @@ export default class SmartComposerPlugin extends Plugin {
       this.agentService.startExternalAgentResultListener()
     }
     return this.agentService
+  }
+
+  async buildAgentRuntimeInput(
+    input: RunYoloAgentInput,
+  ): Promise<BuildAgentRuntimeResult> {
+    return buildAgentRuntimeInputHelper(this, input)
   }
 
   private getAgentNotificationCoordinator(): AgentNotificationCoordinator {
@@ -1911,6 +1922,113 @@ export default class SmartComposerPlugin extends Plugin {
         this.initializeSelectionChat()
       }
     })
+
+    // Web Runtime Server (desktop-only)
+    if (Platform.isDesktopApp) {
+      let webServerLifecycle: import('./core/web-server/WebServerLifecycle').WebServerLifecycle | null = null
+      let webServerConfigKey: string | null = null
+      let webServerReconcilePromise: Promise<void> | null = null
+      let webServerNeedsReconcile = false
+      let webServerShuttingDown = false
+
+      const loadWebServerModule = () =>
+        import('./core/web-server/WebServerLifecycle')
+
+      const stopWebServer = async () => {
+        const lifecycle = webServerLifecycle
+        webServerLifecycle = null
+        webServerConfigKey = null
+        if (!lifecycle) {
+          return
+        }
+        await lifecycle.stop()
+      }
+
+      const reconcileWebServer = async () => {
+        while (webServerNeedsReconcile && !webServerShuttingDown) {
+          webServerNeedsReconcile = false
+
+          const webConfig = this.settings.webRuntimeServer
+          const enabled = webConfig?.enabled ?? false
+          if (!enabled) {
+            await stopWebServer()
+            continue
+          }
+
+          const host = webConfig?.host ?? '127.0.0.1'
+          const port = webConfig?.port ?? 18789
+          const serveStatic = webConfig?.serveStatic ?? true
+          const token = webConfig?.token ?? ''
+          const nextConfigKey = JSON.stringify({
+            host,
+            port,
+            serveStatic,
+            token,
+          })
+
+          if (
+            webServerLifecycle?.isRunning() &&
+            webServerConfigKey === nextConfigKey
+          ) {
+            continue
+          }
+
+          await stopWebServer()
+
+          const { WebServerLifecycle } = await loadWebServerModule()
+          const lifecycle = new WebServerLifecycle(this)
+          const startedPort = await lifecycle.start()
+          if (startedPort === null) {
+            await lifecycle.stop()
+            continue
+          }
+          if (webServerShuttingDown) {
+            await lifecycle.stop()
+            return
+          }
+
+          webServerLifecycle = lifecycle
+          webServerConfigKey = nextConfigKey
+          console.log(
+            `[YOLO] Web runtime server started on port ${startedPort}`,
+          )
+        }
+      }
+
+      const requestWebServerReconcile = () => {
+        webServerNeedsReconcile = true
+        if (webServerReconcilePromise) {
+          return
+        }
+
+        webServerReconcilePromise = reconcileWebServer()
+          .catch((error) => {
+            console.warn(
+              '[YOLO] Web runtime server reconcile failed:',
+              error,
+            )
+          })
+          .finally(() => {
+            webServerReconcilePromise = null
+            if (webServerNeedsReconcile && !webServerShuttingDown) {
+              requestWebServerReconcile()
+            }
+          })
+      }
+
+      requestWebServerReconcile()
+      this.addSettingsChangeListener(() => {
+        if (!webServerShuttingDown) {
+          requestWebServerReconcile()
+        }
+      })
+
+      this.register(() => {
+        webServerShuttingDown = true
+        webServerNeedsReconcile = false
+        void stopWebServer()
+      })
+    }
   }
 
   onunload() {

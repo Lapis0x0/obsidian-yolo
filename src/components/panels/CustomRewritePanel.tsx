@@ -1,4 +1,4 @@
-import { Editor } from 'obsidian'
+import { Editor } from '../../runtime/react-compat'
 import React, { useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'

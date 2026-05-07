@@ -1,6 +1,6 @@
 import { PropsWithChildren, createContext, useContext, useMemo } from 'react'
 
-import { McpManager } from '../core/mcp/mcpManager'
+import type { McpManager } from '../core/mcp/mcpManager'
 
 export type McpContextType = {
   getMcpManager: () => Promise<McpManager>

@@ -16,7 +16,7 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
-import { scrapeUrlGeneric } from '../../core/web-search'
+import { scrapeUrlGeneric } from '../../core/web-search/genericScrape'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type {
