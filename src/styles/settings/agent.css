@@ -196,6 +196,13 @@
   min-width: 108px;
 }
 
+.smtcmp-agent-skill-tokens {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+  margin-left: var(--size-4-2);
+}
+
 .smtcmp-agent-skill-meta {
   margin-top: 6px;
   display: flex;
@@ -296,6 +303,17 @@
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   letter-spacing: 0.01em;
+}
+
+.smtcmp-agent-tool-group-title-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+}
+
+.smtcmp-agent-tool-group-tokens {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 .smtcmp-agent-tool-group-meta {

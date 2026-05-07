@@ -816,14 +816,19 @@ export function AgentsSectionContent({
   const [estimatedToolContextTokens, setEstimatedToolContextTokens] = useState<{
     agentId: string | null
     value: number | null
-  }>({ agentId: null, value: null })
+    perTool: Map<string, number>
+  }>({ agentId: null, value: null, perTool: new Map() })
 
   useEffect(() => {
     let cancelled = false
     const currentAgentId = draftAgent?.id ?? null
 
     if (!draftAgent?.enableTools) {
-      setEstimatedToolContextTokens({ agentId: currentAgentId, value: 0 })
+      setEstimatedToolContextTokens({
+        agentId: currentAgentId,
+        value: 0,
+        perTool: new Map(),
+      })
       return
     }
 
@@ -844,7 +849,11 @@ export function AgentsSectionContent({
     })
 
     if (eligibleTools.length === 0) {
-      setEstimatedToolContextTokens({ agentId: currentAgentId, value: 0 })
+      setEstimatedToolContextTokens({
+        agentId: currentAgentId,
+        value: 0,
+        perTool: new Map(),
+      })
       return
     }
 
@@ -853,18 +862,22 @@ export function AgentsSectionContent({
     setEstimatedToolContextTokens((prev) =>
       prev.agentId === currentAgentId
         ? prev
-        : { agentId: currentAgentId, value: null },
+        : { agentId: currentAgentId, value: null, perTool: new Map() },
     )
 
     void Promise.all(
       eligibleTools.map((tool) =>
-        estimateJsonTokens(buildToolTokenPayload(tool)),
+        estimateJsonTokens(buildToolTokenPayload(tool)).then(
+          (count) => [tool.name, count] as const,
+        ),
       ),
-    ).then((counts) => {
+    ).then((entries) => {
       if (cancelled) return
+      const perTool = new Map(entries)
       setEstimatedToolContextTokens({
         agentId: currentAgentId,
-        value: counts.reduce((sum, count) => sum + count, 0),
+        value: entries.reduce((sum, [, count]) => sum + count, 0),
+        perTool,
       })
     })
 
@@ -878,6 +891,24 @@ export function AgentsSectionContent({
     draftAgent?.includeBuiltinTools,
     localFsServerName,
   ])
+
+  const groupEnabledTokens = useMemo(() => {
+    const enabledNames = new Set(getEnabledAssistantToolNames(draftAgent))
+    const perTool = estimatedToolContextTokens.perTool
+    const result = new Map<string, number>()
+    for (const group of visibleToolGroups) {
+      let sum = 0
+      for (const tool of group.tools) {
+        for (const target of tool.toggleTargets) {
+          if (enabledNames.has(target)) {
+            sum += perTool.get(target) ?? 0
+          }
+        }
+      }
+      result.set(group.key, sum)
+    }
+    return result
+  }, [draftAgent, estimatedToolContextTokens.perTool, visibleToolGroups])
 
   const skillEntries = useMemo<LiteSkillEntry[]>(
     () => listLiteSkillEntries(app, { settings }),
@@ -914,9 +945,14 @@ export function AgentsSectionContent({
 
   // Same agent-scoped pattern as estimatedToolContextTokens above.
   const [estimatedSkillContextTokens, setEstimatedSkillContextTokens] =
-    useState<{ agentId: string | null; value: number | null }>({
+    useState<{
+      agentId: string | null
+      value: number | null
+      perSkill: Map<string, number>
+    }>({
       agentId: null,
       value: null,
+      perSkill: new Map(),
     })
 
   const alwaysSkillRows = useMemo(
@@ -941,6 +977,7 @@ export function AgentsSectionContent({
           setEstimatedSkillContextTokens({
             agentId: currentAgentId,
             value: 0,
+            perSkill: new Map(),
           })
         }
         return
@@ -950,24 +987,26 @@ export function AgentsSectionContent({
         setEstimatedSkillContextTokens((prev) =>
           prev.agentId === currentAgentId
             ? prev
-            : { agentId: currentAgentId, value: null },
+            : { agentId: currentAgentId, value: null, perSkill: new Map() },
         )
       }
 
-      const counts = await Promise.all(
+      const entries = await Promise.all(
         enabledSkillRows.map((skill) =>
           estimateSkillDefaultContextTokens({
             app,
             settings,
             skill,
-          }),
+          }).then((count) => [skill.id, count] as const),
         ),
       )
 
       if (!cancelled) {
+        const perSkill = new Map(entries)
         setEstimatedSkillContextTokens({
           agentId: currentAgentId,
-          value: counts.reduce((sum, count) => sum + count, 0),
+          value: entries.reduce((sum, [, count]) => sum + count, 0),
+          perSkill,
         })
       }
     }
@@ -1307,7 +1346,22 @@ export function AgentsSectionContent({
                   return (
                   <div key={group.key} className="smtcmp-agent-tool-group">
                     <div className="smtcmp-agent-tool-group-title">
-                      <span>{group.title}</span>
+                      <span className="smtcmp-agent-tool-group-title-main">
+                        <span>{group.title}</span>
+                        {estimatedToolContextTokens.perTool.size > 0 && (
+                          <span className="smtcmp-agent-tool-group-tokens">
+                            {t(
+                              'settings.agent.editorEstimatedContextTokens',
+                              '~{count} tokens',
+                            ).replace(
+                              '{count}',
+                              formatTokenCount(
+                                groupEnabledTokens.get(group.key) ?? 0,
+                              ),
+                            )}
+                          </span>
+                        )}
+                      </span>
                       <span className="smtcmp-agent-tool-group-meta">
                         <span className="smtcmp-agent-tool-group-count">
                           {`${groupEnabledCount} / ${group.tools.length} ${t(
@@ -1460,7 +1514,25 @@ export function AgentsSectionContent({
                         <div key={skill.id} className="smtcmp-agent-tool-row">
                           <div className="smtcmp-agent-tool-main">
                             <div className="smtcmp-agent-tool-name">
-                              {skill.name}
+                              <span>{skill.name}</span>
+                              {skill.enabled &&
+                                estimatedSkillContextTokens.perSkill.has(
+                                  skill.id,
+                                ) && (
+                                  <span className="smtcmp-agent-skill-tokens">
+                                    {t(
+                                      'settings.agent.editorEstimatedContextTokens',
+                                      '~{count} tokens',
+                                    ).replace(
+                                      '{count}',
+                                      formatTokenCount(
+                                        estimatedSkillContextTokens.perSkill.get(
+                                          skill.id,
+                                        ) ?? 0,
+                                      ),
+                                    )}
+                                  </span>
+                                )}
                             </div>
                             <div className="smtcmp-agent-tool-source smtcmp-agent-tool-source--preview">
                               {skill.description}
