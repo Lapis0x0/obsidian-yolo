@@ -56,6 +56,7 @@ export class WebServerLifecycle {
       port: webConfig.port || DEFAULT_WEB_RUNTIME_SERVER_PORT,
       webUiDir: staticAssets.webUiDir,
       staticFileOverrides: staticAssets.staticFileOverrides,
+      token: webConfig.token || '',
     })
 
     const ctx: WebServerContext = {

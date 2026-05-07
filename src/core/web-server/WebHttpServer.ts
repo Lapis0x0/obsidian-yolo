@@ -19,6 +19,7 @@ export type WebServerConfig = {
   host?: string
   webUiDir?: string
   staticFileOverrides?: Record<string, string>
+  token?: string
 }
 
 export class WebHttpServer {
@@ -87,6 +88,12 @@ export class WebHttpServer {
     const url = req.url ?? '/'
     const pathname = url.split('?')[0] || '/'
 
+    if (!this.isAuthorizedRequest(req, pathname)) {
+      logRequest(401)
+      this.json(res, 401, { error: 'Unauthorized' })
+      return
+    }
+
     // Route matching
     const route = this.router.resolve(req.method ?? 'GET', url)
     if (route) {
@@ -108,7 +115,15 @@ export class WebHttpServer {
   }
 
   private sanitizeUrlForLog(url: string): string {
-    return url
+    try {
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.searchParams.has('token')) {
+        parsed.searchParams.set('token', '***')
+      }
+      return `${parsed.pathname}${parsed.search}`
+    } catch {
+      return url
+    }
   }
 
   private serveStatic(pathname: string, res: ServerResponse): void {
@@ -132,6 +147,10 @@ export class WebHttpServer {
       const content = readFileSync(filePath)
       const ext = extname(filePath)
       res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream' })
+      if (ext === '.html') {
+        res.end(this.injectStaticToken(content.toString('utf-8')))
+        return
+      }
       res.end(content)
     } catch (err) {
       console.error(`[YOLO Web] Failed to read static file ${filePath}:`, err)
@@ -152,6 +171,68 @@ export class WebHttpServer {
     }
 
     return pathname === '/' ? join(dir, 'index.html') : join(dir, pathname)
+  }
+
+  private isAuthorizedRequest(
+    req: IncomingMessage,
+    pathname: string,
+  ): boolean {
+    const expectedToken = this.config.token?.trim() ?? ''
+    if (!expectedToken) {
+      return true
+    }
+
+    const requestToken = this.getTokenFromUrl(req.url)
+    if (requestToken === expectedToken) {
+      return true
+    }
+
+    if (pathname !== '/' && !pathname.startsWith('/api/')) {
+      const refererToken = this.getTokenFromHeader(req.headers.referer)
+      if (refererToken === expectedToken) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private getTokenFromUrl(url: string | undefined): string | null {
+    if (!url) {
+      return null
+    }
+    try {
+      return new URL(url, 'http://localhost').searchParams.get('token')
+    } catch {
+      return null
+    }
+  }
+
+  private getTokenFromHeader(value: string | string[] | undefined): string | null {
+    if (typeof value !== 'string') {
+      return null
+    }
+    try {
+      return new URL(value).searchParams.get('token')
+    } catch {
+      return null
+    }
+  }
+
+  private injectStaticToken(html: string): string {
+    const token = this.config.token?.trim()
+    if (!token) {
+      return html
+    }
+
+    const encodedToken = encodeURIComponent(token)
+    return html.replace(
+      /(href|src)="([^"]+\.(?:css|js))"/g,
+      (_match, attr: string, assetPath: string) => {
+        const separator = assetPath.includes('?') ? '&' : '?'
+        return `${attr}="${assetPath}${separator}token=${encodedToken}"`
+      },
+    )
   }
 
   json(res: ServerResponse, status: number, data: unknown): void {

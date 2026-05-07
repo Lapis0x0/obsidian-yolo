@@ -23,7 +23,11 @@ import { clearAllPromptSnapshotStores } from '../../../database/json/chat/prompt
 import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
 import SmartComposerPlugin from '../../../main'
-import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
+import {
+  createDefaultWebRuntimeServerSettings,
+  createWebRuntimeServerToken,
+  smartComposerSettingsSchema,
+} from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -151,6 +155,7 @@ export function EtcSection({ app, className }: EtcSectionProps) {
     chatHistoryBytes: null,
     chatSnapshotBytes: null,
   })
+  const [webTokenInput, setWebTokenInput] = useState('')
   const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
 
   useEffect(() => {
@@ -320,12 +325,12 @@ export function EtcSection({ app, className }: EtcSectionProps) {
     }).open()
   }
 
-  const webConfig = settings.webRuntimeServer ?? {
-    enabled: false,
-    host: '127.0.0.1' as const,
-    port: 18789,
-    serveStatic: true,
-  }
+  const webConfig =
+    settings.webRuntimeServer ?? createDefaultWebRuntimeServerSettings()
+
+  useEffect(() => {
+    setWebTokenInput(webConfig.token ?? '')
+  }, [webConfig.token])
 
   const handleWebToggleEnabled = (enabled: boolean) => {
     void (async () => {
@@ -365,6 +370,50 @@ export function EtcSection({ app, className }: EtcSectionProps) {
       })
     })()
   }
+
+  const handleWebTokenBlur = (value: string) => {
+    if ((webConfig.token ?? '') === value) return
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          token: value,
+        },
+      })
+    })()
+  }
+
+  const handleWebTokenRefresh = () => {
+    const token = createWebRuntimeServerToken()
+    setWebTokenInput(token)
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          token,
+        },
+      })
+    })()
+  }
+
+  const handleCopyWebAccessUrl = useCallback(() => {
+    const url = new URL(`http://${webConfig.host}:${webConfig.port}/`)
+    const token = (webConfig.token ?? '').trim()
+    if (token) {
+      url.searchParams.set('token', token)
+    }
+    void navigator.clipboard
+      .writeText(url.toString())
+      .then(() => {
+        new Notice(t('common.copied', 'Copied to clipboard'))
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to copy web access url', error)
+        new Notice(t('common.error'))
+      })
+  }, [t, webConfig.host, webConfig.port, webConfig.token])
 
   return (
     <div
@@ -495,8 +544,8 @@ export function EtcSection({ app, className }: EtcSectionProps) {
 
         <div className="smtcmp-settings-block-content">
           <ObsidianSetting
-            name="Enable Web Server"
-            desc="Start an HTTP server for the browser-based UI."
+            name="启用 Web 服务"
+            desc="为浏览器端界面启动内置 HTTP 服务。"
             className="smtcmp-settings-card"
           >
             <ObsidianToggle
@@ -506,8 +555,8 @@ export function EtcSection({ app, className }: EtcSectionProps) {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name="Port"
-            desc="HTTP server port (default: 18789)"
+            name="端口"
+            desc="HTTP 服务端口，默认 18789。"
             className="smtcmp-settings-card"
           >
             <ObsidianTextInput
@@ -519,18 +568,50 @@ export function EtcSection({ app, className }: EtcSectionProps) {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name="Host"
-            desc="127.0.0.1 only allows local access. 0.0.0.0 allows LAN access and tunneling."
+            name="监听地址"
+            desc="127.0.0.1 仅允许本机访问，0.0.0.0 可用于局域网访问或内网穿透。"
             className="smtcmp-settings-card"
           >
             <ObsidianDropdown
               value={webConfig.host ?? '127.0.0.1'}
               options={{
-                '127.0.0.1': '127.0.0.1 (Local only)',
-                '0.0.0.0': '0.0.0.0 (LAN / tunnel)',
+                '127.0.0.1': '127.0.0.1（仅本机）',
+                '0.0.0.0': '0.0.0.0（局域网 / 穿透）',
               }}
               onChange={handleWebHostChange}
             />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name="访问令牌"
+            desc="留空表示不校验；设置后，页面地址以及所有 API / SSE 请求都必须携带 ?token=..."
+            className="smtcmp-settings-card"
+          >
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
+                width: '100%',
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <ObsidianTextInput
+                  value={webTokenInput}
+                  onChange={setWebTokenInput}
+                  onBlur={handleWebTokenBlur}
+                  placeholder="留空表示不校验"
+                />
+              </div>
+              <ObsidianButton
+                text="刷新令牌"
+                onClick={handleWebTokenRefresh}
+              />
+              <ObsidianButton
+                text="复制链接"
+                onClick={handleCopyWebAccessUrl}
+              />
+            </div>
           </ObsidianSetting>
         </div>
       </section>

@@ -6,10 +6,10 @@ global.fetch = mockFetch
 describe('WebApiClient', () => {
   let client: WebApiClient
 
-  beforeEach(() => {
-    jest.resetAllMocks()
-    client = new WebApiClient('http://localhost:18789')
-  })
+    beforeEach(() => {
+      jest.resetAllMocks()
+      client = new WebApiClient('http://localhost:18789')
+    })
 
   describe('getJson', () => {
     it('makes a GET request', async () => {
@@ -133,6 +133,27 @@ describe('WebApiClient', () => {
 
       expect((globalThis as any).EventSource).toHaveBeenCalledWith(
         expect.stringContaining('conv%201'),
+      )
+    })
+
+    it('appends token to fetch and event stream requests when configured', async () => {
+      client = new WebApiClient('http://localhost:18789', 'secret-token')
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ ok: true }),
+      })
+
+      await client.getJson('/api/bootstrap')
+      client.openEventSource('/api/agent/stream/conv-1')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:18789/api/bootstrap?token=secret-token',
+        {
+          headers: {},
+        },
+      )
+      expect((globalThis as any).EventSource).toHaveBeenCalledWith(
+        'http://localhost:18789/api/agent/stream/conv-1?token=secret-token',
       )
     })
   })

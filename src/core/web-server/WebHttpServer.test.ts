@@ -76,7 +76,7 @@ describe('WebHttpServer', () => {
   })
 
   describe('api access', () => {
-    it('allows /api/ requests without auth', () => {
+    it('allows requests without token when auth is disabled', () => {
       const { req, res } = mockReqRes('GET', '/api/settings')
       server.router.get('/api/settings', (_req, res) => {
         res.writeHead(200)
@@ -88,13 +88,50 @@ describe('WebHttpServer', () => {
       expect(res.writeHead).toHaveBeenCalledWith(200)
     })
 
-    it('allows event stream routes without auth query params', () => {
+    it('rejects requests when token is configured but missing', () => {
+      server = new WebHttpServer({
+        port: 0,
+        token: 'secret-token',
+      })
+      const { req, res } = mockReqRes('GET', '/api/settings')
+
+      ;(server as any).handleRequest(req, res)
+
+      expect(res.writeHead).toHaveBeenCalledWith(401, {
+        'Content-Type': 'application/json',
+      })
+    })
+
+    it('allows api requests with matching token query params', () => {
+      server = new WebHttpServer({
+        port: 0,
+        token: 'secret-token',
+      })
+      const { req, res } = mockReqRes('GET', '/api/settings?token=secret-token')
+      server.router.get('/api/settings', (_req, res) => {
+        res.writeHead(200)
+        res.end(JSON.stringify({ ok: true }))
+      })
+
+      ;(server as any).handleRequest(req, res)
+
+      expect(res.writeHead).toHaveBeenCalledWith(200)
+    })
+
+    it('allows event stream routes with matching token query params', () => {
+      server = new WebHttpServer({
+        port: 0,
+        token: 'secret-token',
+      })
       const handler = jest.fn((_req, res) => {
         res.writeHead(200)
         res.end(JSON.stringify({ ok: true }))
       })
       server.router.get('/api/agent/stream/:conversationId', handler)
-      const { req, res } = mockReqRes('GET', '/api/agent/stream/conv-1')
+      const { req, res } = mockReqRes(
+        'GET',
+        '/api/agent/stream/conv-1?token=secret-token',
+      )
 
       ;(server as any).handleRequest(req, res)
 
@@ -186,6 +223,36 @@ describe('WebHttpServer', () => {
       expect(
         ((res.end as jest.Mock).mock.calls[0]?.[0] as Buffer).toString('utf-8'),
       ).toBe('body { color: red; }')
+    })
+
+    it('injects token into static asset references for index.html', () => {
+      tempDir = mkdtempSync(join(tmpdir(), 'yolo-web-ui-auth-'))
+      const webUiDir = join(tempDir, 'web-ui')
+      mkdirSync(webUiDir, { recursive: true })
+      writeFileSync(
+        join(webUiDir, 'index.html'),
+        '<link rel="stylesheet" href="app.css" /><script type="module" src="index.js"></script>',
+      )
+
+      server = new WebHttpServer({
+        port: 0,
+        webUiDir,
+        token: 'secret-token',
+      })
+
+      const { req, res } = mockReqRes('GET', '/?token=secret-token')
+      ;(server as any).handleRequest(req, res)
+
+      expect(
+        ((res.end as jest.Mock).mock.calls[0]?.[0] as string).includes(
+          'app.css?token=secret-token',
+        ),
+      ).toBe(true)
+      expect(
+        ((res.end as jest.Mock).mock.calls[0]?.[0] as string).includes(
+          'index.js?token=secret-token',
+        ),
+      ).toBe(true)
     })
 
     it('serves overridden app.css from plugin root', () => {

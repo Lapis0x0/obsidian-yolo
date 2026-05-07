@@ -10,10 +10,13 @@ export class WebApiError extends Error {
 }
 
 export class WebApiClient {
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly token = '',
+  ) {}
 
   async getJson<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetch(this.resolveUrl(path), {
       headers: this.headers(),
     })
     if (!res.ok) throw new WebApiError('GET', path, res.status)
@@ -21,7 +24,7 @@ export class WebApiClient {
   }
 
   async getArrayBuffer(path: string): Promise<ArrayBuffer> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetch(this.resolveUrl(path), {
       headers: this.headers(),
     })
     if (!res.ok) throw new WebApiError('GET', path, res.status)
@@ -29,7 +32,7 @@ export class WebApiClient {
   }
 
   async postJson<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetch(this.resolveUrl(path), {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
@@ -39,7 +42,7 @@ export class WebApiClient {
   }
 
   async postArrayBuffer<T>(path: string, body: ArrayBuffer): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetch(this.resolveUrl(path), {
       method: 'POST',
       headers: this.headers({
         'Content-Type': 'application/octet-stream',
@@ -51,10 +54,18 @@ export class WebApiClient {
   }
 
   openEventSource(path: string): EventSource {
-    return new EventSource(new URL(`${this.baseUrl}${path}`).toString())
+    return new EventSource(this.resolveUrl(path))
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     return extra
+  }
+
+  private resolveUrl(path: string): string {
+    const url = new URL(`${this.baseUrl}${path}`)
+    if (this.token) {
+      url.searchParams.set('token', this.token)
+    }
+    return url.toString()
   }
 }

@@ -1955,11 +1955,15 @@ export default class SmartComposerPlugin extends Plugin {
             continue
           }
 
+          const host = webConfig?.host ?? '127.0.0.1'
           const port = webConfig?.port ?? 18789
           const serveStatic = webConfig?.serveStatic ?? true
+          const token = webConfig?.token ?? ''
           const nextConfigKey = JSON.stringify({
+            host,
             port,
             serveStatic,
+            token,
           })
 
           if (
