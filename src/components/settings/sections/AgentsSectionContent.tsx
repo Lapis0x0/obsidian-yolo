@@ -119,6 +119,38 @@ const AGENT_EDITOR_TAB_ICONS = {
 const DEFAULT_PERSONA: AgentPersona = 'balanced'
 
 const skillDefaultContextTokenCache = new Map<string, number>()
+// Caches the in-flight or resolved promise so concurrent calls dedupe to a
+// single estimateJsonTokens invocation.
+const toolDefaultContextTokenCache = new Map<string, Promise<number>>()
+
+function fnv1aHash(text: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+// Stable JSON serialization with sorted object keys, so cache keys stay
+// consistent across re-renders that recreate equivalent objects.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'null'
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map(stableStringify).join(',') + ']'
+  }
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record).sort()
+  return (
+    '{' +
+    keys
+      .map((key) => JSON.stringify(key) + ':' + stableStringify(record[key]))
+      .join(',') +
+    '}'
+  )
+}
 
 function buildToolTokenPayload(tool: McpTool): Record<string, unknown> {
   return {
@@ -126,6 +158,21 @@ function buildToolTokenPayload(tool: McpTool): Record<string, unknown> {
     description: tool.description ?? '',
     inputSchema: tool.inputSchema ?? {},
   }
+}
+
+function estimateToolDefaultContextTokens(tool: McpTool): Promise<number> {
+  const payload = buildToolTokenPayload(tool)
+  const cacheKey = `${tool.name}:${fnv1aHash(stableStringify(payload))}`
+  const cached = toolDefaultContextTokenCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+  const pending = estimateJsonTokens(payload).catch((error) => {
+    toolDefaultContextTokenCache.delete(cacheKey)
+    throw error
+  })
+  toolDefaultContextTokenCache.set(cacheKey, pending)
+  return pending
 }
 
 function buildSkillMetadataPrompt(skill: LiteSkillEntry): string {
@@ -867,7 +914,7 @@ export function AgentsSectionContent({
 
     void Promise.all(
       eligibleTools.map((tool) =>
-        estimateJsonTokens(buildToolTokenPayload(tool)).then(
+        estimateToolDefaultContextTokens(tool).then(
           (count) => [tool.name, count] as const,
         ),
       ),
