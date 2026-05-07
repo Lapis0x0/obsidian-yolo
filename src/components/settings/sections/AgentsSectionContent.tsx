@@ -1295,15 +1295,48 @@ export function AgentsSectionContent({
                   </div>
                 </div>
 
-                {visibleToolGroups.map((group) => (
+                {visibleToolGroups.map((group) => {
+                  const groupEnabledCount =
+                    groupEnabledCounts.get(group.key) ?? 0
+                  const allGroupToolsEnabled =
+                    group.tools.length > 0 &&
+                    groupEnabledCount === group.tools.length
+                  const groupToggleTargets = group.tools.flatMap(
+                    (tool) => tool.toggleTargets,
+                  )
+                  return (
                   <div key={group.key} className="smtcmp-agent-tool-group">
                     <div className="smtcmp-agent-tool-group-title">
                       <span>{group.title}</span>
-                      <span className="smtcmp-agent-tool-group-count">
-                        {`${groupEnabledCounts.get(group.key) ?? 0} / ${group.tools.length} ${t(
-                          'settings.agent.toolsActive',
-                          'active',
-                        )}`}
+                      <span className="smtcmp-agent-tool-group-meta">
+                        <span className="smtcmp-agent-tool-group-count">
+                          {`${groupEnabledCount} / ${group.tools.length} ${t(
+                            'settings.agent.toolsActive',
+                            'active',
+                          )}`}
+                        </span>
+                        {group.tools.length > 0 && (
+                          <button
+                            type="button"
+                            className="smtcmp-agent-tool-group-bulk-toggle"
+                            onClick={() =>
+                              toggleTool(
+                                groupToggleTargets,
+                                !allGroupToolsEnabled,
+                              )
+                            }
+                          >
+                            {allGroupToolsEnabled
+                              ? t(
+                                  'settings.agent.disableAllTools',
+                                  'Disable all',
+                                )
+                              : t(
+                                  'settings.agent.enableAllTools',
+                                  'Enable all',
+                                )}
+                          </button>
+                        )}
                       </span>
                     </div>
                     <div className="smtcmp-agent-tool-list">
@@ -1361,7 +1394,8 @@ export function AgentsSectionContent({
                       })}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
 
                 {visibleToolsCount === 0 && (
                   <div className="smtcmp-agent-tools-empty">

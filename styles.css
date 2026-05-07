@@ -4204,9 +4204,37 @@ button.smtcmp-mcp-tool-description-toggle.is-expanded {
   letter-spacing: 0.01em;
 }
 
+.smtcmp-agent-tool-group-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-4);
+  margin-right: var(--size-4-1);
+}
+
 .smtcmp-agent-tool-group-count {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
+}
+
+button.smtcmp-agent-tool-group-bulk-toggle {
+  padding: 0;
+  height: auto;
+  line-height: 1.4;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-decoration: underline;
+  text-decoration-color: var(--background-modifier-border);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+button.smtcmp-agent-tool-group-bulk-toggle:hover {
+  color: var(--text-normal);
+  text-decoration-color: currentColor;
+  background: transparent;
 }
 
 .smtcmp-agent-tools-panel .smtcmp-agent-tool-list {

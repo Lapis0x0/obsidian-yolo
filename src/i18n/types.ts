@@ -244,6 +244,8 @@ export type TranslationKeys = {
       collapseDescription?: string
       viewAllTools?: string
       viewAllSkills?: string
+      enableAllTools?: string
+      disableAllTools?: string
       descriptionColumn?: string
       builtinFsListLabel?: string
       builtinFsListDesc?: string

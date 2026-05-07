@@ -319,6 +319,8 @@ export const zh: TranslationKeys = {
       collapseDescription: '收起',
       viewAllTools: '查看全部工具',
       viewAllSkills: '查看全部技能',
+      enableAllTools: '全部启用',
+      disableAllTools: '全部停用',
       descriptionColumn: '描述',
       builtinFsListLabel: '浏览目录',
       builtinFsListDesc: '列出库内目录结构',

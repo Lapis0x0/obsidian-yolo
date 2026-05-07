@@ -352,6 +352,8 @@ export const en: TranslationKeys = {
       collapseDescription: 'Collapse',
       viewAllTools: 'View all tools',
       viewAllSkills: 'View all skills',
+      enableAllTools: 'Enable all',
+      disableAllTools: 'Disable all',
       descriptionColumn: 'Description',
       builtinFsListLabel: 'Read Vault',
       builtinFsListDesc: 'List vault directory structure',
