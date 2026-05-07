@@ -1,10 +1,11 @@
-import { App, Modal } from 'obsidian'
+import type { App } from '../../runtime/react-compat'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
-import SmartComposerPlugin from '../../main'
+import { Modal } from '../../runtime/react-compat'
+import type SmartComposerPlugin from '../../main'
 
 type ModalProps<T extends Record<string, unknown>> = {
   app: App

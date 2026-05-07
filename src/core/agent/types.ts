@@ -9,7 +9,7 @@ import { ReasoningLevel } from '../../types/reasoning'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
-import { McpManager } from '../mcp/mcpManager'
+import type { McpManager } from '../mcp/mcpManager'
 
 export type AgentRuntimeSnapshot = {
   messages: ChatMessage[]

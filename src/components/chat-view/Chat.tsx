@@ -2,7 +2,7 @@ import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import cx from 'clsx'
 import { Download, History, Plus } from 'lucide-react'
-import { MarkdownView, Notice, TFile, TFolder, normalizePath } from 'obsidian'
+import { MarkdownView, normalizePath, Notice, TFile, TFolder, useApp, usePlugin} from '../../runtime/react-compat'
 import {
   forwardRef,
   useCallback,
@@ -17,10 +17,8 @@ import { flushSync } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
 
 import { DEFAULT_UNTITLED_CONVERSATION_TITLE } from '../../constants'
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
   getLatestAssistantContextUsage,

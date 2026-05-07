@@ -1,4 +1,4 @@
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../../runtime/react-compat'
 import { useState } from 'react'
 
 import SmartComposerPlugin from '../../../../main'

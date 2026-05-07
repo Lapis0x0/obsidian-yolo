@@ -1,5 +1,5 @@
 import { Edit, Info, Plus, Trash2 } from 'lucide-react'
-import { App, Menu, Notice } from 'obsidian'
+import { App, Menu, Notice } from '../../../runtime/react-compat'
 import { useMemo, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 

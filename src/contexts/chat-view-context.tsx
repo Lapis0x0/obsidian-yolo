@@ -1,15 +1,16 @@
 import React from 'react'
+import type { Component } from '../runtime/react-compat'
 
-import { ChatView } from '../ChatView'
+export type ChatViewLike = Component
 
-const ChatViewContext = React.createContext<ChatView | undefined>(undefined)
+const ChatViewContext = React.createContext<ChatViewLike | undefined>(undefined)
 
 export const ChatViewProvider = ({
   children,
   chatView,
 }: {
   children: React.ReactNode
-  chatView: ChatView
+  chatView: ChatViewLike
 }) => {
   return (
     <ChatViewContext.Provider value={chatView}>

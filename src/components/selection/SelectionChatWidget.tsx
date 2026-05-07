@@ -1,4 +1,4 @@
-import { Editor, Platform } from 'obsidian'
+import { Editor, Platform } from '../../runtime/react-compat'
 import { useEffect, useRef, useState } from 'react'
 import { Root, createRoot } from 'react-dom/client'
 

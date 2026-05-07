@@ -1,4 +1,4 @@
-import { ButtonComponent } from 'obsidian'
+import { ButtonComponent } from '../../runtime/react-compat'
 import { useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'

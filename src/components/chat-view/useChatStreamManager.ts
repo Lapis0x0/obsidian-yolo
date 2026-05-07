@@ -1,5 +1,5 @@
 import { UseMutationResult, useMutation } from '@tanstack/react-query'
-import { TFile } from 'obsidian'
+import { TFile } from '../../runtime/react-compat'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -24,7 +24,6 @@ import {
   LLMModelNotFoundException,
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
-import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
@@ -39,10 +38,10 @@ import { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { useYoloRuntime } from '../../runtime'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode } from './chat-input/ChatModeSelect'
-import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 import { resolveChatModeRuntime } from './chat-runtime-profiles'
 
 type UseChatStreamManagerParams = {
@@ -215,6 +214,7 @@ export function useChatStreamManager({
   compaction,
   onRunSettled,
 }: UseChatStreamManagerParams): UseChatStreamManager {
+  const runtime = useYoloRuntime()
   const app = useApp()
   const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
@@ -600,8 +600,7 @@ export function useChatStreamManager({
       branchTarget?: BranchRetryTarget
       compactionOverride?: ChatConversationCompactionState
     }) => {
-      const lastMessage = chatMessages.at(-1)
-      if (!lastMessage) {
+      if (chatMessages.length === 0) {
         return {
           aborted: false,
         }
@@ -632,217 +631,36 @@ export function useChatStreamManager({
           : modelIds && modelIds.length > 0
             ? modelIds
             : [requestedModelId]
+        baseConversationMessagesRef.current = chatMessages
+        baseCompactionStateRef.current =
+          (compactionOverride ?? compaction) ?? []
 
-        const resolveClientForModelId = (
-          requestedId: string,
-        ): ReturnType<typeof getChatModelClient> => {
-          try {
-            return getChatModelClient({
-              settings,
-              modelId: requestedId,
-              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-            })
-          } catch (error) {
-            if (
-              error instanceof LLMModelNotFoundException &&
-              settings.chatModels.length > 0
-            ) {
-              return getChatModelClient({
-                settings,
-                modelId: settings.chatModels[0].id,
-                onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-              })
-            }
-            throw error
-          }
-        }
-
-        const resolvedClient = resolveClientForModelId(targetModelIds[0])
-
-        const currentProvider = settings.providers.find(
-          (provider) => provider.id === resolvedClient.model.providerId,
-        )
-        const resolvedCompactionClient = resolveCompactionClient()
-        const shouldStreamResponse = shouldUseStreamingForProvider({
-          requestedStream: conversationOverrides?.stream ?? true,
-          provider: currentProvider,
-        })
-
-        const modelTemperature = resolvedClient.model.temperature
-        const modelTopP = resolvedClient.model.topP
-        const modelMaxTokens = resolvedClient.model.maxOutputTokens
-        const effectiveModel = resolvedClient.model
-        const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
-        const enabledSkillEntries = selectedAssistant
-          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
-              isSkillEnabledForAssistant({
-                assistant: selectedAssistant,
-                skillId: skill.id,
-                disabledSkillIds,
-              }),
-            )
-          : []
-        const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
-        const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
-
-        const chatModeRuntime = resolveChatModeRuntime({
-          mode: chatMode,
-          assistant: selectedAssistant,
-          assistantEnabledToolNames:
-            getEnabledAssistantToolNames(selectedAssistant),
-        })
-
-        const mcpManager = await getMcpManager()
-
-        const loopConfig = chatModeRuntime.loopConfig
-        const requestParams = {
-          stream: shouldStreamResponse,
-          temperature: conversationOverrides?.temperature ?? modelTemperature,
-          top_p: conversationOverrides?.top_p ?? modelTopP,
-          max_tokens: modelMaxTokens,
-          primaryRequestTimeoutMs:
-            settings.continuationOptions.primaryRequestTimeoutMs,
-          streamFallbackRecoveryEnabled:
-            settings.continuationOptions.streamFallbackRecoveryEnabled,
-        }
-        const maxContextOverride =
-          conversationOverrides?.maxContextMessages ?? undefined
-        const effectiveCompactionForRequest = compactionOverride ?? compaction
-        const baseInput = {
+        await runtime.agent.run({
+          conversationId,
           messages: chatMessages,
-          requestContextBuilder,
-          mcpManager,
-          compaction: effectiveCompactionForRequest,
-          compactionProviderClient: resolvedCompactionClient.providerClient,
-          compactionModel: resolvedCompactionClient.model,
+          requestMessages,
+          conversationMessages: chatMessages,
+          compaction: compactionOverride ?? compaction,
+          modelId:
+            branchTarget?.branchModelId?.trim() || targetModelIds[0],
+          modelIds:
+            branchTarget || requestLastMessage?.role !== 'user'
+              ? undefined
+              : targetModelIds,
+          assistantId: effectiveAssistantId,
           reasoningLevel,
-          allowedToolNames: chatModeRuntime.allowedToolNames,
-          toolPreferences: chatModeRuntime.toolPreferences,
-          workspaceScope:
-            resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
-          allowedSkillIds,
-          allowedSkillNames,
-          requestParams,
-          maxContextOverride,
-          contextualInjections: buildChatContextualInjections({
-            includeCurrentFileContent:
-              settings.chatOptions.includeCurrentFileContent,
-            currentFile: currentFileOverride,
-            currentFileViewState,
-          }),
-          geminiTools: {
-            useWebSearch: conversationOverrides?.useWebSearch ?? false,
-            useUrlContext: conversationOverrides?.useUrlContext ?? false,
+          branchTarget: branchTarget
+            ? {
+                branchId: branchTarget.branchId,
+                sourceUserMessageId: branchTarget.sourceUserMessageId,
+                branchLabel: branchTarget.branchLabel,
+              }
+            : undefined,
+          overrides: {
+            ...(conversationOverrides ?? {}),
+            chatMode,
           },
-        }
-
-        if (branchTarget && requestLastMessage?.role === 'user') {
-          const branchRunMessages = requestMessages ?? chatMessages
-          baseConversationMessagesRef.current = chatMessages
-          plugin
-            .getAgentService()
-            .replaceConversationMessages(
-              conversationId,
-              chatMessages,
-              effectiveCompactionForRequest,
-              { persistState: true },
-            )
-
-          await plugin.getAgentService().run({
-            conversationId,
-            persistState: true,
-            loopConfig,
-            input: {
-              ...baseInput,
-              messages: branchRunMessages,
-              requestMessages,
-              providerClient: resolvedClient.providerClient,
-              model: effectiveModel,
-              conversationId,
-              branchId: branchTarget.branchId,
-              sourceUserMessageId: branchTarget.sourceUserMessageId,
-              branchLabel:
-                branchTarget.branchLabel ??
-                effectiveModel.name ??
-                effectiveModel.model ??
-                effectiveModel.id,
-              abortSignal: abortController.signal,
-            },
-          })
-        } else if (
-          targetModelIds.length <= 1 ||
-          requestLastMessage?.role !== 'user'
-        ) {
-          await plugin.getAgentService().run({
-            conversationId,
-            loopConfig,
-            input: {
-              ...baseInput,
-              requestMessages,
-              providerClient: resolvedClient.providerClient,
-              model: effectiveModel,
-              conversationId,
-              abortSignal: abortController.signal,
-            },
-          })
-        } else {
-          baseConversationMessagesRef.current = chatMessages
-          plugin
-            .getAgentService()
-            .replaceConversationMessages(
-              conversationId,
-              chatMessages,
-              baseCompactionStateRef.current,
-              { persistState: true },
-            )
-
-          const runPromises = targetModelIds.map(async (targetModelId) => {
-            const branchResolvedClient = resolveClientForModelId(targetModelId)
-            const branchProvider = settings.providers.find(
-              (provider) =>
-                provider.id === branchResolvedClient.model.providerId,
-            )
-            const branchShouldStream = shouldUseStreamingForProvider({
-              requestedStream: conversationOverrides?.stream ?? true,
-              provider: branchProvider,
-            })
-            const branchAbortController = new AbortController()
-            const branchModel = branchResolvedClient.model
-            const branchLabel =
-              branchModel.name?.trim() || branchModel.model || branchModel.id
-            const branchId = `${lastMessage.id}:${branchModel.id}`
-
-            await plugin.getAgentService().run({
-              conversationId,
-              persistState: true,
-              loopConfig,
-              input: {
-                ...baseInput,
-                requestMessages,
-                providerClient: branchResolvedClient.providerClient,
-                model: branchModel,
-                conversationId,
-                branchId,
-                sourceUserMessageId: lastMessage.id,
-                branchLabel,
-                abortSignal: branchAbortController.signal,
-                requestParams: {
-                  ...requestParams,
-                  stream: branchShouldStream,
-                  temperature:
-                    conversationOverrides?.temperature ??
-                    branchResolvedClient.model.temperature,
-                  top_p:
-                    conversationOverrides?.top_p ??
-                    branchResolvedClient.model.topP,
-                  max_tokens: branchResolvedClient.model.maxOutputTokens,
-                },
-              },
-            })
-          })
-
-          await Promise.allSettled(runPromises)
-        }
+        })
 
         if (abortController.signal.aborted) {
           return {

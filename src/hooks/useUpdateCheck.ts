@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { usePlugin } from '../contexts/plugin-context'
+import { usePlugin } from '../runtime/react-compat'
 import type { UpdateCheckResult } from '../core/update/updateChecker'
 
 export function useUpdateCheck(): {

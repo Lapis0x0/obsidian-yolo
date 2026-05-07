@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ItemView, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
+import { ItemView, TFile, TFolder, WorkspaceLeaf } from './runtime/react-compat'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
@@ -21,6 +21,11 @@ import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import SmartComposerPlugin from './main'
+import {
+  createObsidianYoloRuntime,
+  YoloRuntimeProvider,
+} from './runtime'
+import type { YoloRuntime } from './runtime'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import { MentionableBlockData, MentionableImage } from './types/mentionable'
 
@@ -30,12 +35,14 @@ export class ChatView extends ItemView {
   private initialChatProps?: ChatProps
   private chatRef: React.RefObject<ChatRef> = React.createRef()
   private removeSettingsChangeListener?: () => void
+  private readonly runtime: YoloRuntime
 
   constructor(
     leaf: WorkspaceLeaf,
     private plugin: SmartComposerPlugin,
   ) {
     super(leaf)
+    this.runtime = createObsidianYoloRuntime(plugin)
   }
 
   getViewType() {
@@ -107,61 +114,63 @@ export class ChatView extends ItemView {
     })
 
     this.root.render(
-      <ChatViewProvider chatView={this}>
-        <PluginProvider plugin={this.plugin}>
-          <LanguageProvider>
-            <AppProvider app={this.app}>
-              <SettingsProvider
-                settings={this.plugin.settings}
-                setSettings={(newSettings) =>
-                  this.plugin.setSettings(newSettings)
-                }
-                addSettingsChangeListener={(listener) =>
-                  this.plugin.addSettingsChangeListener(listener)
-                }
-              >
-                <DarkModeProvider>
-                  <DatabaseProvider
-                    getDatabaseManager={() => this.plugin.getDbManager()}
-                  >
-                    <RAGProvider
-                      getRAGEngine={() => this.plugin.getRAGEngine()}
+      <YoloRuntimeProvider runtime={this.runtime}>
+        <ChatViewProvider chatView={this}>
+          <PluginProvider plugin={this.plugin}>
+            <LanguageProvider>
+              <AppProvider app={this.app}>
+                <SettingsProvider
+                  settings={this.plugin.settings}
+                  setSettings={(newSettings) =>
+                    this.plugin.setSettings(newSettings)
+                  }
+                  addSettingsChangeListener={(listener) =>
+                    this.plugin.addSettingsChangeListener(listener)
+                  }
+                >
+                  <DarkModeProvider>
+                    <DatabaseProvider
+                      getDatabaseManager={() => this.plugin.getDbManager()}
                     >
-                      <McpProvider
-                        getMcpManager={() => this.plugin.getMcpManager()}
+                      <RAGProvider
+                        getRAGEngine={() => this.plugin.getRAGEngine()}
                       >
-                        <QueryClientProvider client={queryClient}>
-                          <React.StrictMode>
-                            <DialogContainerProvider
-                              container={
-                                this.containerEl.children[1] as HTMLElement
-                              }
-                            >
-                              <ChatSidebarTabs
-                                chatRef={this.chatRef}
-                                placement={placement}
-                                initialChatProps={this.initialChatProps}
-                                onConversationContextChange={(context) => {
-                                  const manager =
-                                    this.plugin.getChatLeafSessionManager()
-                                  manager.updateLeafSummary(this.leaf, context)
-                                  this.updateDisplayTitle(
-                                    context.currentConversationTitle,
-                                  )
-                                }}
-                              />
-                            </DialogContainerProvider>
-                          </React.StrictMode>
-                        </QueryClientProvider>
-                      </McpProvider>
-                    </RAGProvider>
-                  </DatabaseProvider>
-                </DarkModeProvider>
-              </SettingsProvider>
-            </AppProvider>
-          </LanguageProvider>
-        </PluginProvider>
-      </ChatViewProvider>,
+                        <McpProvider
+                          getMcpManager={() => this.plugin.getMcpManager()}
+                        >
+                          <QueryClientProvider client={queryClient}>
+                            <React.StrictMode>
+                              <DialogContainerProvider
+                                container={
+                                  this.containerEl.children[1] as HTMLElement
+                                }
+                              >
+                                <ChatSidebarTabs
+                                  chatRef={this.chatRef}
+                                  placement={placement}
+                                  initialChatProps={this.initialChatProps}
+                                  onConversationContextChange={(context) => {
+                                    const manager =
+                                      this.plugin.getChatLeafSessionManager()
+                                    manager.updateLeafSummary(this.leaf, context)
+                                    this.updateDisplayTitle(
+                                      context.currentConversationTitle,
+                                    )
+                                  }}
+                                />
+                              </DialogContainerProvider>
+                            </React.StrictMode>
+                          </QueryClientProvider>
+                        </McpProvider>
+                      </RAGProvider>
+                    </DatabaseProvider>
+                  </DarkModeProvider>
+                </SettingsProvider>
+              </AppProvider>
+            </LanguageProvider>
+          </PluginProvider>
+        </ChatViewProvider>
+      </YoloRuntimeProvider>,
     )
     return Promise.resolve()
   }

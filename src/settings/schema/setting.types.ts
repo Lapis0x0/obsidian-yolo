@@ -538,6 +538,20 @@ export const smartComposerSettingsSchema = z.object({
 
   // Quick Ask selected assistant ID
   quickAskAssistantId: z.string().optional(),
+
+  // Web Runtime Server configuration
+  webRuntimeServer: z.object({
+    enabled: z.boolean().catch(false),
+    host: z.enum(['127.0.0.1', '0.0.0.0']).catch('127.0.0.1'),
+    port: z.number().int().min(1024).max(65535).catch(18789),
+    serveStatic: z.boolean().catch(true),
+  }).catch({
+    enabled: false,
+    host: '127.0.0.1',
+    port: 18789,
+    serveStatic: true,
+  }),
+
 })
 export type SmartComposerSettings = z.infer<typeof smartComposerSettingsSchema>
 

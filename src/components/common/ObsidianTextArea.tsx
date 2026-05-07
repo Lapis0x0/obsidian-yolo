@@ -1,4 +1,4 @@
-import { TextAreaComponent } from 'obsidian'
+import { TextAreaComponent } from '../../runtime/react-compat'
 import { useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'

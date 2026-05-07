@@ -22,7 +22,7 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { App, Notice, Platform } from 'obsidian'
+import { App, Notice, Platform } from '../../../runtime/react-compat'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

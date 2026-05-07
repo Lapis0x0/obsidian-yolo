@@ -7,7 +7,7 @@ jest.mock('react', () => {
   }
 })
 
-jest.mock('../../contexts/app-context', () => ({
+jest.mock('../../runtime/react-compat', () => ({
   useApp: () => ({}),
 }))
 

@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import { App } from '../../runtime/react-compat'
 
 import { SettingsProvider } from '../../contexts/settings-context'
 import SmartComposerPlugin from '../../main'

@@ -1,7 +1,7 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { COMMAND_PRIORITY_LOW, KEY_ENTER_COMMAND } from 'lexical'
-import { Platform } from 'obsidian'
 import { useEffect } from 'react'
+import { Platform } from '../../../../../runtime/react-compat'
 
 export default function OnEnterPlugin({
   onEnter,

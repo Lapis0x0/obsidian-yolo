@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { usePlugin } from '../contexts/plugin-context'
+import { usePlugin } from '../runtime/react-compat'
 
 export function useInstallationIncompleteBanner(): {
   detail: {

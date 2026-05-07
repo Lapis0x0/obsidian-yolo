@@ -6,7 +6,7 @@ import {
 import cx from 'clsx'
 import dayjs from 'dayjs'
 import { Loader2, PickaxeIcon, RefreshCw, Trash2 } from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import { App, Notice } from '../../../runtime/react-compat'
 import { useState } from 'react'
 
 import { AppProvider } from '../../../contexts/app-context'

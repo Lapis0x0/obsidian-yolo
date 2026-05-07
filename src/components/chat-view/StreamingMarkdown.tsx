@@ -1,4 +1,3 @@
-import { Keymap } from 'obsidian'
 import {
   type MouseEvent,
   memo,
@@ -10,7 +9,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { useApp } from '../../contexts/app-context'
+import { Keymap, useApp } from '../../runtime/react-compat'
 
 type StreamingMarkdownProps = {
   content: string

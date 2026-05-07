@@ -1,6 +1,4 @@
 import debounce from 'lodash.debounce'
-import isEqual from 'lodash.isequal'
-import { App } from 'obsidian'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { editorStateToPlainText } from '../components/chat-view/chat-input/utils/editor-state-to-plain-text'
@@ -8,13 +6,10 @@ import {
   DEFAULT_CHAT_TITLE_PROMPT,
   DEFAULT_UNTITLED_CONVERSATION_TITLE,
 } from '../constants'
-import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
 import { useSettings } from '../contexts/settings-context'
 import { getChatModelClient } from '../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
-import { batchLookupImageCache } from '../database/json/chat/imageCacheStore'
-import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import { ChatConversationMetadata } from '../database/json/chat/types'
 import {
   ChatConversationCompactionLike,
@@ -22,18 +17,10 @@ import {
   ChatMessage,
   ChatSelectedSkill,
   ChatUserMessage,
-  SerializedChatMessage,
   normalizeChatConversationCompactionState,
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'
-import { Mentionable } from '../types/mentionable'
-import { ToolCallResponseStatus } from '../types/tool-call.types'
-import {
-  deserializeMentionable,
-  serializeMentionable,
-} from '../utils/chat/mentionable'
-
-import { useChatManager } from './useJsonManagers'
+import { useYoloRuntime } from '../runtime'
 
 const LEGACY_UNTITLED_CONVERSATION_TITLES = new Set([
   '新消息',
@@ -124,10 +111,9 @@ type UseChatHistory = {
 }
 
 export function useChatHistory(): UseChatHistory {
-  const app = useApp()
+  const runtime = useYoloRuntime()
   const { settings, setSettings } = useSettings()
   const { language } = useLanguage()
-  const chatManager = useChatManager()
   const [chatList, setChatList] = useState<ChatConversationMetadata[]>([])
   const titleGenerationInFlightRef = useRef<Set<string>>(new Set())
   const titleGenerationCooldownUntilRef = useRef<Map<string, number>>(new Map())
@@ -150,9 +136,8 @@ export function useChatHistory(): UseChatHistory {
   )
 
   const fetchChatList = useCallback(async () => {
-    const list = await chatManager.listChats()
-    setChatList(list)
-  }, [chatManager])
+    setChatList(await runtime.chat.list())
+  }, [runtime])
 
   const emitChatHistoryUpdated = useCallback(() => {
     window.dispatchEvent(new CustomEvent(CHAT_HISTORY_UPDATED_EVENT))
@@ -188,106 +173,26 @@ export function useChatHistory(): UseChatHistory {
       assistantGroupBoundaryMessageIds?: string[],
       options?: { touchUpdatedAt?: boolean },
     ): Promise<void> => {
-      const serializedMessages = messages.map(serializeChatMessage)
-      const existingConversation = await chatManager.findById(id)
-      const normalizedCompaction =
-        normalizeChatConversationCompactionState(compaction)
-      const existingCompaction = normalizeChatConversationCompactionState(
-        existingConversation?.compaction,
-      )
-      const compactedMessages = await compactConversationMessagesForStorage({
-        app,
-        conversationId: id,
-        messages: serializedMessages,
-        previousMessages: existingConversation?.messages,
-        settings,
-      })
-
-      if (existingConversation) {
-        const nextOverrides =
-          overrides === undefined
-            ? (existingConversation.overrides ?? null)
-            : overrides
-        if (
-          isEqual(existingConversation.messages, compactedMessages) &&
-          isEqual(
-            existingConversation.overrides ?? null,
-            nextOverrides ?? null,
-          ) &&
-          existingConversation.conversationModelId === conversationModelId &&
-          isEqual(
-            existingConversation.messageModelMap ?? null,
-            messageModelMap ?? null,
-          ) &&
-          isEqual(
-            existingConversation.activeBranchByUserMessageId ?? null,
-            activeBranchByUserMessageId ?? null,
-          ) &&
-          isEqual(
-            existingConversation.assistantGroupBoundaryMessageIds ?? null,
-            assistantGroupBoundaryMessageIds ?? null,
-          ) &&
-          existingConversation.reasoningLevel === reasoningLevel &&
-          isEqual(existingCompaction, normalizedCompaction)
-        ) {
-          return
-        }
-        await chatManager.updateChat(
-          existingConversation.id,
-          {
-            messages: compactedMessages,
-            overrides:
-              overrides === undefined
-                ? (existingConversation.overrides ?? null)
-                : overrides,
-            conversationModelId:
-              conversationModelId === undefined
-                ? existingConversation.conversationModelId
-                : conversationModelId,
-            messageModelMap:
-              messageModelMap === undefined
-                ? existingConversation.messageModelMap
-                : messageModelMap,
-            activeBranchByUserMessageId:
-              activeBranchByUserMessageId === undefined
-                ? existingConversation.activeBranchByUserMessageId
-                : activeBranchByUserMessageId,
-            assistantGroupBoundaryMessageIds:
-              assistantGroupBoundaryMessageIds === undefined
-                ? existingConversation.assistantGroupBoundaryMessageIds
-                : assistantGroupBoundaryMessageIds,
-            reasoningLevel,
-            compaction:
-              compaction === undefined
-                ? existingCompaction
-                : normalizedCompaction,
-          },
-          options?.touchUpdatedAt === undefined
+      await runtime.chat.save({
+        id,
+        messages,
+        overrides,
+        conversationModelId,
+        messageModelMap,
+        activeBranchByUserMessageId,
+        assistantGroupBoundaryMessageIds,
+        reasoningLevel,
+        compaction:
+          compaction === undefined
             ? undefined
-            : { touchUpdatedAt: options.touchUpdatedAt },
-        )
-      } else {
-        // 默认标题统一为"新对话"，待首条用户消息保存后由对话命名模型自动改名
-        const defaultTitle = DEFAULT_UNTITLED_CONVERSATION_TITLE
-
-        await chatManager.createChat({
-          id,
-          title: defaultTitle,
-          messages: compactedMessages,
-          overrides: overrides ?? null,
-          conversationModelId,
-          messageModelMap,
-          activeBranchByUserMessageId,
-          assistantGroupBoundaryMessageIds,
-          reasoningLevel,
-          compaction: normalizedCompaction,
-        })
-      }
+            : normalizeChatConversationCompactionState(compaction),
+        touchUpdatedAt: options?.touchUpdatedAt,
+      })
 
       emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [app, chatManager, emitChatHistoryUpdated, fetchChatList, settings],
+    [emitChatHistoryUpdated, fetchChatList, runtime],
   )
 
   const debouncedCreateOrUpdateConversation = useMemo(
@@ -363,26 +268,19 @@ export function useChatHistory(): UseChatHistory {
 
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
-      await chatManager.deleteChat(id)
+      await runtime.chat.delete(id)
       emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [chatManager, emitChatHistoryUpdated, fetchChatList],
+    [emitChatHistoryUpdated, fetchChatList, runtime],
   )
 
   const getChatMessagesById = useCallback(
     async (id: string): Promise<ChatMessage[] | null> => {
-      const conversation = await chatManager.findById(id)
-      if (!conversation) {
-        return null
-      }
-      const messages = conversation.messages.map((message) =>
-        deserializeChatMessage(message, app),
-      )
-      await hydrateImageCacheRefs(messages, app, settingsRef.current)
-      return messages
+      const conversation = await runtime.chat.get(id)
+      return conversation?.messages ?? null
     },
-    [chatManager, app],
+    [runtime],
   )
 
   const getConversationById = useCallback(
@@ -398,14 +296,10 @@ export function useChatHistory(): UseChatHistory {
       reasoningLevel?: string
       compaction?: ChatConversationCompactionState
     } | null> => {
-      const conversation = await chatManager.findById(id)
+      const conversation = await runtime.chat.get(id)
       if (!conversation) return null
-      const messages = conversation.messages.map((m) =>
-        deserializeChatMessage(m, app),
-      )
-      await hydrateImageCacheRefs(messages, app, settingsRef.current)
       return {
-        messages,
+        messages: conversation.messages,
         overrides: conversation.overrides,
         conversationModelId: conversation.conversationModelId,
         messageModelMap: conversation.messageModelMap,
@@ -418,7 +312,7 @@ export function useChatHistory(): UseChatHistory {
         ),
       }
     },
-    [chatManager, app],
+    [runtime],
   )
 
   const updateConversationTitle = useCallback(
@@ -426,21 +320,23 @@ export function useChatHistory(): UseChatHistory {
       if (title.length === 0) {
         throw new Error('Chat title cannot be empty')
       }
-      const updatedConversation = await chatManager.updateChat(id, {
-        title,
-      })
-      if (!updatedConversation) {
+      const conversation = await runtime.chat.get(id)
+      if (!conversation) {
         throw new Error('Conversation not found')
       }
+      await runtime.chat.updateTitle(id, title)
       emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [chatManager, emitChatHistoryUpdated, fetchChatList],
+    [emitChatHistoryUpdated, fetchChatList, runtime],
   )
 
   const toggleConversationPinned = useCallback(
     async (id: string): Promise<void> => {
-      const conversation = await chatManager.findById(id)
+      const conversation =
+        chatList.find((chat) => chat.id === id) ??
+        (await runtime.chat.list()).find((chat) => chat.id === id) ??
+        null
       if (!conversation) {
         throw new Error('Conversation not found')
       }
@@ -460,16 +356,13 @@ export function useChatHistory(): UseChatHistory {
         )
       })
       try {
-        await chatManager.updateChat(conversation.id, {
-          isPinned,
-          pinnedAt,
-        })
+        await runtime.chat.togglePinned(conversation.id)
       } finally {
         emitChatHistoryUpdated()
         await fetchChatList()
       }
     },
-    [chatManager, emitChatHistoryUpdated, fetchChatList],
+    [chatList, emitChatHistoryUpdated, fetchChatList, runtime],
   )
 
   const generateConversationTitle = useCallback(
@@ -510,11 +403,17 @@ export function useChatHistory(): UseChatHistory {
       titleGenerationInFlightRef.current.add(id)
 
       try {
+        const readConversation = async () => runtime.chat.get(id)
+        const updateGeneratedTitle = async (title: string) =>
+          runtime.chat.updateTitle(id, title, {
+            touchUpdatedAt: false,
+          })
+
         // 等待对话存在（最多等待 3 秒，每 200ms 检查一次）
         // 这是为了处理 debounce 导致的保存延迟
         let conversation = null
         for (let i = 0; i < AUTO_TITLE_WAIT_CONVERSATION_RETRIES; i++) {
-          conversation = await chatManager.findById(id)
+          conversation = await readConversation()
           if (conversation) break
           await new Promise((resolve) =>
             setTimeout(resolve, AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS),
@@ -658,18 +557,12 @@ export function useChatHistory(): UseChatHistory {
         titleGenerationCooldownUntilRef.current.delete(id)
 
         // 再次检查标题是否仍为默认标题，避免竞态条件
-        const currentConversation = await chatManager.findById(id)
+        const currentConversation = await readConversation()
         if (
           currentConversation &&
           (force || isUntitledConversationTitle(currentConversation.title))
         ) {
-          await chatManager.updateChat(
-            id,
-            { title: generatedTitle },
-            {
-              touchUpdatedAt: false,
-            },
-          )
+          await updateGeneratedTitle(generatedTitle)
           emitChatHistoryUpdated()
           await fetchChatList()
         }
@@ -678,12 +571,12 @@ export function useChatHistory(): UseChatHistory {
       }
     },
     [
-      chatManager,
       fetchChatList,
       handleAutoPromoteTransportMode,
       language,
       settings,
       emitChatHistoryUpdated,
+      runtime,
     ],
   )
 
@@ -697,143 +590,5 @@ export function useChatHistory(): UseChatHistory {
     toggleConversationPinned,
     generateConversationTitle,
     chatList,
-  }
-}
-
-const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
-  switch (message.role) {
-    case 'user':
-      return {
-        role: 'user',
-        content: message.content,
-        promptContent: message.promptContent,
-        snapshotRef: message.snapshotRef,
-        id: message.id,
-        mentionables: message.mentionables.map(serializeMentionable),
-        selectedSkills: message.selectedSkills ?? [],
-        selectedModelIds: message.selectedModelIds ?? [],
-        reasoningLevel: message.reasoningLevel,
-      }
-    case 'assistant':
-      return {
-        role: 'assistant',
-        content: message.content,
-        reasoning: message.reasoning,
-        annotations: message.annotations,
-        toolCallRequests: message.toolCallRequests,
-        id: message.id,
-        metadata: message.metadata,
-      }
-    case 'tool':
-      return {
-        role: 'tool',
-        toolCalls: message.toolCalls,
-        id: message.id,
-        metadata: message.metadata,
-      }
-    case 'external_agent_result':
-      return message
-  }
-}
-
-const deserializeChatMessage = (
-  message: SerializedChatMessage,
-  app: App,
-): ChatMessage => {
-  switch (message.role) {
-    case 'user': {
-      return {
-        role: 'user',
-        content: message.content,
-        promptContent: message.promptContent,
-        snapshotRef: message.snapshotRef,
-        id: message.id,
-        mentionables: message.mentionables
-          .map((m) => deserializeMentionable(m, app))
-          .filter((m): m is Mentionable => m !== null),
-        selectedSkills: message.selectedSkills ?? [],
-        selectedModelIds: message.selectedModelIds ?? [],
-        reasoningLevel: message.reasoningLevel,
-      }
-    }
-    case 'assistant':
-      return {
-        role: 'assistant',
-        content: message.content,
-        reasoning: message.reasoning,
-        annotations: message.annotations,
-        toolCallRequests: message.toolCallRequests,
-        id: message.id,
-        metadata: message.metadata,
-      }
-    case 'tool':
-      return {
-        role: 'tool',
-        toolCalls: message.toolCalls,
-        id: message.id,
-        metadata: message.metadata,
-      }
-    case 'external_agent_result':
-      return message
-  }
-}
-
-/**
- * Hydrate cache:// refs in tool message contentParts back to data URLs.
- * Mutates messages in place for efficiency.
- */
-const hydrateImageCacheRefs = async (
-  messages: ChatMessage[],
-  app: App,
-  settings?: { yolo?: { baseDir?: string } } | null,
-): Promise<void> => {
-  // Collect all cache keys that need resolution
-  const cacheKeys = new Set<string>()
-  for (const msg of messages) {
-    if (msg.role !== 'tool') continue
-    for (const tc of msg.toolCalls) {
-      if (tc.response.status !== ToolCallResponseStatus.Success) continue
-      const parts = tc.response.data.contentParts
-      if (!parts) continue
-      for (const part of parts) {
-        if (
-          part.type === 'image_url' &&
-          part.image_url.url.startsWith('cache://')
-        ) {
-          cacheKeys.add(part.image_url.cacheKey ?? part.image_url.url.slice(8))
-        }
-      }
-    }
-  }
-
-  if (cacheKeys.size === 0) return
-
-  // Batch lookup
-  const resolved = await batchLookupImageCache(
-    app,
-    Array.from(cacheKeys),
-    settings,
-  )
-
-  // Replace cache refs with resolved data URLs
-  for (const msg of messages) {
-    if (msg.role !== 'tool') continue
-    for (const tc of msg.toolCalls) {
-      if (tc.response.status !== ToolCallResponseStatus.Success) continue
-      const parts = tc.response.data.contentParts
-      if (!parts) continue
-      for (const part of parts) {
-        if (
-          part.type === 'image_url' &&
-          part.image_url.url.startsWith('cache://')
-        ) {
-          const key = part.image_url.cacheKey ?? part.image_url.url.slice(8)
-          const dataUrl = resolved.get(key)
-          if (dataUrl) {
-            part.image_url.url = dataUrl
-          }
-        }
-      }
-    }
   }
 }

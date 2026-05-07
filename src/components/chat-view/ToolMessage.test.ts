@@ -4,8 +4,15 @@ jest.mock('../../contexts/language-context', () => ({
   }),
 }))
 
-jest.mock('../../contexts/plugin-context', () => ({
-  usePlugin: () => ({}),
+jest.mock('../../runtime/react-compat', () => ({
+  Notice: jest.fn(),
+  usePlugin: () => ({
+    getAgentService: () => ({
+      approveToolCall: jest.fn(),
+      rejectToolCall: jest.fn(),
+      abortToolCall: jest.fn(),
+    }),
+  }),
 }))
 
 jest.mock('./ObsidianMarkdown', () => ({

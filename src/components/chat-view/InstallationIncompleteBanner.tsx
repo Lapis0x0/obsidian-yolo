@@ -2,7 +2,7 @@ import { AlertTriangle, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
+import { usePlugin } from '../../runtime/react-compat'
 import { useInstallationIncompleteBanner } from '../../hooks/useInstallationIncompleteBanner'
 
 export function InstallationIncompleteBanner(): ReactNode {

@@ -6,7 +6,7 @@ import {
   FolderClosed,
   FolderOpen,
 } from 'lucide-react'
-import { App, TFile, Vault } from 'obsidian'
+import { App, TFile, Vault } from '../../../runtime/react-compat'
 import React, { useMemo, useState } from 'react'
 
 import { listAllFolderPaths } from '../../../utils/rag-utils'

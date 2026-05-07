@@ -11,10 +11,9 @@ import {
   COMMAND_PRIORITY_HIGH,
   DROP_COMMAND,
 } from 'lexical'
-import { TFile } from 'obsidian'
+import { TFile, useApp } from '../../../../../runtime/react-compat'
 import { useEffect } from 'react'
 
-import { useApp } from '../../../../../contexts/app-context'
 import { Mentionable } from '../../../../../types/mentionable'
 import {
   getMentionableName,

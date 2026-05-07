@@ -14,11 +14,10 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
-import { App } from 'obsidian'
 import React, { type FC, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import { usePlugin } from '../../../contexts/plugin-context'
+import { type App, usePlugin } from '../../../runtime/react-compat'
 import { useSettings } from '../../../contexts/settings-context'
 import { Assistant, AssistantIcon } from '../../../types/assistant.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'

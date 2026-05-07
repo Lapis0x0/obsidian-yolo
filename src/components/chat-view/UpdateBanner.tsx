@@ -2,7 +2,7 @@ import { Download, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
+import { usePlugin } from '../../runtime/react-compat'
 import { useUpdateCheck } from '../../hooks/useUpdateCheck'
 
 function interpolateVersion(template: string, version: string): string {

@@ -1,4 +1,4 @@
-import { App, Notice, Platform } from 'obsidian'
+import { App, Notice, Platform } from '../../../runtime/react-compat'
 import { useState } from 'react'
 
 import {

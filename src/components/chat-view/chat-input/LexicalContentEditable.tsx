@@ -12,7 +12,7 @@ import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, useCallback, useEffect, useState } from 'react'
 
-import { useApp } from '../../../contexts/app-context'
+import { useApp } from '../../../runtime/react-compat'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { Assistant } from '../../../types/assistant.types'
 import { ChatModel } from '../../../types/chat-model.types'
@@ -21,6 +21,7 @@ import { Mentionable, MentionableImage } from '../../../types/mentionable'
 import {
   SearchableMentionable,
   fuzzySearch,
+  fuzzySearchFiles,
   fuzzySearchFolders,
 } from '../../../utils/fuzzy-search'
 
@@ -143,6 +144,10 @@ export default function LexicalContentEditable({
     (query: string): MentionableFolder[] => fuzzySearchFolders(app, query),
     [app],
   )
+  const searchFilesByQuery = useCallback(
+    (query: string) => fuzzySearchFiles(app, query),
+    [app],
+  )
 
   const resolvedSearch = useCallback(
     (query: string) => {
@@ -220,6 +225,7 @@ export default function LexicalContentEditable({
         allowAgentModeOption={allowAgentModeOption}
         models={models}
         selectedModelIds={selectedModelIds}
+        searchFilesByQuery={searchFilesByQuery}
         searchFoldersByQuery={searchFoldersByQuery}
       />
       {(skills.length > 0 || onRunSlashCommand) && (

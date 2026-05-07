@@ -1,4 +1,4 @@
-import { App, Notice, normalizePath } from 'obsidian'
+import { App, Notice, normalizePath } from '../../../runtime/react-compat'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
@@ -25,6 +25,7 @@ import { CHAT_DIR } from '../../../database/json/constants'
 import SmartComposerPlugin from '../../../main'
 import { smartComposerSettingsSchema } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -319,6 +320,52 @@ export function EtcSection({ app, className }: EtcSectionProps) {
     }).open()
   }
 
+  const webConfig = settings.webRuntimeServer ?? {
+    enabled: false,
+    host: '127.0.0.1' as const,
+    port: 18789,
+    serveStatic: true,
+  }
+
+  const handleWebToggleEnabled = (enabled: boolean) => {
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          enabled,
+        },
+      })
+    })()
+  }
+
+  const handleWebPortChange = (value: string) => {
+    const port = parseInt(value, 10)
+    if (isNaN(port) || port < 1024 || port > 65535) return
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          port,
+        },
+      })
+    })()
+  }
+
+  const handleWebHostChange = (value: string) => {
+    const host = value === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1'
+    void (async () => {
+      await setSettings({
+        ...settings,
+        webRuntimeServer: {
+          ...webConfig,
+          host,
+        },
+      })
+    })()
+  }
+
   return (
     <div
       className={['smtcmp-settings-section', className]
@@ -429,6 +476,60 @@ export function EtcSection({ app, className }: EtcSectionProps) {
               text={t('settings.etc.reset')}
               warning
               onClick={handleResetSettings}
+            />
+          </ObsidianSetting>
+        </div>
+      </section>
+
+      <section
+        className="smtcmp-settings-block"
+        style={{ marginTop: 'var(--size-4-4)' }}
+      >
+        <div className="smtcmp-settings-block-head">
+          <div className="smtcmp-settings-block-head-title-row">
+            <div className="smtcmp-settings-sub-header smtcmp-settings-block-title">
+              Web Runtime Server
+            </div>
+          </div>
+        </div>
+
+        <div className="smtcmp-settings-block-content">
+          <ObsidianSetting
+            name="Enable Web Server"
+            desc="Start an HTTP server for the browser-based UI."
+            className="smtcmp-settings-card"
+          >
+            <ObsidianToggle
+              value={webConfig.enabled}
+              onChange={handleWebToggleEnabled}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name="Port"
+            desc="HTTP server port (default: 18789)"
+            className="smtcmp-settings-card"
+          >
+            <ObsidianTextInput
+              value={String(webConfig.port)}
+              onChange={handleWebPortChange}
+              placeholder="18789"
+              type="number"
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name="Host"
+            desc="127.0.0.1 only allows local access. 0.0.0.0 allows LAN access and tunneling."
+            className="smtcmp-settings-card"
+          >
+            <ObsidianDropdown
+              value={webConfig.host ?? '127.0.0.1'}
+              options={{
+                '127.0.0.1': '127.0.0.1 (Local only)',
+                '0.0.0.0': '0.0.0.0 (LAN / tunnel)',
+              }}
+              onChange={handleWebHostChange}
             />
           </ObsidianSetting>
         </div>

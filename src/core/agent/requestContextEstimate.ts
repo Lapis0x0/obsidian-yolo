@@ -6,7 +6,7 @@ import type { ChatModel } from '../../types/chat-model.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
-import { McpManager } from '../mcp/mcpManager'
+import type { McpManager } from '../mcp/mcpManager'
 
 import { selectAllowedTools } from './tool-selection'
 

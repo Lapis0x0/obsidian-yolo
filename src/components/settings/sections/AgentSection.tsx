@@ -1,10 +1,9 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { BookOpen, Copy, Cpu, Plus, Trash2, Wrench } from 'lucide-react'
-import { App } from 'obsidian'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import { usePlugin } from '../../../contexts/plugin-context'
+import { type App, usePlugin } from '../../../runtime/react-compat'
 import { useSettings } from '../../../contexts/settings-context'
 import {
   FILE_OPS_GROUP_TOOL_NAME,

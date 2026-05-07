@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
-import { App, Notice, requestUrl } from 'obsidian'
+import { App, Notice, requestUrl } from '../../../runtime/react-compat'
 import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

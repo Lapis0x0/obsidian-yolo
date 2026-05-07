@@ -1,5 +1,5 @@
 import { Settings } from 'lucide-react'
-import { App } from 'obsidian'
+import { App } from '../../../runtime/react-compat'
 import { useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'

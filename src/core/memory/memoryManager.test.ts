@@ -1,4 +1,6 @@
-jest.mock('obsidian')
+jest.mock('obsidian', () =>
+  jest.requireActual('../../runtime/web/obsidianCompat'),
+)
 
 import { App, TFile, TFolder } from 'obsidian'
 

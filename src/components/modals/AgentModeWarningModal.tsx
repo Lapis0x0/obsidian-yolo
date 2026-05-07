@@ -1,4 +1,4 @@
-import { App } from 'obsidian'
+import { App } from '../../runtime/react-compat'
 import { useState } from 'react'
 
 import { ReactModal } from '../common/ReactModal'

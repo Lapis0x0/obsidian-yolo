@@ -8,13 +8,14 @@
 # npm
 node_modules
 vendor/
-runtime/
+/runtime/
 
 # Don't include the compiled files in the repo.
 # They should be uploaded to GitHub releases instead.
 main.js
 meta.json
 main.css
+web-ui/
 
 # Exclude sourcemaps
 *.map

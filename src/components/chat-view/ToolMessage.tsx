@@ -1,11 +1,10 @@
 import cx from 'clsx'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
-import { Notice } from 'obsidian'
+import { Notice, usePlugin } from '../../runtime/react-compat'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import { getBuiltinToolUiMeta } from '../../core/agent/builtinToolUiMeta'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { InvalidToolNameException } from '../../core/mcp/exception'

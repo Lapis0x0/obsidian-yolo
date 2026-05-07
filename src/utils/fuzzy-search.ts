@@ -35,6 +35,40 @@ type FolderWithMetadata = {
 
 type SearchItem = FolderWithMetadata | FileWithMetadata
 
+function getSupportedFiles(app: App): TFile[] {
+  return app.vault
+    .getFiles()
+    .filter((file) =>
+      MENTION_SEARCHABLE_EXTENSIONS.has(file.extension.toLowerCase()),
+    )
+}
+
+function buildFileSearchItems(app: App): FileWithMetadata[] {
+  const currentFile = app.workspace.getActiveFile()
+  const openFiles = getOpenFiles(app)
+
+  return getSupportedFiles(app).map((file) => ({
+    type: 'file',
+    path: file.path,
+    name: file.name,
+    file,
+    opened: openFiles.some((f) => f.path === file.path),
+    distance: currentFile
+      ? currentFile === file
+        ? null
+        : calculateFileDistance(currentFile, file)
+      : null,
+    daysSinceLastModified:
+      (Date.now() - file.stat.mtime) / (1000 * 60 * 60 * 24),
+  }))
+}
+
+function searchItemsToMentionables(
+  items: SearchItem[],
+): SearchableMentionable[] {
+  return items.map((item) => searchItemToMentionable(item))
+}
+
 function scoreFnWithBoost({
   searchItem,
   pathScore,
@@ -161,28 +195,7 @@ export function fuzzySearchFolders(
 
 export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
   const currentFile = app.workspace.getActiveFile()
-  const openFiles = getOpenFiles(app)
-
-  const allSupportedFiles = app.vault
-    .getFiles()
-    .filter((file) =>
-      MENTION_SEARCHABLE_EXTENSIONS.has(file.extension.toLowerCase()),
-    )
-
-  const allFilesWithMetadata: SearchItem[] = allSupportedFiles.map((file) => ({
-    type: 'file',
-    path: file.path,
-    name: file.name,
-    file,
-    opened: openFiles.some((f) => f.path === file.path),
-    distance: currentFile
-      ? currentFile === file
-        ? null
-        : calculateFileDistance(currentFile, file)
-      : null,
-    daysSinceLastModified:
-      (Date.now() - file.stat.mtime) / (1000 * 60 * 60 * 24),
-  }))
+  const allFilesWithMetadata: SearchItem[] = buildFileSearchItems(app)
 
   const allFolders = app.vault.getAllFolders()
   const allFoldersWithMetadata: SearchItem[] = allFolders.map((folder) => ({
@@ -215,7 +228,35 @@ export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
       }),
   })
 
-  return results.map((result) => searchItemToMentionable(result.obj))
+  return searchItemsToMentionables(results.map((result) => result.obj))
+}
+
+export function fuzzySearchFiles(app: App, query: string): MentionableFile[] {
+  const currentFile = app.workspace.getActiveFile()
+  const searchItems = buildFileSearchItems(app)
+
+  if (!query) {
+    return getEmptyQueryResult(searchItems, 20, currentFile).filter(
+      (item): item is MentionableFile => item.type === 'file',
+    )
+  }
+
+  const results = fuzzysort.go(query, searchItems, {
+    keys: ['path', 'name'],
+    threshold: 0.2,
+    limit: 20,
+    all: true,
+    scoreFn: (result) =>
+      scoreFnWithBoost({
+        searchItem: result.obj,
+        pathScore: result[0].score,
+        nameScore: result[1].score,
+      }),
+  })
+
+  return searchItemsToMentionables(results.map((result) => result.obj)).filter(
+    (item): item is MentionableFile => item.type === 'file',
+  )
 }
 
 function searchItemToMentionable(item: SearchItem): SearchableMentionable {

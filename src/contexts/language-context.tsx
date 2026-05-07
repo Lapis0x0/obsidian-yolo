@@ -1,4 +1,3 @@
-import { getLanguage } from 'obsidian'
 import React, {
   ReactNode,
   createContext,
@@ -8,6 +7,7 @@ import React, {
 } from 'react'
 
 import { Language, createTranslationFunction } from '../i18n'
+import { getLanguage } from '../runtime/react-compat'
 
 const resolveObsidianLanguage = (): Language => {
   const rawLanguage = String(getLanguage() ?? '')
