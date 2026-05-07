@@ -22,6 +22,7 @@ import {
 } from '../../../types/mcp.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { CollapsibleToolDescription } from '../common/CollapsibleToolDescription'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import {
   AddMcpServerModal,
@@ -354,8 +355,10 @@ function McpToolComponent({
   return (
     <div className="smtcmp-mcp-tool">
       <div className="smtcmp-mcp-tool-info">
-        <div className="smtcmp-mcp-tool-name">{tool.name}</div>
-        <div className="smtcmp-mcp-tool-description">{tool.description}</div>
+        <CollapsibleToolDescription
+          name={tool.name}
+          description={tool.description}
+        />
       </div>
       <div className="smtcmp-mcp-tool-toggle">
         <span className="smtcmp-mcp-tool-toggle-label">

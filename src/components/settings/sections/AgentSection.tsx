@@ -313,6 +313,16 @@ export function AgentSection({ app }: AgentSectionProps) {
     ...mcpTools.map((tool) => ({ key: tool.id, label: tool.name })),
   ]
 
+  const TAG_DISPLAY_LIMIT = 20
+  const visibleToolTags = toolTags.slice(0, TAG_DISPLAY_LIMIT)
+  const hiddenToolTagsCount = toolTags.length - visibleToolTags.length
+  const visibleSkillEntries = globallyEnabledSkillEntries.slice(
+    0,
+    TAG_DISPLAY_LIMIT,
+  )
+  const hiddenSkillEntriesCount =
+    globallyEnabledSkillEntries.length - visibleSkillEntries.length
+
   return (
     <div className="smtcmp-settings-section smtcmp-agent-section">
       <div className="smtcmp-settings-header">
@@ -350,11 +360,28 @@ export function AgentSection({ app }: AgentSectionProps) {
             </div>
             <div className="smtcmp-agent-cap-count">{toolsCountLabel}</div>
             <div className="smtcmp-agent-cap-tags">
-              {toolTags.map((tool) => (
-                <span key={tool.key} className="smtcmp-agent-chip">
+              {visibleToolTags.map((tool) => (
+                <span
+                  key={tool.key}
+                  className="smtcmp-agent-chip"
+                  title={tool.label}
+                >
                   {tool.label}
                 </span>
               ))}
+              {hiddenToolTagsCount > 0 && (
+                <button
+                  type="button"
+                  className="smtcmp-agent-chip smtcmp-agent-chip--more"
+                  onClick={handleOpenToolsModal}
+                  title={t(
+                    'settings.agent.viewAllTools',
+                    'View all tools',
+                  )}
+                >
+                  +{hiddenToolTagsCount}
+                </button>
+              )}
             </div>
           </article>
 
@@ -374,11 +401,28 @@ export function AgentSection({ app }: AgentSectionProps) {
             </div>
             <div className="smtcmp-agent-cap-count">{skillsCountLabel}</div>
             <div className="smtcmp-agent-cap-tags">
-              {globallyEnabledSkillEntries.map((skill) => (
-                <span key={skill.id} className="smtcmp-agent-chip">
+              {visibleSkillEntries.map((skill) => (
+                <span
+                  key={skill.id}
+                  className="smtcmp-agent-chip"
+                  title={skill.name}
+                >
                   {skill.name}
                 </span>
               ))}
+              {hiddenSkillEntriesCount > 0 && (
+                <button
+                  type="button"
+                  className="smtcmp-agent-chip smtcmp-agent-chip--more"
+                  onClick={handleOpenSkillsModal}
+                  title={t(
+                    'settings.agent.viewAllSkills',
+                    'View all skills',
+                  )}
+                >
+                  +{hiddenSkillEntriesCount}
+                </button>
+              )}
             </div>
           </article>
         </div>

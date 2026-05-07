@@ -240,6 +240,10 @@ export type TranslationKeys = {
       toolsEnabledCount?: string
       manageTools?: string
       manageSkills?: string
+      expandDescription?: string
+      collapseDescription?: string
+      viewAllTools?: string
+      viewAllSkills?: string
       descriptionColumn?: string
       builtinFsListLabel?: string
       builtinFsListDesc?: string

@@ -26,6 +26,7 @@ import {
 import SmartComposerPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
+import { CollapsibleToolDescription } from '../common/CollapsibleToolDescription'
 import { McpSection } from '../sections/McpSection'
 
 import { WebSearchSettingsModal } from './WebSearchSettingsModal'
@@ -238,9 +239,9 @@ function AgentToolsModalContent({
                 >
                   <div className="smtcmp-mcp-server-name">{tool.label}</div>
                   <div className="smtcmp-mcp-server-status smtcmp-builtin-tools-table-description">
-                    <div className="smtcmp-mcp-tool-description">
-                      {tool.description}
-                    </div>
+                    <CollapsibleToolDescription
+                      description={tool.description}
+                    />
                   </div>
                   <div />
                   <div className="smtcmp-builtin-tools-table-control">
