@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
 import type { ReactNode, Ref } from 'react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -38,22 +38,18 @@ function ActionIconButton({
   onClick?: () => void
   children: ReactNode
 }) {
-  const labelId = useId()
-
   return (
     <button
       ref={buttonRef}
       type="button"
       onClick={disabled ? undefined : onClick}
       className={className}
-      aria-labelledby={labelId}
+      aria-label={label}
+      title={label}
       disabled={disabled}
       tabIndex={tabIndex}
     >
       {children}
-      <span id={labelId} className="smtcmp-sr-only">
-        {label}
-      </span>
     </button>
   )
 }
@@ -179,7 +175,22 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
     const recentLeaf = app.workspace.getMostRecentLeaf()
     const recentMarkdownView =
       recentLeaf?.view instanceof MarkdownView ? recentLeaf.view : null
-    const markdownView = activeMarkdownView ?? recentMarkdownView
+    const fallbackMarkdownView = (() => {
+      if (activeMarkdownView || recentMarkdownView) {
+        return null
+      }
+      const markdownLeaves = app.workspace.getLeavesOfType('markdown')
+      const visibleLeaf =
+        markdownLeaves.find((leaf) => {
+          const el = (leaf.view as { containerEl?: HTMLElement }).containerEl
+          return el ? el.isShown() : true
+        }) ?? markdownLeaves[0]
+      return visibleLeaf?.view instanceof MarkdownView
+        ? visibleLeaf.view
+        : null
+    })()
+    const markdownView =
+      activeMarkdownView ?? recentMarkdownView ?? fallbackMarkdownView
 
     if (!markdownView) {
       new Notice(t('chat.insertUnavailable', 'No active markdown editor found'))
@@ -239,7 +250,6 @@ export default function AssistantToolMessageGroupActions({
   isDisabled?: boolean
 }) {
   const { t } = useLanguage()
-  const moreActionsLabelId = useId()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [isMoreOpen, setIsMoreOpen] = useState(false)
   const retryLabel = t('chat.regenerate', 'Regenerate')
@@ -370,14 +380,12 @@ export default function AssistantToolMessageGroupActions({
             className={`clickable-icon smtcmp-assistant-message-action-btn smtcmp-assistant-message-more-button${
               isMoreOpen ? ' is-open' : ''
             }`}
-            aria-labelledby={moreActionsLabelId}
+            aria-label={t('sidebar.chatList.moreActions', 'More actions')}
+            title={t('sidebar.chatList.moreActions', 'More actions')}
             aria-expanded={isMoreOpen ? 'true' : 'false'}
             disabled={isDisabled || isEditing}
           >
             <Ellipsis size={12} />
-            <span id={moreActionsLabelId} className="smtcmp-sr-only">
-              {t('sidebar.chatList.moreActions', 'More actions')}
-            </span>
           </button>
         </div>
       ) : null}
