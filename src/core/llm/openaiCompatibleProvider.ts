@@ -20,6 +20,7 @@ import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
 
 import { BaseLLMProvider } from './base'
+import { resolveAdapterForBaseUrl } from './baseUrlDetection'
 import { extractEmbeddingVector } from './embedding-utils'
 import { LLMBaseUrlNotSetException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
@@ -90,8 +91,9 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
   ) {
     super(provider)
     this.onAutoPromoteTransportMode = options?.onAutoPromoteTransportMode
-    this.adapter = options?.adapter ?? new OpenAIMessageAdapter()
     this.resolvedBaseUrl = resolveProviderBaseUrl(provider)
+    this.adapter =
+      options?.adapter ?? resolveAdapterForBaseUrl(this.resolvedBaseUrl)
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,
