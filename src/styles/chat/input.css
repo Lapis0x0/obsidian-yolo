@@ -1018,46 +1018,16 @@
   height: 18px;
 }
 
-/* 改进开关控件样式 */
+/* 与 ObsidianToggle 组件配套的外层容器 hook：
+   唯一作用是给 `.smtcmp-composer-option-control` 里右对齐规则提供命中目标
+   （见本文件 949 行附近的 margin-left: auto）。
+   以前这里有一整段覆写，把原本 opacity:0 的 <input> 强行画成紫色轨道 + 自定义白点，
+   导致和 Obsidian 原生 .checkbox-container::after 叠在一起出现白点凸出/偏下，
+   已移除。switch 外观完全沿用 Obsidian 原生实现。 */
 .smtcmp-checkbox-container {
   position: relative;
   display: inline-flex;
-  align-items: center;
   gap: var(--size-2-2);
-}
-
-.smtcmp-checkbox-container input[type='checkbox'] {
-  width: 44px;
-  height: 24px;
-  appearance: none;
-  background: var(--background-modifier-border);
-  border-radius: 12px;
-  position: relative;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 2px solid transparent;
-}
-
-.smtcmp-checkbox-container input[type='checkbox']:checked {
-  background: var(--interactive-accent);
-  border-color: var(--interactive-accent);
-}
-
-.smtcmp-checkbox-container input[type='checkbox']::before {
-  content: '';
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  top: 1px;
-  left: 1px;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.smtcmp-checkbox-container input[type='checkbox']:checked::before {
-  transform: translateX(20px);
 }
 
 /* 优先参考目录样式优化 */
