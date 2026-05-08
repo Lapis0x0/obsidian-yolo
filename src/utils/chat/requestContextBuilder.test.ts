@@ -984,7 +984,9 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     // Build 34 messages (17 user + 17 assistant alternating), first user is the one we track
-    const historyMessages: Parameters<typeof builder.generateRequestMessages>[0]['messages'] = []
+    const historyMessages: Parameters<
+      typeof builder.generateRequestMessages
+    >[0]['messages'] = []
     for (let i = 0; i < 34; i++) {
       if (i % 2 === 0) {
         historyMessages.push({
