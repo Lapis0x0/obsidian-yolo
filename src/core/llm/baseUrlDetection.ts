@@ -18,7 +18,7 @@ export const isDeepSeekBaseUrl = (baseUrl: string | undefined): boolean => {
     const host = new URL(baseUrl).hostname.toLowerCase()
     return host === 'api.deepseek.com' || host.endsWith('.deepseek.com')
   } catch {
-    return /\bdeepseek\.com\b/i.test(baseUrl)
+    return /(?:^|[./])deepseek\.com(?:[:/]|$)/i.test(baseUrl)
   }
 }
 
@@ -34,7 +34,7 @@ export const isMoonshotBaseUrl = (baseUrl: string | undefined): boolean => {
     const host = new URL(baseUrl).hostname.toLowerCase()
     return host === 'api.moonshot.cn' || host.endsWith('.moonshot.cn')
   } catch {
-    return /\bmoonshot\.cn\b/i.test(baseUrl)
+    return /(?:^|[./])moonshot\.cn(?:[:/]|$)/i.test(baseUrl)
   }
 }
 
@@ -49,7 +49,7 @@ export const isMistralBaseUrl = (baseUrl: string | undefined): boolean => {
     const host = new URL(baseUrl).hostname.toLowerCase()
     return host === 'api.mistral.ai' || host.endsWith('.mistral.ai')
   } catch {
-    return /\bmistral\.ai\b/i.test(baseUrl)
+    return /(?:^|[./])mistral\.ai(?:[:/]|$)/i.test(baseUrl)
   }
 }
 
@@ -64,14 +64,16 @@ export const isPerplexityBaseUrl = (baseUrl: string | undefined): boolean => {
     const host = new URL(baseUrl).hostname.toLowerCase()
     return host === 'api.perplexity.ai' || host.endsWith('.perplexity.ai')
   } catch {
-    return /\bperplexity\.ai\b/i.test(baseUrl)
+    return /(?:^|[./])perplexity\.ai(?:[:/]|$)/i.test(baseUrl)
   }
 }
 
 /**
- * Resolves the appropriate MessageAdapter based on the base URL when no explicit
- * adapter is provided. This allows users who configure providers via the generic
- * `openai-compatible` preset to still get correct behavior for known services.
+ * Resolves the appropriate MessageAdapter based on the base URL. Used by
+ * `OpenAICompatibleProvider` when no explicit adapter is passed via the
+ * constructor `options.adapter` parameter. This allows users who configure
+ * providers via the generic `openai-compatible` preset to still get correct
+ * behavior for known services.
  */
 export const resolveAdapterForBaseUrl = (
   baseUrl: string | undefined,
