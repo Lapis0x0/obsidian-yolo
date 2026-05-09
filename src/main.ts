@@ -39,6 +39,7 @@ import {
   BackgroundActivityAction,
   BackgroundActivityRegistry,
 } from './core/background/backgroundActivityRegistry'
+import { clearClaudeMdCache } from './core/claude-md/claudeMdIntegration'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
@@ -1914,6 +1915,7 @@ export default class SmartComposerPlugin extends Plugin {
   }
 
   onunload() {
+    clearClaudeMdCache()
     this.closeSmartSpace()
 
     // Selection chat cleanup

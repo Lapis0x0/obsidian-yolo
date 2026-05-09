@@ -1089,6 +1089,7 @@ export function QuickAskPanel({
             conversationId,
             requestContextBuilder,
             mcpManager,
+            app: plugin.app,
             abortSignal: abortController.signal,
             allowedToolNames: chatModeRuntime.allowedToolNames,
             toolPreferences: chatModeRuntime.toolPreferences,
@@ -1097,6 +1098,7 @@ export function QuickAskPanel({
             contextualInjections: editorSnapshotInjection
               ? [editorSnapshotInjection]
               : [],
+            enableClaudeMd: selectedAssistant?.enableClaudeMd !== false,
             requestParams: {
               stream: true,
               primaryRequestTimeoutMs:

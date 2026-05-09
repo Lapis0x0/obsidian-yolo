@@ -93,13 +93,14 @@ export class NativeAgentRuntime implements AgentRuntime {
       return
     }
 
-    const toolGateway = new AgentToolGateway(input.mcpManager, {
+    const toolGateway = new AgentToolGateway(input.mcpManager, input.app, {
       toolsEnabled: this.loopConfig.enableTools,
       allowedToolNames: input.allowedToolNames,
       toolPreferences: input.toolPreferences,
       workspaceScope: input.workspaceScope,
       allowedSkillIds: input.allowedSkillIds,
       allowedSkillNames: input.allowedSkillNames,
+      enableClaudeMd: input.enableClaudeMd,
     })
     const worker = createAgentLoopWorker()
     const runId = uuidv4()

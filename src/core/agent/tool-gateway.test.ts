@@ -6,6 +6,18 @@ import { McpManager } from '../mcp/mcpManager'
 
 import { AgentToolGateway } from './tool-gateway'
 
+// Mock App for testing
+const createMockApp = () => ({
+  vault: {
+    adapter: {
+      exists: jest.fn().mockResolvedValue(false),
+      mkdir: jest.fn().mockResolvedValue(undefined),
+      read: jest.fn().mockResolvedValue(''),
+      write: jest.fn().mockResolvedValue(undefined),
+    },
+  },
+})
+
 describe('AgentToolGateway', () => {
   const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
@@ -14,7 +26,7 @@ describe('AgentToolGateway', () => {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: {
@@ -49,7 +61,7 @@ describe('AgentToolGateway', () => {
       isToolExecutionAllowed: jest.fn().mockReturnValue(false),
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: {
@@ -84,7 +96,7 @@ describe('AgentToolGateway', () => {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: {
@@ -115,7 +127,7 @@ describe('AgentToolGateway', () => {
       }),
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       allowedToolNames: ['yolo_local__fs_edit'],
       toolPreferences: {
         yolo_local__fs_edit: {
@@ -160,7 +172,7 @@ describe('AgentToolGateway', () => {
       isToolExecutionAllowed: jest.fn(),
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       toolsEnabled: false,
       allowedToolNames: ['server__tool_a'],
     })
@@ -190,7 +202,7 @@ describe('AgentToolGateway', () => {
       callTool,
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       allowedToolNames: ['yolo_local__fs_edit'],
       toolPreferences: {
         yolo_local__fs_edit: {
@@ -287,7 +299,7 @@ describe('AgentToolGateway', () => {
       isToolExecutionAllowed: jest.fn(),
     } as unknown as McpManager
 
-    const gateway = new AgentToolGateway(mcpManager, {
+    const gateway = new AgentToolGateway(mcpManager, createMockApp() as never, {
       allowedToolNames: ['server__tool_a'],
     })
 

@@ -7,6 +7,7 @@ import {
   buildCompactionResumeMessage,
   buildCompactionSummaryMessage,
 } from '../../core/agent/compaction'
+import { getProjectContext } from '../../core/claude-md/claudeMdIntegration'
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import {
   getLiteSkillDocument,
@@ -1085,9 +1086,21 @@ ${quotes
 
     const baseBehaviorSection = this.buildDefaultBehaviorSection(hasTools)
 
-    const sections = [customInstructionsSection, baseBehaviorSection].filter(
-      Boolean,
+    const currentAssistantId = this.settings.currentAssistantId
+    const assistants = this.settings.assistants || []
+    const currentAssistant = currentAssistantId
+      ? assistants.find((a) => a.id === currentAssistantId)
+      : null
+    const projectContextSection = await getProjectContext(
+      this.app,
+      currentAssistant?.enableClaudeMd !== false,
     )
+
+    const sections = [
+      customInstructionsSection,
+      baseBehaviorSection,
+      projectContextSection,
+    ].filter(Boolean)
 
     return {
       role: 'system',

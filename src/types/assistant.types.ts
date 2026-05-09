@@ -74,6 +74,7 @@ export const assistantSchema = z.object({
     .record(z.string(), assistantSkillPreferenceSchema)
     .optional(),
   workspaceScope: assistantWorkspaceScopeSchema.optional(),
+  enableClaudeMd: z.boolean().optional(),
   createdAt: z.number().optional(),
   updatedAt: z.number().optional(),
 })

@@ -1,3 +1,5 @@
+import { App } from 'obsidian'
+
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
@@ -30,6 +32,7 @@ export type AgentRuntimeRunInput = {
   branchLabel?: string
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
+  app: App
   compaction?: ChatConversationCompactionLike | null
   compactionProviderClient?: BaseLLMProvider<LLMProvider>
   compactionModel?: ChatModel
@@ -63,6 +66,7 @@ export type AgentRuntimeRunInput = {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  enableClaudeMd?: boolean
 }
 
 export type AgentRuntimeLoopConfig = {

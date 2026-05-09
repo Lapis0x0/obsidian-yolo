@@ -247,6 +247,7 @@ function createNewAgent(defaultModelId: string): Assistant {
     toolPreferences: {},
     enabledSkills: [],
     skillPreferences: {},
+    enableClaudeMd: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -1262,6 +1263,26 @@ export function AgentsSectionContent({
                   autoResize
                   maxAutoResizeHeight={360}
                   inputClassName="smtcmp-agent-system-prompt-textarea"
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
+                name={t(
+                  'settings.agent.editorEnableClaudeMd',
+                  '兼容 CLAUDE.md 项目上下文',
+                )}
+                desc={t(
+                  'settings.agent.editorEnableClaudeMdDesc',
+                  '自动加载 vault 中的 CLAUDE.md 和 .claude/rules/*.md，作为项目指令注入系统提示词',
+                )}
+              >
+                <ObsidianToggle
+                  value={draftAgent.enableClaudeMd !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      enableClaudeMd: value,
+                    })
+                  }}
                 />
               </ObsidianSetting>
             </div>

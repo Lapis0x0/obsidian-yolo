@@ -3,11 +3,14 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testEnvironment: 'node',
   transform: {
-    '^.+.tsx?$': ['ts-jest', {}],
+    '^.+\\.[tj]sx?$': ['ts-jest', {}],
   },
   testPathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   modulePathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   moduleNameMapper: {
     '^obsidian$': '<rootDir>/__mocks__/obsidian.ts',
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(marked)/)',
+  ],
 }

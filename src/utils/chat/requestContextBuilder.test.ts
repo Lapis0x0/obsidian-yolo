@@ -13,6 +13,10 @@ jest.mock('../llm/image', () => ({
   tFileToImageDataUrl: jest.fn(async () => 'data:image/png;base64,fake'),
 }))
 
+jest.mock('../../core/claude-md/claudeMdIntegration', () => ({
+  getProjectContext: jest.fn(async () => ''),
+}))
+
 import type { SmartComposerSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'

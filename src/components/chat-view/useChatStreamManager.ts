@@ -728,6 +728,7 @@ export function useChatStreamManager({
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,
           },
+          enableClaudeMd: selectedAssistant?.enableClaudeMd !== false,
         }
 
         if (branchTarget && requestLastMessage?.role === 'user') {
@@ -760,6 +761,7 @@ export function useChatStreamManager({
                 effectiveModel.name ??
                 effectiveModel.model ??
                 effectiveModel.id,
+              app: plugin.app,
               abortSignal: abortController.signal,
             },
           })
@@ -776,6 +778,7 @@ export function useChatStreamManager({
               providerClient: resolvedClient.providerClient,
               model: effectiveModel,
               conversationId,
+              app: plugin.app,
               abortSignal: abortController.signal,
             },
           })
@@ -819,6 +822,7 @@ export function useChatStreamManager({
                 branchId,
                 sourceUserMessageId: lastMessage.id,
                 branchLabel,
+                app: plugin.app,
                 abortSignal: branchAbortController.signal,
                 requestParams: {
                   ...requestParams,

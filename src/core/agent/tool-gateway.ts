@@ -1,3 +1,4 @@
+import { App } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import {
@@ -12,6 +13,10 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
+import {
+  FILE_TOOLS,
+  getConditionalRules,
+} from '../claude-md/claudeMdIntegration'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
@@ -29,9 +34,12 @@ export class AgentToolGateway {
   private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillIds?: Set<string>
   private readonly allowedSkillNames?: Set<string>
+  private readonly enableClaudeMd: boolean
+  private readonly injectedConditionalPaths = new Set<string>()
 
   constructor(
     private readonly mcpManager: McpManager,
+    private readonly app: App,
     options?: {
       toolsEnabled?: boolean
       allowedToolNames?: string[]
@@ -39,6 +47,7 @@ export class AgentToolGateway {
       workspaceScope?: AssistantWorkspaceScope
       allowedSkillIds?: string[]
       allowedSkillNames?: string[]
+      enableClaudeMd?: boolean
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
@@ -53,6 +62,7 @@ export class AgentToolGateway {
     this.allowedSkillNames = options?.allowedSkillNames
       ? new Set(options.allowedSkillNames.map((name) => name.toLowerCase()))
       : undefined
+    this.enableClaudeMd = options?.enableClaudeMd !== false
   }
 
   private isRequestPathAllowed(request: ToolCallRequest): boolean {
@@ -290,6 +300,9 @@ export class AgentToolGateway {
       })
     })
 
+    // Inject conditional rules from .claude/rules/*.md files
+    await this.injectConditionalRules(nextToolCalls)
+
     return {
       ...toolMessage,
       toolCalls: nextToolCalls,
@@ -526,6 +539,44 @@ export class AgentToolGateway {
       return allowedById || allowedByName
     } catch {
       return true
+    }
+  }
+
+  private async injectConditionalRules(
+    toolCalls: Array<{ request: ToolCallRequest; response: ToolCallResponse }>,
+  ): Promise<void> {
+    for (const toolCall of toolCalls) {
+      if (toolCall.response.status !== ToolCallResponseStatus.Success) continue
+
+      try {
+        const parsed = parseToolName(toolCall.request.name)
+        if (parsed.serverName !== getLocalFileToolServerName()) continue
+        if (!FILE_TOOLS.has(parsed.toolName)) continue
+
+        const args = getToolCallArgumentsObject(toolCall.request.arguments)
+        const targetPath =
+          typeof args?.path === 'string' ? args.path : undefined
+        if (!targetPath) continue
+
+        const rules = await getConditionalRules(
+          this.app,
+          targetPath,
+          this.injectedConditionalPaths,
+          this.enableClaudeMd,
+        )
+        if (!rules) continue
+
+        const existingText = toolCall.response.data.text ?? ''
+        toolCall.response = {
+          ...toolCall.response,
+          data: {
+            ...toolCall.response.data,
+            text: existingText + '\n\n---\n\n' + rules,
+          },
+        }
+      } catch {
+        // Non-critical — never block tool execution
+      }
     }
   }
 }
