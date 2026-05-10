@@ -177,6 +177,9 @@ export const it: TranslationKeys = {
       tabCompletionSystemPrompt: 'Prompt di sistema completamento tab',
       tabCompletionSystemPromptDesc:
         'Messaggio di sistema applicato quando si generano suggerimenti di completamento tab; lascia vuoto per usare quello predefinito incorporato.',
+      enableProjectInstructions: 'Carica file di istruzioni del progetto',
+      enableProjectInstructionsDesc:
+        'Carica automaticamente AGENTS.md e CLAUDE.md dalla radice del vault e li inietta come istruzioni di progetto in ogni chat. Compatibile con Codex / Claude Code / Cursor e strumenti analoghi.',
     },
     smartSpace: {
       quickActionsTitle: 'Azioni rapide smart space',

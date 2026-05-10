@@ -1101,6 +1101,106 @@ describe('RequestContextBuilder generateRequestMessages', () => {
   })
 })
 
+describe('RequestContextBuilder project instructions injection', () => {
+  function makeApp(rootFiles: Map<string, string>) {
+    return {
+      metadataCache: { getFileCache: jest.fn(() => null) },
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+        cachedRead: jest.fn(async (file: { path: string }) => {
+          return rootFiles.get(file.path) ?? ''
+        }),
+        getAbstractFileByPath: jest.fn((path: string) => {
+          if (!rootFiles.has(path)) return null
+          return Object.assign(new TFile(), { path })
+        }),
+        getFileByPath: jest.fn(() => null),
+        getFolderByPath: jest.fn(() => null),
+      },
+    }
+  }
+
+  const baseSettings = {
+    systemPrompt: '',
+    currentAssistantId: undefined,
+    assistants: [],
+    chatOptions: {
+      includeCurrentFileContent: true,
+      mentionContextMode: 'light',
+    },
+    skills: {},
+  } as unknown as SmartComposerSettings
+
+  async function buildSystemContent(
+    app: ReturnType<typeof makeApp>,
+    settings: SmartComposerSettings,
+  ): Promise<string> {
+    const builder = new RequestContextBuilder(app as never, settings)
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'hi',
+          mentionables: [],
+        },
+      ],
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conv-pi',
+    })
+    const system = requestMessages.find((m) => m.role === 'system')
+    expect(system).toBeDefined()
+    return typeof system!.content === 'string' ? system!.content : ''
+  }
+
+  it('appends AGENTS.md and CLAUDE.md after the base behavior section by default', async () => {
+    const app = makeApp(
+      new Map([
+        ['AGENTS.md', 'rule from agents'],
+        ['CLAUDE.md', 'rule from claude'],
+      ]),
+    )
+    const content = await buildSystemContent(app, baseSettings)
+    expect(content).toContain('## AGENTS.md')
+    expect(content).toContain('rule from agents')
+    expect(content).toContain('## CLAUDE.md')
+    expect(content).toContain('rule from claude')
+    // Project instructions should appear after the project-instructions header,
+    // not as the first thing in the system message.
+    const projectIdx = content.indexOf('project instructions at the vault root')
+    expect(projectIdx).toBeGreaterThan(0)
+  })
+
+  it('omits project instructions when enableProjectInstructions is false', async () => {
+    const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
+    const settings = {
+      ...baseSettings,
+      enableProjectInstructions: false,
+    } as unknown as SmartComposerSettings
+    const content = await buildSystemContent(app, settings)
+    expect(content).not.toContain('## CLAUDE.md')
+    expect(content).not.toContain('rule from claude')
+  })
+
+  it('omits project instructions section when neither file exists', async () => {
+    const app = makeApp(new Map())
+    const content = await buildSystemContent(app, baseSettings)
+    expect(content).not.toContain('## AGENTS.md')
+    expect(content).not.toContain('## CLAUDE.md')
+    expect(content).not.toContain('project instructions at the vault root')
+  })
+})
+
 describe('RequestContextBuilder generateRequestMessages currentFile merging', () => {
   const baseSettings = {
     systemPrompt: '',

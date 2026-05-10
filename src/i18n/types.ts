@@ -154,6 +154,8 @@ export type TranslationKeys = {
       chatTitlePromptDesc: string
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
+      enableProjectInstructions?: string
+      enableProjectInstructionsDesc?: string
     }
     chatPreferences: {
       title: string

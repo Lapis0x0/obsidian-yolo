@@ -247,6 +247,22 @@ export function DefaultModelsAndPromptsSection({
             />
           </ObsidianSetting>
 
+          <ObsidianSetting
+            name={t('settings.defaults.enableProjectInstructions')}
+            desc={t('settings.defaults.enableProjectInstructionsDesc')}
+            className="smtcmp-models-select-card"
+          >
+            <ObsidianToggle
+              value={settings.enableProjectInstructions !== false}
+              onChange={(value) => {
+                commitSettingsUpdate(
+                  { enableProjectInstructions: value },
+                  'enableProjectInstructions',
+                )
+              }}
+            />
+          </ObsidianSetting>
+
           <div className="smtcmp-models-textarea-card">
             <ObsidianSetting
               name={t('settings.defaults.globalSystemPrompt')}

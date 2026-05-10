@@ -8,6 +8,7 @@ import {
   buildCompactionSummaryMessage,
 } from '../../core/agent/compaction'
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
+import { getProjectInstructionsSection } from '../../core/project-instructions'
 import {
   getLiteSkillDocument,
   listLiteSkillEntries,
@@ -1085,9 +1086,16 @@ ${quotes
 
     const baseBehaviorSection = this.buildDefaultBehaviorSection(hasTools)
 
-    const sections = [customInstructionsSection, baseBehaviorSection].filter(
-      Boolean,
+    const projectInstructionsSection = await getProjectInstructionsSection(
+      this.app,
+      this.settings.enableProjectInstructions !== false,
     )
+
+    const sections = [
+      customInstructionsSection,
+      baseBehaviorSection,
+      projectInstructionsSection,
+    ].filter(Boolean)
 
     return {
       role: 'system',

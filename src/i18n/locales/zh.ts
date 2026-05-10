@@ -149,6 +149,9 @@ export const zh: TranslationKeys = {
       tabCompletionSystemPrompt: 'Tab 补全系统提示词',
       tabCompletionSystemPromptDesc:
         '生成 Tab 补全建议时使用的系统提示词。留空则使用内置默认值。',
+      enableProjectInstructions: '读取项目指令文件',
+      enableProjectInstructionsDesc:
+        '自动加载 vault 根目录的 AGENTS.md 与 CLAUDE.md，作为项目指令注入每次对话，与 Codex / Claude Code / Cursor 等工具兼容。',
     },
     smartSpace: {
       quickActionsTitle: 'Smart Space 快捷选项',
