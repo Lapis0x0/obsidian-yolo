@@ -1264,6 +1264,26 @@ export function AgentsSectionContent({
                   inputClassName="smtcmp-agent-system-prompt-textarea"
                 />
               </ObsidianSetting>
+              <ObsidianSetting
+                name={t(
+                  'settings.agent.editorEnableProjectInstructions',
+                  'Load project instruction files',
+                )}
+                desc={t(
+                  'settings.agent.editorEnableProjectInstructionsDesc',
+                  'Auto-load AGENTS.md and CLAUDE.md from the vault root for this agent.',
+                )}
+              >
+                <ObsidianToggle
+                  value={draftAgent.enableProjectInstructions !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      enableProjectInstructions: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
             </div>
           )}
 

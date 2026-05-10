@@ -1121,6 +1121,7 @@ describe('RequestContextBuilder project instructions injection', () => {
         }),
         getFileByPath: jest.fn(() => null),
         getFolderByPath: jest.fn(() => null),
+        getMarkdownFiles: jest.fn(() => []),
       },
     }
   }
@@ -1181,15 +1182,72 @@ describe('RequestContextBuilder project instructions injection', () => {
     expect(projectIdx).toBeGreaterThan(0)
   })
 
-  it('omits project instructions when enableProjectInstructions is false', async () => {
+  it('omits project instructions when current assistant disables it', async () => {
     const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
     const settings = {
       ...baseSettings,
-      enableProjectInstructions: false,
+      currentAssistantId: 'a-1',
+      assistants: [
+        {
+          id: 'a-1',
+          name: 'Disabled',
+          systemPrompt: '',
+          enableProjectInstructions: false,
+        },
+      ],
     } as unknown as SmartComposerSettings
     const content = await buildSystemContent(app, settings)
     expect(content).not.toContain('## CLAUDE.md')
     expect(content).not.toContain('rule from claude')
+  })
+
+  it('injects project instructions when current assistant enables it explicitly', async () => {
+    const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'a-1',
+      assistants: [
+        {
+          id: 'a-1',
+          name: 'Enabled',
+          systemPrompt: '',
+          enableProjectInstructions: true,
+        },
+      ],
+    } as unknown as SmartComposerSettings
+    const content = await buildSystemContent(app, settings)
+    expect(content).toContain('## CLAUDE.md')
+    expect(content).toContain('rule from claude')
+  })
+
+  it('defaults to enabled when currentAssistantId points to a non-existent assistant', async () => {
+    const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'missing-id',
+      assistants: [
+        {
+          id: 'other-id',
+          name: 'Other',
+          systemPrompt: '',
+          enableProjectInstructions: false,
+        },
+      ],
+    } as unknown as SmartComposerSettings
+    const content = await buildSystemContent(app, settings)
+    expect(content).toContain('## CLAUDE.md')
+    expect(content).toContain('rule from claude')
+  })
+
+  it('defaults to enabled when assistant exists but enableProjectInstructions is undefined', async () => {
+    const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'a-1',
+      assistants: [{ id: 'a-1', name: 'Default', systemPrompt: '' }],
+    } as unknown as SmartComposerSettings
+    const content = await buildSystemContent(app, settings)
+    expect(content).toContain('## CLAUDE.md')
   })
 
   it('omits project instructions section when neither file exists', async () => {

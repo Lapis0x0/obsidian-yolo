@@ -262,9 +262,6 @@ export const smartComposerSettingsSchema = z.object({
   // System Prompt
   systemPrompt: z.string().catch(''),
 
-  // Project instructions: auto-load AGENTS.md / CLAUDE.md from vault root
-  enableProjectInstructions: z.boolean().catch(true),
-
   // RAG Options
   ragOptions: ragOptionsSchema.catch({
     enabled: true,

@@ -22,7 +22,6 @@ describe('parseSmartComposerSettings', () => {
     expect(result.embeddingModelId).toBe('')
 
     expect(result.systemPrompt).toBe('')
-    expect(result.enableProjectInstructions).toBe(true)
 
     expect(result.ragOptions).toMatchObject({
       enabled: true,

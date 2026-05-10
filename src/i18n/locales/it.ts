@@ -177,9 +177,6 @@ export const it: TranslationKeys = {
       tabCompletionSystemPrompt: 'Prompt di sistema completamento tab',
       tabCompletionSystemPromptDesc:
         'Messaggio di sistema applicato quando si generano suggerimenti di completamento tab; lascia vuoto per usare quello predefinito incorporato.',
-      enableProjectInstructions: 'Carica file di istruzioni del progetto',
-      enableProjectInstructionsDesc:
-        'Carica automaticamente AGENTS.md e CLAUDE.md dalla radice del vault e li inietta come istruzioni di progetto in ogni chat. Compatibile con Codex / Claude Code / Cursor e strumenti analoghi.',
     },
     smartSpace: {
       quickActionsTitle: 'Azioni rapide smart space',
@@ -434,6 +431,9 @@ export const it: TranslationKeys = {
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
         'Istruzione comportamentale principale per questo agent. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.',
+      editorEnableProjectInstructions: 'Carica file di istruzioni del progetto',
+      editorEnableProjectInstructionsDesc:
+        'Carica automaticamente AGENTS.md e CLAUDE.md dalla radice del vault per questo agent. Compatibile con Codex / Claude Code / Cursor e strumenti analoghi.',
       editorEnableTools: 'Abilita strumenti',
       editorEnableToolsDesc: 'Consenti a questo agent di chiamare strumenti',
       editorIncludeBuiltinTools: 'Includi strumenti integrati',

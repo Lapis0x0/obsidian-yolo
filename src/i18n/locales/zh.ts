@@ -149,9 +149,6 @@ export const zh: TranslationKeys = {
       tabCompletionSystemPrompt: 'Tab 补全系统提示词',
       tabCompletionSystemPromptDesc:
         '生成 Tab 补全建议时使用的系统提示词。留空则使用内置默认值。',
-      enableProjectInstructions: '读取项目指令文件',
-      enableProjectInstructionsDesc:
-        '自动加载 vault 根目录的 AGENTS.md 与 CLAUDE.md，作为项目指令注入每次对话，与 Codex / Claude Code / Cursor 等工具兼容。',
     },
     smartSpace: {
       quickActionsTitle: 'Smart Space 快捷选项',
@@ -394,6 +391,9 @@ export const zh: TranslationKeys = {
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
         '该 Agent 的主行为指令。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}、星期 {{current_weekday}}。',
+      editorEnableProjectInstructions: '读取项目指令文件',
+      editorEnableProjectInstructionsDesc:
+        '为该 Agent 自动加载 vault 根目录的 AGENTS.md 与 CLAUDE.md 作为项目指令，与 Codex / Claude Code / Cursor 等工具兼容。',
       editorEnableTools: '启用工具',
       editorEnableToolsDesc: '允许该 Agent 调用工具',
       editorIncludeBuiltinTools: '包含内置工具',
