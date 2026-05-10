@@ -1164,7 +1164,7 @@ describe('RequestContextBuilder project instructions injection', () => {
     return typeof system!.content === 'string' ? system!.content : ''
   }
 
-  it('appends AGENTS.md and CLAUDE.md after the base behavior section by default', async () => {
+  it('does not inject project instructions by default (no assistant selected)', async () => {
     const app = makeApp(
       new Map([
         ['AGENTS.md', 'rule from agents'],
@@ -1172,17 +1172,41 @@ describe('RequestContextBuilder project instructions injection', () => {
       ]),
     )
     const content = await buildSystemContent(app, baseSettings)
+    expect(content).not.toContain('## AGENTS.md')
+    expect(content).not.toContain('## CLAUDE.md')
+  })
+
+  it('injects AGENTS.md and CLAUDE.md when current assistant enables it explicitly', async () => {
+    const app = makeApp(
+      new Map([
+        ['AGENTS.md', 'rule from agents'],
+        ['CLAUDE.md', 'rule from claude'],
+      ]),
+    )
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'a-1',
+      assistants: [
+        {
+          id: 'a-1',
+          name: 'Enabled',
+          systemPrompt: '',
+          enableProjectInstructions: true,
+        },
+      ],
+    } as unknown as SmartComposerSettings
+    const content = await buildSystemContent(app, settings)
     expect(content).toContain('## AGENTS.md')
     expect(content).toContain('rule from agents')
     expect(content).toContain('## CLAUDE.md')
     expect(content).toContain('rule from claude')
-    // Project instructions should appear after the project-instructions header,
+    // Project instructions should appear after the base behavior section,
     // not as the first thing in the system message.
     const projectIdx = content.indexOf('project instructions at the vault root')
     expect(projectIdx).toBeGreaterThan(0)
   })
 
-  it('omits project instructions when current assistant disables it', async () => {
+  it('omits project instructions when current assistant disables it explicitly', async () => {
     const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
     const settings = {
       ...baseSettings,
@@ -1201,26 +1225,7 @@ describe('RequestContextBuilder project instructions injection', () => {
     expect(content).not.toContain('rule from claude')
   })
 
-  it('injects project instructions when current assistant enables it explicitly', async () => {
-    const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
-    const settings = {
-      ...baseSettings,
-      currentAssistantId: 'a-1',
-      assistants: [
-        {
-          id: 'a-1',
-          name: 'Enabled',
-          systemPrompt: '',
-          enableProjectInstructions: true,
-        },
-      ],
-    } as unknown as SmartComposerSettings
-    const content = await buildSystemContent(app, settings)
-    expect(content).toContain('## CLAUDE.md')
-    expect(content).toContain('rule from claude')
-  })
-
-  it('defaults to enabled when currentAssistantId points to a non-existent assistant', async () => {
+  it('defaults to disabled when currentAssistantId points to a non-existent assistant', async () => {
     const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
     const settings = {
       ...baseSettings,
@@ -1230,16 +1235,16 @@ describe('RequestContextBuilder project instructions injection', () => {
           id: 'other-id',
           name: 'Other',
           systemPrompt: '',
-          enableProjectInstructions: false,
+          enableProjectInstructions: true,
         },
       ],
     } as unknown as SmartComposerSettings
     const content = await buildSystemContent(app, settings)
-    expect(content).toContain('## CLAUDE.md')
-    expect(content).toContain('rule from claude')
+    expect(content).not.toContain('## CLAUDE.md')
+    expect(content).not.toContain('rule from claude')
   })
 
-  it('defaults to enabled when assistant exists but enableProjectInstructions is undefined', async () => {
+  it('defaults to disabled when assistant exists but enableProjectInstructions is undefined', async () => {
     const app = makeApp(new Map([['CLAUDE.md', 'rule from claude']]))
     const settings = {
       ...baseSettings,
@@ -1247,7 +1252,7 @@ describe('RequestContextBuilder project instructions injection', () => {
       assistants: [{ id: 'a-1', name: 'Default', systemPrompt: '' }],
     } as unknown as SmartComposerSettings
     const content = await buildSystemContent(app, settings)
-    expect(content).toContain('## CLAUDE.md')
+    expect(content).not.toContain('## CLAUDE.md')
   })
 
   it('omits project instructions section when neither file exists', async () => {

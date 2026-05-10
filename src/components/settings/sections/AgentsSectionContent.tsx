@@ -1275,7 +1275,7 @@ export function AgentsSectionContent({
                 )}
               >
                 <ObsidianToggle
-                  value={draftAgent.enableProjectInstructions !== false}
+                  value={draftAgent.enableProjectInstructions === true}
                   onChange={(value) => {
                     setDraftAgent({
                       ...draftAgent,

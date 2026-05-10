@@ -1101,7 +1101,7 @@ ${quotes
     const currentAssistant = this.getCurrentAssistant()
     const projectInstructionsSection = await getProjectInstructionsSection(
       this.app,
-      currentAssistant?.enableProjectInstructions !== false,
+      currentAssistant?.enableProjectInstructions === true,
     )
 
     const sections = [
