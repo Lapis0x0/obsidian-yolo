@@ -1,9 +1,11 @@
-import { ClaudeMdCache } from '../claudeMdCache'
-import { MAX_CACHE_SIZE } from '../claudeMdTypes'
-import type { ParsedMemoryFile } from '../claudeMdTypes'
 import type { App } from 'obsidian'
 
-function createMockApp(files: Record<string, { content: string; mtime: number }>): App {
+import { ClaudeMdCache } from '../claudeMdCache'
+import { MAX_CACHE_SIZE } from '../claudeMdTypes'
+
+function createMockApp(
+  files: Record<string, { content: string; mtime: number }>,
+): App {
   return {
     vault: {
       adapter: {
@@ -131,8 +133,14 @@ describe('ClaudeMdCache', () => {
     const app = createMockApp(files)
     const cache = new ClaudeMdCache()
 
-    await cache.getOrLoad(app, 'a.md', (raw) => ({ filePath: 'a.md', content: raw }))
-    await cache.getOrLoad(app, 'b.md', (raw) => ({ filePath: 'b.md', content: raw }))
+    await cache.getOrLoad(app, 'a.md', (raw) => ({
+      filePath: 'a.md',
+      content: raw,
+    }))
+    await cache.getOrLoad(app, 'b.md', (raw) => ({
+      filePath: 'b.md',
+      content: raw,
+    }))
 
     cache.clear()
 
