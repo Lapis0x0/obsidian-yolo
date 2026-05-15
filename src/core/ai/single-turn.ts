@@ -14,6 +14,10 @@ import {
 } from '../../types/tool-call.types'
 import { createToolCallArguments } from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
+import {
+  bindLLMDebugTraceToSignal,
+  runWithLLMDebugTrace,
+} from '../llm/debugCapture'
 import { stripProviderFeatures } from '../llm/strip-provider-features'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
 
@@ -65,6 +69,7 @@ type SingleTurnExecutionInput = {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  debugTraceId?: string
   /**
    * `standard` (default): forward the model as-configured, including any
    * hosted tools, reasoning, and custom-parameter injections.
@@ -314,6 +319,7 @@ export async function executeSingleTurn({
   primaryRequestTimeoutMs = DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS,
   streamFallbackRecoveryEnabled = true,
   geminiTools,
+  debugTraceId,
   purpose = 'standard',
   onStreamDelta,
 }: SingleTurnExecutionInput): Promise<SingleTurnExecutionResult> {
@@ -323,45 +329,65 @@ export async function executeSingleTurn({
   // what the caller passes in — the option lives outside the ChatModel object
   // and would otherwise bypass stripProviderFeatures.
   const effectiveGeminiTools = isAuxiliary ? undefined : geminiTools
+  const withDebugTrace = <T>(run: () => Promise<T>): Promise<T> =>
+    runWithLLMDebugTrace(debugTraceId, run)
   const runNonStreaming = async (): Promise<SingleTurnExecutionResult> => {
-    const response = await providerClient.generateResponse(
-      effectiveModel,
-      {
-        ...request,
-        tools,
-        tool_choice: tools ? 'auto' : undefined,
-        stream: false,
-      },
-      {
-        signal,
-        geminiTools: effectiveGeminiTools,
-      },
-    )
+    const requestController = new AbortController()
+    const handleRequestAbort = () => requestController.abort()
+    if (signal?.aborted) {
+      requestController.abort()
+    } else {
+      signal?.addEventListener('abort', handleRequestAbort, { once: true })
+    }
+    bindLLMDebugTraceToSignal(debugTraceId, requestController.signal)
 
-    return {
-      content: response.choices?.[0]?.message?.content ?? '',
-      reasoning: response.choices?.[0]?.message?.reasoning ?? undefined,
-      annotations: response.choices?.[0]?.message?.annotations,
-      usage: response.usage,
-      finishReason: response.choices?.[0]?.finish_reason,
-      providerMetadata: response.choices?.[0]?.message?.providerMetadata,
-      toolCalls:
-        response.choices?.[0]?.message?.tool_calls
-          ?.map((toolCall) => {
-            const name = toolCall.function?.name?.trim()
-            if (!name) {
-              return null
-            }
-            return {
-              id: toolCall.id,
-              name,
-              arguments: createToolCallArguments(toolCall.function?.arguments),
-              metadata: toolCall.metadata,
-            }
-          })
-          .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
-            Boolean(toolCall),
-          ) ?? [],
+    try {
+      const response = await withDebugTrace(() =>
+        providerClient.generateResponse(
+          effectiveModel,
+          {
+            ...request,
+            tools,
+            tool_choice: tools ? 'auto' : undefined,
+            stream: false,
+          },
+          {
+            signal: requestController.signal,
+            debugTraceId,
+            geminiTools: effectiveGeminiTools,
+          },
+        ),
+      )
+
+      return {
+        content: response.choices?.[0]?.message?.content ?? '',
+        reasoning: response.choices?.[0]?.message?.reasoning ?? undefined,
+        annotations: response.choices?.[0]?.message?.annotations,
+        usage: response.usage,
+        finishReason: response.choices?.[0]?.finish_reason,
+        providerMetadata: response.choices?.[0]?.message?.providerMetadata,
+        toolCalls:
+          response.choices?.[0]?.message?.tool_calls
+            ?.map((toolCall) => {
+              const name = toolCall.function?.name?.trim()
+              if (!name) {
+                return null
+              }
+              return {
+                id: toolCall.id,
+                name,
+                arguments: createToolCallArguments(
+                  toolCall.function?.arguments,
+                ),
+                metadata: toolCall.metadata,
+              }
+            })
+            .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
+              Boolean(toolCall),
+            ) ?? [],
+      }
+    } finally {
+      signal?.removeEventListener('abort', handleRequestAbort)
     }
   }
 
@@ -370,8 +396,13 @@ export async function executeSingleTurn({
   }
 
   const streamController = new AbortController()
+  bindLLMDebugTraceToSignal(debugTraceId, streamController.signal)
   const handleAbort = () => streamController.abort()
-  signal?.addEventListener('abort', handleAbort, { once: true })
+  if (signal?.aborted) {
+    streamController.abort()
+  } else {
+    signal?.addEventListener('abort', handleAbort, { once: true })
+  }
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null
   let timedOut = false
@@ -398,87 +429,90 @@ export async function executeSingleTurn({
       streamController.abort()
     }, primaryRequestTimeoutMs)
 
-    const streamIterator = await providerClient.streamResponse(
-      effectiveModel,
-      {
-        ...request,
-        tools,
-        tool_choice: tools ? 'auto' : undefined,
-        stream: true,
-      },
-      {
-        signal: streamController.signal,
-        geminiTools: effectiveGeminiTools,
-      },
-    )
+    await withDebugTrace(async () => {
+      const streamIterator = await providerClient.streamResponse(
+        effectiveModel,
+        {
+          ...request,
+          tools,
+          tool_choice: tools ? 'auto' : undefined,
+          stream: true,
+        },
+        {
+          signal: streamController.signal,
+          debugTraceId,
+          geminiTools: effectiveGeminiTools,
+        },
+      )
 
-    for await (const chunk of streamIterator) {
-      if (!hasReceivedFirstChunk) {
-        hasReceivedFirstChunk = true
-        clearTimeoutId()
-      }
-      if (signal?.aborted) {
-        break
-      }
+      for await (const chunk of streamIterator) {
+        if (!hasReceivedFirstChunk) {
+          hasReceivedFirstChunk = true
+          clearTimeoutId()
+        }
+        if (signal?.aborted) {
+          break
+        }
 
-      const delta = chunk?.choices?.[0]?.delta
-      const contentDelta = delta?.content ?? ''
-      const reasoningDelta = delta?.reasoning ?? ''
-      const chunkFinishReason = chunk?.choices?.[0]?.finish_reason
-      if (chunkFinishReason) {
-        finishReason = chunkFinishReason
-      }
-      const chunkToolCalls = delta?.tool_calls
+        const delta = chunk?.choices?.[0]?.delta
+        const contentDelta = delta?.content ?? ''
+        const reasoningDelta = delta?.reasoning ?? ''
+        const chunkFinishReason = chunk?.choices?.[0]?.finish_reason
+        if (chunkFinishReason) {
+          finishReason = chunkFinishReason
+        }
+        const chunkToolCalls = delta?.tool_calls
 
-      if (contentDelta) {
-        content += contentDelta
-      }
-      if (reasoningDelta) {
-        reasoning += reasoningDelta
-      }
-      if (chunk.usage) {
-        usage = chunk.usage
-      }
-      if (delta?.providerMetadata) {
-        providerMetadata = mergeProviderMetadata(
-          providerMetadata,
-          delta.providerMetadata,
-        )
-      }
-      if (delta?.annotations) {
-        annotations = mergeAnnotations(annotations, delta.annotations)
-      }
-      if (chunkToolCalls) {
-        toolCallAccumulator.applyAll(
-          createCanonicalToolEventsFromDeltas({
-            turnKey,
-            provider: 'openai-chat',
-            deltas: chunkToolCalls,
-            receivedAt: Date.now(),
-          }),
-        )
-      }
-      if (
-        chunkFinishReason === 'tool_calls' ||
-        chunkFinishReason === 'function_call'
-      ) {
-        const receivedAt = Date.now()
-        toolCallAccumulator.sealOpenCalls('turn_handoff', receivedAt)
-        toolCallAccumulator.handoff('tool_calls_finish', receivedAt)
-      }
+        if (contentDelta) {
+          content += contentDelta
+        }
+        if (reasoningDelta) {
+          reasoning += reasoningDelta
+        }
+        if (chunk.usage) {
+          usage = chunk.usage
+        }
+        if (delta?.providerMetadata) {
+          providerMetadata = mergeProviderMetadata(
+            providerMetadata,
+            delta.providerMetadata,
+          )
+        }
+        if (delta?.annotations) {
+          annotations = mergeAnnotations(annotations, delta.annotations)
+        }
+        if (chunkToolCalls) {
+          toolCallAccumulator.applyAll(
+            createCanonicalToolEventsFromDeltas({
+              turnKey,
+              provider: 'openai-chat',
+              deltas: chunkToolCalls,
+              receivedAt: Date.now(),
+            }),
+          )
+        }
+        if (
+          chunkFinishReason === 'tool_calls' ||
+          chunkFinishReason === 'function_call'
+        ) {
+          const receivedAt = Date.now()
+          toolCallAccumulator.sealOpenCalls('turn_handoff', receivedAt)
+          toolCallAccumulator.handoff('tool_calls_finish', receivedAt)
+        }
 
-      const streamedToolCallList = toolCallAccumulator.getSnapshots()
+        const streamedToolCallList = toolCallAccumulator.getSnapshots()
 
-      onStreamDelta?.({
-        contentDelta,
-        reasoningDelta,
-        chunk,
-        toolCalls:
-          streamedToolCallList.length > 0
-            ? streamedToolCallList.sort((a, b) => a.index - b.index)
-            : undefined,
-      })
-    }
+        onStreamDelta?.({
+          contentDelta,
+          reasoningDelta,
+          chunk,
+          toolCalls:
+            streamedToolCallList.length > 0
+              ? streamedToolCallList.sort((a, b) => a.index - b.index)
+              : undefined,
+        })
+      }
+    })
 
     const streamEndedAt = Date.now()
     toolCallAccumulator.sealOpenCalls('stream_end', streamEndedAt)

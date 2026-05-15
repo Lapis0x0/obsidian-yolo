@@ -19,6 +19,11 @@ import {
   ChatAssistantMessage,
 } from '../../types/chat'
 
+import {
+  LLMDebugIconButton,
+  getLLMDebugTraceIdsForMessages,
+  hasLLMDebugCacheForTraceIds,
+} from './LLMDebugButton'
 import { getToolMessageContent } from './ToolMessage'
 
 function ActionIconButton({
@@ -258,7 +263,15 @@ export default function AssistantToolMessageGroupActions({
   const isBranchDisabled = isDisabled || !onBranch
   const isEditDisabled = isDisabled || !onEdit || isEditing
   const isDeleteDisabled = isDisabled || !onDelete
-  const hasMoreActions = showBranch || showEdit || showDelete
+  const debugTraceIds = useMemo(
+    () => getLLMDebugTraceIdsForMessages(messages),
+    [messages],
+  )
+  const hasDebugCache = useMemo(
+    () => hasLLMDebugCacheForTraceIds(debugTraceIds),
+    [debugTraceIds],
+  )
+  const hasMoreActions = showBranch || showEdit || showDelete || hasDebugCache
 
   useEffect(() => {
     if (!isMoreOpen) {
@@ -323,6 +336,15 @@ export default function AssistantToolMessageGroupActions({
             aria-hidden={isMoreOpen ? undefined : 'true'}
           >
             <div className="yolo-assistant-message-inline-actions-inner">
+              {hasDebugCache && (
+                <LLMDebugIconButton
+                  messages={messages}
+                  traceIds={debugTraceIds}
+                  className="clickable-icon yolo-assistant-message-action-btn"
+                  tabIndex={isMoreOpen ? undefined : -1}
+                  onOpen={() => setIsMoreOpen(false)}
+                />
+              )}
               {showBranch && (
                 <ActionIconButton
                   label={branchLabel}

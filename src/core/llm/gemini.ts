@@ -61,7 +61,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createBrowserFetch, createDesktopNodeFetch } from './sdkFetch'
 
 type GeminiStreamChunk = GeminiGenerateContentResponse
 type GeminiEmbedResponse = {
@@ -127,7 +127,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
   private readonly baseUrl: string
   private readonly customHeaders: Record<string, string> | undefined
   private readonly requestPolicy?: ModelRequestPolicy
-  private readonly browserFetch = globalThis.fetch
+  private readonly browserFetch = createBrowserFetch()
   private readonly obsidianFetch = createObsidianFetch()
   private readonly nodeFetch = createDesktopNodeFetch()
   private requestTransportMode: RequestTransportMode

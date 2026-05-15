@@ -980,6 +980,12 @@ export type TranslationKeys = {
       resetAgentsDesc?: string
       resetAgentsConfirm?: string
       resetAgentsSuccess?: string
+      captureRawRequestDebug?: string
+      captureRawRequestDebugDesc?: string
+      captureRawRequestDebugExcludeLogsTitle?: string
+      captureRawRequestDebugExcludeLogsMessage?: string
+      captureRawRequestDebugExcludeLogsCta?: string
+      captureRawRequestDebugExcludeLogsSuccess?: string
       logModelRequestContext?: string
       logModelRequestContextDesc?: string
       yoloBaseDir?: string

@@ -19,6 +19,11 @@ import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
+import {
+  createLLMDebugTrace,
+  isLLMDebugCaptureEnabled,
+  updateLLMDebugTrace,
+} from '../llm/debugCapture'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 
@@ -63,6 +68,7 @@ type AgentLlmTurnExecutorOutput = {
   assistantMessage: ChatAssistantMessage
   toolCallRequests: ToolCallRequest[]
   hasAssistantOutput: boolean
+  debugTraceId?: string
 }
 
 export class AgentLlmTurnExecutor {
@@ -123,13 +129,25 @@ export class AgentLlmTurnExecutor {
     await this.logModelRequestContext({ requestMessages, tools })
     const responseStart = Date.now()
     const model = this.input.model
+    const assistantMessageId = uuidv4()
+    const debugTrace = isLLMDebugCaptureEnabled()
+      ? createLLMDebugTrace({
+          assistantMessageId,
+          model,
+          requestKind:
+            this.input.requestParams?.stream === false
+              ? 'non-streaming'
+              : 'streaming',
+        })
+      : null
     const assistantMessage: ChatAssistantMessage = {
       role: 'assistant',
-      id: uuidv4(),
+      id: assistantMessageId,
       content: '',
       metadata: {
         model,
         generationState: 'streaming',
+        ...(debugTrace ? { llmDebugTraceId: debugTrace.id } : {}),
         branchConversationId: this.input.conversationId,
         sourceUserMessageId: this.input.sourceUserMessageId,
         branchId: this.input.branchId,
@@ -167,6 +185,7 @@ export class AgentLlmTurnExecutor {
         streamFallbackRecoveryEnabled:
           this.input.requestParams?.streamFallbackRecoveryEnabled,
         geminiTools: this.input.geminiTools,
+        debugTraceId: debugTrace?.id,
         onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
           if (contentDelta) {
             assistantMessage.content += contentDelta
@@ -232,6 +251,12 @@ export class AgentLlmTurnExecutor {
         generationState: isAborted ? 'aborted' : 'error',
         errorMessage,
       }
+      updateLLMDebugTrace(debugTrace?.id, {
+        completedAt: Date.now(),
+        durationMs: assistantMessage.metadata.durationMs,
+        generationState: assistantMessage.metadata.generationState,
+        errorMessage,
+      })
       this.input.onAssistantMessage(assistantMessage)
       throw error
     }
@@ -263,12 +288,21 @@ export class AgentLlmTurnExecutor {
 
     assistantMessage.toolCallRequests =
       toolCallRequests.length > 0 ? toolCallRequests : undefined
+    updateLLMDebugTrace(debugTrace?.id, {
+      completedAt: Date.now(),
+      durationMs: assistantMessage.metadata.durationMs,
+      generationState: assistantMessage.metadata.generationState,
+      usage: assistantMessage.metadata.usage,
+      hasToolCalls: toolCallRequests.length > 0,
+      toolCallNames: toolCallRequests.map((toolCall) => toolCall.name),
+    })
     this.input.onAssistantMessage(assistantMessage)
 
     return {
       assistantMessage,
       toolCallRequests,
       hasAssistantOutput: assistantMessage.content.trim().length > 0,
+      debugTraceId: debugTrace?.id,
     }
   }
 

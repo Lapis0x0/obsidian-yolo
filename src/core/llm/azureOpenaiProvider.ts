@@ -11,7 +11,6 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -24,7 +23,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
@@ -84,15 +83,16 @@ export class AzureOpenAIProvider extends BaseLLMProvider<LLMProvider> {
       }),
       timeout: options?.requestPolicy?.timeoutMs,
     }
-    this.browserClient = new AzureOpenAI(clientOptions)
-    this.obsidianClient = new AzureOpenAI({
-      ...clientOptions,
-      fetch: createObsidianFetch(),
-    })
-    this.nodeClient = new AzureOpenAI({
-      ...clientOptions,
-      fetch: createDesktopNodeFetch(),
-    })
+    const clients = createTransportClients(
+      (transportFetch) =>
+        new AzureOpenAI({
+          ...clientOptions,
+          fetch: transportFetch,
+        }),
+    )
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   async generateResponse(

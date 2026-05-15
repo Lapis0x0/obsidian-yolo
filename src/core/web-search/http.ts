@@ -1,5 +1,7 @@
 import { type RequestUrlParam, requestUrl } from 'obsidian'
 
+import { captureLLMDebugOperation } from '../llm/debugCapture'
+
 export type WebSearchHttpResponse = {
   status: number
   text: string
@@ -25,7 +27,37 @@ export async function webSearchRequest(
   params: RequestUrlParam & { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<WebSearchHttpResponse> {
   const { timeoutMs, signal, ...rest } = params
+  const requestBody = (rest as RequestUrlParam & { body?: unknown }).body
 
+  return captureLLMDebugOperation({
+    signal,
+    transportMode: 'web-search',
+    url: String(rest.url ?? ''),
+    method: rest.method ?? 'GET',
+    requestHeaders: rest.headers,
+    requestBody,
+    responseContentType: 'text/plain',
+    run: () =>
+      performWebSearchRequest({
+        rest,
+        timeoutMs,
+        signal,
+      }),
+    getResponseStatus: (response) => response.status,
+    getResponseHeaders: (response) => response.headers,
+    getResponseBody: (response) => response.text,
+  })
+}
+
+async function performWebSearchRequest({
+  rest,
+  timeoutMs,
+  signal,
+}: {
+  rest: RequestUrlParam
+  timeoutMs?: number
+  signal?: AbortSignal
+}): Promise<WebSearchHttpResponse> {
   const requestPromise = requestUrl({
     ...rest,
     // Avoid throwing on non-2xx so providers can decide based on status.
@@ -56,13 +88,6 @@ export async function webSearchRequest(
       if (timer) clearTimeout(timer)
       reject(new Error('Web search request aborted'))
     }
-    if (signal) {
-      if (signal.aborted) {
-        onAbort()
-        return
-      }
-      signal.addEventListener('abort', onAbort, { once: true })
-    }
 
     requestPromise.then(
       (response) => {
@@ -80,6 +105,14 @@ export async function webSearchRequest(
         reject(error instanceof Error ? error : new Error(String(error)))
       },
     )
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort()
+        return
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
   })
 }
 

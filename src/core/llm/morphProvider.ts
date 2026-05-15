@@ -9,7 +9,6 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
@@ -24,7 +23,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 export class MorphProvider extends BaseLLMProvider<LLMProvider> {
   private adapter: OpenAIMessageAdapter
@@ -80,15 +79,16 @@ export class MorphProvider extends BaseLLMProvider<LLMProvider> {
       }),
       timeout: options?.requestPolicy?.timeoutMs,
     }
-    this.browserClient = new NoStainlessOpenAI(clientOptions)
-    this.obsidianClient = new NoStainlessOpenAI({
-      ...clientOptions,
-      fetch: createObsidianFetch(),
-    })
-    this.nodeClient = new NoStainlessOpenAI({
-      ...clientOptions,
-      fetch: createDesktopNodeFetch(),
-    })
+    const clients = createTransportClients(
+      (transportFetch) =>
+        new NoStainlessOpenAI({
+          ...clientOptions,
+          fetch: transportFetch,
+        }),
+    )
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   async generateResponse(

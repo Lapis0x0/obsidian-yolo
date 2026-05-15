@@ -26,6 +26,10 @@ import { ExportConfigModal } from '../../../features/config-transfer/components/
 import { ImportConfigModal } from '../../../features/config-transfer/components/ImportConfigModal'
 import YoloPlugin from '../../../main'
 import { yoloSettingsSchema } from '../../../settings/schema/setting.types'
+import {
+  folderPathsToIncludePatterns,
+  includePatternsToFolderPaths,
+} from '../../../utils/rag-utils'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -48,6 +52,7 @@ const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
+const DEBUG_LOGS_DIR = 'YOLO/logs'
 // re-exported from store so EtcSection doesn't hardcode the dir name
 const AGENT_PROGRESS_DIR = EXTERNAL_AGENT_PROGRESS_DIR
 
@@ -195,6 +200,85 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
         ...(settings.yolo ?? { baseDir: 'YOLO' }),
         baseDir: normalized,
       },
+    })
+  }
+
+  const isDebugLogsExcludedFromKnowledgeBase = (): boolean => {
+    return includePatternsToFolderPaths(
+      settings.ragOptions.excludePatterns,
+    ).includes(DEBUG_LOGS_DIR)
+  }
+
+  const excludeDebugLogsFromKnowledgeBase = async () => {
+    const currentSettings = plugin.settings
+    const excludeFolders = includePatternsToFolderPaths(
+      currentSettings.ragOptions.excludePatterns,
+    )
+    if (excludeFolders.includes(DEBUG_LOGS_DIR)) {
+      return
+    }
+
+    await setSettings({
+      ...currentSettings,
+      debug: {
+        ...currentSettings.debug,
+        captureRawRequestDebug: true,
+      },
+      ragOptions: {
+        ...currentSettings.ragOptions,
+        excludePatterns: folderPathsToIncludePatterns([
+          ...excludeFolders,
+          DEBUG_LOGS_DIR,
+        ]),
+      },
+    })
+    new Notice(
+      t('settings.etc.captureRawRequestDebugExcludeLogsSuccess').replace(
+        '{{path}}',
+        DEBUG_LOGS_DIR,
+      ),
+    )
+  }
+
+  const handleCaptureRawRequestDebugChange = (value: boolean) => {
+    const shouldPromptExcludeLogs =
+      value && !isDebugLogsExcludedFromKnowledgeBase()
+    const updateDebugSettingPromise = Promise.resolve(
+      setSettings({
+        ...settings,
+        debug: {
+          ...settings.debug,
+          captureRawRequestDebug: value,
+        },
+      }),
+    )
+
+    if (shouldPromptExcludeLogs) {
+      new ConfirmModal(app, {
+        title: t('settings.etc.captureRawRequestDebugExcludeLogsTitle'),
+        message: t(
+          'settings.etc.captureRawRequestDebugExcludeLogsMessage',
+        ).replace('{{path}}', DEBUG_LOGS_DIR),
+        ctaText: t('settings.etc.captureRawRequestDebugExcludeLogsCta'),
+        cancelText: t('common.cancel', 'Cancel'),
+        onConfirm: () => {
+          void (async () => {
+            await updateDebugSettingPromise
+            await excludeDebugLogsFromKnowledgeBase()
+          })().catch((error: unknown) => {
+            console.error(
+              'Failed to exclude debug logs from knowledge base',
+              error,
+            )
+            new Notice(t('common.error'))
+          })
+        },
+      }).open()
+    }
+
+    void updateDebugSettingPromise.catch((error: unknown) => {
+      console.error('Failed to update raw request debug setting', error)
+      new Notice(t('common.error'))
     })
   }
 
@@ -376,6 +460,17 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
               placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
               onChange={setYoloBaseDirInput}
               onBlur={handleYoloBaseDirBlur}
+            />
+          </ObsidianSetting>
+
+          <ObsidianSetting
+            name={t('settings.etc.captureRawRequestDebug')}
+            desc={t('settings.etc.captureRawRequestDebugDesc')}
+            className="yolo-settings-card"
+          >
+            <ObsidianToggle
+              value={settings.debug?.captureRawRequestDebug ?? false}
+              onChange={handleCaptureRawRequestDebugChange}
             />
           </ObsidianSetting>
 

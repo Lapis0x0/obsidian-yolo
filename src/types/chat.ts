@@ -75,6 +75,7 @@ export type ChatAssistantMessage = {
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
+    llmDebugTraceId?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string
     branchId?: string
@@ -172,6 +173,7 @@ export type SerializedChatAssistantMessage = {
     durationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
+    llmDebugTraceId?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string
     branchId?: string

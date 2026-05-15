@@ -22,7 +22,6 @@ import {
   resolveRequestReasoningLevel,
 } from '../../types/reasoning'
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { getChatGPTOAuthService } from '../auth/chatgptOAuthRuntime'
 
@@ -37,7 +36,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 /**
  * Forward only the OpenAI-shaped hosted `web_search` family on this ChatGPT
@@ -114,9 +113,10 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
         fetch: this.createAuthorizedFetch(customFetch),
       })
 
-    this.browserClient = createClient(globalThis.fetch)
-    this.obsidianClient = createClient(createObsidianFetch())
-    this.nodeClient = createClient(createDesktopNodeFetch())
+    const clients = createTransportClients(createClient)
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   async generateResponse(

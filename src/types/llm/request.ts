@@ -112,6 +112,7 @@ export type RequestMessage =
 
 export type LLMOptions = {
   signal?: AbortSignal
+  debugTraceId?: string
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean

@@ -21,7 +21,6 @@ import {
   resolveRequestReasoningLevel,
 } from '../../types/reasoning'
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
@@ -41,7 +40,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
@@ -120,15 +119,16 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       }),
       timeout: options?.requestPolicy?.timeoutMs,
     }
-    this.browserClient = new OpenAI(clientOptions)
-    this.obsidianClient = new OpenAI({
-      ...clientOptions,
-      fetch: createObsidianFetch(),
-    })
-    this.nodeClient = new OpenAI({
-      ...clientOptions,
-      fetch: createDesktopNodeFetch(),
-    })
+    const clients = createTransportClients(
+      (transportFetch) =>
+        new OpenAI({
+          ...clientOptions,
+          fetch: transportFetch,
+        }),
+    )
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   private mergeBuiltinProviderTools(

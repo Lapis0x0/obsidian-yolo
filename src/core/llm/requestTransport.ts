@@ -2,6 +2,8 @@ import { Platform } from 'obsidian'
 
 import { RequestTransportMode } from '../../types/provider.types'
 
+import { inheritLLMDebugTraceSignal } from './debugCapture'
+
 export type AutoPromotedTransportMode = Extract<
   RequestTransportMode,
   'browser' | 'node' | 'obsidian'
@@ -175,6 +177,7 @@ const createLinkedAbortController = (
   cleanup: () => void
 } => {
   const controller = new AbortController()
+  inheritLLMDebugTraceSignal({ source: signal, target: controller.signal })
 
   if (!signal) {
     return {

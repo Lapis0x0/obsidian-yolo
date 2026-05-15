@@ -1005,6 +1005,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+button.yolo-llm-inline-info-debug-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--size-4-4);
+  height: var(--size-4-4);
+  min-width: 0;
+  min-height: 0;
+  padding: 0 !important;
+  color: var(--text-faint);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+button.yolo-llm-inline-info-debug-button:hover,
+button.yolo-llm-inline-info-debug-button:focus-visible {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+}
+
 .yolo-llm-inline-info-tooltip-title-summary {
   display: inline-flex;
   align-items: center;
@@ -1137,6 +1158,64 @@
   padding: var(--size-4-2);
   font-size: var(--font-smallest);
   animation: fadeIn 0.1s ease-in-out;
+}
+
+.modal:has(.yolo-llm-debug-modal) {
+  width: min(96vw, 1100px);
+  max-width: min(96vw, 1100px);
+}
+
+.yolo-llm-debug-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  width: min(88vw, 1040px);
+  height: min(72vh, 760px);
+}
+
+.yolo-llm-debug-modal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--size-4-1);
+  flex: 0 0 auto;
+}
+
+button.yolo-llm-debug-modal-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  height: 26px;
+  min-height: 0;
+  padding: 3px 8px !important;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+button.yolo-llm-debug-modal-button:hover,
+button.yolo-llm-debug-modal-button:focus-visible {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+}
+
+.yolo-llm-debug-modal-markdown {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+  white-space: pre;
 }
 
 /* Conversation settings popover */

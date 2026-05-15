@@ -37,7 +37,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createBrowserFetch, createDesktopNodeFetch } from './sdkFetch'
 
 const CODE_ASSIST_ENDPOINT = 'https://cloudcode-pa.googleapis.com'
 const PROVIDER_LABEL = 'Gemini OAuth'
@@ -69,7 +69,7 @@ const unwrapCodeAssistResponse: GeminiUnwrap = (raw) => {
 }
 
 export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
-  private readonly browserFetch = globalThis.fetch
+  private readonly browserFetch = createBrowserFetch()
   private readonly obsidianFetch = createObsidianFetch()
   private readonly nodeFetch = createDesktopNodeFetch()
   private readonly requestTransportMemoryKey: string

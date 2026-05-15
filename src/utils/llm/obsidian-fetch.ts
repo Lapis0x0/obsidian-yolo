@@ -1,5 +1,7 @@
 import { requestUrl } from 'obsidian'
 
+import { createLLMDebugFetch } from '../../core/llm/debugCapture'
+
 type ObsidianFetch = (
   input: RequestInfo,
   init?: RequestInit,
@@ -75,7 +77,7 @@ const throwIfAborted = (signal?: AbortSignal | null): void => {
 }
 
 export const createObsidianFetch = (): ObsidianFetch => {
-  return async (input, init) => {
+  const obsidianFetch: ObsidianFetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input.url
     const method =
       init?.method ?? (input instanceof Request ? input.method : 'GET')
@@ -113,4 +115,5 @@ export const createObsidianFetch = (): ObsidianFetch => {
       headers: response.headers,
     })
   }
+  return createLLMDebugFetch(obsidianFetch as typeof fetch, 'obsidian')
 }

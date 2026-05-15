@@ -12,6 +12,7 @@ import {
   ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
+import { runWithLLMDebugTrace } from '../llm/debugCapture'
 
 import { composeAgentInjections } from './agent-injections'
 import {
@@ -107,6 +108,7 @@ export class NativeAgentRuntime implements AgentRuntime {
 
     let pendingToolMessageId: string | null = null
     let pendingToolCallCount = 0
+    let currentDebugTraceId: string | undefined
     let runSettled = false
     let workerTaskQueue = Promise.resolve()
     let abortListener: (() => void) | null = null
@@ -169,6 +171,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                 const turnResult = await llmTurnExecutor.run()
                 pendingToolMessageId = null
                 pendingToolCallCount = turnResult.toolCallRequests.length
+                currentDebugTraceId = turnResult.debugTraceId
 
                 worker.postMessage({
                   type: 'llm_result',
@@ -203,17 +206,21 @@ export class NativeAgentRuntime implements AgentRuntime {
                 this.messages.push(initialToolMessage)
                 this.notifySubscribers()
 
-                const completedToolMessage =
-                  await toolGateway.executeAutoToolCalls({
-                    toolMessage: initialToolMessage,
-                    conversationId: input.conversationId,
-                    conversationMessages: [
-                      ...requestMessages,
-                      ...this.messages,
-                    ],
-                    signal: abortSignal,
-                    chatModelId: input.model.id,
-                  })
+                const completedToolMessage = await runWithLLMDebugTrace(
+                  currentDebugTraceId,
+                  () =>
+                    toolGateway.executeAutoToolCalls({
+                      toolMessage: initialToolMessage,
+                      conversationId: input.conversationId,
+                      conversationMessages: [
+                        ...requestMessages,
+                        ...this.messages,
+                      ],
+                      signal: abortSignal,
+                      chatModelId: input.model.id,
+                      debugTraceId: currentDebugTraceId,
+                    }),
+                )
 
                 this.replaceToolMessage(completedToolMessage)
                 this.notifySubscribers()

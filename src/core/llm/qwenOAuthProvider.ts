@@ -14,7 +14,6 @@ import {
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
 import { getQwenOAuthService } from '../auth/qwenOAuthRuntime'
@@ -33,7 +32,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 const GOOGLE_SEARCH_FUNCTION_TOOL: RequestTool = {
   type: 'function',
@@ -193,18 +192,16 @@ export class QwenOAuthProvider extends BaseLLMProvider<LLMProvider> {
       defaultHeaders,
     }
 
-    this.browserClient = new ClientCtor({
-      ...clientOptions,
-      fetch: this.createAuthorizedFetch(globalThis.fetch),
-    })
-    this.obsidianClient = new ClientCtor({
-      ...clientOptions,
-      fetch: this.createAuthorizedFetch(createObsidianFetch()),
-    })
-    this.nodeClient = new ClientCtor({
-      ...clientOptions,
-      fetch: this.createAuthorizedFetch(createDesktopNodeFetch()),
-    })
+    const clients = createTransportClients(
+      (transportFetch) =>
+        new ClientCtor({
+          ...clientOptions,
+          fetch: this.createAuthorizedFetch(transportFetch),
+        }),
+    )
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   async generateResponse(

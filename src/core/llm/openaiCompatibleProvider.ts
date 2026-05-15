@@ -14,7 +14,6 @@ import {
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
@@ -34,7 +33,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 type GeminiThinkingConfig = {
   thinking_budget: number
@@ -162,15 +161,16 @@ export class OpenAICompatibleProvider extends BaseLLMProvider<LLMProvider> {
       timeout: options?.requestPolicy?.timeoutMs,
       defaultHeaders,
     }
-    this.browserClient = new ClientCtor(clientOptions)
-    this.obsidianClient = new ClientCtor({
-      ...clientOptions,
-      fetch: createObsidianFetch(),
-    })
-    this.nodeClient = new ClientCtor({
-      ...clientOptions,
-      fetch: createDesktopNodeFetch(),
-    })
+    const clients = createTransportClients(
+      (transportFetch) =>
+        new ClientCtor({
+          ...clientOptions,
+          fetch: transportFetch,
+        }),
+    )
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   async generateResponse(

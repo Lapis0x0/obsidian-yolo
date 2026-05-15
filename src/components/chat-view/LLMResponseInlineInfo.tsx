@@ -1,11 +1,16 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { ArrowDown, ArrowUp, Clock, Zap } from 'lucide-react'
-import { ReactNode, useLayoutEffect, useRef, useState } from 'react'
+import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { AssistantToolMessageGroup } from '../../types/chat'
 import { ResponseUsage } from '../../types/llm/response'
 
+import {
+  LLMDebugIconButton,
+  getLLMDebugTraceIdsForMessages,
+  hasLLMDebugCacheForTraceIds,
+} from './LLMDebugButton'
 import { LLMRequestEntry, useLLMResponseInfo } from './useLLMResponseInfo'
 
 const formatTokenCount = (value: number) => {
@@ -327,6 +332,15 @@ export default function LLMResponseInlineInfo({
     return () => observer.disconnect()
   }, [usage, durationMs, totalUsage, requestCount])
 
+  const debugTraceIds = useMemo(
+    () => getLLMDebugTraceIdsForMessages(messages),
+    [messages],
+  )
+  const hasDebugCache = useMemo(
+    () => hasLLMDebugCacheForTraceIds(debugTraceIds),
+    [debugTraceIds],
+  )
+
   if (!usage && durationMs === null) {
     return null
   }
@@ -392,6 +406,11 @@ export default function LLMResponseInlineInfo({
                         '{{count}} calls this turn',
                       ).replace('{{count}}', String(requestCount))}
                     </span>
+                    <LLMDebugIconButton
+                      messages={messages}
+                      traceIds={debugTraceIds}
+                      className="clickable-icon yolo-llm-inline-info-debug-button"
+                    />
                     <span className="yolo-llm-inline-info-tooltip-title-summary">
                       <span className="yolo-llm-inline-info-breakdown-cell">
                         <ArrowUp className="yolo-llm-inline-info-icon yolo-llm-inline-info-icon--input" />
@@ -423,7 +442,27 @@ export default function LLMResponseInlineInfo({
                   </div>
                 </>
               ) : (
-                renderTooltipBlock(lastInputs)
+                <>
+                  {hasDebugCache && (
+                    <>
+                      <div className="yolo-llm-inline-info-tooltip-title">
+                        <span>
+                          {t(
+                            'chat.inlineInfo.callsTitle',
+                            '{{count}} calls this turn',
+                          ).replace('{{count}}', String(requestCount || 1))}
+                        </span>
+                        <LLMDebugIconButton
+                          messages={messages}
+                          traceIds={debugTraceIds}
+                          className="clickable-icon yolo-llm-inline-info-debug-button"
+                        />
+                      </div>
+                      <div className="yolo-llm-inline-info-tooltip-divider" />
+                    </>
+                  )}
+                  {renderTooltipBlock(lastInputs)}
+                </>
               )}
               {nextTurnTokens !== null && (
                 <>

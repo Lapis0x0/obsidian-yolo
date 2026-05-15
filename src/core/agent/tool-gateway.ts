@@ -12,6 +12,7 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
+import { captureLLMDebugOperation } from '../llm/debugCapture'
 import {
   ASK_USER_QUESTION_TOOL_NAME,
   getLocalFileToolServerName,
@@ -26,6 +27,11 @@ import {
   isAssistantToolEnabled,
 } from './tool-preferences'
 import { findPathOutsideScope } from './workspaceScope'
+
+type McpToolCallParams = Parameters<McpManager['callTool']>[0]
+type McpToolCallParamsWithDebug = McpToolCallParams & {
+  debugTraceId?: string
+}
 
 export class AgentToolGateway {
   private readonly toolsEnabled: boolean
@@ -191,12 +197,14 @@ export class AgentToolGateway {
     conversationMessages,
     signal,
     chatModelId,
+    debugTraceId,
   }: {
     toolMessage: ChatToolMessage
     conversationId: string
     conversationMessages?: ChatMessage[]
     signal?: AbortSignal
     chatModelId?: string
+    debugTraceId?: string
   }): Promise<ChatToolMessage> {
     const nextToolCalls = [...toolMessage.toolCalls]
     // `AwaitingUserInput` is intentionally excluded here: it is a paused state
@@ -240,8 +248,29 @@ export class AgentToolGateway {
 
     for (const entry of standalone) {
       batchPromises.push(
-        this.mcpManager
-          .callTool({
+        this.callToolWithDebug({
+          name: entry.toolCall.request.name,
+          args: getToolCallArgumentsObject(entry.toolCall.request.arguments),
+          id: entry.toolCall.request.id,
+          conversationId,
+          conversationMessages,
+          roundId: toolMessage.id,
+          requireReview: this.shouldUseFsEditReview(
+            entry.toolCall.request.name,
+          ),
+          signal,
+          chatModelId,
+          debugTraceId,
+          workspaceScope: this.workspaceScope,
+        }).then((response) => ({ entries: [entry], responses: [response] })),
+      )
+    }
+
+    for (const [path, entries] of fsEditGroups) {
+      if (entries.length === 1) {
+        const entry = entries[0]
+        batchPromises.push(
+          this.callToolWithDebug({
             name: entry.toolCall.request.name,
             args: getToolCallArgumentsObject(entry.toolCall.request.arguments),
             id: entry.toolCall.request.id,
@@ -253,34 +282,9 @@ export class AgentToolGateway {
             ),
             signal,
             chatModelId,
+            debugTraceId,
             workspaceScope: this.workspaceScope,
-          })
-          .then((response) => ({ entries: [entry], responses: [response] })),
-      )
-    }
-
-    for (const [path, entries] of fsEditGroups) {
-      if (entries.length === 1) {
-        const entry = entries[0]
-        batchPromises.push(
-          this.mcpManager
-            .callTool({
-              name: entry.toolCall.request.name,
-              args: getToolCallArgumentsObject(
-                entry.toolCall.request.arguments,
-              ),
-              id: entry.toolCall.request.id,
-              conversationId,
-              conversationMessages,
-              roundId: toolMessage.id,
-              requireReview: this.shouldUseFsEditReview(
-                entry.toolCall.request.name,
-              ),
-              signal,
-              chatModelId,
-              workspaceScope: this.workspaceScope,
-            })
-            .then((response) => ({ entries: [entry], responses: [response] })),
+          }).then((response) => ({ entries: [entry], responses: [response] })),
         )
         continue
       }
@@ -294,29 +298,28 @@ export class AgentToolGateway {
       }
 
       batchPromises.push(
-        this.mcpManager
-          .callTool({
-            name: leader.toolCall.request.name,
-            args: mergedArgs,
-            id: leader.toolCall.request.id,
-            conversationId,
-            conversationMessages,
-            roundId: toolMessage.id,
-            requireReview: this.shouldUseFsEditReview(
-              leader.toolCall.request.name,
-            ),
-            signal,
-            chatModelId,
-            workspaceScope: this.workspaceScope,
-          })
-          .then((response) => ({
-            entries,
-            responses: this.splitBatchedFsEditResponse({
-              response,
-              opCounts,
-              path,
-            }),
-          })),
+        this.callToolWithDebug({
+          name: leader.toolCall.request.name,
+          args: mergedArgs,
+          id: leader.toolCall.request.id,
+          conversationId,
+          conversationMessages,
+          roundId: toolMessage.id,
+          requireReview: this.shouldUseFsEditReview(
+            leader.toolCall.request.name,
+          ),
+          signal,
+          chatModelId,
+          debugTraceId,
+          workspaceScope: this.workspaceScope,
+        }).then((response) => ({
+          entries,
+          responses: this.splitBatchedFsEditResponse({
+            response,
+            opCounts,
+            path,
+          }),
+        })),
       )
     }
 
@@ -364,6 +367,31 @@ export class AgentToolGateway {
       ...toolMessage,
       toolCalls: nextToolCalls,
     }
+  }
+
+  private async callToolWithDebug(
+    params: McpToolCallParamsWithDebug,
+  ): Promise<ToolCallResponse> {
+    const { debugTraceId, ...toolParams } = params
+    return captureLLMDebugOperation({
+      traceId: debugTraceId,
+      signal: toolParams.signal,
+      transportMode: 'mcp',
+      url: `mcp://${toolParams.name}`,
+      method: 'callTool',
+      requestBody: {
+        name: toolParams.name,
+        args: toolParams.args,
+        id: toolParams.id,
+        conversationId: toolParams.conversationId,
+        roundId: toolParams.roundId,
+        requireReview: toolParams.requireReview,
+        chatModelId: toolParams.chatModelId,
+      },
+      responseContentType: 'application/json',
+      run: () => this.mcpManager.callTool(toolParams),
+      getResponseBody: (response) => response,
+    })
   }
 
   private getFsEditTargetPath(request: ToolCallRequest): string | undefined {

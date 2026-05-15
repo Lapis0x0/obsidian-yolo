@@ -5,6 +5,8 @@ import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { shouldBypassProxy } from '../../utils/net/proxyBypass'
 import { resolveSystemProxy } from '../../utils/net/systemProxyResolver'
 
+import { createLLMDebugFetch } from './debugCapture'
+
 type RequestOptions = import('node:http').RequestOptions
 
 let nodeFetchPromise: Promise<typeof fetch> | null = null
@@ -75,7 +77,7 @@ const loadNodeFetch = async (): Promise<typeof fetch> => {
 export const createDesktopNodeFetch = (
   options: DesktopNodeFetchOptions = {},
 ): typeof fetch => {
-  return async (input, init) => {
+  const nodeFetchWithProxy: typeof fetch = async (input, init) => {
     if (!Platform.isDesktop) {
       throw new Error(
         'Node request transport is only available on desktop Obsidian.',
@@ -96,7 +98,11 @@ export const createDesktopNodeFetch = (
 
     return nodeFetch(input, requestInit)
   }
+  return createLLMDebugFetch(nodeFetchWithProxy, 'node')
 }
+
+export const createBrowserFetch = (): typeof fetch =>
+  createLLMDebugFetch(globalThis.fetch.bind(globalThis), 'browser')
 
 export const createSdkFetchForTransportMode = (
   mode: RequestTransportMode,

@@ -19,6 +19,7 @@
 import { Platform } from 'obsidian'
 
 import { envHasProxy } from '../../utils/net/proxyEnv'
+import { createLLMDebugFetch } from '../llm/debugCapture'
 
 export type DesktopMcpFetchOptions = {
   /**
@@ -43,12 +44,12 @@ export const createDesktopMcpFetch = (
     )
   }
 
-  return async (input, init) => {
+  return createLLMDebugFetch(async (input, init) => {
     if (!Platform.isDesktop) {
       throw new Error(
         'MCP remote HTTP transport is only available on desktop Obsidian.',
       )
     }
     return globalThis.fetch(input, init)
-  }
+  }, 'mcp')
 }

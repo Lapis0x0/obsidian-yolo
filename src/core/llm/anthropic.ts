@@ -35,7 +35,6 @@ import {
 } from '../../types/reasoning'
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
-import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { applyAnthropicPromptCache } from './anthropicPromptCache'
@@ -52,7 +51,7 @@ import {
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
-import { createDesktopNodeFetch } from './sdkFetch'
+import { createTransportClients } from './transportClients'
 
 export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private browserClient: Anthropic
@@ -130,15 +129,16 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
       timeout: options?.requestPolicy?.timeoutMs,
       ...(defaultHeaders ? { defaultHeaders } : {}),
     }
-    this.browserClient = new Anthropic(clientOptions)
-    this.obsidianClient = new Anthropic({
-      ...clientOptions,
-      fetch: createObsidianFetch(),
-    })
-    this.nodeClient = new Anthropic({
-      ...clientOptions,
-      fetch: createDesktopNodeFetch(),
-    })
+    const clients = createTransportClients(
+      (transportFetch) =>
+        new Anthropic({
+          ...clientOptions,
+          fetch: transportFetch,
+        }),
+    )
+    this.browserClient = clients.browserClient
+    this.obsidianClient = clients.obsidianClient
+    this.nodeClient = clients.nodeClient
   }
 
   async generateResponse(
