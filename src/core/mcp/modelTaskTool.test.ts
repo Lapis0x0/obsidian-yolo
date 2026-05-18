@@ -330,6 +330,17 @@ describe('executeModelTaskTool', () => {
     ).toEqual(expect.stringContaining('received_text_chars'))
   })
 
+  it('tells the main model to inspect child intake checks', () => {
+    const tool = buildRunModelTaskTool(baseSettings)
+
+    expect(tool?.description).toEqual(
+      expect.stringContaining('inspect that intake check'),
+    )
+    expect(tool?.description).toEqual(
+      expect.stringContaining('point out the anomaly to the user'),
+    )
+  })
+
   it('passes requested sub-model reasoning level without returning reasoning by default', async () => {
     mockGetChatModelClient.mockReturnValueOnce({
       providerClient: { id: 'provider' },

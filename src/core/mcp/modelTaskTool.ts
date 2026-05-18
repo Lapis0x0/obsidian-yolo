@@ -445,7 +445,8 @@ export const buildRunModelTaskTool = (
       'If source is provided, only the source result is sent to the sub LLM; the source result is not returned to the main LLM.\n\n' +
       'Use this tool proactively for large-file analysis, bulky web/source material, long-context synthesis, first-pass extraction, or any task that may overflow the main model context. ' +
       'When a source may be larger than the target sub-model context window, estimate from the model context/output limits below and read a bounded range first; split very large files into multiple ranged calls instead of reading everything at once. ' +
-      'Ask the child to include an intake check in its answer: received text length, a short prefix sample, and a short suffix sample, so the main model can verify whether the child saw the expected complete material.\n\n' +
+      'Ask the child to include an intake check in its answer: received text length, a short prefix sample, and a short suffix sample, so the main model can verify whether the child saw the expected complete material. ' +
+      'After the child responds, inspect that intake check before relying on the result; if it is missing, inconsistent with the requested source range, or otherwise abnormal, point out the anomaly to the user.\n\n' +
       `Available model categories:\n${categoryDescriptions}\n\n` +
       `Available sub-models:\n${modelList}\n\n` +
       `Source tools available for this agent: ${sourceToolDescription}.\n\n` +

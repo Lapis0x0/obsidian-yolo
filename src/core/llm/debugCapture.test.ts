@@ -171,9 +171,7 @@ describe('debugCapture', () => {
   it('uses OMITTED markers for long captured JSON strings', () => {
     const omitted = omitBase64DebugData('long text '.repeat(5_000))
 
-    expect(omitted).toMatch(
-      /\[ {20}OMITTED long JSON string: \d+ chars {20}\]/,
-    )
+    expect(omitted).toMatch(/\[ {20}OMITTED long JSON string: \d+ chars {20}\]/)
     expect(omitted).not.toContain('\n')
     expect(omitted).not.toContain('Truncated long JSON string')
   })
