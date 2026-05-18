@@ -4807,6 +4807,107 @@ button.yolo-assistant-selector-footer-btn:hover {
   overflow: auto;
 }
 
+.yolo-model-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-4);
+}
+
+.yolo-model-tools-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-model-tools-section {
+  min-width: 0;
+}
+
+.yolo-model-tools-add,
+.yolo-model-tools-list,
+.yolo-model-tools-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.yolo-model-tools-add .yolo-simple-select__trigger {
+  width: 100%;
+}
+
+.yolo-model-tools-add {
+  max-width: 520px;
+}
+
+.yolo-model-tools-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  padding: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.yolo-model-tools-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  padding: var(--size-2-3) var(--size-4-2);
+}
+
+.yolo-model-tools-model-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.yolo-model-tools-model-name {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-model-tools-model-meta {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.yolo-model-tools-model-controls {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.yolo-model-tools-model-controls .yolo-simple-select__trigger {
+  min-width: 136px;
+}
+
+.yolo-model-tools-category {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  padding: var(--size-4-2);
+}
+
+.yolo-model-tools-category input,
+.yolo-model-tools-category textarea {
+  width: 100%;
+  font-size: var(--font-ui-small);
+}
+
+.yolo-model-tools-category textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
 .yolo-agent-tool-list {
   display: flex;
   flex-direction: column;
@@ -5289,6 +5390,19 @@ button.yolo-agent-tool-group-bulk-toggle:hover {
   .yolo-agent-model-select-wrap {
     width: 100%;
     min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .yolo-model-tools-model-row,
+  .yolo-agent-model-tools-row,
+  .yolo-agent-model-tools-toggle-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .yolo-model-tools-model-controls {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 
@@ -5354,12 +5468,102 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-agent-model-select-wrap {
-  width: min(520px, 100%);
-  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 40px;
 }
 
 .yolo-agent-model-select-wrap > .yolo-simple-select__trigger {
   width: 100%;
+}
+
+.yolo-agent-model-tools-gear {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.yolo-agent-model-tools-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-agent-model-tools-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+}
+
+.yolo-agent-model-tools-toggle-main {
+  min-width: 0;
+}
+
+.yolo-agent-model-tools-source-toggle {
+  padding-bottom: 0;
+}
+
+.yolo-agent-model-tools-source-heading {
+  margin-top: var(--size-4-6);
+  padding-top: var(--size-4-2);
+  padding-bottom: var(--size-4-2);
+}
+
+.yolo-agent-model-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.yolo-agent-model-tools-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  padding: var(--size-4-2);
+}
+
+.yolo-agent-model-tools-icon {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.yolo-agent-model-tools-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.yolo-agent-model-tools-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-1);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-agent-model-tools-category {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  line-height: var(--line-height-tight);
+  padding: 1px 6px;
+  background: var(--background-secondary);
+}
+
+.yolo-agent-model-tools-desc {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
 }
 
 .yolo-agent-model-select-content {

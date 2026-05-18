@@ -464,6 +464,8 @@ export const it: TranslationKeys = {
       builtinAskUserQuestionLabel: "Chiedi all'utente",
       builtinAskUserQuestionDesc:
         "Chiede all'utente quando mancano informazioni necessarie e riprende dopo la risposta.",
+      modelToolsMcpSourceToolsEnabledDesc:
+        'Quando attivo, i task del sotto-modello possono chiamare gli strumenti MCP selezionati sotto come input del modello. Possono essere selezionati solo gli strumenti gia abilitati e impostati su accesso completo nella pagina strumenti superiore. Non selezionare strumenti non di sola lettura.',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',
@@ -1282,6 +1284,8 @@ export const it: TranslationKeys = {
     contextUsage: 'Utilizzo finestra di contesto',
     inlineInfo: {
       callsTitle: '{{count}} chiamate in questo turno',
+      mainCallsTitle:
+        '{{count}} chiamate al modello principale in questo turno',
       nextTurnContext: 'Contesto utilizzato: ~{{tokens}} token',
       nextTurnContextCached:
         'Contesto utilizzato: ~{{tokens}} token ({{cached}} in cache)',

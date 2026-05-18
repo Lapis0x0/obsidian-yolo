@@ -1,5 +1,17 @@
 import { SETTINGS_SCHEMA_VERSION, SETTING_MIGRATIONS } from './migrations'
-import { YoloSettings, yoloSettingsSchema } from './setting.types'
+import {
+  DEFAULT_AGENT_LLM_TOOL_CATEGORIES,
+  YoloSettings,
+  yoloSettingsSchema,
+} from './setting.types'
+
+const MODEL_TASK_SOURCE_TOOL_NAMES = new Set([
+  'fs_list',
+  'fs_search',
+  'fs_read',
+  'web_search',
+  'web_scrape',
+])
 
 export function normalizeYoloSettingsReferences(
   settings: YoloSettings,
@@ -25,6 +37,9 @@ export function normalizeYoloSettingsReferences(
     return true
   })
   const validChatModelIds = new Set(chatModels.map((model) => model.id))
+  const enabledChatModelIds = new Set(
+    chatModels.filter((model) => model.enable ?? true).map((model) => model.id),
+  )
   const validEmbeddingModelIds = new Set(
     embeddingModels.map((model) => model.id),
   )
@@ -46,14 +61,88 @@ export function normalizeYoloSettingsReferences(
 
     return fallbackModelId
   }
-  const assistants = settings.assistants.map((assistant) => {
-    if (!assistant.modelId || validChatModelIds.has(assistant.modelId)) {
-      return assistant
+  const categoriesById = new Map<
+    string,
+    (typeof settings.agentLlmTools.categories)[number]
+  >()
+  for (const category of settings.agentLlmTools.categories) {
+    if (category.id.trim().length > 0 && !categoriesById.has(category.id)) {
+      categoriesById.set(category.id, category)
     }
+  }
+  for (const category of DEFAULT_AGENT_LLM_TOOL_CATEGORIES) {
+    if (!categoriesById.has(category.id)) {
+      categoriesById.set(category.id, { ...category })
+    }
+  }
+  const agentLlmToolCategories = [...categoriesById.values()]
+  const agentLlmToolCategoryIds = new Set(
+    agentLlmToolCategories.map((category) => category.id),
+  )
+  const fallbackAgentLlmToolCategoryId =
+    agentLlmToolCategories[0]?.id ?? DEFAULT_AGENT_LLM_TOOL_CATEGORIES[0].id
+  const seenAgentLlmModelToolIds = new Set<string>()
+  const agentLlmModelTools = settings.agentLlmTools.modelTools.flatMap(
+    (modelTool) => {
+      // Intentional: a model tool is pruned when its chat model is missing
+      // OR merely disabled (covered by settings.test.ts "missing or
+      // disabled"). A disabled model must not stay offered as a sub-model
+      // task target. Known tradeoff: disabling then re-enabling a model does
+      // not restore its pruned model-tool config — it must be re-added.
+      if (!enabledChatModelIds.has(modelTool.modelId)) {
+        return []
+      }
+      if (seenAgentLlmModelToolIds.has(modelTool.id)) {
+        return []
+      }
+      seenAgentLlmModelToolIds.add(modelTool.id)
+      return [
+        {
+          ...modelTool,
+          categoryId: agentLlmToolCategoryIds.has(modelTool.categoryId)
+            ? modelTool.categoryId
+            : fallbackAgentLlmToolCategoryId,
+        },
+      ]
+    },
+  )
+  const validAgentLlmToolModelIds = new Set(
+    agentLlmModelTools.map((modelTool) => modelTool.modelId),
+  )
+  const assistants = settings.assistants.map((assistant) => {
+    const modelToolOptions = assistant.modelToolOptions
+    const normalizedAllowedModelIds = modelToolOptions?.allowedModelIds?.filter(
+      (modelId) => validAgentLlmToolModelIds.has(modelId),
+    )
+    const normalizedSourceToolNames =
+      modelToolOptions?.enabledSourceToolNames?.filter((toolName) =>
+        toolName.includes('__')
+          ? toolName.trim().length > 0
+          : MODEL_TASK_SOURCE_TOOL_NAMES.has(toolName),
+      )
 
     return {
       ...assistant,
-      modelId: undefined,
+      ...(!assistant.modelId || validChatModelIds.has(assistant.modelId)
+        ? {}
+        : { modelId: undefined }),
+      ...(!assistant.modelToolModelId ||
+      validAgentLlmToolModelIds.has(assistant.modelToolModelId)
+        ? {}
+        : { modelToolModelId: undefined }),
+      ...(modelToolOptions
+        ? {
+            modelToolOptions: {
+              ...modelToolOptions,
+              ...(normalizedAllowedModelIds !== undefined
+                ? { allowedModelIds: normalizedAllowedModelIds }
+                : {}),
+              ...(normalizedSourceToolNames !== undefined
+                ? { enabledSourceToolNames: normalizedSourceToolNames }
+                : {}),
+            },
+          }
+        : {}),
     }
   })
   const validAssistantIds = new Set(assistants.map((assistant) => assistant.id))
@@ -104,6 +193,11 @@ export function normalizeYoloSettingsReferences(
       validAssistantIds.has(settings.quickAskAssistantId)
         ? settings.quickAskAssistantId
         : undefined,
+    agentLlmTools: {
+      ...settings.agentLlmTools,
+      categories: agentLlmToolCategories,
+      modelTools: agentLlmModelTools,
+    },
   }
 }
 

@@ -59,8 +59,11 @@ export function SimpleSelect({
   return (
     <DropdownMenu.Root open={isOpen} onOpenChange={(open) => setIsOpen(open)}>
       <DropdownMenu.Trigger
+        type="button"
         className="yolo-simple-select__trigger"
         disabled={disabled}
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <div className="yolo-simple-select__label">
           {selected?.label ?? placeholder}
@@ -84,6 +87,8 @@ export function SimpleSelect({
           collisionPadding={collisionPadding}
           collisionBoundary={collisionBoundary ?? undefined}
           loop
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
           onCloseAutoFocus={(event) => {
             event.preventDefault()
           }}

@@ -23,12 +23,14 @@ import {
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
+import { MODEL_TASK_TOOL_NAME } from '../../../core/mcp/modelTaskTool'
 import YoloPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { CollapsibleToolDescription } from '../common/CollapsibleToolDescription'
 import { McpSection } from '../sections/McpSection'
 
+import { ModelToolsSettingsModal } from './ModelToolsSettingsModal'
 import { WebSearchSettingsModal } from './WebSearchSettingsModal'
 
 type AgentToolsModalProps = {
@@ -102,8 +104,12 @@ function AgentToolsModalContent({
           description: meta
             ? t(meta.descKey ?? '', meta.descFallback)
             : tool.description,
-          enabled: !(toolOptions[tool.name]?.disabled ?? false),
-          hasSettings: false,
+          enabled:
+            tool.name === MODEL_TASK_TOOL_NAME
+              ? settings.agentLlmTools.enabled &&
+                !(toolOptions[tool.name]?.disabled ?? false)
+              : !(toolOptions[tool.name]?.disabled ?? false),
+          hasSettings: tool.name === MODEL_TASK_TOOL_NAME,
         }
       })
 
@@ -177,9 +183,30 @@ function AgentToolsModalContent({
       ),
       tools: byCategory.get(category) ?? [],
     })).filter((group) => group.tools.length > 0)
-  }, [settings.mcp.builtinToolOptions, t])
+  }, [settings.agentLlmTools.enabled, settings.mcp.builtinToolOptions, t])
 
   const handleToggleBuiltinTool = (toolName: string, enabled: boolean) => {
+    if (toolName === MODEL_TASK_TOOL_NAME) {
+      void setSettings({
+        ...settings,
+        agentLlmTools: {
+          ...settings.agentLlmTools,
+          enabled,
+        },
+        mcp: {
+          ...settings.mcp,
+          builtinToolOptions: {
+            ...settings.mcp.builtinToolOptions,
+            [MODEL_TASK_TOOL_NAME]: {
+              ...settings.mcp.builtinToolOptions[MODEL_TASK_TOOL_NAME],
+              disabled: false,
+            },
+          },
+        },
+      })
+      return
+    }
+
     const targets =
       toolName === FILE_OPS_GROUP_TOOL_NAME
         ? [FILE_OPS_GROUP_TOOL_NAME, ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES]
@@ -249,13 +276,24 @@ function AgentToolsModalContent({
                       <button
                         type="button"
                         className="clickable-icon"
-                        aria-label={t(
-                          'settings.webSearch.openSettings',
-                          'Configure web search providers',
-                        )}
-                        onClick={() =>
-                          new WebSearchSettingsModal(app, plugin).open()
+                        aria-label={
+                          tool.id === MODEL_TASK_TOOL_NAME
+                            ? t(
+                                'settings.agent.modelToolsConfigure',
+                                'Configure sub-model task toolset',
+                              )
+                            : t(
+                                'settings.webSearch.openSettings',
+                                'Configure web search providers',
+                              )
                         }
+                        onClick={() => {
+                          if (tool.id === MODEL_TASK_TOOL_NAME) {
+                            new ModelToolsSettingsModal(app, plugin).open()
+                            return
+                          }
+                          new WebSearchSettingsModal(app, plugin).open()
+                        }}
                       >
                         <Settings size={16} />
                       </button>

@@ -1,5 +1,6 @@
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
+  DEFAULT_AGENT_LLM_TOOLS,
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
@@ -73,6 +74,7 @@ describe('parseYoloSettings', () => {
     expect(result.continuationOptions.smartSpaceQuickActions).toBeUndefined()
 
     expect(result.assistants).toEqual([])
+    expect(result.agentLlmTools).toEqual(DEFAULT_AGENT_LLM_TOOLS)
   })
 
   it('migrates applyModelId to chatTitleModelId for legacy settings', () => {
@@ -301,6 +303,165 @@ describe('parseYoloSettings', () => {
     ])
     expect(result.currentAssistantId).toBeUndefined()
     expect(result.quickAskAssistantId).toBeUndefined()
+  })
+
+  it('migrates v56 settings to include agent LLM tool defaults', () => {
+    const result = parseYoloSettings({
+      version: 56,
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.agentLlmTools).toEqual(DEFAULT_AGENT_LLM_TOOLS)
+  })
+
+  it('normalizes agent LLM model tools when chat models are missing or disabled', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/enabled',
+          model: 'enabled',
+          enable: true,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/disabled',
+          model: 'disabled',
+          enable: false,
+        },
+      ],
+      agentLlmTools: {
+        enabled: true,
+        categories: [
+          {
+            id: 'custom',
+            name: 'Custom',
+            description: 'Keep me',
+          },
+        ],
+        modelTools: [
+          {
+            id: 'keep',
+            modelId: 'openai/enabled',
+            categoryId: 'custom',
+            enabled: true,
+          },
+          {
+            id: 'drop-disabled',
+            modelId: 'openai/disabled',
+            categoryId: 'custom',
+            enabled: true,
+          },
+          {
+            id: 'drop-missing',
+            modelId: 'openai/missing',
+            categoryId: 'custom',
+            enabled: true,
+          },
+        ],
+      },
+      assistants: [
+        {
+          id: 'assistant-keep-model-tool',
+          name: 'Keep',
+          modelToolModelId: 'openai/enabled',
+        },
+        {
+          id: 'assistant-drop-model-tool',
+          name: 'Drop',
+          modelToolModelId: 'openai/disabled',
+        },
+      ],
+    })
+
+    expect(result.agentLlmTools.categories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'custom',
+          description: 'Keep me',
+        }),
+        expect.objectContaining({ id: 'economy' }),
+        expect.objectContaining({ id: 'capable' }),
+      ]),
+    )
+    expect(result.agentLlmTools.modelTools).toEqual([
+      {
+        id: 'keep',
+        modelId: 'openai/enabled',
+        categoryId: 'custom',
+        enabled: true,
+      },
+    ])
+    expect(result.assistants).toEqual([
+      {
+        id: 'assistant-keep-model-tool',
+        name: 'Keep',
+        systemPrompt: '',
+        modelToolModelId: 'openai/enabled',
+      },
+      {
+        id: 'assistant-drop-model-tool',
+        name: 'Drop',
+        systemPrompt: '',
+        modelToolModelId: undefined,
+      },
+    ])
+  })
+
+  it('preserves explicitly allowed MCP source tools while cleaning invalid local model-task source tools', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [{ id: 'openai', presetType: 'openai' }],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/enabled',
+          model: 'enabled',
+          enable: true,
+        },
+      ],
+      agentLlmTools: {
+        enabled: true,
+        categories: [
+          {
+            id: 'economy',
+            name: 'Economy',
+            description: 'Fast',
+          },
+        ],
+        modelTools: [
+          {
+            id: 'model-tool',
+            modelId: 'openai/enabled',
+            categoryId: 'economy',
+            enabled: true,
+          },
+        ],
+      },
+      assistants: [
+        {
+          id: 'assistant',
+          name: 'Agent',
+          modelToolOptions: {
+            mcpSourceToolsEnabled: true,
+            enabledSourceToolNames: ['fs_read', 'fs_edit', 'docs__lookup'],
+          },
+        },
+      ],
+    })
+
+    expect(result.assistants[0]?.modelToolOptions).toMatchObject({
+      mcpSourceToolsEnabled: true,
+      enabledSourceToolNames: ['fs_read', 'docs__lookup'],
+    })
   })
 
   it('clears invalid model references when no valid models remain after parsing', () => {

@@ -1,6 +1,7 @@
 import {
   LLMDebugHttpExchange,
   LLMDebugTrace,
+  getLinkedLLMDebugTraceIds,
   omitBase64DebugData,
   redactJsonLike,
 } from './debugCapture'
@@ -945,6 +946,10 @@ function isTitleGenerationTrace(trace: LLMDebugTrace): boolean {
   return trace.summary.requestKind === 'title-generation'
 }
 
+function isSubLlmTrace(trace: LLMDebugTrace): boolean {
+  return trace.summary.requestKind === 'sub-llm'
+}
+
 function isOtherRequestTrace(trace: LLMDebugTrace): boolean {
   return (
     isTitleGenerationTrace(trace) || trace.summary.requestKind === 'embedding'
@@ -955,6 +960,9 @@ function isUnrelatedConversationExchange(
   trace: LLMDebugTrace,
   exchange: LLMDebugHttpExchange,
 ): boolean {
+  if (isSubLlmTrace(trace)) {
+    return false
+  }
   return (
     isEmbeddingExchange(trace, exchange) ||
     isTitleGenerationTrace(trace) ||
@@ -1170,6 +1178,9 @@ function getExchangeCategory(
   if (isEmbeddingExchange(trace, exchange)) {
     return 'Embedding request'
   }
+  if (isSubLlmTrace(trace)) {
+    return 'Sub LLM request'
+  }
   if (isTitleGenerationTrace(trace)) {
     return 'Title generation request'
   }
@@ -1290,6 +1301,7 @@ function formatExchange(
   trace: LLMDebugTrace,
   exchange: LLMDebugHttpExchange,
   index: number,
+  stepIndex?: number,
 ): string {
   const isEmbedding = isEmbeddingExchange(trace, exchange)
   const requestBody = formatBody({
@@ -1326,9 +1338,11 @@ function formatExchange(
     typeof exchange.completedAt === 'number'
       ? exchange.completedAt - exchange.startedAt
       : undefined
+  const headingNumber =
+    stepIndex === undefined ? `${index + 1}` : `${stepIndex + 1}.${index + 1}`
 
   return [
-    `### #${index + 1} ${category}`,
+    `### #${headingNumber} - ${category}`,
     ...(isEmbedding
       ? [
           '',
@@ -1461,7 +1475,7 @@ function formatTraceOnlyOtherRequest(
     : (summary.modelId ?? 'unknown')
 
   return [
-    `### #${index + 1} ${category}`,
+    `### #${index + 1} - ${category}`,
     '',
     `- Category: ${category}`,
     `- Provider: ${summary.providerId ?? 'unknown'}`,
@@ -1474,10 +1488,47 @@ function formatTraceOnlyOtherRequest(
     `- Usage: ${formatUsage(summary.usage)}`,
     ...(summary.errorMessage ? [`- Error: ${summary.errorMessage}`] : []),
     '',
-    '#### Request',
+    '#### Attempt',
     '',
     '(No HTTP exchange was captured.)',
   ].join('\n')
+}
+
+type DebugSectionExchange = {
+  trace: LLMDebugTrace
+  exchange: LLMDebugHttpExchange
+}
+
+function buildLinkedSubLlmTraceMap(sortedTraces: LLMDebugTrace[]): {
+  groupedChildTraceIds: Set<string>
+  childTracesByParent: Map<string, LLMDebugTrace[]>
+} {
+  const traceById = new Map(sortedTraces.map((trace) => [trace.id, trace]))
+  const groupedChildTraceIds = new Set<string>()
+  const childTracesByParent = new Map<string, LLMDebugTrace[]>()
+
+  for (const trace of sortedTraces) {
+    if (isSubLlmTrace(trace) || isOtherRequestTrace(trace)) {
+      continue
+    }
+    const linkedChildTraces = getLinkedLLMDebugTraceIds([trace.id])
+      .map((traceId) => traceById.get(traceId))
+      .filter(
+        (childTrace): childTrace is LLMDebugTrace =>
+          childTrace !== undefined && isSubLlmTrace(childTrace),
+      )
+      .sort((a, b) => a.summary.startedAt - b.summary.startedAt)
+
+    if (linkedChildTraces.length === 0) {
+      continue
+    }
+    childTracesByParent.set(trace.id, linkedChildTraces)
+    for (const childTrace of linkedChildTraces) {
+      groupedChildTraceIds.add(childTrace.id)
+    }
+  }
+
+  return { groupedChildTraceIds, childTracesByParent }
 }
 
 export function buildLLMDebugMarkdown(traces: LLMDebugTrace[]): string {
@@ -1485,14 +1536,19 @@ export function buildLLMDebugMarkdown(traces: LLMDebugTrace[]): string {
   const sortedTraces = [...traces].sort(
     (a, b) => a.summary.startedAt - b.summary.startedAt,
   )
+  const { groupedChildTraceIds, childTracesByParent } =
+    buildLinkedSubLlmTraceMap(sortedTraces)
   const otherRequestEntries: Array<{
     trace: LLMDebugTrace
     exchange?: LLMDebugHttpExchange
   }> = []
   const sections: string[] = []
-  let subrequestIndex = 0
+  let stepIndex = 0
 
   for (const trace of sortedTraces) {
+    if (groupedChildTraceIds.has(trace.id)) {
+      continue
+    }
     const summary = trace.summary
     const model = summary.modelName
       ? `${summary.modelName}${summary.modelId ? ` (${summary.modelId})` : ''}`
@@ -1507,25 +1563,38 @@ export function buildLLMDebugMarkdown(traces: LLMDebugTrace[]): string {
       }
       return true
     })
+    const sectionExchangeEntries: DebugSectionExchange[] = [
+      ...relatedExchanges.map((exchange) => ({ trace, exchange })),
+      ...(childTracesByParent.get(trace.id) ?? []).flatMap((childTrace) =>
+        [...childTrace.exchanges]
+          .sort((a, b) => a.startedAt - b.startedAt)
+          .map((exchange) => ({ trace: childTrace, exchange })),
+      ),
+    ].sort((a, b) => a.exchange.startedAt - b.exchange.startedAt)
     if (isOtherRequestTrace(trace)) {
       continue
     }
     const hasOnlyUnrelatedExchanges =
-      sortedExchanges.length > 0 && relatedExchanges.length === 0
+      sortedExchanges.length > 0 &&
+      relatedExchanges.length === 0 &&
+      sectionExchangeEntries.length === 0
     if (hasOnlyUnrelatedExchanges) {
       continue
     }
 
-    const currentSubrequestIndex = subrequestIndex
-    subrequestIndex += 1
+    const currentStepIndex = stepIndex
+    stepIndex += 1
     const toolNames = summary.toolCallNames?.filter(Boolean) ?? []
-    const costs = collectTraceCosts(trace, relatedExchanges)
+    const costs = collectTraceCosts(
+      trace,
+      sectionExchangeEntries.map((entry) => entry.exchange),
+    )
 
     sections.push(
       [
-        `## Subrequest ${currentSubrequestIndex + 1}`,
+        `## Step #${currentStepIndex + 1}`,
         '',
-        `- Scope: subrequest ${currentSubrequestIndex + 1} within this chat turn`,
+        `- Scope: step ${currentStepIndex + 1} within this chat turn`,
         `- Model: ${model}`,
         `- Provider: ${summary.providerId ?? 'unknown'}`,
         `- State: ${formatGenerationState(summary.generationState)}`,
@@ -1536,16 +1605,31 @@ export function buildLLMDebugMarkdown(traces: LLMDebugTrace[]): string {
         `- Duration: ${formatDurationMs(summary.durationMs)}`,
         ...(toolNames.length > 0
           ? [`- Tool calls: ${toolNames.join(', ')}`]
-          : hasToolCalls({ ...trace, exchanges: relatedExchanges })
+          : hasToolCalls({
+                ...trace,
+                exchanges: sectionExchangeEntries.map(
+                  (entry) => entry.exchange,
+                ),
+              })
             ? ['- Tool calls: detected']
             : []),
         ...(summary.errorMessage ? [`- Error: ${summary.errorMessage}`] : []),
         '',
-        ...(relatedExchanges.length > 0
-          ? relatedExchanges.map((exchange, exchangeIndex) =>
-              formatExchange(trace, exchange, exchangeIndex),
+        ...(sectionExchangeEntries.length > 0
+          ? sectionExchangeEntries.map(
+              ({ trace: entryTrace, exchange }, exchangeIndex) =>
+                formatExchange(
+                  entryTrace,
+                  exchange,
+                  exchangeIndex,
+                  currentStepIndex,
+                ),
             )
-          : ['### Request', '', '(No HTTP exchange was captured.)']),
+          : [
+              `### #${currentStepIndex + 1}.1 - No HTTP exchange captured`,
+              '',
+              '(No HTTP exchange was captured.)',
+            ]),
       ].join('\n'),
     )
   }
@@ -1569,7 +1653,7 @@ export function buildLLMDebugMarkdown(traces: LLMDebugTrace[]): string {
   return [
     `# LLM Debug Trace (one chat turn)`,
     '',
-    'This file captures the LLM/network/tool transport activity associated with one chat turn. Each Subrequest is one LLM-facing request within that turn, and each numbered item is a transport operation captured under that Subrequest. You can save this note and ask AI to analyze it later.',
+    'This file captures the LLM/network/tool transport activity associated with one chat turn. Each Step is one main LLM-facing request within that turn, and each numbered item is a captured transport operation under that Step. Sub-LLM items are grouped under the main step that triggered them. You can save this note and ask AI to analyze it later.',
     '',
     'Markers beginning with `OMITTED` are added to prevent this debug report from becoming too long.',
     '',

@@ -253,6 +253,66 @@ const tabCompletionTriggerSchema = z
     enabled: true,
   })
 
+export const DEFAULT_AGENT_LLM_TOOL_CATEGORIES = [
+  {
+    id: 'economy',
+    name: 'Economy models',
+    description:
+      'Good for cost-sensitive work, fast summaries, format conversion, and first-pass triage.',
+  },
+  {
+    id: 'capable',
+    name: 'Flagship models',
+    description:
+      'Good for complex reasoning, long-context synthesis, structured analysis, and high-reliability tasks.',
+  },
+] as const
+
+export const cloneDefaultAgentLlmCategories = (): Array<{
+  id: string
+  name: string
+  description: string
+}> => DEFAULT_AGENT_LLM_TOOL_CATEGORIES.map((category) => ({ ...category }))
+
+const agentLlmToolCategorySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().catch(''),
+})
+
+const agentLlmModelToolSchema = z.object({
+  id: z.string().min(1),
+  modelId: z.string().min(1),
+  categoryId: z.string().min(1),
+  enabled: z.boolean().catch(true),
+})
+
+export const DEFAULT_AGENT_LLM_TOOLS = {
+  enabled: true,
+  modelTools: [],
+  categories: cloneDefaultAgentLlmCategories(),
+}
+
+const agentLlmToolsSchema = z
+  .object({
+    enabled: z.boolean().catch(DEFAULT_AGENT_LLM_TOOLS.enabled),
+    modelTools: resilientArraySchema(agentLlmModelToolSchema),
+    categories: z
+      .array(z.unknown())
+      .transform((items) => {
+        const parsed = items.flatMap((item) => {
+          const result = agentLlmToolCategorySchema.safeParse(item)
+          return result.success ? [result.data] : []
+        })
+        return parsed.length > 0 ? parsed : cloneDefaultAgentLlmCategories()
+      })
+      .catch(cloneDefaultAgentLlmCategories()),
+  })
+  .catch({
+    ...DEFAULT_AGENT_LLM_TOOLS,
+    categories: cloneDefaultAgentLlmCategories(),
+  })
+
 /**
  * Settings
  */
@@ -320,6 +380,9 @@ export const yoloSettingsSchema = z.object({
     .catch({
       disabledSkillIds: [],
     }),
+
+  // Agent LLM tool configuration
+  agentLlmTools: agentLlmToolsSchema,
 
   // YOLO workspace configuration
   yolo: z

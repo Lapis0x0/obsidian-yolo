@@ -2,8 +2,10 @@ import {
   bindLLMDebugTraceToSignal,
   createLLMDebugFetch,
   createLLMDebugTrace,
+  createLinkedLLMDebugTrace,
   flushLLMDebugTraceReads,
   getLLMDebugTrace,
+  getLinkedLLMDebugTraceIds,
   omitBase64DebugData,
   runWithLLMDebugTrace,
   setLLMDebugCaptureEnabled,
@@ -39,7 +41,7 @@ describe('debugCapture', () => {
     )
   })
 
-  it('does not assign signal-less fetches when active traces are ambiguous', async () => {
+  it('assigns signal-less fetches to the newest active trace', async () => {
     setLLMDebugCaptureEnabled(true)
     const fetch = createLLMDebugFetch(
       jest.fn(async () => new Response('{"ok":true}')),
@@ -64,11 +66,42 @@ describe('debugCapture', () => {
     })
     await flushLLMDebugTraceReads([mainTrace.id, titleTrace.id])
 
-    expect(getLLMDebugTrace(titleTrace.id)?.exchanges).toHaveLength(0)
+    expect(getLLMDebugTrace(titleTrace.id)?.exchanges).toHaveLength(1)
+    expect(getLLMDebugTrace(titleTrace.id)?.exchanges[0].request.url).toBe(
+      'https://example.test/title',
+    )
     expect(getLLMDebugTrace(mainTrace.id)?.exchanges).toHaveLength(1)
     expect(getLLMDebugTrace(mainTrace.id)?.exchanges[0].request.url).toBe(
       'https://example.test/main',
     )
+  })
+
+  it('captures linked sub-LLM requests on their own trace', async () => {
+    setLLMDebugCaptureEnabled(true)
+    const fetch = createLLMDebugFetch(
+      jest.fn(async () => new Response('{"ok":true}')),
+      'browser',
+    )
+    const mainTrace = createLLMDebugTrace({ requestKind: 'streaming' })
+    const childTrace = createLinkedLLMDebugTrace({
+      parentTraceId: mainTrace.id,
+      requestKind: 'sub-llm',
+    })
+
+    expect(childTrace).not.toBeNull()
+    await runWithLLMDebugTrace(mainTrace.id, async () => {
+      await runWithLLMDebugTrace(childTrace?.id, async () => {
+        await fetch('https://example.test/sub', {
+          method: 'POST',
+          body: '{"messages":[]}',
+        })
+      })
+    })
+    await flushLLMDebugTraceReads([mainTrace.id, childTrace!.id])
+
+    expect(getLLMDebugTrace(mainTrace.id)?.exchanges).toHaveLength(0)
+    expect(getLLMDebugTrace(childTrace!.id)?.exchanges).toHaveLength(1)
+    expect(getLinkedLLMDebugTraceIds([mainTrace.id])).toEqual([childTrace!.id])
   })
 
   it('uses a bound signal even when another trace is active', async () => {
@@ -176,5 +209,77 @@ describe('debugCapture', () => {
     expect(body).toMatch(/client_secret=[^&]*REDACTED/)
     expect(body).toMatch(/refresh_token=[^&]*REDACTED/)
     expect(body).toMatch(/(^|&)code=[^&]*REDACTED/)
+  })
+
+  it('attributes sub-LLM chat requests carrying embedding-like source text to the active trace', async () => {
+    setLLMDebugCaptureEnabled(true)
+    const fetch = createLLMDebugFetch(
+      jest.fn(async () => new Response('{"ok":true}')),
+      'browser',
+    )
+    const mainTrace = createLLMDebugTrace({ requestKind: 'streaming' })
+    const childTrace = createLinkedLLMDebugTrace({
+      parentTraceId: mainTrace.id,
+      requestKind: 'sub-llm',
+    })
+    expect(childTrace).not.toBeNull()
+
+    // run_model_task large-file case: the sub-LLM chat body embeds source
+    // material that incidentally mentions embeddings and an "input": field.
+    // No AbortSignal is forwarded to fetch (common for SDK clients), so trace
+    // resolution must fall back to the active sub-LLM trace instead of dropping
+    // the request as a misclassified embedding call.
+    const body = JSON.stringify({
+      model: 'gpt-x',
+      messages: [
+        { role: 'system', content: 'Answer only from provided material.' },
+        {
+          role: 'user',
+          content:
+            'Analyze this file. It documents the embedding pipeline and a sample payload {"input": "vector text"}.',
+        },
+      ],
+    })
+
+    await runWithLLMDebugTrace(mainTrace.id, async () => {
+      await runWithLLMDebugTrace(childTrace?.id, async () => {
+        await fetch('https://api.example.test/v1/chat/completions', {
+          method: 'POST',
+          body,
+        })
+      })
+    })
+    await flushLLMDebugTraceReads([mainTrace.id, childTrace!.id])
+
+    expect(getLLMDebugTrace(childTrace!.id)?.exchanges).toHaveLength(1)
+    expect(getLLMDebugTrace(childTrace!.id)?.exchanges[0].request.url).toBe(
+      'https://api.example.test/v1/chat/completions',
+    )
+    expect(getLLMDebugTrace(mainTrace.id)?.exchanges).toHaveLength(0)
+  })
+
+  it('keeps URL-confirmed embedding requests off the active conversation trace', async () => {
+    setLLMDebugCaptureEnabled(true)
+    const fetch = createLLMDebugFetch(
+      jest.fn(async () => new Response('{"data":[]}')),
+      'browser',
+    )
+    const mainTrace = createLLMDebugTrace({ requestKind: 'streaming' })
+
+    // Background RAG embedding overlapping a chat turn: no active
+    // embedding-kind trace and no forwarded signal. It must NOT leak into the
+    // active chat trace's exported debug log.
+    await runWithLLMDebugTrace(mainTrace.id, async () => {
+      await fetch('https://api.example.test/v1/embeddings', {
+        method: 'POST',
+        body: JSON.stringify({
+          model: 'text-embedding-3-small',
+          input: 'unrelated vault text',
+        }),
+      })
+    })
+    await flushLLMDebugTraceReads([mainTrace.id])
+
+    expect(getLLMDebugTrace(mainTrace.id)?.exchanges).toHaveLength(0)
   })
 })

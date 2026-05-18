@@ -897,6 +897,16 @@ export class AgentService {
       roundId: toolMessage.id,
       chatModelId: lastRunInput.model.id,
       workspaceScope: lastRunInput.workspaceScope,
+      agentToolAccess: {
+        allowedToolNames: lastRunInput.allowedToolNames,
+        toolPreferences: lastRunInput.toolPreferences,
+      },
+      modelTaskOptions: lastRunInput.modelTaskOptions,
+      debugTraceId: this.findToolCallDebugTraceId({
+        messages: runEntry.state.messages,
+        toolMessageId: toolMessage.id,
+        toolCallId: toolCall.request.id,
+      }),
     })
 
     const nextMessages = this.updateToolCallResponse({
@@ -1765,6 +1775,35 @@ export class AgentService {
     }
 
     return null
+  }
+
+  private findToolCallDebugTraceId({
+    messages,
+    toolMessageId,
+    toolCallId,
+  }: {
+    messages: ChatMessage[]
+    toolMessageId: string
+    toolCallId: string
+  }): string | undefined {
+    const toolMessageIndex = messages.findIndex(
+      (message) => message.id === toolMessageId,
+    )
+    const searchEnd =
+      toolMessageIndex >= 0 ? toolMessageIndex - 1 : messages.length - 1
+    for (let index = searchEnd; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.role !== 'assistant') {
+        continue
+      }
+      const hasToolCall = message.toolCallRequests?.some(
+        (request) => request.id === toolCallId,
+      )
+      if (hasToolCall) {
+        return message.metadata?.llmDebugTraceId
+      }
+    }
+    return undefined
   }
 
   private normalizeCompaction(

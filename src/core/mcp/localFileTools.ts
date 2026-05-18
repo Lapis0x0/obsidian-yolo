@@ -45,6 +45,7 @@ import {
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
 } from '../edits/textEditEngine'
+import { bindLLMDebugTraceToSignal } from '../llm/debugCapture'
 import {
   type MemoryScope,
   memoryAdd,
@@ -62,6 +63,15 @@ import {
   runWebSearch,
 } from '../web-search'
 
+import {
+  MODEL_TASK_TOOL_NAME,
+  type ModelTaskAgentToolAccess,
+  type ModelTaskNormalizedSourceTool,
+  type ModelTaskRuntimeOptions,
+  type ModelTaskSourceToolResult,
+  buildRunModelTaskTool,
+  executeModelTaskTool,
+} from './modelTaskTool'
 import { parseToolName } from './tool-name-utils'
 
 export { recoverLikelyEscapedBackslashSequences }
@@ -71,7 +81,11 @@ const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_BATCH_READ_FILES = 20
 const DEFAULT_READ_START_LINE = 1
 const DEFAULT_READ_MAX_LINES = 50
-const MAX_READ_MAX_LINES = 2000
+// Per-call cap for fs_read line ranges and PDF page ranges, shared by every
+// fs_read caller (main model and run_model_task source reads alike). Relaxed
+// from 2000 because current models commonly expose ~1M-token context windows,
+// so a single ranged read can safely return more without overflowing.
+const MAX_READ_MAX_LINES = 5000
 const MAX_READ_LINE_INDEX = 1_000_000
 const MAX_BATCH_WRITE_ITEMS = 50
 const MAX_RAG_SNIPPET_CHARS = 500
@@ -130,6 +144,7 @@ type LocalFileToolName =
   | 'open_skill'
   | 'web_search'
   | 'web_scrape'
+  | 'run_model_task'
   | 'delegate_external_agent'
   | 'todo_write'
   | 'ask_user_question'
@@ -198,6 +213,11 @@ type LocalToolCallResult =
         }
       }
     }
+
+type ModelTaskSourceToolCaller = (
+  sourceTool: ModelTaskNormalizedSourceTool,
+  args: Record<string, unknown>,
+) => Promise<ModelTaskSourceToolResult>
 
 type FsResultItem = {
   ok: boolean
@@ -455,10 +475,12 @@ const buildFsReadModalitySchema = (
 export function getLocalFileTools(options?: {
   vaultBasePath?: string
   chatModelModalities?: ChatModelModality[]
+  settings?: YoloSettings
+  modelTaskOptions?: ModelTaskRuntimeOptions
 }): McpTool[] {
   const vaultBasePath = options?.vaultBasePath
   const modalitySchema = buildFsReadModalitySchema(options?.chatModelModalities)
-  return [
+  const tools: McpTool[] = [
     {
       name: 'fs_list',
       description:
@@ -1203,6 +1225,15 @@ export function getLocalFileTools(options?: {
       },
     },
   ]
+  const modelTaskTool = buildRunModelTaskTool(
+    options?.settings,
+    options?.modelTaskOptions,
+  )
+  if (modelTaskTool) {
+    tools.push(modelTaskTool)
+  }
+
+  return tools
 }
 
 const getTextArg = (args: Record<string, unknown>, key: string): string => {
@@ -2664,6 +2695,10 @@ export async function callLocalFileTool({
   signal,
   chatModelId,
   workspaceScope,
+  agentToolAccess,
+  modelTaskOptions,
+  modelTaskSourceToolCaller,
+  debugTraceId,
 }: {
   app: App
   settings?: YoloSettings
@@ -2679,10 +2714,15 @@ export async function callLocalFileTool({
   signal?: AbortSignal
   chatModelId?: string
   workspaceScope?: AssistantWorkspaceScope
+  agentToolAccess?: ModelTaskAgentToolAccess
+  modelTaskOptions?: ModelTaskRuntimeOptions
+  modelTaskSourceToolCaller?: ModelTaskSourceToolCaller
+  debugTraceId?: string
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
   }
+  bindLLMDebugTraceToSignal(debugTraceId, signal)
 
   try {
     // Final defense: reject any fs_* call whose path args (including batch
@@ -2700,6 +2740,47 @@ export async function callLocalFileTool({
 
     const name = toolName as LocalFileToolName
     switch (name) {
+      case MODEL_TASK_TOOL_NAME: {
+        return await executeModelTaskTool({
+          settings,
+          localServerName: LOCAL_FILE_TOOL_SERVER,
+          args,
+          agentToolAccess,
+          runtimeOptions: modelTaskOptions,
+          debugTraceId,
+          signal,
+          callSourceTool: (sourceTool, sourceArgs, context) => {
+            if (sourceTool.kind === 'mcp') {
+              if (!modelTaskSourceToolCaller) {
+                return Promise.resolve({
+                  status: ToolCallResponseStatus.Error,
+                  error: 'MCP source tools are unavailable in this context.',
+                  stage: 'validation',
+                })
+              }
+              return modelTaskSourceToolCaller(sourceTool, sourceArgs)
+            }
+            return callLocalFileTool({
+              app,
+              settings,
+              openApplyReview,
+              getRagEngine,
+              conversationId,
+              conversationMessages,
+              roundId,
+              toolCallId,
+              toolName: sourceTool.localToolName,
+              args: sourceArgs,
+              requireReview: false,
+              signal,
+              chatModelId: context.targetModelId,
+              workspaceScope,
+              debugTraceId,
+            })
+          },
+        })
+      }
+
       case 'fs_list': {
         const scopeFolder = resolveFolderByPath(
           app,

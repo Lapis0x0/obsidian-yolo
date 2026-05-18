@@ -7,6 +7,7 @@ import type { ContextualInjection } from '../../utils/chat/contextual-injections
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { McpManager } from '../mcp/mcpManager'
+import type { ModelTaskRuntimeOptions } from '../mcp/modelTaskTool'
 
 import { selectAllowedTools } from './tool-selection'
 
@@ -20,6 +21,7 @@ export const estimateContinuationRequestContextTokens = async ({
   enableTools,
   includeBuiltinTools,
   allowedToolNames,
+  modelTaskOptions,
   allowedSkillIds,
   allowedSkillNames,
   contextualInjections,
@@ -33,6 +35,7 @@ export const estimateContinuationRequestContextTokens = async ({
   enableTools: boolean
   includeBuiltinTools: boolean
   allowedToolNames?: string[]
+  modelTaskOptions?: ModelTaskRuntimeOptions
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   contextualInjections?: ContextualInjection[]
@@ -43,6 +46,7 @@ export const estimateContinuationRequestContextTokens = async ({
         // Tailor built-in tool schemas to the active model so the token
         // estimate reflects what the model will actually see at request time.
         chatModelModalities: model.modalities,
+        modelTaskOptions,
       })
     : []
   const { hasTools, hasMemoryTools, requestTools } = selectAllowedTools({

@@ -28,6 +28,7 @@ const REQUIRE_APPROVAL_LOCAL_TOOLS: ReadonlySet<string> = new Set([
   'fs_file_ops',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   'delegate_external_agent',
+  'run_model_task',
 ])
 
 export const getDefaultApprovalModeForTool = (
@@ -118,6 +119,16 @@ export const getAssistantToolApprovalMode = (
     | undefined,
   toolName: string,
 ): AssistantToolApprovalMode => {
+  let effectiveToolName = toolName
+  try {
+    effectiveToolName = parseToolName(toolName).toolName
+  } catch {
+    // Not a server-qualified name; fall back to the raw tool name.
+  }
+  if (ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(effectiveToolName)) {
+    return 'require_approval'
+  }
+
   const toolPreferences = getAssistantToolPreferences(assistant)
   return (
     toolPreferences[toolName]?.approvalMode ??

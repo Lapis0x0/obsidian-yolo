@@ -10,6 +10,7 @@ import type { ContextualInjection } from '../../utils/chat/contextual-injections
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'
+import type { ModelTaskRuntimeOptions } from '../mcp/modelTaskTool'
 
 export type AgentRuntimeSnapshot = {
   messages: ChatMessage[]
@@ -44,6 +45,7 @@ export type AgentRuntimeRunInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   allowedToolNames?: string[]
+  modelTaskOptions?: ModelTaskRuntimeOptions
   toolPreferences?: Record<
     string,
     {

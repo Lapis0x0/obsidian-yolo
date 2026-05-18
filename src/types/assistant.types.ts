@@ -44,6 +44,17 @@ export type AssistantToolPreference = z.infer<
   typeof assistantToolPreferenceSchema
 >
 
+export const assistantModelToolOptionsSchema = z.object({
+  childToolsEnabled: z.boolean().optional(),
+  mcpSourceToolsEnabled: z.boolean().optional(),
+  allowedModelIds: z.array(z.string()).optional(),
+  enabledSourceToolNames: z.array(z.string()).optional(),
+})
+
+export type AssistantModelToolOptions = z.infer<
+  typeof assistantModelToolOptionsSchema
+>
+
 export const assistantWorkspaceScopeSchema = z.object({
   enabled: z.boolean().default(false),
   include: z.array(z.string()).default([]),
@@ -63,6 +74,8 @@ export const assistantSchema = z.object({
   icon: assistantIconSchema.optional(),
   persona: agentPersonaSchema.optional(),
   modelId: z.string().optional(),
+  modelToolModelId: z.string().optional(),
+  modelToolOptions: assistantModelToolOptionsSchema.optional(),
   enableTools: z.boolean().optional(),
   includeBuiltinTools: z.boolean().optional(),
   enabledToolNames: z.array(z.string()).optional(),

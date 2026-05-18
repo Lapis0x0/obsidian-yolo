@@ -116,6 +116,13 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Fetch the full content of a single URL through a configured search provider.',
   },
+  run_model_task: {
+    labelKey: 'settings.agent.builtinRunModelTaskLabel',
+    descKey: 'settings.agent.builtinRunModelTaskDesc',
+    labelFallback: 'Sub-model task toolset',
+    descFallback:
+      'Run a bounded sub-model task, optionally with a read-only source tool result that stays out of the main model context.',
+  },
   delegate_external_agent: {
     labelKey: 'settings.agent.builtinDelegateExternalAgentLabel',
     descKey: 'settings.agent.builtinDelegateExternalAgentDesc',
@@ -166,6 +173,7 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   [MEMORY_OPS_GROUP_TOOL_NAME]: 'context',
   [WEB_OPS_GROUP_TOOL_NAME]: 'external',
   open_skill: 'external',
+  run_model_task: 'external',
   delegate_external_agent: 'external',
 }
 

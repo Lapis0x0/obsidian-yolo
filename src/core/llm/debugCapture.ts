@@ -14,6 +14,7 @@ export type LLMDebugTransportMode =
 export type LLMDebugRequestKind =
   | 'streaming'
   | 'non-streaming'
+  | 'sub-llm'
   | 'title-generation'
   | 'embedding'
   | 'unknown'
@@ -70,6 +71,7 @@ const activeTraceCounts = new Map<string, number>()
 const activeTraceStack: string[] = []
 const turnTraceIds = new Map<string, string[]>()
 const conversationTraceIds = new Map<string, string[]>()
+const linkedTraceIdsByParent = new Map<string, string[]>()
 const pendingExchangeReads = new Map<string, Promise<void>>()
 let traceIdsBySignal = new WeakMap<AbortSignal, string>()
 let llmDebugCaptureEnabled = false
@@ -145,6 +147,7 @@ export function setLLMDebugCaptureEnabled(enabled: boolean): void {
     activeTraceStack.length = 0
     turnTraceIds.clear()
     conversationTraceIds.clear()
+    linkedTraceIdsByParent.clear()
     pendingExchangeReads.clear()
     traceIdsBySignal = new WeakMap<AbortSignal, string>()
     traces.clear()
@@ -178,6 +181,41 @@ export function createLLMDebugTrace({
   }
   traces.set(trace.id, trace)
   enforceMemoryBudget()
+  return trace
+}
+
+export function createLinkedLLMDebugTrace({
+  parentTraceId,
+  model,
+  requestKind,
+}: {
+  parentTraceId: string | undefined
+  model?: ChatModel
+  requestKind: LLMDebugRequestKind
+}): LLMDebugTrace | null {
+  if (!parentTraceId || !traces.has(parentTraceId)) {
+    return null
+  }
+
+  const parentTrace = traces.get(parentTraceId)
+  const trace = createLLMDebugTrace({
+    assistantMessageId: parentTrace?.summary.assistantMessageId,
+    model,
+    requestKind,
+  })
+  appendTraceId(linkedTraceIdsByParent, parentTraceId, trace.id)
+
+  for (const [key, traceIds] of turnTraceIds.entries()) {
+    if (traceIds.includes(parentTraceId)) {
+      appendTraceId(turnTraceIds, key, trace.id)
+    }
+  }
+  for (const [conversationId, traceIds] of conversationTraceIds.entries()) {
+    if (traceIds.includes(parentTraceId)) {
+      appendTraceId(conversationTraceIds, conversationId, trace.id)
+    }
+  }
+
   return trace
 }
 
@@ -258,6 +296,29 @@ export function getLLMDebugTraceIdsForConversation({
   return conversationTraceIds.get(conversationId) ?? []
 }
 
+export function getLinkedLLMDebugTraceIds(traceIds: string[]): string[] {
+  const result: string[] = []
+  const seen = new Set(traceIds)
+  const queue = [...traceIds]
+
+  while (queue.length > 0) {
+    const traceId = queue.shift()
+    if (!traceId) {
+      continue
+    }
+    for (const linkedTraceId of linkedTraceIdsByParent.get(traceId) ?? []) {
+      if (seen.has(linkedTraceId)) {
+        continue
+      }
+      seen.add(linkedTraceId)
+      result.push(linkedTraceId)
+      queue.push(linkedTraceId)
+    }
+  }
+
+  return result
+}
+
 export function getLLMDebugTrace(traceId: string): LLMDebugTrace | null {
   return traces.get(traceId) ?? null
 }
@@ -333,16 +394,6 @@ export async function runWithLLMDebugTrace<T>(
   }
 }
 
-function getUnambiguousActiveTraceId(): string | null {
-  const activeTraceIds = getActiveTraceIdsNewestFirst()
-
-  if (activeTraceIds.length !== 1) {
-    return null
-  }
-
-  return activeTraceIds[0] ?? null
-}
-
 function getActiveTraceIdsNewestFirst(): string[] {
   const activeTraceIds: string[] = []
   const seen = new Set<string>()
@@ -401,9 +452,11 @@ function getFetchSignal(
 function resolveLLMDebugTraceId({
   traceId,
   signal,
+  useActiveFallback = true,
 }: {
   traceId?: string
   signal?: AbortSignal | null
+  useActiveFallback?: boolean
 }): string | null {
   if (traceId && traces.has(traceId)) {
     return traceId
@@ -414,11 +467,27 @@ function resolveLLMDebugTraceId({
     return signalTraceId
   }
 
-  // Last-resort support for SDK fetches that do not forward AbortSignal. This
-  // is intentionally disabled when more than one trace is active, because the
-  // process-wide stack cannot safely distinguish concurrent async requests.
-  const activeTraceId = getUnambiguousActiveTraceId()
+  if (!useActiveFallback) {
+    return null
+  }
+
+  // Last-resort support for SDK fetches that do not forward AbortSignal.
+  // Prefer the newest active trace: callers wrap each logical request in
+  // runWithLLMDebugTrace, so nested auxiliary work (for example a model task
+  // while title generation is active) should attach to the innermost request.
+  const activeTraceId = getActiveTraceIdsNewestFirst()[0] ?? null
   return activeTraceId && traces.has(activeTraceId) ? activeTraceId : null
+}
+
+function isChatCompletionDebugRequest(
+  request: LLMDebugHttpExchange['request'],
+): boolean {
+  // Chat / generation requests always carry a messages|contents array; embedding
+  // requests never do. Sub-LLM tasks build a chat request whose body can embed
+  // large source material that may incidentally contain "embed" or an "input:"
+  // field, so recognizing the chat shape keeps those turns from being
+  // misclassified as embedding/special requests.
+  return /"(?:messages|contents)"\s*:\s*\[/.test(request.body ?? '')
 }
 
 function isTitleGenerationDebugRequest(
@@ -429,16 +498,29 @@ function isTitleGenerationDebugRequest(
   )
 }
 
+function isUrlConfirmedEmbeddingDebugRequest(
+  request: LLMDebugHttpExchange['request'],
+): boolean {
+  return /(^|[/_-])(embeddings?|embed|embd)(?:[/?#_-]|$)/i.test(
+    request.url.toLowerCase(),
+  )
+}
+
 function isEmbeddingDebugRequest(
   request: LLMDebugHttpExchange['request'],
 ): boolean {
-  const url = request.url.toLowerCase()
-  if (/(^|[/_-])(embeddings?|embed|embd)(?:[/?#_-]|$)/i.test(url)) {
+  if (isUrlConfirmedEmbeddingDebugRequest(request)) {
     return true
   }
 
-  const body = request.body ?? ''
-  return /embed|embedding|embd/i.test(body) && /"input"\s*:/i.test(body)
+  // A chat turn is never an embedding request, even when its serialized body
+  // happens to contain the substring "embed" or an "input:" field that came
+  // from user-provided source material (the run_model_task large-file case).
+  if (isChatCompletionDebugRequest(request)) {
+    return false
+  }
+
+  return /"input"\s*:/.test(request.body ?? '')
 }
 
 function resolveLLMDebugTraceIdForRequest(
@@ -527,7 +609,9 @@ export function omitBase64DebugData(value: unknown): unknown {
     const omittedChars = value.length - MAX_JSON_STRING_CHARS
     return [
       value.slice(0, headChars),
+      '',
       `[OMITTED long JSON string: ${omittedChars} chars]`,
+      '',
       value.slice(value.length - tailChars),
     ].join('\n')
   }
@@ -1016,13 +1100,23 @@ export function createLLMDebugFetch(
   transportMode: LLMDebugTransportMode,
 ): typeof fetch {
   return async (input, init) => {
+    const signal = getFetchSignal(input, init)
     let traceId = resolveLLMDebugTraceId({
-      signal: getFetchSignal(input, init),
+      signal,
+      useActiveFallback: false,
     })
     let debugRequest: LLMDebugHttpExchange['request'] | null = null
     if (llmDebugCaptureEnabled && !traceId) {
       debugRequest = await buildDebugRequest(input, init)
       traceId = resolveLLMDebugTraceIdForRequest(debugRequest)
+      // Only URL-confirmed embedding requests are kept off the active-trace
+      // fallback: those are the genuine background-RAG leak risk. Everything
+      // else (including chat turns weakly misread as embedding/title — e.g. a
+      // sub-LLM task whose source text contains "embed" or an "input:" field)
+      // must still attach to the active trace instead of being dropped.
+      if (!traceId && !isUrlConfirmedEmbeddingDebugRequest(debugRequest)) {
+        traceId = resolveLLMDebugTraceId({ signal })
+      }
     }
 
     if (!llmDebugCaptureEnabled || !traceId) {

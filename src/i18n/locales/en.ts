@@ -452,6 +452,9 @@ export const en: TranslationKeys = {
         'Fetch the full content of a single URL through a configured search provider.',
       builtinWebOpsLabel: 'Web Search Toolset',
       builtinWebOpsDesc: 'Web search and page scraping',
+      builtinRunModelTaskLabel: 'Sub-model task toolset',
+      builtinRunModelTaskDesc:
+        'Run a bounded sub-model task, optionally with a read-only source result.',
       builtinDelegateExternalAgentLabel: 'Delegate to External Agent',
       builtinDelegateExternalAgentDesc:
         'Delegate complex tasks to a CLI agent installed locally (Codex / Claude Code).',
@@ -461,6 +464,48 @@ export const en: TranslationKeys = {
       builtinAskUserQuestionLabel: 'Ask User',
       builtinAskUserQuestionDesc:
         'Ask the user a question when required information is missing, then resume after the answer.',
+      modelToolsTitle: 'Sub-model task toolset',
+      modelToolsDesc:
+        'Configure models agents can call through the sub-model task toolset.',
+      modelToolsGlobalToggle: 'Enable sub-model task toolset',
+      modelToolsConfigure: 'Configure sub-model task toolset',
+      modelToolsAddColumn: 'Add model',
+      modelToolsModelsColumn: 'Model settings',
+      modelToolsCategoriesColumn: 'Category prompts',
+      modelToolsAdd: 'Add model',
+      modelToolsNoChatModels: 'No enabled chat models are available.',
+      modelToolsAllAdded: 'All enabled chat models have been added.',
+      modelToolsEmpty:
+        'Add a chat model to make it available through the sub-model task toolset.',
+      modelToolsMissingModel: 'Model no longer exists',
+      modelToolsAgentModel: 'Sub-model task toolset',
+      modelToolsAgentModelDesc:
+        'Configure which models and source tools this agent can use for delegated sub-model tasks.',
+      modelToolsAgentAllModels: 'All models',
+      modelToolsAgentAllModelsDesc:
+        'Let the agent choose from all globally enabled models in the sub-model task toolset.',
+      modelToolsAgentConfigure: 'Agent sub-model task toolset',
+      modelToolsAgentConfigureDesc:
+        'Choose which models and read-only source tools this agent can use for delegated sub-model tasks.',
+      modelToolsAgentModels: 'Callable models',
+      modelToolsAgentSummary: '{count} callable models',
+      modelToolsAgentSourceTools: 'Source tools available to sub-model tasks',
+      modelToolsAgentNoSourceTools:
+        'No read-only source tools are currently enabled with full access for this agent.',
+      modelToolsAgentSourceToolsDefault:
+        'source tools follow agent full-access settings',
+      modelToolsAgentSourceToolsCount: '{count} source tools enabled',
+      modelToolsAgentSourceToolsOff: 'source tools off',
+      modelToolsMcpSourceToolsEnabled: 'Allow MCP source tools',
+      modelToolsMcpSourceToolsEnabledDesc:
+        'When enabled, sub-model tasks can call the MCP tools you select below as model input. Only tools already enabled and set to full access on the parent tool page can be selected. Do not select non-read-only tools.',
+      modelToolsMcpSourceToolDesc:
+        'MCP source tool. Only enable tools you trust to return read-only text.',
+      modelToolsChildToolsEnabled: 'Allow source tools for sub-model tasks',
+      modelToolsChildToolsEnabledDesc:
+        'When off, sub-model tasks can still run direct prompts, but cannot attach file or web source tool results.',
+      modelToolCategoryName: 'Category',
+      modelToolCategoryDescription: 'Category description',
       editorDefaultName: 'New agent',
       editorIntro: "Configure this agent's capabilities, model, and behavior.",
       editorTabProfile: 'Profile',
@@ -1331,6 +1376,7 @@ export const en: TranslationKeys = {
     contextUsage: 'Context window usage',
     inlineInfo: {
       callsTitle: '{{count}} calls this turn',
+      mainCallsTitle: '{{count}} main model calls this turn',
       nextTurnContext: 'Context used: ~{{tokens}} tokens',
       nextTurnContextCached:
         'Context used: ~{{tokens}} tokens ({{cached}} cached)',

@@ -20,6 +20,7 @@ import {
   validateAskUserQuestionArgs,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
+import type { ModelTaskRuntimeOptions } from '../mcp/modelTaskTool'
 import { parseToolName } from '../mcp/tool-name-utils'
 
 import {
@@ -40,6 +41,7 @@ export class AgentToolGateway {
   private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillIds?: Set<string>
   private readonly allowedSkillNames?: Set<string>
+  private readonly modelTaskOptions?: ModelTaskRuntimeOptions
 
   constructor(
     private readonly mcpManager: McpManager,
@@ -50,6 +52,7 @@ export class AgentToolGateway {
       workspaceScope?: AssistantWorkspaceScope
       allowedSkillIds?: string[]
       allowedSkillNames?: string[]
+      modelTaskOptions?: ModelTaskRuntimeOptions
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
@@ -64,6 +67,7 @@ export class AgentToolGateway {
     this.allowedSkillNames = options?.allowedSkillNames
       ? new Set(options.allowedSkillNames.map((name) => name.toLowerCase()))
       : undefined
+    this.modelTaskOptions = options?.modelTaskOptions
   }
 
   private isRequestPathAllowed(request: ToolCallRequest): boolean {
@@ -86,7 +90,10 @@ export class AgentToolGateway {
   }: {
     includeBuiltinTools: boolean
   }): Promise<McpTool[]> {
-    return this.mcpManager.listAvailableTools({ includeBuiltinTools })
+    return this.mcpManager.listAvailableTools({
+      includeBuiltinTools,
+      modelTaskOptions: this.modelTaskOptions,
+    })
   }
 
   createToolMessage({
@@ -262,6 +269,8 @@ export class AgentToolGateway {
           chatModelId,
           debugTraceId,
           workspaceScope: this.workspaceScope,
+          agentToolAccess: this.getAgentToolAccess(),
+          modelTaskOptions: this.modelTaskOptions,
         }).then((response) => ({ entries: [entry], responses: [response] })),
       )
     }
@@ -284,6 +293,8 @@ export class AgentToolGateway {
             chatModelId,
             debugTraceId,
             workspaceScope: this.workspaceScope,
+            agentToolAccess: this.getAgentToolAccess(),
+            modelTaskOptions: this.modelTaskOptions,
           }).then((response) => ({ entries: [entry], responses: [response] })),
         )
         continue
@@ -312,6 +323,8 @@ export class AgentToolGateway {
           chatModelId,
           debugTraceId,
           workspaceScope: this.workspaceScope,
+          agentToolAccess: this.getAgentToolAccess(),
+          modelTaskOptions: this.modelTaskOptions,
         }).then((response) => ({
           entries,
           responses: this.splitBatchedFsEditResponse({
@@ -389,7 +402,7 @@ export class AgentToolGateway {
         chatModelId: toolParams.chatModelId,
       },
       responseContentType: 'application/json',
-      run: () => this.mcpManager.callTool(toolParams),
+      run: () => this.mcpManager.callTool({ ...toolParams, debugTraceId }),
       getResponseBody: (response) => response,
     })
   }
@@ -600,6 +613,15 @@ export class AgentToolGateway {
       )
     } catch {
       return false
+    }
+  }
+
+  private getAgentToolAccess() {
+    return {
+      allowedToolNames: this.allowedToolNames
+        ? [...this.allowedToolNames]
+        : undefined,
+      toolPreferences: this.toolPreferences,
     }
   }
 

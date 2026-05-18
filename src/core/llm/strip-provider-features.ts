@@ -35,17 +35,20 @@ const LIGHTWEIGHT_ALLOWED_CUSTOM_PARAM_KEYS = new Set([
 
 /**
  * Returns a ChatModel clone with all "heavy" provider features stripped:
- * hosted/built-in tools, reasoning configuration, and any custom-parameter
- * entries that fall outside the lightweight allowlist.
+ * hosted/built-in tools, reasoning configuration unless explicitly preserved,
+ * and any custom-parameter entries that fall outside the lightweight allowlist.
  *
  * Use for auxiliary single-turn LLM calls (title generation, compaction
  * summary) where the only desired behavior is "send messages, get one short
  * reply". The user-configured chat behavior is intentionally bypassed.
  */
-export function stripProviderFeatures(model: ChatModel): ChatModel {
+export function stripProviderFeatures(
+  model: ChatModel,
+  options: { preserveReasoning?: boolean } = {},
+): ChatModel {
   return {
     ...model,
-    reasoningType: 'none',
+    reasoningType: options.preserveReasoning ? model.reasoningType : 'none',
     builtinToolProvider: 'none',
     builtinTools: undefined,
     web_search_options: undefined,

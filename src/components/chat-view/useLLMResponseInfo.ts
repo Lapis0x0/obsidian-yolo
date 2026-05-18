@@ -3,17 +3,19 @@ import { useMemo } from 'react'
 import { AssistantToolMessageGroup } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { ResponseUsage } from '../../types/llm/response'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { calculateLLMCost } from '../../utils/llm/price-calculator'
 
 export type LLMRequestEntry = {
   // 1-based, dense across billable (usage-bearing) calls — duration-only
   // assistants are skipped, so the index never has gaps.
-  index: number
+  index: number | '-'
   messageId: string
   usage: ResponseUsage
   durationMs: number | null
   model: ChatModel | undefined
   cost: number | null
+  kind: 'main' | 'sub-model'
 }
 
 export type LLMResponseInfo = {
@@ -35,6 +37,7 @@ export type LLMResponseInfo = {
   totalDurationMs: number | null
   totalCost: number | null
   requestCount: number
+  hasSubModelCalls: boolean
 
   // Per-billable-call breakdown for the "Show breakdown" surface. Always
   // populated (empty array when no billable calls). Each entry binds its
@@ -89,16 +92,133 @@ const sumUsages = (usages: ResponseUsage[]): ResponseUsage | null => {
   return total
 }
 
+const RUN_MODEL_TASK_TOOL_NAME = 'run_model_task'
+
+const isModelTaskToolName = (name: string): boolean =>
+  name === RUN_MODEL_TASK_TOOL_NAME ||
+  name.endsWith(`__${RUN_MODEL_TASK_TOOL_NAME}`)
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+
+const getNumber = (
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined => {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+const normalizeUsage = (value: unknown): ResponseUsage | null => {
+  const record = asRecord(value)
+  if (!record) {
+    return null
+  }
+  const promptTokens = getNumber(record, 'prompt_tokens')
+  const completionTokens = getNumber(record, 'completion_tokens')
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return null
+  }
+
+  const usage: ResponseUsage = {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens:
+      getNumber(record, 'total_tokens') ?? promptTokens + completionTokens,
+  }
+  addOptionalUsageTokenCount(
+    usage,
+    'cache_read_input_tokens',
+    getNumber(record, 'cache_read_input_tokens'),
+  )
+  addOptionalUsageTokenCount(
+    usage,
+    'cache_creation_input_tokens',
+    getNumber(record, 'cache_creation_input_tokens'),
+  )
+  return usage
+}
+
+const parseModelTaskChildUsage = (
+  text: string | undefined,
+): {
+  usage: ResponseUsage
+  durationMs: number | null
+} | null => {
+  if (!text) {
+    return null
+  }
+  try {
+    const payload = asRecord(JSON.parse(text))
+    const meta = asRecord(payload?.meta)
+    if (!meta) {
+      return null
+    }
+    const usage = normalizeUsage(meta.childUsage)
+    if (!usage) {
+      return null
+    }
+    const durationMs = getNumber(meta, 'childDurationMs')
+    return {
+      usage,
+      durationMs: durationMs ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
 export function collectLLMResponseInfo(
   messages: AssistantToolMessageGroup,
 ): LLMResponseInfo {
-  const calls: LLMRequestEntry[] = []
+  const mainCalls: LLMRequestEntry[] = []
+  const requests: LLMRequestEntry[] = []
   let fallbackModel: ChatModel | undefined
+  let hasSubModelCalls = false
 
   for (const message of messages) {
+    if (message.role === 'tool') {
+      for (const toolCall of message.toolCalls) {
+        if (!isModelTaskToolName(toolCall.request.name)) {
+          continue
+        }
+        hasSubModelCalls = true
+        const childUsage =
+          toolCall.response.status === ToolCallResponseStatus.Success
+            ? parseModelTaskChildUsage(toolCall.response.data.text)
+            : null
+        if (!childUsage) {
+          continue
+        }
+        // Sub-model child usage is surfaced as its own breakdown row but is
+        // intentionally NOT folded into mainCalls/totalUsage/totalCost. The
+        // turn totals stay scoped to main-model calls so tok/s stays
+        // coherent; this knowingly under-reports true spend when sub-model
+        // tasks are heavy — accepted for now to keep the display simple.
+        requests.push({
+          index: '-',
+          messageId: `${message.id}:${toolCall.request.id}:sub-model`,
+          usage: childUsage.usage,
+          durationMs: childUsage.durationMs,
+          model: undefined,
+          cost: null,
+          kind: 'sub-model',
+        })
+      }
+    }
+
     if (message.role !== 'assistant') {
       continue
     }
+
+    hasSubModelCalls =
+      hasSubModelCalls ||
+      (message.toolCallRequests?.some((toolCall) =>
+        isModelTaskToolName(toolCall.name),
+      ) ??
+        false)
 
     const model = message.metadata?.model
     if (model) {
@@ -115,17 +235,20 @@ export function collectLLMResponseInfo(
         ? message.metadata.durationMs
         : null
 
-    calls.push({
-      index: calls.length + 1,
+    const entry: LLMRequestEntry = {
+      index: mainCalls.length + 1,
       messageId: message.id,
       usage,
       durationMs,
       model,
       cost: model ? calculateLLMCost({ model, usage }) : null,
-    })
+      kind: 'main',
+    }
+    mainCalls.push(entry)
+    requests.push(entry)
   }
 
-  const lastCall = calls.length > 0 ? calls[calls.length - 1] : null
+  const lastCall = mainCalls.length > 0 ? mainCalls[mainCalls.length - 1] : null
 
   // Top-level reflects the last billable call only — usage/duration/model are
   // pulled from the same entry, so the inline bar's tok/s stays coherent.
@@ -138,16 +261,16 @@ export function collectLLMResponseInfo(
   const model = lastCall ? lastCall.model : fallbackModel
   const cost = lastCall?.cost ?? null
 
-  const hasMultipleRequests = calls.length >= 2
+  const hasMultipleRequests = mainCalls.length >= 2
   const totalUsage = hasMultipleRequests
-    ? sumUsages(calls.map((call) => call.usage))
+    ? sumUsages(mainCalls.map((call) => call.usage))
     : null
 
   let totalDurationMs: number | null = null
   if (hasMultipleRequests) {
     let runningDuration = 0
     let anyMissing = false
-    for (const call of calls) {
+    for (const call of mainCalls) {
       if (call.durationMs === null) {
         anyMissing = true
         break
@@ -161,7 +284,7 @@ export function collectLLMResponseInfo(
   if (hasMultipleRequests) {
     let runningCost = 0
     let anyUnknown = false
-    for (const call of calls) {
+    for (const call of mainCalls) {
       if (call.cost === null) {
         anyUnknown = true
         break
@@ -179,8 +302,9 @@ export function collectLLMResponseInfo(
     totalUsage,
     totalDurationMs,
     totalCost,
-    requestCount: calls.length,
-    requests: calls,
+    requestCount: mainCalls.length,
+    hasSubModelCalls,
+    requests,
   }
 }
 

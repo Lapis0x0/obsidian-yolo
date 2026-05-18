@@ -102,6 +102,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       workspaceScope: input.workspaceScope,
       allowedSkillIds: input.allowedSkillIds,
       allowedSkillNames: input.allowedSkillNames,
+      modelTaskOptions: input.modelTaskOptions,
     })
     const worker = createAgentLoopWorker()
     const runId = uuidv4()
@@ -152,6 +153,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   enableTools: this.loopConfig.enableTools,
                   includeBuiltinTools: this.loopConfig.includeBuiltinTools,
                   allowedToolNames: input.allowedToolNames,
+                  modelTaskOptions: input.modelTaskOptions,
                   allowedSkillIds: input.allowedSkillIds,
                   allowedSkillNames: input.allowedSkillNames,
                   abortSignal,
@@ -273,6 +275,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                             includeBuiltinTools:
                               this.loopConfig.includeBuiltinTools,
                             allowedToolNames: input.allowedToolNames,
+                            modelTaskOptions: input.modelTaskOptions,
                             allowedSkillIds: input.allowedSkillIds,
                             allowedSkillNames: input.allowedSkillNames,
                             contextualInjections: composeAgentInjections({
@@ -418,6 +421,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       enableTools: false,
       includeBuiltinTools: false,
       allowedToolNames: input.allowedToolNames,
+      modelTaskOptions: input.modelTaskOptions,
       allowedSkillIds: input.allowedSkillIds,
       allowedSkillNames: input.allowedSkillNames,
       abortSignal,

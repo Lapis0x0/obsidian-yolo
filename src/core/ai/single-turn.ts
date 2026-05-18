@@ -78,6 +78,11 @@ type SingleTurnExecutionInput = {
    * "messages in, short reply out" round trip.
    */
   purpose?: 'standard' | 'auxiliary'
+  /**
+   * Only applies to auxiliary calls. Keeps the model's reasoning adapter
+   * available while still stripping hosted tools/search/custom feature bags.
+   */
+  preserveReasoning?: boolean
   onStreamDelta?: (delta: {
     contentDelta: string
     reasoningDelta: string
@@ -321,10 +326,13 @@ export async function executeSingleTurn({
   geminiTools,
   debugTraceId,
   purpose = 'standard',
+  preserveReasoning = false,
   onStreamDelta,
 }: SingleTurnExecutionInput): Promise<SingleTurnExecutionResult> {
   const isAuxiliary = purpose === 'auxiliary'
-  const effectiveModel = isAuxiliary ? stripProviderFeatures(model) : model
+  const effectiveModel = isAuxiliary
+    ? stripProviderFeatures(model, { preserveReasoning })
+    : model
   // Auxiliary calls must never carry Gemini-native hosted tools, regardless of
   // what the caller passes in — the option lives outside the ChatModel object
   // and would otherwise bypass stripProviderFeatures.

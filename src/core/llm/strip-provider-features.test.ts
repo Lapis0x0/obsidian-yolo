@@ -26,6 +26,28 @@ describe('stripProviderFeatures', () => {
     expect(stripped.web_search_options).toBeUndefined()
   })
 
+  it('can preserve the reasoning adapter while clearing hosted tools', () => {
+    const stripped = stripProviderFeatures(
+      {
+        ...baseModel,
+        reasoningType: 'gemini',
+        builtinToolProvider: 'openrouter',
+        builtinTools: {
+          openrouter: { webSearch: { enabled: true, engine: 'native' } },
+        },
+        customParameters: [
+          { key: 'thinkingConfig', value: '{"thinkingBudget":4096}' },
+        ],
+      },
+      { preserveReasoning: true },
+    )
+
+    expect(stripped.reasoningType).toBe('gemini')
+    expect(stripped.builtinToolProvider).toBe('none')
+    expect(stripped.builtinTools).toBeUndefined()
+    expect(stripped.customParameters).toEqual([])
+  })
+
   it('drops customParameters that fall outside the lightweight allowlist', () => {
     const stripped = stripProviderFeatures({
       ...baseModel,

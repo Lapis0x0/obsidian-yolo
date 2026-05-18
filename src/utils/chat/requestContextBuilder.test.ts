@@ -1729,3 +1729,218 @@ describe('parseToolMessage document hoisting', () => {
     )
   })
 })
+
+describe('run_model_task context isolation', () => {
+  it('keeps source sentinel text out of the next main LLM request', async () => {
+    const sourceSentinel =
+      'SOURCE_SENTINEL_SHOULD_NOT_ENTER_MAIN_CONTEXT'.repeat(20)
+    const childOutput = 'short child summary'
+    const app = createMockApp({
+      files: [],
+      fileContents: new Map(),
+    })
+    const settings = {
+      systemPrompt: '',
+      currentAssistantId: undefined,
+      assistants: [],
+      chatOptions: {
+        includeCurrentFileContent: true,
+        mentionContextMode: 'light',
+      },
+      skills: {},
+    } as unknown as YoloSettings
+    const builder = new RequestContextBuilder(app as never, settings)
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'Read the large source.',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'call-1',
+              name: 'yolo_local__run_model_task',
+              arguments: createCompleteToolCallArguments({
+                value: {
+                  targetModelId: 'openai/child',
+                  childSystemPrompt: 'system',
+                  instruction: 'summarize',
+                  source: {
+                    toolName: 'fs_read',
+                    args: {
+                      paths: ['big.md'],
+                      operation: { type: 'full' },
+                    },
+                  },
+                },
+              }),
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'call-1',
+                name: 'yolo_local__run_model_task',
+                arguments: createCompleteToolCallArguments({
+                  value: {},
+                }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    ok: true,
+                    childOutput,
+                    meta: {
+                      sourceToolName: 'fs_read',
+                      sourceResultChars: sourceSentinel.length,
+                      sourceResultModalities: ['text', 'image', 'pdf'],
+                    },
+                  }),
+                },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'Continue.',
+          mentionables: [],
+        },
+      ],
+      model: {
+        providerId: 'openai',
+        id: 'openai/main',
+        model: 'gpt-main',
+      } as never,
+      conversationId: 'conv-model-task',
+    })
+
+    const serialized = JSON.stringify(requestMessages)
+    expect(serialized).toContain(childOutput)
+    expect(serialized).not.toContain(sourceSentinel)
+  })
+
+  it('hoists run_model_task content parts because they may be child output', async () => {
+    const childOutput = 'short child summary with generated attachment'
+    const childImageSentinel = 'CHILD_OUTPUT_IMAGE_SHOULD_REACH_MAIN_CONTEXT'
+    const childPdfSentinel = 'CHILD_OUTPUT_PDF_SHOULD_REACH_MAIN_CONTEXT'
+    const app = createMockApp({
+      files: [],
+      fileContents: new Map(),
+    })
+    const settings = {
+      systemPrompt: '',
+      currentAssistantId: undefined,
+      assistants: [],
+      chatOptions: {
+        includeCurrentFileContent: true,
+        mentionContextMode: 'light',
+      },
+      skills: {},
+    } as unknown as YoloSettings
+    const builder = new RequestContextBuilder(app as never, settings)
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'Generate an attachment.',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'call-1',
+              name: 'yolo_local__run_model_task',
+              arguments: createCompleteToolCallArguments({
+                value: {
+                  targetModelId: 'openai/child',
+                  childSystemPrompt: 'system',
+                  instruction: 'generate an attachment',
+                },
+              }),
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'call-1',
+                name: 'yolo_local__run_model_task',
+                arguments: createCompleteToolCallArguments({
+                  value: {},
+                }),
+              },
+              response: {
+                status: ToolCallResponseStatus.Success,
+                data: {
+                  type: 'text',
+                  text: JSON.stringify({
+                    ok: true,
+                    childOutput,
+                    meta: {},
+                  }),
+                  contentParts: [
+                    {
+                      type: 'image_url',
+                      image_url: {
+                        url: `data:image/png;base64,${childImageSentinel}`,
+                      },
+                    },
+                    {
+                      type: 'document',
+                      mediaType: 'application/pdf',
+                      name: 'child-output.pdf',
+                      data: childPdfSentinel,
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          id: 'user-2',
+          content: null,
+          promptContent: 'Continue.',
+          mentionables: [],
+        },
+      ],
+      model: {
+        providerId: 'openai',
+        id: 'openai/main',
+        model: 'gpt-main',
+        modalities: ['text', 'vision', 'pdf'],
+      } as never,
+      conversationId: 'conv-model-task-child-output',
+    })
+
+    const serialized = JSON.stringify(requestMessages)
+    expect(serialized).toContain(childOutput)
+    expect(serialized).toContain(childImageSentinel)
+    expect(serialized).toContain(childPdfSentinel)
+  })
+})

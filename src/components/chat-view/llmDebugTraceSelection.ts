@@ -2,6 +2,7 @@ import {
   getLLMDebugTraceIdsForConversation,
   getLLMDebugTraceIdsForTurn,
   getLLMDebugTraces,
+  getLinkedLLMDebugTraceIds,
 } from '../../core/llm/debugCapture'
 import type { AssistantToolMessageGroup } from '../../types/chat'
 
@@ -81,6 +82,8 @@ export function getLLMDebugTraceIdsForMessages(
   if (directTraceIds.length === 0) {
     return []
   }
+
+  directTraceIds.push(...getLinkedLLMDebugTraceIds(directTraceIds))
 
   const conversationTraceIds = Array.from(conversationIds).flatMap(
     (conversationId) =>

@@ -152,6 +152,19 @@ describe('AgentToolGateway', () => {
       roundId: message.id,
       requireReview: true,
       signal: undefined,
+      chatModelId: undefined,
+      workspaceScope: undefined,
+      agentToolAccess: {
+        allowedToolNames: ['yolo_local__fs_edit'],
+        toolPreferences: {
+          yolo_local__fs_edit: {
+            enabled: true,
+            approvalMode: 'require_approval',
+          },
+        },
+      },
+      modelTaskOptions: undefined,
+      debugTraceId: undefined,
     })
   })
 

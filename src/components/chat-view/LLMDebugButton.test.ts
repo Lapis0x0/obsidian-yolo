@@ -147,7 +147,7 @@ describe('getLLMDebugTraceIdsForMessages', () => {
     )
 
     const markdown = buildLLMDebugMarkdown(getLLMDebugTraces(traceIds))
-    expect(markdown).toContain('## Subrequest 1')
+    expect(markdown).toContain('## Step #1')
     expect(markdown).toContain('https://example.test/v1/chat/completions')
     expect(markdown).toContain('## Other Requests')
     expect(markdown).toContain('Title generation request')

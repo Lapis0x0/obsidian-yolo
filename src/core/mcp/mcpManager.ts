@@ -26,7 +26,6 @@ import {
 } from '../web-search'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
-// eslint-disable-next-line import/order -- false positive: sibling group is contiguous; rule miscounts the blank line above this group
 import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
@@ -35,6 +34,18 @@ import {
   getLocalFileTools,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
+import { MODEL_TASK_TOOL_NAME, isRunModelTaskAvailable } from './modelTaskTool'
+import type {
+  ModelTaskAgentToolAccess,
+  ModelTaskNormalizedSourceTool,
+  ModelTaskRuntimeOptions,
+  ModelTaskSourceToolResult,
+} from './modelTaskTool'
+import {
+  getToolName,
+  parseToolName,
+  validateServerName,
+} from './tool-name-utils'
 
 const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
@@ -42,11 +53,6 @@ const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
 const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
-import {
-  getToolName,
-  parseToolName,
-  validateServerName,
-} from './tool-name-utils'
 
 type RemoteTransportModule = typeof import('./remoteTransport')
 
@@ -107,7 +113,19 @@ export class McpManager {
     return requestToolName
   }
 
-  private isLocalToolEnabled(toolName: string): boolean {
+  private isLocalToolEnabled(
+    toolName: string,
+    modelTaskOptions?: ModelTaskRuntimeOptions,
+  ): boolean {
+    if (toolName === MODEL_TASK_TOOL_NAME) {
+      const directDisabled =
+        this.settings.mcp.builtinToolOptions[toolName]?.disabled
+      return (
+        !directDisabled &&
+        isRunModelTaskAvailable(this.settings, modelTaskOptions)
+      )
+    }
+
     // Web search tools share a single `web_ops` group switch, but also need a
     // configured provider to actually run. Keep this branch ahead of the
     // direct-disabled early return so readiness is always evaluated.
@@ -566,9 +584,111 @@ export class McpManager {
     }
   }
 
+  private async callMcpSourceToolForModelTask({
+    sourceTool,
+    args,
+    signal,
+  }: {
+    sourceTool: ModelTaskNormalizedSourceTool
+    args: Record<string, unknown>
+    signal?: AbortSignal
+  }): Promise<ModelTaskSourceToolResult> {
+    if (sourceTool.kind !== 'mcp') {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: 'Expected an MCP source tool.',
+        stage: 'validation',
+      }
+    }
+    if (this.remoteMcpDisabled) {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: 'MCP source tools are unavailable on this platform.',
+        stage: 'validation',
+      }
+    }
+
+    const { serverName, toolName } = parseToolName(sourceTool.fullToolName)
+    const server = this.servers.find((entry) => entry.name === serverName)
+    if (!server || server.status !== McpServerStatus.Connected) {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: `MCP server ${serverName} is not connected.`,
+      }
+    }
+    if (server.config.toolOptions[toolName]?.disabled ?? false) {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: `MCP tool ${sourceTool.fullToolName} is disabled.`,
+        stage: 'validation',
+      }
+    }
+
+    try {
+      const result = (await server.client.callTool(
+        {
+          name: toolName,
+          arguments: args,
+        },
+        undefined,
+        {
+          signal,
+        },
+      )) as McpToolCallResult
+
+      if (signal?.aborted) {
+        return { status: ToolCallResponseStatus.Aborted }
+      }
+
+      if (result.content.length === 0) {
+        return {
+          status: ToolCallResponseStatus.Error,
+          error: 'MCP source tool returned no content.',
+        }
+      }
+
+      const unsupportedContent = result.content.find(
+        (content) => content.type !== 'text',
+      )
+      if (unsupportedContent) {
+        return {
+          status: ToolCallResponseStatus.Error,
+          error: `MCP source tool returned unsupported content type ${unsupportedContent.type}. Only text MCP source results are currently supported.`,
+          stage: 'validation',
+        }
+      }
+
+      const text = result.content
+        .flatMap((content) => (content.type === 'text' ? [content.text] : []))
+        .join('\n')
+      if (result.isError) {
+        return {
+          status: ToolCallResponseStatus.Error,
+          error: text,
+        }
+      }
+      return {
+        status: ToolCallResponseStatus.Success,
+        text,
+      }
+    } catch (error) {
+      if (
+        signal?.aborted ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
+        return { status: ToolCallResponseStatus.Aborted }
+      }
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
   private getAvailableToolsCacheKey(
     includeBuiltinTools: boolean,
     chatModelModalities: ChatModelModality[] | undefined,
+    modelTaskOptions: ModelTaskRuntimeOptions | undefined,
   ): string {
     // Modalities are part of the cache key because built-in tool schemas
     // (notably fs_read) are tailored per-model. Sort to be stable across the
@@ -576,19 +696,23 @@ export class McpManager {
     const modalityFingerprint = chatModelModalities
       ? [...chatModelModalities].sort().join(',')
       : 'superset'
-    return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}`
+    return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}|model_task:${JSON.stringify(modelTaskOptions ?? {})}`
   }
 
   public async listAvailableTools({
     includeBuiltinTools = false,
     chatModelModalities,
+    modelTaskOptions,
   }: {
     includeBuiltinTools?: boolean
     chatModelModalities?: ChatModelModality[]
+    modelTaskOptions?: ModelTaskRuntimeOptions
   } = {}): Promise<McpTool[]> {
+    const effectiveModelTaskOptions = modelTaskOptions ?? {}
     const cacheKey = this.getAvailableToolsCacheKey(
       includeBuiltinTools,
       chatModelModalities,
+      effectiveModelTaskOptions,
     )
     const cached = this.availableToolsCache.get(cacheKey)
     if (cached) {
@@ -629,8 +753,12 @@ export class McpManager {
           ...getLocalFileTools({
             vaultBasePath: getVaultBasePath(this.app),
             chatModelModalities,
+            settings: this.settings,
+            modelTaskOptions: effectiveModelTaskOptions,
           })
-            .filter((tool) => this.isLocalToolEnabled(tool.name))
+            .filter((tool) =>
+              this.isLocalToolEnabled(tool.name, effectiveModelTaskOptions),
+            )
             .map((tool) => ({
               ...tool,
               name: getToolName(getLocalFileToolServerName(), tool.name),
@@ -721,6 +849,9 @@ export class McpManager {
     requireReview = false,
     chatModelId,
     workspaceScope,
+    agentToolAccess,
+    modelTaskOptions,
+    debugTraceId,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -732,6 +863,9 @@ export class McpManager {
     requireReview?: boolean
     chatModelId?: string
     workspaceScope?: AssistantWorkspaceScope
+    agentToolAccess?: ModelTaskAgentToolAccess
+    modelTaskOptions?: ModelTaskRuntimeOptions
+    debugTraceId?: string
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -769,6 +903,15 @@ export class McpManager {
           signal: compositeSignal,
           chatModelId,
           workspaceScope,
+          agentToolAccess,
+          modelTaskOptions,
+          modelTaskSourceToolCaller: (sourceTool, sourceArgs) =>
+            this.callMcpSourceToolForModelTask({
+              sourceTool,
+              args: sourceArgs,
+              signal: compositeSignal,
+            }),
+          debugTraceId,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {

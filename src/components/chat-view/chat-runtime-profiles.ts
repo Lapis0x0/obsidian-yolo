@@ -1,5 +1,6 @@
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import type { ModelTaskRuntimeOptions } from '../../core/mcp/modelTaskTool'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import type { Assistant } from '../../types/assistant.types'
 
@@ -7,7 +8,11 @@ import type { ChatMode } from './chat-input/ChatModeSelect'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,
-  'enableTools' | 'includeBuiltinTools' | 'toolPreferences'
+  | 'enableTools'
+  | 'includeBuiltinTools'
+  | 'modelToolModelId'
+  | 'modelToolOptions'
+  | 'toolPreferences'
 >
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
@@ -26,6 +31,7 @@ export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
 export type ChatModeRuntime = {
   loopConfig: AgentRuntimeLoopConfig
   allowedToolNames: string[] | undefined
+  modelTaskOptions: ModelTaskRuntimeOptions | undefined
   toolPreferences: Assistant['toolPreferences']
 }
 
@@ -52,6 +58,22 @@ export function resolveChatModeRuntime({
       ? assistantEnabledToolNames
       : assistantEnabledToolNames.filter((name) => !blocked.has(name))
     : undefined
+  const modelTaskOptions: ModelTaskRuntimeOptions | undefined =
+    isAgentMode && assistant
+      ? {
+          allowedModelIds:
+            assistant.modelToolOptions?.allowedModelIds ??
+            (assistant.modelToolModelId
+              ? [assistant.modelToolModelId]
+              : undefined),
+          sourceToolsEnabled:
+            assistant.modelToolOptions?.childToolsEnabled ?? true,
+          mcpSourceToolsEnabled:
+            assistant.modelToolOptions?.mcpSourceToolsEnabled ?? false,
+          enabledSourceToolNames:
+            assistant.modelToolOptions?.enabledSourceToolNames,
+        }
+      : undefined
 
   return {
     loopConfig: {
@@ -60,6 +82,7 @@ export function resolveChatModeRuntime({
       maxAutoIterations: DEFAULT_AGENT_MAX_AUTO_ITERATIONS,
     },
     allowedToolNames,
+    modelTaskOptions,
     toolPreferences: isAgentMode ? assistant?.toolPreferences : undefined,
   }
 }

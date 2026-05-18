@@ -260,4 +260,57 @@ describe('collectLLMResponseInfo', () => {
 
     expect(info.totalUsage?.total_tokens).toBe(350) // 300 + 50, not 999+111
   })
+
+  it('shows sub-model task child usage without counting it in main totals', () => {
+    const subModelToolMessage: ChatToolMessage = {
+      ...toolMessage,
+      toolCalls: [
+        {
+          ...toolMessage.toolCalls[0],
+          request: {
+            ...toolMessage.toolCalls[0].request,
+            name: 'yolo_local__run_model_task',
+          },
+          response: {
+            status: ToolCallResponseStatus.Success,
+            data: {
+              type: 'text',
+              text: JSON.stringify({
+                ok: true,
+                childOutput: 'child result',
+                meta: {
+                  childUsage: {
+                    prompt_tokens: 30,
+                    completion_tokens: 5,
+                    total_tokens: 35,
+                  },
+                  childDurationMs: 250,
+                },
+              }),
+            },
+          },
+        },
+      ],
+    }
+    const info = collectLLMResponseInfo([
+      makeAssistant('assistant-1', 100, 20, 1000),
+      subModelToolMessage,
+    ])
+
+    expect(info.requestCount).toBe(1)
+    expect(info.hasSubModelCalls).toBe(true)
+    expect(info.totalUsage).toBeNull()
+    expect(info.requests).toHaveLength(2)
+    expect(info.requests.map((request) => request.index)).toEqual([1, '-'])
+    expect(info.requests.map((request) => request.kind)).toEqual([
+      'main',
+      'sub-model',
+    ])
+    expect(info.requests[1].usage).toEqual({
+      prompt_tokens: 30,
+      completion_tokens: 5,
+      total_tokens: 35,
+    })
+    expect(info.requests[1].durationMs).toBe(250)
+  })
 })

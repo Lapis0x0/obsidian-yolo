@@ -24,6 +24,7 @@ import {
 } from '../llm/debugCapture'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
+import type { ModelTaskRuntimeOptions } from '../mcp/modelTaskTool'
 
 import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import { selectAllowedTools } from './tool-selection'
@@ -42,6 +43,7 @@ type AgentLlmTurnExecutorInput = {
   enableTools: boolean
   includeBuiltinTools: boolean
   allowedToolNames?: string[]
+  modelTaskOptions?: ModelTaskRuntimeOptions
   allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   abortSignal?: AbortSignal
@@ -86,6 +88,7 @@ export class AgentLlmTurnExecutor {
     'memory_update',
     'memory_delete',
     'open_skill',
+    'run_model_task',
     'todo_write',
     'ask_user_question',
   ])
@@ -101,6 +104,7 @@ export class AgentLlmTurnExecutor {
           // models see ['text','pdf'], vision-capable see ['text','image'],
           // text-only see no modality field at all.
           chatModelModalities: this.input.model.modalities,
+          modelTaskOptions: this.input.modelTaskOptions,
         })
       : []
     const {

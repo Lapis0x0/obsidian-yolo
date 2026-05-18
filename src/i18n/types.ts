@@ -327,12 +327,46 @@ export type TranslationKeys = {
       builtinWebScrapeDesc?: string
       builtinWebOpsLabel?: string
       builtinWebOpsDesc?: string
+      builtinRunModelTaskLabel?: string
+      builtinRunModelTaskDesc?: string
       builtinDelegateExternalAgentLabel?: string
       builtinDelegateExternalAgentDesc?: string
       builtinTodoWriteLabel?: string
       builtinTodoWriteDesc?: string
       builtinAskUserQuestionLabel?: string
       builtinAskUserQuestionDesc?: string
+      modelToolsTitle?: string
+      modelToolsDesc?: string
+      modelToolsGlobalToggle?: string
+      modelToolsConfigure?: string
+      modelToolsAddColumn?: string
+      modelToolsModelsColumn?: string
+      modelToolsCategoriesColumn?: string
+      modelToolsAdd?: string
+      modelToolsNoChatModels?: string
+      modelToolsAllAdded?: string
+      modelToolsEmpty?: string
+      modelToolsMissingModel?: string
+      modelToolsAgentModel?: string
+      modelToolsAgentModelDesc?: string
+      modelToolsAgentAllModels?: string
+      modelToolsAgentAllModelsDesc?: string
+      modelToolsAgentConfigure?: string
+      modelToolsAgentConfigureDesc?: string
+      modelToolsAgentModels?: string
+      modelToolsAgentSummary?: string
+      modelToolsAgentSourceTools?: string
+      modelToolsAgentNoSourceTools?: string
+      modelToolsAgentSourceToolsDefault?: string
+      modelToolsAgentSourceToolsCount?: string
+      modelToolsAgentSourceToolsOff?: string
+      modelToolsMcpSourceToolsEnabled?: string
+      modelToolsMcpSourceToolsEnabledDesc?: string
+      modelToolsMcpSourceToolDesc?: string
+      modelToolsChildToolsEnabled?: string
+      modelToolsChildToolsEnabledDesc?: string
+      modelToolCategoryName?: string
+      modelToolCategoryDescription?: string
       editorDefaultName?: string
       editorIntro?: string
       editorTabProfile?: string
@@ -1126,6 +1160,7 @@ export type TranslationKeys = {
     contextUsage?: string
     inlineInfo?: {
       callsTitle?: string
+      mainCallsTitle?: string
       nextTurnContext?: string
       nextTurnContextCached?: string
     }

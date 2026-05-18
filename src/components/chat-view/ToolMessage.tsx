@@ -514,6 +514,13 @@ export const getHeadlineDisplayInfo = ({
     }
   }
 
+  if (toolName === 'run_model_task') {
+    return {
+      ...displayInfo,
+      summaryText: getRunModelTaskSummary({ request, response }),
+    }
+  }
+
   return displayInfo
 }
 
@@ -566,6 +573,69 @@ const getDelegateExternalAgentSummary = ({
   if (!provider) return collapsedMain
   if (!collapsedMain) return provider
   return `${provider} | ${collapsedMain}`
+}
+
+const formatRunModelTaskArgsSummary = (
+  argsObject: Record<string, unknown> | null | undefined,
+): string => {
+  const targetModelId =
+    typeof argsObject?.targetModelId === 'string'
+      ? argsObject.targetModelId
+      : ''
+  const source = asRecord(argsObject?.source)
+  const sourceToolName =
+    typeof source?.toolName === 'string' ? source.toolName : ''
+  return [targetModelId, sourceToolName ? `source ${sourceToolName}` : null]
+    .filter(Boolean)
+    .join(' | ')
+}
+
+const getRunModelTaskSummary = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): string | undefined => {
+  const argsObject = parseToolArguments(request.arguments)
+  const targetModelId =
+    typeof argsObject?.targetModelId === 'string'
+      ? argsObject.targetModelId
+      : ''
+  const source = asRecord(argsObject?.source)
+  const sourceToolName =
+    typeof source?.toolName === 'string' ? source.toolName : ''
+
+  if (response?.status === ToolCallResponseStatus.Success) {
+    try {
+      const payload = JSON.parse(response.data.text) as unknown
+      const record = asRecord(payload)
+      const meta = asRecord(record?.meta)
+      const modelLabel =
+        typeof meta?.targetModelLabel === 'string'
+          ? meta.targetModelLabel
+          : targetModelId
+      if (record?.ok === false) {
+        const error = asRecord(record.error)
+        const stage = typeof error?.stage === 'string' ? error.stage : 'failed'
+        const message = typeof error?.message === 'string' ? error.message : ''
+        return `${modelLabel || targetModelId} | ${stage}${message ? ` | ${truncateText(message, 80)}` : ''}`
+      }
+      const childOutput =
+        typeof record?.childOutput === 'string' ? record.childOutput : ''
+      return [
+        modelLabel || targetModelId,
+        sourceToolName ? `source ${sourceToolName}` : null,
+        childOutput ? truncateText(childOutput.replace(/\s+/g, ' '), 80) : null,
+      ]
+        .filter(Boolean)
+        .join(' | ')
+    } catch {
+      // Fall back to request arguments below.
+    }
+  }
+
+  return formatRunModelTaskArgsSummary(argsObject)
 }
 
 const getLocalToolSummaryText = ({
@@ -650,6 +720,10 @@ const getLocalToolSummaryText = ({
     const url =
       typeof argumentsObject?.url === 'string' ? argumentsObject.url : ''
     return url ? truncateText(url, 80) : undefined
+  }
+
+  if (toolName === 'run_model_task') {
+    return formatRunModelTaskArgsSummary(argumentsObject)
   }
 
   if (toolName === 'fs_read') {

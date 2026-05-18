@@ -1,4 +1,4 @@
-import { BookOpen, FolderOpen, User, Wrench } from 'lucide-react'
+import { BookOpen, FolderOpen, Settings, User, Wrench } from 'lucide-react'
 import { App, TFile } from 'obsidian'
 import {
   useCallback,
@@ -67,6 +67,8 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SimpleSelect } from '../../common/SimpleSelect'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
+import { AgentModelToolsSettingsModal } from '../modals/AgentModelToolsSettingsModal'
+import { buildChatModelOptionGroups } from '../modelSelectOptions'
 
 import {
   normalizeToolPreferencesForPersistence,
@@ -487,42 +489,66 @@ export function AgentsSectionContent({
   }, [availableTools, draftAgent, isDirectCreateEntry, localFsServerName])
 
   const agentModelOptionGroups = useMemo(() => {
-    const providerOrder = settings.providers.map((provider) => provider.id)
-    const providerIdsInModels = Array.from(
-      new Set(settings.chatModels.map((model) => model.providerId)),
-    )
-    const orderedProviderIds = [
-      ...providerOrder.filter((id) => providerIdsInModels.includes(id)),
-      ...providerIdsInModels.filter((id) => !providerOrder.includes(id)),
-    ]
-
-    return orderedProviderIds
-      .map((providerId) => {
-        const models = settings.chatModels.filter(
-          (model) => model.providerId === providerId,
-        )
-        if (models.length === 0) {
-          return null
-        }
-        return {
-          label: providerId,
-          options: models.map((model) => ({
-            value: model.id,
-            label: model.name?.trim()
-              ? model.name.trim()
-              : model.model || model.id,
-          })),
-        }
-      })
-      .filter(
-        (
-          group,
-        ): group is {
-          label: string
-          options: { value: string; label: string }[]
-        } => group !== null,
-      )
+    return buildChatModelOptionGroups({
+      chatModels: settings.chatModels,
+      providers: settings.providers,
+    })
   }, [settings.chatModels, settings.providers])
+
+  const enabledModelToolModelIds = useMemo(
+    () =>
+      new Set(
+        settings.agentLlmTools.modelTools
+          .filter((tool) => tool.enabled)
+          .map((tool) => tool.modelId),
+      ),
+    [settings.agentLlmTools.modelTools],
+  )
+  const enabledModelToolCount = useMemo(
+    () =>
+      settings.chatModels.filter(
+        (model) =>
+          (model.enable ?? true) && enabledModelToolModelIds.has(model.id),
+      ).length,
+    [enabledModelToolModelIds, settings.chatModels],
+  )
+  const modelToolsSummary = useMemo(() => {
+    const modelOptions = draftAgent?.modelToolOptions
+    const childToolsEnabled = modelOptions?.childToolsEnabled ?? true
+    const allowedModelCount =
+      modelOptions?.allowedModelIds?.filter((modelId) =>
+        enabledModelToolModelIds.has(modelId),
+      ).length ?? enabledModelToolCount
+    const modelSummary = t(
+      'settings.agent.modelToolsAgentSummary',
+      '{count} callable models',
+    ).replace('{count}', String(allowedModelCount))
+    if (!childToolsEnabled) {
+      return `${modelSummary}; ${t(
+        'settings.agent.modelToolsAgentSourceToolsOff',
+        'source tools off',
+      )}`
+    }
+    const sourceSummary =
+      modelOptions?.enabledSourceToolNames === undefined
+        ? t(
+            'settings.agent.modelToolsAgentSourceToolsDefault',
+            'source tools follow agent full-access settings',
+          )
+        : t(
+            'settings.agent.modelToolsAgentSourceToolsCount',
+            '{count} source tools enabled',
+          ).replace(
+            '{count}',
+            String(modelOptions.enabledSourceToolNames.length),
+          )
+    return `${modelSummary}; ${sourceSummary}`
+  }, [
+    draftAgent?.modelToolOptions,
+    enabledModelToolModelIds,
+    enabledModelToolCount,
+    t,
+  ])
 
   useEffect(() => {
     if (!initialAssistantId || draftAgent) {
@@ -1373,6 +1399,40 @@ export function AgentsSectionContent({
                   }}
                 />
               </ObsidianSetting>
+              {settings.agentLlmTools.enabled && enabledModelToolCount > 0 && (
+                <div className="yolo-agent-model-setting-row">
+                  <div className="yolo-agent-model-setting-info">
+                    <div className="yolo-agent-model-setting-title">
+                      {t(
+                        'settings.agent.modelToolsAgentModel',
+                        'Sub-model task toolset',
+                      )}
+                    </div>
+                    <div className="yolo-agent-model-setting-desc">
+                      {modelToolsSummary}
+                    </div>
+                  </div>
+                  <div className="yolo-agent-model-select-wrap">
+                    <button
+                      type="button"
+                      className="clickable-icon yolo-agent-model-tools-gear"
+                      aria-label={t(
+                        'settings.agent.modelToolsAgentConfigure',
+                        'Agent sub-model task toolset',
+                      )}
+                      onClick={() =>
+                        new AgentModelToolsSettingsModal(app, plugin, {
+                          assistant: draftAgent,
+                          availableTools,
+                          onChange: setDraftAgent,
+                        }).open()
+                      }
+                    >
+                      <Settings size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
               <div
                 className={`yolo-agent-tools-panel${
                   draftAgent.enableTools ? '' : ' is-disabled'

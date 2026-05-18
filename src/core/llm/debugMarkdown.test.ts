@@ -1,4 +1,9 @@
 import type { LLMDebugTrace } from './debugCapture'
+import {
+  createLLMDebugTrace,
+  createLinkedLLMDebugTrace,
+  setLLMDebugCaptureEnabled,
+} from './debugCapture'
 import { buildLLMDebugMarkdown } from './debugMarkdown'
 
 function createTrace(
@@ -40,6 +45,10 @@ function createTrace(
 }
 
 describe('buildLLMDebugMarkdown', () => {
+  afterEach(() => {
+    setLLMDebugCaptureEnabled(false)
+  })
+
   it('labels formatted bodies simply and notes formatting after the block', () => {
     const markdown = buildLLMDebugMarkdown([
       createTrace('{"ok":true}', 'application/json'),
@@ -67,10 +76,10 @@ describe('buildLLMDebugMarkdown', () => {
       createTrace(responseBody, 'text/event-stream'),
     ])
 
-    expect(markdown).toContain('### #1 ')
+    expect(markdown).toContain('### #1.1 - ')
     expect(markdown).toContain('- Streaming: true')
     expect(markdown).not.toContain('- Nature:')
-    expect(markdown).not.toContain('Attempt 1')
+    expect(markdown).not.toContain('### #1 ')
     expect(markdown).toContain('Reasoning (Extracted):')
     expect(markdown).toContain('Content (Extracted):')
     expect(markdown).toContain('Tool Calls (Extracted):')
@@ -151,14 +160,14 @@ describe('buildLLMDebugMarkdown', () => {
     trace.exchanges[0].request.url = 'mcp://server/tool'
 
     const markdown = buildLLMDebugMarkdown([trace])
-    const attemptSection = markdown.slice(markdown.indexOf('### #1'))
+    const attemptSection = markdown.slice(markdown.indexOf('### #1.1'))
 
     expect(attemptSection).toContain('Tool request - server/tool')
     expect(attemptSection).not.toContain('- Provider: openai')
     expect(attemptSection).not.toContain('- Model: Main model')
   })
 
-  it('sums subrequest costs instead of listing every cost field inline', () => {
+  it('sums request costs instead of listing every cost field inline', () => {
     const trace = createTrace(
       '{"usage":{"cost":{"input":0.01,"output":0.02,"total":0.03}}}',
       'application/json',
@@ -210,7 +219,7 @@ describe('buildLLMDebugMarkdown', () => {
 
     const markdown = buildLLMDebugMarkdown([trace])
 
-    expect(markdown).not.toContain('## Subrequest 1')
+    expect(markdown).not.toContain('## Step #1')
     expect(markdown).toContain('## Other Requests')
     expect(markdown).toContain('Embedding request')
     expect(markdown).not.toContain(
@@ -218,7 +227,7 @@ describe('buildLLMDebugMarkdown', () => {
     )
     expect(markdown).toContain('not initiated by the chat response itself')
     expect(markdown).toContain(
-      '### #1 Embedding request\n\nNote: This embedding request was captured during the turn, but it was not initiated by the chat response itself.\n\n- Category: Embedding request',
+      '### #1 - Embedding request\n\nNote: This embedding request was captured during the turn, but it was not initiated by the chat response itself.\n\n- Category: Embedding request',
     )
     expect(markdown).toContain(
       `${embeddingInput.slice(0, 100)}[OMITTED embedding input string: ${
@@ -252,7 +261,7 @@ describe('buildLLMDebugMarkdown', () => {
 
     const markdown = buildLLMDebugMarkdown([trace])
 
-    expect(markdown).not.toContain('## Subrequest 1')
+    expect(markdown).not.toContain('## Step #1')
     expect(markdown).toContain('## Other Requests')
     expect(markdown).toContain('Embedding request')
     expect(markdown).toContain(
@@ -291,13 +300,13 @@ describe('buildLLMDebugMarkdown', () => {
 
     const markdown = buildLLMDebugMarkdown([trace])
 
-    expect(markdown).not.toContain('## Subrequest 1')
+    expect(markdown).not.toContain('## Step #1')
     expect(markdown).toContain('## Other Requests')
     expect(markdown).toContain('Title generation request')
     expect(markdown).toContain('Content (Extracted):')
     expect(markdown).toContain('```text\nTest Title\n```')
     expect(markdown).not.toContain(
-      'Title generation requests are listed here instead of as separate Subrequests.',
+      'Title generation requests are listed here instead of as separate Steps.',
     )
   })
 
@@ -310,7 +319,7 @@ describe('buildLLMDebugMarkdown', () => {
 
     const markdown = buildLLMDebugMarkdown([trace])
 
-    expect(markdown).not.toContain('## Subrequest 1')
+    expect(markdown).not.toContain('## Step #1')
     expect(markdown).not.toContain('## Other Requests')
     expect(markdown).not.toContain('Title generation request')
     expect(markdown).not.toContain('(No HTTP exchange was captured.)')
@@ -347,17 +356,77 @@ describe('buildLLMDebugMarkdown', () => {
     })
 
     const markdown = buildLLMDebugMarkdown([trace])
-    const subrequestSection = markdown.slice(
-      markdown.indexOf('## Subrequest 1'),
+    const requestSection = markdown.slice(
+      markdown.indexOf('## Step #1'),
       markdown.indexOf('## Other Requests'),
     )
 
-    expect(markdown).toContain('## Subrequest 1')
-    expect(subrequestSection).toContain('### #1 Main LLM request')
-    expect(subrequestSection).not.toContain('Title generation request')
+    expect(markdown).toContain('## Step #1')
+    expect(requestSection).toContain('### #1.1 - Main LLM request')
+    expect(requestSection).not.toContain('Title generation request')
     expect(markdown).toContain('## Other Requests')
-    expect(markdown).toContain('### #1 Title generation request')
+    expect(markdown).toContain('### #1 - Title generation request')
     expect(markdown).toContain('```text\nHello title\n```')
+  })
+
+  it('labels sub-LLM traces separately from main and title generation requests', () => {
+    const trace = createTrace('{"ok":true}', 'application/json')
+    trace.summary.requestKind = 'sub-llm'
+    trace.exchanges[0].request.body = JSON.stringify({
+      model: 'gpt-test',
+      messages: [
+        { role: 'system', content: 'Return a short label.' },
+        { role: 'user', content: 'User first message:\nHello' },
+      ],
+    })
+
+    const markdown = buildLLMDebugMarkdown([trace])
+
+    expect(markdown).toContain('## Step #1')
+    expect(markdown).toContain('### #1.1 - Sub LLM request')
+    expect(markdown).not.toContain('Title generation request')
+    expect(markdown).not.toContain('Main LLM request')
+  })
+
+  it('groups linked sub-LLM traces under the parent request', () => {
+    setLLMDebugCaptureEnabled(true)
+    const parentTrace = createLLMDebugTrace({
+      requestKind: 'streaming',
+      model: {
+        providerId: 'openai',
+        id: 'main-model',
+        model: 'gpt-main',
+        name: 'Main',
+      },
+    })
+    parentTrace.exchanges.push(createTrace('{"ok":true}').exchanges[0])
+    parentTrace.exchanges[0].traceId = parentTrace.id
+
+    const childTrace = createLinkedLLMDebugTrace({
+      parentTraceId: parentTrace.id,
+      requestKind: 'sub-llm',
+      model: {
+        providerId: 'openai',
+        id: 'child-model',
+        model: 'gpt-child',
+        name: 'Child',
+      },
+    })
+    expect(childTrace).not.toBeNull()
+    childTrace!.exchanges.push({
+      ...createTrace('{"ok":true}').exchanges[0],
+      id: 'child-exchange',
+      traceId: childTrace!.id,
+      startedAt: 1_700_000_000_500,
+      completedAt: 1_700_000_001_000,
+    })
+
+    const markdown = buildLLMDebugMarkdown([parentTrace, childTrace!])
+
+    expect(markdown.match(/^## Step #/gm)).toHaveLength(1)
+    expect(markdown).toContain('### #1.1 - Main LLM request')
+    expect(markdown).toContain('### #1.2 - Sub LLM request')
+    expect(markdown).not.toContain('## Step #2')
   })
 
   it('omits base64 payloads in formatted debug markdown while preserving data URL prefixes', () => {

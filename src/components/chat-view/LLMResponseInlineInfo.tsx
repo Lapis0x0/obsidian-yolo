@@ -299,6 +299,7 @@ export default function LLMResponseInlineInfo({
     totalUsage,
     totalDurationMs,
     requestCount,
+    hasSubModelCalls,
     requests,
   } = useLLMResponseInfo(messages)
 
@@ -360,14 +361,29 @@ export default function LLMResponseInlineInfo({
     totalUsage || totalDurationMs !== null
       ? buildInputs(totalUsage, totalDurationMs)
       : null
-  const hasMultipleRequests = requestCount >= 2 && totalInputs !== null
+  const hasMultipleMainRequests = requestCount >= 2 && totalInputs !== null
+  const hasSubModelBreakdownRows = requests.some(
+    (request) => request.kind === 'sub-model',
+  )
+  const showBreakdown =
+    (hasMultipleMainRequests || hasSubModelBreakdownRows) &&
+    (totalUsage !== null || usage !== null)
+  const formatCallsTitle = (count: number): string =>
+    t(
+      hasSubModelCalls
+        ? 'chat.inlineInfo.mainCallsTitle'
+        : 'chat.inlineInfo.callsTitle',
+      hasSubModelCalls
+        ? '{{count}} main model calls this turn'
+        : '{{count}} calls this turn',
+    ).replace('{{count}}', String(count))
 
   // Inline bar: when there are multiple LLM calls in this Agent turn, show
   // aggregated values across the whole turn — tokens, duration, and speed all
   // reflect the cumulative cost. Speed is derived from totalUsage/totalDuration
   // so the four numbers reconcile (output / duration ≈ speed).
   const inlineInputs: RenderInputs =
-    hasMultipleRequests && totalInputs ? totalInputs : lastInputs
+    hasMultipleMainRequests && totalInputs ? totalInputs : lastInputs
 
   // 已占用上下文 ≈ 最后一次的 prompt + completion，反映当前对话历史大小。
   // cached 取自 last call 的命中量，因为 completion 不会被 cache。
@@ -375,6 +391,7 @@ export default function LLMResponseInlineInfo({
     ? usage.prompt_tokens + usage.completion_tokens
     : null
   const nextTurnCachedTokens = getCachedTokens(usage)
+  const breakdownSummaryUsage = totalUsage ?? usage
 
   return (
     <Tooltip.Provider delayDuration={300} skipDelayDuration={100}>
@@ -409,15 +426,10 @@ export default function LLMResponseInlineInfo({
             align="start"
           >
             <div className="yolo-llm-inline-info-tooltip">
-              {hasMultipleRequests && totalUsage ? (
+              {showBreakdown && breakdownSummaryUsage ? (
                 <>
                   <div className="yolo-llm-inline-info-tooltip-title">
-                    <span>
-                      {t(
-                        'chat.inlineInfo.callsTitle',
-                        '{{count}} calls this turn',
-                      ).replace('{{count}}', String(requestCount))}
-                    </span>
+                    <span>{formatCallsTitle(requestCount)}</span>
                     <LLMDebugIconButton
                       messages={messages}
                       traceIds={debugTraceIds}
@@ -427,13 +439,18 @@ export default function LLMResponseInlineInfo({
                       <span className="yolo-llm-inline-info-breakdown-cell">
                         <ArrowUp className="yolo-llm-inline-info-icon yolo-llm-inline-info-icon--input" />
                         <span>
-                          {formatTokenCount(totalUsage.prompt_tokens)}
+                          {formatTokenCount(
+                            breakdownSummaryUsage.prompt_tokens,
+                          )}
                           {(() => {
-                            const totalCached = getCachedTokens(totalUsage)
+                            const totalCached = getCachedTokens(
+                              breakdownSummaryUsage,
+                            )
                             return totalCached !== null &&
-                              totalUsage.prompt_tokens > 0
+                              breakdownSummaryUsage.prompt_tokens > 0
                               ? ` (${(
-                                  (totalCached / totalUsage.prompt_tokens) *
+                                  (totalCached /
+                                    breakdownSummaryUsage.prompt_tokens) *
                                   100
                                 ).toFixed(1)}%)`
                               : null
@@ -443,7 +460,9 @@ export default function LLMResponseInlineInfo({
                       <span className="yolo-llm-inline-info-breakdown-cell">
                         <ArrowDown className="yolo-llm-inline-info-icon yolo-llm-inline-info-icon--output" />
                         <span>
-                          {formatTokenCount(totalUsage.completion_tokens)}
+                          {formatTokenCount(
+                            breakdownSummaryUsage.completion_tokens,
+                          )}
                         </span>
                       </span>
                     </span>
@@ -458,12 +477,7 @@ export default function LLMResponseInlineInfo({
                   {showDebugEntry && (
                     <>
                       <div className="yolo-llm-inline-info-tooltip-title">
-                        <span>
-                          {t(
-                            'chat.inlineInfo.callsTitle',
-                            '{{count}} calls this turn',
-                          ).replace('{{count}}', String(requestCount || 1))}
-                        </span>
+                        <span>{formatCallsTitle(requestCount || 1)}</span>
                         <LLMDebugIconButton
                           messages={messages}
                           traceIds={debugTraceIds}

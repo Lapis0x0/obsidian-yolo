@@ -408,6 +408,9 @@ export const zh: TranslationKeys = {
       builtinWebScrapeDesc: '通过配置的搜索服务抓取单个 URL 的完整正文。',
       builtinWebOpsLabel: '联网搜索工具集',
       builtinWebOpsDesc: '网页搜索与正文抓取',
+      builtinRunModelTaskLabel: '子模型任务工具',
+      builtinRunModelTaskDesc:
+        '让 Agent 调用已配置模型执行受限任务，可附带只读源结果。',
       builtinDelegateExternalAgentLabel: '派遣外部 Agent',
       builtinDelegateExternalAgentDesc:
         '将复杂任务派遣给本机已安装的 CLI Agent（Codex / Claude Code）。',
@@ -417,6 +420,43 @@ export const zh: TranslationKeys = {
       builtinAskUserQuestionLabel: '向用户提问',
       builtinAskUserQuestionDesc:
         '在缺少必要信息时向用户提问，等待回答后继续。',
+      modelToolsTitle: '子模型任务工具',
+      modelToolsDesc: '配置 Agent 可通过子模型任务工具调用的模型。',
+      modelToolsGlobalToggle: '启用子模型任务工具',
+      modelToolsConfigure: '配置子模型任务工具',
+      modelToolsAddColumn: '添加模型',
+      modelToolsModelsColumn: '模型设置',
+      modelToolsCategoriesColumn: '分类提示词',
+      modelToolsAdd: '添加模型',
+      modelToolsNoChatModels: '暂无已启用的聊天模型。',
+      modelToolsAllAdded: '所有已启用聊天模型都已添加。',
+      modelToolsEmpty: '添加一个聊天模型后，Agent 才能使用子模型任务工具。',
+      modelToolsMissingModel: '模型已不存在',
+      modelToolsAgentModel: '子模型任务工具',
+      modelToolsAgentModelDesc: '配置此 Agent 可用于委派任务的模型和源工具。',
+      modelToolsAgentAllModels: '全部模型',
+      modelToolsAgentAllModelsDesc:
+        '让 Agent 从全局启用的子模型任务工具中自行选择。',
+      modelToolsAgentConfigure: 'Agent 子模型任务工具',
+      modelToolsAgentConfigureDesc:
+        '选择此 Agent 可用于委派任务的模型和只读源工具。',
+      modelToolsAgentModels: '可调用模型',
+      modelToolsAgentSummary: '{count} 个可调用模型',
+      modelToolsAgentSourceTools: '任务可用源工具',
+      modelToolsAgentNoSourceTools: '当前 Agent 没有启用完全访问的只读源工具。',
+      modelToolsAgentSourceToolsDefault: '源工具跟随 Agent 的完全访问设置',
+      modelToolsAgentSourceToolsCount: '已启用 {count} 个源工具',
+      modelToolsAgentSourceToolsOff: '源工具已关闭',
+      modelToolsMcpSourceToolsEnabled: '允许 MCP 源工具',
+      modelToolsMcpSourceToolsEnabledDesc:
+        '开启后，子模型任务可以调用你在下方选中的 MCP 工具作为模型输入。仅上级工具页面已开启并设为完全放行的工具可被选中。请勿选择非只读工具。',
+      modelToolsMcpSourceToolDesc:
+        'MCP 源工具。只应启用可信、只返回文本的只读工具。',
+      modelToolsChildToolsEnabled: '允许附加源工具结果',
+      modelToolsChildToolsEnabledDesc:
+        '关闭后仍可直接调用模型，但不能把文件或联网源工具结果附加给任务。',
+      modelToolCategoryName: '分类',
+      modelToolCategoryDescription: '分类说明',
       editorDefaultName: '新建 Agent',
       editorIntro: '配置此 Agent 的能力、模型与行为。',
       editorTabProfile: '资料',
@@ -1247,6 +1287,8 @@ export const zh: TranslationKeys = {
     contextUsage: '上下文窗口占用',
     inlineInfo: {
       callsTitle: '本轮 {{count}} 次调用',
+      mainCallsTitle:
+        '\u672c\u8f6e {{count}} \u6b21\u8c03\u7528\u4e3b\u6a21\u578b',
       nextTurnContext: '已占用上下文：~{{tokens}} tokens',
       nextTurnContextCached:
         '已占用上下文：~{{tokens}} tokens ({{cached}} cached)',

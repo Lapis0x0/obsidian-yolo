@@ -555,6 +555,7 @@ export function useChatStreamManager({
             enableTools: effectiveEnableTools,
             includeBuiltinTools: effectiveIncludeBuiltinTools,
             allowedToolNames: effectiveAllowedToolNames,
+            modelTaskOptions: chatModeRuntime.modelTaskOptions,
             allowedSkillIds,
             allowedSkillNames,
             contextualInjections: buildChatContextualInjections({
@@ -734,6 +735,7 @@ export function useChatStreamManager({
           compactionModel: resolvedCompactionClient.model,
           reasoningLevel,
           allowedToolNames: chatModeRuntime.allowedToolNames,
+          modelTaskOptions: chatModeRuntime.modelTaskOptions,
           toolPreferences: chatModeRuntime.toolPreferences,
           workspaceScope:
             resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
