@@ -461,6 +461,9 @@ export const en: TranslationKeys = {
       builtinAskUserQuestionLabel: 'Ask User',
       builtinAskUserQuestionDesc:
         'Ask the user a question when required information is missing, then resume after the answer.',
+      builtinGetCurrentTimeLabel: 'Current Time',
+      builtinGetCurrentTimeDesc:
+        'Get the current date, time, weekday, timezone, and unix timestamp.',
       editorDefaultName: 'New agent',
       editorIntro: "Configure this agent's capabilities, model, and behavior.",
       editorTabProfile: 'Profile',

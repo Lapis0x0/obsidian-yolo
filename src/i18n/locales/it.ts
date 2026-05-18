@@ -464,6 +464,9 @@ export const it: TranslationKeys = {
       builtinAskUserQuestionLabel: "Chiedi all'utente",
       builtinAskUserQuestionDesc:
         "Chiede all'utente quando mancano informazioni necessarie e riprende dopo la risposta.",
+      builtinGetCurrentTimeLabel: 'Ora attuale',
+      builtinGetCurrentTimeDesc:
+        'Ottiene la data, ora, giorno della settimana, fuso orario e timestamp Unix correnti.',
       editorDefaultName: 'Nuovo agent',
       editorIntro:
         'Configura le capacità, il modello e il comportamento di questo agent.',

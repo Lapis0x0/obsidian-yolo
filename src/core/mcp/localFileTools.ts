@@ -133,6 +133,7 @@ type LocalFileToolName =
   | 'delegate_external_agent'
   | 'todo_write'
   | 'ask_user_question'
+  | 'get_current_time'
 type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
 type FsSearchMode = 'keyword' | 'rag' | 'hybrid'
 type LegacyFsSearchItem =
@@ -1200,6 +1201,15 @@ export function getLocalFileTools(options?: {
           },
         },
         required: ['todos'],
+      },
+    },
+    {
+      name: 'get_current_time',
+      description:
+        'Get the current date, time, weekday, timezone, and unix timestamp. Use this when you need to know the current time or determine what day it is.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
       },
     },
   ]
@@ -4349,6 +4359,10 @@ export async function callLocalFileTool({
         return executeTodoWrite({ args })
       }
 
+      case 'get_current_time': {
+        return executeGetCurrentTime()
+      }
+
       default:
         throw new Error(`Unknown local file tool: ${toolName}`)
     }
@@ -4413,5 +4427,42 @@ function executeTodoWrite({
   return {
     status: ToolCallResponseStatus.Success,
     text: 'Todos updated. Continue tracking your progress with the todo list.',
+  }
+}
+
+function executeGetCurrentTime(): LocalToolCallResult {
+  const now = new Date()
+
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  const seconds = String(now.getSeconds()).padStart(2, '0')
+
+  const weekdays = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ]
+
+  const offsetMinutes = -now.getTimezoneOffset()
+  const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60)
+  const offsetMins = Math.abs(offsetMinutes) % 60
+  const offsetSign = offsetMinutes >= 0 ? '+' : '-'
+  const timezoneOffset = `UTC${offsetSign}${offsetHours}${offsetMins > 0 ? `:${String(offsetMins).padStart(2, '0')}` : ''}`
+
+  return {
+    status: ToolCallResponseStatus.Success,
+    text: formatJsonResult({
+      datetime: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`,
+      weekday: weekdays[now.getDay()],
+      timezone: timezoneOffset,
+      unix: Math.floor(now.getTime() / 1000),
+    }),
   }
 }

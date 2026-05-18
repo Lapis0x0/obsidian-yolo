@@ -137,6 +137,13 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Pause the run and ask the user 1-3 structured questions (free text / single / multi). The agent resumes after the user submits answers.',
   },
+  get_current_time: {
+    labelKey: 'settings.agent.builtinGetCurrentTimeLabel',
+    descKey: 'settings.agent.builtinGetCurrentTimeDesc',
+    labelFallback: 'Current Time',
+    descFallback:
+      'Get the current date, time, weekday, timezone, and unix timestamp.',
+  },
 }
 
 export const getBuiltinToolUiMeta = (
@@ -163,6 +170,7 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   context_compact: 'context',
   todo_write: 'context',
   ask_user_question: 'context',
+  get_current_time: 'context',
   [MEMORY_OPS_GROUP_TOOL_NAME]: 'context',
   [WEB_OPS_GROUP_TOOL_NAME]: 'external',
   open_skill: 'external',

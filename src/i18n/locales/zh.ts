@@ -417,6 +417,9 @@ export const zh: TranslationKeys = {
       builtinAskUserQuestionLabel: '向用户提问',
       builtinAskUserQuestionDesc:
         '在缺少必要信息时向用户提问，等待回答后继续。',
+      builtinGetCurrentTimeLabel: '当前时间',
+      builtinGetCurrentTimeDesc:
+        '获取当前日期、时间、星期、时区及 Unix 时间戳。',
       editorDefaultName: '新建 Agent',
       editorIntro: '配置此 Agent 的能力、模型与行为。',
       editorTabProfile: '资料',

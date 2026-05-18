@@ -333,6 +333,8 @@ export type TranslationKeys = {
       builtinTodoWriteDesc?: string
       builtinAskUserQuestionLabel?: string
       builtinAskUserQuestionDesc?: string
+      builtinGetCurrentTimeLabel?: string
+      builtinGetCurrentTimeDesc?: string
       editorDefaultName?: string
       editorIntro?: string
       editorTabProfile?: string
