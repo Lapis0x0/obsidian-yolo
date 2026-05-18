@@ -609,11 +609,9 @@ export function omitBase64DebugData(value: unknown): unknown {
     const omittedChars = value.length - MAX_JSON_STRING_CHARS
     return [
       value.slice(0, headChars),
-      '',
-      `[OMITTED long JSON string: ${omittedChars} chars]`,
-      '',
+      `[                    OMITTED long JSON string: ${omittedChars} chars                    ]`,
       value.slice(value.length - tailChars),
-    ].join('\n')
+    ].join('')
   }
 
   if (!isRecord(value)) {
