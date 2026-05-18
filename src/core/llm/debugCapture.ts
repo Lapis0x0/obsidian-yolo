@@ -120,6 +120,9 @@ const FORM_URLENCODED_BODY_PATTERN = /^[A-Za-z0-9_\-.~+%&=]+$/
 const DATA_URL_BASE64_PATTERN =
   /(data:[^,\s"']+;base64,)([A-Za-z0-9+/_=-]{16,})/gi
 const BASE64_PAYLOAD_PATTERN = /^[A-Za-z0-9+/_=-]+$/
+const LONG_JSON_STRING_OMISSION_PATTERN =
+  /\[ {20}OMITTED long JSON string: \d+ chars {20}\]/
+const MAX_LONG_JSON_OMISSION_MARKER_CHARS = 128
 
 const createTraceId = (): string => {
   const random =
@@ -591,6 +594,53 @@ function omitBase64InString(value: string): string {
   return withDataUrlsOmitted
 }
 
+function longJsonStringOmissionMarker(omittedChars: number): string {
+  return `[                    OMITTED long JSON string: ${omittedChars} chars                    ]`
+}
+
+function omitLongJsonString(value: string): string {
+  if (value.length <= MAX_JSON_STRING_CHARS) {
+    return value
+  }
+
+  // Stored debug bodies may be formatted again when rendered as Markdown. Old
+  // captures kept MAX_JSON_STRING_CHARS plus the marker, so a second pass would
+  // otherwise replace the real omitted count with the marker length itself.
+  if (
+    value.length <=
+      MAX_JSON_STRING_CHARS + MAX_LONG_JSON_OMISSION_MARKER_CHARS &&
+    LONG_JSON_STRING_OMISSION_PATTERN.test(value)
+  ) {
+    return value
+  }
+
+  let marker = longJsonStringOmissionMarker(
+    value.length - MAX_JSON_STRING_CHARS,
+  )
+  let headChars = 0
+  let tailChars = 0
+
+  for (;;) {
+    const keepChars = Math.max(0, MAX_JSON_STRING_CHARS - marker.length)
+    headChars = Math.floor(keepChars * 0.65)
+    tailChars = keepChars - headChars
+
+    const nextMarker = longJsonStringOmissionMarker(
+      value.length - headChars - tailChars,
+    )
+    if (nextMarker === marker) {
+      break
+    }
+    marker = nextMarker
+  }
+
+  return [
+    value.slice(0, headChars),
+    marker,
+    value.slice(value.length - tailChars),
+  ].join('')
+}
+
 export function omitBase64DebugData(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => omitBase64DebugData(item))
@@ -601,17 +651,7 @@ export function omitBase64DebugData(value: unknown): unknown {
     if (base64Omitted !== value) {
       return base64Omitted
     }
-    if (value.length <= MAX_JSON_STRING_CHARS) {
-      return value
-    }
-    const headChars = Math.floor(MAX_JSON_STRING_CHARS * 0.65)
-    const tailChars = MAX_JSON_STRING_CHARS - headChars
-    const omittedChars = value.length - MAX_JSON_STRING_CHARS
-    return [
-      value.slice(0, headChars),
-      `[                    OMITTED long JSON string: ${omittedChars} chars                    ]`,
-      value.slice(value.length - tailChars),
-    ].join('')
+    return omitLongJsonString(value)
   }
 
   if (!isRecord(value)) {

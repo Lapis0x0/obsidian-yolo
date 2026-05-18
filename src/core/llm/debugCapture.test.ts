@@ -176,6 +176,18 @@ describe('debugCapture', () => {
     expect(omitted).not.toContain('Truncated long JSON string')
   })
 
+  it('keeps long JSON string omission stable across formatting passes', () => {
+    const omitted = omitBase64DebugData('long text '.repeat(20_000))
+    const formattedAgain = omitBase64DebugData(omitted)
+    const match =
+      typeof omitted === 'string'
+        ? omitted.match(/OMITTED long JSON string: (\d+) chars/)
+        : null
+
+    expect(formattedAgain).toBe(omitted)
+    expect(Number(match?.[1])).toBeGreaterThan(1_000)
+  })
+
   it('redacts sensitive params in form-urlencoded request bodies', async () => {
     setLLMDebugCaptureEnabled(true)
     const fetch = createLLMDebugFetch(
