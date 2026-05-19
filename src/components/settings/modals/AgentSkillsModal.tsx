@@ -14,6 +14,7 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 
+import { ImportGitHubSkillModal } from './ImportGitHubSkillModal'
 import { ImportSkillModal } from './ImportSkillModal'
 
 type AgentSkillsModalProps = {
@@ -104,6 +105,15 @@ function AgentSkillsModalContent({
   const handleOpenImportModal = () => {
     const modal = new ImportSkillModal(app, _plugin, () => {
       // 延迟刷新，等待 vault 文件索引更新
+      setTimeout(() => {
+        setRefreshTick((value) => value + 1)
+      }, 300)
+    })
+    modal.open()
+  }
+
+  const handleOpenGitHubImportModal = () => {
+    const modal = new ImportGitHubSkillModal(app, _plugin, () => {
       setTimeout(() => {
         setRefreshTick((value) => value + 1)
       }, 300)
@@ -243,6 +253,13 @@ function AgentSkillsModalContent({
               <ObsidianButton
                 text={t('settings.agent.importSkill', 'Import Skill')}
                 onClick={handleOpenImportModal}
+              />
+              <ObsidianButton
+                text={t(
+                  'settings.agent.importGitHubSkill',
+                  'Import from GitHub',
+                )}
+                onClick={handleOpenGitHubImportModal}
               />
               {deletableSkills.length > 0 && (
                 <ObsidianButton

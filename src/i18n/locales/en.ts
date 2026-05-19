@@ -372,6 +372,18 @@ export const en: TranslationKeys = {
       importSkillUnsafePath: 'Refused unsafe path in "{name}": {path}',
       importSkillDuplicateInBatch:
         'Duplicate skill name in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
+      importGitHubSkill: 'Import from GitHub',
+      importGitHubSkillDesc:
+        'Paste a GitHub URL to import a skill. Supports single .md files or standard skill package repos.',
+      importGitHubSkillPlaceholder: 'https://github.com/user/repo/...',
+      importGitHubSkillImporting: 'Importing...',
+      importGitHubSkillInvalidUrl: 'Please enter a valid GitHub URL',
+      importGitHubSkillFetchError: 'Failed to fetch: {error}',
+      importGitHubSkillNotSkillPackage:
+        'This repository is not a valid skill package (SKILL.md not found at root)',
+      importGitHubSkillSuccess: 'Successfully imported {count} skill(s)',
+      importGitHubSkillNetworkError:
+        'Network error. Please check the URL and your internet connection.',
       deleteSkillTitle: 'Delete skill',
       deleteSkillMessage:
         'Are you sure you want to delete "{name}"? This cannot be undone.',

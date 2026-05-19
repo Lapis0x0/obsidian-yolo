@@ -255,6 +255,15 @@ export type TranslationKeys = {
       importSkillConflictSkip?: string
       importSkillUnsafePath?: string
       importSkillDuplicateInBatch?: string
+      importGitHubSkill?: string
+      importGitHubSkillDesc?: string
+      importGitHubSkillPlaceholder?: string
+      importGitHubSkillImporting?: string
+      importGitHubSkillInvalidUrl?: string
+      importGitHubSkillFetchError?: string
+      importGitHubSkillNotSkillPackage?: string
+      importGitHubSkillSuccess?: string
+      importGitHubSkillNetworkError?: string
       deleteSkillTitle?: string
       deleteSkillMessage?: string
       deleteSkillConfirm?: string

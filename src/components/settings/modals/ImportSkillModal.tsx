@@ -7,13 +7,14 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
+import { formatValidationErrors } from '../../../core/skills/importSkillValidationHelper'
 import {
   type FileEntry,
-  type ValidationError,
   parseFrontmatter,
   validateDirectoryPackage,
   validateSingleFileSkill,
 } from '../../../core/skills/skillValidation'
+import { writeSkillPackages } from '../../../core/skills/skillWriter'
 import YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ReactModal } from '../../common/ReactModal'
@@ -83,93 +84,6 @@ type SkillPackage = {
 
 const SKILL_MD = 'SKILL.md'
 const MAX_PATH_DEPTH = 16
-
-// ---------------------------------------------------------------------------
-// 校验错误转为通俗提示
-// ---------------------------------------------------------------------------
-
-type TranslateFn = (key: string, fallback: string) => string
-
-function formatValidationErrors(
-  errors: ValidationError[],
-  sourceName: string,
-  t: TranslateFn,
-): string {
-  const reasons = errors.map((err) => {
-    const key = `${err.field}:${err.message}`
-    switch (key) {
-      case 'SKILL.md:missing':
-        return t(
-          'settings.agent.importSkillErrNoSkillMd',
-          'missing SKILL.md file in folder',
-        )
-      case 'frontmatter:missing or invalid':
-        return t(
-          'settings.agent.importSkillErrNoFrontmatter',
-          'missing metadata header (---) at the top of the file',
-        )
-      case 'name:missing':
-        return t(
-          'settings.agent.importSkillErrNoName',
-          'missing "name" field in metadata',
-        )
-      case 'name:exceeds 64 characters':
-        return t(
-          'settings.agent.importSkillErrNameTooLong',
-          '"name" is too long (max 64 characters)',
-        )
-      case 'name:uppercase not allowed':
-        return t(
-          'settings.agent.importSkillErrNameUppercase',
-          '"name" must be all lowercase',
-        )
-      case 'name:cannot start or end with hyphen':
-        return t(
-          'settings.agent.importSkillErrNameHyphenEdge',
-          '"name" cannot start or end with a hyphen',
-        )
-      case 'name:consecutive hyphens not allowed':
-        return t(
-          'settings.agent.importSkillErrNameDoubleHyphen',
-          '"name" cannot contain consecutive hyphens (--)',
-        )
-      case 'name:only lowercase letters, numbers, and hyphens allowed':
-        return t(
-          'settings.agent.importSkillErrNameInvalidChars',
-          '"name" can only contain lowercase letters, numbers, and hyphens',
-        )
-      case 'name:must match folder name':
-        return t(
-          'settings.agent.importSkillErrNameMismatch',
-          '"name" must match the folder name',
-        )
-      case 'description:missing':
-        return t(
-          'settings.agent.importSkillErrNoDescription',
-          'missing "description" field in metadata',
-        )
-      case 'description:exceeds 1024 characters':
-        return t(
-          'settings.agent.importSkillErrDescTooLong',
-          '"description" is too long (max 1024 characters)',
-        )
-      case 'compatibility:exceeds 500 characters':
-        return t(
-          'settings.agent.importSkillErrCompatTooLong',
-          '"compatibility" is too long (max 500 characters)',
-        )
-      default:
-        return `${err.field}: ${err.message}`
-    }
-  })
-
-  const header = t(
-    'settings.agent.importSkillErrHeader',
-    '"{name}" cannot be imported:',
-  ).replace('{name}', sourceName)
-
-  return `${header}\n${reasons.map((r) => `• ${r}`).join('\n')}`
-}
 
 // ---------------------------------------------------------------------------
 // 文件系统读取(同步收集 entries,再异步读取)
@@ -689,79 +603,30 @@ function ImportSkillModalContent({
     if (skillPackages.length === 0) return
 
     setIsImporting(true)
-    let successCount = 0
-    const errors: string[] = []
-
-    // 递归保证目录存在(Obsidian createFolder 不会递归创建父目录)
-    const ensureFolder = async (path: string) => {
-      const segments = path.split('/').filter((s) => s.length > 0)
-      let cur = ''
-      for (const seg of segments) {
-        cur = cur ? `${cur}/${seg}` : seg
-        if (!app.vault.getAbstractFileByPath(cur)) {
-          await app.vault.createFolder(cur)
-        }
-      }
-    }
 
     try {
-      await ensureFolder(skillsDir)
-
-      for (const pkg of skillPackages) {
-        try {
-          if (pkg.isDirectory) {
-            const pkgDir = normalizePath(`${skillsDir}/${pkg.targetName}`)
-            // 覆盖时:无论已存在的是文件还是目录,先 trash 再写新,避免遗留旧资源 / 类型冲突
-            const existing = app.vault.getAbstractFileByPath(pkgDir)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
-            }
-            await app.vault.createFolder(pkgDir)
-
-            for (const file of pkg.files) {
-              if (!isSafeRelativePath(file.relativePath)) {
-                throw new Error(`unsafe path: ${file.relativePath}`)
-              }
-              const targetPath = normalizePath(`${pkgDir}/${file.relativePath}`)
-              if (!targetPath.startsWith(`${pkgDir}/`)) {
-                throw new Error(`path escaped target: ${file.relativePath}`)
-              }
-              const parentDir = targetPath.substring(
-                0,
-                targetPath.lastIndexOf('/'),
-              )
-              if (parentDir) {
-                await ensureFolder(parentDir)
-              }
-              await app.vault.create(targetPath, file.content)
-            }
-          } else {
-            const targetPath = normalizePath(`${skillsDir}/${pkg.targetName}`)
-            if (!targetPath.startsWith(`${skillsDir}/`)) {
-              throw new Error(`path escaped target: ${pkg.targetName}`)
-            }
-            const existing = app.vault.getAbstractFileByPath(targetPath)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
-            }
-            await app.vault.create(targetPath, pkg.files[0].content)
-          }
-          successCount++
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Unknown error'
-          errors.push(
-            t(
-              'settings.agent.importSkillWriteError',
-              'Failed to import {name}: {error}',
-            )
-              .replace('{name}', pkg.sourceName)
-              .replace('{error}', message),
-          )
-        }
-      }
+      const { successCount, errors } = await writeSkillPackages(
+        app,
+        skillsDir,
+        skillPackages,
+      )
 
       if (errors.length > 0) {
-        new Notice(errors.join('\n\n'))
+        new Notice(
+          errors
+            .map((e) => {
+              const colonIdx = e.indexOf(': ')
+              const name = colonIdx > 0 ? e.slice(0, colonIdx) : e
+              const error = colonIdx > 0 ? e.slice(colonIdx + 2) : ''
+              return t(
+                'settings.agent.importSkillWriteError',
+                'Failed to import {name}: {error}',
+              )
+                .replace('{name}', name)
+                .replace('{error}', error)
+            })
+            .join('\n\n'),
+        )
       }
 
       if (successCount > 0) {

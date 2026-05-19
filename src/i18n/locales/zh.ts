@@ -334,6 +334,17 @@ export const zh: TranslationKeys = {
       importSkillUnsafePath: '已拒绝「{name}」中的不安全路径：{path}',
       importSkillDuplicateInBatch:
         '本次导入中存在同名技能：「{name}」（来自「{source}」），仅保留第一个。',
+      importGitHubSkill: '从 GitHub 导入',
+      importGitHubSkillDesc:
+        '粘贴 GitHub 链接导入技能。支持单个 .md 文件或标准技能包仓库。',
+      importGitHubSkillPlaceholder: 'https://github.com/user/repo/...',
+      importGitHubSkillImporting: '正在导入...',
+      importGitHubSkillInvalidUrl: '请输入有效的 GitHub 链接',
+      importGitHubSkillFetchError: '获取失败：{error}',
+      importGitHubSkillNotSkillPackage:
+        '该仓库不是有效的技能包（根目录未找到 SKILL.md）',
+      importGitHubSkillSuccess: '已成功导入 {count} 个技能',
+      importGitHubSkillNetworkError: '网络错误，请检查链接和网络连接。',
       deleteSkillTitle: '删除技能',
       deleteSkillMessage: '确定要删除「{name}」吗？此操作无法撤销。',
       deleteSkillConfirm: '删除',

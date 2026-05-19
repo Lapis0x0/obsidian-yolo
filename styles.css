@@ -6373,6 +6373,46 @@ button.yolo-agent-chip--more:hover {
   height: 14px;
 }
 
+/* Import GitHub Skill Modal */
+
+.yolo-import-github-skill-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-import-github-skill-input-row {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: center;
+}
+
+.yolo-import-github-skill-url-input {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+
+.yolo-import-github-skill-url-input:focus {
+  border-color: var(--interactive-accent);
+}
+
+.yolo-import-github-skill-url-input::placeholder {
+  color: var(--text-faint);
+}
+
+.yolo-import-github-skill-url-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Web search settings — V1 refined single-column layout */
 
 .yolo-ws {
