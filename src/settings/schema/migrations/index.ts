@@ -53,13 +53,14 @@ import { migrateFrom54To55 } from './54_to_55'
 import { migrateFrom55To56 } from './55_to_56'
 import { migrateFrom56To57 } from './56_to_57'
 import { migrateFrom57To58 } from './57_to_58'
+import { migrateFrom58To59 } from './58_to_59'
 import { migrateFrom5To6 } from './5_to_6'
 import { migrateFrom6To7 } from './6_to_7'
 import { migrateFrom7To8 } from './7_to_8'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
-export const SETTINGS_SCHEMA_VERSION = 58
+export const SETTINGS_SCHEMA_VERSION = 59
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {
@@ -351,5 +352,10 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 57,
     toVersion: 58,
     migrate: migrateFrom57To58,
+  },
+  {
+    fromVersion: 58,
+    toVersion: 59,
+    migrate: migrateFrom58To59,
   },
 ]

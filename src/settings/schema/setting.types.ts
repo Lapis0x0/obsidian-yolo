@@ -332,6 +332,23 @@ export const yoloSettingsSchema = z.object({
       baseDir: 'YOLO',
     }),
 
+  // Chat conversation export configuration
+  chatExport: z
+    .object({
+      followUniqueNote: z.boolean().catch(false),
+      folder: z.string().catch(''),
+      filenameTemplate: z.string().catch('{{title}} - {{date}}'),
+      appendTitleWhenFollowing: z.boolean().catch(true),
+      conflictStrategy: z.enum(['suffix', 'overwrite']).catch('suffix'),
+    })
+    .catch({
+      followUniqueNote: false,
+      folder: '',
+      filenameTemplate: '{{title}} - {{date}}',
+      appendTitleWhenFollowing: true,
+      conflictStrategy: 'suffix',
+    }),
+
   debug: z
     .object({
       captureRawRequestDebug: z.boolean().optional(),
