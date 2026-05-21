@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { TFolder, normalizePath } from 'obsidian'
+import { TFile, TFolder, normalizePath } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { ChatManager } from '../../database/json/chat/ChatManager'
@@ -19,10 +19,20 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsText,
 } from '../../types/tool-call.types'
+import { readUniqueNoteConfig } from '../obsidian/unique-note'
+
+type ChatExportConflictStrategy = 'suffix' | 'overwrite'
 
 type YoloSettingsLike = {
   yolo?: {
     baseDir?: string
+  }
+  chatExport?: {
+    followUniqueNote?: boolean
+    folder?: string
+    filenameTemplate?: string
+    appendTitleWhenFollowing?: boolean
+    conflictStrategy?: ChatExportConflictStrategy
   }
 }
 
@@ -69,8 +79,78 @@ function formatDateYmd(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
-export function buildExportFileBaseName(title: string, date: Date): string {
-  return `${sanitizeExportFileBaseName(title)} - ${formatDateYmd(date)}`
+const DATE_TOKEN_PATTERN = /YYYY|YY|MM|DD|HH|mm|ss|SSS/g
+
+export function applyDateTokens(fmt: string, date: Date): string {
+  const tokens: Record<string, string> = {
+    YYYY: String(date.getFullYear()),
+    YY: String(date.getFullYear()).slice(-2),
+    MM: String(date.getMonth() + 1).padStart(2, '0'),
+    DD: String(date.getDate()).padStart(2, '0'),
+    HH: String(date.getHours()).padStart(2, '0'),
+    mm: String(date.getMinutes()).padStart(2, '0'),
+    ss: String(date.getSeconds()).padStart(2, '0'),
+    SSS: String(date.getMilliseconds()).padStart(3, '0'),
+  }
+  return fmt.replace(DATE_TOKEN_PATTERN, (token) => tokens[token] ?? token)
+}
+
+const TEMPLATE_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z]+)(?::([^}]+))?\s*\}\}/g
+const DEFAULT_FILENAME_TEMPLATE = '{{title}} - {{date}}'
+const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD'
+const DEFAULT_TIME_FORMAT = 'HHmmss'
+
+export function renderFilenameTemplate(
+  template: string,
+  ctx: { title: string; date: Date },
+): string {
+  const effective = template?.trim() ? template : DEFAULT_FILENAME_TEMPLATE
+  return effective.replace(
+    TEMPLATE_PLACEHOLDER_PATTERN,
+    (_match, rawName: string, rawArg?: string) => {
+      const name = rawName.toLowerCase()
+      const arg = rawArg?.trim()
+      switch (name) {
+        case 'title':
+          return ctx.title
+        case 'date':
+          return applyDateTokens(arg && arg.length > 0 ? arg : DEFAULT_DATE_FORMAT, ctx.date)
+        case 'time':
+          return applyDateTokens(arg && arg.length > 0 ? arg : DEFAULT_TIME_FORMAT, ctx.date)
+        case 'datetime':
+          return `${applyDateTokens(DEFAULT_DATE_FORMAT, ctx.date)}_${applyDateTokens(DEFAULT_TIME_FORMAT, ctx.date)}`
+        case 'timestamp':
+          return String(Math.floor(ctx.date.getTime() / 1000))
+        default:
+          return ''
+      }
+    },
+  )
+}
+
+export type BuildExportFileBaseNameOptions = {
+  template?: string
+  uniqueNoteFormat?: string | null
+  appendTitleWhenFollowing?: boolean
+}
+
+export function buildExportFileBaseName(
+  title: string,
+  date: Date,
+  options: BuildExportFileBaseNameOptions = {},
+): string {
+  const { template, uniqueNoteFormat, appendTitleWhenFollowing } = options
+
+  if (uniqueNoteFormat) {
+    const datePart = applyDateTokens(uniqueNoteFormat, date)
+    const raw = appendTitleWhenFollowing
+      ? `${datePart}_${title}`
+      : datePart
+    return sanitizeExportFileBaseName(raw)
+  }
+
+  const rendered = renderFilenameTemplate(template ?? '', { title, date })
+  return sanitizeExportFileBaseName(rendered)
 }
 
 function yamlDoubleQuotedString(value: string): string {
@@ -578,11 +658,36 @@ export type ExportChatConversationParams = {
   settings?: YoloSettingsLike | null
 }
 
+function cleanFolderPath(input: string): string {
+  return input.replace(/^\/+/, '').replace(/\/+$/, '')
+}
+
+function defaultExportFolderPath(settings?: YoloSettingsLike | null): string {
+  const baseDir = settings?.yolo?.baseDir?.trim() || 'YOLO'
+  return normalizePath(`${cleanFolderPath(baseDir)}/Exports`)
+}
+
 export function getChatExportFolderPath(
+  app: App,
   settings?: YoloSettingsLike | null,
 ): string {
-  const baseDir = settings?.yolo?.baseDir?.trim() || 'YOLO'
-  return normalizePath(`${baseDir.replace(/^\/+/, '')}/Exports`)
+  const cfg = settings?.chatExport
+
+  if (cfg?.followUniqueNote) {
+    const unique = readUniqueNoteConfig(app)
+    if (unique?.enabled) {
+      const folder = cleanFolderPath(unique.folder ?? '')
+      return folder.length > 0 ? normalizePath(folder) : '/'
+    }
+  }
+
+  const customFolder = cfg?.folder?.trim()
+  if (customFolder) {
+    const folder = cleanFolderPath(customFolder)
+    return folder.length > 0 ? normalizePath(folder) : '/'
+  }
+
+  return defaultExportFolderPath(settings)
 }
 
 /**
@@ -592,7 +697,7 @@ export async function exportChatConversationToVault(
   params: ExportChatConversationParams,
 ): Promise<{ path: string }> {
   const { app, chatManager, conversationId, settings } = params
-  const folderPath = getChatExportFolderPath(settings)
+  const folderPath = getChatExportFolderPath(app, settings)
 
   const conversation = await chatManager.findById(conversationId)
   if (!conversation) {
@@ -612,9 +717,37 @@ export async function exportChatConversationToVault(
 
   await ensureDirectoryPathExists(app, folderPath)
 
-  const baseName = buildExportFileBaseName(conversation.title, new Date())
-  const filePath = await resolveUniqueMarkdownPath(app, folderPath, baseName)
+  const cfg = settings?.chatExport
+  const followUnique = cfg?.followUniqueNote === true
+  const uniqueFormat = followUnique
+    ? readUniqueNoteConfig(app)?.format ?? null
+    : null
 
+  const baseName = buildExportFileBaseName(conversation.title, new Date(), {
+    template: cfg?.filenameTemplate,
+    uniqueNoteFormat: followUnique && uniqueFormat ? uniqueFormat : null,
+    appendTitleWhenFollowing: cfg?.appendTitleWhenFollowing ?? true,
+  })
+
+  const conflictStrategy: ChatExportConflictStrategy =
+    cfg?.conflictStrategy ?? 'suffix'
+
+  if (conflictStrategy === 'overwrite') {
+    const sanitizedBase = sanitizeExportFileBaseName(baseName)
+    const candidate = normalizePath(`${folderPath}/${sanitizedBase}.md`)
+    const existing = app.vault.getAbstractFileByPath(candidate)
+    if (existing) {
+      if (existing instanceof TFile) {
+        await app.vault.modify(existing, markdown)
+        return { path: candidate }
+      }
+      throw new Error(`Export target exists and is not a file: ${candidate}`)
+    }
+    await app.vault.create(candidate, markdown)
+    return { path: candidate }
+  }
+
+  const filePath = await resolveUniqueMarkdownPath(app, folderPath, baseName)
   await app.vault.create(filePath, markdown)
 
   return { path: filePath }

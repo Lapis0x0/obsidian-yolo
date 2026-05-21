@@ -1,19 +1,192 @@
+import type { App } from 'obsidian'
+
 import {
+  applyDateTokens,
+  buildExportFileBaseName,
   conversationToMarkdown,
   getChatExportFolderPath,
+  renderFilenameTemplate,
 } from './exportConversation'
 
-describe('conversationToMarkdown', () => {
-  it('uses the yolo base directory for exported chat files', () => {
-    expect(getChatExportFolderPath()).toBe('YOLO/Exports')
+type UniqueNoteOptions = {
+  folder?: string
+  format?: string
+}
+
+function makeApp(unique?: { enabled: boolean; options?: UniqueNoteOptions }): App {
+  if (!unique) return {} as App
+  return {
+    internalPlugins: {
+      getPluginById: (id: string) =>
+        id === 'unique-note'
+          ? {
+              enabled: unique.enabled,
+              instance: { options: unique.options ?? {} },
+            }
+          : null,
+    },
+  } as unknown as App
+}
+
+describe('getChatExportFolderPath', () => {
+  it('defaults to {baseDir}/Exports when no chatExport config is provided', () => {
+    expect(getChatExportFolderPath(makeApp())).toBe('YOLO/Exports')
     expect(
-      getChatExportFolderPath({
-        yolo: {
-          baseDir: 'Config/YOLO',
-        },
+      getChatExportFolderPath(makeApp(), {
+        yolo: { baseDir: 'Config/YOLO' },
       }),
     ).toBe('Config/YOLO/Exports')
   })
+
+  it('honors a custom chatExport.folder over the default', () => {
+    expect(
+      getChatExportFolderPath(makeApp(), {
+        chatExport: { folder: 'Inbox/Chats' },
+      }),
+    ).toBe('Inbox/Chats')
+  })
+
+  it('strips leading/trailing slashes from a custom folder', () => {
+    expect(
+      getChatExportFolderPath(makeApp(), {
+        chatExport: { folder: '/Inbox/Chats/' },
+      }),
+    ).toBe('Inbox/Chats')
+  })
+
+  it('reads unique-note folder when followUniqueNote is on and plugin enabled', () => {
+    const app = makeApp({
+      enabled: true,
+      options: { folder: 'Daily', format: 'YYYY-MM-DD HHmm' },
+    })
+    expect(
+      getChatExportFolderPath(app, {
+        chatExport: { followUniqueNote: true, folder: 'Inbox/Chats' },
+      }),
+    ).toBe('Daily')
+  })
+
+  it('falls back to custom folder when followUniqueNote is on but plugin disabled', () => {
+    const app = makeApp({ enabled: false })
+    expect(
+      getChatExportFolderPath(app, {
+        chatExport: { followUniqueNote: true, folder: 'Inbox/Chats' },
+      }),
+    ).toBe('Inbox/Chats')
+  })
+
+  it('returns "/" when unique-note folder is empty (vault root)', () => {
+    const app = makeApp({
+      enabled: true,
+      options: { folder: '', format: 'YYYYMMDDHHmmss' },
+    })
+    expect(
+      getChatExportFolderPath(app, {
+        chatExport: { followUniqueNote: true },
+      }),
+    ).toBe('/')
+  })
+})
+
+describe('applyDateTokens', () => {
+  const date = new Date(2026, 4, 21, 17, 14, 30, 7) // 2026-05-21 17:14:30.007
+
+  it('replaces year/month/day/hour/minute/second tokens', () => {
+    expect(applyDateTokens('YYYY-MM-DD HH:mm:ss', date)).toBe(
+      '2026-05-21 17:14:30',
+    )
+  })
+
+  it('supports YY 2-digit year and SSS milliseconds', () => {
+    expect(applyDateTokens('YY/SSS', date)).toBe('26/007')
+  })
+
+  it('leaves non-token characters intact', () => {
+    expect(applyDateTokens('YYYY_MM-DD', date)).toBe('2026_05-21')
+  })
+})
+
+describe('renderFilenameTemplate', () => {
+  const date = new Date(2026, 4, 21, 17, 14, 30) // 2026-05-21 17:14:30
+
+  it('renders title and default date/time', () => {
+    expect(renderFilenameTemplate('{{title}} - {{date}}', { title: 'Foo', date }))
+      .toBe('Foo - 2026-05-21')
+    expect(renderFilenameTemplate('{{time}}', { title: 'x', date })).toBe(
+      '171430',
+    )
+  })
+
+  it('honors {{date:FMT}} and {{time:FMT}} arguments', () => {
+    expect(
+      renderFilenameTemplate('{{date:YYYYMM}}-{{time:HHmm}}', {
+        title: 'x',
+        date,
+      }),
+    ).toBe('202605-1714')
+  })
+
+  it('supports {{datetime}} and {{timestamp}} shortcuts', () => {
+    expect(renderFilenameTemplate('{{datetime}}', { title: 'x', date })).toBe(
+      '2026-05-21_171430',
+    )
+    expect(
+      renderFilenameTemplate('{{timestamp}}', { title: 'x', date }),
+    ).toBe(String(Math.floor(date.getTime() / 1000)))
+  })
+
+  it('falls back to default template on empty input', () => {
+    expect(renderFilenameTemplate('', { title: 'Foo', date })).toBe(
+      'Foo - 2026-05-21',
+    )
+  })
+
+  it('drops unknown placeholders to keep filenames clean', () => {
+    expect(
+      renderFilenameTemplate('{{title}}{{unknown}}', { title: 'Foo', date }),
+    ).toBe('Foo')
+  })
+})
+
+describe('buildExportFileBaseName', () => {
+  const date = new Date(2026, 4, 21, 17, 14, 30)
+
+  it('uses the template when no unique-note format is provided', () => {
+    expect(
+      buildExportFileBaseName('Hello', date, {
+        template: '{{title}} - {{date}}',
+      }),
+    ).toBe('Hello - 2026-05-21')
+  })
+
+  it('renders unique-note format alone when appendTitle is false', () => {
+    expect(
+      buildExportFileBaseName('Hello', date, {
+        uniqueNoteFormat: 'YYYYMMDDHHmmss',
+        appendTitleWhenFollowing: false,
+      }),
+    ).toBe('20260521171430')
+  })
+
+  it('appends title when appendTitleWhenFollowing is true', () => {
+    expect(
+      buildExportFileBaseName('Hello', date, {
+        uniqueNoteFormat: 'YYYYMMDDHHmmss',
+        appendTitleWhenFollowing: true,
+      }),
+    ).toBe('20260521171430_Hello')
+  })
+
+  it('sanitizes illegal filename characters', () => {
+    expect(
+      buildExportFileBaseName('Foo/Bar:Baz', date, {
+        template: '{{title}}',
+      }),
+    ).toBe('Foo_Bar_Baz')
+  })
+})
+
+describe('conversationToMarkdown', () => {
 
   it('renders assistant thinking before the final response content', () => {
     const markdown = conversationToMarkdown(
