@@ -241,6 +241,27 @@ export const zh: TranslationKeys = {
       historyArchiveThreshold: '近期会话数量',
       historyArchiveThresholdDesc:
         '超过该数量的未置顶会话会进入归档（20-500）。',
+      chatExport: {
+        followUniqueNote: '跟随"时间戳笔记生成器"',
+        followUniqueNoteDesc:
+          '复用 Obsidian 核心插件「时间戳笔记生成器」的输出文件夹和文件名格式。',
+        followUniqueNoteUnavailable:
+          '核心插件「时间戳笔记生成器」未启用，将回退到下方自定义设置。',
+        folder: '导出文件夹',
+        folderDesc:
+          '相对于库根目录的路径，留空则使用默认位置 {baseDir}/Exports。',
+        filenameTemplate: '文件名模板',
+        filenameTemplateDesc:
+          '可用占位符：{{title}}、{{date}}、{{time}}、{{datetime}}、{{timestamp}}；支持 {{date:YYYYMM}} 等自定义格式。',
+        filenameTemplateFollowing: '将使用「时间戳笔记生成器」的时间格式：',
+        appendTitleWhenFollowing: '跟随时附加会话标题',
+        appendTitleWhenFollowingDesc:
+          '开启后文件名形如「时间戳_会话标题」；关闭则只用时间戳，与官方插件完全一致。',
+        conflictStrategy: '同名冲突处理',
+        conflictStrategyDesc: '当目标文件夹已存在同名文件时的处理方式。',
+        conflictStrategySuffix: '追加序号 (2)、(3)…',
+        conflictStrategyOverwrite: '覆盖现有文件',
+      },
     },
     assistants: {
       title: '助手',

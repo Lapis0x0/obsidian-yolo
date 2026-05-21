@@ -276,6 +276,29 @@ export const en: TranslationKeys = {
       historyArchiveThreshold: 'Recent conversation limit',
       historyArchiveThresholdDesc:
         'Number of latest non-pinned conversations shown before archiving the rest (20-500).',
+      chatExport: {
+        followUniqueNote: 'Follow "Unique note creator"',
+        followUniqueNoteDesc:
+          'Reuse the folder and filename format configured in the core "Unique note creator" plugin.',
+        followUniqueNoteUnavailable:
+          'Core plugin "Unique note creator" is not enabled — falling back to the custom settings below.',
+        folder: 'Export folder',
+        folderDesc:
+          'Path relative to the vault root. Leave empty to use the default {baseDir}/Exports.',
+        filenameTemplate: 'Filename template',
+        filenameTemplateDesc:
+          'Placeholders: {{title}}, {{date}}, {{time}}, {{datetime}}, {{timestamp}}. Custom formats like {{date:YYYYMM}} are supported.',
+        filenameTemplateFollowing:
+          'Using the date format from "Unique note creator":',
+        appendTitleWhenFollowing: 'Append conversation title',
+        appendTitleWhenFollowingDesc:
+          'When on, filenames become "timestamp_title"; when off, only the timestamp is used (matching the official plugin).',
+        conflictStrategy: 'Filename conflict handling',
+        conflictStrategyDesc:
+          'How to handle the case when a file with the same name already exists.',
+        conflictStrategySuffix: 'Append a counter (2), (3)…',
+        conflictStrategyOverwrite: 'Overwrite existing file',
+      },
     },
     assistants: {
       title: 'Assistants',

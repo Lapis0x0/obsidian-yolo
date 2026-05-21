@@ -165,6 +165,22 @@ export type TranslationKeys = {
       historyArchiveEnabledDesc?: string
       historyArchiveThreshold?: string
       historyArchiveThresholdDesc?: string
+      chatExport?: {
+        followUniqueNote?: string
+        followUniqueNoteDesc?: string
+        followUniqueNoteUnavailable?: string
+        folder?: string
+        folderDesc?: string
+        filenameTemplate?: string
+        filenameTemplateDesc?: string
+        filenameTemplateFollowing?: string
+        appendTitleWhenFollowing?: string
+        appendTitleWhenFollowingDesc?: string
+        conflictStrategy?: string
+        conflictStrategyDesc?: string
+        conflictStrategySuffix?: string
+        conflictStrategyOverwrite?: string
+      }
     }
     assistants: {
       title: string

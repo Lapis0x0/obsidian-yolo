@@ -13,7 +13,10 @@ type UniqueNoteOptions = {
   format?: string
 }
 
-function makeApp(unique?: { enabled: boolean; options?: UniqueNoteOptions }): App {
+function makeApp(unique?: {
+  enabled: boolean
+  options?: UniqueNoteOptions
+}): App {
   if (!unique) return {} as App
   return {
     internalPlugins: {
@@ -110,8 +113,9 @@ describe('renderFilenameTemplate', () => {
   const date = new Date(2026, 4, 21, 17, 14, 30) // 2026-05-21 17:14:30
 
   it('renders title and default date/time', () => {
-    expect(renderFilenameTemplate('{{title}} - {{date}}', { title: 'Foo', date }))
-      .toBe('Foo - 2026-05-21')
+    expect(
+      renderFilenameTemplate('{{title}} - {{date}}', { title: 'Foo', date }),
+    ).toBe('Foo - 2026-05-21')
     expect(renderFilenameTemplate('{{time}}', { title: 'x', date })).toBe(
       '171430',
     )
@@ -130,9 +134,9 @@ describe('renderFilenameTemplate', () => {
     expect(renderFilenameTemplate('{{datetime}}', { title: 'x', date })).toBe(
       '2026-05-21_171430',
     )
-    expect(
-      renderFilenameTemplate('{{timestamp}}', { title: 'x', date }),
-    ).toBe(String(Math.floor(date.getTime() / 1000)))
+    expect(renderFilenameTemplate('{{timestamp}}', { title: 'x', date })).toBe(
+      String(Math.floor(date.getTime() / 1000)),
+    )
   })
 
   it('falls back to default template on empty input', () => {
@@ -187,7 +191,6 @@ describe('buildExportFileBaseName', () => {
 })
 
 describe('conversationToMarkdown', () => {
-
   it('renders assistant thinking before the final response content', () => {
     const markdown = conversationToMarkdown(
       {

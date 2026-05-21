@@ -1,6 +1,7 @@
 import 'obsidian'
 
 declare module 'obsidian' {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- module augmentation requires interface
   interface App {
     internalPlugins?: {
       getPluginById?: (id: string) => InternalPluginInstance | null

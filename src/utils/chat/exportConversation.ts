@@ -72,13 +72,6 @@ export function sanitizeExportFileBaseName(raw: string): string {
   return collapsed.length > 0 ? collapsed : 'chat'
 }
 
-function formatDateYmd(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 const DATE_TOKEN_PATTERN = /YYYY|YY|MM|DD|HH|mm|ss|SSS/g
 
 export function applyDateTokens(fmt: string, date: Date): string {
@@ -114,9 +107,15 @@ export function renderFilenameTemplate(
         case 'title':
           return ctx.title
         case 'date':
-          return applyDateTokens(arg && arg.length > 0 ? arg : DEFAULT_DATE_FORMAT, ctx.date)
+          return applyDateTokens(
+            arg && arg.length > 0 ? arg : DEFAULT_DATE_FORMAT,
+            ctx.date,
+          )
         case 'time':
-          return applyDateTokens(arg && arg.length > 0 ? arg : DEFAULT_TIME_FORMAT, ctx.date)
+          return applyDateTokens(
+            arg && arg.length > 0 ? arg : DEFAULT_TIME_FORMAT,
+            ctx.date,
+          )
         case 'datetime':
           return `${applyDateTokens(DEFAULT_DATE_FORMAT, ctx.date)}_${applyDateTokens(DEFAULT_TIME_FORMAT, ctx.date)}`
         case 'timestamp':
@@ -143,9 +142,7 @@ export function buildExportFileBaseName(
 
   if (uniqueNoteFormat) {
     const datePart = applyDateTokens(uniqueNoteFormat, date)
-    const raw = appendTitleWhenFollowing
-      ? `${datePart}_${title}`
-      : datePart
+    const raw = appendTitleWhenFollowing ? `${datePart}_${title}` : datePart
     return sanitizeExportFileBaseName(raw)
   }
 
@@ -720,7 +717,7 @@ export async function exportChatConversationToVault(
   const cfg = settings?.chatExport
   const followUnique = cfg?.followUniqueNote === true
   const uniqueFormat = followUnique
-    ? readUniqueNoteConfig(app)?.format ?? null
+    ? (readUniqueNoteConfig(app)?.format ?? null)
     : null
 
   const baseName = buildExportFileBaseName(conversation.title, new Date(), {

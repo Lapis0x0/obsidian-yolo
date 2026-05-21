@@ -275,6 +275,29 @@ export const it: TranslationKeys = {
       historyArchiveThreshold: 'Limite conversazioni recenti',
       historyArchiveThresholdDesc:
         'Numero di conversazioni non appuntate recenti da mostrare prima di archiviare le altre (20-500).',
+      chatExport: {
+        followUniqueNote: 'Segui "Generatore di note timestamp"',
+        followUniqueNoteDesc:
+          'Riusa la cartella e il formato del nome file configurati nel plugin core "Unique note creator".',
+        followUniqueNoteUnavailable:
+          'Il plugin core "Unique note creator" non è attivo — verrà usata la configurazione personalizzata qui sotto.',
+        folder: 'Cartella di esportazione',
+        folderDesc:
+          'Percorso relativo alla radice del vault. Lascia vuoto per usare il valore predefinito {baseDir}/Exports.',
+        filenameTemplate: 'Modello nome file',
+        filenameTemplateDesc:
+          'Segnaposto: {{title}}, {{date}}, {{time}}, {{datetime}}, {{timestamp}}. Sono supportati formati come {{date:YYYYMM}}.',
+        filenameTemplateFollowing:
+          'Verrà usato il formato data di "Unique note creator":',
+        appendTitleWhenFollowing: 'Aggiungi il titolo della conversazione',
+        appendTitleWhenFollowingDesc:
+          'Se attivo, il nome file diventa "timestamp_titolo"; se disattivo, viene usato solo il timestamp (come il plugin ufficiale).',
+        conflictStrategy: 'Gestione conflitti nome file',
+        conflictStrategyDesc:
+          'Come gestire il caso in cui esista già un file con lo stesso nome.',
+        conflictStrategySuffix: 'Aggiungi un contatore (2), (3)…',
+        conflictStrategyOverwrite: 'Sovrascrivi il file esistente',
+      },
     },
     assistants: {
       title: 'Assistenti',

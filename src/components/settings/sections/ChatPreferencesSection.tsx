@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { readUniqueNoteConfig } from '../../../utils/obsidian/unique-note'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -21,6 +24,7 @@ export function ChatPreferencesSection({
 }: ChatPreferencesSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
+  const plugin = usePlugin()
   const [historyArchiveThresholdInput, setHistoryArchiveThresholdInput] =
     useState(
       String(
@@ -56,6 +60,34 @@ export function ChatPreferencesSection({
       }
     })()
   }
+
+  const updateChatExport = (
+    patch: Partial<typeof settings.chatExport>,
+    context: string,
+  ) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          chatExport: {
+            ...settings.chatExport,
+            ...patch,
+          },
+        })
+      } catch (error: unknown) {
+        console.error(`Failed to update chat export options: ${context}`, error)
+      }
+    })()
+  }
+
+  const uniqueNoteConfig = useMemo(
+    () => readUniqueNoteConfig(plugin.app),
+    [plugin, settings.chatExport.followUniqueNote],
+  )
+  const uniqueNoteAvailable =
+    uniqueNoteConfig !== null && uniqueNoteConfig.enabled
+  const followingUniqueNote =
+    settings.chatExport.followUniqueNote && uniqueNoteAvailable
 
   const settingsContent = (
     <>
@@ -127,6 +159,106 @@ export function ChatPreferencesSection({
                 },
                 'historyArchiveThreshold',
               )
+            }
+          }}
+        />
+      </ObsidianSetting>
+
+      <ObsidianSetting
+        name={t('settings.chatPreferences.chatExport.followUniqueNote')}
+        desc={
+          settings.chatExport.followUniqueNote && !uniqueNoteAvailable
+            ? t(
+                'settings.chatPreferences.chatExport.followUniqueNoteUnavailable',
+              )
+            : t('settings.chatPreferences.chatExport.followUniqueNoteDesc')
+        }
+        className="yolo-settings-card"
+      >
+        <ObsidianToggle
+          value={settings.chatExport.followUniqueNote}
+          onChange={(value) => {
+            updateChatExport({ followUniqueNote: value }, 'followUniqueNote')
+          }}
+        />
+      </ObsidianSetting>
+
+      <ObsidianSetting
+        name={t('settings.chatPreferences.chatExport.folder')}
+        desc={t('settings.chatPreferences.chatExport.folderDesc')}
+        className="yolo-settings-card"
+      >
+        <ObsidianTextInput
+          value={settings.chatExport.folder ?? ''}
+          placeholder="YOLO/Exports"
+          disabled={followingUniqueNote}
+          onChange={(value) => {
+            updateChatExport({ folder: value }, 'folder')
+          }}
+        />
+      </ObsidianSetting>
+
+      <ObsidianSetting
+        name={t('settings.chatPreferences.chatExport.filenameTemplate')}
+        desc={
+          followingUniqueNote && uniqueNoteConfig
+            ? `${t(
+                'settings.chatPreferences.chatExport.filenameTemplateFollowing',
+              )} ${uniqueNoteConfig.format}`
+            : t('settings.chatPreferences.chatExport.filenameTemplateDesc')
+        }
+        className="yolo-settings-card"
+      >
+        <ObsidianTextInput
+          value={settings.chatExport.filenameTemplate ?? ''}
+          placeholder="{{title}} - {{date}}"
+          disabled={followingUniqueNote}
+          onChange={(value) => {
+            updateChatExport({ filenameTemplate: value }, 'filenameTemplate')
+          }}
+        />
+      </ObsidianSetting>
+
+      {settings.chatExport.followUniqueNote ? (
+        <ObsidianSetting
+          name={t(
+            'settings.chatPreferences.chatExport.appendTitleWhenFollowing',
+          )}
+          desc={t(
+            'settings.chatPreferences.chatExport.appendTitleWhenFollowingDesc',
+          )}
+          className="yolo-settings-card"
+        >
+          <ObsidianToggle
+            value={settings.chatExport.appendTitleWhenFollowing}
+            onChange={(value) => {
+              updateChatExport(
+                { appendTitleWhenFollowing: value },
+                'appendTitleWhenFollowing',
+              )
+            }}
+          />
+        </ObsidianSetting>
+      ) : null}
+
+      <ObsidianSetting
+        name={t('settings.chatPreferences.chatExport.conflictStrategy')}
+        desc={t('settings.chatPreferences.chatExport.conflictStrategyDesc')}
+        className="yolo-settings-card"
+      >
+        <ObsidianDropdown
+          value={settings.chatExport.conflictStrategy}
+          options={{
+            suffix: t(
+              'settings.chatPreferences.chatExport.conflictStrategySuffix',
+            ),
+            overwrite: t(
+              'settings.chatPreferences.chatExport.conflictStrategyOverwrite',
+            ),
+          }}
+          onChange={(value) => {
+            if (value === 'suffix' || value === 'overwrite') {
+              updateChatExport({ conflictStrategy: value }, 'conflictStrategy')
             }
           }}
         />
