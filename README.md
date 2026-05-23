@@ -1,6 +1,7 @@
 <h1 align="center">YOLO</h1>
 <p align="center">
   Agent-native AI assistant for Obsidian — chat, write, knowledge base, and orchestration, all in one place.
+  <!-- test: auto-review trigger probe (no functional change) -->
 </p>
 
 <p align="center"><a href="https://github.com/Lapis0x0/obsidian-yolo/stargazers">
