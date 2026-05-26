@@ -3,6 +3,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import { Editor } from 'obsidian'
 
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
+import type { ContextVoiceInputController } from '../context-voice-input/contextVoiceInputController'
 import type { TabCompletionController } from '../tab-completion/tabCompletionController'
 
 import {
@@ -16,7 +17,7 @@ import {
 } from './inlineSuggestion'
 
 type ActiveInlineSuggestion = {
-  source: 'tab' | 'continuation'
+  source: 'tab' | 'continuation' | 'voice'
   editor: Editor
   view: EditorView
   fromOffset: number
@@ -31,22 +32,33 @@ type ContinuationInlineSuggestion = {
   startPos: ReturnType<Editor['getCursor']>
 }
 
+type VoiceInlineSuggestion = {
+  editor: Editor
+  view: EditorView
+  text: string
+  fromOffset: number
+}
+
 type InlineSuggestionControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getTabCompletionController: () => TabCompletionController
+  getContextVoiceInputController: () => ContextVoiceInputController | null
 }
 
 export class InlineSuggestionController {
   private readonly getEditorView: (editor: Editor) => EditorView | null
   private readonly getTabCompletionController: () => TabCompletionController
+  private readonly getContextVoiceInputController: () => ContextVoiceInputController | null
 
   private activeInlineSuggestion: ActiveInlineSuggestion | null = null
   private continuationInlineSuggestion: ContinuationInlineSuggestion | null =
     null
+  private voiceInlineSuggestion: VoiceInlineSuggestion | null = null
 
   constructor(deps: InlineSuggestionControllerDeps) {
     this.getEditorView = deps.getEditorView
     this.getTabCompletionController = deps.getTabCompletionController
+    this.getContextVoiceInputController = deps.getContextVoiceInputController
   }
 
   createExtension(): Extension {
@@ -100,6 +112,7 @@ export class InlineSuggestionController {
   destroy() {
     this.activeInlineSuggestion = null
     this.continuationInlineSuggestion = null
+    this.voiceInlineSuggestion = null
   }
 
   setInlineSuggestionGhost(
@@ -163,6 +176,34 @@ export class InlineSuggestionController {
     }
   }
 
+  setVoiceSuggestion(
+    params: {
+      editor: Editor
+      view: EditorView
+      fromOffset: number
+      text: string
+    } | null,
+  ) {
+    if (!params) {
+      if (this.voiceInlineSuggestion?.view) {
+        this.setInlineSuggestionGhost(this.voiceInlineSuggestion.view, null)
+      }
+      this.voiceInlineSuggestion = null
+      if (this.activeInlineSuggestion?.source === 'voice') {
+        this.activeInlineSuggestion = null
+      }
+      return
+    }
+    this.voiceInlineSuggestion = params
+    this.activeInlineSuggestion = {
+      source: 'voice',
+      editor: params.editor,
+      view: params.view,
+      fromOffset: params.fromOffset,
+      text: params.text,
+    }
+  }
+
   clearInlineSuggestion() {
     this.getTabCompletionController().clearSuggestion()
     if (this.continuationInlineSuggestion) {
@@ -171,6 +212,17 @@ export class InlineSuggestionController {
         this.setInlineSuggestionGhost(view, null)
       }
       this.continuationInlineSuggestion = null
+    }
+    if (this.voiceInlineSuggestion) {
+      const { view } = this.voiceInlineSuggestion
+      if (view) {
+        this.setInlineSuggestionGhost(view, null)
+      }
+      this.voiceInlineSuggestion = null
+    }
+    const voice = this.getContextVoiceInputController()
+    if (voice && voice.hasPendingPreview()) {
+      voice.cancelActiveSession('cleared')
     }
     this.activeInlineSuggestion = null
   }
@@ -186,6 +238,17 @@ export class InlineSuggestionController {
 
     if (suggestion.source === 'continuation') {
       return this.tryAcceptContinuationFromView(view)
+    }
+
+    if (suggestion.source === 'voice') {
+      const voice = this.getContextVoiceInputController()
+      if (!voice) return false
+      const accepted = voice.tryAcceptFromView(view)
+      if (accepted) {
+        this.voiceInlineSuggestion = null
+        this.activeInlineSuggestion = null
+      }
+      return accepted
     }
 
     return false

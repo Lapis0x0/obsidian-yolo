@@ -26,6 +26,8 @@ export type TranslationKeys = {
     capturePdfRegion?: string
     exportSettings?: string
     importSettings?: string
+    toggleVoiceInput?: string
+    cancelVoiceInput?: string
   }
 
   // UI Common

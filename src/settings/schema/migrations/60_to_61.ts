@@ -45,7 +45,7 @@ export const migrateFrom60To61: SettingMigration['migrate'] = (data) => {
     if (!isRecord(assistant)) return assistant
 
     const existing = isRecord(assistant.toolPreferences)
-      ? (assistant.toolPreferences as Record<string, unknown>)
+      ? assistant.toolPreferences
       : {}
 
     const sanitized: Record<string, unknown> = {}

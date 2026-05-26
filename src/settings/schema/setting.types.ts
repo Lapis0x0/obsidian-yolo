@@ -282,6 +282,133 @@ const tabCompletionTriggerSchema = z
   })
 
 /**
+ * Context-aware voice input (Slice A). Two OpenAI-compatible ASR API formats
+ * are wired here; WebSocket / FunASR is reserved as a future format value but
+ * not implemented in Slice A. The polish step reuses the chat-model layer via
+ * `polishModelId`. Profile fields are kept per-format so switching formats in
+ * the UI does not erase the other format's endpoint/key/model.
+ */
+export const ASR_API_FORMATS = [
+  'openai-compatible-transcription',
+  'openai-compatible-chat-audio-asr',
+] as const
+export type AsrApiFormat = (typeof ASR_API_FORMATS)[number]
+
+export const DEFAULT_VOICE_INPUT_SYSTEM_PROMPT = `You polish a single speech-to-text transcript into text that is ready to insert at the user's current cursor position.
+
+Hard rules:
+- Output strict JSON matching this TypeScript type and nothing else, no Markdown fences, no commentary:
+  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
+- "text" must contain only the characters to insert (or "" when action is "cancel_input").
+- Keep the user's language; do not translate unless explicitly asked.
+- Fix ASR slips (homophones, missing punctuation, filler words) but keep the user's meaning, tone and intent.
+- Honour spoken self-corrections like "not A, B" or "scratch that, say <X>" — emit only the corrected version, never both.
+- If the transcript is a directive about this very recording — e.g. "cancel", "never mind", "don't insert that", "forget it" — return { "action": "cancel_input", "text": "" }.
+- If the transcript is a directive about how to transform this very recording — e.g. "translate to English", "make it a bullet list", "rewrite formally" — apply the directive to the rest of the transcript and emit only the resulting text.
+- If the user has a selection and the transcript is naturally a replacement of that selection, choose "replace_selection". If it should follow the selection, choose "insert_after_selection". Otherwise choose "insert_at_cursor".
+- When the intent is ambiguous between writing-as-content and giving-a-directive, default to writing-as-content so the user's words are not silently dropped.
+- Respect the surrounding Markdown structure (list continuation, code fences, headings) when picking spacing and prefixes for "text".`
+
+const openAiCompatibleTranscriptionProfileSchema = z
+  .object({
+    baseURL: z.string().catch(''),
+    apiKey: z.string().catch(''),
+    model: z.string().catch(''),
+    transcriptionPath: z.string().catch(''),
+    language: z.string().catch('auto'),
+  })
+  .catch({
+    baseURL: '',
+    apiKey: '',
+    model: '',
+    transcriptionPath: '',
+    language: 'auto',
+  })
+
+const openAiCompatibleChatAudioAsrProfileSchema = z
+  .object({
+    baseURL: z.string().catch(''),
+    apiKey: z.string().catch(''),
+    model: z.string().catch(''),
+    chatCompletionsPath: z.string().catch(''),
+    audioContentFormat: z.string().catch('input_audio'),
+    language: z.string().catch('auto'),
+  })
+  .catch({
+    baseURL: '',
+    apiKey: '',
+    model: '',
+    chatCompletionsPath: '',
+    audioContentFormat: 'input_audio',
+    language: 'auto',
+  })
+
+const asrProviderProfilesSchema = z
+  .object({
+    'openai-compatible-transcription':
+      openAiCompatibleTranscriptionProfileSchema.optional(),
+    'openai-compatible-chat-audio-asr':
+      openAiCompatibleChatAudioAsrProfileSchema.optional(),
+  })
+  .catch({})
+
+export type OpenAiCompatibleTranscriptionProfile = z.infer<
+  typeof openAiCompatibleTranscriptionProfileSchema
+>
+export type OpenAiCompatibleChatAudioAsrProfile = z.infer<
+  typeof openAiCompatibleChatAudioAsrProfileSchema
+>
+export type AsrProviderProfiles = z.infer<typeof asrProviderProfilesSchema>
+
+export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
+  enabled: false,
+  selectedAsrApiFormat: 'openai-compatible-transcription' as AsrApiFormat,
+  asrProviderProfiles: {} as AsrProviderProfiles,
+  lastAsrTestStatus: 'untested' as 'untested' | 'passed' | 'failed',
+  lastAsrTestMessage: '',
+  polishModelId: '',
+  systemPromptMode: 'default' as 'default' | 'custom',
+  customSystemPrompt: '',
+  language: 'auto',
+  interactionMode: 'toggle-listen' as 'toggle-listen' | 'hold-to-talk',
+  pauseTabCompletionWhileListening: true,
+  contextRangeChars: 2000,
+  maxAfterContextChars: 600,
+  maxRecordingSeconds: 120,
+  rawAudioSaveMode: 'never' as const,
+} as const
+
+const contextVoiceInputOptionsSchema = z
+  .object({
+    enabled: z.boolean().catch(false),
+    selectedAsrApiFormat: z
+      .enum(ASR_API_FORMATS)
+      .catch('openai-compatible-transcription'),
+    asrProviderProfiles: asrProviderProfilesSchema,
+    lastAsrTestStatus: z
+      .enum(['untested', 'passed', 'failed'])
+      .catch('untested'),
+    lastAsrTestMessage: z.string().catch(''),
+    polishModelId: z.string().catch(''),
+    systemPromptMode: z.enum(['default', 'custom']).catch('default'),
+    customSystemPrompt: z.string().catch(''),
+    language: z.string().catch('auto'),
+    interactionMode: z
+      .enum(['toggle-listen', 'hold-to-talk'])
+      .catch('toggle-listen'),
+    pauseTabCompletionWhileListening: z.boolean().catch(true),
+    contextRangeChars: z.number().int().min(0).catch(2000),
+    maxAfterContextChars: z.number().int().min(0).catch(600),
+    maxRecordingSeconds: z.number().int().min(5).max(900).catch(120),
+    rawAudioSaveMode: z.literal('never').catch('never'),
+  })
+  .catch({ ...DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS })
+
+export type ContextVoiceInputOptions = z.infer<
+  typeof contextVoiceInputOptionsSchema
+>
+
+/**
  * Settings
  */
 
@@ -587,6 +714,9 @@ export const yoloSettingsSchema = z.object({
       streamFallbackRecoveryEnabled: true,
       primaryRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
     }),
+
+  // Context-aware voice input (Slice A)
+  contextVoiceInputOptions: contextVoiceInputOptionsSchema,
 
   // Assistant list
   assistants: resilientArraySchema(assistantSchema),

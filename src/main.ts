@@ -10,6 +10,7 @@ import {
   TFolder,
   getLanguage,
   normalizePath,
+  setIcon,
 } from 'obsidian'
 
 import { ChatView } from './ChatView'
@@ -81,6 +82,7 @@ import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { ExportConfigModal } from './features/config-transfer/components/ExportConfigModal'
 import { ImportConfigModal } from './features/config-transfer/components/ImportConfigModal'
+import { ContextVoiceInputController } from './features/editor/context-voice-input/contextVoiceInputController'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildFullReviewBlocks,
@@ -147,9 +149,12 @@ export default class YoloPlugin extends Plugin {
   private timeoutIds: ReturnType<typeof setTimeout>[] = [] // Use ReturnType instead of number
   private pgliteRuntimeManager: PGliteRuntimeManager | null = null
   private isContinuationInProgress = false
+  private isVoiceInputInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
+  private contextVoiceInputController: ContextVoiceInputController | null = null
+  private voiceInputStatusBarItem: HTMLElement | null = null
   private diffReviewController: DiffReviewController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
@@ -821,8 +826,12 @@ export default class YoloPlugin extends Plugin {
   }
 
   private cancelAllAiTasks() {
+    if (this.contextVoiceInputController?.isBusy()) {
+      this.contextVoiceInputController.cancelActiveSession('user-cancel')
+    }
     if (this.activeAbortControllers.size === 0) {
       this.isContinuationInProgress = false
+      this.isVoiceInputInProgress = false
       return
     }
     for (const controller of Array.from(this.activeAbortControllers)) {
@@ -834,6 +843,7 @@ export default class YoloPlugin extends Plugin {
     }
     this.activeAbortControllers.clear()
     this.isContinuationInProgress = false
+    this.isVoiceInputInProgress = false
     this.tabCompletionController?.cancelRequest()
     this.agentService?.abortAll()
   }
@@ -864,6 +874,28 @@ export default class YoloPlugin extends Plugin {
       })
     }
     return this.agentNotificationCoordinator
+  }
+
+  private setupVoiceInputStatusBar(): void {
+    if (this.voiceInputStatusBarItem) return
+    const item = this.addStatusBarItem()
+    item.addClass('mod-clickable')
+    item.addClass('yolo-voice-input-status-bar')
+    item.setAttr('aria-label', 'Voice input: idle')
+    item.dataset.voiceState = 'idle'
+    setIcon(item, 'mic')
+    item.addEventListener('click', () => {
+      const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
+      if (!markdownView?.editor) {
+        new Notice(
+          'Open a markdown editor first — voice input writes into the focused note.',
+        )
+        return
+      }
+      void this.getContextVoiceInputController().toggle(markdownView.editor)
+    })
+    this.voiceInputStatusBarItem = item
+    this.refreshVoiceInputStatusBar()
   }
 
   private setupBackgroundActivityStatusBar(): void {
@@ -1508,6 +1540,7 @@ export default class YoloPlugin extends Plugin {
         removeAbortController: (controller) =>
           this.activeAbortControllers.delete(controller),
         isContinuationInProgress: () => this.isContinuationInProgress,
+        isVoiceInputInProgress: () => this.isVoiceInputInProgress,
       })
     }
     return this.tabCompletionController
@@ -1518,9 +1551,63 @@ export default class YoloPlugin extends Plugin {
       this.inlineSuggestionController = new InlineSuggestionController({
         getEditorView: (editor) => this.getEditorView(editor),
         getTabCompletionController: () => this.getTabCompletionController(),
+        getContextVoiceInputController: () => this.contextVoiceInputController,
       })
     }
     return this.inlineSuggestionController
+  }
+
+  private getContextVoiceInputController(): ContextVoiceInputController {
+    if (!this.contextVoiceInputController) {
+      const inlineSuggestionController = this.getInlineSuggestionController()
+      this.contextVoiceInputController = new ContextVoiceInputController({
+        getSettings: () => this.settings,
+        setSettings: (next) => this.setSettings(next),
+        getEditorView: (editor) => this.getEditorView(editor),
+        getActiveMarkdownView: () =>
+          this.app.workspace.getActiveViewOfType(MarkdownView),
+        setInlineSuggestionGhost: (view, payload) =>
+          inlineSuggestionController.setInlineSuggestionGhost(view, payload),
+        setActiveVoiceSuggestion: (suggestion) =>
+          inlineSuggestionController.setVoiceSuggestion(suggestion),
+        clearInlineSuggestion: () =>
+          inlineSuggestionController.clearInlineSuggestion(),
+        addAbortController: (controller) =>
+          this.activeAbortControllers.add(controller),
+        removeAbortController: (controller) =>
+          this.activeAbortControllers.delete(controller),
+        cancelPendingTabCompletion: () => {
+          this.tabCompletionController?.clearTimer()
+          this.tabCompletionController?.cancelRequest()
+        },
+        setVoiceInputInProgress: (inProgress) => {
+          this.isVoiceInputInProgress = inProgress
+          this.refreshVoiceInputStatusBar()
+        },
+      })
+      this.contextVoiceInputController.subscribe(() => {
+        this.refreshVoiceInputStatusBar()
+      })
+    }
+    return this.contextVoiceInputController
+  }
+
+  private refreshVoiceInputStatusBar(): void {
+    const el = this.voiceInputStatusBarItem
+    if (!el) return
+    const controller = this.contextVoiceInputController
+    const status = controller?.getStatus().state ?? 'idle'
+    el.dataset.voiceState = status
+    const label =
+      status === 'recording'
+        ? 'mic-off'
+        : status === 'transcribing' || status === 'polishing'
+          ? 'loader'
+          : status === 'ready'
+            ? 'check'
+            : 'mic'
+    el.setAttr('aria-label', `Voice input: ${status}`)
+    setIcon(el, label)
   }
 
   private getDiffReviewController(): DiffReviewController {
@@ -1829,6 +1916,30 @@ export default class YoloPlugin extends Plugin {
       },
     })
 
+    this.addCommand({
+      id: 'toggle-context-voice-input',
+      name:
+        this.t('commands.toggleVoiceInput') ??
+        'Toggle context-aware voice input',
+      editorCallback: (editor: Editor) => {
+        void this.getContextVoiceInputController().toggle(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'cancel-context-voice-input',
+      name:
+        this.t('commands.cancelVoiceInput') ??
+        'Cancel context-aware voice input',
+      callback: () => {
+        if (this.contextVoiceInputController?.isBusy()) {
+          this.contextVoiceInputController.cancelActiveSession('user-cancel')
+        }
+      },
+    })
+
+    this.setupVoiceInputStatusBar()
+
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
@@ -2030,6 +2141,9 @@ export default class YoloPlugin extends Plugin {
     this.selectionChatController = null
     this.chatViewNavigator = null
     this.newTabEmptyStateEnhancer = null
+    this.contextVoiceInputController?.destroy()
+    this.contextVoiceInputController = null
+    this.voiceInputStatusBarItem = null
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null

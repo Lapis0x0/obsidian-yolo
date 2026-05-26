@@ -24,6 +24,7 @@
 @import './selection/pdf-selection.css';
 
 @import './editor/tab-completion.css';
+@import './editor/voice-input.css';
 
 @import './pdf-screenshot.css';
 @import './config-transfer.css';

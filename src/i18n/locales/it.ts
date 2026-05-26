@@ -23,6 +23,8 @@ export const it: TranslationKeys = {
     triggerTabCompletion: 'Attiva completamento tab',
     acceptInlineSuggestion: 'Accetta completamento',
     capturePdfRegion: 'Cattura regione PDF nella chat',
+    toggleVoiceInput: 'Attiva/Disattiva input vocale contestuale',
+    cancelVoiceInput: 'Annulla input vocale contestuale',
   },
 
   common: {

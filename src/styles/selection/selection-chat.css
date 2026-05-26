@@ -110,11 +110,7 @@
 @media (prefers-reduced-motion: reduce) {
   .yolo-selection-persisted-layer.yolo-selection-persisted-layer-pending::after {
     animation: none;
-    background: color-mix(
-      in srgb,
-      var(--interactive-accent) 14%,
-      transparent
-    );
+    background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
     background-size: auto;
   }
 }

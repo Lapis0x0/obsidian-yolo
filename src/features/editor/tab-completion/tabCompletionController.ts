@@ -64,6 +64,7 @@ type TabCompletionDeps = {
   addAbortController: (controller: AbortController) => void
   removeAbortController: (controller: AbortController) => void
   isContinuationInProgress: () => boolean
+  isVoiceInputInProgress: () => boolean
 }
 
 const MASK_TAG = '<mask/>'
@@ -301,6 +302,12 @@ export class TabCompletionController {
       return
     }
 
+    if (this.deps.isVoiceInputInProgress()) {
+      // Voice input owns the cursor while listening / polishing — defer
+      // tab completion until the voice session ends.
+      return
+    }
+
     this.deps.clearInlineSuggestion()
     const view = this.deps.getEditorView(editor)
     if (!view) return
@@ -351,6 +358,7 @@ export class TabCompletionController {
       const settings = this.deps.getSettings()
       if (!settings.continuationOptions?.enableTabCompletion) return
       if (this.deps.isContinuationInProgress()) return
+      if (this.deps.isVoiceInputInProgress()) return
 
       const view = this.deps.getEditorView(editor)
       if (!view) return

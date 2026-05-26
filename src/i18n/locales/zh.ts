@@ -25,6 +25,8 @@ export const zh: TranslationKeys = {
     capturePdfRegion: '截取 PDF 区域到聊天',
     exportSettings: '导出插件配置',
     importSettings: '导入插件配置',
+    toggleVoiceInput: '上下文感知语音输入：开始 / 停止',
+    cancelVoiceInput: '取消上下文感知语音输入',
   },
 
   common: {

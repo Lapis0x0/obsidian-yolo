@@ -2,6 +2,7 @@ import { App } from 'obsidian'
 import React from 'react'
 
 import YoloPlugin from '../../../main'
+import { AsrProvidersSection } from '../sections/AsrProvidersSection'
 import { DefaultModelsAndPromptsSection } from '../sections/DefaultModelsAndPromptsSection'
 import { ProvidersAndModelsSection } from '../sections/ProvidersAndModelsSection'
 
@@ -15,6 +16,7 @@ export function ModelsTab({ app, plugin }: ModelsTabProps) {
     <>
       <ProvidersAndModelsSection app={app} plugin={plugin} />
       <DefaultModelsAndPromptsSection className="yolo-settings-section--tight" />
+      <AsrProvidersSection />
     </>
   )
 }

@@ -1,0 +1,56 @@
+/*
+ * Context-aware voice input (Slice A).
+ *
+ * - Ghost-text variants render the polished candidate at the cursor.
+ *   The "voice-polished" variant uses a darker grey than the default
+ *   tab-completion ghost text, matching the design spec where the
+ *   LLM-cleaned candidate is the only thing the user can accept.
+ * - "voice-asr" is reserved for the lighter-grey streaming partial that
+ *   future slices will surface — kept here so the styling is centralised
+ *   even before any UI flips it on.
+ * - Status-bar mic icon flips colour based on `data-voice-state`.
+ */
+
+.yolo-ghost-text--voice-asr {
+  color: var(--text-faint);
+  opacity: 0.75;
+  font-style: italic;
+}
+
+.yolo-ghost-text--voice-polished {
+  color: var(--text-muted);
+  opacity: 0.95;
+}
+
+.yolo-voice-input-status-bar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color 120ms ease;
+}
+
+.yolo-voice-input-status-bar[data-voice-state='recording'] {
+  color: var(--text-accent);
+  animation: yolo-voice-input-pulse 1.4s ease-in-out infinite;
+}
+
+.yolo-voice-input-status-bar[data-voice-state='transcribing'],
+.yolo-voice-input-status-bar[data-voice-state='polishing'] {
+  color: var(--text-accent);
+  opacity: 0.7;
+}
+
+.yolo-voice-input-status-bar[data-voice-state='ready'] {
+  color: var(--text-success, var(--text-accent));
+}
+
+@keyframes yolo-voice-input-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}

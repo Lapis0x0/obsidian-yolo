@@ -26,9 +26,9 @@ import {
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
 import {
+  buildDefaultBuiltinToolPreferences,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
-  buildDefaultBuiltinToolPreferences,
   getAssistantToolPreferences,
   getDefaultApprovalModeForTool,
   getEnabledAssistantToolNames,
@@ -833,12 +833,7 @@ export function AgentsSectionContent({
           : value.tools
         return { key, ...value, tools }
       })
-  }, [
-    availableTools,
-    draftAgent?.includeBuiltinTools,
-    localFsServerName,
-    t,
-  ])
+  }, [availableTools, draftAgent?.includeBuiltinTools, localFsServerName, t])
 
   const visibleToolsCount = useMemo(
     () => visibleToolGroups.reduce((sum, group) => sum + group.tools.length, 0),

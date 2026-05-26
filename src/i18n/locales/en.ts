@@ -25,6 +25,8 @@ export const en: TranslationKeys = {
     capturePdfRegion: 'Capture PDF region to chat',
     exportSettings: 'Export plugin settings',
     importSettings: 'Import plugin settings',
+    toggleVoiceInput: 'Toggle context-aware voice input',
+    cancelVoiceInput: 'Cancel context-aware voice input',
   },
 
   common: {
