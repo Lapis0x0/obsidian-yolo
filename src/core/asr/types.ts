@@ -27,6 +27,25 @@ export type AsrOptions = {
   signal?: AbortSignal
 }
 
+export type AsrStreamingOptions = AsrOptions & {
+  /** Mime type of chunks that will be sent through `sendAudioChunk`. */
+  mimeType?: string
+}
+
+export type AsrStreamingCallbacks = {
+  /** Interim transcript, expected to be replaced by later ASR events. */
+  onPartial?: (text: string) => void
+  /** Finalized transcript chunk from the ASR server. */
+  onFinal?: (text: string) => void
+}
+
+export type AsrStreamingSession = {
+  sendAudioChunk(chunk: Blob | ArrayBuffer): void
+  keepAlive?(): void
+  finish(): Promise<AsrResult>
+  cancel(): void
+}
+
 export type AsrSegment = {
   startMs: number
   endMs: number

@@ -1421,11 +1421,19 @@ export const en: TranslationKeys = {
       configName: 'Name',
       configNameDesc: 'Shown in the ASR list.',
       apiFormat: 'API format',
-      apiFormatDesc:
-        'Picks whether requests go to /audio/transcriptions or /chat/completions.',
+      apiFormatDesc: 'Chooses how YOLO connects to the speech service.',
+      apiFormatTranscription: 'Transcription',
+      apiFormatChatAudio: 'Chat audio',
+      apiFormatWebSocket: 'WebSocket',
+      apiFormatDescTranscription:
+        'Uploads a short recording to an OpenAI-style transcription endpoint.',
+      apiFormatDescChatAudio:
+        'Sends the recording to a chat model that accepts audio.',
+      apiFormatDescWebSocket:
+        'Live WebSocket transcription. Supports Deepgram-compatible /listen and WhisperLiveKit native /asr.',
       baseURL: 'Base URL',
       baseURLDesc:
-        'Protocol + host + port only; YOLO appends the path. Local server example: http://127.0.0.1:8000/v1',
+        'Enter the service base URL. Include /v1 only when the service uses it as part of the base path; configure the endpoint path below.',
       apiKey: 'API key',
       apiKeyDesc: 'Leave empty for local servers without auth.',
       apiKeyPlaceholder: 'Enter your API key',
@@ -1433,6 +1441,13 @@ export const en: TranslationKeys = {
       modelDesc: 'Speech-to-text model id.',
       chatAudioModelDesc:
         'A multimodal chat model that accepts audio in messages.',
+      deepgramWsModelDesc:
+        'Deepgram model name; local compatible servers may ignore it.',
+      deepgramWsLanguageDesc:
+        'auto omits the language parameter; fill it for non-English speech, for example zh.',
+      listenPath: 'Path',
+      listenPathDesc:
+        'Use the path expected by the selected WS speech protocol.',
       transcriptionPath: 'Transcription path',
       transcriptionPathDesc: 'Defaults to /audio/transcriptions.',
       chatCompletionsPath: 'Chat completions path',
@@ -1440,11 +1455,20 @@ export const en: TranslationKeys = {
       audioContentFormat: 'Audio content carrier',
       audioContentFormatDesc:
         'Some endpoints expect input_audio, others expect audio_url.',
+      webSocketProtocol: 'WS speech protocol',
+      webSocketProtocolDesc:
+        'Changing this fills the common Base URL and path for that protocol.',
+      webSocketProtocolDeepgram: 'Deepgram',
+      webSocketProtocolWhisperLiveKit: 'WhisperLiveKit',
       audioFormat: 'Audio format',
+      audioFormatAuto: 'auto',
+      audioFormatPcm16: 'PCM 16k',
+      audioFormatWav: 'wav',
       audioFormatDescChat:
-        'Default auto (webm/opus, captured directly by the browser, zero overhead). Some endpoints may require wav; switching to wav transcodes locally to 16-bit PCM WAV.',
+        'Auto uses the browser recording. Choose wav only if the service rejects it.',
       audioFormatDescTranscription:
-        'Default auto (webm/opus, captured directly by the browser, zero overhead). Some endpoints may require wav; switching to wav transcodes locally to 16-bit PCM WAV.',
+        'Auto uses the browser recording. Choose wav only if the service requires it.',
+      audioFormatDescWebSocket: 'PCM usually has better compatibility.',
       transport: 'Transport',
       transportDesc:
         'Matches provider request transport modes: Auto tries browser fetch, then desktop Node fetch, and falls back to Obsidian requestUrl on CORS/network errors.',
@@ -1472,6 +1496,7 @@ export const en: TranslationKeys = {
       testBadgePassed: '✓ Passed',
       testBadgeFailed: '× Failed',
       testBadgeRecording: '● Recording',
+      testBadgeFinalizing: '… Finalizing',
       testBadgeTranscribing: '… Transcribing',
     },
 

@@ -282,10 +282,9 @@ const tabCompletionTriggerSchema = z
   })
 
 /**
- * Context-aware voice input (Slice A). Two OpenAI-compatible ASR API formats
- * are wired here; WebSocket / FunASR is reserved as a future format value but
- * not implemented in Slice A. The polish step reuses the chat-model layer via
- * `polishModelId`.
+ * Context-aware voice input. ASR configs can target OpenAI-compatible HTTP
+ * endpoints or one of the supported WebSocket ASR protocols. The polish step
+ * reuses the chat-model layer via `polishModelId`.
  *
  * Storage shape: users define a *list* of named ASR configs, each carrying
  * its own format + endpoint + audio-format hint. The active config is
@@ -298,6 +297,7 @@ const tabCompletionTriggerSchema = z
 export const ASR_API_FORMATS = [
   'openai-compatible-transcription',
   'openai-compatible-chat-audio-asr',
+  'deepgram-compatible-websocket',
 ] as const
 export type AsrApiFormat = (typeof ASR_API_FORMATS)[number]
 
@@ -317,6 +317,12 @@ export type AsrApiFormat = (typeof ASR_API_FORMATS)[number]
  */
 export const ASR_AUDIO_FORMATS = ['auto', 'wav'] as const
 export type AsrAudioFormat = (typeof ASR_AUDIO_FORMATS)[number]
+
+export const ASR_WEBSOCKET_PROTOCOLS = [
+  'deepgram-compatible',
+  'whisperlivekit-native',
+] as const
+export type AsrWebSocketProtocol = (typeof ASR_WEBSOCKET_PROTOCOLS)[number]
 
 /**
  * Network transport used for outbound ASR HTTP requests. Mirrors the LLM
@@ -479,6 +485,15 @@ const asrConfigSchema = z
     transcriptionPath: z.string().catch(''),
     chatCompletionsPath: z.string().catch(''),
     audioContentFormat: z.string().catch('input_audio'),
+    webSocketProtocol: z
+      .enum(ASR_WEBSOCKET_PROTOCOLS)
+      .or(
+        z.string().transform((value) => {
+          if (value === 'auto') return 'deepgram-compatible' as const
+          return 'deepgram-compatible' as const
+        }),
+      )
+      .catch('deepgram-compatible'),
     /** See `ASR_AUDIO_FORMATS` for semantics. Only relevant to chat-audio. */
     audioFormat: z.enum(ASR_AUDIO_FORMATS).catch('auto'),
     /** Outbound HTTP transport. See `ASR_TRANSPORT_MODES`. */
@@ -506,6 +521,7 @@ const asrConfigSchema = z
     transcriptionPath: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
+    webSocketProtocol: 'deepgram-compatible' as AsrWebSocketProtocol,
     audioFormat: 'auto' as AsrAudioFormat,
     transportMode: 'node' as AsrTransportMode,
     language: 'auto',
@@ -923,7 +939,7 @@ export const yoloSettingsSchema = z.object({
       primaryRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
     }),
 
-  // Context-aware voice input (Slice A)
+  // Context-aware voice input
   contextVoiceInputOptions: contextVoiceInputOptionsSchema,
 
   // Assistant list

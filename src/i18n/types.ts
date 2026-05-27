@@ -1193,6 +1193,12 @@ export type TranslationKeys = {
       configNameDesc?: string
       apiFormat?: string
       apiFormatDesc?: string
+      apiFormatTranscription?: string
+      apiFormatChatAudio?: string
+      apiFormatWebSocket?: string
+      apiFormatDescTranscription?: string
+      apiFormatDescChatAudio?: string
+      apiFormatDescWebSocket?: string
       baseURL?: string
       baseURLDesc?: string
       apiKey?: string
@@ -1201,15 +1207,27 @@ export type TranslationKeys = {
       model?: string
       modelDesc?: string
       chatAudioModelDesc?: string
+      deepgramWsModelDesc?: string
+      deepgramWsLanguageDesc?: string
+      listenPath?: string
+      listenPathDesc?: string
       transcriptionPath?: string
       transcriptionPathDesc?: string
       chatCompletionsPath?: string
       chatCompletionsPathDesc?: string
       audioContentFormat?: string
       audioContentFormatDesc?: string
+      webSocketProtocol?: string
+      webSocketProtocolDesc?: string
+      webSocketProtocolDeepgram?: string
+      webSocketProtocolWhisperLiveKit?: string
       audioFormat?: string
+      audioFormatAuto?: string
+      audioFormatPcm16?: string
+      audioFormatWav?: string
       audioFormatDescChat?: string
       audioFormatDescTranscription?: string
+      audioFormatDescWebSocket?: string
       transport?: string
       transportDesc?: string
       transportMode?: {
@@ -1233,6 +1251,7 @@ export type TranslationKeys = {
       testBadgePassed?: string
       testBadgeFailed?: string
       testBadgeRecording?: string
+      testBadgeFinalizing?: string
       testBadgeTranscribing?: string
     }
 

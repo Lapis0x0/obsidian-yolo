@@ -61,6 +61,20 @@ export const transcodeToWav = async (
   }
 }
 
+export const transcodeToPcm16 = async (
+  input: AsrAudioInput,
+  targetSampleRate = 16_000,
+): Promise<{ audio: ArrayBuffer; sampleRate: number; durationMs: number }> => {
+  const arrayBuffer = await input.blob.arrayBuffer()
+  const ctx = getDecodeContext()
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  return {
+    audio: encodePcm16Raw(audioBuffer, targetSampleRate),
+    sampleRate: targetSampleRate,
+    durationMs: Math.round(audioBuffer.duration * 1000),
+  }
+}
+
 /**
  * Encode an `AudioBuffer` to a 16-bit PCM WAV blob.
  *
@@ -120,6 +134,51 @@ const encodePcm16Wav = (audioBuffer: AudioBuffer): Blob => {
   }
 
   return new Blob([buffer], { type: 'audio/wav' })
+}
+
+const encodePcm16Raw = (
+  audioBuffer: AudioBuffer,
+  targetSampleRate: number,
+): ArrayBuffer => {
+  const mono = mixToMono(audioBuffer)
+  const ratio = audioBuffer.sampleRate / targetSampleRate
+  const outputLength = Math.max(1, Math.floor(mono.length / ratio))
+  const buffer = new ArrayBuffer(outputLength * BYTES_PER_SAMPLE)
+  const view = new DataView(buffer)
+  for (let i = 0; i < outputLength; i++) {
+    const sourceIndex = Math.min(mono.length - 1, Math.floor(i * ratio))
+    writePcm16Sample(view, i * BYTES_PER_SAMPLE, mono[sourceIndex])
+  }
+  return buffer
+}
+
+const mixToMono = (audioBuffer: AudioBuffer): Float32Array => {
+  const numChannels = audioBuffer.numberOfChannels
+  const numFrames = audioBuffer.length
+  if (numChannels === 1) {
+    return audioBuffer.getChannelData(0).slice()
+  }
+  const out = new Float32Array(numFrames)
+  for (let ch = 0; ch < numChannels; ch++) {
+    const data = audioBuffer.getChannelData(ch)
+    for (let i = 0; i < numFrames; i++) {
+      out[i] += data[i] / numChannels
+    }
+  }
+  return out
+}
+
+const writePcm16Sample = (
+  view: DataView,
+  offset: number,
+  value: number,
+): void => {
+  let sample = value
+  if (sample > 1) sample = 1
+  else if (sample < -1) sample = -1
+  const intSample =
+    sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff)
+  view.setInt16(offset, intSample, true)
 }
 
 const writeAscii = (view: DataView, offset: number, text: string): void => {

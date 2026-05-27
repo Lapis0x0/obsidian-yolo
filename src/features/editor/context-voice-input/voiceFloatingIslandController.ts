@@ -213,7 +213,10 @@ export class VoiceFloatingIslandController {
     })
     this.renderModeButton(modeToggle, this.deps.getInteractionMode(), 'idle')
     modeToggle.addEventListener('mousedown', (e) => e.preventDefault())
-    modeToggle.addEventListener('click', () => void this.handleModeButtonClick())
+    modeToggle.addEventListener(
+      'click',
+      () => void this.handleModeButtonClick(),
+    )
 
     this.root = root
     this.micButton = mic

@@ -22,12 +22,14 @@ export type RecordedAudio = {
 export type VoiceInputRecorderStartOptions = {
   maxRecordingSeconds: number
   deviceId?: string
+  onChunk?: (chunk: Blob) => void
+  onPcm16Chunk?: (chunk: ArrayBuffer, sampleRate: number) => void
   /**
    * Called when the max-duration guard fires. Return `true` when the caller
    * took ownership of stopping; return `false` to fall back to recorder-owned
    * stopping.
    */
-  onAutoStop?: () => boolean | void
+  onAutoStop?: () => boolean | undefined
 }
 
 export class VoiceInputRecorderError extends Error {
@@ -112,6 +114,9 @@ export class VoiceInputRecorder {
   private resolveStop: ((value: RecordedAudio) => void) | null = null
   private rejectStop: ((reason: unknown) => void) | null = null
   private autoStopTimer: ReturnType<typeof setTimeout> | null = null
+  private pcmAudioContext: AudioContext | null = null
+  private pcmSource: MediaStreamAudioSourceNode | null = null
+  private pcmWorkletNode: AudioWorkletNode | null = null
   private state: 'idle' | 'recording' | 'stopping' | 'stopped' = 'idle'
   // Tracks an in-flight stop so duplicate `stop()` calls (e.g. external timer
   // races the internal auto-stop) attach to the same promise instead of
@@ -180,6 +185,20 @@ export class VoiceInputRecorder {
     } catch (err) {
       throw mapGetUserMediaError(err)
     }
+    if (opts.onPcm16Chunk) {
+      try {
+        await this.startPcm16Streaming(stream, opts.onPcm16Chunk)
+      } catch (err) {
+        for (const track of stream.getTracks()) {
+          try {
+            track.stop()
+          } catch {
+            // Best-effort cleanup; ignore.
+          }
+        }
+        throw mapGetUserMediaError(err)
+      }
+    }
 
     this.mediaStream = stream
     this.mimeType = pickMimeType()
@@ -200,6 +219,7 @@ export class VoiceInputRecorder {
     ;(recorder as any).ondataavailable = (event: BlobEvent) => {
       if (event.data && event.data.size > 0) {
         this.chunks.push(event.data)
+        opts.onChunk?.(event.data)
       }
     }
     ;(recorder as any).onerror = (event: Event) => {
@@ -324,6 +344,7 @@ export class VoiceInputRecorder {
   }
 
   private cleanup() {
+    this.stopPcm16Streaming()
     this.releaseStream()
     this.mediaRecorder = null
     this.chunks = []
@@ -342,4 +363,151 @@ export class VoiceInputRecorder {
       this.mediaStream = null
     }
   }
+
+  private async startPcm16Streaming(
+    stream: MediaStream,
+    onChunk: (chunk: ArrayBuffer, sampleRate: number) => void,
+  ): Promise<void> {
+    const Ctor: typeof AudioContext =
+      window.AudioContext ??
+      (
+        window as unknown as {
+          webkitAudioContext?: typeof AudioContext
+        }
+      ).webkitAudioContext!
+    if (!Ctor) {
+      throw new VoiceInputRecorderError(
+        'AudioContext is unavailable; cannot stream PCM audio.',
+        'unsupported',
+      )
+    }
+    const ctx = new Ctor()
+    if (!ctx.audioWorklet) {
+      try {
+        void ctx.close()
+      } catch {
+        // best-effort
+      }
+      throw new VoiceInputRecorderError(
+        'AudioWorklet is unavailable; cannot stream PCM audio.',
+        'unsupported',
+      )
+    }
+    const workletUrl = URL.createObjectURL(
+      new Blob([PCM16_WORKLET_SOURCE], { type: 'text/javascript' }),
+    )
+    try {
+      await ctx.audioWorklet.addModule(workletUrl)
+    } finally {
+      URL.revokeObjectURL(workletUrl)
+    }
+    const source = ctx.createMediaStreamSource(stream)
+    const targetSampleRate = 16_000
+    const node = new AudioWorkletNode(ctx, 'yolo-pcm16-streamer', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      processorOptions: {
+        targetSampleRate,
+      },
+    })
+    node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      if (event.data.byteLength > 0) onChunk(event.data, targetSampleRate)
+    }
+    source.connect(node)
+    node.connect(ctx.destination)
+    if (ctx.state === 'suspended') await ctx.resume()
+    this.pcmAudioContext = ctx
+    this.pcmSource = source
+    this.pcmWorkletNode = node
+  }
+
+  private stopPcm16Streaming(): void {
+    if (this.pcmWorkletNode) {
+      this.pcmWorkletNode.port.onmessage = null
+      try {
+        this.pcmWorkletNode.disconnect()
+      } catch {
+        // best-effort
+      }
+      this.pcmWorkletNode = null
+    }
+    if (this.pcmSource) {
+      try {
+        this.pcmSource.disconnect()
+      } catch {
+        // best-effort
+      }
+      this.pcmSource = null
+    }
+    if (this.pcmAudioContext) {
+      try {
+        void this.pcmAudioContext.close()
+      } catch {
+        // best-effort
+      }
+      this.pcmAudioContext = null
+    }
+  }
 }
+
+const PCM16_WORKLET_SOURCE = `
+class YoloPcm16Streamer extends AudioWorkletProcessor {
+  constructor(options) {
+    super()
+    this.targetSampleRate = options.processorOptions?.targetSampleRate || 16000
+    this.pending = []
+    this.pendingLength = 0
+    this.inputFrameBatch = 4096
+  }
+
+  process(inputs, outputs) {
+    const input = inputs[0]?.[0]
+    const output = outputs[0]?.[0]
+    if (input) {
+      if (output) output.fill(0)
+      this.pending.push(new Float32Array(input))
+      this.pendingLength += input.length
+      if (this.pendingLength >= this.inputFrameBatch) {
+        const merged = new Float32Array(this.pendingLength)
+        let offset = 0
+        for (const part of this.pending) {
+          merged.set(part, offset)
+          offset += part.length
+        }
+        this.pending = []
+        this.pendingLength = 0
+        const pcm = this.encodeResampledPcm16(
+          merged,
+          sampleRate,
+          this.targetSampleRate,
+        )
+        this.port.postMessage(pcm, [pcm])
+      }
+    } else if (output) {
+      output.fill(0)
+    }
+    return true
+  }
+
+  encodeResampledPcm16(input, inputSampleRate, targetSampleRate) {
+    if (input.length === 0) return new ArrayBuffer(0)
+    const ratio = inputSampleRate / targetSampleRate
+    const outputLength = Math.max(1, Math.floor(input.length / ratio))
+    const buffer = new ArrayBuffer(outputLength * 2)
+    const view = new DataView(buffer)
+    for (let i = 0; i < outputLength; i++) {
+      const sourceIndex = Math.min(input.length - 1, Math.floor(i * ratio))
+      let sample = input[sourceIndex]
+      if (sample > 1) sample = 1
+      else if (sample < -1) sample = -1
+      const intSample =
+        sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff)
+      view.setInt16(i * 2, intSample, true)
+    }
+    return buffer
+  }
+}
+
+registerProcessor('yolo-pcm16-streamer', YoloPcm16Streamer)
+`

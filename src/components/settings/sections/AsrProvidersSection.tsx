@@ -35,13 +35,19 @@ type MicDevice = { deviceId: string; label: string }
 const FORMAT_LABEL: Record<AsrApiFormat, string> = {
   'openai-compatible-transcription': 'Transcription',
   'openai-compatible-chat-audio-asr': 'Chat audio ASR',
+  'deepgram-compatible-websocket': 'WebSocket',
 }
 
 const summariseConfig = (config: AsrConfig): string => {
   const parts: string[] = []
   parts.push(FORMAT_LABEL[config.format] ?? config.format)
   if (config.model) parts.push(config.model)
-  if (config.audioFormat === 'wav') parts.push('wav')
+  if (
+    config.audioFormat === 'wav' &&
+    config.format !== 'deepgram-compatible-websocket'
+  ) {
+    parts.push('wav')
+  }
   return parts.join(' · ')
 }
 

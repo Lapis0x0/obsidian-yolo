@@ -6,6 +6,7 @@ import type {
 import type { BaseAsrProvider } from './base'
 import { OpenAiCompatibleChatAudioAsrProvider } from './openAiCompatibleChatAudio'
 import { OpenAiCompatibleTranscriptionProvider } from './openAiCompatibleTranscription'
+import { WebSocketAsrProvider } from './webSocketAsr'
 
 export class AsrConfigError extends Error {
   constructor(message: string) {
@@ -89,6 +90,20 @@ export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
         audioContentFormat: config.audioContentFormat,
         audioFormat: config.audioFormat,
         transportMode: config.transportMode,
+        language: config.language,
+      })
+    }
+    case 'deepgram-compatible-websocket': {
+      if (!config.baseURL.trim()) {
+        throw new AsrConfigError('WebSocket ASR config needs a baseURL.')
+      }
+      return new WebSocketAsrProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        model: config.model,
+        listenPath: config.transcriptionPath,
+        webSocketProtocol: config.webSocketProtocol,
+        audioFormat: config.audioFormat,
         language: config.language,
       })
     }

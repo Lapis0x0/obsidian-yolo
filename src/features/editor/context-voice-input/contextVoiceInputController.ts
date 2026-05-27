@@ -7,6 +7,7 @@ import {
   getAsrProvider,
   resolveActiveAsrConfig,
 } from '../../../core/asr/manager'
+import type { AsrStreamingSession } from '../../../core/asr/types'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
@@ -19,12 +20,12 @@ import {
   type VoiceEditorDecision,
   parseVoiceEditorDecision,
 } from './voiceDecisionParser'
-import type { VoicePrefixCacheManager } from './voicePrefixCacheManager'
 import {
   type RecordedAudio,
   VoiceInputRecorder,
   VoiceInputRecorderError,
 } from './voiceInputRecorder'
+import type { VoicePrefixCacheManager } from './voicePrefixCacheManager'
 import {
   type VoiceInputTarget,
   buildVoiceInputMessages,
@@ -90,6 +91,8 @@ type ActiveSession = {
   polishWorkerRunning: boolean
   /** Most recent polish call still running, if any. */
   inFlightPolish: InFlightPolish | null
+  streamingAsr: AsrStreamingSession | null
+  streamingAsrStartedAt: number | null
   asrDurationMs?: number
   polishDurationMs?: number
 }
@@ -349,26 +352,6 @@ export class ContextVoiceInputController {
     const fromOffset = editor.posToOffset(fromPos)
     const toOffset = editor.posToOffset(toPos)
 
-    const recorder = new VoiceInputRecorder()
-    try {
-      await recorder.start({
-        maxRecordingSeconds: options.maxRecordingSeconds,
-        deviceId: options.microphoneDeviceId,
-        onAutoStop: () => this.handleRecorderAutoStop(recorder),
-      })
-    } catch (error) {
-      const message =
-        error instanceof VoiceInputRecorderError
-          ? error.message
-          : 'Could not start recording.'
-      new Notice(message)
-      // The status may have been pre-pivoted to 'recording' by the auto-
-      // restart path; reset to idle so the bar doesn't get stuck.
-      if (this.session === null) this.updateStatus('idle')
-      return
-    }
-
-    this.recorder = recorder
     const abortController = new AbortController()
     this.deps.addAbortController(abortController)
 
@@ -400,7 +383,53 @@ export class ContextVoiceInputController {
       pendingSegments: [],
       polishWorkerRunning: false,
       inFlightPolish: null,
+      streamingAsr: null,
+      streamingAsrStartedAt: null,
     }
+
+    const recorder = new VoiceInputRecorder()
+    try {
+      this.session.streamingAsr = await this.startStreamingAsrIfSupported(
+        this.session,
+        settings,
+      )
+      this.session.streamingAsrStartedAt = this.session.streamingAsr
+        ? Date.now()
+        : null
+      await recorder.start({
+        maxRecordingSeconds: options.maxRecordingSeconds,
+        deviceId: options.microphoneDeviceId,
+        onChunk: this.shouldStreamPcm16(settings)
+          ? undefined
+          : (chunk) => this.handleRecordingChunk(this.session, chunk),
+        onPcm16Chunk: this.shouldStreamPcm16(settings)
+          ? (chunk) => this.handleRecordingChunk(this.session, chunk)
+          : undefined,
+        onAutoStop: () => this.handleRecorderAutoStop(recorder),
+      })
+    } catch (error) {
+      try {
+        this.session.streamingAsr?.cancel()
+      } catch {
+        // best-effort
+      }
+      this.session = null
+      this.deps.removeAbortController(abortController)
+      this.deps.setVoiceInputInProgress(false)
+      const message =
+        error instanceof VoiceInputRecorderError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Could not start recording.'
+      new Notice(message)
+      // The status may have been pre-pivoted to 'recording' by the auto-
+      // restart path; reset to idle so the bar doesn't get stuck.
+      this.updateStatus('idle')
+      return
+    }
+
+    this.recorder = recorder
     this.updateStatus('recording')
   }
 
@@ -409,6 +438,63 @@ export class ContextVoiceInputController {
     if (this.status.state !== 'recording') return false
     void this.stopAndProcess()
     return true
+  }
+
+  private async startStreamingAsrIfSupported(
+    session: ActiveSession,
+    settings: YoloSettings,
+  ): Promise<AsrStreamingSession | null> {
+    const options = settings.contextVoiceInputOptions
+    const asrProvider = getAsrProvider(options)
+    if (typeof asrProvider.startStreaming !== 'function') return null
+    const activeConfig = resolveActiveAsrConfig(options)
+    return asrProvider.startStreaming(
+      {
+        language: activeConfig?.language,
+        signal: session.abortController.signal,
+      },
+      {
+        onPartial: (text) => this.handleStreamingAsrText(session, text, false),
+        onFinal: (text) => this.handleStreamingAsrText(session, text, true),
+      },
+    )
+  }
+
+  private shouldStreamPcm16(settings: YoloSettings): boolean {
+    const activeConfig = resolveActiveAsrConfig(
+      settings.contextVoiceInputOptions,
+    )
+    return (
+      activeConfig?.format === 'deepgram-compatible-websocket' &&
+      activeConfig.audioFormat === 'wav'
+    )
+  }
+
+  private handleRecordingChunk(
+    session: ActiveSession | null,
+    chunk: Blob | ArrayBuffer,
+  ): void {
+    if (!session || this.session !== session) return
+    try {
+      session.streamingAsr?.sendAudioChunk(chunk)
+    } catch (error) {
+      this.handleSessionError(error)
+    }
+  }
+
+  private handleStreamingAsrText(
+    session: ActiveSession,
+    text: string,
+    isFinal: boolean,
+  ): void {
+    if (this.session !== session) return
+    const transcript = text.trim()
+    if (!transcript) return
+    session.asrTranscript = transcript
+    if (isFinal && session.streamingAsrStartedAt !== null) {
+      session.asrDurationMs = Date.now() - session.streamingAsrStartedAt
+    }
+    this.showAsrPreview(session, transcript)
   }
 
   async stopAndProcess(): Promise<void> {
@@ -421,6 +507,30 @@ export class ContextVoiceInputController {
     }
 
     this.updateStatus('transcribing')
+    const settings = this.deps.getSettings()
+    if (session.streamingAsr) {
+      const streamingAsr = session.streamingAsr
+      const streamingAsrStartedAt = session.streamingAsrStartedAt
+      session.streamingAsr = null
+      session.streamingAsrStartedAt = null
+      try {
+        recorder.cancel()
+      } catch {
+        // Best-effort; audio has already been streamed.
+      }
+      this.recorder = null
+      this.enqueueTranscriptSegment({
+        session,
+        transcribePromise: this.finishStreamingAsrSegment({
+          session,
+          streamingAsr,
+          startedAt: streamingAsrStartedAt,
+        }),
+        settings,
+      })
+      return
+    }
+
     let audio
     try {
       audio = await recorder.stop()
@@ -444,7 +554,6 @@ export class ContextVoiceInputController {
       return
     }
 
-    const settings = this.deps.getSettings()
     this.enqueueAudioSegment({ session, audio, settings })
   }
 
@@ -458,6 +567,19 @@ export class ContextVoiceInputController {
     }
 
     this.updateStatus('recording', 'transcribing')
+    const settings = this.deps.getSettings()
+    if (session.streamingAsr) {
+      try {
+        recorder.cancel()
+      } catch {
+        // Best-effort; audio has already been streamed.
+      }
+      this.recorder = null
+      session.streamingAsr.keepAlive?.()
+      await this.startNextRecordingSegment(session, settings)
+      return
+    }
+
     let audio: RecordedAudio
     try {
       audio = await recorder.stop()
@@ -481,9 +603,24 @@ export class ContextVoiceInputController {
       return
     }
 
-    const settings = this.deps.getSettings()
+    const streamingAsr = session.streamingAsr
+    const streamingAsrStartedAt = session.streamingAsrStartedAt
+    session.streamingAsr = null
+    session.streamingAsrStartedAt = null
     await this.startNextRecordingSegment(session, settings)
     if (!this.session || this.session !== session) return
+    if (streamingAsr) {
+      this.enqueueTranscriptSegment({
+        session,
+        transcribePromise: this.finishStreamingAsrSegment({
+          session,
+          streamingAsr,
+          startedAt: streamingAsrStartedAt,
+        }),
+        settings,
+      })
+      return
+    }
     this.enqueueAudioSegment({ session, audio, settings })
   }
 
@@ -494,12 +631,34 @@ export class ContextVoiceInputController {
     const options = settings.contextVoiceInputOptions
     const recorder = new VoiceInputRecorder()
     try {
+      if (!session.streamingAsr) {
+        session.streamingAsr = await this.startStreamingAsrIfSupported(
+          session,
+          settings,
+        )
+        session.streamingAsrStartedAt = session.streamingAsr ? Date.now() : null
+      } else {
+        session.streamingAsr.keepAlive?.()
+      }
       await recorder.start({
         maxRecordingSeconds: options.maxRecordingSeconds,
         deviceId: options.microphoneDeviceId,
+        onChunk: this.shouldStreamPcm16(settings)
+          ? undefined
+          : (chunk) => this.handleRecordingChunk(session, chunk),
+        onPcm16Chunk: this.shouldStreamPcm16(settings)
+          ? (chunk) => this.handleRecordingChunk(session, chunk)
+          : undefined,
         onAutoStop: () => this.handleRecorderAutoStop(recorder),
       })
     } catch (error) {
+      try {
+        session.streamingAsr?.cancel()
+      } catch {
+        // best-effort
+      }
+      session.streamingAsr = null
+      session.streamingAsrStartedAt = null
       this.handleSessionError(error)
       return
     }
@@ -532,6 +691,18 @@ export class ContextVoiceInputController {
       audio,
       settings,
     })
+    this.enqueueTranscriptSegment({ session, transcribePromise, settings })
+  }
+
+  private enqueueTranscriptSegment({
+    session,
+    transcribePromise,
+    settings,
+  }: {
+    session: ActiveSession
+    transcribePromise: Promise<string | null>
+    settings: YoloSettings
+  }): void {
     session.pendingSegments.push({ transcribePromise })
 
     // If a polish is in flight, give it the merge grace window before we
@@ -557,6 +728,30 @@ export class ContextVoiceInputController {
           session.polishWorkerRunning = false
         }
       })
+    }
+  }
+
+  private async finishStreamingAsrSegment({
+    session,
+    streamingAsr,
+    startedAt,
+  }: {
+    session: ActiveSession
+    streamingAsr: AsrStreamingSession
+    startedAt: number | null
+  }): Promise<string | null> {
+    try {
+      const result = await streamingAsr.finish()
+      session.asrDurationMs =
+        result.requestDurationMs ??
+        (startedAt !== null ? Date.now() - startedAt : undefined)
+      const transcript = result.text?.trim() ?? ''
+      return transcript.length > 0 ? transcript : null
+    } catch (error) {
+      if (this.session === session && session.abortController.signal.aborted) {
+        return null
+      }
+      throw error
     }
   }
 
@@ -1178,6 +1373,11 @@ export class ContextVoiceInputController {
     const session = this.session
     if (session) {
       try {
+        session.streamingAsr?.cancel()
+      } catch {
+        // Best-effort.
+      }
+      try {
         session.abortController.abort()
       } catch {
         // Best-effort.
@@ -1212,6 +1412,11 @@ export class ContextVoiceInputController {
       this.deps.setInlineSuggestionGhost(session.view, null)
     }
     if (session) {
+      try {
+        session.streamingAsr?.cancel()
+      } catch {
+        // Best-effort.
+      }
       this.deps.removeAbortController(session.abortController)
     }
     this.deps.setActiveVoiceSuggestion(null)
