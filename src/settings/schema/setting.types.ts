@@ -386,7 +386,10 @@ When previous_model_output is present:
 - It is YOUR earlier polish of an earlier audio segment — still a preview, not yet in the editor. The user can Tab-accept it at any moment.
 - current_asr_final is the NEW segment only.
 - Default action: emit previous_model_output verbatim + a single space + the polished new segment, as ONE combined "text". No newline unless the user clearly indicated a paragraph break.
-- You may NEVER drop, shorten, paraphrase, or rewrite previous_model_output unless BOTH conditions are met: (a) the user EXPLICITLY said so in current_asr_final, AND (b) that intent is unambiguous. When in doubt, keep previous_model_output intact.
+- You may rewrite previous_model_output ONLY to merge an obvious spoken correction / restart from current_asr_final. Treat phrases such as "no, ...", "不是/不对，...", "重新说...", "我重说一下...", "应该是...", "改成...", "scratch that...", "I mean..." as instructions to revise the relevant previous words, not as literal text to append.
+- If current_asr_final is clearly the user re-saying the same sentence or clause with corrections, output ONE corrected version. Do NOT duplicate both the old draft and the new restatement.
+- If the new segment only corrects the tail of previous_model_output, preserve the untouched prefix and replace only the corrected tail.
+- If it is not clearly a correction/restart, keep previous_model_output intact and append the new segment.
 - Special cases:
   * current_asr_final is empty / whitespace / only punctuation / only filler ("um", "啊") → emit previous_model_output VERBATIM. Do NOT erase it. Do NOT shorten it. Do NOT add a notice.
   * current_asr_final is a cancel directive → emit "text": "" and set "notice".
@@ -416,7 +419,9 @@ Output: strict JSON, no Markdown fences, no commentary.
 - For cancel directives ("cancel", "never mind"): set "text": "", "notice": brief explanation.
 - "notice": optional one-line toast in the user's language; use only when "text" alone would confuse.
 - has_selection=true + transcript replaces it → "replace_selection"; otherwise "insert_at_cursor".
-- previous_model_output (if present) is your earlier translation of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the translation of current_asr_final, as ONE "text". Never drop, shorten, or rewrite previous_model_output unless current_asr_final EXPLICITLY says so. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).
+- previous_model_output (if present) is your earlier translation of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the translation of current_asr_final, as ONE "text".
+- If current_asr_final clearly re-says or corrects the previous segment ("no...", "不是/不对...", "重新说...", "改成...", "I mean...", "scratch that..."), merge automatically: output ONE corrected translation, preserving untouched earlier text and replacing only the corrected span. Do not translate and append both versions.
+- If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).
 
 Examples:
   "你好世界"   → { "action": "insert_at_cursor", "text": "Hello world" }
@@ -432,7 +437,9 @@ Output: strict JSON, no Markdown fences, no commentary.
 - NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text".
 - For cancel directives: set "text": "", "notice": brief explanation.
 - "notice": optional one-line toast; use only when "text" alone would confuse.
-- previous_model_output (if present) is your earlier expansion of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the new expansion as ONE "text". Never drop, shorten, or rewrite previous_model_output unless current_asr_final EXPLICITLY says so. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
+- previous_model_output (if present) is your earlier expansion of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the new expansion as ONE "text".
+- If current_asr_final clearly re-says or corrects the previous segment ("no...", "不是/不对...", "重新说...", "改成...", "I mean...", "scratch that..."), merge automatically: output ONE corrected expanded draft, preserving untouched earlier text and replacing only the corrected span. Do not append both versions.
+- If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
   polish: `Polish one speech-to-text segment so it reads more formally and precisely. Preserve meaning and intent. You may refine word choice, tighten grammar, and tune cadence for academic, professional, or literary prose. Do NOT add facts, examples, or arguments the user did not say.
 
 Output: strict JSON, no Markdown fences, no commentary.
@@ -446,7 +453,9 @@ Output: strict JSON, no Markdown fences, no commentary.
 - NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text".
 - For cancel directives: set "text": "", "notice": brief explanation.
 - "notice": optional one-line toast; use only when "text" alone would confuse.
-- previous_model_output (if present) is your earlier polish of an earlier segment. Default: emit previous_model_output + a space + polished new segment as ONE "text". Light cohesion retouch of previous_model_output is OK; dropping, shortening, or replacing it with content the user did not say is NOT. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
+- previous_model_output (if present) is your earlier polish of an earlier segment. Default: emit previous_model_output + a space + polished new segment as ONE "text". Light cohesion retouch of previous_model_output is OK.
+- If current_asr_final clearly re-says or corrects the previous segment ("no...", "不是/不对...", "重新说...", "改成...", "I mean...", "scratch that..."), merge automatically: output ONE corrected polished draft, preserving untouched earlier text and replacing only the corrected span. Do not append both versions.
+- Dropping, shortening, or replacing previous_model_output with content the user did not say is NOT allowed. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
 }
 
 /**

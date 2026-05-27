@@ -51,7 +51,7 @@
   position: absolute;
   bottom: 18px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, 0) scale(1);
   z-index: 30;
   display: inline-flex;
   align-items: center;
@@ -63,16 +63,42 @@
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   color: var(--text-muted);
   pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  filter: blur(0);
+  transform-origin: 50% 100%;
   transition:
-    opacity 120ms ease,
-    transform 120ms ease,
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 180ms ease,
+    visibility 0ms linear 0ms,
     background 120ms ease;
+  will-change: opacity, transform, filter;
 }
 
 .yolo-voice-island.is-hidden {
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transform: translate(-50%, 8px);
+  filter: blur(2px);
+  transform: translate(-50%, 10px) scale(0.96);
+  transition:
+    opacity 140ms ease,
+    transform 160ms cubic-bezier(0.4, 0, 1, 1),
+    filter 140ms ease,
+    visibility 0ms linear 160ms,
+    background 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-voice-island,
+  .yolo-voice-island.is-hidden {
+    filter: none;
+    transform: translate(-50%, 0) scale(1);
+    transition:
+      opacity 80ms ease,
+      visibility 0ms linear 80ms;
+  }
 }
 
 /* Mic button — single flat circle, no outer rings. Colour shifts with state

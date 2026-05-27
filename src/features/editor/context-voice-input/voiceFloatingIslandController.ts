@@ -131,15 +131,23 @@ export class VoiceFloatingIslandController {
     this.subscribeToController()
   }
 
-  detach(): void {
+  destroy(): void {
+    this.detach({ immediate: true })
+  }
+
+  detach(options?: { immediate?: boolean }): void {
     this.unsubscribeController?.()
     this.unsubscribeController = null
     this.stopMonitoring()
     this.stopReadyHintReveal()
     this.removeDocumentPointerUpListener()
-    if (this.root) {
-      this.root.remove()
-      this.root = null
+    const root = this.root
+    if (root) {
+      if (options?.immediate) {
+        root.remove()
+      } else {
+        this.animateRootRemoval(root)
+      }
     }
     this.micButton = null
     this.modeToggleButton = null
@@ -149,10 +157,14 @@ export class VoiceFloatingIslandController {
     this.statusHostA = null
     this.statusHostB = null
     this.host = null
+    this.root = null
   }
 
-  destroy(): void {
-    this.detach()
+  private animateRootRemoval(root: HTMLElement): void {
+    root.classList.add('is-hidden')
+    window.setTimeout(() => {
+      root.remove()
+    }, 180)
   }
 
   private mount(host: HTMLElement): void {
@@ -213,6 +225,9 @@ export class VoiceFloatingIslandController {
     this.statusHostB = statusB
     this.activeStatusHost = 'a'
 
+    // Commit the hidden initial style before `applyStatus` reveals the bar,
+    // otherwise fresh mounts can skip the CSS transition in the same frame.
+    void root.offsetHeight
     this.applyStatus(this.deps.getController()?.getStatus() ?? null)
   }
 
