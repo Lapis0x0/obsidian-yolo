@@ -161,10 +161,13 @@ export class AgentLlmTurnExecutor {
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     try {
-      const resolvedReasoning = resolveRequestReasoningLevel(
-        this.input.model,
-        this.input.reasoningLevel,
-      )
+      const resolvedReasoning =
+        this.input.reasoningLevel === 'off'
+          ? 'off'
+          : resolveRequestReasoningLevel(
+              this.input.model,
+              this.input.reasoningLevel,
+            )
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
         model: this.input.model,

@@ -1,9 +1,28 @@
-import { requestUrl } from 'obsidian'
+import type {
+  AsrAudioFormat,
+  AsrTransportMode,
+} from '../../settings/schema/setting.types'
 
-import type { OpenAiCompatibleTranscriptionProfile } from '../../settings/schema/setting.types'
-
+import { transcodeToWav } from './audioTranscode'
 import { BaseAsrProvider } from './base'
+import { sendAsrMultipartRequest } from './httpTransport'
 import type { AsrAudioInput, AsrOptions, AsrResult } from './types'
+
+export type TranscriptionProviderProfile = {
+  baseURL: string
+  apiKey: string
+  model: string
+  transcriptionPath: string
+  transportMode: AsrTransportMode
+  /**
+   * When 'wav', we decode the captured opus/webm via the host AudioContext
+   * and re-pack it as 16-bit PCM WAV before upload. Useful for servers whose
+   * /v1/audio/transcriptions implementation refuses webm (some older local
+   * Whisper deployments only accept wav/mp3). 'auto' = upload as captured.
+   */
+  audioFormat: AsrAudioFormat
+  language: string
+}
 
 const DEFAULT_TRANSCRIPTION_PATH = '/audio/transcriptions'
 
@@ -97,9 +116,9 @@ const buildMultipartBody = async (
  */
 export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
   readonly format = 'openai-compatible-transcription'
-  private readonly profile: OpenAiCompatibleTranscriptionProfile
+  private readonly profile: TranscriptionProviderProfile
 
-  constructor(profile: OpenAiCompatibleTranscriptionProfile) {
+  constructor(profile: TranscriptionProviderProfile) {
     super()
     this.profile = profile
   }
@@ -108,7 +127,15 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
     input: AsrAudioInput,
     options?: AsrOptions,
   ): Promise<AsrResult> {
-    const { baseURL, apiKey, model, transcriptionPath, language } = this.profile
+    const {
+      baseURL,
+      apiKey,
+      model,
+      transcriptionPath,
+      transportMode,
+      audioFormat,
+      language,
+    } = this.profile
     if (!baseURL.trim()) {
       throw new Error('ASR provider is missing baseURL.')
     }
@@ -125,9 +152,18 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
         : DEFAULT_TRANSCRIPTION_PATH
     const url = joinUrl(baseURL, path)
 
-    const ext = guessExtensionFromMime(input.mimeType || input.blob.type || '')
+    // Optionally transcode the captured webm/opus blob into 16-bit PCM WAV
+    // before upload. Needed for stricter transcription endpoints that refuse
+    // the OpenAI default of accepting webm.
+    const effectiveInput =
+      audioFormat === 'wav' ? await transcodeToWav(input) : input
+
+    const ext = guessExtensionFromMime(
+      effectiveInput.mimeType || effectiveInput.blob.type || '',
+    )
     const filename = `recording.${ext}`
-    const fileContentType = input.blob.type || input.mimeType || 'audio/webm'
+    const fileContentType =
+      effectiveInput.blob.type || effectiveInput.mimeType || 'audio/webm'
 
     const langCandidate = (options?.language ?? language ?? '').trim()
     const fields: Array<
@@ -138,7 +174,7 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
         name: 'file',
         filename,
         contentType: fileContentType,
-        blob: input.blob,
+        blob: effectiveInput.blob,
       },
       { name: 'model', value: model },
       { name: 'response_format', value: 'json' },
@@ -154,19 +190,18 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
     const body = await buildMultipartBody(boundary, fields)
 
     const startedAt = Date.now()
-    const headers: Record<string, string> = {
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-    }
+    const headers: Record<string, string> = {}
     if (apiKey && apiKey.trim().length > 0) {
       headers.Authorization = `Bearer ${apiKey.trim()}`
     }
 
-    const response = await requestUrl({
+    const response = await sendAsrMultipartRequest({
       url,
-      method: 'POST',
-      headers,
       body,
-      throw: false,
+      boundary,
+      headers,
+      transportMode,
+      signal: options?.signal,
     })
 
     if (options?.signal?.aborted) {
@@ -174,7 +209,7 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      const errBody = response.text ?? ''
+      const errBody = response.text
       const truncated =
         errBody.length > 500 ? `${errBody.slice(0, 500)}…` : errBody
       throw new Error(
@@ -182,15 +217,10 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
       )
     }
 
-    let payload: { text?: unknown; language?: unknown } | null = null
-    try {
-      payload = response.json as {
-        text?: unknown
-        language?: unknown
-      } | null
-    } catch {
-      payload = null
-    }
+    const payload = response.json as {
+      text?: unknown
+      language?: unknown
+    } | null
 
     const text = payload && typeof payload.text === 'string' ? payload.text : ''
     const resultLanguage =

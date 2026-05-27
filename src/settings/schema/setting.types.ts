@@ -285,14 +285,77 @@ const tabCompletionTriggerSchema = z
  * Context-aware voice input (Slice A). Two OpenAI-compatible ASR API formats
  * are wired here; WebSocket / FunASR is reserved as a future format value but
  * not implemented in Slice A. The polish step reuses the chat-model layer via
- * `polishModelId`. Profile fields are kept per-format so switching formats in
- * the UI does not erase the other format's endpoint/key/model.
+ * `polishModelId`.
+ *
+ * Storage shape: users define a *list* of named ASR configs, each carrying
+ * its own format + endpoint + audio-format hint. The active config is
+ * referenced by `activeAsrConfigId`. This mirrors the provider/model
+ * pattern: one outer list, no two-layer split, drag to reorder, gear to
+ * edit. The pre-list shape (`selectedAsrApiFormat + asrProviderProfiles`,
+ * which existed briefly during feature development on this branch) is
+ * converted into list entries by the 62→63 migration.
  */
 export const ASR_API_FORMATS = [
   'openai-compatible-transcription',
   'openai-compatible-chat-audio-asr',
 ] as const
 export type AsrApiFormat = (typeof ASR_API_FORMATS)[number]
+
+/**
+ * Outbound audio container override for chat-audio ASR.
+ *
+ * - `auto`: send whatever MediaRecorder captured (typically webm/opus). Works
+ *   for OpenAI gpt-4o-audio, Qwen3-ASR, FireRedASR2.
+ * - `wav`: client-side decode → linear PCM → 16-bit WAV. Required by Google
+ *   Gemini's chat-audio endpoint which rejects webm with
+ *   "Invalid audio format. Valid formats are: [wav, mp3]". WAV is also lossless
+ *   re-packaging of the captured PCM, so no extra ASR quality hit.
+ *
+ * We deliberately do not offer mp3: a browser-side mp3 encoder would add
+ * ~150 KB to the bundle and ~hundreds of ms of main-thread work per clip,
+ * for no benefit at the voice-input clip lengths this feature targets.
+ */
+export const ASR_AUDIO_FORMATS = ['auto', 'wav'] as const
+export type AsrAudioFormat = (typeof ASR_AUDIO_FORMATS)[number]
+
+/**
+ * Network transport used for outbound ASR HTTP requests. Mirrors the LLM
+ * provider's `requestTransportMode` enum so users do not have to learn a
+ * second vocabulary for the same request layer.
+ *
+ * - `auto`: browser fetch, then desktop Node fetch, then Obsidian requestUrl
+ *   on CORS/network errors.
+ * - `obsidian`: Obsidian's `requestUrl`. Bypasses CORS/proxy issues.
+ * - `browser`: native `window.fetch`. Honours AbortSignal, useful for
+ *   endpoints that the Electron requestUrl shim mishandles (rare, but a few
+ *   enterprise gateways strip headers).
+ * - `node`: desktop Node fetch, lazy-loaded on desktop only, with the same
+ *   proxy-aware fetch path used by LLM providers; mobile falls back to
+ *   `obsidian`.
+ */
+export const ASR_TRANSPORT_MODES = [
+  'auto',
+  'obsidian',
+  'browser',
+  'node',
+] as const
+export type AsrTransportMode = (typeof ASR_TRANSPORT_MODES)[number]
+
+/**
+ * System-prompt presets for the voice polish step. Picking anything other
+ * than `custom` swaps in a built-in starter prompt; `custom` exposes the
+ * textarea so users can type their own. Presets are baked into
+ * `VOICE_POLISH_PROMPT_PRESETS` below to keep the dropdown and the prompt
+ * source in lockstep.
+ */
+export const VOICE_POLISH_PROMPT_MODES = [
+  'default',
+  'translate',
+  'expand',
+  'list',
+  'custom',
+] as const
+export type VoicePolishPromptMode = (typeof VOICE_POLISH_PROMPT_MODES)[number]
 
 export const DEFAULT_VOICE_INPUT_SYSTEM_PROMPT = `You polish a single speech-to-text transcript into text that is ready to insert at the user's current cursor position.
 
@@ -309,90 +372,134 @@ Hard rules:
 - When the intent is ambiguous between writing-as-content and giving-a-directive, default to writing-as-content so the user's words are not silently dropped.
 - Respect the surrounding Markdown structure (list continuation, code fences, headings) when picking spacing and prefixes for "text".`
 
-const openAiCompatibleTranscriptionProfileSchema = z
+/**
+ * Built-in prompt presets for voice polish. Each preset is a fully-formed
+ * system prompt — picking it from the dropdown replaces the active polish
+ * prompt directly (no extra textarea step). `custom` is the escape hatch
+ * that surfaces the user's editable prompt instead.
+ */
+export const VOICE_POLISH_PROMPT_PRESETS: Record<
+  Exclude<VoicePolishPromptMode, 'custom'>,
+  string
+> = {
+  default: DEFAULT_VOICE_INPUT_SYSTEM_PROMPT,
+  translate: `Translate a single speech-to-text transcript into the OPPOSITE of its detected language (Chinese ⇆ English). Output the translated text only, never both versions.
+
+Output strict JSON: { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
+- "text" holds the translated output only, in the target language.
+- If the transcript is a cancel directive ("cancel", "never mind", "scratch that"), return { "action": "cancel_input", "text": "" }.
+- If the user has a selection and the transcript reads as a replacement, choose "replace_selection"; otherwise "insert_at_cursor".
+
+Examples:
+  transcript: "你好世界"     → { "action": "insert_at_cursor", "text": "Hello world" }
+  transcript: "scrap that"   → { "action": "cancel_input", "text": "" }`,
+  expand: `Treat a single speech-to-text transcript as an outline / bullet idea and expand it into a coherent paragraph that fits at the user's cursor.
+
+Output strict JSON: { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
+- Keep the user's language. Maintain surrounding Markdown / list / heading structure.
+- If the transcript is a cancel directive, return { "action": "cancel_input", "text": "" }.`,
+  list: `Convert a single speech-to-text transcript into a Markdown bullet list ready to drop at the user's cursor.
+
+Output strict JSON: { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
+- Each top-level item starts with "- " on its own line.
+- Keep the user's language. Strip filler words ("um", "you know", etc.).
+- If the transcript is a cancel directive, return { "action": "cancel_input", "text": "" }.`,
+}
+
+/**
+ * Single ASR configuration entry. Mirrors the provider/model pattern (one
+ * flat outer list, no per-format sub-section). All format-specific fields
+ * are colocated; the adapter reads the ones relevant for its `format`.
+ *
+ * IMPORTANT: this schema must keep `.catch` defaults on every field so
+ * partial / older blobs survive load. The legacy `OpenAiCompatibleTranscriptionProfile`
+ * and `OpenAiCompatibleChatAudioAsrProfile` shapes have been removed —
+ * the v63→v64 migration converts them into entries of this schema.
+ */
+const asrConfigSchema = z
   .object({
+    id: z.string(),
+    name: z.string().catch(''),
+    format: z.enum(ASR_API_FORMATS).catch('openai-compatible-transcription'),
     baseURL: z.string().catch(''),
     apiKey: z.string().catch(''),
     model: z.string().catch(''),
     transcriptionPath: z.string().catch(''),
+    chatCompletionsPath: z.string().catch(''),
+    audioContentFormat: z.string().catch('input_audio'),
+    /** See `ASR_AUDIO_FORMATS` for semantics. Only relevant to chat-audio. */
+    audioFormat: z.enum(ASR_AUDIO_FORMATS).catch('auto'),
+    /** Outbound HTTP transport. See `ASR_TRANSPORT_MODES`. */
+    transportMode: z
+      .enum(ASR_TRANSPORT_MODES)
+      // Accept the legacy names that briefly existed during feature dev so
+      // testers on the branch don't see their setting silently reset.
+      .or(
+        z.string().transform((v) => {
+          if (v === 'requestUrl') return 'obsidian' as const
+          if (v === 'fetch') return 'browser' as const
+          return 'obsidian' as const
+        }),
+      )
+      .catch('auto'),
     language: z.string().catch('auto'),
   })
   .catch({
+    id: '',
+    name: '',
+    format: 'openai-compatible-transcription' as AsrApiFormat,
     baseURL: '',
     apiKey: '',
     model: '',
     transcriptionPath: '',
-    language: 'auto',
-  })
-
-const openAiCompatibleChatAudioAsrProfileSchema = z
-  .object({
-    baseURL: z.string().catch(''),
-    apiKey: z.string().catch(''),
-    model: z.string().catch(''),
-    chatCompletionsPath: z.string().catch(''),
-    audioContentFormat: z.string().catch('input_audio'),
-    language: z.string().catch('auto'),
-  })
-  .catch({
-    baseURL: '',
-    apiKey: '',
-    model: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
+    audioFormat: 'auto' as AsrAudioFormat,
+    transportMode: 'auto' as AsrTransportMode,
     language: 'auto',
   })
 
-const asrProviderProfilesSchema = z
-  .object({
-    'openai-compatible-transcription':
-      openAiCompatibleTranscriptionProfileSchema.optional(),
-    'openai-compatible-chat-audio-asr':
-      openAiCompatibleChatAudioAsrProfileSchema.optional(),
-  })
-  .catch({})
-
-export type OpenAiCompatibleTranscriptionProfile = z.infer<
-  typeof openAiCompatibleTranscriptionProfileSchema
->
-export type OpenAiCompatibleChatAudioAsrProfile = z.infer<
-  typeof openAiCompatibleChatAudioAsrProfileSchema
->
-export type AsrProviderProfiles = z.infer<typeof asrProviderProfilesSchema>
+export type AsrConfig = z.infer<typeof asrConfigSchema>
 
 export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   enabled: false,
-  selectedAsrApiFormat: 'openai-compatible-transcription' as AsrApiFormat,
-  asrProviderProfiles: {} as AsrProviderProfiles,
+  asrConfigs: [] as AsrConfig[],
+  activeAsrConfigId: '',
   lastAsrTestStatus: 'untested' as 'untested' | 'passed' | 'failed',
   lastAsrTestMessage: '',
   polishModelId: '',
-  systemPromptMode: 'default' as 'default' | 'custom',
+  polishTemperature: undefined as number | undefined,
+  systemPromptMode: 'default' as VoicePolishPromptMode,
   customSystemPrompt: '',
-  language: 'auto',
   interactionMode: 'toggle-listen' as 'toggle-listen' | 'hold-to-talk',
   pauseTabCompletionWhileListening: true,
   contextRangeChars: 2000,
   maxAfterContextChars: 600,
   maxRecordingSeconds: 120,
+  vadSpeechStartDecibels: -42,
+  vadSilenceDecibels: -38,
+  vadSilenceHoldMs: 1200,
   rawAudioSaveMode: 'never' as const,
+  // Empty string means "use the system default input device". When set to a
+  // concrete deviceId we pass it to getUserMedia so the user can pin a
+  // specific mic (USB headset, AirPods etc.) instead of whatever the OS
+  // picks at the moment of recording.
+  microphoneDeviceId: '',
 } as const
 
 const contextVoiceInputOptionsSchema = z
   .object({
     enabled: z.boolean().catch(false),
-    selectedAsrApiFormat: z
-      .enum(ASR_API_FORMATS)
-      .catch('openai-compatible-transcription'),
-    asrProviderProfiles: asrProviderProfilesSchema,
+    asrConfigs: z.array(asrConfigSchema).catch([]),
+    activeAsrConfigId: z.string().catch(''),
     lastAsrTestStatus: z
       .enum(['untested', 'passed', 'failed'])
       .catch('untested'),
     lastAsrTestMessage: z.string().catch(''),
     polishModelId: z.string().catch(''),
-    systemPromptMode: z.enum(['default', 'custom']).catch('default'),
+    polishTemperature: z.number().min(0).max(2).optional().catch(undefined),
+    systemPromptMode: z.enum(VOICE_POLISH_PROMPT_MODES).catch('default'),
     customSystemPrompt: z.string().catch(''),
-    language: z.string().catch('auto'),
     interactionMode: z
       .enum(['toggle-listen', 'hold-to-talk'])
       .catch('toggle-listen'),
@@ -400,7 +507,11 @@ const contextVoiceInputOptionsSchema = z
     contextRangeChars: z.number().int().min(0).catch(2000),
     maxAfterContextChars: z.number().int().min(0).catch(600),
     maxRecordingSeconds: z.number().int().min(5).max(900).catch(120),
+    vadSpeechStartDecibels: z.number().min(-90).max(0).catch(-42),
+    vadSilenceDecibels: z.number().min(-90).max(0).catch(-38),
+    vadSilenceHoldMs: z.number().int().min(300).max(5000).catch(1200),
     rawAudioSaveMode: z.literal('never').catch('never'),
+    microphoneDeviceId: z.string().catch(''),
   })
   .catch({ ...DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS })
 

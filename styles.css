@@ -18079,11 +18079,7 @@ body.yolo-quick-ask-global-interaction * {
 @media (prefers-reduced-motion: reduce) {
   .yolo-selection-persisted-layer.yolo-selection-persisted-layer-pending::after {
     animation: none;
-    background: color-mix(
-      in srgb,
-      var(--interactive-accent) 14%,
-      transparent
-    );
+    background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
     background-size: auto;
   }
 }
@@ -18281,6 +18277,472 @@ body.yolo-quick-ask-global-interaction * {
     opacity: 0.55;
     transform: scale(1);
   }
+}
+
+/*
+ * Context-aware voice input UI.
+ *
+ * Pieces:
+ *   - Floating island (.yolo-voice-island): single bar at the bottom of the
+ *     active editor. Idle = clean mic icon + mode toggle. Recording =
+ *     expanded with scrolling waveform canvas + status text + timer + stop
+ *     (the mic icon doubles as the stop button in toggle-listen mode; in
+ *     hold-to-talk mode it's the press-and-hold target).
+ *   - Three ghost-text layers (final article > polished candidate > raw ASR):
+ *       • voice-asr     — softer, animated shimmer; signals "still cooking"
+ *       • voice-polished — darker, static, dotted underline; "ready to accept"
+ *       • final text     — normal editor colour; no decoration
+ *   - Custom system prompt textarea: full width, no resize handle.
+ *   - ASR test result card: status-coloured badge + transcript box.
+ */
+
+/* ---------- Ghost text variants ----------------------------------------- */
+
+.yolo-ghost-text--voice-asr {
+  /* Light grey, no italic. Subtle opacity shimmer signals "transient draft —
+     the polished candidate is still being written". Animation stops as soon
+     as the variant flips to polished. */
+  color: var(--text-faint);
+  animation: yolo-voice-asr-shimmer 1.4s ease-in-out infinite;
+}
+
+.yolo-ghost-text--voice-polished {
+  /* Darker grey, static. Dotted underline differentiates from regular
+     editor text without screaming for attention. */
+  color: var(--text-muted);
+  opacity: 1;
+  text-decoration: underline dotted
+    color-mix(in srgb, var(--text-muted) 60%, transparent);
+  text-underline-offset: 3px;
+}
+
+@keyframes yolo-voice-asr-shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* ---------- Bottom floating island -------------------------------------- */
+
+.yolo-voice-island {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  color: var(--text-muted);
+  pointer-events: auto;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background 120ms ease;
+}
+
+.yolo-voice-island.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+}
+
+/* Mic button — single flat circle, no outer rings. Colour shifts with state
+   so the user knows recording is live without needing a second indicator. */
+
+.yolo-voice-island__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--interactive-normal, var(--background-modifier-hover));
+  color: var(--text-normal);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.yolo-voice-island__mic:hover {
+  background: var(--interactive-hover);
+}
+
+.yolo-voice-island__mic:disabled {
+  cursor: default;
+}
+
+.yolo-voice-island__mic:disabled:hover {
+  background: var(--text-accent, #6c8fff);
+}
+
+.yolo-voice-island[data-voice-state='recording'] .yolo-voice-island__mic {
+  background: var(--color-red, #e44);
+  color: var(--text-on-accent, #fff);
+  position: relative;
+}
+
+/* Restrained breathing halo behind the mic. Single ring (no second offset
+   pulse — the doubled-up version felt busy), small scale, low opacity,
+   slow cycle. The intent is "we're listening" ambient feedback, NOT a
+   call-to-attention beacon. */
+
+.yolo-voice-island[data-voice-state='recording']
+  .yolo-voice-island__mic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--color-red, #e44);
+  pointer-events: none;
+  animation: yolo-voice-mic-halo 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: -1;
+}
+
+@keyframes yolo-voice-mic-halo {
+  0% {
+    transform: scale(1);
+    opacity: 0.28;
+  }
+  80%,
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__mic {
+  background: var(--text-accent, #6c8fff);
+  color: var(--text-on-accent, #fff);
+  opacity: 0.85;
+}
+
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__mic {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent, #fff);
+}
+
+.yolo-voice-island__spinner-svg {
+  animation: yolo-voice-spinner 900ms linear infinite;
+}
+
+@keyframes yolo-voice-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mode toggle — small icon button beside the mic. */
+
+.yolo-voice-island__mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.yolo-voice-island__mode:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* ---------- Centre slot (waveform + timer + status overlay) ------------- */
+
+/* The mic / centre / mode-toggle layout stays stable across all active
+   states because the centre slot always reserves the same box. Inside it:
+   - waveform is visible only while recording (canvas painted in JS).
+   - timer badge floats in the corner during recording.
+   - status overlay (semi-transparent) fades in for transcribing / polishing
+     / ready. Idle = nothing shown, slot collapsed — except in hold-to-talk
+     mode, where we keep the slot mounted so pressing the mic doesn't shift
+     the button position. */
+
+.yolo-voice-island__center {
+  position: relative;
+  width: 160px;
+  height: 28px;
+  border-radius: 4px;
+  display: none;
+}
+
+.yolo-voice-island.is-recording .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+.yolo-voice-island.is-hold-mode .yolo-voice-island__center {
+  display: block;
+}
+
+.yolo-voice-island.is-hold-mode[data-voice-state='idle']
+  .yolo-voice-island__center {
+  width: 160px;
+}
+
+.yolo-voice-island__wave {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-accent, #6c8fff) 6%, transparent);
+  display: none;
+}
+
+.yolo-voice-island.is-recording .yolo-voice-island__wave {
+  display: block;
+}
+
+.yolo-voice-island.is-hold-mode[data-voice-state='idle']
+  .yolo-voice-island__wave {
+  display: block;
+  opacity: 0.55;
+}
+
+/* Small tabular timer overlaid in the corner of the waveform during
+   recording. Once we leave recording, the status overlay covers the slot
+   and the timer is hidden — latency badges take over the role. */
+
+.yolo-voice-island__timer {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  opacity: 0.75;
+  pointer-events: none;
+  display: none;
+}
+
+.yolo-voice-island.is-recording .yolo-voice-island__timer {
+  display: inline;
+}
+
+/* Status overlay — semi-transparent panel that fades in over the centre
+   slot during the post-recording phases. Hidden by default (opacity 0)
+   and revealed via the per-state rules below so the appearance is
+   contextual, not permanent. */
+
+.yolo-voice-island__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--background-secondary) 78%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  z-index: 1;
+}
+
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
+  .yolo-voice-island__overlay {
+  opacity: 1;
+}
+
+.yolo-voice-island__status-text {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Mobile / narrow viewport layout ----------------------------- */
+
+/* On small screens the recording bar would otherwise overflow the editor
+   width. Shrink the centre slot so the bar fits; the timer + overlay
+   continue to live inside it. */
+
+@media (max-width: 600px) {
+  .yolo-voice-island {
+    max-width: calc(100vw - 32px);
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .yolo-voice-island__center {
+    width: 110px;
+  }
+  .yolo-voice-island.is-hold-mode[data-voice-state='idle']
+    .yolo-voice-island__center {
+    width: 110px;
+  }
+  .yolo-voice-island__overlay {
+    font-size: 10px;
+    padding: 0 6px;
+  }
+}
+
+/* Even narrower (phone portrait): drop the centre slot entirely — the
+   recording state is communicated by the mic's red halo, and the overlay
+   would only show truncated text at this width anyway. */
+
+@media (max-width: 380px) {
+  .yolo-voice-island.is-recording .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='transcribing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+  .yolo-voice-island.is-hold-mode .yolo-voice-island__center {
+    display: none;
+  }
+}
+
+/* ---------- Custom system prompt card ----------------------------------- */
+
+.yolo-voice-prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.yolo-voice-prompt-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-voice-prompt-card__name {
+  font-weight: 600;
+}
+
+.yolo-voice-prompt-card__desc {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.yolo-voice-prompt-textarea {
+  width: 100%;
+}
+
+.yolo-voice-prompt-textarea textarea,
+textarea.yolo-voice-prompt-textarea-input {
+  width: 100%;
+  min-height: 200px;
+  resize: none;
+  font-family: var(--font-monospace, monospace);
+  line-height: 1.5;
+}
+
+.yolo-voice-settings-note {
+  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+}
+
+/* ---------- ASR config test-result panel -------------------------------- */
+
+.yolo-asr-test-result {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yolo-asr-test-result__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.yolo-asr-test-result__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 11px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+
+.yolo-asr-test-result--passed .yolo-asr-test-result__badge {
+  background: color-mix(in srgb, var(--text-success, #2db86b) 16%, transparent);
+  color: var(--text-success, #2db86b);
+}
+
+.yolo-asr-test-result--failed .yolo-asr-test-result__badge {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-error, #d33) 16%,
+    transparent
+  );
+  color: var(--background-modifier-error, #d33);
+}
+
+.yolo-asr-test-result--recording .yolo-asr-test-result__badge,
+.yolo-asr-test-result--transcribing .yolo-asr-test-result__badge {
+  background: color-mix(in srgb, var(--text-accent, #6c8fff) 16%, transparent);
+  color: var(--text-accent, #6c8fff);
+}
+
+.yolo-asr-test-result__msg {
+  color: var(--text-muted);
+}
+
+.yolo-asr-test-result__transcript {
+  white-space: pre-wrap;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Footer for the ASR config modal — Cancel / Save buttons */
+
+.yolo-asr-config-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 /* PDF region screenshot overlay */

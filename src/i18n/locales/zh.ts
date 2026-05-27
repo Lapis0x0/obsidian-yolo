@@ -1298,12 +1298,140 @@ export const zh: TranslationKeys = {
       interactionSectionTitle: '交互',
       maintenanceSectionTitle: '维护',
     },
+
+    asr: {
+      title: '语音识别 (ASR)',
+      descriptionV2:
+        '每一行是一个 ASR 端点。勾选哪个就用哪个，点齿轮编辑，拖手柄换序。打磨用的 LLM 在 编辑器 → 语音输入 中单独配置。',
+      colActive: '当前',
+      colName: '名称',
+      colSummary: '格式 · 模型',
+      colActions: '操作',
+      emptyHint: '还没有 ASR 端点。点右上角「添加 ASR 配置」开始。',
+      addConfig: '添加 ASR 配置',
+      configName: '名称',
+      configNameDesc: '列表里显示的名字。',
+      apiFormat: 'API 形式',
+      apiFormatDesc: '决定请求走 transcription 还是 chat completions。',
+      baseURL: 'Base URL',
+      baseURLDesc: '不要包含路径。',
+      apiKey: 'API 密钥',
+      apiKeyDesc: '本地部署可留空。',
+      apiKeyPlaceholder: '输入你的 API 密钥',
+      model: '模型',
+      modelDesc: '语音转写模型 ID。',
+      chatAudioModelDesc: '能接受音频内容的多模态聊天模型。',
+      transcriptionPath: '转写路径',
+      transcriptionPathDesc: '默认 /audio/transcriptions。',
+      chatCompletionsPath: '对话补全路径',
+      chatCompletionsPathDesc: '默认 /chat/completions。',
+      audioContentFormat: '音频内容载体',
+      audioContentFormatDesc: 'OpenAI 系用 input_audio，部分服务认 audio_url。',
+      audioFormat: '音频格式',
+      audioFormatDescChat: 'Google Gemini 需要 wav；其余 auto 即可。',
+      audioFormatDescTranscription:
+        '智谱 GLM / 部分本地 Whisper 服务需要 wav；OpenAI 云端 auto 即可。',
+      transport: '请求方式',
+      transportDesc:
+        '与提供商请求传输模式一致：自动模式会先尝试浏览器 fetch，再尝试桌面端 Node fetch，最后在 CORS/网络错误时回退到 Obsidian requestUrl。',
+      transportMode: {
+        auto: '自动（推荐）',
+        node: '仅桌面端 Node fetch',
+        obsidian: '仅 Obsidian requestUrl',
+        browser: '仅浏览器 fetch',
+      },
+      language: '语言',
+      languageDesc: '留空或 auto 让服务自己识别。',
+      microphone: '麦克风',
+      microphoneDesc: '选择具体输入设备。首次授权后才会显示设备名字。',
+      micDefault: '系统默认',
+      microphoneUnlock: '解锁设备名',
+      microphoneUnlockDesc: '请求一次麦克风权限以显示设备名，不会录音。',
+      microphoneUnlockButton: '授权',
+      testRecording: '测试录音',
+      testRecordingDesc:
+        '走当前配置录一小段并跑一遍，验证 URL/密钥/模型/格式。',
+      testRun: '运行测试',
+      testRunning: '录音中…',
+      testBadgePassed: '✓ 通过',
+      testBadgeFailed: '× 失败',
+      testBadgeRecording: '● 录音中',
+      testBadgeTranscribing: '… 转写中',
+    },
+
+    contextVoiceInput: {
+      title: '上下文感知语音输入',
+      description:
+        '点击或长按麦克风在光标处口述。打磨用的 LLM 会结合当前文件标题、光标前后文与选区。',
+      asrRequiredHint:
+        '请先在 模型 → 语音识别 中配置 ASR。未配置前下方开关无法打开。',
+      enable: '启用语音输入',
+      enableDesc: '通过命令面板、Obsidian 快捷键或浮动麦克风按钮触发。',
+      polishModel: '打磨模型',
+      polishModelDesc:
+        '结合光标周围上下文重写原始转写。未设置时回落到默认聊天模型。',
+      polishTemperature: '语音打磨温度覆盖',
+      polishTemperatureDesc:
+        '留空则使用所选模型或服务端默认值。只有语音输入需要单独温度时再填 0-2。',
+      polishTemperaturePlaceholder: '使用模型默认',
+      systemPromptMode: '提示词风格',
+      systemPromptModeDesc: '选择内置预设或切到自定义来手写。',
+      promptMode: {
+        default: '默认 (清理 + 修正)',
+        translate: '翻译 (中⇆英)',
+        expand: '扩写 (大纲 → 段落)',
+        list: '列表化 (Markdown bullet)',
+        custom: '自定义',
+      },
+      builtinSystemPrompt: '内置系统提示词',
+      builtinSystemPromptDesc:
+        '仅展示供检查；内置预设锁定不可编辑，切到「自定义」后可写自己的提示词。',
+      customSystemPrompt: '自定义提示词',
+      customSystemPromptDesc: '必须输出 { action, text } JSON。',
+      pauseTabCompletion: '聆听时暂停 Tab 补全',
+      pauseTabCompletionDesc:
+        '推荐打开 — 避免 Tab 灰字和语音灰字同屏抢占光标。',
+      tabCompletionAlwaysPaused:
+        '语音输入激活时会强制暂停 Tab 补全，此时 Tab 只用于接受语音草稿。',
+      contextRangeChars: '上下文窗口（字符数）',
+      contextRangeCharsDesc:
+        '发给打磨模型的总窗口（前文+后文）。大致按 4:1 偏向光标前文。',
+      maxAfterContextChars: '包含多少光标后文',
+      maxAfterContextCharsDesc:
+        '最多把光标后面的多少字符发给打磨模型作参考，避免重复或撞上已有文字；不限制语音最终插入的长度。',
+      maxRecordingSeconds: '最大录音时长（秒）',
+      maxRecordingSecondsDesc: '自动停止被遗忘的录音以避免浪费 ASR 配额。',
+      vadSpeechStartDecibels: '开口检测阈值 (dB)',
+      vadSpeechStartDecibelsDesc:
+        '数值越负越容易捕获小声说话；越接近 0 越能忽略背景噪声。默认 -42。',
+      vadSilenceDecibels: '说话后静音阈值 (dB)',
+      vadSilenceDecibelsDesc:
+        '确认开始说话后，低于这个音量会计为静音。默认 -38。',
+      vadSilenceHoldMs: '静音多久后切段 (ms)',
+      vadSilenceHoldMsDesc:
+        '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
+    },
   },
 
   smartSpace: {
     webSearch: '联网',
     urlContext: 'URL',
     mentionContextLabel: '引用的文件',
+  },
+
+  voiceInput: {
+    barRecording: '录音中',
+    barTranscribing: '正在转写…',
+    barPolishing: '正在打磨…',
+    barReady: 'Tab 插入 · Esc 放弃',
+    barReadyShort: 'Tab 插入',
+    barTabPaused: ' · Tab 已暂停',
+    barCancelHint: ' · Esc 取消',
+    buttonStart: '开始录音',
+    buttonStop: '结束录音',
+    buttonAccept: '插入草稿',
+    modeSwitchToHold: '点击切换为长按模式',
+    modeSwitchToToggle: '点击切换为点按模式',
   },
 
   selection: {

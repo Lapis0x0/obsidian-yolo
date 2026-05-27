@@ -1175,6 +1175,122 @@ export type TranslationKeys = {
       hideFixedAction?: string
       showFixedAction?: string
     }
+
+    // Voice recognition (ASR) — every key is optional so partial locales
+    // gracefully fall back to the English fallback string in the source.
+    asr?: {
+      title?: string
+      descriptionV2?: string
+      colActive?: string
+      colName?: string
+      colSummary?: string
+      colActions?: string
+      emptyHint?: string
+      addConfig?: string
+      configName?: string
+      configNameDesc?: string
+      apiFormat?: string
+      apiFormatDesc?: string
+      baseURL?: string
+      baseURLDesc?: string
+      apiKey?: string
+      apiKeyDesc?: string
+      apiKeyPlaceholder?: string
+      model?: string
+      modelDesc?: string
+      chatAudioModelDesc?: string
+      transcriptionPath?: string
+      transcriptionPathDesc?: string
+      chatCompletionsPath?: string
+      chatCompletionsPathDesc?: string
+      audioContentFormat?: string
+      audioContentFormatDesc?: string
+      audioFormat?: string
+      audioFormatDescChat?: string
+      audioFormatDescTranscription?: string
+      transport?: string
+      transportDesc?: string
+      transportMode?: {
+        auto?: string
+        obsidian?: string
+        browser?: string
+        node?: string
+      }
+      language?: string
+      languageDesc?: string
+      microphone?: string
+      microphoneDesc?: string
+      micDefault?: string
+      microphoneUnlock?: string
+      microphoneUnlockDesc?: string
+      microphoneUnlockButton?: string
+      testRecording?: string
+      testRecordingDesc?: string
+      testRun?: string
+      testRunning?: string
+      testBadgePassed?: string
+      testBadgeFailed?: string
+      testBadgeRecording?: string
+      testBadgeTranscribing?: string
+    }
+
+    // Context-aware voice input
+    contextVoiceInput?: {
+      title?: string
+      description?: string
+      asrRequiredHint?: string
+      enable?: string
+      enableDesc?: string
+      polishModel?: string
+      polishModelDesc?: string
+      polishTemperature?: string
+      polishTemperatureDesc?: string
+      polishTemperaturePlaceholder?: string
+      systemPromptMode?: string
+      systemPromptModeDesc?: string
+      promptMode?: {
+        default?: string
+        translate?: string
+        expand?: string
+        list?: string
+        custom?: string
+      }
+      builtinSystemPrompt?: string
+      builtinSystemPromptDesc?: string
+      customSystemPrompt?: string
+      customSystemPromptDesc?: string
+      pauseTabCompletion?: string
+      pauseTabCompletionDesc?: string
+      tabCompletionAlwaysPaused?: string
+      contextRangeChars?: string
+      contextRangeCharsDesc?: string
+      maxAfterContextChars?: string
+      maxAfterContextCharsDesc?: string
+      maxRecordingSeconds?: string
+      maxRecordingSecondsDesc?: string
+      vadSpeechStartDecibels?: string
+      vadSpeechStartDecibelsDesc?: string
+      vadSilenceDecibels?: string
+      vadSilenceDecibelsDesc?: string
+      vadSilenceHoldMs?: string
+      vadSilenceHoldMsDesc?: string
+    }
+  }
+
+  // Voice input runtime UI (floating island)
+  voiceInput?: {
+    barRecording?: string
+    barTranscribing?: string
+    barPolishing?: string
+    barReady?: string
+    barReadyShort?: string
+    barTabPaused?: string
+    barCancelHint?: string
+    buttonStart?: string
+    buttonStop?: string
+    buttonAccept?: string
+    modeSwitchToHold?: string
+    modeSwitchToToggle?: string
   }
 
   // Selection Chat

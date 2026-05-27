@@ -19,14 +19,16 @@ export function applyXiaomimimoCapabilities(params: {
 }): void {
   const { request, model, reasoningLevel } = params
 
-  if (!modelSupportsReasoning(model) || !reasoningLevel) return
-
-  if (reasoningLevel === 'auto') {
-    return
-  }
+  if (!reasoningLevel) return
 
   if (reasoningLevel === 'off') {
     request.thinking = { type: 'disabled' }
+    return
+  }
+
+  if (!modelSupportsReasoning(model)) return
+
+  if (reasoningLevel === 'auto') {
     return
   }
 

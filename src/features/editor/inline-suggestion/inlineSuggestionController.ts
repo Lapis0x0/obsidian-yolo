@@ -8,12 +8,15 @@ import type { TabCompletionController } from '../tab-completion/tabCompletionCon
 
 import {
   InlineSuggestionGhostPayload,
+  type VoiceStatusChipPayload,
   inlineSuggestionGhostEffect,
   inlineSuggestionGhostField,
   tabLoadingDotsEffect,
   tabLoadingDotsField,
   thinkingIndicatorEffect,
   thinkingIndicatorField,
+  voiceStatusChipEffect,
+  voiceStatusChipField,
 } from './inlineSuggestion'
 
 type ActiveInlineSuggestion = {
@@ -66,6 +69,7 @@ export class InlineSuggestionController {
       inlineSuggestionGhostField,
       thinkingIndicatorField,
       tabLoadingDotsField,
+      voiceStatusChipField,
       EditorView.updateListener.of((update) => {
         if (update.focusChanged && !update.view.hasFocus) {
           const tab = this.getTabCompletionController()
@@ -147,6 +151,10 @@ export class InlineSuggestionController {
 
   hideTabLoadingDots(view: EditorView) {
     view.dispatch({ effects: tabLoadingDotsEffect.of(null) })
+  }
+
+  setVoiceStatusChip(view: EditorView, payload: VoiceStatusChipPayload) {
+    view.dispatch({ effects: voiceStatusChipEffect.of(payload) })
   }
 
   setActiveInlineSuggestion(suggestion: ActiveInlineSuggestion | null) {

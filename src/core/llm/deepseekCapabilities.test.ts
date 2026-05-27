@@ -50,7 +50,13 @@ describe('applyDeepSeekCapabilities', () => {
     expect(run(reasonerModel, 'high')).toEqual({})
   })
 
-  it('skips when model has no reasoning type', () => {
+  it('still disables thinking for off when model has no reasoning type', () => {
+    expect(
+      run({ model: 'deepseek-v4-pro', reasoningType: 'none' }, 'off'),
+    ).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('skips enabled thinking levels when model has no reasoning type', () => {
     expect(
       run({ model: 'deepseek-v4-pro', reasoningType: 'none' }, 'high'),
     ).toEqual({})

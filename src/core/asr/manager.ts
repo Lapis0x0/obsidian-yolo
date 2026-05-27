@@ -1,5 +1,5 @@
 import type {
-  AsrApiFormat,
+  AsrConfig,
   ContextVoiceInputOptions,
 } from '../../settings/schema/setting.types'
 
@@ -15,54 +15,85 @@ export class AsrConfigError extends Error {
 }
 
 /**
- * Build an ASR provider client from the current voice-input settings.
- * Throws `AsrConfigError` when the selected profile is missing or
+ * Resolve the active ASR config from the user's settings.
+ *
+ * Selection rule:
+ *   - If `activeAsrConfigId` matches an entry in `asrConfigs`, use it.
+ *   - Otherwise fall back to the first entry in the list.
+ *   - If the list is empty, return null (caller surfaces the "configure ASR
+ *     first" hint).
+ */
+export function resolveActiveAsrConfig(
+  options: ContextVoiceInputOptions,
+): AsrConfig | null {
+  const list = options.asrConfigs
+  if (!Array.isArray(list) || list.length === 0) return null
+  if (options.activeAsrConfigId) {
+    const match = list.find((c) => c.id === options.activeAsrConfigId)
+    if (match) return match
+  }
+  return list[0] ?? null
+}
+
+/**
+ * Build an ASR provider client from the currently-active config.
+ * Throws `AsrConfigError` when no config is configured or the active one is
  * incomplete; callers should surface the message to the user and route them
  * back to the Models tab.
  */
 export function getAsrProvider(
   options: ContextVoiceInputOptions,
 ): BaseAsrProvider {
-  const format = options.selectedAsrApiFormat
-  const profiles = options.asrProviderProfiles
-  return buildAsrProviderForFormat(format, profiles)
+  const config = resolveActiveAsrConfig(options)
+  if (!config) {
+    throw new AsrConfigError(
+      'No ASR provider is configured. Add one under Models → Voice recognition.',
+    )
+  }
+  return buildAsrProviderForConfig(config)
 }
 
-export function buildAsrProviderForFormat(
-  format: AsrApiFormat,
-  profiles: ContextVoiceInputOptions['asrProviderProfiles'],
-): BaseAsrProvider {
-  switch (format) {
+/**
+ * Build a provider for an arbitrary config (used by the settings page test
+ * button to validate a specific entry without activating it).
+ */
+export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
+  switch (config.format) {
     case 'openai-compatible-transcription': {
-      const profile = profiles['openai-compatible-transcription']
-      if (!profile) {
+      if (!config.baseURL.trim() || !config.model.trim()) {
         throw new AsrConfigError(
-          'OpenAI-compatible transcription profile is not configured.',
+          'Transcription ASR config needs both baseURL and model.',
         )
       }
-      if (!profile.baseURL.trim() || !profile.model.trim()) {
-        throw new AsrConfigError(
-          'OpenAI-compatible transcription profile needs both baseURL and model.',
-        )
-      }
-      return new OpenAiCompatibleTranscriptionProvider(profile)
+      return new OpenAiCompatibleTranscriptionProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        model: config.model,
+        transcriptionPath: config.transcriptionPath,
+        transportMode: config.transportMode,
+        audioFormat: config.audioFormat,
+        language: config.language,
+      })
     }
     case 'openai-compatible-chat-audio-asr': {
-      const profile = profiles['openai-compatible-chat-audio-asr']
-      if (!profile) {
+      if (!config.baseURL.trim() || !config.model.trim()) {
         throw new AsrConfigError(
-          'OpenAI-compatible chat-audio ASR profile is not configured.',
+          'Chat-audio ASR config needs both baseURL and model.',
         )
       }
-      if (!profile.baseURL.trim() || !profile.model.trim()) {
-        throw new AsrConfigError(
-          'OpenAI-compatible chat-audio ASR profile needs both baseURL and model.',
-        )
-      }
-      return new OpenAiCompatibleChatAudioAsrProvider(profile)
+      return new OpenAiCompatibleChatAudioAsrProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        model: config.model,
+        chatCompletionsPath: config.chatCompletionsPath,
+        audioContentFormat: config.audioContentFormat,
+        audioFormat: config.audioFormat,
+        transportMode: config.transportMode,
+        language: config.language,
+      })
     }
     default: {
-      const exhaustive: never = format
+      const exhaustive: never = config.format
       throw new AsrConfigError(
         `Unsupported ASR API format: ${String(exhaustive)}`,
       )

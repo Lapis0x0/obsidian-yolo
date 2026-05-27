@@ -1404,6 +1404,144 @@ export const en: TranslationKeys = {
       interactionSectionTitle: 'Interaction',
       maintenanceSectionTitle: 'Maintenance',
     },
+
+    asr: {
+      title: 'Voice recognition (ASR)',
+      descriptionV2:
+        'Each row is one ASR endpoint. Pick which one is active, click the gear to edit, drag the handle to reorder. The polish LLM is configured separately under Editor → Voice input.',
+      colActive: 'Active',
+      colName: 'Name',
+      colSummary: 'Format · model',
+      colActions: 'Actions',
+      emptyHint:
+        'No ASR endpoint configured yet. Use "Add ASR configuration" in the header.',
+      addConfig: 'Add ASR configuration',
+      configName: 'Name',
+      configNameDesc: 'Shown in the ASR list.',
+      apiFormat: 'API format',
+      apiFormatDesc:
+        'Picks whether requests go to /audio/transcriptions or /chat/completions.',
+      baseURL: 'Base URL',
+      baseURLDesc: 'Do not include the path here.',
+      apiKey: 'API key',
+      apiKeyDesc: 'Leave empty for local servers without auth.',
+      apiKeyPlaceholder: 'Enter your API key',
+      model: 'Model',
+      modelDesc: 'Speech-to-text model id.',
+      chatAudioModelDesc:
+        'A multimodal chat model that accepts audio in messages.',
+      transcriptionPath: 'Transcription path',
+      transcriptionPathDesc: 'Defaults to /audio/transcriptions.',
+      chatCompletionsPath: 'Chat completions path',
+      chatCompletionsPathDesc: 'Defaults to /chat/completions.',
+      audioContentFormat: 'Audio content carrier',
+      audioContentFormatDesc:
+        'OpenAI-style services want input_audio; some others want audio_url.',
+      audioFormat: 'Audio format',
+      audioFormatDescChat: 'Google Gemini requires wav; others can use auto.',
+      audioFormatDescTranscription:
+        'Zhipu GLM / some local Whisper servers require wav; OpenAI cloud accepts auto.',
+      transport: 'Transport',
+      transportDesc:
+        'Matches provider request transport modes: Auto tries browser fetch, then desktop Node fetch, and falls back to Obsidian requestUrl on CORS/network errors.',
+      transportMode: {
+        auto: 'Auto (recommended)',
+        node: 'Desktop Node fetch only',
+        obsidian: 'Obsidian requestUrl only',
+        browser: 'Browser fetch only',
+      },
+      language: 'Language',
+      languageDesc: 'Leave empty or "auto" to let the provider detect.',
+      microphone: 'Microphone',
+      microphoneDesc:
+        'Pick a specific input device. Labels appear after granting mic permission once.',
+      micDefault: 'System default',
+      microphoneUnlock: 'Unlock device labels',
+      microphoneUnlockDesc:
+        'Grants the mic permission once so device names become visible. No audio is recorded.',
+      microphoneUnlockButton: 'Grant',
+      testRecording: 'Test recording',
+      testRecordingDesc:
+        'Records a short clip with the current configuration to verify URL / key / model / format.',
+      testRun: 'Run test',
+      testRunning: 'Recording…',
+      testBadgePassed: '✓ Passed',
+      testBadgeFailed: '× Failed',
+      testBadgeRecording: '● Recording',
+      testBadgeTranscribing: '… Transcribing',
+    },
+
+    contextVoiceInput: {
+      title: 'Context-aware voice input',
+      description:
+        'Hold or click the mic to dictate at the cursor. The polish LLM uses the current file title, surrounding text, and selection.',
+      asrRequiredHint:
+        'Configure an ASR provider under Models → Voice recognition first. The toggle stays disabled until an ASR is set up.',
+      enable: 'Enable voice input',
+      enableDesc:
+        'Use the command palette, an Obsidian hotkey, or the floating mic to trigger it.',
+      polishModel: 'Polish model',
+      polishModelDesc:
+        'Rewrites the raw transcript with surrounding editor context. Falls back to the default chat model when unset.',
+      polishTemperature: 'Voice polish temperature override',
+      polishTemperatureDesc:
+        'Leave blank to use the selected model/provider default. Set 0-2 only when this voice input flow needs its own temperature.',
+      polishTemperaturePlaceholder: 'Use model default',
+      systemPromptMode: 'Prompt style',
+      systemPromptModeDesc:
+        'Pick a built-in preset or switch to custom to write your own.',
+      promptMode: {
+        default: 'Default (cleanup)',
+        translate: 'Translate (zh ⇆ en)',
+        expand: 'Expand (outline → paragraph)',
+        list: 'Format as list',
+        custom: 'Custom',
+      },
+      builtinSystemPrompt: 'Built-in system prompt',
+      builtinSystemPromptDesc:
+        'Shown for review. Built-in presets are locked; switch to Custom to edit your own prompt.',
+      customSystemPrompt: 'Custom system prompt',
+      customSystemPromptDesc:
+        'Must still emit { action, text } JSON. See the design doc for the schema.',
+      pauseTabCompletion: 'Pause Tab completion while listening',
+      pauseTabCompletionDesc:
+        'Recommended — prevents ghost text from competing for the cursor.',
+      tabCompletionAlwaysPaused:
+        'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
+      contextRangeChars: 'Context range (characters)',
+      contextRangeCharsDesc:
+        'Total before+after window sent to the polish model. Split ~4:1 toward the text before the cursor.',
+      maxAfterContextChars: 'Text after cursor to include',
+      maxAfterContextCharsDesc:
+        'How many characters after the cursor are sent as reference, so the model can avoid repeating or colliding with existing text. This does not limit how much text voice input can insert.',
+      maxRecordingSeconds: 'Max recording (seconds)',
+      maxRecordingSecondsDesc:
+        'Auto-stops a forgotten recording so it does not waste ASR quota.',
+      vadSpeechStartDecibels: 'Speech start threshold (dB)',
+      vadSpeechStartDecibelsDesc:
+        'More negative catches quieter speech; less negative ignores more background noise. Default: -42.',
+      vadSilenceDecibels: 'Silence threshold after speech (dB)',
+      vadSilenceDecibelsDesc:
+        'After speech has started, audio below this level counts as silence. Default: -38.',
+      vadSilenceHoldMs: 'Silence duration to stop (ms)',
+      vadSilenceHoldMsDesc:
+        'How long point-and-click mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+    },
+  },
+
+  voiceInput: {
+    barRecording: 'Recording',
+    barTranscribing: 'Transcribing…',
+    barPolishing: 'Polishing…',
+    barReady: 'Tab to insert · Esc to discard',
+    barReadyShort: 'Tab insert',
+    barTabPaused: ' · Tab completion paused',
+    barCancelHint: ' · Esc to cancel',
+    buttonStart: 'Start recording',
+    buttonStop: 'Stop recording',
+    buttonAccept: 'Insert draft',
+    modeSwitchToHold: 'Click to switch to push-to-talk',
+    modeSwitchToToggle: 'Click to switch to click-toggle',
   },
 
   chat: {

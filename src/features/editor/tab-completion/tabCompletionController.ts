@@ -2,6 +2,7 @@ import type { Extension, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
+import { logAuxiliaryLLMUsage } from '../../../core/llm/debugCapture'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import {
@@ -502,6 +503,14 @@ export class TabCompletionController {
         const controller = new AbortController()
         this.tabCompletionAbortController = controller
         this.deps.addAbortController(controller)
+        // Tab completion does not register itself in the in-app debug panel
+        // (no conversation/message id). Pipe its usage + cache stats to the
+        // console when debug capture is on so the prompt-cache work is
+        // observable for developers. See debugCapture.logAuxiliaryLLMUsage.
+        const auxStartedAt = Date.now()
+        let aggregatedUsage:
+          | import('../../../types/llm/response').ResponseUsage
+          | undefined
 
         if (!hasShownValidSuggestion) {
           const loadingView = this.deps.getEditorView(editor)
@@ -543,6 +552,14 @@ export class TabCompletionController {
               { signal: controller.signal },
             )
             const suggestion = response.choices?.[0]?.message?.content ?? ''
+            aggregatedUsage = response.usage
+            logAuxiliaryLLMUsage({
+              purpose: 'tab-completion:non-stream-fallback',
+              modelName: model.name ?? model.model,
+              providerId: model.providerId,
+              usage: aggregatedUsage,
+              durationMs: Date.now() - auxStartedAt,
+            })
 
             const currentView = this.deps.getEditorView(editor)
             if (!currentView) return
@@ -557,6 +574,11 @@ export class TabCompletionController {
 
           let rawText = ''
           for await (const chunk of stream) {
+            // Streaming chunks may carry partial usage; the last one usually
+            // has the final totals. Track the latest so we can log on close.
+            if (chunk.usage) {
+              aggregatedUsage = chunk.usage
+            }
             const delta = chunk.choices?.[0]?.delta?.content ?? ''
             if (!delta) continue
             rawText += delta
@@ -570,6 +592,14 @@ export class TabCompletionController {
             if (!rawText.trim()) continue
             updateSuggestion(rawText, currentView)
           }
+
+          logAuxiliaryLLMUsage({
+            purpose: 'tab-completion:stream',
+            modelName: model.name ?? model.model,
+            providerId: model.providerId,
+            usage: aggregatedUsage,
+            durationMs: Date.now() - auxStartedAt,
+          })
 
           if (rawText.length === 0) return
           const currentView = this.deps.getEditorView(editor)

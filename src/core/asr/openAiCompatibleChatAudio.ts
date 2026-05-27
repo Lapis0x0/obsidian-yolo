@@ -1,9 +1,23 @@
-import { requestUrl } from 'obsidian'
+import type {
+  AsrAudioFormat,
+  AsrTransportMode,
+} from '../../settings/schema/setting.types'
 
-import type { OpenAiCompatibleChatAudioAsrProfile } from '../../settings/schema/setting.types'
-
+import { transcodeToWav } from './audioTranscode'
 import { BaseAsrProvider } from './base'
+import { sendAsrJsonRequest } from './httpTransport'
 import type { AsrAudioInput, AsrOptions, AsrResult } from './types'
+
+export type ChatAudioProviderProfile = {
+  baseURL: string
+  apiKey: string
+  model: string
+  chatCompletionsPath: string
+  audioContentFormat: string
+  audioFormat: AsrAudioFormat
+  transportMode: AsrTransportMode
+  language: string
+}
 
 const DEFAULT_CHAT_COMPLETIONS_PATH = '/chat/completions'
 
@@ -117,9 +131,9 @@ const extractTextFromChatCompletion = (payload: unknown): string => {
  */
 export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
   readonly format = 'openai-compatible-chat-audio-asr'
-  private readonly profile: OpenAiCompatibleChatAudioAsrProfile
+  private readonly profile: ChatAudioProviderProfile
 
-  constructor(profile: OpenAiCompatibleChatAudioAsrProfile) {
+  constructor(profile: ChatAudioProviderProfile) {
     super()
     this.profile = profile
   }
@@ -134,6 +148,8 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
       model,
       chatCompletionsPath,
       audioContentFormat,
+      audioFormat,
+      transportMode,
       language,
     } = this.profile
     if (!baseURL.trim()) {
@@ -149,10 +165,18 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
         : DEFAULT_CHAT_COMPLETIONS_PATH
     const url = joinUrl(baseURL, path)
 
+    // Some providers reject webm in chat-audio (e.g. Google Gemini: "Invalid
+    // audio format 'webm'. Valid formats are: [wav, mp3]"). When the user
+    // selects `wav` we decode the captured opus/webm via the host AudioContext
+    // and re-pack it as 16-bit PCM WAV before upload. `auto` keeps the
+    // captured container as-is.
+    const effectiveInput =
+      audioFormat === 'wav' ? await transcodeToWav(input) : input
+
     const audioFormatLabel = guessFormatLabelFromMime(
-      input.mimeType || input.blob.type || '',
+      effectiveInput.mimeType || effectiveInput.blob.type || '',
     )
-    const base64Audio = await blobToBase64(input.blob)
+    const base64Audio = await blobToBase64(effectiveInput.blob)
     const audioPart = buildAudioContentPart(
       audioContentFormat,
       base64Audio,
@@ -169,6 +193,11 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
               : ''
           }.`
 
+    // ASR is transcription, not chain-of-thought. Some chat-audio backends
+    // (notably Google Gemini 2.5+) default to "thinking" mode, which adds
+    // tens of seconds of hidden reasoning for what should be a sub-second
+    // audio → text job. We always send reasoning_effort: 'none' to disable
+    // it; backends that don't know the field will ignore it.
     const body = {
       model,
       modalities: ['text'],
@@ -178,6 +207,7 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
           content: [{ type: 'text', text: promptText }, audioPart],
         },
       ],
+      reasoning_effort: 'none',
     }
 
     if (options?.signal?.aborted) {
@@ -192,15 +222,12 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
       headers.Authorization = `Bearer ${apiKey.trim()}`
     }
 
-    // requestUrl routes through Obsidian's networking layer (proxy / TLS /
-    // CORS bypass). It does not honour AbortSignal — cancellation is enforced
-    // by checking `signal.aborted` after the call returns.
-    const response = await requestUrl({
+    const response = await sendAsrJsonRequest({
       url,
-      method: 'POST',
+      body,
       headers,
-      body: JSON.stringify(body),
-      throw: false,
+      transportMode,
+      signal: options?.signal,
     })
 
     if (options?.signal?.aborted) {
@@ -208,7 +235,7 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      const errBody = response.text ?? ''
+      const errBody = response.text
       const truncated =
         errBody.length > 500 ? `${errBody.slice(0, 500)}…` : errBody
       throw new Error(
@@ -216,13 +243,7 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
       )
     }
 
-    let payload: unknown = null
-    try {
-      payload = response.json
-    } catch {
-      payload = null
-    }
-    const text = extractTextFromChatCompletion(payload)
+    const text = extractTextFromChatCompletion(response.json)
 
     return {
       text,

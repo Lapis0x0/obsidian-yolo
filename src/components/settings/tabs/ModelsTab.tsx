@@ -16,7 +16,7 @@ export function ModelsTab({ app, plugin }: ModelsTabProps) {
     <>
       <ProvidersAndModelsSection app={app} plugin={plugin} />
       <DefaultModelsAndPromptsSection className="yolo-settings-section--tight" />
-      <AsrProvidersSection />
+      <AsrProvidersSection app={app} plugin={plugin} />
     </>
   )
 }

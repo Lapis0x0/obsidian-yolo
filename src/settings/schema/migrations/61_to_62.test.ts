@@ -9,10 +9,10 @@ describe('migrateFrom61To62', () => {
         {
           id: 'a1',
           toolPreferences: {
-            'yolo_local__fs_read': { enabled: true },
-            'github__list_repos': { enabled: true },
-            'Gemini__click': { enabled: true },
-            'Gemini__get_all_tabs': { enabled: true },
+            yolo_local__fs_read: { enabled: true },
+            github__list_repos: { enabled: true },
+            Gemini__click: { enabled: true },
+            Gemini__get_all_tabs: { enabled: true },
           },
           enabledToolNames: [
             'yolo_local__fs_read',
@@ -26,8 +26,8 @@ describe('migrateFrom61To62', () => {
     expect(result.version).toBe(62)
     const assistant = (result.assistants as Array<Record<string, unknown>>)[0]
     expect(assistant.toolPreferences).toEqual({
-      'yolo_local__fs_read': { enabled: true },
-      'github__list_repos': { enabled: true },
+      yolo_local__fs_read: { enabled: true },
+      github__list_repos: { enabled: true },
     })
     expect(assistant.enabledToolNames).toEqual([
       'yolo_local__fs_read',
@@ -42,8 +42,8 @@ describe('migrateFrom61To62', () => {
       assistants: [
         {
           toolPreferences: {
-            'yolo_local__fs_read': { enabled: true },
-            'Ghost__do_thing': { enabled: true },
+            yolo_local__fs_read: { enabled: true },
+            Ghost__do_thing: { enabled: true },
           },
         },
       ],
@@ -51,7 +51,7 @@ describe('migrateFrom61To62', () => {
 
     const assistant = (result.assistants as Array<Record<string, unknown>>)[0]
     expect(assistant.toolPreferences).toEqual({
-      'yolo_local__fs_read': { enabled: true },
+      yolo_local__fs_read: { enabled: true },
     })
   })
 

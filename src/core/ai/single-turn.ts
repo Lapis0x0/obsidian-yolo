@@ -16,6 +16,7 @@ import { createToolCallArguments } from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
 import {
   bindLLMDebugTraceToSignal,
+  logAuxiliaryLLMUsage,
   runWithLLMDebugTrace,
 } from '../llm/debugCapture'
 import { stripProviderFeatures } from '../llm/strip-provider-features'
@@ -325,6 +326,24 @@ export async function executeSingleTurn({
 }: SingleTurnExecutionInput): Promise<SingleTurnExecutionResult> {
   const isAuxiliary = purpose === 'auxiliary'
   const effectiveModel = isAuxiliary ? stripProviderFeatures(model) : model
+  // Wall-clock for the auxiliary debug logger. Auxiliary single-turn calls
+  // (voice polish, chat title, compaction summary, …) do not surface in the
+  // in-app debug panel because they have no `sourceUserMessageId`. When debug
+  // capture is on we still want their token / cache stats on the console.
+  const auxStartedAt = Date.now()
+  const logAuxIfNeeded = (
+    usage: ResponseUsage | undefined,
+    label: string,
+  ): void => {
+    if (!isAuxiliary) return
+    logAuxiliaryLLMUsage({
+      purpose: label,
+      modelName: model.name ?? model.model,
+      providerId: model.providerId,
+      usage,
+      durationMs: Date.now() - auxStartedAt,
+    })
+  }
   // Auxiliary calls must never carry Gemini-native hosted tools, regardless of
   // what the caller passes in — the option lives outside the ChatModel object
   // and would otherwise bypass stripProviderFeatures.
@@ -359,6 +378,7 @@ export async function executeSingleTurn({
         ),
       )
 
+      logAuxIfNeeded(response.usage, 'single-turn:non-stream')
       return {
         content: response.choices?.[0]?.message?.content ?? '',
         reasoning: response.choices?.[0]?.message?.reasoning ?? undefined,
@@ -568,6 +588,7 @@ export async function executeSingleTurn({
       }
     }
 
+    logAuxIfNeeded(usage, 'single-turn:stream')
     return {
       content,
       reasoning: reasoning || undefined,

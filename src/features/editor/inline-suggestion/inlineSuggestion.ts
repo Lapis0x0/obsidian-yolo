@@ -29,6 +29,136 @@ export type ThinkingIndicatorPayload = {
 export const thinkingIndicatorEffect =
   StateEffect.define<ThinkingIndicatorPayload>()
 
+export type VoiceStatusChipState =
+  | 'recording'
+  | 'transcribing'
+  | 'polishing'
+  | 'ready'
+
+export type VoiceStatusChipPayload = {
+  from: number
+  state: VoiceStatusChipState
+  /** Display label shown inside the chip; localised by the caller. */
+  label: string
+  /** Optional second line (e.g. "Tab 已暂停 · Esc 取消"). */
+  hint?: string
+  /** Elapsed time in milliseconds, shown only while recording. */
+  elapsedMs?: number
+  /** Callback invoked when the user clicks the cancel/stop button. */
+  onCancel?: () => void
+} | null
+
+export const voiceStatusChipEffect =
+  StateEffect.define<VoiceStatusChipPayload>()
+
+class VoiceStatusChipWidget extends WidgetType {
+  constructor(private readonly payload: NonNullable<VoiceStatusChipPayload>) {
+    super()
+  }
+
+  eq(other: VoiceStatusChipWidget) {
+    return (
+      this.payload.state === other.payload.state &&
+      this.payload.label === other.payload.label &&
+      this.payload.hint === other.payload.hint &&
+      this.payload.elapsedMs === other.payload.elapsedMs &&
+      this.payload.onCancel === other.payload.onCancel
+    )
+  }
+
+  ignoreEvent(event: Event): boolean {
+    // Allow clicks on the cancel button to reach our handler; suppress other
+    // CodeMirror routing so the widget doesn't move the caret.
+    if (event.type === 'mousedown' || event.type === 'click') {
+      return false
+    }
+    return true
+  }
+
+  toDOM(): HTMLElement {
+    const root = document.createElement('span')
+    root.className = `yolo-voice-status-chip yolo-voice-status-chip--${this.payload.state}`
+
+    const dot = document.createElement('span')
+    dot.className = 'yolo-voice-status-chip__dot'
+    root.appendChild(dot)
+
+    const label = document.createElement('span')
+    label.className = 'yolo-voice-status-chip__label'
+    label.textContent = this.payload.label
+    root.appendChild(label)
+
+    if (typeof this.payload.elapsedMs === 'number') {
+      const timer = document.createElement('span')
+      timer.className = 'yolo-voice-status-chip__timer'
+      timer.textContent = formatChipTimer(this.payload.elapsedMs)
+      root.appendChild(timer)
+    }
+
+    if (this.payload.hint) {
+      const hint = document.createElement('span')
+      hint.className = 'yolo-voice-status-chip__hint'
+      hint.textContent = this.payload.hint
+      root.appendChild(hint)
+    }
+
+    if (this.payload.onCancel) {
+      const cancel = document.createElement('button')
+      cancel.className = 'yolo-voice-status-chip__cancel'
+      cancel.type = 'button'
+      cancel.setAttribute('aria-label', 'Cancel voice input')
+      cancel.textContent = '✕'
+      cancel.addEventListener('mousedown', (e) => {
+        // Prevent CodeMirror from stealing focus / moving the caret.
+        e.preventDefault()
+        e.stopPropagation()
+      })
+      cancel.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        this.payload.onCancel?.()
+      })
+      root.appendChild(cancel)
+    }
+
+    return root
+  }
+}
+
+const formatChipTimer = (elapsedMs: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000))
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+export const voiceStatusChipField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none
+  },
+  update(value, tr) {
+    let decorations = value.map(tr.changes)
+
+    for (const effect of tr.effects) {
+      if (effect.is(voiceStatusChipEffect)) {
+        const payload = effect.value
+        if (!payload) {
+          decorations = Decoration.none
+          continue
+        }
+        const widget = Decoration.widget({
+          widget: new VoiceStatusChipWidget(payload),
+          side: 1,
+        }).range(payload.from)
+        decorations = Decoration.set([widget])
+      }
+    }
+
+    return decorations
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
+
 class ThinkingIndicatorWidget extends WidgetType {
   constructor(
     private readonly label: string,

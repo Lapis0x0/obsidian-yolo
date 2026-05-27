@@ -2,7 +2,11 @@ import { EditorView } from '@codemirror/view'
 import { Editor, MarkdownView, Notice } from 'obsidian'
 
 import { executeSingleTurn } from '../../../core/ai/single-turn'
-import { AsrConfigError, getAsrProvider } from '../../../core/asr/manager'
+import {
+  AsrConfigError,
+  getAsrProvider,
+  resolveActiveAsrConfig,
+} from '../../../core/asr/manager'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
@@ -15,6 +19,7 @@ import {
   parseVoiceEditorDecision,
 } from './voiceDecisionParser'
 import {
+  type RecordedAudio,
   VoiceInputRecorder,
   VoiceInputRecorderError,
 } from './voiceInputRecorder'
@@ -33,6 +38,21 @@ export type VoiceInputState =
 export type VoiceInputStatus = {
   state: VoiceInputState
   error?: string
+  /** Processing phase to show over the waveform while recording continues. */
+  overlayState?: Exclude<VoiceInputState, 'idle' | 'recording'>
+  /** Wall-clock ms when recording began; null while idle. */
+  recordingStartedAt: number | null
+  /** Live audio stream for waveform visualization; null when not recording. */
+  mediaStream: MediaStream | null
+  /** Whether the user can click cancel to abort the active session. */
+  canCancel: boolean
+  /**
+   * Latency of the last ASR call in ms. Populated once we transition out of
+   * `'transcribing'`. The UI surfaces this so users can compare endpoints.
+   */
+  asrDurationMs?: number
+  /** Latency of the last polish LLM call. Populated leaving `'polishing'`. */
+  polishDurationMs?: number
 }
 
 export type VoiceInputStateListener = (status: VoiceInputStatus) => void
@@ -50,6 +70,19 @@ type ActiveSession = {
   abortController: AbortController
   decision: VoiceEditorDecision | null
   ghostFromOffset: number | null
+  recordingStartedAt: number
+  /** Raw ASR transcript, shown as light-grey ghost text before polish. */
+  asrTranscript: string | null
+  /** Polished draft that has not landed in the editor yet. */
+  previousModelOutput: string
+  /** Number of audio segments currently in ASR/polish. */
+  pendingSegmentCount: number
+  /** Serialises polish calls so each segment sees the previous polished draft. */
+  polishTail: Promise<void>
+  /** Captured ASR call duration in ms. */
+  asrDurationMs?: number
+  /** Captured polish LLM call duration in ms. */
+  polishDurationMs?: number
 }
 
 type VoiceInputControllerDeps = {
@@ -122,12 +155,6 @@ const sliceAfter = (
   return fullAfter.slice(0, maxChars)
 }
 
-const truncatePreview = (text: string, limit = 80): string => {
-  const flattened = text.replace(/\s+/g, ' ').trim()
-  if (flattened.length <= limit) return flattened
-  return `${flattened.slice(0, limit)}…`
-}
-
 /**
  * Orchestrates the context-aware voice input feature (Slice A).
  *
@@ -142,10 +169,19 @@ const truncatePreview = (text: string, limit = 80): string => {
  *      selection, after re-validating that the editor target is still
  *      intact.
  */
+const IDLE_STATUS: VoiceInputStatus = {
+  state: 'idle',
+  recordingStartedAt: null,
+  mediaStream: null,
+  canCancel: false,
+  asrDurationMs: undefined,
+  polishDurationMs: undefined,
+}
+
 export class ContextVoiceInputController {
   private recorder: VoiceInputRecorder | null = null
   private session: ActiveSession | null = null
-  private status: VoiceInputStatus = { state: 'idle' }
+  private status: VoiceInputStatus = IDLE_STATUS
   private listeners = new Set<VoiceInputStateListener>()
 
   constructor(private readonly deps: VoiceInputControllerDeps) {}
@@ -184,15 +220,17 @@ export class ContextVoiceInputController {
       await this.stopAndProcess()
       return
     }
-    if (this.status.state === 'idle') {
+    if (this.status.state === 'idle' || this.status.state === 'ready') {
       await this.startRecording(editor)
     }
-    // While transcribing / polishing / ready we ignore toggle requests; the
-    // user can cancel via Esc which clears the ghost preview.
+    // While transcribing / polishing we ignore toggle requests; the user can
+    // cancel via Esc which clears the ghost preview.
   }
 
   async startRecording(editor: Editor): Promise<void> {
-    if (this.status.state !== 'idle') return
+    if (this.status.state !== 'idle' && this.status.state !== 'ready') return
+    const previousSession = this.status.state === 'ready' ? this.session : null
+    const previousModelOutput = previousSession?.decision?.text?.trim() ?? ''
 
     const settings = this.deps.getSettings()
     const options = settings.contextVoiceInputOptions
@@ -238,7 +276,11 @@ export class ContextVoiceInputController {
 
     const recorder = new VoiceInputRecorder()
     try {
-      await recorder.start({ maxRecordingSeconds: options.maxRecordingSeconds })
+      await recorder.start({
+        maxRecordingSeconds: options.maxRecordingSeconds,
+        deviceId: options.microphoneDeviceId,
+        onAutoStop: () => this.handleRecorderAutoStop(recorder),
+      })
     } catch (error) {
       const message =
         error instanceof VoiceInputRecorderError
@@ -252,12 +294,19 @@ export class ContextVoiceInputController {
     const abortController = new AbortController()
     this.deps.addAbortController(abortController)
 
-    if (options.pauseTabCompletionWhileListening) {
-      this.deps.cancelPendingTabCompletion()
+    this.deps.cancelPendingTabCompletion()
+    if (previousSession) {
+      if (previousSession.view) {
+        this.deps.setInlineSuggestionGhost(previousSession.view, null)
+      }
+      this.deps.setActiveVoiceSuggestion(null)
+      this.deps.removeAbortController(previousSession.abortController)
+    } else {
+      this.deps.clearInlineSuggestion()
     }
-    this.deps.clearInlineSuggestion()
     this.deps.setVoiceInputInProgress(true)
 
+    const recordingStartedAt = Date.now()
     this.session = {
       editor,
       view,
@@ -271,8 +320,20 @@ export class ContextVoiceInputController {
       abortController,
       decision: null,
       ghostFromOffset: null,
+      recordingStartedAt,
+      asrTranscript: null,
+      previousModelOutput,
+      pendingSegmentCount: 0,
+      polishTail: Promise.resolve(),
     }
-    this.updateStatus({ state: 'recording' })
+    this.updateStatus('recording')
+  }
+
+  private handleRecorderAutoStop(recorder: VoiceInputRecorder): boolean {
+    if (this.recorder !== recorder) return false
+    if (this.status.state !== 'recording') return false
+    void this.stopAndProcess()
+    return true
   }
 
   async stopAndProcess(): Promise<void> {
@@ -284,7 +345,7 @@ export class ContextVoiceInputController {
       return
     }
 
-    this.updateStatus({ state: 'transcribing' })
+    this.updateStatus('transcribing')
     let audio
     try {
       audio = await recorder.stop()
@@ -295,6 +356,10 @@ export class ContextVoiceInputController {
     this.recorder = null
 
     if (!audio.blob || audio.blob.size === 0) {
+      if (session.decision) {
+        this.updateStatus('ready')
+        return
+      }
       this.handleSessionError(
         new VoiceInputRecorderError(
           'No audio captured — the recording was empty.',
@@ -305,11 +370,127 @@ export class ContextVoiceInputController {
     }
 
     const settings = this.deps.getSettings()
-    const options = settings.contextVoiceInputOptions
+    await this.processAudioSegment({ session, audio, settings })
+  }
 
-    let transcript: string
+  async stopSegmentAndContinue(): Promise<void> {
+    if (this.status.state !== 'recording') return
+    const session = this.session
+    const recorder = this.recorder
+    if (!session || !recorder) {
+      this.cancelActiveSession('internal-error')
+      return
+    }
+
+    this.updateStatus('recording', 'transcribing')
+    let audio: RecordedAudio
+    try {
+      audio = await recorder.stop()
+    } catch (error) {
+      this.handleSessionError(error)
+      return
+    }
+    this.recorder = null
+
+    if (!audio.blob || audio.blob.size === 0) {
+      if (session.decision) {
+        await this.startNextRecordingSegment(session, this.deps.getSettings())
+        return
+      }
+      this.handleSessionError(
+        new VoiceInputRecorderError(
+          'No audio captured — the recording was empty.',
+          'unknown',
+        ),
+      )
+      return
+    }
+
+    const settings = this.deps.getSettings()
+    await this.startNextRecordingSegment(session, settings)
+    if (!this.session || this.session !== session) return
+    void this.processAudioSegment({ session, audio, settings })
+  }
+
+  private async startNextRecordingSegment(
+    session: ActiveSession,
+    settings: YoloSettings,
+  ): Promise<void> {
+    const options = settings.contextVoiceInputOptions
+    const recorder = new VoiceInputRecorder()
+    try {
+      await recorder.start({
+        maxRecordingSeconds: options.maxRecordingSeconds,
+        deviceId: options.microphoneDeviceId,
+        onAutoStop: () => this.handleRecorderAutoStop(recorder),
+      })
+    } catch (error) {
+      this.handleSessionError(error)
+      return
+    }
+    if (!this.session || this.session !== session) {
+      recorder.cancel()
+      return
+    }
+    this.recorder = recorder
+    session.recordingStartedAt = Date.now()
+    this.updateStatus('recording', 'transcribing')
+  }
+
+  private async processAudioSegment({
+    session,
+    audio,
+    settings,
+  }: {
+    session: ActiveSession
+    audio: RecordedAudio
+    settings: YoloSettings
+  }): Promise<void> {
+    session.pendingSegmentCount += 1
+    const transcriptPromise = this.transcribeAudioSegment({
+      session,
+      audio,
+      settings,
+    })
+    const run = async (): Promise<void> => {
+      try {
+        const transcript = await transcriptPromise
+        if (!transcript) return
+        await this.runAudioSegmentPipeline({ session, transcript, settings })
+      } finally {
+        if (!this.session || this.session !== session) {
+          return
+        }
+        session.pendingSegmentCount = Math.max(
+          0,
+          session.pendingSegmentCount - 1,
+        )
+        this.updateProcessingStatus(session)
+      }
+    }
+    const task = session.polishTail.then(run, run)
+    session.polishTail = task.catch(() => {
+      // The concrete error has already been surfaced by runAudioSegmentPipeline.
+    })
+    await task
+  }
+
+  private async transcribeAudioSegment({
+    session,
+    audio,
+    settings,
+  }: {
+    session: ActiveSession
+    audio: RecordedAudio
+    settings: YoloSettings
+  }): Promise<string | null> {
+    const options = settings.contextVoiceInputOptions
+    const asrStartedAt = Date.now()
     try {
       const asrProvider = getAsrProvider(options)
+      // Language is now stored per-config (see v63→v64 migration); pull it
+      // from the active config rather than the legacy top-level field.
+      const activeConfig = resolveActiveAsrConfig(options)
       const asrResult = await asrProvider.transcribe(
         {
           blob: audio.blob,
@@ -317,30 +498,55 @@ export class ContextVoiceInputController {
           durationMs: audio.durationMs,
         },
         {
-          language: options.language,
+          language: activeConfig?.language,
           signal: session.abortController.signal,
         },
       )
-      transcript = asrResult.text?.trim() ?? ''
+      // Prefer the provider-reported duration when present (more accurate;
+      // strips out our own queue/preamble). Fall back to wall clock.
+      session.asrDurationMs =
+        asrResult.requestDurationMs ?? Date.now() - asrStartedAt
+      const transcript = asrResult.text?.trim() ?? ''
+      if (!transcript) {
+        if (session.decision) {
+          return null
+        }
+        this.handleSessionError(new Error('ASR returned an empty transcript.'))
+        return null
+      }
+      return transcript
     } catch (error) {
       this.handleSessionError(error)
-      return
+      return null
     }
+  }
 
-    if (!transcript) {
-      this.handleSessionError(new Error('ASR returned an empty transcript.'))
-      return
-    }
-
-    this.updateStatus({ state: 'polishing' })
+  private async runAudioSegmentPipeline({
+    session,
+    transcript,
+    settings,
+  }: {
+    session: ActiveSession
+    transcript: string
+    settings: YoloSettings
+  }): Promise<void> {
+    // Phase 1: show the raw ASR transcript as a light-grey ghost so the user
+    // sees something land immediately. Phase 2 below replaces it with the
+    // polished dark-grey candidate (the only one the user can accept).
+    if (!this.session || this.session !== session) return
+    session.asrTranscript = transcript
+    this.showAsrPreview(session, transcript)
+    this.updateProcessingStatus(session, 'polishing')
 
     let decision: VoiceEditorDecision
+    const polishStartedAt = Date.now()
     try {
       decision = await this.polishTranscript({
         transcript,
         session,
         settings,
       })
+      session.polishDurationMs = Date.now() - polishStartedAt
     } catch (error) {
       this.handleSessionError(error)
       return
@@ -362,7 +568,32 @@ export class ContextVoiceInputController {
       return
     }
 
+    session.previousModelOutput = decision.text
     this.showPolishedPreview(session, decision)
+  }
+
+  private updateProcessingStatus(
+    session: ActiveSession,
+    overlayState?: Exclude<VoiceInputState, 'idle' | 'recording'>,
+  ): void {
+    if (!this.session || this.session !== session) return
+    if (this.status.state === 'recording') {
+      this.updateStatus('recording', overlayState ?? 'ready')
+      return
+    }
+    if (session.pendingSegmentCount > 0) {
+      this.updateStatus(overlayState ?? 'polishing')
+      return
+    }
+    if (session.decision) {
+      this.updateStatus('ready')
+    }
+  }
+
+  acceptPendingPreview(editor?: Editor): boolean {
+    const view = editor ? this.deps.getEditorView(editor) : this.session?.view
+    if (!view) return false
+    return this.tryAcceptFromView(view)
   }
 
   private async polishTranscript({
@@ -413,12 +644,26 @@ export class ContextVoiceInputController {
       options,
       target,
       asrTranscript: transcript,
+      previousModelOutput: session.previousModelOutput || undefined,
     })
 
     const request: LLMRequestBase = {
       model: model.model,
       messages,
-      temperature: 0.2,
+      // Force thinking OFF (instead of leaving it unset). Voice polish is a
+      // latency-sensitive lightweight rewrite; without this, models whose
+      // default is thinking-on (e.g. some reasoning-tier endpoints) will
+      // burn 5-30 s on hidden reasoning before emitting the JSON envelope.
+      // We pass an explicit 'off' so providers that respect a level override
+      // disable thinking even when their server-side default is enabled.
+      reasoningLevel: 'off',
+    }
+    const polishTemperature =
+      typeof options.polishTemperature === 'number'
+        ? options.polishTemperature
+        : model.temperature
+    if (typeof polishTemperature === 'number') {
+      request.temperature = Math.min(Math.max(polishTemperature, 0), 2)
     }
 
     const result = await executeSingleTurn({
@@ -436,6 +681,32 @@ export class ContextVoiceInputController {
 
     return parseVoiceEditorDecision(result.content ?? '', {
       hasSelection: session.hasSelection,
+    })
+  }
+
+  /**
+   * Phase 1 of the two-phase preview. Shows the raw ASR transcript as a
+   * light-grey ghost at the cursor (or selection end) so the user sees
+   * something land within a few hundred ms of stopping the recording. We do
+   * NOT register this as the active inline suggestion — Tab still waits for
+   * the polished phase to land. The chip continues to read "整理中".
+   */
+  private showAsrPreview(session: ActiveSession, transcript: string): void {
+    const view = session.view
+    if (!view) return
+    if (this.deps.getEditorView(session.editor) !== view) return
+    const fromOffset = session.hasSelection
+      ? session.selectionToOffset
+      : session.startCursorOffset
+    session.ghostFromOffset = fromOffset
+    const previewText = session.previousModelOutput
+      ? `${session.previousModelOutput}\n${transcript}`
+      : transcript
+    const safeText = previewText.replace(/\r/g, '')
+    this.deps.setInlineSuggestionGhost(view, {
+      from: fromOffset,
+      text: safeText,
+      variant: 'voice-asr',
     })
   }
 
@@ -469,7 +740,6 @@ export class ContextVoiceInputController {
     }
 
     const safeText = decision.text.replace(/\r/g, '')
-    const previewText = truncatePreview(safeText, 240)
 
     session.ghostFromOffset = fromOffset
     this.deps.setInlineSuggestionGhost(view, {
@@ -484,8 +754,14 @@ export class ContextVoiceInputController {
       text: safeText,
     })
 
-    this.updateStatus({ state: 'ready' })
-    new Notice(`Voice ready — Tab to insert: "${previewText}"`)
+    // The floating-island status bar already shows "Tab to insert · Esc to
+    // discard" the moment we hit 'ready', and the ghost text itself is the
+    // preview — an extra Notice on top of those was just noise.
+    if (this.status.state === 'recording') {
+      this.updateStatus('recording', 'ready')
+    } else {
+      this.updateStatus('ready')
+    }
   }
 
   tryAcceptFromView(view: EditorView): boolean {
@@ -594,14 +870,10 @@ export class ContextVoiceInputController {
     this.session = null
 
     if (reason === 'shutdown') {
-      this.updateStatus({ state: 'idle' })
+      this.updateStatus('idle')
       return
     }
-    const userVisible = reason !== 'rejected'
-    if (userVisible) {
-      // Silent for now; future Slice can surface a chip with the reason.
-    }
-    this.updateStatus({ state: 'idle' })
+    this.updateStatus('idle')
   }
 
   private finishSession(): void {
@@ -616,7 +888,7 @@ export class ContextVoiceInputController {
     this.deps.setVoiceInputInProgress(false)
     this.session = null
     this.recorder = null
-    this.updateStatus({ state: 'idle' })
+    this.updateStatus('idle')
   }
 
   private handleSessionError(error: unknown): void {
@@ -636,10 +908,26 @@ export class ContextVoiceInputController {
     this.cancelActiveSession(aborted ? 'aborted' : 'error')
   }
 
-  private updateStatus(status: VoiceInputStatus): void {
-    this.status = status
+  private updateStatus(
+    state: VoiceInputState,
+    overlayState?: VoiceInputStatus['overlayState'],
+  ): void {
+    const session = this.session
+    const next: VoiceInputStatus = {
+      state,
+      overlayState,
+      recordingStartedAt: session?.recordingStartedAt ?? null,
+      mediaStream:
+        state === 'recording' && this.recorder
+          ? this.recorder.getMediaStream()
+          : null,
+      canCancel: state !== 'idle',
+      asrDurationMs: session?.asrDurationMs,
+      polishDurationMs: session?.polishDurationMs,
+    }
+    this.status = next
     for (const listener of this.listeners) {
-      listener(status)
+      listener(next)
     }
   }
 

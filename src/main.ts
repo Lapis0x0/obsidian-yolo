@@ -10,7 +10,6 @@ import {
   TFolder,
   getLanguage,
   normalizePath,
-  setIcon,
 } from 'obsidian'
 
 import { ChatView } from './ChatView'
@@ -20,6 +19,7 @@ import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
+import { isAsrConfigured } from './core/asr/manager'
 import {
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
@@ -83,6 +83,7 @@ import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhanc
 import { ExportConfigModal } from './features/config-transfer/components/ExportConfigModal'
 import { ImportConfigModal } from './features/config-transfer/components/ImportConfigModal'
 import { ContextVoiceInputController } from './features/editor/context-voice-input/contextVoiceInputController'
+import { VoiceFloatingIslandController } from './features/editor/context-voice-input/voiceFloatingIslandController'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildFullReviewBlocks,
@@ -154,7 +155,8 @@ export default class YoloPlugin extends Plugin {
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
   private contextVoiceInputController: ContextVoiceInputController | null = null
-  private voiceInputStatusBarItem: HTMLElement | null = null
+  private voiceFloatingIslandController: VoiceFloatingIslandController | null =
+    null
   private diffReviewController: DiffReviewController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
@@ -876,26 +878,44 @@ export default class YoloPlugin extends Plugin {
     return this.agentNotificationCoordinator
   }
 
-  private setupVoiceInputStatusBar(): void {
-    if (this.voiceInputStatusBarItem) return
-    const item = this.addStatusBarItem()
-    item.addClass('mod-clickable')
-    item.addClass('yolo-voice-input-status-bar')
-    item.setAttr('aria-label', 'Voice input: idle')
-    item.dataset.voiceState = 'idle'
-    setIcon(item, 'mic')
-    item.addEventListener('click', () => {
-      const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
-      if (!markdownView?.editor) {
-        new Notice(
-          'Open a markdown editor first — voice input writes into the focused note.',
-        )
-        return
-      }
-      void this.getContextVoiceInputController().toggle(markdownView.editor)
-    })
-    this.voiceInputStatusBarItem = item
-    this.refreshVoiceInputStatusBar()
+  /**
+   * The voice input mic lives as a floating island at the bottom of the
+   * active editor. Status text + waveform + timer + interaction-mode toggle
+   * all surface inside that single bar, so the user has one place to look.
+   */
+  private ensureVoiceFloatingIsland(): VoiceFloatingIslandController {
+    if (!this.voiceFloatingIslandController) {
+      this.voiceFloatingIslandController = new VoiceFloatingIslandController({
+        getController: () => this.contextVoiceInputController,
+        getActiveMarkdownView: () =>
+          this.app.workspace.getActiveViewOfType(MarkdownView),
+        t: (key, fallback) => this.t(key, fallback),
+        isFeatureReady: () => {
+          const opts = this.settings?.contextVoiceInputOptions
+          return !!opts && opts.enabled && isAsrConfigured(opts)
+        },
+        getInteractionMode: () =>
+          this.settings.contextVoiceInputOptions.interactionMode,
+        setInteractionMode: async (mode) => {
+          await this.setSettings({
+            ...this.settings,
+            contextVoiceInputOptions: {
+              ...this.settings.contextVoiceInputOptions,
+              interactionMode: mode,
+            },
+          })
+        },
+        getVadOptions: () => {
+          const voice = this.settings.contextVoiceInputOptions
+          return {
+            speechStartDecibels: voice.vadSpeechStartDecibels,
+            silenceDecibels: voice.vadSilenceDecibels,
+            silenceHoldMs: voice.vadSilenceHoldMs,
+          }
+        },
+      })
+    }
+    return this.voiceFloatingIslandController
   }
 
   private setupBackgroundActivityStatusBar(): void {
@@ -1582,32 +1602,10 @@ export default class YoloPlugin extends Plugin {
         },
         setVoiceInputInProgress: (inProgress) => {
           this.isVoiceInputInProgress = inProgress
-          this.refreshVoiceInputStatusBar()
         },
-      })
-      this.contextVoiceInputController.subscribe(() => {
-        this.refreshVoiceInputStatusBar()
       })
     }
     return this.contextVoiceInputController
-  }
-
-  private refreshVoiceInputStatusBar(): void {
-    const el = this.voiceInputStatusBarItem
-    if (!el) return
-    const controller = this.contextVoiceInputController
-    const status = controller?.getStatus().state ?? 'idle'
-    el.dataset.voiceState = status
-    const label =
-      status === 'recording'
-        ? 'mic-off'
-        : status === 'transcribing' || status === 'polishing'
-          ? 'loader'
-          : status === 'ready'
-            ? 'check'
-            : 'mic'
-    el.setAttr('aria-label', `Voice input: ${status}`)
-    setIcon(el, label)
   }
 
   private getDiffReviewController(): DiffReviewController {
@@ -1938,7 +1936,10 @@ export default class YoloPlugin extends Plugin {
       },
     })
 
-    this.setupVoiceInputStatusBar()
+    // Lazily build the controller so the floating island can subscribe to it
+    // immediately when the user opens a markdown view.
+    this.getContextVoiceInputController()
+    this.ensureVoiceFloatingIsland().attachToActiveView()
 
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
@@ -2109,6 +2110,9 @@ export default class YoloPlugin extends Plugin {
           this.selectionChatController?.handleActiveLeafChange(leaf ?? null)
           // Update selection manager with new editor container
           this.initializeSelectionChat()
+          // Re-attach the voice floating island to whichever markdown view is
+          // now active. No-op when the active leaf is not a markdown view.
+          this.voiceFloatingIslandController?.attachToActiveView()
         } catch (err) {
           console.error('Editor change handler error:', err)
         }
@@ -2130,6 +2134,9 @@ export default class YoloPlugin extends Plugin {
         this.initializeSelectionChat()
       }
       this.syncSelectionChatCommands()
+      // Voice feature gating may have flipped (enable toggled, ASR configured);
+      // re-render the island so it shows/hides accordingly.
+      this.voiceFloatingIslandController?.attachToActiveView()
     })
   }
 
@@ -2143,7 +2150,8 @@ export default class YoloPlugin extends Plugin {
     this.newTabEmptyStateEnhancer = null
     this.contextVoiceInputController?.destroy()
     this.contextVoiceInputController = null
-    this.voiceInputStatusBarItem = null
+    this.voiceFloatingIslandController?.destroy()
+    this.voiceFloatingIslandController = null
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null

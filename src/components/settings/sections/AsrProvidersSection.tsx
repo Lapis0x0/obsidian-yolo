@@ -1,191 +1,363 @@
-import { useCallback, useMemo, useState } from 'react'
+import { GripVertical, Settings, Trash2 } from 'lucide-react'
+import { App, Notice } from 'obsidian'
+import {
+  type DragEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { buildAsrProviderForFormat } from '../../../core/asr/manager'
-import type { AsrAudioInput } from '../../../core/asr/types'
-import { VoiceInputRecorder } from '../../../features/editor/context-voice-input/voiceInputRecorder'
-import {
-  ASR_API_FORMATS,
-  type AsrApiFormat,
-  type AsrProviderProfiles,
-  type ContextVoiceInputOptions,
+import YoloPlugin from '../../../main'
+import type {
+  AsrApiFormat,
+  AsrConfig,
 } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
-import { ObsidianTextInput } from '../../common/ObsidianTextInput'
+import { ConfirmModal } from '../../modals/ConfirmModal'
+import {
+  AddAsrConfigModal,
+  EditAsrConfigModal,
+} from '../modals/AsrConfigFormModal'
 
-type TestStatus = ContextVoiceInputOptions['lastAsrTestStatus']
-
-const TEST_RECORDING_SECONDS = 5
-
-const formatLabel = (format: AsrApiFormat): string => {
-  switch (format) {
-    case 'openai-compatible-transcription':
-      return 'OpenAI-compatible transcription (/v1/audio/transcriptions)'
-    case 'openai-compatible-chat-audio-asr':
-      return 'OpenAI-compatible chat audio ASR (/v1/chat/completions)'
-    default:
-      return format
-  }
+type AsrProvidersSectionProps = {
+  app: App
+  plugin: YoloPlugin
 }
 
-export function AsrProvidersSection() {
+type MicDevice = { deviceId: string; label: string }
+
+const FORMAT_LABEL: Record<AsrApiFormat, string> = {
+  'openai-compatible-transcription': 'Transcription',
+  'openai-compatible-chat-audio-asr': 'Chat audio ASR',
+}
+
+const summariseConfig = (config: AsrConfig): string => {
+  const parts: string[] = []
+  parts.push(FORMAT_LABEL[config.format] ?? config.format)
+  if (config.model) parts.push(config.model)
+  if (config.audioFormat === 'wav') parts.push('wav')
+  return parts.join(' · ')
+}
+
+export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
-  const [testRunning, setTestRunning] = useState(false)
-  const [testTranscript, setTestTranscript] = useState<string>('')
+  const configs: AsrConfig[] = voice.asrConfigs ?? []
+  const activeId =
+    voice.activeAsrConfigId &&
+    configs.some((c) => c.id === voice.activeAsrConfigId)
+      ? voice.activeAsrConfigId
+      : (configs[0]?.id ?? '')
 
-  const selectedFormat = voice.selectedAsrApiFormat
-  const profiles = voice.asrProviderProfiles
+  const dragIndexRef = useRef<number | null>(null)
+  const dragOverRowRef = useRef<HTMLTableRowElement | null>(null)
+  const lastDropPosRef = useRef<'before' | 'after' | null>(null)
+  const lastInsertIndexRef = useRef<number | null>(null)
+  const [micDevices, setMicDevices] = useState<MicDevice[]>([])
+  const [micEnumerationLabelsBlocked, setMicEnumerationLabelsBlocked] =
+    useState(false)
 
-  const updateVoice = useCallback(
-    (patch: Partial<ContextVoiceInputOptions>, context: string) => {
-      void (async () => {
-        try {
-          await setSettings({
-            ...settings,
-            contextVoiceInputOptions: {
-              ...voice,
-              ...patch,
-            },
-          })
-        } catch (error: unknown) {
-          console.error(
-            `Failed to update voice input settings: ${context}`,
-            error,
-          )
-        }
-      })()
-    },
-    [settings, setSettings, voice],
-  )
+  const refreshMicDevices = useCallback(async () => {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.enumerateDevices !== 'function'
+    ) {
+      return
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const mics = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map<MicDevice>((d) => ({
+          deviceId: d.deviceId,
+          label: d.label || '',
+        }))
+      setMicDevices(mics)
+      setMicEnumerationLabelsBlocked(
+        mics.length > 0 && mics.every((m) => m.label.length === 0),
+      )
+    } catch (error) {
+      console.error('Failed to enumerate microphones', error)
+    }
+  }, [])
 
-  const updateProfile = useCallback(
-    <K extends keyof AsrProviderProfiles>(
-      format: K,
-      patch: Partial<NonNullable<AsrProviderProfiles[K]>>,
-    ) => {
-      const existing =
-        profiles[format] ?? ({} as NonNullable<AsrProviderProfiles[K]>)
-      const next: AsrProviderProfiles = {
-        ...profiles,
-        [format]: { ...existing, ...patch },
+  useEffect(() => {
+    void refreshMicDevices()
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.addEventListener === 'function'
+    ) {
+      const handler = () => void refreshMicDevices()
+      navigator.mediaDevices.addEventListener('devicechange', handler)
+      return () => {
+        navigator.mediaDevices?.removeEventListener?.('devicechange', handler)
       }
-      updateVoice(
-        {
-          asrProviderProfiles: next,
-          lastAsrTestStatus: 'untested',
-          lastAsrTestMessage: '',
+    }
+  }, [refreshMicDevices])
+
+  const unlockMicLabels = useCallback(async () => {
+    if (!navigator?.mediaDevices?.getUserMedia) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((t) => t.stop())
+      await refreshMicDevices()
+    } catch (error) {
+      console.error('Mic permission grant failed', error)
+    }
+  }, [refreshMicDevices])
+
+  const micOptions = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {
+      '': t('settings.asr.micDefault', 'System default'),
+    }
+    micDevices.forEach((device, index) => {
+      const label = device.label || `Microphone ${index + 1}`
+      out[device.deviceId] = label
+    })
+    return out
+  }, [micDevices, t])
+
+  const persistConfigs = useCallback(
+    async (
+      nextConfigs: AsrConfig[],
+      nextActiveId: string = activeId,
+    ): Promise<void> => {
+      await setSettings({
+        ...settings,
+        contextVoiceInputOptions: {
+          ...voice,
+          asrConfigs: nextConfigs,
+          activeAsrConfigId:
+            nextActiveId && nextConfigs.some((c) => c.id === nextActiveId)
+              ? nextActiveId
+              : (nextConfigs[0]?.id ?? ''),
         },
-        `asrProviderProfile.${String(format)}`,
-      )
-      setTestTranscript('')
-    },
-    [profiles, updateVoice],
-  )
-
-  const transcriptionProfile = useMemo(
-    () => profiles['openai-compatible-transcription'] ?? null,
-    [profiles],
-  )
-  const chatAudioProfile = useMemo(
-    () => profiles['openai-compatible-chat-audio-asr'] ?? null,
-    [profiles],
-  )
-
-  const handleFormatChange = useCallback(
-    (value: string) => {
-      if ((ASR_API_FORMATS as readonly string[]).includes(value)) {
-        updateVoice(
-          { selectedAsrApiFormat: value as AsrApiFormat },
-          'selectedAsrApiFormat',
-        )
-        setTestTranscript('')
-      }
-    },
-    [updateVoice],
-  )
-
-  const runVoiceTest = useCallback(async () => {
-    if (testRunning) return
-    setTestRunning(true)
-    setTestTranscript('')
-
-    let provider
-    try {
-      provider = buildAsrProviderForFormat(selectedFormat, profiles)
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'ASR not configured.'
-      updateVoice(
-        { lastAsrTestStatus: 'failed', lastAsrTestMessage: message },
-        'asrTest.configError',
-      )
-      setTestRunning(false)
-      return
-    }
-
-    const recorder = new VoiceInputRecorder()
-    let recorded: AsrAudioInput | null = null
-    try {
-      await recorder.start({ maxRecordingSeconds: TEST_RECORDING_SECONDS })
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, TEST_RECORDING_SECONDS * 1000),
-      )
-      const audio = await recorder.stop()
-      recorded = {
-        blob: audio.blob,
-        mimeType: audio.mimeType,
-        durationMs: audio.durationMs,
-      }
-    } catch (error: unknown) {
-      try {
-        recorder.cancel()
-      } catch {
-        // noop
-      }
-      const message =
-        error instanceof Error ? error.message : 'Recording failed.'
-      updateVoice(
-        { lastAsrTestStatus: 'failed', lastAsrTestMessage: message },
-        'asrTest.recordError',
-      )
-      setTestRunning(false)
-      return
-    }
-
-    try {
-      const result = await provider.transcribe(recorded, {
-        language: voice.language,
       })
-      const text = (result.text ?? '').trim()
-      setTestTranscript(text)
-      updateVoice(
-        {
-          lastAsrTestStatus: text.length > 0 ? 'passed' : 'failed',
-          lastAsrTestMessage:
-            text.length > 0
-              ? `OK (${result.requestDurationMs ?? 0} ms)`
-              : 'ASR returned empty text.',
-        },
-        'asrTest.transcribe',
-      )
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'ASR request failed.'
-      updateVoice(
-        { lastAsrTestStatus: 'failed', lastAsrTestMessage: message },
-        'asrTest.transcribeError',
-      )
-    } finally {
-      setTestRunning(false)
-    }
-  }, [profiles, selectedFormat, testRunning, updateVoice, voice.language])
+    },
+    [settings, setSettings, voice, activeId],
+  )
 
-  const testStatus: TestStatus = voice.lastAsrTestStatus ?? 'untested'
+  const handleSetActive = (id: string) => {
+    if (id === activeId) return
+    void (async () => {
+      try {
+        await persistConfigs(configs, id)
+      } catch (error: unknown) {
+        console.error('Failed to switch ASR config', error)
+      }
+    })()
+  }
+
+  const handleDelete = (config: AsrConfig) => {
+    const message = `Delete "${config.name || config.id}"?`
+    new ConfirmModal(app, {
+      title: 'Delete ASR configuration',
+      message,
+      ctaText: 'Delete',
+      onConfirm: () => {
+        void (async () => {
+          try {
+            const next = configs.filter((c) => c.id !== config.id)
+            await persistConfigs(next)
+          } catch (error: unknown) {
+            console.error('Failed to delete ASR config', error)
+            new Notice('Failed to delete ASR config.')
+          }
+        })()
+      },
+    }).open()
+  }
+
+  const handleEdit = (config: AsrConfig) => {
+    new EditAsrConfigModal(app, plugin, config).open()
+  }
+
+  const handleAdd = () => {
+    new AddAsrConfigModal(app, plugin).open()
+  }
+
+  const handleMicChange = (value: string) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          contextVoiceInputOptions: {
+            ...voice,
+            microphoneDeviceId: value,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update microphone device', error)
+      }
+    })()
+  }
+
+  const triggerDropSuccess = (movedId: string) => {
+    const escapedId = window.CSS?.escape
+      ? window.CSS.escape(movedId)
+      : movedId.replace(/"/g, '\\"')
+    const tryFind = (attempt = 0) => {
+      const movedRow = document.querySelector(
+        `tr[data-config-id="${escapedId}"]`,
+      )
+      if (movedRow) {
+        movedRow.classList.add('yolo-row-drop-success')
+        window.setTimeout(() => {
+          movedRow.classList.remove('yolo-row-drop-success')
+        }, 700)
+      } else if (attempt < 8) {
+        window.setTimeout(() => tryFind(attempt + 1), 50)
+      }
+    }
+    requestAnimationFrame(() => tryFind())
+  }
+
+  const clearDragOverIndicator = () => {
+    if (dragOverRowRef.current) {
+      dragOverRowRef.current.classList.remove(
+        'yolo-row-drag-over-before',
+        'yolo-row-drag-over-after',
+      )
+      dragOverRowRef.current = null
+    }
+  }
+
+  const handleDragStart = (
+    event: DragEvent<HTMLTableRowElement>,
+    index: number,
+  ) => {
+    dragIndexRef.current = index
+    if (event.dataTransfer) {
+      event.dataTransfer.setData('text/plain', configs[index]?.id ?? '')
+      event.dataTransfer.effectAllowed = 'move'
+    }
+    event.currentTarget.classList.add('yolo-row-dragging')
+    const handle = event.currentTarget.querySelector('.yolo-drag-handle')
+    if (handle) handle.classList.add('yolo-drag-handle--active')
+  }
+
+  const handleDragOver = (
+    event: DragEvent<HTMLTableRowElement>,
+    targetIndex: number,
+  ) => {
+    // preventDefault + matching dropEffect together are what actually arm the
+    // row as a drop target. Dropping `dropEffect = 'move'` here was the bug
+    // that made reordering look non-functional.
+    event.preventDefault()
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move'
+    }
+    if (dragIndexRef.current === null) return
+
+    const row = event.currentTarget
+    const rect = row.getBoundingClientRect()
+    const rel = (event.clientY - rect.top) / rect.height
+
+    if (dragIndexRef.current === targetIndex) {
+      row.classList.remove(
+        'yolo-row-drag-over-before',
+        'yolo-row-drag-over-after',
+      )
+      if (dragOverRowRef.current && dragOverRowRef.current !== row) {
+        dragOverRowRef.current.classList.remove(
+          'yolo-row-drag-over-before',
+          'yolo-row-drag-over-after',
+        )
+      }
+      dragOverRowRef.current = row
+      lastDropPosRef.current = null
+      lastInsertIndexRef.current = null
+      return
+    }
+
+    const hysteresis = 0.05
+    let dropAfter: boolean
+    if (lastDropPosRef.current) {
+      if (rel > 0.5 + hysteresis) dropAfter = true
+      else if (rel < 0.5 - hysteresis) dropAfter = false
+      else dropAfter = lastDropPosRef.current === 'after'
+    } else {
+      dropAfter = rel > 0.5
+    }
+
+    const sourceIndex = dragIndexRef.current
+    let insertIndex = targetIndex + (dropAfter ? 1 : 0)
+    if (sourceIndex < targetIndex) insertIndex -= 1
+    if (lastInsertIndexRef.current === insertIndex) return
+
+    if (dragOverRowRef.current) {
+      dragOverRowRef.current.classList.remove(
+        'yolo-row-drag-over-before',
+        'yolo-row-drag-over-after',
+      )
+    }
+
+    row.classList.remove(
+      'yolo-row-drag-over-before',
+      'yolo-row-drag-over-after',
+    )
+    row.classList.add(
+      dropAfter ? 'yolo-row-drag-over-after' : 'yolo-row-drag-over-before',
+    )
+    dragOverRowRef.current = row
+    lastDropPosRef.current = dropAfter ? 'after' : 'before'
+    lastInsertIndexRef.current = insertIndex
+  }
+
+  const handleDragEnd = () => {
+    dragIndexRef.current = null
+    clearDragOverIndicator()
+    lastDropPosRef.current = null
+    lastInsertIndexRef.current = null
+    const dragging = document.querySelector('tr.yolo-row-dragging')
+    if (dragging) dragging.classList.remove('yolo-row-dragging')
+    const activeHandle = document.querySelector(
+      '.yolo-drag-handle.yolo-drag-handle--active',
+    )
+    if (activeHandle) activeHandle.classList.remove('yolo-drag-handle--active')
+  }
+
+  const handleDrop = (
+    event: DragEvent<HTMLTableRowElement>,
+    targetIndex: number,
+  ) => {
+    event.preventDefault()
+    const sourceIndex = dragIndexRef.current
+    dragIndexRef.current = null
+    clearDragOverIndicator()
+    if (sourceIndex === null || sourceIndex === targetIndex) return
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const dropAfter = event.clientY - rect.top > rect.height / 2
+
+    void (async () => {
+      try {
+        const next = [...configs]
+        const [moved] = next.splice(sourceIndex, 1)
+        if (!moved) return
+        let insertIndex = targetIndex + (dropAfter ? 1 : 0)
+        if (sourceIndex < insertIndex) insertIndex -= 1
+        if (insertIndex < 0) insertIndex = 0
+        if (insertIndex > next.length) insertIndex = next.length
+        next.splice(insertIndex, 0, moved)
+        await persistConfigs(next)
+        triggerDropSuccess(moved.id)
+      } catch (error: unknown) {
+        console.error('Failed to reorder ASR configs', error)
+      } finally {
+        handleDragEnd()
+      }
+    })()
+  }
 
   return (
     <div className="yolo-settings-section yolo-settings-section--tight">
@@ -197,267 +369,138 @@ export function AsrProvidersSection() {
             </div>
             <div className="yolo-settings-desc yolo-settings-block-desc">
               {t(
-                'settings.asr.description',
-                'Configure how recorded audio is transcribed for context-aware voice input. The polish LLM is set under Editor → Voice input.',
+                'settings.asr.descriptionV2',
+                'Each entry is one ASR endpoint. The radio button picks which one is used at runtime; click the gear to edit fields, drag the handle to reorder. The polish LLM is selected separately under Editor → Voice input.',
               )}
             </div>
+          </div>
+          <div className="yolo-settings-block-action">
+            <ObsidianButton
+              text={t('settings.asr.addConfig', 'Add ASR configuration')}
+              onClick={handleAdd}
+              cta
+            />
           </div>
         </div>
 
         <div className="yolo-settings-block-content">
+          <div className="yolo-settings-table-container">
+            <table className="yolo-settings-table">
+              <colgroup>
+                <col width={16} />
+                <col width={40} />
+                <col />
+                <col />
+                <col width={90} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>{t('settings.asr.colActive', 'Active')}</th>
+                  <th>{t('settings.asr.colName', 'Name')}</th>
+                  <th>{t('settings.asr.colSummary', 'Format · model')}</th>
+                  <th>{t('settings.asr.colActions', 'Actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {configs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ color: 'var(--text-muted)' }}>
+                      {t(
+                        'settings.asr.emptyHint',
+                        'No ASR endpoint configured yet. Use the add button above.',
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {configs.map((config, index) => (
+                  <tr
+                    key={config.id}
+                    data-config-id={config.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <td>
+                      <span
+                        className="yolo-drag-handle"
+                        aria-label="Drag to reorder"
+                      >
+                        <GripVertical />
+                      </span>
+                    </td>
+                    <td>
+                      <input
+                        type="radio"
+                        name="yolo-asr-active"
+                        checked={config.id === activeId}
+                        onChange={() => handleSetActive(config.id)}
+                      />
+                    </td>
+                    <td>{config.name || '(unnamed)'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>
+                      {summariseConfig(config)}
+                    </td>
+                    <td>
+                      <div className="yolo-settings-actions">
+                        <button
+                          type="button"
+                          className="clickable-icon"
+                          onClick={() => handleEdit(config)}
+                          aria-label="Edit configuration"
+                        >
+                          <Settings />
+                        </button>
+                        <button
+                          type="button"
+                          className="clickable-icon"
+                          onClick={() => handleDelete(config)}
+                          aria-label="Delete configuration"
+                        >
+                          <Trash2 />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           <ObsidianSetting
-            name={t('settings.asr.apiFormat', 'API format')}
+            name={t('settings.asr.microphone', 'Microphone')}
             desc={t(
-              'settings.asr.apiFormatDesc',
-              'Switching formats keeps the other format’s configuration so you can A/B-test endpoints without retyping.',
+              'settings.asr.microphoneDesc',
+              'Pick a specific input device. Labels appear after granting microphone permission once — use the unlock button if they show as "Microphone 1/2/...".',
             )}
             className="yolo-models-select-card"
           >
             <ObsidianDropdown
-              value={selectedFormat}
-              options={Object.fromEntries(
-                ASR_API_FORMATS.map((f) => [f, formatLabel(f)]),
+              value={voice.microphoneDeviceId ?? ''}
+              options={micOptions}
+              onChange={handleMicChange}
+            />
+          </ObsidianSetting>
+
+          {micEnumerationLabelsBlocked && (
+            <ObsidianSetting
+              name={t(
+                'settings.asr.microphoneUnlock',
+                'Unlock microphone labels',
               )}
-              onChange={handleFormatChange}
-            />
-          </ObsidianSetting>
-
-          {selectedFormat === 'openai-compatible-transcription' && (
-            <>
-              <ObsidianSetting
-                name={t('settings.asr.baseURL', 'Base URL')}
-                desc={t(
-                  'settings.asr.baseURLDesc',
-                  'Root URL of the OpenAI-compatible transcription server, including the /v1 segment if any.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={transcriptionProfile?.baseURL ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-transcription', {
-                      baseURL: value,
-                    })
-                  }
-                  placeholder="https://api.openai.com/v1"
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.asr.apiKey', 'API key')}
-                desc={t(
-                  'settings.asr.apiKeyDesc',
-                  'Leave empty for local servers that do not require auth.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={transcriptionProfile?.apiKey ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-transcription', {
-                      apiKey: value,
-                    })
-                  }
-                  placeholder="sk-..."
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.asr.model', 'Model')}
-                desc={t(
-                  'settings.asr.modelDesc',
-                  'e.g. whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, or a local model id.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={transcriptionProfile?.model ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-transcription', {
-                      model: value,
-                    })
-                  }
-                  placeholder="whisper-1"
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.asr.transcriptionPath', 'Transcription path')}
-                desc={t(
-                  'settings.asr.transcriptionPathDesc',
-                  'Override only if your server uses a non-default path. Defaults to /audio/transcriptions; the /v1 prefix should live in Base URL.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={transcriptionProfile?.transcriptionPath ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-transcription', {
-                      transcriptionPath: value,
-                    })
-                  }
-                  placeholder="/audio/transcriptions"
-                />
-              </ObsidianSetting>
-            </>
-          )}
-
-          {selectedFormat === 'openai-compatible-chat-audio-asr' && (
-            <>
-              <ObsidianSetting
-                name={t('settings.asr.baseURL', 'Base URL')}
-                desc={t(
-                  'settings.asr.baseURLDesc',
-                  'Root URL of the OpenAI-compatible chat-completions server, including the /v1 segment if any.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={chatAudioProfile?.baseURL ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-chat-audio-asr', {
-                      baseURL: value,
-                    })
-                  }
-                  placeholder="https://api.openai.com/v1"
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.asr.apiKey', 'API key')}
-                desc={t(
-                  'settings.asr.apiKeyDesc',
-                  'Leave empty for local servers that do not require auth.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={chatAudioProfile?.apiKey ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-chat-audio-asr', {
-                      apiKey: value,
-                    })
-                  }
-                  placeholder="sk-..."
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.asr.model', 'Model')}
-                desc={t(
-                  'settings.asr.chatAudioModelDesc',
-                  'A model that accepts audio in chat messages, e.g. gpt-4o-audio-preview or a vLLM-served Qwen3-ASR / FireRedASR2-LLM endpoint.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={chatAudioProfile?.model ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-chat-audio-asr', {
-                      model: value,
-                    })
-                  }
-                  placeholder="gpt-4o-audio-preview"
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t(
-                  'settings.asr.chatCompletionsPath',
-                  'Chat completions path',
-                )}
-                desc={t(
-                  'settings.asr.chatCompletionsPathDesc',
-                  'Override only if your server uses a non-default path. Defaults to /chat/completions; the /v1 prefix should live in Base URL.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianTextInput
-                  value={chatAudioProfile?.chatCompletionsPath ?? ''}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-chat-audio-asr', {
-                      chatCompletionsPath: value,
-                    })
-                  }
-                  placeholder="/chat/completions"
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t(
-                  'settings.asr.audioContentFormat',
-                  'Audio content format',
-                )}
-                desc={t(
-                  'settings.asr.audioContentFormatDesc',
-                  'How the audio is embedded in the chat message content. Use input_audio for OpenAI-style; switch to audio_url if your server expects a data-URL part.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianDropdown
-                  value={chatAudioProfile?.audioContentFormat ?? 'input_audio'}
-                  options={{
-                    input_audio: 'input_audio',
-                    audio_url: 'audio_url',
-                  }}
-                  onChange={(value) =>
-                    updateProfile('openai-compatible-chat-audio-asr', {
-                      audioContentFormat: value,
-                    })
-                  }
-                />
-              </ObsidianSetting>
-            </>
-          )}
-
-          <ObsidianSetting
-            name={t('settings.asr.language', 'Language hint')}
-            desc={t(
-              'settings.asr.languageDesc',
-              'BCP47 code (e.g. en, zh) sent to the ASR. Use "auto" to let the provider detect.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianTextInput
-              value={voice.language}
-              onChange={(value) => updateVoice({ language: value }, 'language')}
-              placeholder="auto"
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.asr.testRecording', 'Test recording')}
-            desc={t(
-              'settings.asr.testRecordingDesc',
-              `Records ${TEST_RECORDING_SECONDS} seconds of audio and runs the current ASR provider so you can verify the configuration end-to-end.`,
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianButton
-              text={
-                testRunning
-                  ? t('settings.asr.testRunning', 'Recording...')
-                  : t('settings.asr.testRun', 'Run test')
-              }
-              disabled={testRunning}
-              onClick={() => void runVoiceTest()}
-            />
-          </ObsidianSetting>
-
-          {(testTranscript.length > 0 || voice.lastAsrTestMessage) && (
-            <div
-              className="yolo-settings-card"
-              data-asr-test-status={testStatus}
+              desc={t(
+                'settings.asr.microphoneUnlockDesc',
+                'Grants the mic permission once so the device names become visible. Audio is not recorded.',
+              )}
+              className="yolo-models-select-card"
             >
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                {testStatus === 'passed'
-                  ? t('settings.asr.testPassed', 'Test passed')
-                  : testStatus === 'failed'
-                    ? t('settings.asr.testFailed', 'Test failed')
-                    : t('settings.asr.testUntested', 'Untested')}
-              </div>
-              {voice.lastAsrTestMessage && (
-                <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>
-                  {voice.lastAsrTestMessage}
-                </div>
-              )}
-              {testTranscript.length > 0 && (
-                <div style={{ whiteSpace: 'pre-wrap' }}>{testTranscript}</div>
-              )}
-            </div>
+              <ObsidianButton
+                text={t('settings.asr.microphoneUnlockButton', 'Grant')}
+                onClick={() => void unlockMicLabels()}
+              />
+            </ObsidianSetting>
           )}
         </div>
       </section>

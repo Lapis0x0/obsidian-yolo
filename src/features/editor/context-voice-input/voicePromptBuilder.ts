@@ -1,6 +1,7 @@
 import {
   type ContextVoiceInputOptions,
   DEFAULT_VOICE_INPUT_SYSTEM_PROMPT,
+  VOICE_POLISH_PROMPT_PRESETS,
 } from '../../../settings/schema/setting.types'
 import type { RequestMessage } from '../../../types/llm/request'
 
@@ -64,11 +65,19 @@ export function buildVoiceInputMessages(
   input: BuildVoicePromptInput,
 ): RequestMessage[] {
   const { options, target, asrTranscript, previousModelOutput } = input
-  const systemPromptBody =
-    options.systemPromptMode === 'custom' &&
-    options.customSystemPrompt.trim().length > 0
-      ? options.customSystemPrompt
-      : DEFAULT_VOICE_INPUT_SYSTEM_PROMPT
+  // Built-in preset → use the canned prompt. Custom → use the user textarea
+  // when non-empty, otherwise fall back to the default preset.
+  const systemPromptBody = (() => {
+    const mode = options.systemPromptMode
+    if (mode === 'custom') {
+      return options.customSystemPrompt.trim().length > 0
+        ? options.customSystemPrompt
+        : DEFAULT_VOICE_INPUT_SYSTEM_PROMPT
+    }
+    return (
+      VOICE_POLISH_PROMPT_PRESETS[mode] ?? DEFAULT_VOICE_INPUT_SYSTEM_PROMPT
+    )
+  })()
 
   const { before, after } = splitContextWindow({
     before: target.before,
@@ -90,6 +99,13 @@ export function buildVoiceInputMessages(
     )
   }
   if (previousModelOutput && previousModelOutput.trim().length > 0) {
+    sections.push(
+      '<uncommitted_draft_instruction>\n' +
+        'The previous_model_output is polished text that is still only a ' +
+        'preview, not editor content. Combine it with current_asr_final and ' +
+        'emit the complete draft that should be inserted if accepted.\n' +
+        '</uncommitted_draft_instruction>',
+    )
     sections.push(
       `<previous_model_output>\n${previousModelOutput}\n</previous_model_output>`,
     )

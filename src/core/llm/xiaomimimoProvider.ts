@@ -112,10 +112,9 @@ export class XiaomimimoProvider extends BaseLLMProvider<LLMProvider> {
     applyXiaomimimoCapabilities({
       request: formattedRequest,
       model,
-      reasoningLevel: resolveRequestReasoningLevel(
-        model,
-        request.reasoningLevel,
-      ),
+      reasoningLevel:
+        request.reasoningLevel ??
+        resolveRequestReasoningLevel(model, request.reasoningLevel),
     })
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
@@ -164,10 +163,9 @@ export class XiaomimimoProvider extends BaseLLMProvider<LLMProvider> {
     applyXiaomimimoCapabilities({
       request: formattedRequest,
       model,
-      reasoningLevel: resolveRequestReasoningLevel(
-        model,
-        request.reasoningLevel,
-      ),
+      reasoningLevel:
+        request.reasoningLevel ??
+        resolveRequestReasoningLevel(model, request.reasoningLevel),
     })
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)

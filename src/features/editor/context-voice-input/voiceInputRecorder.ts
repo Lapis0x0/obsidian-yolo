@@ -19,6 +19,17 @@ export type RecordedAudio = {
   durationMs: number
 }
 
+export type VoiceInputRecorderStartOptions = {
+  maxRecordingSeconds: number
+  deviceId?: string
+  /**
+   * Called when the max-duration guard fires. Return `true` when the caller
+   * took ownership of stopping; return `false` to fall back to recorder-owned
+   * stopping.
+   */
+  onAutoStop?: () => boolean | void
+}
+
 export class VoiceInputRecorderError extends Error {
   constructor(
     message: string,
@@ -106,12 +117,26 @@ export class VoiceInputRecorder {
   // races the internal auto-stop) attach to the same promise instead of
   // rejecting with "not active recording".
   private inFlightStop: Promise<RecordedAudio> | null = null
+  // Preserve the final Blob after an internally-triggered stop long enough for
+  // an external caller's later `stop()` to pick it up. This covers settings
+  // tests and other timer races without losing audio.
+  private completedStopResult: RecordedAudio | null = null
+  private cancelRequested = false
 
   isRecording(): boolean {
     return this.state === 'recording'
   }
 
-  async start(opts: { maxRecordingSeconds: number }): Promise<void> {
+  /**
+   * Live MediaStream exposed for visualization (waveform / VU meter) only.
+   * Returns null when no recording is in progress. Callers must not stop the
+   * tracks — the recorder owns the lifetime.
+   */
+  getMediaStream(): MediaStream | null {
+    return this.mediaStream
+  }
+
+  async start(opts: VoiceInputRecorderStartOptions): Promise<void> {
     if (this.state !== 'idle') {
       throw new VoiceInputRecorderError(
         `Recorder is not idle (state=${this.state}).`,
@@ -141,13 +166,17 @@ export class VoiceInputRecorder {
       // Standard browser-side cleanup before the audio hits ASR. Matches
       // OpenWebUI's getUserMedia preset; cheap on the host, materially
       // improves WER on noisy mics, AC hum, and close-mic clipping.
-      stream = await mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      })
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      }
+      if (opts.deviceId && opts.deviceId.trim().length > 0) {
+        // `exact` so the browser errors instead of silently falling back to
+        // a different mic when the user-chosen device is unplugged.
+        audioConstraints.deviceId = { exact: opts.deviceId }
+      }
+      stream = await mediaDevices.getUserMedia({ audio: audioConstraints })
     } catch (err) {
       throw mapGetUserMediaError(err)
     }
@@ -165,6 +194,8 @@ export class VoiceInputRecorder {
     }
     this.mediaRecorder = recorder
     this.chunks = []
+    this.completedStopResult = null
+    this.cancelRequested = false
     this.startedAt = Date.now()
     ;(recorder as any).ondataavailable = (event: BlobEvent) => {
       if (event.data && event.data.size > 0) {
@@ -184,6 +215,11 @@ export class VoiceInputRecorder {
       }
     }
     ;(recorder as any).onstop = () => {
+      if (this.cancelRequested) {
+        this.resetCallbacks()
+        this.cleanup()
+        return
+      }
       const blob = new Blob(
         this.chunks,
         this.mimeType ? { type: this.mimeType } : undefined,
@@ -194,6 +230,7 @@ export class VoiceInputRecorder {
         durationMs: Date.now() - this.startedAt,
       }
       const resolve = this.resolveStop
+      this.completedStopResult = result
       this.resetCallbacks()
       this.cleanup()
       if (resolve) resolve(result)
@@ -204,6 +241,13 @@ export class VoiceInputRecorder {
     const maxMs = Math.max(5, opts.maxRecordingSeconds) * 1000
     this.autoStopTimer = setTimeout(() => {
       if (this.state === 'recording') {
+        if (opts.onAutoStop) {
+          try {
+            if (opts.onAutoStop() !== false) return
+          } catch {
+            // Fall back to recorder-owned stopping below.
+          }
+        }
         void this.stop().catch(() => {
           /* surfaced via onerror */
         })
@@ -215,6 +259,9 @@ export class VoiceInputRecorder {
     // Idempotent: if a stop is already in flight (auto-stop fired first, or
     // a previous external call started shutdown), return the same promise.
     if (this.inFlightStop) return this.inFlightStop
+    if (this.state === 'stopped' && this.completedStopResult) {
+      return Promise.resolve(this.completedStopResult)
+    }
     if (this.state !== 'recording' || !this.mediaRecorder) {
       return Promise.reject(
         new VoiceInputRecorderError(
@@ -247,6 +294,8 @@ export class VoiceInputRecorder {
   }
 
   cancel(): void {
+    this.cancelRequested = true
+    this.completedStopResult = null
     if (this.autoStopTimer) {
       clearTimeout(this.autoStopTimer)
       this.autoStopTimer = null
