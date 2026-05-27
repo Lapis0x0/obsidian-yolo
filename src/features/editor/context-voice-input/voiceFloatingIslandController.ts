@@ -607,21 +607,35 @@ export class VoiceFloatingIslandController {
     this.removeDocumentPointerUpListener()
   }
 
+  /**
+   * Resolve the document the island is currently mounted into. In Obsidian
+   * pop-out windows the markdown view's `contentEl` lives in a different
+   * document than the main window, so listening on the main `document`
+   * would miss pointerup events the user fires in the popped-out window.
+   * Fall back to the global `document` only when no host is attached yet
+   * (defensive — listeners shouldn't be registered before mount).
+   */
+  private getActiveDocument(): Document {
+    return this.host?.ownerDocument ?? document
+  }
+
   private addDocumentPointerUpListener(): void {
     if (this.documentPointerUpListener) return
     const handler = () => this.endHoldToTalk()
     this.documentPointerUpListener = handler
-    document.addEventListener('pointerup', handler, { capture: true })
+    const doc = this.getActiveDocument()
+    doc.addEventListener('pointerup', handler, { capture: true })
     // Also handle pointercancel (browser-initiated cancel mid-press, common
     // on touch when the gesture is reinterpreted as scroll).
-    document.addEventListener('pointercancel', handler, { capture: true })
+    doc.addEventListener('pointercancel', handler, { capture: true })
   }
 
   private removeDocumentPointerUpListener(): void {
     const handler = this.documentPointerUpListener
     if (!handler) return
-    document.removeEventListener('pointerup', handler, { capture: true })
-    document.removeEventListener('pointercancel', handler, { capture: true })
+    const doc = this.getActiveDocument()
+    doc.removeEventListener('pointerup', handler, { capture: true })
+    doc.removeEventListener('pointercancel', handler, { capture: true })
     this.documentPointerUpListener = null
   }
 

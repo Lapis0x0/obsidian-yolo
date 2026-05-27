@@ -82,10 +82,10 @@ import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { ExportConfigModal } from './features/config-transfer/components/ExportConfigModal'
 import { ImportConfigModal } from './features/config-transfer/components/ImportConfigModal'
-import { ContextVoiceInputController } from './features/editor/context-voice-input/contextVoiceInputController'
-import { DocumentSummaryManager } from './features/editor/context-voice-input/documentSummaryManager'
-import { VoiceFloatingIslandController } from './features/editor/context-voice-input/voiceFloatingIslandController'
-import { VoicePrefixCacheManager } from './features/editor/context-voice-input/voicePrefixCacheManager'
+import type { ContextVoiceInputController } from './features/editor/context-voice-input/contextVoiceInputController'
+import type { DocumentSummaryManager } from './features/editor/context-voice-input/documentSummaryManager'
+import type { VoiceFloatingIslandController } from './features/editor/context-voice-input/voiceFloatingIslandController'
+import type { VoicePrefixCacheManager } from './features/editor/context-voice-input/voicePrefixCacheManager'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildFullReviewBlocks,
@@ -131,6 +131,13 @@ import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLe
 
 const STARTUP_GRACE_MS = 30 * 1000
 
+type VoiceModules = {
+  ContextVoiceInputController: typeof import('./features/editor/context-voice-input/contextVoiceInputController').ContextVoiceInputController
+  DocumentSummaryManager: typeof import('./features/editor/context-voice-input/documentSummaryManager').DocumentSummaryManager
+  VoiceFloatingIslandController: typeof import('./features/editor/context-voice-input/voiceFloatingIslandController').VoiceFloatingIslandController
+  VoicePrefixCacheManager: typeof import('./features/editor/context-voice-input/voicePrefixCacheManager').VoicePrefixCacheManager
+}
+
 export default class YoloPlugin extends Plugin {
   settings: YoloSettings
   settingsChangeListeners: ((newSettings: YoloSettings) => void)[] = []
@@ -161,6 +168,8 @@ export default class YoloPlugin extends Plugin {
     null
   private documentSummaryManager: DocumentSummaryManager | null = null
   private voicePrefixCacheManager: VoicePrefixCacheManager | null = null
+  private voiceModules: VoiceModules | null = null
+  private voiceModulesPromise: Promise<VoiceModules> | null = null
   private diffReviewController: DiffReviewController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
@@ -883,43 +892,87 @@ export default class YoloPlugin extends Plugin {
   }
 
   /**
+   * Lazy-load the voice-input modules on first use. ~5K lines of code
+   * (audio transcode, WebSocket ASR, floating-island UI) stay out of the
+   * plugin's startup module graph until the user actually toggles voice
+   * input or has it configured + enabled, at which point the dynamic
+   * import resolves once and is cached.
+   */
+  private loadVoiceModules(): Promise<VoiceModules> {
+    if (this.voiceModules) return Promise.resolve(this.voiceModules)
+    if (!this.voiceModulesPromise) {
+      this.voiceModulesPromise = (async () => {
+        const [ctrl, summary, island, prefix] = await Promise.all([
+          import(
+            './features/editor/context-voice-input/contextVoiceInputController'
+          ),
+          import(
+            './features/editor/context-voice-input/documentSummaryManager'
+          ),
+          import(
+            './features/editor/context-voice-input/voiceFloatingIslandController'
+          ),
+          import(
+            './features/editor/context-voice-input/voicePrefixCacheManager'
+          ),
+        ])
+        const modules: VoiceModules = {
+          ContextVoiceInputController: ctrl.ContextVoiceInputController,
+          DocumentSummaryManager: summary.DocumentSummaryManager,
+          VoiceFloatingIslandController: island.VoiceFloatingIslandController,
+          VoicePrefixCacheManager: prefix.VoicePrefixCacheManager,
+        }
+        this.voiceModules = modules
+        return modules
+      })()
+    }
+    return this.voiceModulesPromise
+  }
+
+  /**
    * The voice input mic lives as a floating island at the bottom of the
    * active editor. Status text + waveform + timer + interaction-mode toggle
    * all surface inside that single bar, so the user has one place to look.
    */
-  private ensureVoiceFloatingIsland(): VoiceFloatingIslandController {
-    if (!this.voiceFloatingIslandController) {
-      this.voiceFloatingIslandController = new VoiceFloatingIslandController({
-        getController: () => this.contextVoiceInputController,
-        getActiveMarkdownView: () =>
-          this.app.workspace.getActiveViewOfType(MarkdownView),
-        t: (key, fallback) => this.t(key, fallback),
-        isFeatureReady: () => {
-          const opts = this.settings?.contextVoiceInputOptions
-          return !!opts && opts.enabled && isAsrConfigured(opts)
-        },
-        getInteractionMode: () =>
-          this.settings.contextVoiceInputOptions.interactionMode,
-        setInteractionMode: async (mode) => {
-          await this.setSettings({
-            ...this.settings,
-            contextVoiceInputOptions: {
-              ...this.settings.contextVoiceInputOptions,
-              interactionMode: mode,
-            },
-          })
-        },
-        getVadOptions: () => {
-          const voice = this.settings.contextVoiceInputOptions
-          return {
-            speechStartDecibels: voice.vadSpeechStartDecibels,
-            silenceDecibels: voice.vadSilenceDecibels,
-            silenceHoldMs: voice.vadSilenceHoldMs,
-          }
-        },
-      })
+  private async ensureVoiceFloatingIsland(): Promise<VoiceFloatingIslandController> {
+    if (this.voiceFloatingIslandController) {
+      return this.voiceFloatingIslandController
     }
-    return this.voiceFloatingIslandController
+    const modules = await this.loadVoiceModules()
+    if (this.voiceFloatingIslandController) {
+      return this.voiceFloatingIslandController
+    }
+    const island = new modules.VoiceFloatingIslandController({
+      getController: () => this.contextVoiceInputController,
+      getActiveMarkdownView: () =>
+        this.app.workspace.getActiveViewOfType(MarkdownView),
+      t: (key, fallback) => this.t(key, fallback),
+      isFeatureReady: () => {
+        const opts = this.settings?.contextVoiceInputOptions
+        return !!opts && opts.enabled && isAsrConfigured(opts)
+      },
+      getInteractionMode: () =>
+        this.settings.contextVoiceInputOptions.interactionMode,
+      setInteractionMode: async (mode) => {
+        await this.setSettings({
+          ...this.settings,
+          contextVoiceInputOptions: {
+            ...this.settings.contextVoiceInputOptions,
+            interactionMode: mode,
+          },
+        })
+      },
+      getVadOptions: () => {
+        const voice = this.settings.contextVoiceInputOptions
+        return {
+          speechStartDecibels: voice.vadSpeechStartDecibels,
+          silenceDecibels: voice.vadSilenceDecibels,
+          silenceHoldMs: voice.vadSilenceHoldMs,
+        }
+      },
+    })
+    this.voiceFloatingIslandController = island
+    return island
   }
 
   private isContextVoiceInputFeatureReady(): boolean {
@@ -935,8 +988,17 @@ export default class YoloPlugin extends Plugin {
       }
       return
     }
-    this.getContextVoiceInputController()
-    this.ensureVoiceFloatingIsland().attachToActiveView()
+    void this.attachVoiceFloatingIsland()
+  }
+
+  private async attachVoiceFloatingIsland(): Promise<void> {
+    try {
+      await this.ensureContextVoiceInputController()
+      const island = await this.ensureVoiceFloatingIsland()
+      island.attachToActiveView()
+    } catch (error) {
+      console.error('Voice floating island attach failed:', error)
+    }
   }
 
   private setupBackgroundActivityStatusBar(): void {
@@ -1598,51 +1660,57 @@ export default class YoloPlugin extends Plugin {
     return this.inlineSuggestionController
   }
 
-  private getContextVoiceInputController(): ContextVoiceInputController {
-    if (!this.contextVoiceInputController) {
-      const inlineSuggestionController = this.getInlineSuggestionController()
-      this.contextVoiceInputController = new ContextVoiceInputController({
-        getSettings: () => this.settings,
-        setSettings: (next) => this.setSettings(next),
-        getEditorView: (editor) => this.getEditorView(editor),
-        getActiveMarkdownView: () =>
-          this.app.workspace.getActiveViewOfType(MarkdownView),
-        setInlineSuggestionGhost: (view, payload) =>
-          inlineSuggestionController.setInlineSuggestionGhost(view, payload),
-        setActiveVoiceSuggestion: (suggestion) =>
-          inlineSuggestionController.setVoiceSuggestion(suggestion),
-        clearInlineSuggestion: () =>
-          inlineSuggestionController.clearInlineSuggestion(),
-        addAbortController: (controller) =>
-          this.activeAbortControllers.add(controller),
-        removeAbortController: (controller) =>
-          this.activeAbortControllers.delete(controller),
-        cancelPendingTabCompletion: () => {
-          this.tabCompletionController?.clearTimer()
-          this.tabCompletionController?.cancelRequest()
-        },
-        setVoiceInputInProgress: (inProgress) => {
-          this.isVoiceInputInProgress = inProgress
-        },
-        t: (key, fallback) => this.t(key, fallback),
-      })
-      this.contextVoiceInputController.setSummaryManager(
-        this.getDocumentSummaryManager(),
-      )
-      this.contextVoiceInputController.setPrefixCacheManager(
-        this.getVoicePrefixCacheManager(),
-      )
+  private async ensureContextVoiceInputController(): Promise<ContextVoiceInputController> {
+    if (this.contextVoiceInputController) {
+      return this.contextVoiceInputController
     }
-    return this.contextVoiceInputController
+    const modules = await this.loadVoiceModules()
+    if (this.contextVoiceInputController) {
+      return this.contextVoiceInputController
+    }
+    const inlineSuggestionController = this.getInlineSuggestionController()
+    const controller = new modules.ContextVoiceInputController({
+      getSettings: () => this.settings,
+      setSettings: (next) => this.setSettings(next),
+      getEditorView: (editor) => this.getEditorView(editor),
+      getActiveMarkdownView: () =>
+        this.app.workspace.getActiveViewOfType(MarkdownView),
+      setInlineSuggestionGhost: (view, payload) =>
+        inlineSuggestionController.setInlineSuggestionGhost(view, payload),
+      setActiveVoiceSuggestion: (suggestion) =>
+        inlineSuggestionController.setVoiceSuggestion(suggestion),
+      clearInlineSuggestion: () =>
+        inlineSuggestionController.clearInlineSuggestion(),
+      addAbortController: (controller) =>
+        this.activeAbortControllers.add(controller),
+      removeAbortController: (controller) =>
+        this.activeAbortControllers.delete(controller),
+      cancelPendingTabCompletion: () => {
+        this.tabCompletionController?.clearTimer()
+        this.tabCompletionController?.cancelRequest()
+      },
+      setVoiceInputInProgress: (inProgress) => {
+        this.isVoiceInputInProgress = inProgress
+      },
+      t: (key, fallback) => this.t(key, fallback),
+    })
+    controller.setSummaryManager(this.ensureDocumentSummaryManager(modules))
+    controller.setPrefixCacheManager(
+      this.ensureVoicePrefixCacheManager(modules),
+    )
+    this.contextVoiceInputController = controller
+    return controller
   }
 
   /**
    * Lazy singleton for the per-document summary cache shared by voice input.
    * Lives only in memory; created on first use, dropped on plugin unload.
    */
-  private getDocumentSummaryManager(): DocumentSummaryManager {
+  private ensureDocumentSummaryManager(
+    modules: VoiceModules,
+  ): DocumentSummaryManager {
     if (!this.documentSummaryManager) {
-      this.documentSummaryManager = new DocumentSummaryManager({
+      this.documentSummaryManager = new modules.DocumentSummaryManager({
         getSettings: () => this.settings,
         setSettings: (next) => this.setSettings(next),
       })
@@ -1654,9 +1722,11 @@ export default class YoloPlugin extends Plugin {
    * Lazy singleton for the per-file anchored prefix cache used by voice
    * input polish. Like the summary manager, lives only in memory.
    */
-  private getVoicePrefixCacheManager(): VoicePrefixCacheManager {
+  private ensureVoicePrefixCacheManager(
+    modules: VoiceModules,
+  ): VoicePrefixCacheManager {
     if (!this.voicePrefixCacheManager) {
-      this.voicePrefixCacheManager = new VoicePrefixCacheManager()
+      this.voicePrefixCacheManager = new modules.VoicePrefixCacheManager()
     }
     return this.voicePrefixCacheManager
   }
@@ -1973,9 +2043,16 @@ export default class YoloPlugin extends Plugin {
         this.t('commands.toggleVoiceInput') ??
         'Toggle context-aware voice input',
       editorCallback: (editor: Editor) => {
-        const controller = this.getContextVoiceInputController()
-        this.syncVoiceFloatingIsland()
-        void controller.toggle(editor)
+        void (async () => {
+          try {
+            const controller = await this.ensureContextVoiceInputController()
+            this.syncVoiceFloatingIsland()
+            await controller.toggle(editor)
+          } catch (error) {
+            console.error('Voice input toggle failed:', error)
+            new Notice('Voice input failed to start.')
+          }
+        })()
       },
     })
 
@@ -2030,9 +2107,13 @@ export default class YoloPlugin extends Plugin {
       ),
     )
     this.registerEvent(
-      this.app.vault.on('delete', (file) =>
-        this.getRagAutoUpdateService().onVaultFileChanged(file, 'delete'),
-      ),
+      this.app.vault.on('delete', (file) => {
+        this.getRagAutoUpdateService().onVaultFileChanged(file, 'delete')
+        // Voice-input caches are keyed by file path. `forget` also clears
+        // child paths when `file` is a deleted folder.
+        this.documentSummaryManager?.forget(file.path)
+        this.voicePrefixCacheManager?.forget(file.path)
+      }),
     )
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
@@ -2042,22 +2123,13 @@ export default class YoloPlugin extends Plugin {
           service.onVaultPathChanged(oldPath, {
             requiresFullScan: file instanceof TFolder,
           })
-        // Voice-input caches are keyed by file path. Forget the old file or
-        // folder path on rename — the new path gets a fresh entry next time
-        // it's used. This also handles the A↔B file-swap edge case correctly:
-        // both rename events fire (one per file), both old keys clear,
-        // both files end up with clean state. No data crossover.
+        // Voice-input caches: forget the OLD path so the renamed file
+        // gets a fresh entry next time. Handles A↔B file-swap correctly
+        // since both rename events fire.
         if (oldPath) {
           this.documentSummaryManager?.forget(oldPath)
           this.voicePrefixCacheManager?.forget(oldPath)
         }
-      }),
-    )
-    this.registerEvent(
-      this.app.vault.on('delete', (file) => {
-        // `forget` also clears child paths when `file` is a deleted folder.
-        this.documentSummaryManager?.forget(file.path)
-        this.voicePrefixCacheManager?.forget(file.path)
       }),
     )
     this.registerDomEvent(window, 'blur', () => {

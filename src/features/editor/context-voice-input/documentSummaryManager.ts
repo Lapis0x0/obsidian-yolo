@@ -58,8 +58,6 @@ export type DocumentSummaryResult = {
 
 type CacheEntry = {
   filePath: string
-  /** Text of the file that produced `summary`. Used to detect drift. */
-  contentHash: string
   /** Last produced result. Both fields may be empty if generation returned nothing. */
   result: DocumentSummaryResult
   /** Wall-clock ms when this entry's result completed. */
@@ -140,7 +138,6 @@ export class DocumentSummaryManager {
     const refreshMode = voice.documentSummaryRefreshMode ?? '1hour'
     const intervalMs =
       REFRESH_INTERVAL_MS[refreshMode] ?? Number.POSITIVE_INFINITY
-    const contentHash = hashContent(input.content)
     const now = Date.now()
     const entry = this.cache.get(input.filePath)
 
@@ -148,8 +145,7 @@ export class DocumentSummaryManager {
     // automatically trigger a re-summarisation — that would let the user's
     // own typing burn LLM calls and would ignore the 'session' setting (a
     // mode the user explicitly asked us to honour as "don't refresh until
-    // the next session"). The contentHash stays in the cache purely as a
-    // tag so a later eviction policy can tell summaries apart.
+    // the next session").
     const expired = entry && now - entry.generatedAt > intervalMs
 
     if (entry && !expired) {
@@ -160,7 +156,6 @@ export class DocumentSummaryManager {
       this.scheduleSummary({
         filePath: input.filePath,
         content: input.content,
-        contentHash,
       })
     }
 
@@ -171,16 +166,11 @@ export class DocumentSummaryManager {
     return null
   }
 
-  private scheduleSummary(input: {
-    filePath: string
-    content: string
-    contentHash: string
-  }): void {
+  private scheduleSummary(input: { filePath: string; content: string }): void {
     const existing = this.cache.get(input.filePath)
     const inFlight = this.runSummary(input)
     const stub: CacheEntry = existing ?? {
       filePath: input.filePath,
-      contentHash: input.contentHash,
       result: EMPTY_RESULT,
       generatedAt: 0,
       inFlight: null,
@@ -199,7 +189,6 @@ export class DocumentSummaryManager {
         }
         this.cache.set(input.filePath, {
           filePath: input.filePath,
-          contentHash: input.contentHash,
           result,
           generatedAt: Date.now(),
           inFlight: null,
@@ -214,7 +203,6 @@ export class DocumentSummaryManager {
   private async runSummary(input: {
     filePath: string
     content: string
-    contentHash: string
   }): Promise<DocumentSummaryResult | null> {
     try {
       const settings = this.deps.getSettings()
@@ -344,17 +332,4 @@ const parseSummaryResponse = (rawContent: string): DocumentSummaryResult => {
     summary: stripped.slice(0, MAX_SUMMARY_OUTPUT_CHARS),
     hotWords: [],
   }
-}
-
-/**
- * Cheap djb2-ish hash to detect content drift without storing the full file
- * text. Collisions are acceptable: at worst we serve a slightly-stale summary
- * until the next refresh interval fires.
- */
-const hashContent = (content: string): string => {
-  let h = 5381
-  for (let i = 0; i < content.length; i += 1) {
-    h = ((h << 5) + h + content.charCodeAt(i)) | 0
-  }
-  return `${content.length.toString(36)}:${(h >>> 0).toString(36)}`
 }
