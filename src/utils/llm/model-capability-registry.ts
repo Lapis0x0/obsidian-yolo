@@ -78,6 +78,33 @@ export function resolveKnownMaxContextTokens(
   return resolveKnownCapability(modelId)?.context
 }
 
+/** User-configured max, then registry lookup. Undefined when neither is known. */
+export function resolveEffectiveMaxContextTokens(
+  model:
+    | Pick<ChatModel, 'maxContextTokens' | 'model' | 'id'>
+    | null
+    | undefined,
+): number | undefined {
+  if (!model) {
+    return undefined
+  }
+
+  if (
+    typeof model.maxContextTokens === 'number' &&
+    model.maxContextTokens > 0 &&
+    Number.isFinite(model.maxContextTokens)
+  ) {
+    return model.maxContextTokens
+  }
+
+  const known = resolveKnownMaxContextTokens(model.model ?? model.id)
+  if (typeof known === 'number' && known > 0 && Number.isFinite(known)) {
+    return known
+  }
+
+  return undefined
+}
+
 export function resolveKnownChatModelModalities(
   modelId: string | undefined,
 ): ChatModelModality[] | undefined {

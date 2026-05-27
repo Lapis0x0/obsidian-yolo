@@ -1360,12 +1360,14 @@ export type TranslationKeys = {
     placeholderMention?: string
     placeholderSkill?: string
     contextUsage?: string
+    contextUsageUnknownMaxSuffix?: string
     contextBreakdown?: {
       title?: string
       /** "{{percent}} Full" — interpolated client-side */
       fullLabel?: string
       tokensSuffix?: string
       localEstimateCaption?: string
+      unknownMaxHint?: string
       error?: string
       bucket?: {
         system?: string
@@ -1374,6 +1376,7 @@ export type TranslationKeys = {
         skills?: string
         memory?: string
         conversation?: string
+        reasoning?: string
       }
     }
     inlineInfo?: {
@@ -1441,6 +1444,7 @@ export type TranslationKeys = {
     regenerate: string
     reasoning: string
     annotations: string
+    vaultSources?: string
     assistantQuote?: {
       add?: string
       badge?: string

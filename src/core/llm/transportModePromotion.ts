@@ -63,7 +63,9 @@ export const promoteProviderTransportModeToObsidian = async ({
   const modeLabel =
     mode === 'node'
       ? t('settings.providers.requestTransportModeNode')
-      : t('settings.providers.requestTransportModeObsidian')
+      : mode === 'browser'
+        ? t('settings.providers.requestTransportModeBrowser')
+        : t('settings.providers.requestTransportModeObsidian')
   new Notice(
     t('notices.transportModeAutoPromoted').replace('{mode}', modeLabel),
     6000,

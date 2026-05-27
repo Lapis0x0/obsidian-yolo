@@ -131,8 +131,7 @@ function McpServerFormComponent({
           serverName,
         })
 
-      const isRename =
-        !!existingServer && existingServer.id !== serverName
+      const isRename = !!existingServer && existingServer.id !== serverName
       const nextAssistants = isRename
         ? plugin.settings.assistants.map((assistant) =>
             renameAssistantToolPreferencesServer(

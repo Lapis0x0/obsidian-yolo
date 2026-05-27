@@ -20,7 +20,26 @@ const readMessage = (error: unknown): string | null => {
     return null
   }
 
-  return String(error).trim() || null
+  if (typeof error === 'object') {
+    try {
+      return JSON.stringify(error).trim() || null
+    } catch {
+      return null
+    }
+  }
+
+  switch (typeof error) {
+    case 'number':
+    case 'boolean':
+    case 'bigint':
+      return String(error).trim() || null
+    case 'symbol':
+      return error.toString().trim() || null
+    case 'function':
+      return error.name.trim() || error.toString().trim() || null
+    default:
+      return null
+  }
 }
 
 const collectErrorMessages = (

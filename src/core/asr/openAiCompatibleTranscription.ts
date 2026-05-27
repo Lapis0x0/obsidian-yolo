@@ -108,11 +108,10 @@ const buildMultipartBody = async (
  * sent as `multipart/form-data` with a `file` field; the response is parsed
  * as `{ text: string, language?, segments? }`.
  *
- * The request is dispatched through Obsidian's `requestUrl` so it routes
- * through the host's networking layer (proxy, TLS, CORS bypass) rather than
- * the renderer's `fetch`. `requestUrl` does not honour `AbortSignal` today;
- * cancellation is enforced at the caller by checking `signal.aborted` after
- * the request returns.
+ * The request is dispatched through the ASR HTTP transport selected in the
+ * profile. Desktop auto follows the LLM provider path (Node fetch, then
+ * browser fetch); explicit Obsidian requestUrl remains available for servers
+ * that need it.
  */
 export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
   readonly format = 'openai-compatible-transcription'

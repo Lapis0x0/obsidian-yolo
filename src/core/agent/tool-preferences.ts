@@ -322,7 +322,11 @@ export const pruneOrphanedAssistantToolPreferences = <
   }
 
   if (nextPrefs === prefs && nextNames === names) return assistant
-  return { ...assistant, toolPreferences: nextPrefs, enabledToolNames: nextNames }
+  return {
+    ...assistant,
+    toolPreferences: nextPrefs,
+    enabledToolNames: nextNames,
+  }
 }
 
 /**
@@ -384,7 +388,11 @@ export const renameAssistantToolPreferencesServer = <
   }
 
   if (nextPrefs === prefs && nextNames === names) return assistant
-  return { ...assistant, toolPreferences: nextPrefs, enabledToolNames: nextNames }
+  return {
+    ...assistant,
+    toolPreferences: nextPrefs,
+    enabledToolNames: nextNames,
+  }
 }
 
 export const isAssistantToolEnabled = (

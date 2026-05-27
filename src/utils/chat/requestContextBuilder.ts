@@ -185,6 +185,7 @@ export type PromptSectionBucket =
   | 'skills'
   | 'memory'
   | 'conversation'
+  | 'reasoning'
 
 export type PromptSection = {
   bucket: PromptSectionBucket
@@ -717,10 +718,31 @@ export class RequestContextBuilder {
 
       const stripped =
         skillsBlocks.length > 0 ? stripUserSelectedSkillsFromMessage(msg) : msg
+
+      // Carve out assistant reasoning (chain-of-thought) into its own bucket so
+      // the popover can show how much of the context is spent on prior-turn
+      // thinking. Reasoning is already a separate field on RequestMessage, so
+      // stripping it from the conversation section preserves the total token
+      // count (split ≈ original).
+      let conversationContent: RequestMessage = stripped
+      if (
+        stripped.role === 'assistant' &&
+        typeof stripped.reasoning === 'string' &&
+        stripped.reasoning.length > 0
+      ) {
+        sections.push({
+          bucket: 'reasoning',
+          id: `reasoning.${i}`,
+          content: { reasoning: stripped.reasoning },
+        })
+        const { reasoning: _reasoning, ...rest } = stripped
+        conversationContent = rest
+      }
+
       sections.push({
         bucket: 'conversation',
         id: `conversation.${i}.${msg.role}`,
-        content: stripped,
+        content: conversationContent,
       })
     }
 

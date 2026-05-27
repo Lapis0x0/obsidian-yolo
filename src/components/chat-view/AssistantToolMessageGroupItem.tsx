@@ -32,6 +32,7 @@ import AssistantMessageAnnotations from './AssistantMessageAnnotations'
 import AssistantMessageContent from './AssistantMessageContent'
 import AssistantMessageEditor from './AssistantMessageEditor'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
+import AssistantMessageSources from './AssistantMessageSources'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
 import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
@@ -651,6 +652,7 @@ export default function AssistantToolMessageGroupItem({
                   conversationId={effectiveConversationId}
                   content={message.content}
                   annotations={message.annotations}
+                  sources={message.metadata?.sources}
                   handleApply={onApply}
                   isApplying={isApplying}
                   activeApplyRequestKey={activeApplyRequestKey}
@@ -666,6 +668,10 @@ export default function AssistantToolMessageGroupItem({
                   annotations={message.annotations}
                 />
               )}
+              {message.metadata?.sources &&
+                message.metadata.sources.length > 0 && (
+                  <AssistantMessageSources sources={message.metadata.sources} />
+                )}
               {message.metadata?.generationState === 'error' &&
                 message.metadata.errorMessage && (
                   <AssistantErrorCard

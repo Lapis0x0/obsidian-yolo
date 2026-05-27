@@ -329,8 +329,8 @@ export type AsrWebSocketProtocol = (typeof ASR_WEBSOCKET_PROTOCOLS)[number]
  * provider's `requestTransportMode` enum so users do not have to learn a
  * second vocabulary for the same request layer.
  *
- * - `auto`: browser fetch, then desktop Node fetch, then Obsidian requestUrl
- *   on CORS/network errors.
+ * - `auto`: desktop Node fetch, then browser fetch on retryable
+ *   network/CORS errors; mobile browser fetch, then Obsidian requestUrl.
  * - `obsidian`: Obsidian's `requestUrl`. Bypasses CORS/proxy issues.
  * - `browser`: native `window.fetch`. Honours AbortSignal, useful for
  *   endpoints that the Electron requestUrl shim mishandles (rare, but a few

@@ -466,4 +466,19 @@ describe('getLatestAssistantContextUsage', () => {
       }),
     )
   })
+
+  it('returns usage with null max when the context window is unknown', () => {
+    const contextUsage = getLatestAssistantContextUsage({
+      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 100 })],
+      maxContextTokens: undefined,
+    })
+
+    expect(contextUsage).toEqual(
+      expect.objectContaining({
+        promptTokens: 100,
+        maxContextTokens: null,
+        ratio: null,
+      }),
+    )
+  })
 })

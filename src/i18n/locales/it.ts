@@ -692,7 +692,7 @@ export const it: TranslationKeys = {
         'Usa requestUrl di Obsidian per aggirare le restrizioni CORS. Le risposte in streaming verranno bufferizzate.',
       requestTransportMode: 'Modalita trasporto richieste',
       requestTransportModeDesc:
-        'Auto prova prima il fetch del browser, poi il fetch Node desktop e infine passa a requestUrl di Obsidian in caso di errori CORS/rete. In modalita Obsidian lo streaming viene bufferizzato; la modalita Node usa il fetch Node desktop per uno streaming reale.',
+        'Su desktop Auto prova prima il fetch Node, poi il fetch browser in caso di errori CORS/rete; su mobile prova il fetch browser e poi requestUrl di Obsidian. In modalita Obsidian lo streaming viene bufferizzato; la modalita Node usa il fetch Node desktop per uno streaming reale.',
       requestTransportModeAuto: 'Auto (consigliato)',
       requestTransportModeBrowser: 'Solo fetch browser',
       requestTransportModeObsidian: 'Solo requestUrl Obsidian',
@@ -1315,12 +1315,16 @@ export const it: TranslationKeys = {
     placeholderMention: 'aggiungere riferimenti o modelli',
     placeholderSkill: 'scegliere una skill o un comando',
     contextUsage: 'Utilizzo finestra di contesto',
+    contextUsageUnknownMaxSuffix:
+      ' (limite finestra di contesto non impostato)',
     contextBreakdown: {
       title: 'Contesto',
       fullLabel: '{{percent}} pieno',
       tokensSuffix: 'token',
       localEstimateCaption:
         'Stima locale — può differire dal conteggio del server.',
+      unknownMaxHint:
+        'Imposta i token della finestra di contesto nelle impostazioni del modello per vedere la percentuale di utilizzo.',
       error: 'Stima fallita',
       bucket: {
         system: 'Prompt di sistema',
@@ -1329,6 +1333,7 @@ export const it: TranslationKeys = {
         skills: 'Skill',
         memory: 'Memoria',
         conversation: 'Conversazione',
+        reasoning: 'Ragionamento',
       },
     },
     inlineInfo: {
@@ -1403,6 +1408,7 @@ export const it: TranslationKeys = {
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
     annotations: 'Annotazioni',
+    vaultSources: 'Fonti dal vault ({count})',
     pdfReferenceNoPreview: '(PDF: clicca il titolo per aprire la pagina)',
     assistantQuote: {
       add: 'Cita',

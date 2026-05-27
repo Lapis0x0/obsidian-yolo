@@ -44,6 +44,7 @@ import {
 } from './tool-preferences'
 import { isLoadToolSchemasToolName } from './tool-selection'
 import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
+import type { AgentRunContext } from './types'
 import { findPathOutsideScope } from './workspaceScope'
 
 type McpToolCallParams = Parameters<McpManager['callTool']>[0]
@@ -60,6 +61,7 @@ export class AgentToolGateway {
   private readonly allowedSkillIds?: Set<string>
   private readonly allowedSkillNames?: Set<string>
   private readonly apiType?: LLMProviderApiType | null
+  private readonly runContext?: AgentRunContext
   private readonly ajv: AjvInstance
   private readonly schemaValidatorCache = new Map<
     string,
@@ -77,6 +79,7 @@ export class AgentToolGateway {
       allowedSkillIds?: string[]
       allowedSkillNames?: string[]
       apiType?: LLMProviderApiType | null
+      runContext?: AgentRunContext
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
@@ -93,6 +96,7 @@ export class AgentToolGateway {
       ? new Set(options.allowedSkillNames.map((name) => name.toLowerCase()))
       : undefined
     this.apiType = options?.apiType
+    this.runContext = options?.runContext
     // `strict: false` keeps ajv tolerant of MCP tool schemas that include
     // vendor-specific keywords or non-canonical types. `allErrors` lists every
     // violation in the error message so the model has enough signal to retry;
@@ -501,6 +505,7 @@ export class AgentToolGateway {
           chatModelId,
           debugTraceId,
           workspaceScope: this.workspaceScope,
+          runContext: this.runContext,
         }).then((response) => ({ entries: [entry], responses: [response] })),
       )
     }
@@ -551,6 +556,7 @@ export class AgentToolGateway {
           chatModelId,
           debugTraceId,
           workspaceScope: this.workspaceScope,
+          runContext: this.runContext,
         }).then((response) => ({
           entries,
           responses: this.splitBatchedFsEditResponse({

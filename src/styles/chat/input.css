@@ -146,6 +146,29 @@
     stroke 0.18s ease;
 }
 
+.yolo-context-usage-ring__unknown-mark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: var(--font-semibold);
+  color: var(--text-faint);
+  pointer-events: none;
+  user-select: none;
+}
+
+.yolo-context-usage-ring[data-has-max='false']:hover
+  .yolo-context-usage-ring__unknown-mark,
+.yolo-context-usage-ring[data-has-max='false']:focus
+  .yolo-context-usage-ring__unknown-mark,
+.yolo-context-usage-ring[data-has-max='false'][data-state='open']
+  .yolo-context-usage-ring__unknown-mark {
+  color: var(--text-muted);
+}
+
 .yolo-context-usage-ring__sr-only {
   position: absolute;
   width: 1px;

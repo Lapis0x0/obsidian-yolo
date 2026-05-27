@@ -19,6 +19,7 @@ import {
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
 import { WEB_OPS_GROUP_TOOL_NAME } from '../agent/builtinToolUiMeta'
+import type { AgentRunContext } from '../agent/types'
 import type { RAGEngine } from '../rag/ragEngine'
 import {
   WEB_SCRAPE_TOOL_NAME,
@@ -778,6 +779,7 @@ export class McpManager {
     requireReview = false,
     chatModelId,
     workspaceScope,
+    runContext,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -789,6 +791,7 @@ export class McpManager {
     requireReview?: boolean
     chatModelId?: string
     workspaceScope?: AssistantWorkspaceScope
+    runContext?: AgentRunContext
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -831,6 +834,7 @@ export class McpManager {
           signal: compositeSignal,
           chatModelId,
           workspaceScope,
+          runContext,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {

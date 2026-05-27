@@ -725,7 +725,7 @@ function AsrConfigFormComponent({
           name={t('settings.asr.transport', 'Transport')}
           desc={t(
             'settings.providers.requestTransportModeDesc',
-            'Auto tries browser fetch, then desktop Node fetch, and falls back to Obsidian requestUrl on CORS/network errors. Obsidian buffers responses; Node uses the desktop proxy-aware fetch.',
+            'Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl. Obsidian buffers responses; Node uses the desktop proxy-aware fetch.',
           )}
           className="yolo-models-select-card"
         >

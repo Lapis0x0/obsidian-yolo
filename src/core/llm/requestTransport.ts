@@ -264,21 +264,19 @@ export const runWithRequestTransport = async <T>({
     return runNode()
   }
 
-  // Desktop auto order: node → browser → obsidian. Mobile (no node): browser → obsidian.
+  // Desktop auto order: node → browser. Mobile (no node): browser → obsidian.
   // Node is the primary attempt on desktop because it has no CORS surface, honors
   // custom headers, and routes proxy decisions through proxy-agent for parity with
-  // Chromium. Browser is the next fallback (covers rare proxy-agent edge cases),
-  // and obsidian's requestUrl is the last resort.
+  // Chromium. Browser is the fallback (covers rare proxy-agent edge cases).
+  // requestUrl is not used in desktop auto fallback — it is buffered, strips headers,
+  // and often produces misleading errors; users can still select it explicitly.
   const effectiveRunNode = Platform.isDesktop ? runNode : undefined
 
   const fallbackAttempts: Array<{
     mode: AutoPromotedTransportMode
     run: () => Promise<T>
   }> = effectiveRunNode
-    ? [
-        { mode: 'browser', run: runBrowser },
-        { mode: 'obsidian', run: runObsidian },
-      ]
+    ? [{ mode: 'browser', run: runBrowser }]
     : [{ mode: 'obsidian', run: runObsidian }]
 
   const runPrimary = effectiveRunNode ?? runBrowser
@@ -390,9 +388,9 @@ const createAutoFallbackStream = <T>({
     }
   }
 
-  // Desktop auto order: node → browser → obsidian. Mobile (no node): browser → obsidian.
-  // The primary attempt is timed; fallbacks are timed for browser/node (fast
-  // failure on CORS/proxy) and untimed for obsidian's buffered requestUrl.
+  // Desktop auto order: node → browser. Mobile (no node): browser → obsidian.
+  // The primary attempt is timed; browser/node fallbacks are timed (fast failure
+  // on CORS/proxy). Mobile obsidian fallback is untimed (buffered requestUrl).
   const primaryAttempt: {
     mode: 'browser' | 'node'
     createStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
@@ -418,12 +416,6 @@ const createAutoFallbackStream = <T>({
           mode: 'browser',
           createStream: createBrowserStream,
           timed: true,
-        },
-        {
-          mode: 'obsidian',
-          createStream: (attemptSignal?: AbortSignal) =>
-            createObsidianStream(attemptSignal ?? signal),
-          timed: false,
         },
       ]
     : [

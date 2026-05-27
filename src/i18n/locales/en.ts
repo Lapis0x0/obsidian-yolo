@@ -771,7 +771,7 @@ export const en: TranslationKeys = {
         'Use Obsidian requestUrl to bypass cross-origin restrictions. Streaming responses are buffered.',
       requestTransportMode: 'Request transport mode',
       requestTransportModeDesc:
-        'Auto tries browser fetch first, then desktop Node fetch, and finally falls back to Obsidian requestUrl on CORS/network errors. Obsidian mode buffers streaming responses, while Node mode uses desktop Node fetch for real streaming.',
+        'Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl. Obsidian mode buffers streaming responses; Node mode uses desktop Node fetch for real streaming.',
       requestTransportModeAuto: 'Auto (recommended)',
       requestTransportModeBrowser: 'Browser fetch only',
       requestTransportModeObsidian: 'Obsidian requestUrl only',
@@ -1471,7 +1471,7 @@ export const en: TranslationKeys = {
       audioFormatDescWebSocket: 'PCM usually has better compatibility.',
       transport: 'Transport',
       transportDesc:
-        'Matches provider request transport modes: Auto tries browser fetch, then desktop Node fetch, and falls back to Obsidian requestUrl on CORS/network errors.',
+        'Matches provider request transport modes: Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl.',
       transportMode: {
         auto: 'Auto (recommended)',
         node: 'Desktop Node fetch only',
@@ -1615,12 +1615,15 @@ export const en: TranslationKeys = {
     placeholderMention: 'add references or models',
     placeholderSkill: 'choose a skill or command',
     contextUsage: 'Context window usage',
+    contextUsageUnknownMaxSuffix: ' (context window limit not set)',
     contextBreakdown: {
       title: 'Context',
       fullLabel: '{{percent}} Full',
       tokensSuffix: 'Tokens',
       localEstimateCaption:
         'Local estimate — may differ from server-side billing.',
+      unknownMaxHint:
+        'Set context window tokens in model settings to show usage percentage.',
       error: 'Estimation failed',
       bucket: {
         system: 'System prompt',
@@ -1629,6 +1632,7 @@ export const en: TranslationKeys = {
         skills: 'Skills',
         memory: 'Memory',
         conversation: 'Conversation',
+        reasoning: 'Reasoning',
       },
     },
     inlineInfo: {
@@ -1702,6 +1706,7 @@ export const en: TranslationKeys = {
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
     annotations: 'Annotations',
+    vaultSources: 'Vault sources ({count})',
     pdfReferenceNoPreview: '(PDF: click the title to open the page)',
     assistantQuote: {
       add: 'Quote',

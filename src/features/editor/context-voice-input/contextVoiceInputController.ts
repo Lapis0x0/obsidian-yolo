@@ -569,14 +569,32 @@ export class ContextVoiceInputController {
     this.updateStatus('recording', 'transcribing')
     const settings = this.deps.getSettings()
     if (session.streamingAsr) {
+      const streamingAsr = session.streamingAsr
+      const streamingAsrStartedAt = session.streamingAsrStartedAt
+      session.streamingAsr = null
+      session.streamingAsrStartedAt = null
       try {
         recorder.cancel()
       } catch {
         // Best-effort; audio has already been streamed.
       }
       this.recorder = null
-      session.streamingAsr.keepAlive?.()
+      const transcribePromise = this.finishStreamingAsrSegment({
+        session,
+        streamingAsr,
+        startedAt: streamingAsrStartedAt,
+      })
+      // If starting the next recorder fails and the session is cancelled
+      // before we enqueue this promise, avoid an unhandled rejection from the
+      // just-finalized WebSocket segment.
+      void transcribePromise.catch(() => {})
       await this.startNextRecordingSegment(session, settings)
+      if (!this.session || this.session !== session) return
+      this.enqueueTranscriptSegment({
+        session,
+        transcribePromise,
+        settings,
+      })
       return
     }
 
@@ -603,24 +621,8 @@ export class ContextVoiceInputController {
       return
     }
 
-    const streamingAsr = session.streamingAsr
-    const streamingAsrStartedAt = session.streamingAsrStartedAt
-    session.streamingAsr = null
-    session.streamingAsrStartedAt = null
     await this.startNextRecordingSegment(session, settings)
     if (!this.session || this.session !== session) return
-    if (streamingAsr) {
-      this.enqueueTranscriptSegment({
-        session,
-        transcribePromise: this.finishStreamingAsrSegment({
-          session,
-          streamingAsr,
-          startedAt: streamingAsrStartedAt,
-        }),
-        settings,
-      })
-      return
-    }
     this.enqueueAudioSegment({ session, audio, settings })
   }
 

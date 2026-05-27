@@ -20,6 +20,7 @@ const BUCKET_ORDER: BucketKey[] = [
   'rules',
   'skills',
   'memory',
+  'reasoning',
   'conversation',
 ]
 
@@ -30,6 +31,7 @@ const BUCKET_CLASS: Record<BucketKey, string> = {
   skills: 'yolo-context-breakdown-swatch--skills',
   memory: 'yolo-context-breakdown-swatch--memory',
   conversation: 'yolo-context-breakdown-swatch--conversation',
+  reasoning: 'yolo-context-breakdown-swatch--reasoning',
 }
 
 // Minimum visual width (as percent of bar) for any non-zero segment, so tiny
@@ -38,7 +40,7 @@ const MIN_BAR_PERCENT = 0.6
 
 export type ContextUsagePopoverProps = {
   promptTokens: number
-  maxContextTokens: number
+  maxContextTokens: number | null
   label: string
   /** Anchor ref pointing at the input-container so the popover lines up with
    * the input box (not just the ring). */
@@ -80,15 +82,19 @@ export default function ContextUsagePopover({
         'chat.contextBreakdown.bucket.conversation',
         'Conversation',
       ),
+      reasoning: t('chat.contextBreakdown.bucket.reasoning', 'Reasoning'),
     }),
     [t],
   )
 
-  const ratio = Math.min(
-    1,
-    Math.max(0, promptTokens / Math.max(1, maxContextTokens)),
-  )
-  const percentLabel = `${Math.round(ratio * 100)}%`
+  const hasMax =
+    typeof maxContextTokens === 'number' &&
+    maxContextTokens > 0 &&
+    Number.isFinite(maxContextTokens)
+  const ratio = hasMax
+    ? Math.min(1, Math.max(0, promptTokens / maxContextTokens))
+    : null
+  const percentLabel = ratio === null ? null : `${Math.round(ratio * 100)}%`
 
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
@@ -136,16 +142,22 @@ export default function ContextUsagePopover({
               </div>
             </div>
             <div className="yolo-context-breakdown__summary">
-              <span className="yolo-context-breakdown__percent">
-                {t(
-                  'chat.contextBreakdown.fullLabel',
-                  '{{percent}} Full',
-                ).replace('{{percent}}', percentLabel)}
-              </span>
+              {percentLabel ? (
+                <span className="yolo-context-breakdown__percent">
+                  {t(
+                    'chat.contextBreakdown.fullLabel',
+                    '{{percent}} Full',
+                  ).replace('{{percent}}', percentLabel)}
+                </span>
+              ) : null}
               <span className="yolo-context-breakdown__totals">
                 {breakdown.status === 'ready'
-                  ? `~${formatTokenCount(breakdown.data.total)} / ${formatTokenCount(maxContextTokens)}`
-                  : `~${formatTokenCount(promptTokens)} / ${formatTokenCount(maxContextTokens)}`}{' '}
+                  ? hasMax
+                    ? `~${formatTokenCount(breakdown.data.total)} / ${formatTokenCount(maxContextTokens)}`
+                    : `~${formatTokenCount(breakdown.data.total)}`
+                  : hasMax
+                    ? `~${formatTokenCount(promptTokens)} / ${formatTokenCount(maxContextTokens)}`
+                    : `~${formatTokenCount(promptTokens)}`}{' '}
                 <span className="yolo-context-breakdown__totals-suffix">
                   {t('chat.contextBreakdown.tokensSuffix', 'Tokens')}
                 </span>
@@ -161,6 +173,14 @@ export default function ContextUsagePopover({
             bucketLabels={bucketLabels}
             errorLabel={t('chat.contextBreakdown.error', 'Estimation failed')}
           />
+          {!hasMax ? (
+            <p className="yolo-context-breakdown__unknown-max-hint">
+              {t(
+                'chat.contextBreakdown.unknownMaxHint',
+                '可在模型设置中配置上下文窗口 token，以显示占用比例',
+              )}
+            </p>
+          ) : null}
         </div>
       </YoloPopoverContent>
     </Popover.Root>
@@ -172,7 +192,7 @@ function BreakdownBar({
   maxContextTokens,
 }: {
   breakdown: ReturnType<typeof useContextBreakdown>
-  maxContextTokens: number
+  maxContextTokens: number | null
 }) {
   if (breakdown.status !== 'ready') {
     return (
@@ -183,7 +203,12 @@ function BreakdownBar({
     )
   }
 
-  const max = Math.max(1, maxContextTokens)
+  const hasMax =
+    typeof maxContextTokens === 'number' &&
+    maxContextTokens > 0 &&
+    Number.isFinite(maxContextTokens)
+  const totalTokens = breakdown.data.total
+  const max = hasMax ? maxContextTokens : Math.max(1, totalTokens)
   const segments = BUCKET_ORDER.map((bucket) => {
     const tokens =
       breakdown.data.buckets.find((b) => b.bucket === bucket)?.tokens ?? 0

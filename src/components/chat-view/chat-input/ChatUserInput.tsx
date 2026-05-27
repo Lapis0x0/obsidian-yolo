@@ -129,7 +129,7 @@ export type ChatUserInputProps = {
   // 上下文窗口占用环，传入时显示在发送按钮左侧
   contextUsage?: {
     promptTokens: number
-    maxContextTokens: number
+    maxContextTokens: number | null
     label: string
     /** When provided, the ring becomes a popover trigger that opens the
      * per-bucket context breakdown. Builder is called lazily on open and may

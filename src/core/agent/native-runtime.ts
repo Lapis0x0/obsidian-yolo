@@ -104,6 +104,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       allowedSkillIds: input.allowedSkillIds,
       allowedSkillNames: input.allowedSkillNames,
       apiType: input.apiType,
+      runContext: input.runContext,
     })
     const worker = createAgentLoopWorker()
     const runId = uuidv4()

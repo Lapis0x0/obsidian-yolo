@@ -24,6 +24,7 @@ import {
   LLMModelNotFoundException,
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
+import type { AutoPromotedTransportMode } from '../../core/llm/requestTransport'
 import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
@@ -330,7 +331,7 @@ export function useChatStreamManager({
   )
 
   const handleAutoPromoteTransportMode = useCallback(
-    (providerId: string, mode: 'node' | 'obsidian') => {
+    (providerId: string, mode: AutoPromotedTransportMode) => {
       void promoteProviderTransportModeToObsidian({
         getSettings: () => plugin.settings,
         setSettings,

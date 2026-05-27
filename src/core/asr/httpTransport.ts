@@ -5,18 +5,17 @@ import type { AsrTransportMode } from '../../settings/schema/setting.types'
 /**
  * Thin uniform interface over the three ASR transports.
  *
- *   - `auto`      → browser fetch, then desktop Node fetch, then Obsidian
- *     requestUrl on CORS/network errors.
+ *   - `auto`      → desktop: Node fetch, then browser fetch on retryable
+ *     network/CORS errors; mobile: browser fetch, then Obsidian requestUrl.
  *   - `obsidian`  → `requestUrl` from the Obsidian API. Bypasses CORS/proxy
- *     quirks on Electron desktop and is the default for almost every LLM
- *     provider here. Does NOT honour AbortSignal — callers check
- *     `signal.aborted` after the call returns.
+ *     quirks when explicitly selected. Does NOT honour AbortSignal — callers
+ *     check `signal.aborted` after the call returns.
  *   - `browser`   → native `window.fetch`. Honours AbortSignal and tends to
  *     play nicer with enterprise gateways that strip headers added by the
  *     Obsidian shim.
  *   - `node`      → desktop Node fetch, lazy-loaded on desktop only, using the
  *     same proxy-aware fetch path as LLM providers. On mobile (no Node
- *     runtime) we transparently fall back to the `obsidian` path so the
+ *     runtime) we transparently fall back to the mobile auto path so the
  *     setting is portable.
  */
 export type AsrHttpResponse = {
@@ -81,6 +80,20 @@ export async function sendAsrMultipartRequest(args: {
 
 type RawBody = string | ArrayBuffer | Uint8Array
 
+const AUTO_RETRY_MESSAGE_PATTERNS = [
+  'access-control-allow-origin',
+  'blocked by cors policy',
+  'cors',
+  'econnrefused',
+  'enotfound',
+  'etimedout',
+  'failed to fetch',
+  'fetch failed',
+  'load failed',
+  'networkerror',
+  'preflight request',
+]
+
 async function sendRaw(args: {
   url: string
   method: 'POST'
@@ -99,14 +112,17 @@ async function sendRaw(args: {
     return sendViaBrowserFetch({ url, method, headers, body, signal })
   }
 
-  if (transportMode === 'node' && Platform.isDesktopApp) {
-    // Lazy-load the node:http transport to keep node builtins out of the
-    // mobile bundle. See `nodeHttpTransport.ts` for the project convention.
-    const { sendViaNodeHttp } = await import('./nodeHttpTransport')
-    return sendViaNodeHttp({ url, method, headers, body, signal })
+  if (transportMode === 'node') {
+    if (Platform.isDesktop) {
+      // Lazy-load the node:http transport to keep node builtins out of the
+      // mobile bundle. See `nodeHttpTransport.ts` for the project convention.
+      const { sendViaNodeHttp } = await import('./nodeHttpTransport')
+      return sendViaNodeHttp({ url, method, headers, body, signal })
+    }
+    return sendViaAuto({ url, method, headers, body, signal })
   }
 
-  // 'obsidian' (default) and 'node' on mobile both fall through to requestUrl.
+  // 'obsidian' falls through to requestUrl.
   return sendViaObsidianRequest({ url, method, headers, body })
 }
 
@@ -117,17 +133,23 @@ async function sendViaAuto(args: {
   body: RawBody
   signal?: AbortSignal
 }): Promise<AsrHttpResponse> {
+  if (Platform.isDesktop) {
+    try {
+      const { sendViaNodeHttp } = await import('./nodeHttpTransport')
+      return await sendViaNodeHttp(args)
+    } catch (nodeError) {
+      if (args.signal?.aborted || !shouldRetryWithNextTransport(nodeError)) {
+        throw nodeError
+      }
+      return sendViaBrowserFetch(args)
+    }
+  }
+
   try {
     return await sendViaBrowserFetch(args)
   } catch (browserError) {
-    if (args.signal?.aborted) throw browserError
-    if (Platform.isDesktopApp) {
-      try {
-        const { sendViaNodeHttp } = await import('./nodeHttpTransport')
-        return await sendViaNodeHttp(args)
-      } catch (nodeError) {
-        if (args.signal?.aborted) throw nodeError
-      }
+    if (args.signal?.aborted || !shouldRetryWithNextTransport(browserError)) {
+      throw browserError
     }
     return sendViaObsidianRequest(args)
   }
@@ -182,4 +204,36 @@ const safeJsonParse = (text: string): unknown => {
   } catch {
     return null
   }
+}
+
+const collectErrorMessages = (error: unknown, depth = 0): string[] => {
+  if (depth > 5 || error == null) return []
+  if (typeof error === 'string') return [error]
+  if (error instanceof Error) {
+    const nested =
+      'cause' in error
+        ? collectErrorMessages(
+            (error as Error & { cause?: unknown }).cause,
+            depth + 1,
+          )
+        : []
+    return [error.message, ...nested]
+  }
+  if (typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    const nested: string[] = []
+    if (typeof record.message === 'string') nested.push(record.message)
+    if ('cause' in record) {
+      nested.push(...collectErrorMessages(record.cause, depth + 1))
+    }
+    return nested
+  }
+  return []
+}
+
+const shouldRetryWithNextTransport = (error: unknown): boolean => {
+  const message = collectErrorMessages(error).join(' ').toLowerCase()
+  return AUTO_RETRY_MESSAGE_PATTERNS.some((pattern) =>
+    message.includes(pattern),
+  )
 }

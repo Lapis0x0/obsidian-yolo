@@ -16,6 +16,7 @@ import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
 import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
+import { WindowVersionProvider } from './contexts/window-version-context'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import { getConversationDisplayTitle } from './hooks/useChatHistory'
 import YoloPlugin from './main'
@@ -94,61 +95,66 @@ export class ChatView extends ItemView {
     })
 
     this.root.render(
-      <ChatViewProvider chatView={this}>
-        <PluginProvider plugin={this.plugin}>
-          <LanguageProvider>
-            <AppProvider app={this.app}>
-              <SettingsProvider
-                settings={this.plugin.settings}
-                setSettings={(newSettings) =>
-                  this.plugin.setSettings(newSettings)
-                }
-                addSettingsChangeListener={(listener) =>
-                  this.plugin.addSettingsChangeListener(listener)
-                }
-              >
-                <DarkModeProvider>
-                  <DatabaseProvider
-                    getDatabaseManager={() => this.plugin.getDbManager()}
-                  >
-                    <RAGProvider
-                      getRAGEngine={() => this.plugin.getRAGEngine()}
+      <WindowVersionProvider containerEl={this.containerEl}>
+        <ChatViewProvider chatView={this}>
+          <PluginProvider plugin={this.plugin}>
+            <LanguageProvider>
+              <AppProvider app={this.app}>
+                <SettingsProvider
+                  settings={this.plugin.settings}
+                  setSettings={(newSettings) =>
+                    this.plugin.setSettings(newSettings)
+                  }
+                  addSettingsChangeListener={(listener) =>
+                    this.plugin.addSettingsChangeListener(listener)
+                  }
+                >
+                  <DarkModeProvider>
+                    <DatabaseProvider
+                      getDatabaseManager={() => this.plugin.getDbManager()}
                     >
-                      <McpProvider
-                        getMcpManager={() => this.plugin.getMcpManager()}
+                      <RAGProvider
+                        getRAGEngine={() => this.plugin.getRAGEngine()}
                       >
-                        <QueryClientProvider client={queryClient}>
-                          <React.StrictMode>
-                            <DialogContainerProvider
-                              container={
-                                this.containerEl.children[1] as HTMLElement
-                              }
-                            >
-                              <ChatSidebarTabs
-                                chatRef={this.chatRef}
-                                placement={placement}
-                                initialChatProps={this.initialChatProps}
-                                onConversationContextChange={(context) => {
-                                  const manager =
-                                    this.plugin.getChatLeafSessionManager()
-                                  manager.updateLeafSummary(this.leaf, context)
-                                  this.updateDisplayTitle(
-                                    context.currentConversationTitle,
-                                  )
-                                }}
-                              />
-                            </DialogContainerProvider>
-                          </React.StrictMode>
-                        </QueryClientProvider>
-                      </McpProvider>
-                    </RAGProvider>
-                  </DatabaseProvider>
-                </DarkModeProvider>
-              </SettingsProvider>
-            </AppProvider>
-          </LanguageProvider>
-        </PluginProvider>
-      </ChatViewProvider>,
+                        <McpProvider
+                          getMcpManager={() => this.plugin.getMcpManager()}
+                        >
+                          <QueryClientProvider client={queryClient}>
+                            <React.StrictMode>
+                              <DialogContainerProvider
+                                container={
+                                  this.containerEl.children[1] as HTMLElement
+                                }
+                              >
+                                <ChatSidebarTabs
+                                  chatRef={this.chatRef}
+                                  placement={placement}
+                                  initialChatProps={this.initialChatProps}
+                                  onConversationContextChange={(context) => {
+                                    const manager =
+                                      this.plugin.getChatLeafSessionManager()
+                                    manager.updateLeafSummary(
+                                      this.leaf,
+                                      context,
+                                    )
+                                    this.updateDisplayTitle(
+                                      context.currentConversationTitle,
+                                    )
+                                  }}
+                                />
+                              </DialogContainerProvider>
+                            </React.StrictMode>
+                          </QueryClientProvider>
+                        </McpProvider>
+                      </RAGProvider>
+                    </DatabaseProvider>
+                  </DarkModeProvider>
+                </SettingsProvider>
+              </AppProvider>
+            </LanguageProvider>
+          </PluginProvider>
+        </ChatViewProvider>
+      </WindowVersionProvider>,
     )
     return Promise.resolve()
   }

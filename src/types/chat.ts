@@ -1,5 +1,7 @@
 import { SerializedEditorState } from 'lexical'
 
+import { CitationSource } from '../core/agent/citationRegistry'
+
 import { ChatModel } from './chat-model.types'
 import { ContentPart } from './llm/request'
 import { Annotation, ProviderMetadata, ResponseUsage } from './llm/response'
@@ -101,6 +103,7 @@ export type ChatAssistantMessage = {
     branchConversationId?: string
     branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
     branchWaitingApproval?: boolean
+    sources?: CitationSource[]
   }
 }
 export type ChatToolMessage = {
@@ -199,6 +202,7 @@ export type SerializedChatAssistantMessage = {
     branchConversationId?: string
     branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
     branchWaitingApproval?: boolean
+    sources?: CitationSource[]
   }
 }
 export type SerializedChatToolMessage = {

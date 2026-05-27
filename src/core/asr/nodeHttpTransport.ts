@@ -1,5 +1,6 @@
-import type { AsrHttpResponse } from './httpTransport'
 import { createDesktopNodeFetch } from '../llm/sdkFetch'
+
+import type { AsrHttpResponse } from './httpTransport'
 
 type RawBody = string | ArrayBuffer | Uint8Array
 

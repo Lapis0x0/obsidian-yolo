@@ -1,6 +1,15 @@
 import { EditorView } from '@codemirror/view'
-import { App, Editor, MarkdownView, TFile, TFolder, Vault } from 'obsidian'
+import {
+  App,
+  Editor,
+  MarkdownView,
+  TFile,
+  TFolder,
+  Vault,
+  WorkspaceLeaf,
+} from 'obsidian'
 
+import { CHAT_VIEW_TYPE } from '../constants'
 import { MentionableBlockData } from '../types/mentionable'
 
 export async function readTFileContent(
@@ -176,6 +185,45 @@ export function calculateFileDistance(
   return distance
 }
 
+/**
+ * 在主编辑区（rootSplit）新建一个 tab 并返回。
+ *
+ * 直接调用 `workspace.getLeaf('tab')` 会基于当前 active leaf 的父 split 新开 tab，
+ * 当聊天视图处于激活状态时，新 tab 会被塞进 chat 那一栏（无论 chat 在侧边栏还是
+ * 主区的某个 split 里），覆盖聊天面板。这里需要锁定一个非 chat 的主区 leaf 作为
+ * 锚点，再让 Obsidian 在它旁边新开 tab。
+ */
+function openTabInMainArea(app: App): WorkspaceLeaf {
+  const anchor = findMainAreaAnchorLeaf(app)
+  if (anchor) {
+    app.workspace.setActiveLeaf(anchor, { focus: false })
+    return app.workspace.getLeaf('tab')
+  }
+
+  // 主区只剩 chat：在 chat 右侧 split 一个新 leaf（贴合多数编辑器"预览/跳转打开在右侧"的直觉）。
+  const chatLeaf = app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0]
+  if (chatLeaf) {
+    return app.workspace.createLeafBySplit(chatLeaf, 'vertical', false)
+  }
+
+  return app.workspace.getLeaf(false)
+}
+
+function findMainAreaAnchorLeaf(app: App): WorkspaceLeaf | null {
+  const recent = app.workspace.getMostRecentLeaf(app.workspace.rootSplit)
+  if (recent && recent.view.getViewType() !== CHAT_VIEW_TYPE) {
+    return recent
+  }
+
+  let anchor: WorkspaceLeaf | null = null
+  app.workspace.iterateRootLeaves((leaf) => {
+    if (anchor) return
+    if (leaf.view.getViewType() === CHAT_VIEW_TYPE) return
+    anchor = leaf
+  })
+  return anchor
+}
+
 export function openMarkdownFile(
   app: App,
   filePath: string,
@@ -198,7 +246,7 @@ export function openMarkdownFile(
       existingLeaf.view.setEphemeralState({ line: startLine - 1 }) // -1 because line is 0-indexed
     }
   } else {
-    const leaf = app.workspace.getLeaf('tab')
+    const leaf = openTabInMainArea(app)
     void leaf.openFile(file, {
       eState: startLine ? { line: startLine - 1 } : undefined, // -1 because line is 0-indexed
     })
@@ -211,7 +259,9 @@ export function openPdfFileAtPage(
   filePath: string,
   page: number,
 ): void {
+  const file = app.vault.getFileByPath(filePath)
+  if (!file) return
   const safePage = Math.max(1, Math.floor(page))
-  const link = `${filePath}#page=${safePage}`
-  app.workspace.openLinkText(link, '', true)
+  const leaf = openTabInMainArea(app)
+  void leaf.openFile(file, { eState: { subpath: `#page=${safePage}` } })
 }

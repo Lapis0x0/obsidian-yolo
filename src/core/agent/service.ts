@@ -19,10 +19,15 @@ import { formatErrorMessageWithCauses } from '../../utils/error-message'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
 
 import { DEFAULT_BRANCH_ID } from './branch'
+import { CitationRegistry } from './citationRegistry'
 import type { AsyncTaskRecord } from './external-cli/async-task-registry'
 import type { ExternalCliEvent } from './external-cli/streamBus'
 import { NativeAgentRuntime } from './native-runtime'
-import { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from './types'
+import {
+  AgentRunContext,
+  AgentRuntimeLoopConfig,
+  AgentRuntimeRunInput,
+} from './types'
 
 export type AgentRunStatus =
   | 'idle'
@@ -89,6 +94,11 @@ type AgentRunEntry = {
   runToken: symbol | null
   lastRunInput: AgentRuntimeRunInput | null
   lastLoopConfig: AgentRuntimeLoopConfig | null
+  // Holds the citationRegistry for the run currently associated with this
+  // entry, so manual-approval/recovery paths (which call mcpManager.callTool
+  // directly, bypassing the loop-worker) can attach citations the same way
+  // auto-executed tool calls do.
+  lastRunContext: AgentRunContext | null
 }
 
 type AgentServiceOptions = {
@@ -922,6 +932,9 @@ export class AgentService {
           roundId: toolMessage.id,
           chatModelId: lastRunInput.model.id,
           workspaceScope: lastRunInput.workspaceScope,
+          // Reuse the same registry the auto-execution path uses so citations
+          // emitted by the approved tool are attached to the assistant message.
+          runContext: runEntry.lastRunContext ?? undefined,
         }),
       getResponseBody: (response) => response,
     })
@@ -1158,6 +1171,32 @@ export class AgentService {
     )
   }
 
+  private attachSourcesToLatestAssistant(
+    messages: ChatMessage[],
+    registry: CitationRegistry,
+  ): ChatMessage[] {
+    if (registry.size === 0) {
+      return messages
+    }
+    const sources = registry.toArray()
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.role !== 'assistant') {
+        continue
+      }
+      const next = [...messages]
+      next[index] = {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          sources,
+        },
+      }
+      return next
+    }
+    return messages
+  }
+
   private findDebugTraceIdForToolCall(
     messages: ChatMessage[],
     toolCallId: string | undefined,
@@ -1227,8 +1266,13 @@ export class AgentService {
     runEntry.lastRunInput = input
     runEntry.lastLoopConfig = loopConfig
 
+    const citationRegistry = new CitationRegistry()
+    const runContext: AgentRunContext = { citationRegistry }
+    runEntry.lastRunContext = runContext
+
     const runtimeInput: AgentRuntimeRunInput = {
       ...input,
+      runContext,
       drainPendingUserMessages: () => {
         const queue = this.pendingUserMessagesByKey.get(runKey)
         if (!queue || queue.length === 0) {
@@ -1290,8 +1334,14 @@ export class AgentService {
         return
       }
 
+      const nextMessages = this.attachSourcesToLatestAssistant(
+        currentRunEntry.state.messages,
+        citationRegistry,
+      )
+
       currentRunEntry.state = {
         ...currentRunEntry.state,
+        messages: nextMessages,
         status: input.abortSignal?.aborted ? 'aborted' : 'completed',
         pendingCompactionAnchorMessageId: null,
       }
@@ -1504,6 +1554,7 @@ export class AgentService {
       runToken: null,
       lastRunInput: null,
       lastLoopConfig: null,
+      lastRunContext: null,
       state: {
         conversationId,
         status: 'idle',

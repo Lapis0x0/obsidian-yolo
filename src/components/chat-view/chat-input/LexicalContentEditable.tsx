@@ -3,6 +3,7 @@ import {
   InitialEditorStateType,
   LexicalComposer,
 } from '@lexical/react/LexicalComposer'
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import { EditorRefPlugin } from '@lexical/react/LexicalEditorRefPlugin'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
@@ -13,6 +14,7 @@ import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { useWindowVersion } from '../../../contexts/window-version-context'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../core/snippets/snippetsManager'
 import { Assistant } from '../../../types/assistant.types'
@@ -85,6 +87,77 @@ export type LexicalContentEditableProps = {
   }
 }
 
+/**
+ * Patches `editor.setRootElement` to swallow the `Root element not registered`
+ * error that Lexical throws while *detaching* a root element whose
+ * `ownerDocument` has been reparented to a different window (Obsidian
+ * pop-out). On `setRootElement(null)`, Lexical's `removeRootElementEvents`
+ * reads `prevRootElement.ownerDocument` — which now points at the new
+ * document — and fails to find the original registration in
+ * `rootElementsRegistered`.
+ *
+ * Caveat: this is not perfectly harmless. Lexical 0.17.1 tracks roots in a
+ * `WeakMap<Document, number>` keyed by document, so the original document
+ * still owns a `selectionchange` listener bound to the now-dead editor's
+ * closure. We rely on the LexicalComposer being remounted (via React key
+ * change) so a fresh editor takes over; the stale listener remains attached
+ * to the original document for that document's lifetime. Acceptable: each
+ * pop-out leaks one listener, which is dwarfed by the alternative
+ * (typing into the input being broken entirely).
+ *
+ * The error message string targets Lexical 0.17.1; revisit if upgrading.
+ *
+ * The patch is idempotent per editor instance.
+ */
+const PATCHED_FLAG = '__yoloSafeSetRootElementPatched'
+
+function SafeSetRootElementPatchPlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    const editorAsRecord = editor as unknown as Record<string, unknown>
+    if (editorAsRecord[PATCHED_FLAG] === true) {
+      return
+    }
+
+    const original = editor.setRootElement.bind(editor)
+    editor.setRootElement = (next: HTMLElement | null) => {
+      try {
+        original(next)
+      } catch (error) {
+        // Only swallow the specific teardown failure: detaching (next === null)
+        // with the exact Lexical 0.17.1 error string. Anything else rethrows.
+        if (
+          next === null &&
+          error instanceof Error &&
+          error.message === 'Root element not registered'
+        ) {
+          return
+        }
+        throw error
+      }
+    }
+    editorAsRecord[PATCHED_FLAG] = true
+  }, [editor])
+
+  return null
+}
+
+/**
+ * 把焦点移到聊天输入框。仅在窗口迁移（pop-out / dock back）导致 LexicalComposer
+ * 通过 key 重建后触发：首次挂载（version === 0）必须跳过，否则会抢走其他面板的焦点。
+ */
+function FocusOnWindowMigratePlugin({ version }: { version: number }) {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    if (version === 0) return
+    editor.focus()
+  }, [editor, version])
+
+  return null
+}
+
 export default function LexicalContentEditable({
   editorRef,
   contentEditableRef,
@@ -123,6 +196,7 @@ export default function LexicalContentEditable({
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
+  const windowVersion = useWindowVersion()
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
     app.workspace.getActiveFile()?.path ?? null,
   )
@@ -185,8 +259,10 @@ export default function LexicalContentEditable({
   }, [app])
 
   return (
-    <LexicalComposer initialConfig={initialConfig}>
-      {/* 
+    <LexicalComposer key={windowVersion} initialConfig={initialConfig}>
+      <SafeSetRootElementPatchPlugin />
+      <FocusOnWindowMigratePlugin version={windowVersion} />
+      {/*
             There was two approach to make mentionable node copy and pasteable.
             1. use RichTextPlugin and reset text format when paste
               - so I implemented NoFormatPlugin to reset text format when paste

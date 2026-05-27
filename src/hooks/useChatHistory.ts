@@ -20,6 +20,7 @@ import {
   updateLLMDebugTrace,
 } from '../core/llm/debugCapture'
 import { getChatModelClient } from '../core/llm/manager'
+import type { AutoPromotedTransportMode } from '../core/llm/requestTransport'
 import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
 import { batchLookupImageCache } from '../database/json/chat/imageCacheStore'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
@@ -154,7 +155,7 @@ export function useChatHistory(): UseChatHistory {
   }, [settings])
 
   const handleAutoPromoteTransportMode = useCallback(
-    (providerId: string, mode: 'node' | 'obsidian') => {
+    (providerId: string, mode: AutoPromotedTransportMode) => {
       void promoteProviderTransportModeToObsidian({
         getSettings: () => settingsRef.current,
         setSettings,

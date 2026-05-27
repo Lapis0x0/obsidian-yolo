@@ -11,6 +11,12 @@ import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'
 
+import type { CitationRegistry } from './citationRegistry'
+
+export type AgentRunContext = {
+  citationRegistry: CitationRegistry
+}
+
 export type AgentRuntimeSnapshot = {
   messages: ChatMessage[]
   compaction: ChatConversationCompactionState
@@ -81,6 +87,12 @@ export type AgentRuntimeRunInput = {
    * Not invoked by the single-turn fast path (single LLM call, no boundary).
    */
   drainPendingUserMessages?: () => ChatMessage[]
+  /**
+   * Per-run side-channel for state that flows down to tool execution but isn't
+   * part of the LLM-visible message stream (e.g. the citation registry that
+   * collects fs_search hits across multiple tool calls).
+   */
+  runContext?: AgentRunContext
 }
 
 export type AgentRuntimeLoopConfig = {

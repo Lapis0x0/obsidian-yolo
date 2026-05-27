@@ -2108,7 +2108,11 @@ button.yolo-chat-input-model-select {
 .yolo-context-breakdown:has(
     .yolo-context-breakdown__list-item[data-bucket='conversation']:hover
   )
-  .yolo-context-breakdown__bar-segment.yolo-context-breakdown-swatch--conversation {
+  .yolo-context-breakdown__bar-segment.yolo-context-breakdown-swatch--conversation,
+.yolo-context-breakdown:has(
+    .yolo-context-breakdown__list-item[data-bucket='reasoning']:hover
+  )
+  .yolo-context-breakdown__bar-segment.yolo-context-breakdown-swatch--reasoning {
   opacity: 1;
 }
 
@@ -2216,6 +2220,15 @@ button.yolo-chat-input-model-select {
   padding: 4px 2px;
 }
 
+.yolo-context-breakdown__unknown-max-hint {
+  margin: -4px 0 0;
+  padding: 0 2px;
+  font-size: var(--font-smallest);
+  line-height: 1.35;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
 /* Bucket colors — follow Obsidian theme variables so light/dark Just Work. */
 .yolo-context-breakdown-swatch--system {
   background: color-mix(in srgb, var(--text-muted) 70%, transparent);
@@ -2239,6 +2252,10 @@ button.yolo-chat-input-model-select {
 
 .yolo-context-breakdown-swatch--conversation {
   background: var(--color-accent-2, var(--interactive-accent));
+}
+
+.yolo-context-breakdown-swatch--reasoning {
+  background: var(--color-cyan, var(--color-blue));
 }
 
 @keyframes yolo-context-breakdown-pulse {

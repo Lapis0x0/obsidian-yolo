@@ -165,7 +165,7 @@ export function isLLMDebugCaptureEnabled(): boolean {
  * `conversationId + sourceUserMessageId`. Without this helper their cache hit
  * rate is invisible to developers tuning the prompt cache.
  *
- * Output is a single console.info line shaped like the chat-debug panel rows
+ * Output is a single console.debug line shaped like the chat-debug panel rows
  * so people can grep both sources together.
  */
 export function logAuxiliaryLLMUsage({
@@ -183,7 +183,7 @@ export function logAuxiliaryLLMUsage({
 }): void {
   if (!llmDebugCaptureEnabled) return
   if (!usage) {
-    console.info('[YOLO LLM aux]', {
+    console.debug('[YOLO LLM aux]', {
       purpose,
       provider: providerId,
       model: modelName,
@@ -198,7 +198,7 @@ export function logAuxiliaryLLMUsage({
   // cache_read_input_tokens is documented as already included in prompt_tokens,
   // so the hit rate is read / prompt.
   const cacheHitRate = prompt > 0 ? cacheRead / prompt : 0
-  console.info('[YOLO LLM aux]', {
+  console.debug('[YOLO LLM aux]', {
     purpose,
     provider: providerId,
     model: modelName,

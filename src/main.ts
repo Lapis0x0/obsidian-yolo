@@ -922,6 +922,23 @@ export default class YoloPlugin extends Plugin {
     return this.voiceFloatingIslandController
   }
 
+  private isContextVoiceInputFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    return !!opts && opts.enabled && isAsrConfigured(opts)
+  }
+
+  private syncVoiceFloatingIsland(): void {
+    if (!this.isContextVoiceInputFeatureReady()) {
+      if (!this.contextVoiceInputController?.isBusy()) {
+        this.voiceFloatingIslandController?.destroy()
+        this.voiceFloatingIslandController = null
+      }
+      return
+    }
+    this.getContextVoiceInputController()
+    this.ensureVoiceFloatingIsland().attachToActiveView()
+  }
+
   private setupBackgroundActivityStatusBar(): void {
     const statusBarItem = this.addStatusBarItem()
     statusBarItem.addClass('mod-clickable')
@@ -1956,7 +1973,9 @@ export default class YoloPlugin extends Plugin {
         this.t('commands.toggleVoiceInput') ??
         'Toggle context-aware voice input',
       editorCallback: (editor: Editor) => {
-        void this.getContextVoiceInputController().toggle(editor)
+        const controller = this.getContextVoiceInputController()
+        this.syncVoiceFloatingIsland()
+        void controller.toggle(editor)
       },
     })
 
@@ -1972,10 +1991,7 @@ export default class YoloPlugin extends Plugin {
       },
     })
 
-    // Lazily build the controller so the floating island can subscribe to it
-    // immediately when the user opens a markdown view.
-    this.getContextVoiceInputController()
-    this.ensureVoiceFloatingIsland().attachToActiveView()
+    this.syncVoiceFloatingIsland()
 
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
@@ -2163,8 +2179,8 @@ export default class YoloPlugin extends Plugin {
           // Update selection manager with new editor container
           this.initializeSelectionChat()
           // Re-attach the voice floating island to whichever markdown view is
-          // now active. No-op when the active leaf is not a markdown view.
-          this.voiceFloatingIslandController?.attachToActiveView()
+          // now active. No-op unless voice input is configured and enabled.
+          this.syncVoiceFloatingIsland()
         } catch (err) {
           console.error('Editor change handler error:', err)
         }
@@ -2188,7 +2204,7 @@ export default class YoloPlugin extends Plugin {
       this.syncSelectionChatCommands()
       // Voice feature gating may have flipped (enable toggled, ASR configured);
       // re-render the island so it shows/hides accordingly.
-      this.voiceFloatingIslandController?.attachToActiveView()
+      this.syncVoiceFloatingIsland()
     })
   }
 

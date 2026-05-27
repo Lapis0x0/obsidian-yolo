@@ -42,6 +42,7 @@ import {
 import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import { PdfSliceError, slicePdfPages } from '../../utils/pdf/slicePdfPages'
 import type { TodoItem } from '../agent/todos-from-messages'
+import type { AgentRunContext } from '../agent/types'
 import {
   findPathOutsideScope,
   isPathAllowedByScope,
@@ -59,8 +60,15 @@ import {
   memoryUpdate,
 } from '../memory/memoryManager'
 import type { RAGEngine } from '../rag/ragEngine'
-import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
-import { aggregateSearchResults } from '../search/searchResultAggregation'
+import {
+  type SuperSearchResult,
+  fuseRrfHybrid,
+  superSearchDedupKey,
+} from '../search/hybridSearch'
+import {
+  type AggregatedSearchResult,
+  aggregateSearchResults,
+} from '../search/searchResultAggregation'
 import { getLiteSkillDocument } from '../skills/liteSkills'
 import {
   WEB_SCRAPE_TOOL_NAME,
@@ -557,7 +565,8 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_search',
       description:
-        'Search the vault. Prefer hybrid mode (keyword + RAG fused). Results grouped by file with snippets. For PDF hits, startLine/endLine are page numbers. Use keyword for exact terms; rag for semantic-only.',
+        'Search the vault. Prefer hybrid mode (keyword + RAG fused). Results grouped by file with snippets. For PDF hits, startLine/endLine are page numbers. Use keyword for exact terms; rag for semantic-only. ' +
+        'Each returned snippet carries a `cite: N` field. When you write the answer using content from this tool, annotate each citing point with a markdown link `[N](yolo-cite:N?yolo-cite=N)` where N is the `cite` number of the snippet you relied on. The same `N` may be reused as often as needed; multiple `[1](...)[2](...)` may appear back-to-back. Do not emit `yolo-cite:` links unless they correspond to a `cite` number from this tool.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -2171,6 +2180,48 @@ const formatJsonResult = (payload: unknown): string => {
   return JSON.stringify(payload, null, 2)
 }
 
+const annotateAggregatedSearchWithCitations = (
+  results: AggregatedSearchResult[],
+  runContext: AgentRunContext | undefined,
+): AggregatedSearchResult[] => {
+  const registry = runContext?.citationRegistry
+  if (!registry) {
+    return results
+  }
+  return results.map((group) => {
+    if (group.kind !== 'content_group') {
+      return group
+    }
+    const decoratedSnippets = group.snippets.map((snippet) => {
+      const start = snippet.startLine ?? snippet.line ?? 0
+      const end = snippet.endLine ?? snippet.line ?? start
+      const dedupKey = superSearchDedupKey({
+        kind: 'content',
+        path: group.path,
+        line: snippet.line,
+        startLine: snippet.startLine,
+        endLine: snippet.endLine,
+        page: snippet.page,
+        snippet: snippet.snippet,
+        source: snippet.source,
+        similarity: snippet.similarity,
+        rrfScore: snippet.rrfScore,
+      })
+      const ordinal = registry.assign(dedupKey, {
+        path: group.path,
+        startLine: start,
+        endLine: end,
+        page: snippet.page,
+        snippet: snippet.snippet ?? '',
+        similarity: snippet.similarity,
+        source: snippet.source,
+      })
+      return { ...snippet, cite: ordinal }
+    })
+    return { ...group, snippets: decoratedSnippets }
+  })
+}
+
 const normalizeLocalToolName = (toolName: string): string => {
   if (!toolName.includes('__')) {
     return toolName
@@ -2735,6 +2786,7 @@ export async function callLocalFileTool({
   signal,
   chatModelId,
   workspaceScope,
+  runContext,
 }: {
   app: App
   settings?: YoloSettings
@@ -2750,6 +2802,7 @@ export async function callLocalFileTool({
   signal?: AbortSignal
   chatModelId?: string
   workspaceScope?: AssistantWorkspaceScope
+  runContext?: AgentRunContext
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
@@ -3851,7 +3904,10 @@ export async function callLocalFileTool({
               scope,
               query,
               path: scopeTarget.normalizedPath,
-              results: aggregateSearchResults({ results, maxResults }),
+              results: annotateAggregatedSearchWithCitations(
+                aggregateSearchResults({ results, maxResults }),
+                runContext,
+              ),
             }),
           }
         }
@@ -3910,7 +3966,10 @@ export async function callLocalFileTool({
               scope: effectiveScope,
               query,
               path: scopeTarget.normalizedPath,
-              results: aggregateSearchResults({ results, maxResults }),
+              results: annotateAggregatedSearchWithCitations(
+                aggregateSearchResults({ results, maxResults }),
+                runContext,
+              ),
             }),
           }
         }
@@ -3975,7 +4034,10 @@ export async function callLocalFileTool({
             scope: 'content',
             query,
             path: scopeTarget.normalizedPath,
-            results: aggregateSearchResults({ results: fused, maxResults }),
+            results: annotateAggregatedSearchWithCitations(
+              aggregateSearchResults({ results: fused, maxResults }),
+              runContext,
+            ),
           }),
         }
       }

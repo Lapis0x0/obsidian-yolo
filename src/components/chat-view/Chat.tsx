@@ -88,6 +88,7 @@ import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
+import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { readTFileContent } from '../../utils/obsidian'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
@@ -861,12 +862,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     )
   }, [conversationModelId, settings.chatModels])
 
+  const effectiveMaxContextTokens = useMemo(
+    () => resolveEffectiveMaxContextTokens(currentConversationModel),
+    [currentConversationModel],
+  )
+
   const headerContextUsage = useMemo(() => {
     const contextUsage = getLatestAssistantContextUsage({
       messages: chatMessages,
-      maxContextTokens: currentConversationModel?.maxContextTokens,
+      maxContextTokens: effectiveMaxContextTokens,
     })
-    if (!contextUsage || contextUsage.maxContextTokens === null) {
+    if (!contextUsage) {
       return null
     }
 
@@ -874,7 +880,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       promptTokens: contextUsage.promptTokens,
       maxContextTokens: contextUsage.maxContextTokens,
     }
-  }, [chatMessages, currentConversationModel?.maxContextTokens])
+  }, [chatMessages, effectiveMaxContextTokens])
 
   const getReasoningLevelForModelId = useCallback(
     (modelId?: string | null): ReasoningLevel => {
@@ -2840,7 +2846,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         shouldTriggerAutoContextCompaction({
           previousMessages,
           chatOptions: autoCompactionOptions,
-          maxContextTokens: currentConversationModel?.maxContextTokens,
+          maxContextTokens: effectiveMaxContextTokens,
           compactionState: effectiveCompactionState,
           isConversationRunActive:
             currentConversationRunSummary.isRunning ||
@@ -3015,7 +3021,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settings.chatOptions,
       compactConversation,
       plugin,
-      currentConversationModel?.maxContextTokens,
+      effectiveMaxContextTokens,
       currentConversationRunSummary.isRunning,
       currentConversationRunSummary.isWaitingApproval,
       t,

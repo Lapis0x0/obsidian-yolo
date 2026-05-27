@@ -1,3 +1,5 @@
+import { Platform } from 'obsidian'
+
 import {
   clearRequestTransportMemoryForTests,
   createRequestTransportMemoryKey,
@@ -18,6 +20,7 @@ const collectStream = async <T>(stream: AsyncIterable<T>): Promise<T[]> => {
 describe('requestTransport', () => {
   beforeEach(() => {
     clearRequestTransportMemoryForTests()
+    ;(Platform as { isDesktop: boolean }).isDesktop = true
   })
 
   describe('resolveRequestTransportMode', () => {
@@ -173,23 +176,24 @@ describe('requestTransport', () => {
       expect(obsidian).not.toHaveBeenCalled()
     })
 
-    it('falls through to obsidian when both node and browser fail with CORS', async () => {
+    it('throws browser error when both node and browser fail with CORS on desktop', async () => {
+      const browserError = new TypeError('Failed to fetch')
       const obsidian = jest.fn(async () => 'obsidian')
 
       await expect(
         runWithRequestTransport({
           mode: 'auto',
           runBrowser: async () => {
-            throw new TypeError('Failed to fetch')
+            throw browserError
           },
           runNode: async () => {
             throw new TypeError('Failed to fetch')
           },
           runObsidian: obsidian,
         }),
-      ).resolves.toBe('obsidian')
+      ).rejects.toBe(browserError)
 
-      expect(obsidian).toHaveBeenCalledTimes(1)
+      expect(obsidian).not.toHaveBeenCalled()
     })
 
     it('throws node error in auto mode when error is not CORS-retryable', async () => {
@@ -210,6 +214,26 @@ describe('requestTransport', () => {
 
       expect(browser).not.toHaveBeenCalled()
       expect(obsidian).not.toHaveBeenCalled()
+    })
+
+    it('falls back to obsidian on mobile even when runNode is provided', async () => {
+      ;(Platform as { isDesktop: boolean }).isDesktop = false
+      const obsidian = jest.fn(async () => 'obsidian')
+      const node = jest.fn(async () => 'node')
+
+      await expect(
+        runWithRequestTransport({
+          mode: 'auto',
+          runBrowser: async () => {
+            throw new TypeError('Failed to fetch')
+          },
+          runNode: node,
+          runObsidian: obsidian,
+        }),
+      ).resolves.toBe('obsidian')
+
+      expect(node).not.toHaveBeenCalled()
+      expect(obsidian).toHaveBeenCalledTimes(1)
     })
 
     it('falls back to obsidian on non-desktop (no runNode provided)', async () => {
@@ -405,7 +429,8 @@ describe('requestTransport', () => {
       expect(onAutoPromoteTransportMode).toHaveBeenCalledWith('browser')
     })
 
-    it('falls through to obsidian stream when both node and browser streams fail with CORS', async () => {
+    it('throws browser error when both node and browser streams fail with CORS on desktop', async () => {
+      const browserError = new TypeError('Failed to fetch from browser')
       const createObsidianStream = jest.fn(async () => ({
         async *[Symbol.asyncIterator]() {
           yield 'obsidian-ok'
@@ -415,7 +440,7 @@ describe('requestTransport', () => {
       const stream = await runWithRequestTransportForStream({
         mode: 'auto',
         createBrowserStream: async () => {
-          throw new TypeError('Failed to fetch from browser')
+          throw browserError
         },
         createNodeStream: async () => {
           throw new TypeError('Failed to fetch from node')
@@ -423,7 +448,34 @@ describe('requestTransport', () => {
         createObsidianStream,
       })
 
-      await expect(collectStream(stream)).resolves.toEqual(['obsidian-ok'])
+      await expect(collectStream(stream)).rejects.toBe(browserError)
+      expect(createObsidianStream).not.toHaveBeenCalled()
+    })
+
+    it('falls back to obsidian stream on mobile even when createNodeStream is provided', async () => {
+      ;(Platform as { isDesktop: boolean }).isDesktop = false
+      const createObsidianStream = jest.fn(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield 'obsidian-mobile'
+        },
+      }))
+      const createNodeStream = jest.fn(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield 'node-should-not-run'
+        },
+      }))
+
+      const stream = await runWithRequestTransportForStream({
+        mode: 'auto',
+        createBrowserStream: async () => {
+          throw new TypeError('Failed to fetch')
+        },
+        createNodeStream,
+        createObsidianStream,
+      })
+
+      await expect(collectStream(stream)).resolves.toEqual(['obsidian-mobile'])
+      expect(createNodeStream).not.toHaveBeenCalled()
       expect(createObsidianStream).toHaveBeenCalledTimes(1)
     })
 

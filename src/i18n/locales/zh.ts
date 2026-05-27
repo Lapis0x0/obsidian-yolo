@@ -715,7 +715,7 @@ export const zh: TranslationKeys = {
         '使用 Obsidian requestUrl 绕过 CORS 限制。流式响应将会被缓冲后再返回。',
       requestTransportMode: '请求传输模式',
       requestTransportModeDesc:
-        '自动模式会先尝试浏览器 fetch，再尝试桌面端 Node fetch，最后在 CORS/网络错误时回退到 Obsidian requestUrl。仅 Obsidian 模式下流式响应会被缓冲；Node 模式使用桌面端 Node fetch 获取真实流式。',
+        '桌面端自动模式先尝试 Node fetch，再在 CORS/网络错误时回退到浏览器 fetch；移动端先尝试浏览器 fetch，再回退到 Obsidian requestUrl。仅 Obsidian 模式下流式响应会被缓冲；Node 模式使用桌面端 Node fetch 获取真实流式。',
       requestTransportModeAuto: '自动（推荐）',
       requestTransportModeBrowser: '仅浏览器 fetch',
       requestTransportModeObsidian: '仅 Obsidian requestUrl',
@@ -1356,7 +1356,7 @@ export const zh: TranslationKeys = {
       audioFormatDescWebSocket: 'PCM 通常兼容性更好。',
       transport: '请求方式',
       transportDesc:
-        '与提供商请求传输模式一致：自动模式会先尝试浏览器 fetch，再尝试桌面端 Node fetch，最后在 CORS/网络错误时回退到 Obsidian requestUrl。',
+        '与提供商请求传输模式一致：桌面端自动模式先尝试 Node fetch，再在 CORS/网络错误时回退到浏览器 fetch；移动端先尝试浏览器 fetch，再回退到 Obsidian requestUrl。',
       transportMode: {
         auto: '自动（推荐）',
         node: '仅桌面端 Node fetch',
@@ -1509,11 +1509,13 @@ export const zh: TranslationKeys = {
     placeholderMention: '添加引用或模型',
     placeholderSkill: '选择技能或命令',
     contextUsage: '上下文窗口占用',
+    contextUsageUnknownMaxSuffix: '（未设置上下文窗口上限）',
     contextBreakdown: {
       title: '上下文',
       fullLabel: '已占用 {{percent}}',
       tokensSuffix: 'Tokens',
       localEstimateCaption: '本地估算，可能与服务端计费存在偏差',
+      unknownMaxHint: '可在模型设置中配置上下文窗口 token，以显示占用比例',
       error: '估算失败',
       bucket: {
         system: '系统提示',
@@ -1522,6 +1524,7 @@ export const zh: TranslationKeys = {
         skills: '技能',
         memory: '记忆',
         conversation: '会话',
+        reasoning: '思考过程',
       },
     },
     inlineInfo: {
@@ -1592,6 +1595,7 @@ export const zh: TranslationKeys = {
     regenerate: '重新生成',
     reasoning: '推理过程',
     annotations: '注释',
+    vaultSources: '笔记引用（{count}）',
     pdfReferenceNoPreview: '（PDF：点击标题打开对应页）',
     assistantQuote: {
       add: '引用',

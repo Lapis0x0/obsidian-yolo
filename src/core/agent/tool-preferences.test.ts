@@ -261,9 +261,18 @@ describe('tool-preferences defaults', () => {
       const result = pruneOrphanedAssistantToolPreferences(
         {
           toolPreferences: {
-            yolo_local__fs_read: { enabled: true, approvalMode: 'full_access' as const },
-            Gemini__click: { enabled: true, approvalMode: 'require_approval' as const },
-            github__list: { enabled: true, approvalMode: 'require_approval' as const },
+            yolo_local__fs_read: {
+              enabled: true,
+              approvalMode: 'full_access' as const,
+            },
+            Gemini__click: {
+              enabled: true,
+              approvalMode: 'require_approval' as const,
+            },
+            github__list: {
+              enabled: true,
+              approvalMode: 'require_approval' as const,
+            },
           },
           enabledToolNames: [
             'yolo_local__fs_read',
@@ -286,7 +295,10 @@ describe('tool-preferences defaults', () => {
     it('returns the same reference when nothing changes', () => {
       const input = {
         toolPreferences: {
-          yolo_local__fs_read: { enabled: true, approvalMode: 'full_access' as const },
+          yolo_local__fs_read: {
+            enabled: true,
+            approvalMode: 'full_access' as const,
+          },
         },
         enabledToolNames: ['yolo_local__fs_read'],
       }
@@ -302,7 +314,10 @@ describe('tool-preferences defaults', () => {
         {
           toolPreferences: {
             old__a: { enabled: true, approvalMode: 'full_access' as const },
-            old__b: { enabled: false, approvalMode: 'require_approval' as const },
+            old__b: {
+              enabled: false,
+              approvalMode: 'require_approval' as const,
+            },
             yolo_local__fs_read: {
               enabled: true,
               approvalMode: 'full_access',
@@ -316,12 +331,12 @@ describe('tool-preferences defaults', () => {
       expect(result.toolPreferences).toEqual({
         new__a: { enabled: true, approvalMode: 'full_access' as const },
         new__b: { enabled: false, approvalMode: 'require_approval' as const },
-        yolo_local__fs_read: { enabled: true, approvalMode: 'full_access' as const },
+        yolo_local__fs_read: {
+          enabled: true,
+          approvalMode: 'full_access' as const,
+        },
       })
-      expect(result.enabledToolNames).toEqual([
-        'new__a',
-        'yolo_local__fs_read',
-      ])
+      expect(result.enabledToolNames).toEqual(['new__a', 'yolo_local__fs_read'])
     })
 
     it('dedupes enabledToolNames when the rename collides with an existing entry', () => {

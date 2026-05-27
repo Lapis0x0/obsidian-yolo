@@ -1,5 +1,5 @@
-import { parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
+import { parseToolName } from '../../../core/mcp/tool-name-utils'
 import type { SettingMigration } from '../setting.types'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
