@@ -41,6 +41,10 @@ type FormatDefaults = {
   audioContentFormat: string
   audioFormat: AsrAudioFormat
 }
+// Default values that get *written* into the form (not just shown as
+// placeholders) when the user picks that format. We list popular endpoints
+// so the new-config flow has a working starting point, but never claim the
+// user has to use them — every field is editable.
 const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
   'openai-compatible-transcription': {
     name: 'OpenAI Whisper',
@@ -52,15 +56,14 @@ const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
     audioFormat: 'auto',
   },
   'openai-compatible-chat-audio-asr': {
-    name: 'Google Gemini',
-    // Google's OpenAI-compatible Chat Completions endpoint. The native
-    // /v1beta is a different shape; this URL is the OpenAI-mimic one.
+    name: 'Chat audio ASR',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
     model: 'gemini-3.1-flash-lite',
     transcriptionPath: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
-    // Google rejects webm — wav transcode is required for this default.
+    // Many chat-audio endpoints reject webm — wav transcode is the safest
+    // default. Switch to `auto` if you know your endpoint takes webm/opus.
     audioFormat: 'wav',
   },
 }
@@ -136,7 +139,7 @@ function AsrConfigFormComponent({
       chatCompletionsPath: def.chatCompletionsPath,
       audioContentFormat: def.audioContentFormat,
       audioFormat: def.audioFormat,
-      transportMode: 'auto',
+      transportMode: 'node',
       language: 'auto',
     }
   })
@@ -480,11 +483,11 @@ function AsrConfigFormComponent({
           isChatAudio
             ? t(
                 'settings.asr.audioFormatDescChat',
-                'Google Gemini requires wav; others can use auto.',
+                'Default auto (webm/opus, zero overhead). Some endpoints may require wav; switching to wav transcodes locally to 16-bit PCM WAV.',
               )
             : t(
                 'settings.asr.audioFormatDescTranscription',
-                'Zhipu GLM / some local Whisper servers require wav; OpenAI cloud accepts auto.',
+                'Default auto (webm/opus, zero overhead). Some endpoints may require wav; switching to wav transcodes locally to 16-bit PCM WAV.',
               )
         }
         className="yolo-models-select-card"

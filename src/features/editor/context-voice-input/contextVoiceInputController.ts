@@ -14,10 +14,12 @@ import type { LLMRequestBase } from '../../../types/llm/request'
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
 
+import type { DocumentSummaryManager } from './documentSummaryManager'
 import {
   type VoiceEditorDecision,
   parseVoiceEditorDecision,
 } from './voiceDecisionParser'
+import type { VoicePrefixCacheManager } from './voicePrefixCacheManager'
 import {
   type RecordedAudio,
   VoiceInputRecorder,
@@ -38,24 +40,31 @@ export type VoiceInputState =
 export type VoiceInputStatus = {
   state: VoiceInputState
   error?: string
-  /** Processing phase to show over the waveform while recording continues. */
   overlayState?: Exclude<VoiceInputState, 'idle' | 'recording'>
-  /** Wall-clock ms when recording began; null while idle. */
   recordingStartedAt: number | null
-  /** Live audio stream for waveform visualization; null when not recording. */
   mediaStream: MediaStream | null
-  /** Whether the user can click cancel to abort the active session. */
   canCancel: boolean
-  /**
-   * Latency of the last ASR call in ms. Populated once we transition out of
-   * `'transcribing'`. The UI surfaces this so users can compare endpoints.
-   */
   asrDurationMs?: number
-  /** Latency of the last polish LLM call. Populated leaving `'polishing'`. */
   polishDurationMs?: number
 }
 
 export type VoiceInputStateListener = (status: VoiceInputStatus) => void
+
+/**
+ * One unit of work queued for the polish worker. The raw transcript starts
+ * out as a promise (ASR is in flight) and gets filled in once it resolves.
+ */
+type SegmentRecord = {
+  transcribePromise: Promise<string | null>
+}
+
+type InFlightPolish = {
+  controller: AbortController
+  promise: Promise<VoiceEditorDecision>
+  rawTranscript: string
+  baselinePreviousOutput: string
+  startedAt: number
+}
 
 type ActiveSession = {
   editor: Editor
@@ -71,17 +80,17 @@ type ActiveSession = {
   decision: VoiceEditorDecision | null
   ghostFromOffset: number | null
   recordingStartedAt: number
-  /** Raw ASR transcript, shown as light-grey ghost text before polish. */
   asrTranscript: string | null
-  /** Polished draft that has not landed in the editor yet. */
+  /** Polished text the user has not Tab-accepted yet. Becomes the next
+   *  polish call's `previous_model_output`. */
   previousModelOutput: string
-  /** Number of audio segments currently in ASR/polish. */
-  pendingSegmentCount: number
-  /** Serialises polish calls so each segment sees the previous polished draft. */
-  polishTail: Promise<void>
-  /** Captured ASR call duration in ms. */
+  /** Segments queued for the polish worker (in arrival order). */
+  pendingSegments: SegmentRecord[]
+  /** True while runPolishWorker is draining `pendingSegments`. */
+  polishWorkerRunning: boolean
+  /** Most recent polish call still running, if any. */
+  inFlightPolish: InFlightPolish | null
   asrDurationMs?: number
-  /** Captured polish LLM call duration in ms. */
   polishDurationMs?: number
 }
 
@@ -107,6 +116,11 @@ type VoiceInputControllerDeps = {
   removeAbortController: (controller: AbortController) => void
   cancelPendingTabCompletion: () => void
   setVoiceInputInProgress: (inProgress: boolean) => void
+  getDocumentSummary?: (input: {
+    filePath: string
+    content: string
+  }) => string | null
+  t: (key: string, fallback: string) => string
 }
 
 const DEFAULT_FALLBACK_MODEL_KEYS = [
@@ -114,6 +128,17 @@ const DEFAULT_FALLBACK_MODEL_KEYS = [
   'chatTitleModelId',
   'chatModelId',
 ] as const
+
+/**
+ * Grace window for the in-flight polish when new ASR segments arrive. If the
+ * in-flight polish hasn't returned within this many ms past the new segment
+ * being enqueued, the worker aborts it and re-issues one polish call over
+ * the combined raw transcripts. Small enough that rapid dictation stays
+ * responsive; large enough that we don't waste a polish call when the
+ * in-flight one was about to land anyway.
+ */
+const MERGE_WAIT_FOR_INFLIGHT_MS = 1500
+const PREFIX_CACHE_GROWTH_MULTIPLIER = 4
 
 const resolvePolishModelId = (settings: YoloSettings): string | null => {
   const voice = settings.contextVoiceInputOptions
@@ -155,20 +180,6 @@ const sliceAfter = (
   return fullAfter.slice(0, maxChars)
 }
 
-/**
- * Orchestrates the context-aware voice input feature (Slice A).
- *
- * Flow:
- *   1. User toggles recording (command, hotkey, or status-bar mic).
- *   2. We capture the editor target (file, cursor, selection, before/after).
- *   3. Recorder produces an audio Blob; ASR provider returns a transcript.
- *   4. Polish LLM rewrites the transcript into a `VoiceEditorDecision`
- *      JSON payload; we render the polished text as a dark-grey ghost
- *      preview that the user accepts with Tab or discards with Esc.
- *   5. On accept, we insert at the captured cursor / replace the captured
- *      selection, after re-validating that the editor target is still
- *      intact.
- */
 const IDLE_STATUS: VoiceInputStatus = {
   state: 'idle',
   recordingStartedAt: null,
@@ -178,13 +189,44 @@ const IDLE_STATUS: VoiceInputStatus = {
   polishDurationMs: undefined,
 }
 
+const isAbortError = (error: unknown): boolean =>
+  (error as { name?: string })?.name === 'AbortError' ||
+  (error instanceof VoiceInputRecorderError && error.kind === 'aborted')
+
+/**
+ * Orchestrates the context-aware voice input feature.
+ *
+ * Per-segment lifecycle:
+ *   1. User toggles or holds the mic; we capture the editor target.
+ *   2. Each segment of audio (stop, or VAD slice) is pushed to the polish
+ *      worker as a pending record. ASR runs in parallel with the previous
+ *      segment's polish call.
+ *   3. The polish worker drains segments one at a time. If a new segment
+ *      arrives while a polish is in flight, we wait MERGE_WAIT_FOR_INFLIGHT_MS
+ *      and then cancel the in-flight polish so the worker can re-issue one
+ *      polish call over the merged raw transcripts. This keeps responsive
+ *      latency when dictating rapidly without spending an extra LLM call.
+ *   4. The polished candidate is rendered as a dark-grey ghost; user accepts
+ *      with Tab (and, with `autoRestartAfterAccept`, the session auto-arms
+ *      the next recording).
+ */
 export class ContextVoiceInputController {
   private recorder: VoiceInputRecorder | null = null
   private session: ActiveSession | null = null
   private status: VoiceInputStatus = IDLE_STATUS
   private listeners = new Set<VoiceInputStateListener>()
+  private summaryManager: DocumentSummaryManager | null = null
+  private prefixCacheManager: VoicePrefixCacheManager | null = null
 
   constructor(private readonly deps: VoiceInputControllerDeps) {}
+
+  setSummaryManager(manager: DocumentSummaryManager | null): void {
+    this.summaryManager = manager
+  }
+
+  setPrefixCacheManager(manager: VoicePrefixCacheManager | null): void {
+    this.prefixCacheManager = manager
+  }
 
   getStatus(): VoiceInputStatus {
     return this.status
@@ -223,15 +265,29 @@ export class ContextVoiceInputController {
     if (this.status.state === 'idle' || this.status.state === 'ready') {
       await this.startRecording(editor)
     }
-    // While transcribing / polishing we ignore toggle requests; the user can
-    // cancel via Esc which clears the ghost preview.
   }
 
   async startRecording(editor: Editor): Promise<void> {
     if (this.status.state !== 'idle' && this.status.state !== 'ready') return
-    const previousSession = this.status.state === 'ready' ? this.session : null
-    const previousModelOutput = previousSession?.decision?.text?.trim() ?? ''
+    await this.initRecordingSession({
+      editor,
+      previousModelOutput:
+        (this.status.state === 'ready'
+          ? this.session?.decision?.text?.trim()
+          : '') ?? '',
+    })
+  }
 
+  /**
+   * Core recording-start path. Separated from `startRecording` so the
+   * auto-restart pivot (in `tryAcceptFromView`) can call it directly after
+   * already nulling the session, without re-tripping the entry-state guard.
+   */
+  private async initRecordingSession(input: {
+    editor: Editor
+    previousModelOutput: string
+  }): Promise<void> {
+    const { editor } = input
     const settings = this.deps.getSettings()
     const options = settings.contextVoiceInputOptions
     if (!options || !options.enabled) {
@@ -265,6 +321,25 @@ export class ContextVoiceInputController {
     const filePath = markdownView?.file?.path ?? ''
     const fileTitle = markdownView?.file?.basename ?? ''
 
+    // Kick off document summary generation in the background BEFORE the
+    // recorder spins up. Non-blocking — the first polish in this session
+    // either picks up a fresh summary or skips it; we don't pay the LLM
+    // round trip in the latency-critical preview path.
+    if (
+      options.documentSummaryEnabled &&
+      this.summaryManager &&
+      filePath.length > 0
+    ) {
+      try {
+        const fullContent = editor.getValue()
+        if (fullContent && fullContent.trim().length > 0) {
+          this.summaryManager.warm({ filePath, content: fullContent })
+        }
+      } catch (error) {
+        console.warn('Voice-input summary warm failed:', error)
+      }
+    }
+
     const cursorPos = editor.getCursor()
     const cursorOffset = editor.posToOffset(cursorPos)
     const selectionText = editor.getSelection()
@@ -287,6 +362,9 @@ export class ContextVoiceInputController {
           ? error.message
           : 'Could not start recording.'
       new Notice(message)
+      // The status may have been pre-pivoted to 'recording' by the auto-
+      // restart path; reset to idle so the bar doesn't get stuck.
+      if (this.session === null) this.updateStatus('idle')
       return
     }
 
@@ -295,15 +373,11 @@ export class ContextVoiceInputController {
     this.deps.addAbortController(abortController)
 
     this.deps.cancelPendingTabCompletion()
-    if (previousSession) {
-      if (previousSession.view) {
-        this.deps.setInlineSuggestionGhost(previousSession.view, null)
-      }
-      this.deps.setActiveVoiceSuggestion(null)
-      this.deps.removeAbortController(previousSession.abortController)
-    } else {
-      this.deps.clearInlineSuggestion()
-    }
+    // Per-source cleanup. Both startRecording (when state was 'ready') and
+    // the auto-restart pivot will have pre-cleared most of this, but keep
+    // it here so a fresh `idle → recording` start also clears any stale
+    // ghost text the inline suggestion controller is still holding onto.
+    this.deps.clearInlineSuggestion()
     this.deps.setVoiceInputInProgress(true)
 
     const recordingStartedAt = Date.now()
@@ -322,9 +396,10 @@ export class ContextVoiceInputController {
       ghostFromOffset: null,
       recordingStartedAt,
       asrTranscript: null,
-      previousModelOutput,
-      pendingSegmentCount: 0,
-      polishTail: Promise.resolve(),
+      previousModelOutput: input.previousModelOutput,
+      pendingSegments: [],
+      polishWorkerRunning: false,
+      inFlightPolish: null,
     }
     this.updateStatus('recording')
   }
@@ -370,7 +445,7 @@ export class ContextVoiceInputController {
     }
 
     const settings = this.deps.getSettings()
-    await this.processAudioSegment({ session, audio, settings })
+    this.enqueueAudioSegment({ session, audio, settings })
   }
 
   async stopSegmentAndContinue(): Promise<void> {
@@ -409,7 +484,7 @@ export class ContextVoiceInputController {
     const settings = this.deps.getSettings()
     await this.startNextRecordingSegment(session, settings)
     if (!this.session || this.session !== session) return
-    void this.processAudioSegment({ session, audio, settings })
+    this.enqueueAudioSegment({ session, audio, settings })
   }
 
   private async startNextRecordingSegment(
@@ -437,7 +512,13 @@ export class ContextVoiceInputController {
     this.updateStatus('recording', 'transcribing')
   }
 
-  private async processAudioSegment({
+  /**
+   * Push a freshly-recorded audio blob onto the per-session polish queue.
+   * Starts ASR immediately so it overlaps the in-flight polish, then arms
+   * the merge-wait timer that will cancel the in-flight polish if it
+   * outlives the new segment's grace window.
+   */
+  private enqueueAudioSegment({
     session,
     audio,
     settings,
@@ -445,34 +526,199 @@ export class ContextVoiceInputController {
     session: ActiveSession
     audio: RecordedAudio
     settings: YoloSettings
-  }): Promise<void> {
-    session.pendingSegmentCount += 1
-    const transcriptPromise = this.transcribeAudioSegment({
+  }): void {
+    const transcribePromise = this.transcribeAudioSegment({
       session,
       audio,
       settings,
     })
-    const run = async (): Promise<void> => {
-      try {
-        const transcript = await transcriptPromise
-        if (!transcript) return
-        await this.runAudioSegmentPipeline({ session, transcript, settings })
-      } finally {
-        if (!this.session || this.session !== session) {
+    session.pendingSegments.push({ transcribePromise })
+
+    // If a polish is in flight, give it the merge grace window before we
+    // forcibly cancel-and-merge. The setTimeout is intentionally fire-and-
+    // forget — abort() is idempotent and the worker handles the abort path.
+    const inflight = session.inFlightPolish
+    if (inflight) {
+      window.setTimeout(() => {
+        if (this.session !== session) return
+        if (session.inFlightPolish !== inflight) return
+        try {
+          inflight.controller.abort()
+        } catch {
+          // Best-effort.
+        }
+      }, MERGE_WAIT_FOR_INFLIGHT_MS)
+    }
+
+    if (!session.polishWorkerRunning) {
+      session.polishWorkerRunning = true
+      void this.runPolishWorker(session, settings).finally(() => {
+        if (this.session === session) {
+          session.polishWorkerRunning = false
+        }
+      })
+    }
+  }
+
+  /**
+   * Loop until the session's segment queue is drained. Each iteration:
+   *   1. Drain every transcript that is already known (or the head if none
+   *      are ready), so a rapid-fire dictation can be polished in one call.
+   *   2. Polish with the captured baseline previousModelOutput.
+   *   3. If polish completes normally → commit it as the new
+   *      previousModelOutput and surface the preview.
+   *   4. If polish was aborted (a newer segment arrived past the merge
+   *      window) → push the cancelled raw transcript back onto the queue
+   *      head so the next iteration merges it with the newcomer.
+   */
+  private async runPolishWorker(
+    session: ActiveSession,
+    settings: YoloSettings,
+  ): Promise<void> {
+    while (this.session === session && session.pendingSegments.length > 0) {
+      const transcripts: string[] = []
+      while (session.pendingSegments.length > 0) {
+        const segment = session.pendingSegments.shift()
+        if (!segment) break
+        let transcript: string | null = null
+        try {
+          transcript = await segment.transcribePromise
+        } catch (error) {
+          this.handleSessionError(error)
           return
         }
-        session.pendingSegmentCount = Math.max(
-          0,
-          session.pendingSegmentCount - 1,
-        )
-        this.updateProcessingStatus(session)
+        if (this.session !== session) return
+        if (transcript && transcript.trim().length > 0) {
+          transcripts.push(transcript)
+        }
       }
+      if (transcripts.length === 0) continue
+
+      // Join with a single space, never a newline. The previous '\n' join
+      // showed up as an unwanted line break in the preview and biased the
+      // polish model toward emitting paragraph breaks where the user just
+      // paused.
+      const combinedTranscript = transcripts.join(' ').trim()
+      session.asrTranscript = combinedTranscript
+      this.showAsrPreview(session, combinedTranscript)
+
+      // Critical: set `inFlightPolish` BEFORE updating processing status.
+      // updateProcessingStatus' last-resort branch disposes the session
+      // when there's no recorder + no pending work + no decision + no
+      // in-flight polish — and in hold-to-talk the recorder is already
+      // null by the time the worker runs (stopAndProcess nulls it). If
+      // we call updateProcessingStatus before setting inFlightPolish,
+      // the worker kills its own session right before the polish HTTP
+      // call lands, the bar snaps back to idle, and the polished text
+      // arrives too late to ever render. This was the hold-to-talk
+      // "ASR/LLM run fine but editor stays blank" bug.
+      const baselinePrev = session.previousModelOutput
+      const controller = new AbortController()
+      const polishStartedAt = Date.now()
+      const polishPromise = this.polishTranscript({
+        transcript: combinedTranscript,
+        session,
+        settings,
+        signal: controller.signal,
+      })
+      const record: InFlightPolish = {
+        controller,
+        promise: polishPromise,
+        rawTranscript: combinedTranscript,
+        baselinePreviousOutput: baselinePrev,
+        startedAt: polishStartedAt,
+      }
+      session.inFlightPolish = record
+      this.updateProcessingStatus(session, 'polishing')
+
+      let decision: VoiceEditorDecision | null = null
+      try {
+        decision = await polishPromise
+        session.polishDurationMs = Date.now() - polishStartedAt
+      } catch (error) {
+        if (this.session !== session) return
+        if (isAbortError(error)) {
+          // Cancelled by the merge-wait timer because newer segments are
+          // queued. Put the cancelled raw transcript back at the head so
+          // the next drain includes it.
+          session.pendingSegments.unshift({
+            transcribePromise: Promise.resolve(record.rawTranscript),
+          })
+          // The aborted polish never committed; the baseline previousModelOutput
+          // is still the truth.
+          if (session.inFlightPolish === record) session.inFlightPolish = null
+          continue
+        }
+        this.handleSessionError(error)
+        return
+      } finally {
+        if (session.inFlightPolish === record) session.inFlightPolish = null
+      }
+
+      if (!decision) continue
+      if (this.session !== session) return
+
+      // Malformed: parser refused to insert the raw output because it
+      // looked like broken JSON. Surface a dedicated notice with the
+      // prefix and drop this segment without touching the editor.
+      if (decision.malformed) {
+        const prefix = this.deps.t('voiceInput.noticePrefix', 'Voice polish')
+        const msg = this.deps.t(
+          'voiceInput.malformedOutput',
+          'Voice polish returned malformed output; nothing inserted.',
+        )
+        new Notice(`${prefix}: ${msg}`)
+        // Keep prior draft alive if there was one.
+        if (baselinePrev.trim().length > 0) {
+          session.decision = { action: 'insert_at_cursor', text: baselinePrev }
+        } else {
+          session.decision = null
+        }
+        continue
+      }
+
+      const hasNotice = !!decision.notice && decision.notice.trim().length > 0
+      // Surface a polish-provided notice as an Obsidian toast with a
+      // prefix so users can tell it came from the polish model (vs the
+      // recorder, vs Obsidian itself, etc).
+      if (hasNotice) {
+        const prefix = this.deps.t('voiceInput.noticePrefix', 'Voice polish')
+        new Notice(`${prefix}: ${decision.notice!.trim()}`)
+      }
+
+      const polishedText = decision.text.trim()
+      if (polishedText.length === 0) {
+        // Empty text: two distinct sub-cases.
+        //
+        //  1) hasNotice → the model intentionally cancelled or transformed
+        //     something to nothing. Honour that as a session-wide reset:
+        //     wipe the running draft so the NEXT segment doesn't bring
+        //     back the cancelled text via previous_model_output.
+        //  2) no notice → "I had nothing substantive to add" (filler, noise,
+        //     a stray pop). Keep the prior draft alive so the user can
+        //     still Tab-accept it.
+        if (hasNotice) {
+          session.previousModelOutput = ''
+          session.decision = null
+          if (session.view) {
+            this.deps.setInlineSuggestionGhost(session.view, null)
+          }
+          this.deps.setActiveVoiceSuggestion(null)
+        } else if (baselinePrev.trim().length > 0) {
+          session.decision = { action: 'insert_at_cursor', text: baselinePrev }
+        } else {
+          session.decision = null
+        }
+        continue
+      }
+
+      session.decision = decision
+      session.previousModelOutput = decision.text
+      this.showPolishedPreview(session, decision)
     }
-    const task = session.polishTail.then(run, run)
-    session.polishTail = task.catch(() => {
-      // The concrete error has already been surfaced by runAudioSegmentPipeline.
-    })
-    await task
+    if (this.session === session) {
+      this.updateProcessingStatus(session)
+    }
   }
 
   private async transcribeAudioSegment({
@@ -488,8 +734,6 @@ export class ContextVoiceInputController {
     const asrStartedAt = Date.now()
     try {
       const asrProvider = getAsrProvider(options)
-      // Language is now stored per-config (see v63→v64 migration); pull it
-      // from the active config rather than the legacy top-level field.
       const activeConfig = resolveActiveAsrConfig(options)
       const asrResult = await asrProvider.transcribe(
         {
@@ -502,91 +746,51 @@ export class ContextVoiceInputController {
           signal: session.abortController.signal,
         },
       )
-      // Prefer the provider-reported duration when present (more accurate;
-      // strips out our own queue/preamble). Fall back to wall clock.
       session.asrDurationMs =
         asrResult.requestDurationMs ?? Date.now() - asrStartedAt
       const transcript = asrResult.text?.trim() ?? ''
-      if (!transcript) {
-        if (session.decision) {
-          return null
-        }
-        this.handleSessionError(new Error('ASR returned an empty transcript.'))
-        return null
-      }
+      if (!transcript) return null
       return transcript
     } catch (error) {
-      this.handleSessionError(error)
-      return null
+      if (this.session === session && session.abortController.signal.aborted) {
+        return null
+      }
+      throw error
     }
-  }
-
-  private async runAudioSegmentPipeline({
-    session,
-    transcript,
-    settings,
-  }: {
-    session: ActiveSession
-    transcript: string
-    settings: YoloSettings
-  }): Promise<void> {
-    // Phase 1: show the raw ASR transcript as a light-grey ghost so the user
-    // sees something land immediately. Phase 2 below replaces it with the
-    // polished dark-grey candidate (the only one the user can accept).
-    if (!this.session || this.session !== session) return
-    session.asrTranscript = transcript
-    this.showAsrPreview(session, transcript)
-    this.updateProcessingStatus(session, 'polishing')
-
-    let decision: VoiceEditorDecision
-    const polishStartedAt = Date.now()
-    try {
-      decision = await this.polishTranscript({
-        transcript,
-        session,
-        settings,
-      })
-      session.polishDurationMs = Date.now() - polishStartedAt
-    } catch (error) {
-      this.handleSessionError(error)
-      return
-    }
-
-    if (!this.session || this.session !== session) {
-      // Session was cancelled mid-flight.
-      return
-    }
-
-    session.decision = decision
-
-    if (
-      decision.action === 'cancel_input' ||
-      decision.text.trim().length === 0
-    ) {
-      this.finishSession()
-      new Notice('Voice input cancelled by the spoken directive.')
-      return
-    }
-
-    session.previousModelOutput = decision.text
-    this.showPolishedPreview(session, decision)
   }
 
   private updateProcessingStatus(
     session: ActiveSession,
     overlayState?: Exclude<VoiceInputState, 'idle' | 'recording'>,
   ): void {
-    if (!this.session || this.session !== session) return
+    if (this.session !== session) return
     if (this.status.state === 'recording') {
       this.updateStatus('recording', overlayState ?? 'ready')
       return
     }
-    if (session.pendingSegmentCount > 0) {
-      this.updateStatus(overlayState ?? 'polishing')
+    // Explicit overlayState means "I'm actively doing work, stay alive".
+    // Honour it even if our own bookkeeping (pending / inflight / decision)
+    // hasn't been updated yet — the caller's word is the truth in this
+    // case. Without this short-circuit the disposal branch below could
+    // tear down the session mid-pipeline (see the hold-to-talk bug fixed
+    // alongside this guard).
+    if (overlayState) {
+      this.updateStatus(overlayState)
+      return
+    }
+    if (session.pendingSegments.length > 0 || session.inFlightPolish) {
+      this.updateStatus('polishing')
       return
     }
     if (session.decision) {
       this.updateStatus('ready')
+      return
+    }
+    // No decision, no pending work, no recorder → nothing to wait for.
+    // Dispose the session so the floating island leaves the polishing /
+    // ready state instead of getting stuck.
+    if (!this.recorder) {
+      this.finishSession()
     }
   }
 
@@ -600,10 +804,12 @@ export class ContextVoiceInputController {
     transcript,
     session,
     settings,
+    signal,
   }: {
     transcript: string
     session: ActiveSession
     settings: YoloSettings
+    signal: AbortSignal
   }): Promise<VoiceEditorDecision> {
     const options = settings.contextVoiceInputOptions
     const polishModelId = resolvePolishModelId(settings)
@@ -624,7 +830,37 @@ export class ContextVoiceInputController {
       },
     })
 
-    const before = sliceBefore(session.editor, session.selectionFromOffset)
+    // Anchor-based prefix slicing so prefix cache stays hot across
+    // polish calls within a dictation arc. See `voicePrefixCacheManager`
+    // for the full rationale. Falls back to the naive tail-slice when
+    // no cache manager is wired (defensive — production main.ts always
+    // wires one).
+    const fullDocBefore = sliceBefore(
+      session.editor,
+      session.selectionFromOffset,
+    )
+    let before: string
+    if (this.prefixCacheManager) {
+      const pick = this.prefixCacheManager.pickBeforeSlice({
+        filePath: session.filePath,
+        fullDocBefore,
+        // Re-anchor lands on the user-configured initial window, then the
+        // slice can grow from there as the user keeps writing.
+        // The setting is intentionally not a hard per-request cap anymore:
+        // anchored prompts stay cache-friendly because they grow at the tail.
+        minPrefixChars: options.contextRangeChars,
+        maxPrefixChars:
+          options.contextRangeChars * PREFIX_CACHE_GROWTH_MULTIPLIER,
+      })
+      before = pick.slice
+    } else {
+      before =
+        fullDocBefore.length > options.contextRangeChars
+          ? fullDocBefore.slice(
+              fullDocBefore.length - options.contextRangeChars,
+            )
+          : fullDocBefore
+    }
     const after = sliceAfter(
       session.editor,
       session.selectionToOffset,
@@ -640,11 +876,35 @@ export class ContextVoiceInputController {
       hasSelection: session.hasSelection,
     }
 
+    let documentSummary: string | null = null
+    let documentHotWords: string[] | null = null
+    if (options.documentSummaryEnabled && this.summaryManager) {
+      try {
+        // The summary cache is keyed by file path; the content arg is used
+        // only for drift detection. Use the full editor value so the hash
+        // matches what `warm()` was called with at recording start.
+        const fullContent = session.editor.getValue()
+        const cached = this.summaryManager.getSummary({
+          filePath: session.filePath,
+          content: fullContent,
+        })
+        documentSummary = cached?.summary ?? null
+        documentHotWords =
+          cached?.hotWords && cached.hotWords.length > 0
+            ? cached.hotWords
+            : null
+      } catch (error) {
+        console.warn('Voice-input summary lookup failed:', error)
+      }
+    }
+
     const messages = buildVoiceInputMessages({
       options,
       target,
       asrTranscript: transcript,
       previousModelOutput: session.previousModelOutput || undefined,
+      documentSummary,
+      documentHotWords,
     })
 
     const request: LLMRequestBase = {
@@ -654,8 +914,6 @@ export class ContextVoiceInputController {
       // latency-sensitive lightweight rewrite; without this, models whose
       // default is thinking-on (e.g. some reasoning-tier endpoints) will
       // burn 5-30 s on hidden reasoning before emitting the JSON envelope.
-      // We pass an explicit 'off' so providers that respect a level override
-      // disable thinking even when their server-side default is enabled.
       reasoningLevel: 'off',
     }
     const polishTemperature =
@@ -666,12 +924,18 @@ export class ContextVoiceInputController {
       request.temperature = Math.min(Math.max(polishTemperature, 0), 2)
     }
 
+    // Combine the session-wide abort signal (user cancel / shutdown) with
+    // the per-call signal (merge-wait timer) so either can short-circuit.
+    const combinedSignal = combineAbortSignals([
+      session.abortController.signal,
+      signal,
+    ])
+
     const result = await executeSingleTurn({
       providerClient,
       model,
       request,
-      signal: session.abortController.signal,
-      // Polish must be deterministic; streaming is unnecessary here.
+      signal: combinedSignal,
       stream: false,
       primaryRequestTimeoutMs:
         settings.continuationOptions?.primaryRequestTimeoutMs,
@@ -685,22 +949,36 @@ export class ContextVoiceInputController {
   }
 
   /**
-   * Phase 1 of the two-phase preview. Shows the raw ASR transcript as a
-   * light-grey ghost at the cursor (or selection end) so the user sees
-   * something land within a few hundred ms of stopping the recording. We do
-   * NOT register this as the active inline suggestion — Tab still waits for
-   * the polished phase to land. The chip continues to read "整理中".
+   * Resolve the EditorView to render the preview against. We CAN'T just
+   * trust the cached `session.view` because Obsidian may swap `editor.cm`
+   * under us (live-preview toggle, focus shuffle when the user releases a
+   * pointer outside the editor, pane re-layout, etc.). The cached ref
+   * becomes stale and our previous "bail when view changes" guard caused
+   * polish results to silently disappear (the hold-to-talk no-preview
+   * bug). Instead, we look up the editor's CURRENT view; if it exists we
+   * refresh `session.view` and carry on. Only bail when there is no
+   * EditorView at all (editor truly gone).
    */
+  private resolveSessionView(session: ActiveSession): EditorView | null {
+    const current = this.deps.getEditorView(session.editor)
+    if (!current) return null
+    if (current !== session.view) {
+      session.view = current
+    }
+    return current
+  }
+
   private showAsrPreview(session: ActiveSession, transcript: string): void {
-    const view = session.view
+    const view = this.resolveSessionView(session)
     if (!view) return
-    if (this.deps.getEditorView(session.editor) !== view) return
     const fromOffset = session.hasSelection
       ? session.selectionToOffset
       : session.startCursorOffset
     session.ghostFromOffset = fromOffset
+    // Join with a single space, never '\n' — the line break used to leak
+    // into the preview when the user spoke a second segment.
     const previewText = session.previousModelOutput
-      ? `${session.previousModelOutput}\n${transcript}`
+      ? `${session.previousModelOutput} ${transcript}`
       : transcript
     const safeText = previewText.replace(/\r/g, '')
     this.deps.setInlineSuggestionGhost(view, {
@@ -714,19 +992,12 @@ export class ContextVoiceInputController {
     session: ActiveSession,
     decision: VoiceEditorDecision,
   ): void {
-    const view = session.view
+    const view = this.resolveSessionView(session)
     if (!view) {
       this.finishSession()
       return
     }
-    if (this.deps.getEditorView(session.editor) !== view) {
-      this.finishSession()
-      return
-    }
 
-    // Choose the position where the ghost preview should appear. For
-    // selection replacement, hover the ghost at the selection end so the
-    // user sees both the old selection and the candidate.
     let fromOffset: number
     switch (decision.action) {
       case 'replace_selection':
@@ -754,9 +1025,6 @@ export class ContextVoiceInputController {
       text: safeText,
     })
 
-    // The floating-island status bar already shows "Tab to insert · Esc to
-    // discard" the moment we hit 'ready', and the ghost text itself is the
-    // preview — an extra Notice on top of those was just noise.
     if (this.status.state === 'recording') {
       this.updateStatus('recording', 'ready')
     } else {
@@ -768,21 +1036,24 @@ export class ContextVoiceInputController {
     const session = this.session
     const decision = session?.decision
     if (!session || !decision) return false
-    if (session.view !== view) return false
 
-    if (this.deps.getEditorView(session.editor) !== view) {
+    // Accept only if the incoming view IS the editor's current view —
+    // not if it's a stale handle from some other editor. We deliberately
+    // do NOT require it to match the cached session.view: that ref can
+    // drift mid-session (live-preview toggle, etc.) and forcing equality
+    // would refuse the user's Tab on a still-valid session.
+    const currentView = this.deps.getEditorView(session.editor)
+    if (!currentView || currentView !== view) {
       this.cancelActiveSession('editor-changed')
       return false
     }
+    session.view = currentView
 
     const editor = session.editor
     const startPos = editor.offsetToPos(session.startCursorOffset)
     const fromPos = editor.offsetToPos(session.selectionFromOffset)
     const toPos = editor.offsetToPos(session.selectionToOffset)
 
-    // Re-check that the editor state has not drifted past the original
-    // cursor/selection. If the user kept typing while polishing, abandon
-    // the insert rather than smash their new text.
     const currentCursor = editor.getCursor()
     const currentCursorOffset = editor.posToOffset(currentCursor)
     const currentSelection = editor.getSelection() ?? ''
@@ -810,26 +1081,85 @@ export class ContextVoiceInputController {
       preserveCodeBlocks: true,
     })
 
+    let endCursor: { line: number; ch: number }
     switch (decision.action) {
       case 'replace_selection': {
         editor.replaceRange(insertionText, fromPos, toPos)
-        const endCursor = this.computeEndCursor(fromPos, insertionText)
+        endCursor = this.computeEndCursor(fromPos, insertionText)
         editor.setCursor(endCursor)
         break
       }
       case 'insert_after_selection': {
         editor.replaceRange(insertionText, toPos, toPos)
-        const endCursor = this.computeEndCursor(toPos, insertionText)
+        endCursor = this.computeEndCursor(toPos, insertionText)
         editor.setCursor(endCursor)
         break
       }
       case 'insert_at_cursor':
       default: {
         editor.replaceRange(insertionText, startPos, startPos)
-        const endCursor = this.computeEndCursor(startPos, insertionText)
+        endCursor = this.computeEndCursor(startPos, insertionText)
         editor.setCursor(endCursor)
         break
       }
+    }
+
+    const settings = this.deps.getSettings()
+    const voice = settings.contextVoiceInputOptions
+    const shouldRestart =
+      !!voice?.autoRestartAfterAccept &&
+      voice.interactionMode === 'toggle-listen'
+
+    if (shouldRestart) {
+      // Pivot directly into a new recording session WITHOUT going through
+      // idle. The previous implementation called finishSession() then
+      // setTimeout → startRecording, which had two bugs:
+      //   - The bar collapsed to idle (width 0) then re-expanded — a
+      //     visible wobble.
+      //   - The status stayed 'ready' during recorder.start() until the
+      //     mic was live, so the bar got stuck on "Tab insert · Esc
+      //     discard" while the user was already speaking; and if VAD
+      //     fired on the new recording before status flipped to
+      //     'recording', stopSegmentAndContinue silently early-returned
+      //     (its first line is `if (state !== 'recording') return`),
+      //     producing the "no output" symptom.
+      //
+      // The fix: synchronously clear the old session, immediately pivot
+      // status to 'recording' (mediaStream null until the new recorder
+      // is up), then init the new session. The bar's centre slot keeps
+      // its 160px width because both 'ready' and 'recording' map to that
+      // same expanded layout in CSS.
+      this.deps.setInlineSuggestionGhost(session.view, null)
+      this.deps.setActiveVoiceSuggestion(null)
+      try {
+        session.abortController.abort()
+      } catch {
+        // Best-effort.
+      }
+      this.deps.removeAbortController(session.abortController)
+      this.session = null
+      this.recorder = null
+      // Synchronously pivot the bar to 'recording' so the worker / VAD
+      // contract `state === 'recording'` is restored before the new mic
+      // is live and the user can't see a stale "Tab · Esc" badge.
+      this.updateStatus('recording')
+
+      const editorRef = editor
+      // Yield a tick so the editor's own cursor/text-update settles
+      // before we hit getCursor again. 50ms is generous but the cost is
+      // a single rAF.
+      window.setTimeout(() => {
+        void this.initRecordingSession({
+          editor: editorRef,
+          previousModelOutput: '',
+        }).catch((err) => {
+          console.warn('Voice auto-restart failed:', err)
+          if (this.session === null) {
+            this.updateStatus('idle')
+          }
+        })
+      }, 50)
+      return true
     }
 
     this.finishSession()
@@ -850,7 +1180,7 @@ export class ContextVoiceInputController {
       try {
         session.abortController.abort()
       } catch {
-        // Best-effort abort.
+        // Best-effort.
       }
       this.deps.removeAbortController(session.abortController)
     }
@@ -858,7 +1188,7 @@ export class ContextVoiceInputController {
       try {
         this.recorder.cancel()
       } catch {
-        // Best-effort cancel.
+        // Best-effort.
       }
       this.recorder = null
     }
@@ -892,9 +1222,7 @@ export class ContextVoiceInputController {
   }
 
   private handleSessionError(error: unknown): void {
-    const aborted =
-      (error as { name?: string })?.name === 'AbortError' ||
-      (error instanceof VoiceInputRecorderError && error.kind === 'aborted')
+    const aborted = isAbortError(error)
     if (!aborted) {
       const message =
         error instanceof Error
@@ -944,4 +1272,31 @@ export class ContextVoiceInputController {
       ch: parts[parts.length - 1].length,
     }
   }
+}
+
+/**
+ * Tiny polyfill of AbortSignal.any (Node 20+ / modern browsers) so we work
+ * inside Electron's older renderer.
+ */
+const combineAbortSignals = (signals: AbortSignal[]): AbortSignal => {
+  const native = (
+    AbortSignal as unknown as {
+      any?: (signals: AbortSignal[]) => AbortSignal
+    }
+  ).any
+  if (typeof native === 'function') {
+    return native(signals)
+  }
+  const controller = new AbortController()
+  const propagate = (s: AbortSignal) => {
+    if (s.aborted) {
+      controller.abort(s.reason)
+      return
+    }
+    s.addEventListener('abort', () => controller.abort(s.reason), {
+      once: true,
+    })
+  }
+  for (const s of signals) propagate(s)
+  return controller.signal
 }

@@ -83,7 +83,9 @@ import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhanc
 import { ExportConfigModal } from './features/config-transfer/components/ExportConfigModal'
 import { ImportConfigModal } from './features/config-transfer/components/ImportConfigModal'
 import { ContextVoiceInputController } from './features/editor/context-voice-input/contextVoiceInputController'
+import { DocumentSummaryManager } from './features/editor/context-voice-input/documentSummaryManager'
 import { VoiceFloatingIslandController } from './features/editor/context-voice-input/voiceFloatingIslandController'
+import { VoicePrefixCacheManager } from './features/editor/context-voice-input/voicePrefixCacheManager'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildFullReviewBlocks,
@@ -157,6 +159,8 @@ export default class YoloPlugin extends Plugin {
   private contextVoiceInputController: ContextVoiceInputController | null = null
   private voiceFloatingIslandController: VoiceFloatingIslandController | null =
     null
+  private documentSummaryManager: DocumentSummaryManager | null = null
+  private voicePrefixCacheManager: VoicePrefixCacheManager | null = null
   private diffReviewController: DiffReviewController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
@@ -1603,9 +1607,41 @@ export default class YoloPlugin extends Plugin {
         setVoiceInputInProgress: (inProgress) => {
           this.isVoiceInputInProgress = inProgress
         },
+        t: (key, fallback) => this.t(key, fallback),
       })
+      this.contextVoiceInputController.setSummaryManager(
+        this.getDocumentSummaryManager(),
+      )
+      this.contextVoiceInputController.setPrefixCacheManager(
+        this.getVoicePrefixCacheManager(),
+      )
     }
     return this.contextVoiceInputController
+  }
+
+  /**
+   * Lazy singleton for the per-document summary cache shared by voice input.
+   * Lives only in memory; created on first use, dropped on plugin unload.
+   */
+  private getDocumentSummaryManager(): DocumentSummaryManager {
+    if (!this.documentSummaryManager) {
+      this.documentSummaryManager = new DocumentSummaryManager({
+        getSettings: () => this.settings,
+        setSettings: (next) => this.setSettings(next),
+      })
+    }
+    return this.documentSummaryManager
+  }
+
+  /**
+   * Lazy singleton for the per-file anchored prefix cache used by voice
+   * input polish. Like the summary manager, lives only in memory.
+   */
+  private getVoicePrefixCacheManager(): VoicePrefixCacheManager {
+    if (!this.voicePrefixCacheManager) {
+      this.voicePrefixCacheManager = new VoicePrefixCacheManager()
+    }
+    return this.voicePrefixCacheManager
   }
 
   private getDiffReviewController(): DiffReviewController {
@@ -1990,6 +2026,22 @@ export default class YoloPlugin extends Plugin {
           service.onVaultPathChanged(oldPath, {
             requiresFullScan: file instanceof TFolder,
           })
+        // Voice-input caches are keyed by file path. Forget the old file or
+        // folder path on rename — the new path gets a fresh entry next time
+        // it's used. This also handles the A↔B file-swap edge case correctly:
+        // both rename events fire (one per file), both old keys clear,
+        // both files end up with clean state. No data crossover.
+        if (oldPath) {
+          this.documentSummaryManager?.forget(oldPath)
+          this.voicePrefixCacheManager?.forget(oldPath)
+        }
+      }),
+    )
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        // `forget` also clears child paths when `file` is a deleted folder.
+        this.documentSummaryManager?.forget(file.path)
+        this.voicePrefixCacheManager?.forget(file.path)
       }),
     )
     this.registerDomEvent(window, 'blur', () => {

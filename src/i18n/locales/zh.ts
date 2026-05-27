@@ -1302,11 +1302,13 @@ export const zh: TranslationKeys = {
     asr: {
       title: '语音识别 (ASR)',
       descriptionV2:
-        '每一行是一个 ASR 端点。勾选哪个就用哪个，点齿轮编辑，拖手柄换序。打磨用的 LLM 在 编辑器 → 语音输入 中单独配置。',
+        '每一行是一个 ASR 端点。点齿轮编辑，拖手柄换序。具体启用哪一条、以及打磨用的 LLM，都在 编辑器 → 语音输入 中选择。',
       colActive: '当前',
       colName: '名称',
       colSummary: '格式 · 模型',
       colActions: '操作',
+      activePill: '当前正在被语音输入使用',
+      activePillLabel: '使用中',
       emptyHint: '还没有 ASR 端点。点右上角「添加 ASR 配置」开始。',
       addConfig: '添加 ASR 配置',
       configName: '名称',
@@ -1314,7 +1316,8 @@ export const zh: TranslationKeys = {
       apiFormat: 'API 形式',
       apiFormatDesc: '决定请求走 transcription 还是 chat completions。',
       baseURL: 'Base URL',
-      baseURLDesc: '不要包含路径。',
+      baseURLDesc:
+        '只填到协议、host、端口，路径由 YOLO 拼接。本地部署示例：http://127.0.0.1:8000/v1',
       apiKey: 'API 密钥',
       apiKeyDesc: '本地部署可留空。',
       apiKeyPlaceholder: '输入你的 API 密钥',
@@ -1326,11 +1329,12 @@ export const zh: TranslationKeys = {
       chatCompletionsPath: '对话补全路径',
       chatCompletionsPathDesc: '默认 /chat/completions。',
       audioContentFormat: '音频内容载体',
-      audioContentFormatDesc: 'OpenAI 系用 input_audio，部分服务认 audio_url。',
+      audioContentFormatDesc: '部分服务要求 input_audio，部分要求 audio_url。',
       audioFormat: '音频格式',
-      audioFormatDescChat: 'Google Gemini 需要 wav；其余 auto 即可。',
+      audioFormatDescChat:
+        '默认 auto（webm/opus，浏览器直出，零开销）。部分服务可能要求 wav；切到 wav 后会在本地转码为 16-bit PCM WAV。',
       audioFormatDescTranscription:
-        '智谱 GLM / 部分本地 Whisper 服务需要 wav；OpenAI 云端 auto 即可。',
+        '默认 auto（webm/opus，浏览器直出，零开销）。部分服务可能要求 wav；切到 wav 后会在本地转码为 16-bit PCM WAV。',
       transport: '请求方式',
       transportDesc:
         '与提供商请求传输模式一致：自动模式会先尝试浏览器 fetch，再尝试桌面端 Node fetch，最后在 CORS/网络错误时回退到 Obsidian requestUrl。',
@@ -1367,20 +1371,24 @@ export const zh: TranslationKeys = {
         '请先在 模型 → 语音识别 中配置 ASR。未配置前下方开关无法打开。',
       enable: '启用语音输入',
       enableDesc: '通过命令面板、Obsidian 快捷键或浮动麦克风按钮触发。',
+      asrProvider: 'ASR 提供商',
+      asrProviderDesc:
+        '从 模型 → 语音识别 里配置好的 ASR 端点中选一条用于本次语音输入。',
+      asrProviderNone: '（请先在 模型 → 语音识别 中添加）',
       polishModel: '打磨模型',
       polishModelDesc:
         '结合光标周围上下文重写原始转写。未设置时回落到默认聊天模型。',
-      polishTemperature: '语音打磨温度覆盖',
+      polishTemperature: '打磨调用的温度',
       polishTemperatureDesc:
-        '留空则使用所选模型或服务端默认值。只有语音输入需要单独温度时再填 0-2。',
+        '留空则跟随所选模型 / 服务端默认值。仅当语音输入需要与其它场景不同的温度时填 0-2。',
       polishTemperaturePlaceholder: '使用模型默认',
       systemPromptMode: '提示词风格',
       systemPromptModeDesc: '选择内置预设或切到自定义来手写。',
       promptMode: {
-        default: '默认 (清理 + 修正)',
-        translate: '翻译 (中⇆英)',
-        expand: '扩写 (大纲 → 段落)',
-        list: '列表化 (Markdown bullet)',
+        default: '默认（仅清理、忠于原文）',
+        translate: '翻译（中⇆英）',
+        expand: '扩写（大纲 → 段落）',
+        polish: '润色（正式 / 学术 / 文学）',
         custom: '自定义',
       },
       builtinSystemPrompt: '内置系统提示词',
@@ -1393,14 +1401,20 @@ export const zh: TranslationKeys = {
         '推荐打开 — 避免 Tab 灰字和语音灰字同屏抢占光标。',
       tabCompletionAlwaysPaused:
         '语音输入激活时会强制暂停 Tab 补全，此时 Tab 只用于接受语音草稿。',
-      contextRangeChars: '上下文窗口（字符数）',
+      contextRangeChars: '初始上文窗口（字符数）',
       contextRangeCharsDesc:
-        '发给打磨模型的总窗口（前文+后文）。大致按 4:1 偏向光标前文。',
-      maxAfterContextChars: '包含多少光标后文',
+        '第一次发给打磨模型的光标前文字符数。连续听写时会锚定这段前缀，并随着接受/书写自然扩大。与下文窗口相互独立。',
+      maxAfterContextChars: '下文窗口（字符数）',
       maxAfterContextCharsDesc:
-        '最多把光标后面的多少字符发给打磨模型作参考，避免重复或撞上已有文字；不限制语音最终插入的长度。',
+        '发给打磨模型的光标后文字符数。避免模型把后面已有内容重复一遍；与上文窗口相互独立。不限制语音最终插入的长度。',
+      beforeWindowChars: '初始上文窗口（字符数）',
+      beforeWindowCharsDesc:
+        '第一次发给打磨模型的光标前文字符数。连续听写时会锚定这段前缀，并随着接受/书写自然扩大。与下文窗口相互独立。',
+      afterWindowChars: '下文窗口（字符数）',
+      afterWindowCharsDesc:
+        '发给打磨模型的光标后文字符数。避免模型把后面已有内容重复一遍；与上文窗口相互独立。不限制语音最终插入的长度。',
       maxRecordingSeconds: '最大录音时长（秒）',
-      maxRecordingSecondsDesc: '自动停止被遗忘的录音以避免浪费 ASR 配额。',
+      maxRecordingSecondsDesc: '自动停止被遗忘的录音，避免浪费 ASR 调用次数。',
       vadSpeechStartDecibels: '开口检测阈值 (dB)',
       vadSpeechStartDecibelsDesc:
         '数值越负越容易捕获小声说话；越接近 0 越能忽略背景噪声。默认 -42。',
@@ -1410,6 +1424,20 @@ export const zh: TranslationKeys = {
       vadSilenceHoldMs: '静音多久后切段 (ms)',
       vadSilenceHoldMsDesc:
         '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
+      advancedToggle: '高级选项',
+      advancedToggleDesc:
+        '调节温度、VAD 阈值、最大录音时长等技术参数。普通使用一般不需要改。',
+      autoRestartAfterAccept: 'Tab 接受后继续聆听',
+      autoRestartAfterAcceptDesc:
+        '仅点按模式。Tab 接受当前草稿后立刻开始下一段录音，免去再点麦克风的步骤。',
+      documentSummaryEnabled: '附带文档摘要 + 热词（实验性）',
+      documentSummaryEnabledDesc:
+        '在录音开始时让 LLM 生成当前文档的摘要，并同时提取 ASR 容易听错的热词（专有名词、术语、缩写等）。摘要供打磨模型理解术语和语气；热词供打磨模型在听到近音词时优先选用文档里的拼写。会增加一次 LLM 调用与开销。摘要与热词只存在内存中，关闭 Obsidian 即丢失。',
+      documentSummaryRefresh: '摘要刷新方式',
+      documentSummaryRefreshDesc: '决定同一个文档的摘要多久重新生成一次。',
+      documentSummaryRefresh_session: '本次会话不刷新',
+      documentSummaryRefresh_15min: '每 15 分钟刷新',
+      documentSummaryRefresh_1hour: '每 1 小时刷新',
     },
   },
 
@@ -1425,13 +1453,20 @@ export const zh: TranslationKeys = {
     barPolishing: '正在打磨…',
     barReady: 'Tab 插入 · Esc 放弃',
     barReadyShort: 'Tab 插入',
+    barReadyEsc: 'Esc 放弃',
     barTabPaused: ' · Tab 已暂停',
     barCancelHint: ' · Esc 取消',
     buttonStart: '开始录音',
     buttonStop: '结束录音',
+    buttonCancel: '取消语音输入',
     buttonAccept: '插入草稿',
     modeSwitchToHold: '点击切换为长按模式',
     modeSwitchToToggle: '点击切换为点按模式',
+    cancelledByDirective:
+      '本段录音被模型判定为取消指令（如「算了」「不要了」），未写入编辑器。',
+    holdToTalkHint: '按住麦克风说话',
+    noticePrefix: '语音打磨',
+    malformedOutput: '语音打磨输出格式异常，未写入编辑器。',
   },
 
   selection: {

@@ -1408,11 +1408,13 @@ export const en: TranslationKeys = {
     asr: {
       title: 'Voice recognition (ASR)',
       descriptionV2:
-        'Each row is one ASR endpoint. Pick which one is active, click the gear to edit, drag the handle to reorder. The polish LLM is configured separately under Editor → Voice input.',
+        'Each row is one ASR endpoint. Click the gear to edit, drag the handle to reorder. Which endpoint is in use, and the polish LLM, are picked under Editor → Voice input.',
       colActive: 'Active',
       colName: 'Name',
       colSummary: 'Format · model',
       colActions: 'Actions',
+      activePill: 'Currently used by voice input',
+      activePillLabel: 'in use',
       emptyHint:
         'No ASR endpoint configured yet. Use "Add ASR configuration" in the header.',
       addConfig: 'Add ASR configuration',
@@ -1422,7 +1424,8 @@ export const en: TranslationKeys = {
       apiFormatDesc:
         'Picks whether requests go to /audio/transcriptions or /chat/completions.',
       baseURL: 'Base URL',
-      baseURLDesc: 'Do not include the path here.',
+      baseURLDesc:
+        'Protocol + host + port only; YOLO appends the path. Local server example: http://127.0.0.1:8000/v1',
       apiKey: 'API key',
       apiKeyDesc: 'Leave empty for local servers without auth.',
       apiKeyPlaceholder: 'Enter your API key',
@@ -1436,11 +1439,12 @@ export const en: TranslationKeys = {
       chatCompletionsPathDesc: 'Defaults to /chat/completions.',
       audioContentFormat: 'Audio content carrier',
       audioContentFormatDesc:
-        'OpenAI-style services want input_audio; some others want audio_url.',
+        'Some endpoints expect input_audio, others expect audio_url.',
       audioFormat: 'Audio format',
-      audioFormatDescChat: 'Google Gemini requires wav; others can use auto.',
+      audioFormatDescChat:
+        'Default auto (webm/opus, captured directly by the browser, zero overhead). Some endpoints may require wav; switching to wav transcodes locally to 16-bit PCM WAV.',
       audioFormatDescTranscription:
-        'Zhipu GLM / some local Whisper servers require wav; OpenAI cloud accepts auto.',
+        'Default auto (webm/opus, captured directly by the browser, zero overhead). Some endpoints may require wav; switching to wav transcodes locally to 16-bit PCM WAV.',
       transport: 'Transport',
       transportDesc:
         'Matches provider request transport modes: Auto tries browser fetch, then desktop Node fetch, and falls back to Obsidian requestUrl on CORS/network errors.',
@@ -1480,21 +1484,25 @@ export const en: TranslationKeys = {
       enable: 'Enable voice input',
       enableDesc:
         'Use the command palette, an Obsidian hotkey, or the floating mic to trigger it.',
+      asrProvider: 'ASR provider',
+      asrProviderDesc:
+        'Pick which of your configured ASR endpoints (Models → Voice recognition) handles this voice input session.',
+      asrProviderNone: '(none — add one under Models → Voice recognition)',
       polishModel: 'Polish model',
       polishModelDesc:
         'Rewrites the raw transcript with surrounding editor context. Falls back to the default chat model when unset.',
-      polishTemperature: 'Voice polish temperature override',
+      polishTemperature: 'Polish call temperature',
       polishTemperatureDesc:
-        'Leave blank to use the selected model/provider default. Set 0-2 only when this voice input flow needs its own temperature.',
+        'Leave blank to follow the selected model / provider default. Set 0-2 only when voice input needs a different temperature than your other flows.',
       polishTemperaturePlaceholder: 'Use model default',
       systemPromptMode: 'Prompt style',
       systemPromptModeDesc:
         'Pick a built-in preset or switch to custom to write your own.',
       promptMode: {
-        default: 'Default (cleanup)',
+        default: 'Default (cleanup only, stay faithful)',
         translate: 'Translate (zh ⇆ en)',
         expand: 'Expand (outline → paragraph)',
-        list: 'Format as list',
+        polish: 'Polish (formal / academic / literary)',
         custom: 'Custom',
       },
       builtinSystemPrompt: 'Built-in system prompt',
@@ -1508,15 +1516,21 @@ export const en: TranslationKeys = {
         'Recommended — prevents ghost text from competing for the cursor.',
       tabCompletionAlwaysPaused:
         'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
-      contextRangeChars: 'Context range (characters)',
+      contextRangeChars: 'Initial before-cursor window (characters)',
       contextRangeCharsDesc:
-        'Total before+after window sent to the polish model. Split ~4:1 toward the text before the cursor.',
-      maxAfterContextChars: 'Text after cursor to include',
+        'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, this anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
+      maxAfterContextChars: 'After-cursor window (characters)',
       maxAfterContextCharsDesc:
-        'How many characters after the cursor are sent as reference, so the model can avoid repeating or colliding with existing text. This does not limit how much text voice input can insert.',
+        'Characters of editor text AFTER the cursor sent to the polish model. Helps the model avoid repeating text that already follows the cursor. Independent from the before-cursor window above. Does not limit how much text voice input can insert.',
+      beforeWindowChars: 'Initial before-cursor window (characters)',
+      beforeWindowCharsDesc:
+        'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, this anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
+      afterWindowChars: 'After-cursor window (characters)',
+      afterWindowCharsDesc:
+        'Characters of editor text AFTER the cursor sent to the polish model. Helps the model avoid repeating text that already follows the cursor. Independent from the before-cursor window above. Does not limit how much text voice input can insert.',
       maxRecordingSeconds: 'Max recording (seconds)',
       maxRecordingSecondsDesc:
-        'Auto-stops a forgotten recording so it does not waste ASR quota.',
+        'Auto-stops a forgotten recording so it does not waste ASR calls.',
       vadSpeechStartDecibels: 'Speech start threshold (dB)',
       vadSpeechStartDecibelsDesc:
         'More negative catches quieter speech; less negative ignores more background noise. Default: -42.',
@@ -1525,7 +1539,23 @@ export const en: TranslationKeys = {
         'After speech has started, audio below this level counts as silence. Default: -38.',
       vadSilenceHoldMs: 'Silence duration to stop (ms)',
       vadSilenceHoldMsDesc:
-        'How long point-and-click mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+        'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+      advancedToggle: 'Advanced options',
+      advancedToggleDesc:
+        'Polish temperature, VAD thresholds, max recording length. Most users will not need to touch these.',
+      autoRestartAfterAccept: 'Keep listening after Tab accept',
+      autoRestartAfterAcceptDesc:
+        'Click-toggle mode only. After Tab accepts a polished draft, automatically start the next recording segment without clicking the mic again.',
+      documentSummaryEnabled:
+        'Include document summary + hot words (experimental)',
+      documentSummaryEnabledDesc:
+        "At recording start, ask an LLM to summarise the current file and extract ASR-confusable hot words (proper nouns, jargon, abbreviations). The summary keeps the polish model on tone and terminology; the hot words let it prefer the document's spelling when the transcript came back with a near-miss. Adds one LLM call per refresh cycle. Both stay in memory only and are dropped when Obsidian closes.",
+      documentSummaryRefresh: 'Summary refresh',
+      documentSummaryRefreshDesc:
+        'How often the per-document summary is regenerated.',
+      documentSummaryRefresh_session: 'Hold for this Obsidian session',
+      documentSummaryRefresh_15min: 'Every 15 minutes',
+      documentSummaryRefresh_1hour: 'Every 1 hour',
     },
   },
 
@@ -1535,13 +1565,21 @@ export const en: TranslationKeys = {
     barPolishing: 'Polishing…',
     barReady: 'Tab to insert · Esc to discard',
     barReadyShort: 'Tab insert',
+    barReadyEsc: 'Esc discard',
     barTabPaused: ' · Tab completion paused',
     barCancelHint: ' · Esc to cancel',
     buttonStart: 'Start recording',
     buttonStop: 'Stop recording',
+    buttonCancel: 'Cancel voice input',
     buttonAccept: 'Insert draft',
     modeSwitchToHold: 'Click to switch to push-to-talk',
     modeSwitchToToggle: 'Click to switch to click-toggle',
+    cancelledByDirective:
+      'The polish model treated this clip as a cancel directive (e.g. "never mind"). Nothing was inserted.',
+    holdToTalkHint: 'Press & hold to talk',
+    noticePrefix: 'Voice polish',
+    malformedOutput:
+      'Voice polish returned malformed output; nothing inserted.',
   },
 
   chat: {

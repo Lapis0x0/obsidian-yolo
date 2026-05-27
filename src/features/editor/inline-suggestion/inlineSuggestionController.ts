@@ -72,6 +72,17 @@ export class InlineSuggestionController {
       voiceStatusChipField,
       EditorView.updateListener.of((update) => {
         if (update.focusChanged && !update.view.hasFocus) {
+          // Voice input owns the ghost while a session is active — do
+          // NOT clear it on focus loss. Clicking the mic / interacting
+          // with the floating island legitimately steals focus from the
+          // editor, but the ASR / polish preview must persist until the
+          // user accepts (Tab) or rejects (Esc). This was the root cause
+          // of the hold-to-talk "polish lands but no editor preview" bug:
+          // focus changed → clearInlineSuggestion → voice ghost wiped.
+          const voice = this.getContextVoiceInputController()
+          if (voice?.isBusy()) {
+            return
+          }
           const tab = this.getTabCompletionController()
           tab.clearTimer()
           tab.cancelRequest()

@@ -49,6 +49,16 @@ type IslandDeps = {
   getVadOptions: () => VoiceVadOptions
 }
 
+/**
+ * The status overlay in the `ready` state first shows the polish latency
+ * ("Tab insert · 1.2s") for READY_LATENCY_HOLD_MS, then cross-fades to a
+ * combined hint ("Tab insert · Esc discard") so both shortcuts are visible
+ * without crowding the badge with the latency at the same time. Once the
+ * combined hint is shown we DO NOT rotate any further — earlier iterations
+ * alternated forever, which the user found distracting.
+ */
+const READY_LATENCY_HOLD_MS = 3000
+
 const WAVE_HISTORY_SAMPLES = 80 // ~2.5 s of audio at 32 fps draw rate
 const WAVE_FFT_SIZE = 1024
 const WAVE_BAR_WIDTH = 3 // px per amplitude sample in the scrolling band
@@ -93,6 +103,15 @@ export class VoiceFloatingIslandController {
   private pendingHoldRelease = false
   private documentPointerUpListener: ((e: PointerEvent) => void) | null = null
 
+  // Ready-state hint reveal. After READY_LATENCY_HOLD_MS in ready, swap
+  // the latency badge for "Tab insert · Esc discard" via a one-shot timer.
+  // Stays on that label until ready ends.
+  private readyHintTimeout: number | null = null
+  private readyHintRevealed = false
+  private statusHostA: HTMLElement | null = null
+  private statusHostB: HTMLElement | null = null
+  private activeStatusHost: 'a' | 'b' = 'a'
+
   constructor(private readonly deps: IslandDeps) {}
 
   attachToActiveView(): void {
@@ -116,6 +135,7 @@ export class VoiceFloatingIslandController {
     this.unsubscribeController?.()
     this.unsubscribeController = null
     this.stopMonitoring()
+    this.stopReadyHintReveal()
     this.removeDocumentPointerUpListener()
     if (this.root) {
       this.root.remove()
@@ -126,6 +146,8 @@ export class VoiceFloatingIslandController {
     this.waveCanvas = null
     this.timerEl = null
     this.statusEl = null
+    this.statusHostA = null
+    this.statusHostB = null
     this.host = null
   }
 
@@ -161,17 +183,25 @@ export class VoiceFloatingIslandController {
     timer.textContent = '0:00'
 
     const overlay = center.createDiv({ cls: 'yolo-voice-island__overlay' })
-    const statusText = overlay.createDiv({
-      cls: 'yolo-voice-island__status-text',
+    // Two stacked status hosts that cross-fade so the Tab / Esc hint
+    // rotation in `ready` doesn't snap-flash text and the user can read
+    // each phrase without losing place. Width animates via the centre
+    // slot's CSS transition.
+    const statusA = overlay.createDiv({
+      cls: 'yolo-voice-island__status-text yolo-voice-island__status-text--a is-active',
     })
+    const statusB = overlay.createDiv({
+      cls: 'yolo-voice-island__status-text yolo-voice-island__status-text--b',
+    })
+    const statusText = statusA
 
     const modeToggle = root.createEl('button', {
       cls: 'yolo-voice-island__mode',
       attr: { type: 'button', 'aria-label': 'Switch interaction mode' },
     })
-    this.renderModeIcon(modeToggle, this.deps.getInteractionMode())
+    this.renderModeButton(modeToggle, this.deps.getInteractionMode(), 'idle')
     modeToggle.addEventListener('mousedown', (e) => e.preventDefault())
-    modeToggle.addEventListener('click', () => void this.cycleMode())
+    modeToggle.addEventListener('click', () => void this.handleModeButtonClick())
 
     this.root = root
     this.micButton = mic
@@ -179,6 +209,9 @@ export class VoiceFloatingIslandController {
     this.waveCanvas = wave
     this.timerEl = timer
     this.statusEl = statusText
+    this.statusHostA = statusA
+    this.statusHostB = statusB
+    this.activeStatusHost = 'a'
 
     this.applyStatus(this.deps.getController()?.getStatus() ?? null)
   }
@@ -244,7 +277,7 @@ export class VoiceFloatingIslandController {
 
     const interactionMode = this.deps.getInteractionMode()
     if (this.modeToggleButton) {
-      this.renderModeIcon(this.modeToggleButton, interactionMode)
+      this.renderModeButton(this.modeToggleButton, interactionMode, state)
     }
     // In hold-to-talk mode, pre-expand the bar even when idle so pressing
     // the mic doesn't shift its horizontal position. The centre slot stays
@@ -256,9 +289,17 @@ export class VoiceFloatingIslandController {
     )
 
     // Drive status text shown inside the bar.
-    if (this.statusEl) {
-      this.statusEl.textContent = this.buildStatusText(state, status ?? null)
-      this.statusEl.title = this.buildStatusTitle(state, status ?? null)
+    if (this.statusHostA && this.statusHostB) {
+      this.renderStatusText(state, status ?? null)
+    }
+
+    // Ready: hold the latency badge for 3s, then reveal "Tab + Esc" combined
+    // hint (one-shot, no further rotation). Leaving ready cancels the
+    // pending reveal and resets so the next ready cycle starts fresh.
+    if (state === 'ready' || status?.overlayState === 'ready') {
+      this.scheduleReadyHintReveal()
+    } else {
+      this.stopReadyHintReveal()
     }
 
     if (state === 'recording') {
@@ -299,14 +340,77 @@ export class VoiceFloatingIslandController {
         return this.deps.t('voiceInput.barTranscribing', 'Transcribing…')
       case 'polishing':
         return this.deps.t('voiceInput.barPolishing', 'Polishing…') + latency
-      case 'ready':
-        return this.deps.t('voiceInput.barReadyShort', 'Tab insert') + latency
+      case 'ready': {
+        const tab = this.deps.t('voiceInput.barReadyShort', 'Tab insert')
+        if (!this.readyHintRevealed) {
+          // First 3s: highlight latency next to the Tab hint.
+          return tab + latency
+        }
+        // After 3s: replace the latency with the Esc hint so both Tab and
+        // Esc are visible at once without truncating on narrow viewports.
+        const esc = this.deps.t('voiceInput.barReadyEsc', 'Esc discard')
+        return `${tab} · ${esc}`
+      }
       case 'recording':
       case 'idle':
       default:
-        // Recording shows the timer badge + waveform; no overlay needed.
+        // Hold-to-talk idle: prompt the user that the mic is a press-and-
+        // hold control; otherwise the centre slot stays empty.
+        if (
+          displayState === 'idle' &&
+          this.deps.getInteractionMode() === 'hold-to-talk'
+        ) {
+          return this.deps.t('voiceInput.holdToTalkHint', 'Press & hold')
+        }
         return ''
     }
+  }
+
+  private renderStatusText(
+    state: VoiceInputStatus['state'],
+    status: VoiceInputStatus | null,
+  ): void {
+    const text = this.buildStatusText(state, status)
+    const title = this.buildStatusTitle(state, status)
+    // Always set both hosts' title so hover tooltips work no matter which
+    // host is currently visible.
+    if (this.statusHostA) this.statusHostA.title = title
+    if (this.statusHostB) this.statusHostB.title = title
+
+    const currentHost =
+      this.activeStatusHost === 'a' ? this.statusHostA : this.statusHostB
+    if (currentHost?.textContent === text) return
+
+    // Cross-fade by swapping which host is the active (visible) one.
+    const nextHostName: 'a' | 'b' = this.activeStatusHost === 'a' ? 'b' : 'a'
+    const nextHost = nextHostName === 'a' ? this.statusHostA : this.statusHostB
+    if (!nextHost) return
+    nextHost.textContent = text
+    nextHost.classList.add('is-active')
+    if (currentHost) currentHost.classList.remove('is-active')
+    this.activeStatusHost = nextHostName
+  }
+
+  private scheduleReadyHintReveal(): void {
+    if (this.readyHintRevealed) return
+    if (this.readyHintTimeout !== null) return
+    this.readyHintTimeout = window.setTimeout(() => {
+      this.readyHintRevealed = true
+      this.readyHintTimeout = null
+      const controller = this.deps.getController()
+      const status = controller?.getStatus() ?? null
+      if (this.statusHostA && this.statusHostB) {
+        this.renderStatusText(status?.state ?? 'idle', status)
+      }
+    }, READY_LATENCY_HOLD_MS)
+  }
+
+  private stopReadyHintReveal(): void {
+    if (this.readyHintTimeout !== null) {
+      window.clearTimeout(this.readyHintTimeout)
+      this.readyHintTimeout = null
+    }
+    this.readyHintRevealed = false
   }
 
   private buildStatusTitle(
@@ -503,33 +607,66 @@ export class VoiceFloatingIslandController {
     this.documentPointerUpListener = null
   }
 
+  private async handleModeButtonClick(): Promise<void> {
+    const controller = this.deps.getController()
+    const state = controller?.getStatus().state ?? 'idle'
+    if (this.isModeButtonCancel(state)) {
+      controller?.cancelActiveSession('mode-button-cancel')
+      return
+    }
+    await this.cycleMode()
+  }
+
   private async cycleMode(): Promise<void> {
     const current = this.deps.getInteractionMode()
     const next: InteractionMode =
       current === 'toggle-listen' ? 'hold-to-talk' : 'toggle-listen'
     await this.deps.setInteractionMode(next)
     if (this.modeToggleButton) {
-      this.renderModeIcon(this.modeToggleButton, next)
+      this.renderModeButton(
+        this.modeToggleButton,
+        next,
+        this.deps.getController()?.getStatus().state ?? 'idle',
+      )
     }
   }
 
-  private renderModeIcon(
+  private isModeButtonCancel(state: VoiceInputStatus['state']): boolean {
+    return (
+      state === 'recording' &&
+      this.deps.getInteractionMode() === 'toggle-listen'
+    )
+  }
+
+  private renderModeButton(
     button: HTMLButtonElement,
     mode: InteractionMode,
+    state: VoiceInputStatus['state'],
   ): void {
     button.empty()
+    if (this.isModeButtonCancel(state)) {
+      button.appendChild(buildCancelSvg())
+      button.title = this.deps.t(
+        'voiceInput.buttonCancel',
+        'Cancel voice input',
+      )
+      button.setAttribute('aria-label', button.title)
+      return
+    }
     if (mode === 'toggle-listen') {
       button.appendChild(buildToggleSvg())
       button.title = this.deps.t(
         'voiceInput.modeSwitchToHold',
         'Click to switch to push-to-talk',
       )
+      button.setAttribute('aria-label', button.title)
     } else {
       button.appendChild(buildHoldSvg())
       button.title = this.deps.t(
         'voiceInput.modeSwitchToToggle',
         'Click to switch to click-toggle',
       )
+      button.setAttribute('aria-label', button.title)
     }
   }
 
@@ -812,6 +949,31 @@ const buildCheckSvg = (): SVGSVGElement => {
   const path = document.createElementNS(SVG_NS, 'path')
   path.setAttribute('d', 'M20 6 9 17l-5-5')
   svg.appendChild(path)
+  return svg
+}
+
+const buildCancelSvg = (): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2.4')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  const line1 = document.createElementNS(SVG_NS, 'line')
+  line1.setAttribute('x1', '18')
+  line1.setAttribute('y1', '6')
+  line1.setAttribute('x2', '6')
+  line1.setAttribute('y2', '18')
+  svg.appendChild(line1)
+  const line2 = document.createElementNS(SVG_NS, 'line')
+  line2.setAttribute('x1', '6')
+  line2.setAttribute('y1', '6')
+  line2.setAttribute('x2', '18')
+  line2.setAttribute('y2', '18')
+  svg.appendChild(line2)
   return svg
 }
 

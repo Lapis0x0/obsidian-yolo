@@ -50,6 +50,9 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
   const configs: AsrConfig[] = voice.asrConfigs ?? []
+  // Active selection is picked under Editor → Voice input now. We still
+  // resolve it here so persistConfigs can keep the id valid when entries
+  // get reordered or removed.
   const activeId =
     voice.activeAsrConfigId &&
     configs.some((c) => c.id === voice.activeAsrConfigId)
@@ -145,17 +148,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
     },
     [settings, setSettings, voice, activeId],
   )
-
-  const handleSetActive = (id: string) => {
-    if (id === activeId) return
-    void (async () => {
-      try {
-        await persistConfigs(configs, id)
-      } catch (error: unknown) {
-        console.error('Failed to switch ASR config', error)
-      }
-    })()
-  }
 
   const handleDelete = (config: AsrConfig) => {
     const message = `Delete "${config.name || config.id}"?`
@@ -388,7 +380,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
             <table className="yolo-settings-table">
               <colgroup>
                 <col width={16} />
-                <col width={40} />
                 <col />
                 <col />
                 <col width={90} />
@@ -396,7 +387,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
               <thead>
                 <tr>
                   <th></th>
-                  <th>{t('settings.asr.colActive', 'Active')}</th>
                   <th>{t('settings.asr.colName', 'Name')}</th>
                   <th>{t('settings.asr.colSummary', 'Format · model')}</th>
                   <th>{t('settings.asr.colActions', 'Actions')}</th>
@@ -405,7 +395,7 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
               <tbody>
                 {configs.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={{ color: 'var(--text-muted)' }}>
+                    <td colSpan={4} style={{ color: 'var(--text-muted)' }}>
                       {t(
                         'settings.asr.emptyHint',
                         'No ASR endpoint configured yet. Use the add button above.',
@@ -432,14 +422,19 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
                       </span>
                     </td>
                     <td>
-                      <input
-                        type="radio"
-                        name="yolo-asr-active"
-                        checked={config.id === activeId}
-                        onChange={() => handleSetActive(config.id)}
-                      />
+                      {config.name || '(unnamed)'}
+                      {config.id === activeId && (
+                        <span
+                          className="yolo-asr-active-pill"
+                          title={t(
+                            'settings.asr.activePill',
+                            'Currently used by voice input',
+                          )}
+                        >
+                          {t('settings.asr.activePillLabel', 'in use')}
+                        </span>
+                      )}
                     </td>
-                    <td>{config.name || '(unnamed)'}</td>
                     <td style={{ color: 'var(--text-muted)' }}>
                       {summariseConfig(config)}
                     </td>

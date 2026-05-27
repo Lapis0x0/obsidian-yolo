@@ -1185,6 +1185,8 @@ export type TranslationKeys = {
       colName?: string
       colSummary?: string
       colActions?: string
+      activePill?: string
+      activePillLabel?: string
       emptyHint?: string
       addConfig?: string
       configName?: string
@@ -1241,6 +1243,9 @@ export type TranslationKeys = {
       asrRequiredHint?: string
       enable?: string
       enableDesc?: string
+      asrProvider?: string
+      asrProviderDesc?: string
+      asrProviderNone?: string
       polishModel?: string
       polishModelDesc?: string
       polishTemperature?: string
@@ -1252,7 +1257,7 @@ export type TranslationKeys = {
         default?: string
         translate?: string
         expand?: string
-        list?: string
+        polish?: string
         custom?: string
       }
       builtinSystemPrompt?: string
@@ -1266,6 +1271,10 @@ export type TranslationKeys = {
       contextRangeCharsDesc?: string
       maxAfterContextChars?: string
       maxAfterContextCharsDesc?: string
+      beforeWindowChars?: string
+      beforeWindowCharsDesc?: string
+      afterWindowChars?: string
+      afterWindowCharsDesc?: string
       maxRecordingSeconds?: string
       maxRecordingSecondsDesc?: string
       vadSpeechStartDecibels?: string
@@ -1274,6 +1283,17 @@ export type TranslationKeys = {
       vadSilenceDecibelsDesc?: string
       vadSilenceHoldMs?: string
       vadSilenceHoldMsDesc?: string
+      advancedToggle?: string
+      advancedToggleDesc?: string
+      autoRestartAfterAccept?: string
+      autoRestartAfterAcceptDesc?: string
+      documentSummaryEnabled?: string
+      documentSummaryEnabledDesc?: string
+      documentSummaryRefresh?: string
+      documentSummaryRefreshDesc?: string
+      documentSummaryRefresh_session?: string
+      documentSummaryRefresh_15min?: string
+      documentSummaryRefresh_1hour?: string
     }
   }
 
@@ -1284,13 +1304,19 @@ export type TranslationKeys = {
     barPolishing?: string
     barReady?: string
     barReadyShort?: string
+    barReadyEsc?: string
     barTabPaused?: string
     barCancelHint?: string
     buttonStart?: string
     buttonStop?: string
+    buttonCancel?: string
     buttonAccept?: string
     modeSwitchToHold?: string
     modeSwitchToToggle?: string
+    cancelledByDirective?: string
+    holdToTalkHint?: string
+    noticePrefix?: string
+    malformedOutput?: string
   }
 
   // Selection Chat

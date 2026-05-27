@@ -8,25 +8,27 @@ import type { SettingMigration } from '../setting.types'
  *   contextVoiceInputOptions: {
  *     asrConfigs: AsrConfig[]
  *     activeAsrConfigId: string
+ *     autoRestartAfterAccept: boolean
+ *     documentSummaryEnabled: boolean
+ *     documentSummaryRefreshMode: 'session' | '15min' | '1hour'
  *     ...
  *   }
  *
- * Where each `AsrConfig` is a flat entry holding all fields for any of the
- * supported ASR API formats plus the `audioFormat` knob (defaults to 'auto';
- * set to 'wav' for Google Gemini which rejects webm). The active config is
- * referenced by id so the user can drag-reorder configs in the settings UI
- * without losing track of which one is in use.
+ * Each `AsrConfig` is a flat entry holding every field for any supported
+ * ASR API format plus the `audioFormat` knob (default 'auto'; switch to
+ * 'wav' for endpoints that reject webm). The active config is referenced
+ * by id so the user can drag-reorder configs without losing track of which
+ * one is in use. Active-config selection now lives in Editor → Voice input
+ * rather than as a radio button in the Models tab.
  *
  * Most v62 vaults never touched this section, so they end up with an empty
  * `asrConfigs: []` and the feature stays inert until the user adds a config.
  *
- * For users who already had data under the *pre-list* voice schema (a
- * `selectedAsrApiFormat + asrProviderProfiles` pair that briefly existed
- * during feature development), we convert each non-empty legacy profile into
- * its own AsrConfig and pick the entry matching `selectedAsrApiFormat` as
- * active. The conversion is folded into this single migration on purpose —
- * we don't ship a separate "list refactor" migration since v63 was never
- * released with the legacy shape.
+ * Pre-list legacy shape (`selectedAsrApiFormat + asrProviderProfiles` from
+ * the in-development branch) is converted to entries of the new list with
+ * the matching active id. We deliberately keep the conversion folded into
+ * this single migration — v63 was never released with the legacy shape, so
+ * there is no need for an intermediate migration.
  */
 export const migrateFrom62To63: SettingMigration['migrate'] = (data) => {
   const root = data ?? {}

@@ -352,25 +352,46 @@ export const VOICE_POLISH_PROMPT_MODES = [
   'default',
   'translate',
   'expand',
-  'list',
+  'polish',
   'custom',
 ] as const
 export type VoicePolishPromptMode = (typeof VOICE_POLISH_PROMPT_MODES)[number]
 
-export const DEFAULT_VOICE_INPUT_SYSTEM_PROMPT = `You polish a single speech-to-text transcript into text that is ready to insert at the user's current cursor position.
+export const DEFAULT_VOICE_INPUT_SYSTEM_PROMPT = `Polish one speech-to-text segment for insertion at the user's cursor. Cleanup only — do not paraphrase, expand, summarise, or change tone unless the transcript explicitly asks.
 
-Hard rules:
-- Output strict JSON matching this TypeScript type and nothing else, no Markdown fences, no commentary:
-  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
-- "text" must contain only the characters to insert (or "" when action is "cancel_input").
-- Keep the user's language; do not translate unless explicitly asked.
-- Fix ASR slips (homophones, missing punctuation, filler words) but keep the user's meaning, tone and intent.
-- Honour spoken self-corrections like "not A, B" or "scratch that, say <X>" — emit only the corrected version, never both.
-- If the transcript is a directive about this very recording — e.g. "cancel", "never mind", "don't insert that", "forget it" — return { "action": "cancel_input", "text": "" }.
-- If the transcript is a directive about how to transform this very recording — e.g. "translate to English", "make it a bullet list", "rewrite formally" — apply the directive to the rest of the transcript and emit only the resulting text.
-- If the user has a selection and the transcript is naturally a replacement of that selection, choose "replace_selection". If it should follow the selection, choose "insert_after_selection". Otherwise choose "insert_at_cursor".
-- When the intent is ambiguous between writing-as-content and giving-a-directive, default to writing-as-content so the user's words are not silently dropped.
-- Respect the surrounding Markdown structure (list continuation, code fences, headings) when picking spacing and prefixes for "text".`
+Output: strict JSON. No Markdown fences, no commentary.
+  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
+    "text": string,
+    "notice"?: string }
+
+"text" — only the characters to INSERT (or replace the selection).
+- Fix obvious ASR slips (homophones, missing punctuation, mis-segmented words, dropped particles). For technical terms, proper nouns, or anything you're unsure about, KEEP the transcript's wording — do not guess.
+- If <asr_hot_words> is provided and the transcript contains a word that sounds like one of them but differs in spelling, prefer the hot-word spelling.
+- Honour spoken self-corrections ("not A, B" / "scratch that"): emit only the final version.
+- NEVER echo content from cursor_before, cursor_after, current_selection, document_summary, or asr_hot_words. Those blocks are read-only reference material; copying them into "text" will duplicate user content in the editor.
+- NEVER include the directive itself when the user speaks a transformation request (e.g. "change the last word to X"). Apply the transformation silently and explain in "notice".
+- For cancel directives ("never mind", "cancel"): set "text": "" and explain in "notice".
+- Empty "text" is allowed; never invent filler.
+
+"notice" — optional short string shown to the user via a toast.
+- Use ONLY when the inserted text alone would confuse the user (cancel, directive applied, transform of earlier content). One short sentence in the user's language.
+- Omit for normal dictation.
+
+Action choice:
+- has_selection=true + naturally replaces → "replace_selection"
+- has_selection=true + naturally follows → "insert_after_selection"
+- otherwise → "insert_at_cursor"
+
+When previous_model_output is present:
+- It is YOUR earlier polish of an earlier audio segment — still a preview, not yet in the editor. The user can Tab-accept it at any moment.
+- current_asr_final is the NEW segment only.
+- Default action: emit previous_model_output verbatim + a single space + the polished new segment, as ONE combined "text". No newline unless the user clearly indicated a paragraph break.
+- You may NEVER drop, shorten, paraphrase, or rewrite previous_model_output unless BOTH conditions are met: (a) the user EXPLICITLY said so in current_asr_final, AND (b) that intent is unambiguous. When in doubt, keep previous_model_output intact.
+- Special cases:
+  * current_asr_final is empty / whitespace / only punctuation / only filler ("um", "啊") → emit previous_model_output VERBATIM. Do NOT erase it. Do NOT shorten it. Do NOT add a notice.
+  * current_asr_final is a cancel directive → emit "text": "" and set "notice".
+  * current_asr_final is a transform directive about previous_model_output → apply, emit only the transformed text, set "notice".
+- Returning only the new segment, or an empty string, when current_asr_final is normal dictation, is WRONG: it erases the user's earlier words. Always include previous_model_output unless one of the special cases above applies.`
 
 /**
  * Built-in prompt presets for voice polish. Each preset is a fully-formed
@@ -383,27 +404,49 @@ export const VOICE_POLISH_PROMPT_PRESETS: Record<
   string
 > = {
   default: DEFAULT_VOICE_INPUT_SYSTEM_PROMPT,
-  translate: `Translate a single speech-to-text transcript into the OPPOSITE of its detected language (Chinese ⇆ English). Output the translated text only, never both versions.
+  translate: `Translate one speech-to-text segment into the OPPOSITE of its detected language (Chinese ⇆ English).
 
-Output strict JSON: { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
-- "text" holds the translated output only, in the target language.
-- If the transcript is a cancel directive ("cancel", "never mind", "scratch that"), return { "action": "cancel_input", "text": "" }.
-- If the user has a selection and the transcript reads as a replacement, choose "replace_selection"; otherwise "insert_at_cursor".
+Output: strict JSON, no Markdown fences, no commentary.
+  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
+    "text": string,
+    "notice"?: string }
+
+- "text" is the translation only, in the target language. NEVER include the original alongside.
+- NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text" — they are read-only reference.
+- For cancel directives ("cancel", "never mind"): set "text": "", "notice": brief explanation.
+- "notice": optional one-line toast in the user's language; use only when "text" alone would confuse.
+- has_selection=true + transcript replaces it → "replace_selection"; otherwise "insert_at_cursor".
+- previous_model_output (if present) is your earlier translation of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the translation of current_asr_final, as ONE "text". Never drop, shorten, or rewrite previous_model_output unless current_asr_final EXPLICITLY says so. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).
 
 Examples:
-  transcript: "你好世界"     → { "action": "insert_at_cursor", "text": "Hello world" }
-  transcript: "scrap that"   → { "action": "cancel_input", "text": "" }`,
-  expand: `Treat a single speech-to-text transcript as an outline / bullet idea and expand it into a coherent paragraph that fits at the user's cursor.
+  "你好世界"   → { "action": "insert_at_cursor", "text": "Hello world" }
+  "scrap that" → { "action": "insert_at_cursor", "text": "", "notice": "Cancelled." }`,
+  expand: `Expand one speech-to-text segment from an outline / bullet idea into a coherent paragraph.
 
-Output strict JSON: { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
-- Keep the user's language. Maintain surrounding Markdown / list / heading structure.
-- If the transcript is a cancel directive, return { "action": "cancel_input", "text": "" }.`,
-  list: `Convert a single speech-to-text transcript into a Markdown bullet list ready to drop at the user's cursor.
+Output: strict JSON, no Markdown fences, no commentary.
+  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
+    "text": string,
+    "notice"?: string }
 
-Output strict JSON: { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection" | "cancel_input", "text": string }
-- Each top-level item starts with "- " on its own line.
-- Keep the user's language. Strip filler words ("um", "you know", etc.).
-- If the transcript is a cancel directive, return { "action": "cancel_input", "text": "" }.`,
+- Keep the user's language. Respect surrounding Markdown / list / heading structure.
+- NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text".
+- For cancel directives: set "text": "", "notice": brief explanation.
+- "notice": optional one-line toast; use only when "text" alone would confuse.
+- previous_model_output (if present) is your earlier expansion of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the new expansion as ONE "text". Never drop, shorten, or rewrite previous_model_output unless current_asr_final EXPLICITLY says so. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
+  polish: `Polish one speech-to-text segment so it reads more formally and precisely. Preserve meaning and intent. You may refine word choice, tighten grammar, and tune cadence for academic, professional, or literary prose. Do NOT add facts, examples, or arguments the user did not say.
+
+Output: strict JSON, no Markdown fences, no commentary.
+  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
+    "text": string,
+    "notice"?: string }
+
+- Keep the user's language and technical terms (do not replace jargon with lay synonyms).
+- Fix ASR slips first, then refine register. Be cautious with proper nouns / IDs / domain terms — keep the transcript's wording when in doubt.
+- Honour spoken self-corrections; emit only the final version.
+- NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text".
+- For cancel directives: set "text": "", "notice": brief explanation.
+- "notice": optional one-line toast; use only when "text" alone would confuse.
+- previous_model_output (if present) is your earlier polish of an earlier segment. Default: emit previous_model_output + a space + polished new segment as ONE "text". Light cohesion retouch of previous_model_output is OK; dropping, shortening, or replacing it with content the user did not say is NOT. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
 }
 
 /**
@@ -441,7 +484,7 @@ const asrConfigSchema = z
           return 'obsidian' as const
         }),
       )
-      .catch('auto'),
+      .catch('node'),
     language: z.string().catch('auto'),
   })
   .catch({
@@ -455,11 +498,31 @@ const asrConfigSchema = z
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
     audioFormat: 'auto' as AsrAudioFormat,
-    transportMode: 'auto' as AsrTransportMode,
+    transportMode: 'node' as AsrTransportMode,
     language: 'auto',
   })
 
 export type AsrConfig = z.infer<typeof asrConfigSchema>
+
+/**
+ * How often the per-document summary should be regenerated while the user
+ * keeps speaking into the same file. All summaries live in memory only — they
+ * are never persisted, and they expire when Obsidian closes.
+ *
+ * - `session`: build the summary once on first need, then keep using it for
+ *   the rest of this Obsidian session (no automatic re-summarisation). Most
+ *   conservative cost-wise.
+ * - `15min` / `1hour`: re-summarise after the given interval has elapsed
+ *   since the last summary completed, but only when a voice-input request
+ *   actually needs it (lazy).
+ */
+export const DOCUMENT_SUMMARY_REFRESH_MODES = [
+  'session',
+  '15min',
+  '1hour',
+] as const
+export type DocumentSummaryRefreshMode =
+  (typeof DOCUMENT_SUMMARY_REFRESH_MODES)[number]
 
 export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   enabled: false,
@@ -468,12 +531,23 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   lastAsrTestStatus: 'untested' as 'untested' | 'passed' | 'failed',
   lastAsrTestMessage: '',
   polishModelId: '',
-  polishTemperature: undefined as number | undefined,
+  // Polish is a low-creativity cleanup task; a small but non-zero
+  // temperature reads better than greedy decoding without introducing
+  // material hallucination risk. User can clear the field to fall back
+  // to the model / provider's own default.
+  polishTemperature: 0.2 as number | undefined,
   systemPromptMode: 'default' as VoicePolishPromptMode,
   customSystemPrompt: '',
   interactionMode: 'toggle-listen' as 'toggle-listen' | 'hold-to-talk',
   pauseTabCompletionWhileListening: true,
+  // Initial characters of editor text BEFORE the cursor handed to the polish
+  // model. Voice prefix caching anchors this first window and lets it grow
+  // naturally as accepted dictation adds text after the anchor.
+  // (Field name kept for storage compatibility; the user-facing label is
+  // "Initial before-cursor window".)
   contextRangeChars: 2000,
+  // Characters of editor text AFTER the cursor handed to the polish model.
+  // Independent from the before-cursor window above.
   maxAfterContextChars: 600,
   maxRecordingSeconds: 120,
   vadSpeechStartDecibels: -42,
@@ -485,6 +559,15 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   // specific mic (USB headset, AirPods etc.) instead of whatever the OS
   // picks at the moment of recording.
   microphoneDeviceId: '',
+  // Toggle-listen only: after the user Tab-accepts a polished draft, keep
+  // the session alive and start the next recording segment automatically
+  // (same UX as Wispr Flow / Superwhisper continuous dictation).
+  autoRestartAfterAccept: false,
+  // Opt-in: include a per-document summary in the polish prompt so the
+  // model can match terminology / topic over very long files. Cost-aware:
+  // summaries are LLM-generated and the toggle warns about it.
+  documentSummaryEnabled: false,
+  documentSummaryRefreshMode: '1hour' as DocumentSummaryRefreshMode,
 } as const
 
 const contextVoiceInputOptionsSchema = z
@@ -512,6 +595,11 @@ const contextVoiceInputOptionsSchema = z
     vadSilenceHoldMs: z.number().int().min(300).max(5000).catch(1200),
     rawAudioSaveMode: z.literal('never').catch('never'),
     microphoneDeviceId: z.string().catch(''),
+    autoRestartAfterAccept: z.boolean().catch(false),
+    documentSummaryEnabled: z.boolean().catch(false),
+    documentSummaryRefreshMode: z
+      .enum(DOCUMENT_SUMMARY_REFRESH_MODES)
+      .catch('1hour'),
   })
   .catch({ ...DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS })
 
