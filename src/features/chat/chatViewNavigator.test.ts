@@ -1,4 +1,5 @@
-import { TFile, TFolder } from 'obsidian'
+import { TFile } from 'obsidian'
+import { TFolder } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
 
 import type YoloPlugin from '../../main'
@@ -97,8 +98,15 @@ describe('ChatViewNavigator', () => {
   })
 
   it('prefills the main chat input without sending when a chat leaf already exists', async () => {
-    const view =
-      new (MockChatView as unknown as new () => MockChatViewInstance)()
+    const view = new (MockChatView as unknown as new () => {
+      addSelectionToInput: jest.Mock
+      applySelectionToMainInput: jest.Mock
+      appendTextToInput: jest.Mock
+      submitAgentPrompt: jest.Mock
+      setMainInputText: jest.Mock
+      focusMainInput: jest.Mock
+      submitMainInput: jest.Mock
+    })()
     const leaf = { view } as unknown as WorkspaceLeaf
     const revealLeaf = jest.fn().mockResolvedValue(undefined)
     const touchLeafInteracted = jest.fn()
@@ -131,8 +139,15 @@ describe('ChatViewNavigator', () => {
   })
 
   it('submits the main chat input immediately when using direct send', async () => {
-    const view =
-      new (MockChatView as unknown as new () => MockChatViewInstance)()
+    const view = new (MockChatView as unknown as new () => {
+      addSelectionToInput: jest.Mock
+      applySelectionToMainInput: jest.Mock
+      appendTextToInput: jest.Mock
+      submitAgentPrompt: jest.Mock
+      setMainInputText: jest.Mock
+      focusMainInput: jest.Mock
+      submitMainInput: jest.Mock
+    })()
     const leaf = { view } as unknown as WorkspaceLeaf
     const plugin = createPlugin({
       resolveTargetLeaf: () => leaf,
