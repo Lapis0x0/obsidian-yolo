@@ -1,8 +1,9 @@
 import type { SettingMigration } from '../setting.types'
 
 /**
- * v62→v63: introduce `contextVoiceInputOptions` for the context-aware voice
- * input feature.
+ * v64→v65: introduce `contextVoiceInputOptions` for the context-aware voice
+ * input feature. (Renumbered from 62→63 after upstream consumed 62→63 and
+ * 63→64 for selection-highlight and history-archive cleanups respectively.)
  *
  * Storage shape:
  *   contextVoiceInputOptions: {
@@ -30,13 +31,13 @@ import type { SettingMigration } from '../setting.types'
  * this single migration — v63 was never released with the legacy shape, so
  * there is no need for an intermediate migration.
  */
-export const migrateFrom62To63: SettingMigration['migrate'] = (data) => {
+export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
   const root = data ?? {}
   const voice = (root.contextVoiceInputOptions ?? {}) as Record<string, unknown>
 
   // Already in list shape (e.g. re-imported settings): leave alone, just bump.
   if (Array.isArray(voice.asrConfigs)) {
-    return { ...data, version: 63 }
+    return { ...data, version: 65 }
   }
 
   const profiles =
@@ -108,7 +109,7 @@ export const migrateFrom62To63: SettingMigration['migrate'] = (data) => {
 
   return {
     ...data,
-    version: 63,
+    version: 65,
     contextVoiceInputOptions: {
       ...restVoice,
       asrConfigs: configs,
