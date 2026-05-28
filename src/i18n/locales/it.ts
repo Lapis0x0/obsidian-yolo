@@ -274,12 +274,6 @@ export const it: TranslationKeys = {
       chatFontScale: 'Scala interfaccia chat',
       chatFontScaleDesc:
         "Regola la scala complessiva dell'interfaccia chat (predefinito 100%).",
-      historyArchiveEnabled: 'Abilita raggruppamento archivio cronologia',
-      historyArchiveEnabledDesc:
-        'Mantiene le conversazioni non appuntate meno recenti compresse in una sezione archivio.',
-      historyArchiveThreshold: 'Limite conversazioni recenti',
-      historyArchiveThresholdDesc:
-        'Numero di conversazioni non appuntate recenti da mostrare prima di archiviare le altre (20-500).',
     },
     assistants: {
       title: 'Assistenti',
@@ -428,9 +422,6 @@ export const it: TranslationKeys = {
       builtinFsSearchDesc: 'Cerca file e contenuti nel vault',
       builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc: 'Leggi file del vault',
-      builtinContextPruneToolResultsLabel: 'Pota risultati strumenti',
-      builtinContextPruneToolResultsDesc:
-        'Escludi i risultati storici degli strumenti dal contesto futuro',
       builtinContextCompactLabel: 'Compatta contesto',
       builtinContextCompactDesc:
         'Comprimi la cronologia meno recente in un riepilogo',
@@ -1276,9 +1267,6 @@ export const it: TranslationKeys = {
         'Controlla come i file con @ vengono iniettati nel modello. In modalita leggera vengono iniettati solo i percorsi dei file citati, le proprieta della nota e la struttura Markdown, incoraggiando l agent a leggere solo il contenuto necessario.',
       mentionContextModeLight: 'Modalita leggera',
       mentionContextModeFull: 'Modalita completa',
-      persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
-      persistSelectionHighlightDesc:
-        "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",
       notifications: 'Notifiche',
       notificationsDesc:
         "Configura gli avvisi per Agent. Le notifiche di sistema degradano automaticamente se l'ambiente non le supporta.",

@@ -168,7 +168,20 @@
   padding: 4px 0;
   max-height: 540px;
   overflow-y: auto;
+  /* Auto-hide is handled by Chromium's native overlay scrollbar (triggered
+     by `scrollbar-width`/`scrollbar-color`). Do NOT add a CSS transition on
+     scrollbar-color — Chromium can't interpolate that property, and the
+     stalled transition makes the browser flash the system default (darker)
+     thumb before snapping to ours. Letting the native engine drive the
+     fade-in gives a clean, smooth appear. */
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-popover-surface--default .yolo-model-select-list:hover,
+.yolo-popover-surface--default .yolo-model-select-list:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
 }
 
 .yolo-popover-surface--default .yolo-model-select-list > .yolo-popover-item {

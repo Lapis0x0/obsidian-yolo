@@ -146,11 +146,14 @@ export default function ObsidianFileDropPlugin(): null {
         editor.update(() => {
           let selectionPositioned = false
 
+          // Use the document where the drop happened so coordinates resolve
+          // correctly when the chat panel is in a pop-out window.
+          const dropDoc = event.view?.document ?? document
           const domRange =
             // eslint-disable-next-line @typescript-eslint/no-deprecated -- caretRangeFromPoint is still the most reliable API in Chromium/Obsidian
-            typeof document.caretRangeFromPoint === 'function'
+            typeof dropDoc.caretRangeFromPoint === 'function'
               ? // eslint-disable-next-line @typescript-eslint/no-deprecated -- see above
-                document.caretRangeFromPoint(dropX, dropY)
+                dropDoc.caretRangeFromPoint(dropX, dropY)
               : null
 
           if (domRange !== null) {

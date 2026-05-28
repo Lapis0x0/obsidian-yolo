@@ -36,13 +36,6 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Read vault files by path with either full-file or targeted line-range operations.',
   },
-  context_prune_tool_results: {
-    labelKey: 'settings.agent.builtinContextPruneToolResultsLabel',
-    descKey: 'settings.agent.builtinContextPruneToolResultsDesc',
-    labelFallback: 'Prune Tool Results',
-    descFallback:
-      'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
-  },
   context_compact: {
     labelKey: 'settings.agent.builtinContextCompactLabel',
     descKey: 'settings.agent.builtinContextCompactDesc',
@@ -171,7 +164,6 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   fs_read: 'vault',
   fs_edit: 'vault',
   [FILE_OPS_GROUP_TOOL_NAME]: 'vault',
-  context_prune_tool_results: 'context',
   context_compact: 'context',
   load_tool_schemas: 'context',
   todo_write: 'context',

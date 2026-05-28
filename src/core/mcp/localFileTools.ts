@@ -27,7 +27,6 @@ import {
   deriveToolEditUndoStatus,
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
-import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
@@ -111,46 +110,10 @@ const MAX_BATCH_WRITE_ITEMS = 50
 const MAX_RAG_SNIPPET_CHARS = 500
 const RAG_FETCH_LIMIT_MAX = 300
 
-const getContextPrunableToolCallIds = (
-  messages: ChatMessage[] | undefined,
-  currentToolCallId?: string,
-): Set<string> => {
-  const acceptedToolCallIds = new Set<string>()
-
-  for (const message of messages ?? []) {
-    if (message.role !== 'tool') {
-      continue
-    }
-
-    if (
-      currentToolCallId &&
-      message.toolCalls.some(
-        (toolCall) => toolCall.request.id === currentToolCallId,
-      )
-    ) {
-      break
-    }
-
-    for (const toolCall of message.toolCalls) {
-      if (
-        isContextPrunableToolName(toolCall.request.name) &&
-        toolCall.response.status === ToolCallResponseStatus.Success &&
-        toolCall.response.data.type === 'text' &&
-        toolCall.request.id.trim().length > 0
-      ) {
-        acceptedToolCallIds.add(toolCall.request.id)
-      }
-    }
-  }
-
-  return acceptedToolCallIds
-}
-
 export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   'fs_list',
   'fs_search',
   'fs_read',
-  'context_prune_tool_results',
   'context_compact',
   'fs_edit',
   'fs_create_file',
@@ -209,8 +172,6 @@ type FsReadOperation =
       maxLines: number
       modality?: FsReadModality
     }
-type ContextPruneMode = 'selected' | 'all'
-
 type FsFileOpAction =
   | 'create_file'
   | 'delete_file'
@@ -657,34 +618,6 @@ export function getLocalFileTools(options?: {
           },
         },
         required: ['paths', 'operation'],
-      },
-    },
-    {
-      name: 'context_prune_tool_results',
-      description:
-        'Exclude historical tool call results from future model-visible context without deleting chat history. Supports pruning selected calls or all prunable calls at once.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          mode: {
-            type: 'string',
-            enum: ['selected', 'all'],
-            description:
-              'Prune mode. Use selected to prune specific toolCallIds, or all to prune all historical prunable tool results.',
-          },
-          toolCallIds: {
-            type: 'array',
-            items: {
-              type: 'string',
-            },
-            description:
-              'Tool call ids to exclude from future prompt context when mode is selected.',
-          },
-          reason: {
-            type: 'string',
-            description: 'Optional short reason for pruning.',
-          },
-        },
       },
     },
     {
@@ -1931,19 +1864,6 @@ const getSemanticSearchUnavailableReason = ({
     return 'No embedding model configured. Fell back to keyword search.'
   }
   return null
-}
-
-const getContextPruneMode = (
-  args: Record<string, unknown>,
-): ContextPruneMode => {
-  const value = args.mode
-  if (value === undefined) {
-    return 'selected'
-  }
-  if (value !== 'selected' && value !== 'all') {
-    throw new Error('mode must be one of: selected, all.')
-  }
-  return value
 }
 
 const getFsListScope = (args: Record<string, unknown>): FsListScope => {
@@ -3553,47 +3473,6 @@ export async function callLocalFileTool({
           status: ToolCallResponseStatus.Success,
           text: textResult,
           contentParts,
-        }
-      }
-
-      case 'context_prune_tool_results': {
-        const mode = getContextPruneMode(args)
-
-        const prunableToolCallIds = getContextPrunableToolCallIds(
-          conversationMessages,
-          toolCallId,
-        )
-        const toolCallIds =
-          mode === 'all'
-            ? [...prunableToolCallIds]
-            : getStringArrayArg(args, 'toolCallIds')
-                .map((value) => value.trim())
-                .filter(
-                  (value, index, arr) =>
-                    value.length > 0 && arr.indexOf(value) === index,
-                )
-
-        if (mode === 'selected' && toolCallIds.length === 0) {
-          throw new Error('toolCallIds cannot be empty when mode is selected.')
-        }
-
-        const acceptedToolCallIds = toolCallIds.filter((value) =>
-          prunableToolCallIds.has(value),
-        )
-        const ignoredToolCallIds = toolCallIds.filter(
-          (value) => !prunableToolCallIds.has(value),
-        )
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'context_prune_tool_results',
-            toolCallId: toolCallId ?? null,
-            operation: mode === 'all' ? 'prune_all' : 'prune_selected',
-            acceptedToolCallIds,
-            ignoredToolCallIds,
-            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
-          }),
         }
       }
 

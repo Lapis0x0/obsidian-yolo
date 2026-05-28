@@ -127,7 +127,9 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
 
   const handleInsert = () => {
     const selectedText = (() => {
-      const selection = window.getSelection()
+      const selection = (
+        buttonRef.current?.ownerDocument.defaultView ?? window
+      ).getSelection()
       if (!selection || selection.rangeCount === 0) {
         return null
       }
@@ -303,12 +305,13 @@ export default function AssistantToolMessageGroupActions({
       }
     }
 
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
+    const doc = containerRef.current?.ownerDocument ?? document
+    doc.addEventListener('pointerdown', handlePointerDown)
+    doc.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
+      doc.removeEventListener('pointerdown', handlePointerDown)
+      doc.removeEventListener('keydown', handleKeyDown)
     }
   }, [isMoreOpen])
 

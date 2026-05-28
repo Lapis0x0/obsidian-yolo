@@ -190,12 +190,13 @@ function nodeIntersectsRange(range: Range, node: Node): boolean {
     return range.intersectsNode(node)
   }
 
-  const selection = window.getSelection()
+  const ownerDoc = node.ownerDocument ?? document
+  const selection = (ownerDoc.defaultView ?? window).getSelection()
   if (selection && typeof selection.containsNode === 'function') {
     return selection.containsNode(node, true)
   }
 
-  const nodeRange = document.createRange()
+  const nodeRange = ownerDoc.createRange()
   nodeRange.selectNode(node)
 
   return !(
@@ -453,7 +454,9 @@ export function annotateRenderedLatex(
 }
 
 export function syncRenderedLatexSelection(containerEl: HTMLElement): void {
-  const selection = window.getSelection()
+  const selection = (
+    containerEl.ownerDocument.defaultView ?? window
+  ).getSelection()
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     clearRenderedLatexSelection(containerEl)
     return
@@ -485,7 +488,9 @@ export function copySelectedLatex(
   event: ClipboardEvent,
   containerEl: HTMLElement,
 ): boolean {
-  const selection = window.getSelection()
+  const selection = (
+    containerEl.ownerDocument.defaultView ?? window
+  ).getSelection()
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     return false
   }

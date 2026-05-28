@@ -107,7 +107,9 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
     const updateWidth = () => {
       const nextToggleWidth = Math.round(element.getBoundingClientRect().width)
       const totalWidth = Number.parseFloat(
-        window.getComputedStyle(element).getPropertyValue('--yolo-total-width'),
+        (element.ownerDocument.defaultView ?? window)
+          .getComputedStyle(element)
+          .getPropertyValue('--yolo-total-width'),
       )
 
       setToggleWidth(nextToggleWidth)

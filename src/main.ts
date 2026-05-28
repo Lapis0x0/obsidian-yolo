@@ -2871,10 +2871,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     if (!data) return
 
     const highlightId = crypto.randomUUID()
-    if (
-      editorView &&
-      (this.settings.continuationOptions.persistSelectionHighlight ?? true)
-    ) {
+    if (editorView) {
       const sel = editorView.state.selection.main
       if (!sel.empty) {
         selectionHighlightController.addHighlight(

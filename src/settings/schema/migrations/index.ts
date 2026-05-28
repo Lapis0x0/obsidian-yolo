@@ -58,6 +58,8 @@ import { migrateFrom59To60 } from './59_to_60'
 import { migrateFrom5To6 } from './5_to_6'
 import { migrateFrom60To61 } from './60_to_61'
 import { migrateFrom61To62 } from './61_to_62'
+import { migrateFrom62To63 } from './62_to_63'
+import { migrateFrom63To64 } from './63_to_64'
 import { migrateFrom64To65 } from './64_to_65'
 import { migrateFrom6To7 } from './6_to_7'
 import { migrateFrom7To8 } from './7_to_8'
@@ -376,6 +378,16 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 61,
     toVersion: 62,
     migrate: migrateFrom61To62,
+  },
+  {
+    fromVersion: 62,
+    toVersion: 63,
+    migrate: migrateFrom62To63,
+  },
+  {
+    fromVersion: 63,
+    toVersion: 64,
+    migrate: migrateFrom63To64,
   },
   {
     fromVersion: 64,

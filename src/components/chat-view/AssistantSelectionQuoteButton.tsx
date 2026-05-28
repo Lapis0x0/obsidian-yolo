@@ -26,7 +26,13 @@ const SELECTION_STABILIZE_DELAY = 300
 const selectionListeners = new Set<() => void>()
 const viewportListeners = new Set<() => void>()
 
-let removeGlobalListeners: (() => void) | null = null
+// Pop-out windows have their own Document. Bind listeners on each Document
+// that hosts a subscriber so events fire there too.
+type DocumentBinding = {
+  refCount: number
+  remove: () => void
+}
+const documentBindings = new Map<Document, DocumentBinding>()
 
 function emitSelectionChange() {
   selectionListeners.forEach((listener) => {
@@ -40,30 +46,33 @@ function emitViewportChange() {
   })
 }
 
-function ensureGlobalListeners() {
-  if (removeGlobalListeners) {
+function acquireDocumentListeners(doc: Document) {
+  const existing = documentBindings.get(doc)
+  if (existing) {
+    existing.refCount += 1
     return
   }
-
-  document.addEventListener('selectionchange', emitSelectionChange)
-  window.addEventListener('resize', emitViewportChange)
-  document.addEventListener('scroll', emitViewportChange, true)
-
-  removeGlobalListeners = () => {
-    document.removeEventListener('selectionchange', emitSelectionChange)
-    window.removeEventListener('resize', emitViewportChange)
-    document.removeEventListener('scroll', emitViewportChange, true)
-    removeGlobalListeners = null
-  }
+  const win = doc.defaultView ?? window
+  doc.addEventListener('selectionchange', emitSelectionChange)
+  win.addEventListener('resize', emitViewportChange)
+  doc.addEventListener('scroll', emitViewportChange, true)
+  documentBindings.set(doc, {
+    refCount: 1,
+    remove: () => {
+      doc.removeEventListener('selectionchange', emitSelectionChange)
+      win.removeEventListener('resize', emitViewportChange)
+      doc.removeEventListener('scroll', emitViewportChange, true)
+    },
+  })
 }
 
-function cleanupGlobalListenersIfIdle() {
-  if (
-    selectionListeners.size === 0 &&
-    viewportListeners.size === 0 &&
-    removeGlobalListeners
-  ) {
-    removeGlobalListeners()
+function releaseDocumentListeners(doc: Document) {
+  const binding = documentBindings.get(doc)
+  if (!binding) return
+  binding.refCount -= 1
+  if (binding.refCount <= 0) {
+    binding.remove()
+    documentBindings.delete(doc)
   }
 }
 
@@ -95,7 +104,9 @@ export default function AssistantSelectionQuoteButton({
     }
 
     const container = containerRef.current
-    const selection = window.getSelection()
+    const selection = (
+      container?.ownerDocument.defaultView ?? window
+    ).getSelection()
     if (
       !container ||
       !selection ||
@@ -182,9 +193,10 @@ export default function AssistantSelectionQuoteButton({
       processSelectionRef.current()
     }
 
+    const doc = containerRef.current?.ownerDocument ?? document
     selectionListeners.add(handleSelectionChange)
     viewportListeners.add(handleViewportChange)
-    ensureGlobalListeners()
+    acquireDocumentListeners(doc)
 
     return () => {
       if (debounceTimerRef.current !== null) {
@@ -193,7 +205,7 @@ export default function AssistantSelectionQuoteButton({
       }
       selectionListeners.delete(handleSelectionChange)
       viewportListeners.delete(handleViewportChange)
-      cleanupGlobalListenersIfIdle()
+      releaseDocumentListeners(doc)
     }
   }, [])
 
@@ -241,7 +253,9 @@ export default function AssistantSelectionQuoteButton({
       conversationId,
       content: overlay.content,
     })
-    window.getSelection()?.removeAllRanges()
+    ;(containerRef.current?.ownerDocument.defaultView ?? window)
+      .getSelection()
+      ?.removeAllRanges()
     hideOverlay()
   }, [conversationId, hideOverlay, messageId, onQuote, overlay])
 

@@ -118,7 +118,10 @@ function highlightTrailingFreshText(
   }
 
   const textNodes: Text[] = []
-  const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT)
+  const walker = (containerEl.ownerDocument ?? document).createTreeWalker(
+    containerEl,
+    NodeFilter.SHOW_TEXT,
+  )
   let currentNode = walker.nextNode()
 
   while (currentNode) {

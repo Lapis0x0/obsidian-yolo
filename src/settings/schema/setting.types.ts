@@ -738,10 +738,6 @@ export const yoloSettingsSchema = z.object({
       reasoningLevelByModelId: z
         .record(z.string(), z.enum(REASONING_LEVELS))
         .optional(),
-      // Collapse older non-pinned conversations into an archive group
-      historyArchiveEnabled: z.boolean().optional(),
-      // Maximum number of recent non-pinned conversations shown before archive
-      historyArchiveThreshold: z.number().int().min(20).max(500).optional(),
       // Auto context compaction before next user send (based on last assistant usage)
       autoContextCompactionEnabled: z.boolean().optional(),
       autoContextCompactionThresholdMode: z
@@ -777,8 +773,6 @@ export const yoloSettingsSchema = z.object({
       chatMode: 'agent',
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},
-      historyArchiveEnabled: true,
-      historyArchiveThreshold: 50,
       autoContextCompactionEnabled: false,
       autoContextCompactionThresholdMode: 'tokens',
       autoContextCompactionThresholdTokens: 24000,
@@ -803,8 +797,6 @@ export const yoloSettingsSchema = z.object({
       enableSmartSpace: z.boolean().optional(),
       // enable selection chat (Cursor-like text selection actions)
       enableSelectionChat: z.boolean().optional(),
-      // persist selected editor block highlight while chatting in sidebar
-      persistSelectionHighlight: z.boolean().optional(),
       // enable manual context selection for continuation
       manualContextEnabled: z.boolean().optional(),
       // manual context folders picked by user from the vault
@@ -904,7 +896,6 @@ export const yoloSettingsSchema = z.object({
           ?.id ?? '',
       enableSmartSpace: true,
       enableSelectionChat: true,
-      persistSelectionHighlight: true,
       manualContextEnabled: false,
       manualContextFolders: [],
       referenceRuleFolders: [],

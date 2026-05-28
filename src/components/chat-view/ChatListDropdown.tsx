@@ -23,6 +23,9 @@ import { YoloPopoverContent } from '../common/popover'
 
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
+/** Non-pinned conversations beyond this count collapse into the archive group. */
+const RECENT_CHAT_LIMIT = 50
+
 function TitleInput({
   value,
   disabled,
@@ -366,8 +369,6 @@ export function ChatListDropdown({
   chatList,
   currentConversationId,
   runSummariesByConversationId,
-  archiveEnabled,
-  archiveThreshold,
   onSelect,
   onDelete,
   onUpdateTitle,
@@ -379,8 +380,6 @@ export function ChatListDropdown({
   chatList: ChatConversationMetadata[]
   currentConversationId: string
   runSummariesByConversationId: Map<string, AgentConversationRunSummary>
-  archiveEnabled: boolean
-  archiveThreshold: number
   onSelect: (conversationId: string) => void | Promise<void>
   onDelete: (conversationId: string) => void | Promise<void>
   onUpdateTitle: (
@@ -475,15 +474,7 @@ export function ChatListDropdown({
     return pinnedSortedChatList
   }, [filteredChatList, normalizedQuery, pinnedSortedChatList])
 
-  const normalizedArchiveThreshold = useMemo(
-    () => Math.max(20, Math.min(500, Math.trunc(archiveThreshold || 50))),
-    [archiveThreshold],
-  )
-
-  const shouldUseArchive =
-    archiveEnabled &&
-    normalizedQuery.length === 0 &&
-    normalizedArchiveThreshold > 0
+  const shouldUseArchive = normalizedQuery.length === 0
 
   const { activeChatList, archivedChatList } = useMemo(() => {
     if (!shouldUseArchive) {
@@ -503,13 +494,8 @@ export function ChatListDropdown({
       }
     })
 
-    const activeNonPinnedChats = nonPinnedChats.slice(
-      0,
-      normalizedArchiveThreshold,
-    )
-    const archivedNonPinnedChats = nonPinnedChats.slice(
-      normalizedArchiveThreshold,
-    )
+    const activeNonPinnedChats = nonPinnedChats.slice(0, RECENT_CHAT_LIMIT)
+    const archivedNonPinnedChats = nonPinnedChats.slice(RECENT_CHAT_LIMIT)
     const currentArchivedIndex = archivedNonPinnedChats.findIndex(
       (chat) => chat.id === currentConversationId,
     )
@@ -527,12 +513,7 @@ export function ChatListDropdown({
       activeChatList: [...pinnedChats, ...activeNonPinnedChats],
       archivedChatList: archivedNonPinnedChats,
     }
-  }, [
-    baseDisplayChatList,
-    currentConversationId,
-    normalizedArchiveThreshold,
-    shouldUseArchive,
-  ])
+  }, [baseDisplayChatList, currentConversationId, shouldUseArchive])
 
   const renderedChatList = useMemo(() => {
     if (!shouldUseArchive) return activeChatList

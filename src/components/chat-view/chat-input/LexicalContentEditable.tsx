@@ -14,7 +14,6 @@ import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
-import { useWindowVersion } from '../../../contexts/window-version-context'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../core/snippets/snippetsManager'
 import { Assistant } from '../../../types/assistant.types'
@@ -99,11 +98,11 @@ export type LexicalContentEditableProps = {
  * Caveat: this is not perfectly harmless. Lexical 0.17.1 tracks roots in a
  * `WeakMap<Document, number>` keyed by document, so the original document
  * still owns a `selectionchange` listener bound to the now-dead editor's
- * closure. We rely on the LexicalComposer being remounted (via React key
- * change) so a fresh editor takes over; the stale listener remains attached
- * to the original document for that document's lifetime. Acceptable: each
- * pop-out leaks one listener, which is dwarfed by the alternative
- * (typing into the input being broken entirely).
+ * closure. We rely on ChatView rebuilding its React root on host migration
+ * (see `ChatView.rebuild`) so a fresh LexicalEditor instance takes over;
+ * the stale listener stays attached to the original document for that
+ * document's lifetime. Acceptable: each pop-out leaks one listener, which
+ * is dwarfed by the alternative (typing into the input being broken).
  *
  * The error message string targets Lexical 0.17.1; revisit if upgrading.
  *
@@ -139,21 +138,6 @@ function SafeSetRootElementPatchPlugin() {
     }
     editorAsRecord[PATCHED_FLAG] = true
   }, [editor])
-
-  return null
-}
-
-/**
- * 把焦点移到聊天输入框。仅在窗口迁移（pop-out / dock back）导致 LexicalComposer
- * 通过 key 重建后触发：首次挂载（version === 0）必须跳过，否则会抢走其他面板的焦点。
- */
-function FocusOnWindowMigratePlugin({ version }: { version: number }) {
-  const [editor] = useLexicalComposerContext()
-
-  useEffect(() => {
-    if (version === 0) return
-    editor.focus()
-  }, [editor, version])
 
   return null
 }
@@ -196,7 +180,6 @@ export default function LexicalContentEditable({
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
-  const windowVersion = useWindowVersion()
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
     app.workspace.getActiveFile()?.path ?? null,
   )
@@ -259,9 +242,8 @@ export default function LexicalContentEditable({
   }, [app])
 
   return (
-    <LexicalComposer key={windowVersion} initialConfig={initialConfig}>
+    <LexicalComposer initialConfig={initialConfig}>
       <SafeSetRootElementPatchPlugin />
-      <FocusOnWindowMigratePlugin version={windowVersion} />
       {/*
             There was two approach to make mentionable node copy and pasteable.
             1. use RichTextPlugin and reset text format when paste

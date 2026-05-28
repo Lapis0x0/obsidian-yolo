@@ -71,11 +71,6 @@ import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
 } from './tool-boundary'
-import {
-  collectContextPrunedToolCallIds,
-  filterContextPrunedAssistantToolCalls,
-  filterContextPrunedToolCalls,
-} from './tool-context-pruning'
 
 /** Regex matching the `<user_selected_skills>...</user_selected_skills>` block
  * produced by `buildSelectedSkillsPrompt`. Used by the breakdown estimator to
@@ -759,7 +754,6 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
   }): Promise<RequestMessage[]> {
     const requestMessages: RequestMessage[] = []
-    const prunedToolCallIds = collectContextPrunedToolCallIds(messages)
 
     const latestCompaction = getLatestChatConversationCompaction(compaction)
 
@@ -791,7 +785,7 @@ export class RequestContextBuilder {
 
           if (message.role === 'assistant') {
             requestMessages.push(
-              ...this.parseAssistantMessage({ message, prunedToolCallIds }),
+              ...this.parseAssistantMessage({ message }),
             )
             continue
           }
@@ -802,7 +796,7 @@ export class RequestContextBuilder {
           }
 
           requestMessages.push(
-            ...this.parseToolMessage({ message, prunedToolCallIds }),
+            ...this.parseToolMessage({ message }),
           )
         }
 
@@ -832,7 +826,7 @@ export class RequestContextBuilder {
 
       if (message.role === 'assistant') {
         requestMessages.push(
-          ...this.parseAssistantMessage({ message, prunedToolCallIds }),
+          ...this.parseAssistantMessage({ message }),
         )
         continue
       }
@@ -843,7 +837,7 @@ export class RequestContextBuilder {
       }
 
       requestMessages.push(
-        ...this.parseToolMessage({ message, prunedToolCallIds }),
+        ...this.parseToolMessage({ message }),
       )
     }
 
@@ -991,10 +985,8 @@ export class RequestContextBuilder {
 
   private parseAssistantMessage({
     message,
-    prunedToolCallIds,
   }: {
     message: ChatAssistantMessage
-    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
     let citationContent: string | null = null
     if (message.annotations && message.annotations.length > 0) {
@@ -1017,14 +1009,12 @@ ${message.annotations
         ].join('\n'),
         reasoning: message.reasoning,
         providerMetadata: message.metadata?.providerMetadata,
-        tool_calls: filterContextPrunedAssistantToolCalls(
+        tool_calls:
           message.toolCallRequests
             ?.map((toolCall) => this.normalizeToolCallRequest(toolCall))
             .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
               Boolean(toolCall),
             ) ?? undefined,
-          prunedToolCallIds ?? new Set<string>(),
-        ),
       },
     ]
   }
@@ -1066,18 +1056,13 @@ ${message.annotations
 
   private parseToolMessage({
     message,
-    prunedToolCallIds,
   }: {
     message: ChatToolMessage
-    prunedToolCallIds?: ReadonlySet<string>
   }): RequestMessage[] {
     const toolMessages: RequestMessage[] = []
     const collectedContentParts: ContentPart[] = []
 
-    for (const toolCall of filterContextPrunedToolCalls(
-      message.toolCalls,
-      prunedToolCallIds ?? new Set<string>(),
-    )) {
+    for (const toolCall of message.toolCalls) {
       switch (toolCall.response.status) {
         case ToolCallResponseStatus.PendingApproval:
         case ToolCallResponseStatus.Running:

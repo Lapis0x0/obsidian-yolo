@@ -9,6 +9,7 @@ type ChatSidebarTabsProps = {
   placement: ChatLeafPlacement
   initialChatProps?: ChatProps
   onConversationContextChange?: ChatProps['onConversationContextChange']
+  onRuntimeSnapshotChange?: ChatProps['onRuntimeSnapshotChange']
 }
 
 const ChatSidebarTabs: React.FC<ChatSidebarTabsProps> = ({
@@ -16,6 +17,7 @@ const ChatSidebarTabs: React.FC<ChatSidebarTabsProps> = ({
   placement,
   initialChatProps,
   onConversationContextChange,
+  onRuntimeSnapshotChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'composer'>('chat')
 
@@ -31,6 +33,7 @@ const ChatSidebarTabs: React.FC<ChatSidebarTabsProps> = ({
             {...(chatProps ?? {})}
             placement={placement}
             onConversationContextChange={onConversationContextChange}
+            onRuntimeSnapshotChange={onRuntimeSnapshotChange}
             activeView={activeTab}
             onChangeView={(view) => setActiveTab(view)}
           />

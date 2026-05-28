@@ -164,10 +164,6 @@ export type TranslationKeys = {
       title: string
       chatFontScale?: string
       chatFontScaleDesc?: string
-      historyArchiveEnabled?: string
-      historyArchiveEnabledDesc?: string
-      historyArchiveThreshold?: string
-      historyArchiveThresholdDesc?: string
     }
     assistants: {
       title: string
@@ -313,8 +309,6 @@ export type TranslationKeys = {
       builtinFsSearchDesc?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string
-      builtinContextPruneToolResultsLabel?: string
-      builtinContextPruneToolResultsDesc?: string
       builtinContextCompactLabel?: string
       builtinContextCompactDesc?: string
       builtinToolSearchLabel?: string
@@ -1073,8 +1067,6 @@ export type TranslationKeys = {
       chatApplyModeDesc?: string
       chatApplyModeReviewRequired?: string
       chatApplyModeDirectApply?: string
-      persistSelectionHighlight?: string
-      persistSelectionHighlightDesc?: string
       notifications?: string
       notificationsDesc?: string
       notificationsEnabled?: string

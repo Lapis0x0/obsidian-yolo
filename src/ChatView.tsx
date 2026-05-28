@@ -3,7 +3,11 @@ import { ItemView, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
-import type { ChatProps, ChatRef } from './components/chat-view/Chat'
+import type {
+  ChatProps,
+  ChatRef,
+  ChatRuntimeSnapshot,
+} from './components/chat-view/Chat'
 import ChatSidebarTabs from './components/chat-view/ChatSidebarTabs'
 import { CHAT_VIEW_TYPE } from './constants'
 import { AppProvider } from './contexts/app-context'
@@ -16,7 +20,6 @@ import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
 import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
-import { WindowVersionProvider } from './contexts/window-version-context'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import { getConversationDisplayTitle } from './hooks/useChatHistory'
 import YoloPlugin from './main'
@@ -28,6 +31,20 @@ export class ChatView extends ItemView {
   private root: Root | null = null
   private initialChatProps?: ChatProps
   private chatRef: React.RefObject<ChatRef> = React.createRef()
+  // host DOM 重建追踪：Windows 上 Obsidian pop-out 会销毁旧 view-content
+  // 并新建一个空的，需要检测并把 React tree 迁移到新 host。
+  private mountedHost: HTMLElement | null = null
+  // ownerDocument at mount time. On macOS, Obsidian pop-out *reparents* the
+  // same DOM node to the new window — `mountedHost` reference is unchanged
+  // but its `ownerDocument` is now the new window's document. We must rebuild
+  // in this case too so Lexical re-binds its `selectionchange` listener.
+  private mountedDoc: Document | null = null
+  private hostObserver: MutationObserver | null = null
+  private windowMigratedDisposer: (() => void) | null = null
+  private runtimeSnapshot: ChatRuntimeSnapshot | null = null
+  private rebuildScheduled = false
+  private rebuildRafId: number | null = null
+  private isClosed = false
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -49,6 +66,7 @@ export class ChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    this.isClosed = false
     const manager = this.plugin.getChatLeafSessionManager()
     const pendingPayload = manager.consumePendingPayload(this.leaf)
     const placement =
@@ -64,20 +82,97 @@ export class ChatView extends ItemView {
 
     this.initialChatProps = undefined
 
+    // Host 替换的信号源 1：containerEl.onWindowMigrated（Obsidian 公开 API）
+    this.windowMigratedDisposer = this.containerEl.onWindowMigrated(() => {
+      this.scheduleRebuildCheck()
+    })
+    // Host 替换的信号源 2：workspace 事件——窗口开/关、布局变化
+    this.registerEvent(
+      this.plugin.app.workspace.on('window-open', () => {
+        this.scheduleRebuildCheck()
+      }),
+    )
+    this.registerEvent(
+      this.plugin.app.workspace.on('window-close', () => {
+        this.scheduleRebuildCheck()
+      }),
+    )
+    this.registerEvent(
+      this.plugin.app.workspace.on('layout-change', () => {
+        this.scheduleRebuildCheck()
+      }),
+    )
+    // Host 替换的信号源 3：直接 MutationObserver 兜底——Windows 上 pop-out
+    // 时 view-content 是被原地销毁+新建的，上面两类事件未必能稳定覆盖。
+    this.hostObserver = new MutationObserver(() => {
+      this.scheduleRebuildCheck()
+    })
+    this.hostObserver.observe(this.containerEl, { childList: true })
+
     void this.plugin.checkForUpdateOnce()
     this.plugin.refreshInstallationIncompleteBanner()
   }
 
   onClose(): Promise<void> {
+    this.isClosed = true
+    if (this.rebuildRafId !== null) {
+      window.cancelAnimationFrame(this.rebuildRafId)
+      this.rebuildRafId = null
+    }
+    this.rebuildScheduled = false
     this.plugin.getChatLeafSessionManager().unregisterLeaf(this.leaf)
+    this.hostObserver?.disconnect()
+    this.hostObserver = null
+    this.windowMigratedDisposer?.()
+    this.windowMigratedDisposer = null
     this.root?.unmount()
+    this.root = null
+    this.mountedHost = null
+    this.mountedDoc = null
     return Promise.resolve()
+  }
+
+  private scheduleRebuildCheck(): void {
+    if (this.isClosed) return
+    if (this.rebuildScheduled) return
+    this.rebuildScheduled = true
+    this.rebuildRafId = window.requestAnimationFrame(() => {
+      this.rebuildRafId = null
+      this.rebuildScheduled = false
+      // Bail out if the view was closed between scheduling and firing.
+      if (this.isClosed) return
+      const expectedHost = this.containerEl.children[1] as
+        | HTMLElement
+        | undefined
+      if (!expectedHost) return
+      const hostChanged = expectedHost !== this.mountedHost
+      const docChanged = expectedHost.ownerDocument !== this.mountedDoc
+      if (!hostChanged && !docChanged) return
+      void this.rebuild()
+    })
+  }
+
+  private async rebuild(): Promise<void> {
+    const newHost = this.containerEl.children[1] as HTMLElement | undefined
+    if (!newHost) return
+    this.root?.unmount()
+    this.root = createRoot(newHost)
+    this.mountedHost = newHost
+    this.mountedDoc = newHost.ownerDocument
+    await this.render()
   }
 
   render(): Promise<void> {
     if (!this.root) {
-      this.root = createRoot(this.containerEl.children[1])
+      const host = this.containerEl.children[1] as HTMLElement
+      this.root = createRoot(host)
+      this.mountedHost = host
+      this.mountedDoc = host.ownerDocument
     }
+
+    // 当 rebuild 把 React tree 移到新 host 时，把当前快照作为初始 props 传入，
+    // 让 Chat 内部 useState 用快照值初始化，避免草稿/会话 ID 掉。
+    const seededRuntimeSnapshot = this.runtimeSnapshot ?? undefined
 
     const placement =
       this.plugin.getChatLeafSessionManager().getLeafPlacement(this.leaf) ??
@@ -95,66 +190,67 @@ export class ChatView extends ItemView {
     })
 
     this.root.render(
-      <WindowVersionProvider containerEl={this.containerEl}>
-        <ChatViewProvider chatView={this}>
-          <PluginProvider plugin={this.plugin}>
-            <LanguageProvider>
-              <AppProvider app={this.app}>
-                <SettingsProvider
-                  settings={this.plugin.settings}
-                  setSettings={(newSettings) =>
-                    this.plugin.setSettings(newSettings)
-                  }
-                  addSettingsChangeListener={(listener) =>
-                    this.plugin.addSettingsChangeListener(listener)
-                  }
-                >
-                  <DarkModeProvider>
-                    <DatabaseProvider
-                      getDatabaseManager={() => this.plugin.getDbManager()}
+      <ChatViewProvider chatView={this}>
+        <PluginProvider plugin={this.plugin}>
+          <LanguageProvider>
+            <AppProvider app={this.app}>
+              <SettingsProvider
+                settings={this.plugin.settings}
+                setSettings={(newSettings) =>
+                  this.plugin.setSettings(newSettings)
+                }
+                addSettingsChangeListener={(listener) =>
+                  this.plugin.addSettingsChangeListener(listener)
+                }
+              >
+                <DarkModeProvider>
+                  <DatabaseProvider
+                    getDatabaseManager={() => this.plugin.getDbManager()}
+                  >
+                    <RAGProvider
+                      getRAGEngine={() => this.plugin.getRAGEngine()}
                     >
-                      <RAGProvider
-                        getRAGEngine={() => this.plugin.getRAGEngine()}
+                      <McpProvider
+                        getMcpManager={() => this.plugin.getMcpManager()}
                       >
-                        <McpProvider
-                          getMcpManager={() => this.plugin.getMcpManager()}
-                        >
-                          <QueryClientProvider client={queryClient}>
-                            <React.StrictMode>
-                              <DialogContainerProvider
-                                container={
-                                  this.containerEl.children[1] as HTMLElement
-                                }
-                              >
-                                <ChatSidebarTabs
-                                  chatRef={this.chatRef}
-                                  placement={placement}
-                                  initialChatProps={this.initialChatProps}
-                                  onConversationContextChange={(context) => {
-                                    const manager =
-                                      this.plugin.getChatLeafSessionManager()
-                                    manager.updateLeafSummary(
-                                      this.leaf,
-                                      context,
-                                    )
-                                    this.updateDisplayTitle(
-                                      context.currentConversationTitle,
-                                    )
-                                  }}
-                                />
-                              </DialogContainerProvider>
-                            </React.StrictMode>
-                          </QueryClientProvider>
-                        </McpProvider>
-                      </RAGProvider>
-                    </DatabaseProvider>
-                  </DarkModeProvider>
-                </SettingsProvider>
-              </AppProvider>
-            </LanguageProvider>
-          </PluginProvider>
-        </ChatViewProvider>
-      </WindowVersionProvider>,
+                        <QueryClientProvider client={queryClient}>
+                          <React.StrictMode>
+                            <DialogContainerProvider
+                              container={
+                                this.containerEl.children[1] as HTMLElement
+                              }
+                            >
+                              <ChatSidebarTabs
+                                chatRef={this.chatRef}
+                                placement={placement}
+                                initialChatProps={{
+                                  ...(this.initialChatProps ?? {}),
+                                  seededRuntimeSnapshot,
+                                }}
+                                onConversationContextChange={(context) => {
+                                  const manager =
+                                    this.plugin.getChatLeafSessionManager()
+                                  manager.updateLeafSummary(this.leaf, context)
+                                  this.updateDisplayTitle(
+                                    context.currentConversationTitle,
+                                  )
+                                }}
+                                onRuntimeSnapshotChange={(snapshot) => {
+                                  this.runtimeSnapshot = snapshot
+                                }}
+                              />
+                            </DialogContainerProvider>
+                          </React.StrictMode>
+                        </QueryClientProvider>
+                      </McpProvider>
+                    </RAGProvider>
+                  </DatabaseProvider>
+                </DarkModeProvider>
+              </SettingsProvider>
+            </AppProvider>
+          </LanguageProvider>
+        </PluginProvider>
+      </ChatViewProvider>,
     )
     return Promise.resolve()
   }

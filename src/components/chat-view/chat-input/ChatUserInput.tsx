@@ -356,7 +356,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         return
       }
 
-      const activeElement = document.activeElement
+      const activeElement = (containerRef.current?.ownerDocument ?? document)
+        .activeElement
       if (
         activeElement instanceof HTMLElement &&
         containerRef.current?.contains(activeElement)
@@ -375,7 +376,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     useEffect(() => {
       return () => {
-        document.body.setCssProps({
+        ;(containerRef.current?.ownerDocument ?? document).body.setCssProps({
           '--yolo-chat-input-resize-cursor': '',
           '--yolo-chat-input-resize-user-select': '',
         })
@@ -615,7 +616,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       )
 
       const shouldMoveCursor =
-        contentEditableRef.current === document.activeElement
+        contentEditableRef.current ===
+        (contentEditableRef.current?.ownerDocument ?? document).activeElement
 
       editor.update(() => {
         const mirrorTypeSet = new Set(INLINE_MENTIONABLE_TYPES)
@@ -735,7 +737,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       )
 
       const shouldMoveCursor =
-        contentEditableRef.current === document.activeElement
+        contentEditableRef.current ===
+        (contentEditableRef.current?.ownerDocument ?? document).activeElement
 
       editor.update(() => {
         $nodesOfType(SkillNode).forEach((node) => {
@@ -1136,7 +1139,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
 
     const clearResizeBodyStyles = useCallback(() => {
-      document.body.setCssProps({
+      ;(containerRef.current?.ownerDocument ?? document).body.setCssProps({
         '--yolo-chat-input-resize-cursor': '',
         '--yolo-chat-input-resize-user-select': '',
       })
@@ -1175,7 +1178,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           contentEditableRef.current?.offsetHeight ??
           DEFAULT_INPUT_HEIGHT
 
-        document.body.setCssProps({
+        const ownerDoc = containerRef.current?.ownerDocument ?? document
+        const ownerWin = ownerDoc.defaultView ?? window
+        ownerDoc.body.setCssProps({
           '--yolo-chat-input-resize-cursor': 'ns-resize',
           '--yolo-chat-input-resize-user-select': 'none',
         })
@@ -1190,14 +1195,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         }
 
         const handleMouseUp = () => {
-          window.removeEventListener('mousemove', handleMouseMove)
-          window.removeEventListener('mouseup', handleMouseUp)
+          ownerWin.removeEventListener('mousemove', handleMouseMove)
+          ownerWin.removeEventListener('mouseup', handleMouseUp)
           clearResizeBodyStyles()
           void persistResizedHeight(resizedHeightRef.current)
         }
 
-        window.addEventListener('mousemove', handleMouseMove)
-        window.addEventListener('mouseup', handleMouseUp)
+        ownerWin.addEventListener('mousemove', handleMouseMove)
+        ownerWin.addEventListener('mouseup', handleMouseUp)
       },
       [clearResizeBodyStyles, persistResizedHeight, resizedHeight],
     )

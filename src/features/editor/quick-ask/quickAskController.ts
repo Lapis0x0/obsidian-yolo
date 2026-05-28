@@ -384,22 +384,16 @@ export class QuickAskController {
     overlay.mount()
 
     // Mirror Markdown's persistence: register a 'sync' highlight on the PDF
-    // leaf so the selected range stays visually highlighted while the Quick
-    // Ask floats. Cleared in close()/onClose. Gated by the same setting.
-    if (
-      this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
-      true
-    ) {
-      const id = `quickask:${crypto.randomUUID()}`
-      this.currentPdfHighlightId = id
-      pdfSelectionHighlightController.addHighlight(
-        args.leaf,
-        id,
-        { range: args.range, pageNumber: args.pageNumber, file: args.file },
-        'sync',
-        'quickask',
-      )
-    }
+    // leaf so the selected range stays visually highlighted while Quick Ask floats.
+    const id = `quickask:${crypto.randomUUID()}`
+    this.currentPdfHighlightId = id
+    pdfSelectionHighlightController.addHighlight(
+      args.leaf,
+      id,
+      { range: args.range, pageNumber: args.pageNumber, file: args.file },
+      'sync',
+      'quickask',
+    )
   }
 
   /**
@@ -417,15 +411,6 @@ export class QuickAskController {
   }
 
   private deferSelectionHighlightTakeover(view: EditorView, token: number) {
-    if (
-      !(
-        this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
-        true
-      )
-    ) {
-      return
-    }
-
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         if (token !== this.highlightTakeoverToken) {

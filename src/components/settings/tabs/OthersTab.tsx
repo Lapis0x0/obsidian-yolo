@@ -2,12 +2,10 @@ import { App, Platform } from 'obsidian'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
-import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ChatPreferencesSection } from '../sections/ChatPreferencesSection'
 import { EtcSection } from '../sections/EtcSection'
 
@@ -93,25 +91,6 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
         })
       } catch (error: unknown) {
         console.error('Failed to update ribbon click action', error)
-      }
-    })()
-  }
-
-  const handlePersistSelectionHighlightChange = (value: boolean) => {
-    void (async () => {
-      try {
-        await setSettings({
-          ...settings,
-          continuationOptions: {
-            ...settings.continuationOptions,
-            persistSelectionHighlight: value,
-          },
-        })
-        if (!value) {
-          selectionHighlightController.clearAll()
-        }
-      } catch (error: unknown) {
-        console.error('Failed to update selection highlight setting', error)
       }
     })()
   }
@@ -237,24 +216,6 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
                   ),
                 }}
                 onChange={handleChatApplyModeChange}
-              />
-            </ObsidianSetting>
-            <ObsidianSetting
-              name={t(
-                'settings.etc.persistSelectionHighlight',
-                '保留选区块高亮',
-              )}
-              desc={t(
-                'settings.etc.persistSelectionHighlightDesc',
-                '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
-              )}
-              className="yolo-settings-card"
-            >
-              <ObsidianToggle
-                value={
-                  settings.continuationOptions.persistSelectionHighlight ?? true
-                }
-                onChange={handlePersistSelectionHighlightChange}
               />
             </ObsidianSetting>
 

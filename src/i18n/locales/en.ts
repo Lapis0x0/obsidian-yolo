@@ -276,12 +276,6 @@ export const en: TranslationKeys = {
       chatFontScale: 'Chat UI scale',
       chatFontScaleDesc:
         'Adjust the overall scale of the chat interface (default 100%).',
-      historyArchiveEnabled: 'Enable history archive grouping',
-      historyArchiveEnabledDesc:
-        'Keep older non-pinned conversations collapsed under an archive section.',
-      historyArchiveThreshold: 'Recent conversation limit',
-      historyArchiveThresholdDesc:
-        'Number of latest non-pinned conversations shown before archiving the rest (20-500).',
     },
     assistants: {
       title: 'Assistants',
@@ -439,9 +433,6 @@ export const en: TranslationKeys = {
       builtinFsSearchDesc: 'Search vault files and content',
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc: 'Read vault files',
-      builtinContextPruneToolResultsLabel: 'Prune Tool Results',
-      builtinContextPruneToolResultsDesc:
-        'Exclude past tool results from future context',
       builtinContextCompactLabel: 'Compact Context',
       builtinContextCompactDesc: 'Compress earlier conversation into a summary',
       builtinToolSearchLabel: 'Load Tool',
@@ -1376,9 +1367,6 @@ export const en: TranslationKeys = {
         'Only affects Apply in the sidebar Chat. Choose whether edits open inline review first or write directly to the file. Turning review off skips the second confirmation step.',
       chatApplyModeReviewRequired: 'Review before apply',
       chatApplyModeDirectApply: 'Write directly to file',
-      persistSelectionHighlight: 'Keep selection block highlight',
-      persistSelectionHighlightDesc:
-        'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',
       notifications: 'Notifications',
       notificationsDesc:
         'Configure alerts for Agent runs. System notifications automatically degrade when the environment does not support them.',

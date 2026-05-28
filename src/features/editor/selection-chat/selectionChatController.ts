@@ -537,7 +537,7 @@ export class SelectionChatController {
     // Stamp a highlightId and pin the sync highlight immediately.
     const highlightId = crypto.randomUUID()
     const editorView = this.getEditorView(editor)
-    if (editorView && this.shouldPersistSelectionHighlight()) {
+    if (editorView) {
       const selection = editorView.state.selection.main
       if (!selection.empty) {
         selectionHighlightController.addHighlight(
@@ -602,19 +602,17 @@ export class SelectionChatController {
     // selections.
     const highlightId = crypto.randomUUID()
 
-    if (this.shouldPersistSelectionHighlight()) {
-      pdfSelectionHighlightController.addHighlight(
-        result.leaf,
-        highlightId,
-        {
-          range: result.range,
-          pageNumber: result.pageNumber,
-          file: result.file,
-        },
-        'sync',
-        'chat',
-      )
-    }
+    pdfSelectionHighlightController.addHighlight(
+      result.leaf,
+      highlightId,
+      {
+        range: result.range,
+        pageNumber: result.pageNumber,
+        file: result.file,
+      },
+      'sync',
+      'chat',
+    )
 
     const blockData: MentionableBlockData = {
       content: result.content,
@@ -778,26 +776,23 @@ export class SelectionChatController {
     // currently tracked in chat).  This way subsequent selections that sweep
     // 'sync' entries on the leaf cannot wipe the pinned highlight.
     const buildPinnedBlock = (): MentionableBlockData => {
-      if (this.shouldPersistSelectionHighlight()) {
-        const pinnedId = crypto.randomUUID()
-        pdfSelectionHighlightController.addHighlight(
-          pdfData.leaf,
-          pinnedId,
-          {
-            range: pdfData.range,
-            pageNumber: pdfData.pageNumber,
-            file: pdfData.file,
-          },
-          'pinned',
-          'chat',
-        )
-        return {
-          ...blockData,
-          source: 'selection-pinned',
-          highlightId: pinnedId,
-        }
+      const pinnedId = crypto.randomUUID()
+      pdfSelectionHighlightController.addHighlight(
+        pdfData.leaf,
+        pinnedId,
+        {
+          range: pdfData.range,
+          pageNumber: pdfData.pageNumber,
+          file: pdfData.file,
+        },
+        'pinned',
+        'chat',
+      )
+      return {
+        ...blockData,
+        source: 'selection-pinned',
+        highlightId: pinnedId,
       }
-      return { ...blockData, source: 'selection-pinned' }
     }
 
     if (mode === 'chat-input') {
@@ -959,7 +954,7 @@ export class SelectionChatController {
     const editorView = this.getEditorView(editor)
     const highlightId = crypto.randomUUID()
 
-    if (editorView && this.shouldPersistSelectionHighlight()) {
+    if (editorView) {
       const sel = editorView.state.selection.main
       if (!sel.empty) {
         selectionHighlightController.addHighlight(
@@ -996,7 +991,7 @@ export class SelectionChatController {
     const editorView = this.getEditorView(editor)
     const highlightId = crypto.randomUUID()
 
-    if (editorView && this.shouldPersistSelectionHighlight()) {
+    if (editorView) {
       const sel = editorView.state.selection.main
       if (!sel.empty) {
         selectionHighlightController.addHighlight(
@@ -1036,7 +1031,7 @@ export class SelectionChatController {
     const editorView = this.getEditorView(editor)
     const highlightId = crypto.randomUUID()
 
-    if (editorView && this.shouldPersistSelectionHighlight()) {
+    if (editorView) {
       const sel = editorView.state.selection.main
       if (!sel.empty) {
         selectionHighlightController.addHighlight(
@@ -1053,12 +1048,6 @@ export class SelectionChatController {
       { ...data, source: 'selection-pinned', highlightId },
       prompt?.trim() ?? '',
       assistantId,
-    )
-  }
-
-  private shouldPersistSelectionHighlight(): boolean {
-    return (
-      this.getSettings().continuationOptions.persistSelectionHighlight ?? true
     )
   }
 }
