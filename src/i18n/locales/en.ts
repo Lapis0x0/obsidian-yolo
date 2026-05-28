@@ -1496,8 +1496,8 @@ export const en: TranslationKeys = {
         'Rewrites the raw transcript with surrounding editor context. Falls back to the default chat model when unset.',
       polishTemperature: 'Polish call temperature',
       polishTemperatureDesc:
-        'Leave blank to follow the selected model / provider default. Set 0-2 only when voice input needs a different temperature than your other flows.',
-      polishTemperaturePlaceholder: 'Use model default',
+        "Default: 0.2. Leave blank to use the selected polish model's configured temperature.",
+      polishTemperaturePlaceholder: 'Use model temperature',
       systemPromptMode: 'Prompt style',
       systemPromptModeDesc:
         'Pick a built-in preset or switch to custom to write your own.',

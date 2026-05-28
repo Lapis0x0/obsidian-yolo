@@ -556,9 +556,9 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   polishModelId: '',
   // Polish is a low-creativity cleanup task; a small but non-zero
   // temperature reads better than greedy decoding without introducing
-  // material hallucination risk. User can clear the field to fall back
-  // to the model / provider's own default.
-  polishTemperature: 0.2 as number | undefined,
+  // material hallucination risk. Null means use the selected polish model's
+  // own configured temperature.
+  polishTemperature: 0.2 as number | null,
   systemPromptMode: 'default' as VoicePolishPromptMode,
   customSystemPrompt: '',
   interactionMode: 'toggle-listen' as 'toggle-listen' | 'hold-to-talk',
@@ -602,7 +602,13 @@ const contextVoiceInputOptionsSchema = z
     asrConfigs: z.array(asrConfigSchema).catch([]),
     activeAsrConfigId: z.string().catch(''),
     polishModelId: z.string().catch(''),
-    polishTemperature: z.number().min(0).max(2).optional().catch(undefined),
+    polishTemperature: z
+      .number()
+      .min(0)
+      .max(2)
+      .nullable()
+      .default(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.polishTemperature)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.polishTemperature),
     systemPromptMode: z.enum(VOICE_POLISH_PROMPT_MODES).catch('default'),
     customSystemPrompt: z.string().catch(''),
     interactionMode: z

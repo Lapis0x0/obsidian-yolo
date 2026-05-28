@@ -784,9 +784,7 @@ export class RequestContextBuilder {
           }
 
           if (message.role === 'assistant') {
-            requestMessages.push(
-              ...this.parseAssistantMessage({ message }),
-            )
+            requestMessages.push(...this.parseAssistantMessage({ message }))
             continue
           }
 
@@ -795,9 +793,7 @@ export class RequestContextBuilder {
             continue
           }
 
-          requestMessages.push(
-            ...this.parseToolMessage({ message }),
-          )
+          requestMessages.push(...this.parseToolMessage({ message }))
         }
 
         if (
@@ -825,9 +821,7 @@ export class RequestContextBuilder {
       }
 
       if (message.role === 'assistant') {
-        requestMessages.push(
-          ...this.parseAssistantMessage({ message }),
-        )
+        requestMessages.push(...this.parseAssistantMessage({ message }))
         continue
       }
 
@@ -836,9 +830,7 @@ export class RequestContextBuilder {
         continue
       }
 
-      requestMessages.push(
-        ...this.parseToolMessage({ message }),
-      )
+      requestMessages.push(...this.parseToolMessage({ message }))
     }
 
     return filterRequestMessagesByToolBoundary(

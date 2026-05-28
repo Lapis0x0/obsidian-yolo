@@ -1380,9 +1380,8 @@ export const zh: TranslationKeys = {
       polishModelDesc:
         '结合光标周围上下文重写原始转写。未设置时回落到默认聊天模型。',
       polishTemperature: '打磨模型调用的温度',
-      polishTemperatureDesc:
-        '留空则跟随所选模型 / 服务端默认值。仅当语音输入需要与其它场景不同的温度时填 0-2。',
-      polishTemperaturePlaceholder: '使用模型默认',
+      polishTemperatureDesc: '默认 0.2。留空则使用所选打磨模型的模型配置温度。',
+      polishTemperaturePlaceholder: '使用模型配置温度',
       systemPromptMode: '提示词风格',
       systemPromptModeDesc: '选择内置预设或切到自定义来手写。',
       promptMode: {

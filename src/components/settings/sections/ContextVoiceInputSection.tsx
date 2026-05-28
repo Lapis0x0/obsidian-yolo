@@ -487,7 +487,7 @@ export function ContextVoiceInputSection() {
                 )}
                 desc={t(
                   'settings.contextVoiceInput.polishTemperatureDesc',
-                  'Leave blank to follow the selected model / provider default. Set 0-2 only when voice input needs a different temperature than your other flows.',
+                  "Default: 0.2. Leave blank to use the selected polish model's configured temperature.",
                 )}
                 className="yolo-settings-card"
               >
@@ -500,7 +500,7 @@ export function ContextVoiceInputSection() {
                     }))
                     if (value.trim().length === 0) {
                       updateVoice(
-                        { polishTemperature: undefined },
+                        { polishTemperature: null },
                         'polishTemperature',
                       )
                       return
@@ -515,7 +515,7 @@ export function ContextVoiceInputSection() {
                   }}
                   placeholder={t(
                     'settings.contextVoiceInput.polishTemperaturePlaceholder',
-                    'Use model default',
+                    'Use model temperature',
                   )}
                 />
               </ObsidianSetting>
