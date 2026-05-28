@@ -126,6 +126,20 @@ import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLe
 
 const STARTUP_GRACE_MS = 30 * 1000
 
+export type RunAgentTaskOptions = {
+  filePath?: string
+  folderPath?: string
+  assistantId?: string
+  placement?: ChatLeafPlacement
+  openNewChat?: boolean
+  forceNewLeaf?: boolean
+}
+
+export type RunAgentTaskResult = {
+  success: boolean
+  answer: string
+}
+
 export default class YoloPlugin extends Plugin {
   settings: YoloSettings
   settingsChangeListeners: ((newSettings: YoloSettings) => void)[] = []
@@ -2581,6 +2595,56 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     forceNewLeaf?: boolean
   }) {
     await this.getChatViewNavigator().openChatView(options)
+  }
+
+  async runAgentTask(
+    content: string,
+    options: RunAgentTaskOptions = {},
+  ): Promise<RunAgentTaskResult> {
+    const prompt = content.trim()
+    if (!prompt) {
+      throw new Error('runAgentTask requires a non-empty content value')
+    }
+
+    if (
+      options.assistantId &&
+      !this.settings.assistants.some(
+        (assistant) => assistant.id === options.assistantId,
+      )
+    ) {
+      throw new Error(`Assistant not found: ${options.assistantId}`)
+    }
+
+    const fileToAdd = options.filePath
+      ? (this.app.vault.getFileByPath(normalizePath(options.filePath)) ??
+        undefined)
+      : undefined
+    if (options.filePath && !fileToAdd) {
+      throw new Error(`File not found: ${options.filePath}`)
+    }
+
+    const folderToAdd = options.folderPath
+      ? this.app.vault.getAbstractFileByPath(normalizePath(options.folderPath))
+      : undefined
+    if (options.folderPath && !(folderToAdd instanceof TFolder)) {
+      throw new Error(`Folder not found: ${options.folderPath}`)
+    }
+    const resolvedFolderToAdd =
+      folderToAdd instanceof TFolder ? folderToAdd : undefined
+
+    await this.getChatViewNavigator().openChatWithAgentPromptAndSend(prompt, {
+      placement: options.placement ?? 'sidebar',
+      openNewChat: options.openNewChat ?? true,
+      forceNewLeaf: options.forceNewLeaf,
+      assistantId: options.assistantId,
+      fileToAdd,
+      folderToAdd: resolvedFolderToAdd,
+    })
+
+    return {
+      success: true,
+      answer: 'Agent task submitted',
+    }
   }
 
   resolveRibbonPlacement(): ChatLeafPlacement {

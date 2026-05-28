@@ -34,6 +34,15 @@ type OpenChatViewOptions = {
   forceNewLeaf?: boolean
 }
 
+type OpenChatWithAgentPromptOptions = {
+  placement?: ChatLeafPlacement
+  openNewChat?: boolean
+  forceNewLeaf?: boolean
+  assistantId?: string
+  fileToAdd?: TFile
+  folderToAdd?: TFolder
+}
+
 type ResolveTargetChatLeafOptions = {
   placement?: ChatLeafPlacement
   allowCreate?: boolean
@@ -262,6 +271,31 @@ export class ChatViewNavigator {
     targetLeaf.view.applySelectionToMainInput(pinnedSelection, text, {
       submit: true,
       assistantId,
+    })
+  }
+
+  async openChatWithAgentPromptAndSend(
+    text: string,
+    options: OpenChatWithAgentPromptOptions = {},
+  ) {
+    const shouldCreateFreshLeaf =
+      options.openNewChat === true || options.forceNewLeaf === true
+    const existingLeaf = this.resolveTargetChatLeaf({
+      placement: options.placement,
+      forceNewLeaf: shouldCreateFreshLeaf,
+    })
+    const targetLeaf =
+      existingLeaf ??
+      (await this.createChatLeaf(options.placement ?? 'sidebar'))
+    if (!targetLeaf || !(targetLeaf.view instanceof ChatView)) {
+      return
+    }
+
+    await this.activateChatLeaf(targetLeaf)
+    await targetLeaf.view.submitAgentPrompt(text, {
+      assistantId: options.assistantId,
+      fileToAdd: options.fileToAdd,
+      folderToAdd: options.folderToAdd,
     })
   }
 

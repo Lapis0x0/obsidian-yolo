@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian'
+import { TFile, TFolder } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
 
 import type YoloPlugin from '../../main'
@@ -10,6 +10,7 @@ jest.mock('../../ChatView', () => ({
     addSelectionToInput: jest.Mock
     applySelectionToMainInput: jest.Mock
     appendTextToInput: jest.Mock
+    submitAgentPrompt: jest.Mock
     setMainInputText: jest.Mock
     focusMainInput: jest.Mock
     submitMainInput: jest.Mock
@@ -17,6 +18,7 @@ jest.mock('../../ChatView', () => ({
     this.addSelectionToInput = jest.fn()
     this.applySelectionToMainInput = jest.fn()
     this.appendTextToInput = jest.fn()
+    this.submitAgentPrompt = jest.fn()
     this.setMainInputText = jest.fn()
     this.focusMainInput = jest.fn()
     this.submitMainInput = jest.fn()
@@ -32,6 +34,21 @@ describe('ChatViewNavigator', () => {
     basename: 'note',
     extension: 'md',
   })
+  const selectedFolder = new TFolder()
+  Object.assign(selectedFolder, {
+    path: 'Projects',
+    name: 'Projects',
+  })
+
+  type MockChatViewInstance = {
+    addSelectionToInput: jest.Mock
+    applySelectionToMainInput: jest.Mock
+    appendTextToInput: jest.Mock
+    submitAgentPrompt: jest.Mock
+    setMainInputText: jest.Mock
+    focusMainInput: jest.Mock
+    submitMainInput: jest.Mock
+  }
 
   const selectedBlock = {
     content: 'Selected content',
@@ -80,14 +97,8 @@ describe('ChatViewNavigator', () => {
   })
 
   it('prefills the main chat input without sending when a chat leaf already exists', async () => {
-    const view = new (MockChatView as unknown as new () => {
-      addSelectionToInput: jest.Mock
-      applySelectionToMainInput: jest.Mock
-      appendTextToInput: jest.Mock
-      setMainInputText: jest.Mock
-      focusMainInput: jest.Mock
-      submitMainInput: jest.Mock
-    })()
+    const view =
+      new (MockChatView as unknown as new () => MockChatViewInstance)()
     const leaf = { view } as unknown as WorkspaceLeaf
     const revealLeaf = jest.fn().mockResolvedValue(undefined)
     const touchLeafInteracted = jest.fn()
@@ -120,14 +131,8 @@ describe('ChatViewNavigator', () => {
   })
 
   it('submits the main chat input immediately when using direct send', async () => {
-    const view = new (MockChatView as unknown as new () => {
-      addSelectionToInput: jest.Mock
-      applySelectionToMainInput: jest.Mock
-      appendTextToInput: jest.Mock
-      setMainInputText: jest.Mock
-      focusMainInput: jest.Mock
-      submitMainInput: jest.Mock
-    })()
+    const view =
+      new (MockChatView as unknown as new () => MockChatViewInstance)()
     const leaf = { view } as unknown as WorkspaceLeaf
     const plugin = createPlugin({
       resolveTargetLeaf: () => leaf,
@@ -189,5 +194,61 @@ describe('ChatViewNavigator', () => {
       }),
     )
     expect(registerLeaf).toHaveBeenCalledWith(newLeaf, 'sidebar')
+  })
+
+  it('submits an agent prompt through an existing chat leaf', async () => {
+    const view =
+      new (MockChatView as unknown as new () => MockChatViewInstance)()
+    const leaf = { view } as unknown as WorkspaceLeaf
+    const revealLeaf = jest.fn().mockResolvedValue(undefined)
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => leaf,
+      revealLeaf,
+      touchLeafInteracted: jest.fn(),
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await navigator.openChatWithAgentPromptAndSend('Summarize today', {
+      fileToAdd: selectedFile,
+      folderToAdd: selectedFolder,
+      assistantId: 'assistant-1',
+    })
+
+    expect(revealLeaf).toHaveBeenCalledWith(leaf)
+    expect(view.submitAgentPrompt).toHaveBeenCalledWith('Summarize today', {
+      assistantId: 'assistant-1',
+      fileToAdd: selectedFile,
+      folderToAdd: selectedFolder,
+    })
+  })
+
+  it('creates a fresh chat leaf for agent prompt submissions by default', async () => {
+    const registerLeaf = jest.fn()
+    const newLeaf = {
+      setViewState: jest.fn().mockImplementation(function setViewState() {
+        this.view = new (MockChatView as unknown as new () => object)()
+        return Promise.resolve()
+      }),
+    } as unknown as WorkspaceLeaf
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => null,
+      registerLeaf,
+      revealLeaf: jest.fn().mockResolvedValue(undefined),
+      getRightLeaf: () => newLeaf,
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await navigator.openChatWithAgentPromptAndSend('Write a project summary')
+
+    expect(registerLeaf).toHaveBeenCalledWith(newLeaf, 'sidebar')
+    expect(
+      (newLeaf.view as unknown as MockChatViewInstance).submitAgentPrompt,
+    ).toHaveBeenCalledWith('Write a project summary', {
+      assistantId: undefined,
+      fileToAdd: undefined,
+      folderToAdd: undefined,
+    })
   })
 })

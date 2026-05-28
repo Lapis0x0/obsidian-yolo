@@ -483,6 +483,14 @@ export type ChatRef = {
   addFileToChat: (file: TFile) => void
   addFolderToChat: (folder: TFolder) => void
   addImageToChat: (image: MentionableImage) => void
+  submitAgentPrompt: (
+    text: string,
+    options?: {
+      assistantId?: string
+      fileToAdd?: TFile
+      folderToAdd?: TFolder
+    },
+  ) => void
   insertTextToInput: (text: string) => void
   appendTextToInput: (text: string) => void
   setMainInputText: (text: string) => void
@@ -4272,6 +4280,69 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     addImageToChat: (image: MentionableImage) => {
       addMentionableToFocusedMessage(image)
+    },
+    submitAgentPrompt: (
+      text: string,
+      options?: {
+        assistantId?: string
+        fileToAdd?: TFile
+        folderToAdd?: TFolder
+      },
+    ) => {
+      const overrideAssistantId = options?.assistantId
+      const overrideAssistant = overrideAssistantId
+        ? (settings.assistants.find(
+            (assistant) => assistant.id === overrideAssistantId,
+          ) ?? null)
+        : null
+
+      flushSync(() => {
+        applyChatModeChange('agent')
+        if (overrideAssistant) {
+          setConversationAssistantId(overrideAssistant.id)
+          conversationAssistantIdRef.current.set(
+            currentConversationId,
+            overrideAssistant.id,
+          )
+          if (overrideAssistant.modelId) {
+            applyAssistantDefaultModel(overrideAssistant.modelId)
+          }
+        }
+        const mentionables: Mentionable[] = []
+        if (options?.fileToAdd) {
+          mentionables.push({ type: 'file', file: options.fileToAdd })
+        }
+        if (options?.folderToAdd) {
+          mentionables.push({ type: 'folder', folder: options.folderToAdd })
+        }
+        if (mentionables.length > 0) {
+          setInputMessage((prevInputMessage) => {
+            const existingKeys = new Set(
+              prevInputMessage.mentionables.map((mentionable) =>
+                getMentionableKey(serializeMentionable(mentionable)),
+              ),
+            )
+            const nextMentionables = [...prevInputMessage.mentionables]
+            for (const mentionable of mentionables) {
+              const key = getMentionableKey(serializeMentionable(mentionable))
+              if (!existingKeys.has(key)) {
+                existingKeys.add(key)
+                nextMentionables.push(mentionable)
+              }
+            }
+            return {
+              ...prevInputMessage,
+              mentionables: nextMentionables,
+              promptContent: null,
+            }
+          })
+        }
+        setFocusedMessageId(inputMessage.id)
+      })
+
+      const inputRef = chatUserInputRefs.current.get(inputMessage.id)
+      inputRef?.replaceText(text)
+      inputRef?.submit()
     },
     insertTextToInput: (text: string) => {
       if (!focusedMessageId) return

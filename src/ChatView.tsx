@@ -315,6 +315,19 @@ export class ChatView extends ItemView {
     this.chatRef.current?.addImageToChat(image)
   }
 
+  async submitAgentPrompt(
+    text: string,
+    options?: {
+      assistantId?: string
+      fileToAdd?: TFile
+      folderToAdd?: TFolder
+    },
+  ): Promise<void> {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    const chatRef = await this.waitForChatRef()
+    chatRef?.submitAgentPrompt(text, options)
+  }
+
   addFolderToChat(folder: TFolder) {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.addFolderToChat(folder)
