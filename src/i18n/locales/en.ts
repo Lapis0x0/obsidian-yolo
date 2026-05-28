@@ -1512,8 +1512,7 @@ export const en: TranslationKeys = {
       builtinSystemPromptDesc:
         'Shown for review. Built-in presets are locked; switch to Custom to edit your own prompt.',
       customSystemPrompt: 'Custom system prompt',
-      customSystemPromptDesc:
-        'Must still emit { action, text } JSON. See the design doc for the schema.',
+      customSystemPromptDesc: 'Must still emit { action, text } JSON.',
       tabCompletionAlwaysPaused:
         'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
       beforeWindowChars: 'Initial before-cursor window (characters)',

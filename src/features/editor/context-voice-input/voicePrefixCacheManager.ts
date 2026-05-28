@@ -9,7 +9,7 @@
  *   hit when the leading bytes of the prompt are IDENTICAL across calls.
  *   So the naive sliding window misses cache on every polish.
  *
- * Strategy (from the archive's "自适应上下文缓存" section):
+ * Strategy:
  *   - Anchor `prefixStart` to a FIXED document offset chosen at the start
  *     of a dictation arc (or the last re-anchor).
  *   - On subsequent polishes within the same file, return

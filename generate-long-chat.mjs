@@ -160,12 +160,7 @@ function approximateConversationSize(messages, title) {
   return Buffer.byteLength(JSON.stringify(conversation), 'utf8')
 }
 
-function buildMessages({
-  turns,
-  topic,
-  assistantParagraphs,
-  targetSizeMb,
-}) {
+function buildMessages({ turns, topic, assistantParagraphs, targetSizeMb }) {
   const targetSizeBytes = Math.max(1, targetSizeMb) * 1024 * 1024
   let effectiveParagraphs = Math.max(1, assistantParagraphs)
   let messages = []
