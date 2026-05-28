@@ -553,8 +553,6 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   enabled: false,
   asrConfigs: [] as AsrConfig[],
   activeAsrConfigId: '',
-  lastAsrTestStatus: 'untested' as 'untested' | 'passed' | 'failed',
-  lastAsrTestMessage: '',
   polishModelId: '',
   // Polish is a low-creativity cleanup task; a small but non-zero
   // temperature reads better than greedy decoding without introducing
@@ -564,7 +562,6 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   systemPromptMode: 'default' as VoicePolishPromptMode,
   customSystemPrompt: '',
   interactionMode: 'toggle-listen' as 'toggle-listen' | 'hold-to-talk',
-  pauseTabCompletionWhileListening: true,
   // Initial characters of editor text BEFORE the cursor handed to the polish
   // model. Voice prefix caching anchors this first window and lets it grow
   // naturally as accepted dictation adds text after the anchor.
@@ -578,7 +575,11 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   vadSpeechStartDecibels: -42,
   vadSilenceDecibels: -38,
   vadSilenceHoldMs: 1200,
-  rawAudioSaveMode: 'never' as const,
+  // Distance from the bottom of the active editor pane to the floating
+  // island, expressed in vh so the same value reads similarly on a desktop
+  // window and on a phone. 9vh keeps the bar clear of mobile OS gesture
+  // areas / soft keyboards without floating awkwardly high on desktop.
+  floatingIslandBottomOffsetVh: 9,
   // Empty string means "use the system default input device". When set to a
   // concrete deviceId we pass it to getUserMedia so the user can pin a
   // specific mic (USB headset, AirPods etc.) instead of whatever the OS
@@ -600,10 +601,6 @@ const contextVoiceInputOptionsSchema = z
     enabled: z.boolean().catch(false),
     asrConfigs: z.array(asrConfigSchema).catch([]),
     activeAsrConfigId: z.string().catch(''),
-    lastAsrTestStatus: z
-      .enum(['untested', 'passed', 'failed'])
-      .catch('untested'),
-    lastAsrTestMessage: z.string().catch(''),
     polishModelId: z.string().catch(''),
     polishTemperature: z.number().min(0).max(2).optional().catch(undefined),
     systemPromptMode: z.enum(VOICE_POLISH_PROMPT_MODES).catch('default'),
@@ -611,14 +608,13 @@ const contextVoiceInputOptionsSchema = z
     interactionMode: z
       .enum(['toggle-listen', 'hold-to-talk'])
       .catch('toggle-listen'),
-    pauseTabCompletionWhileListening: z.boolean().catch(true),
     contextRangeChars: z.number().int().min(0).catch(2000),
     maxAfterContextChars: z.number().int().min(0).catch(600),
     maxRecordingSeconds: z.number().int().min(5).max(900).catch(120),
     vadSpeechStartDecibels: z.number().min(-90).max(0).catch(-42),
     vadSilenceDecibels: z.number().min(-90).max(0).catch(-38),
     vadSilenceHoldMs: z.number().int().min(300).max(5000).catch(1200),
-    rawAudioSaveMode: z.literal('never').catch('never'),
+    floatingIslandBottomOffsetVh: z.number().min(0).max(50).catch(9),
     microphoneDeviceId: z.string().catch(''),
     autoRestartAfterAccept: z.boolean().catch(false),
     documentSummaryEnabled: z.boolean().catch(false),

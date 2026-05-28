@@ -72,6 +72,19 @@ const buildAudioContentPart = (
       },
     }
   }
+  // Aliyun Bailian / DashScope variant: same `type: 'input_audio'` envelope,
+  // but `data` is interpreted as a URL field — either http(s) or a `data:`
+  // URI. Sending raw base64 here yields "The provided URL does not appear to
+  // be valid." We prepend the data-URI prefix so the validator accepts it.
+  if (format === 'input_audio_data_url') {
+    return {
+      type: 'input_audio',
+      input_audio: {
+        data: `data:audio/${audioFormatLabel};base64,${base64Audio}`,
+        format: audioFormatLabel,
+      },
+    }
+  }
   if (format === 'audio_url') {
     return {
       type: 'audio_url',
@@ -193,22 +206,41 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
               : ''
           }.`
 
+    // Aliyun Bailian's `qwen3-asr-flash` is a dedicated ASR task: the user
+    // message MUST contain only the audio part — any text/prompt yields
+    // "The dedicated task `asr` ... does not support this input." It also
+    // ignores chat-completions-style fields like `modalities` and
+    // `reasoning_effort`. We treat `input_audio_data_url` as the Bailian
+    // shape today; if another provider later wants the data-URL carrier
+    // but still accepts a text prompt, split this into its own knob.
+    const isBailianAsrShape = audioContentFormat === 'input_audio_data_url'
+
     // ASR is transcription, not chain-of-thought. Some chat-audio backends
     // (notably Google Gemini 2.5+) default to "thinking" mode, which adds
     // tens of seconds of hidden reasoning for what should be a sub-second
     // audio → text job. We always send reasoning_effort: 'none' to disable
     // it; backends that don't know the field will ignore it.
-    const body = {
-      model,
-      modalities: ['text'],
-      messages: [
-        {
-          role: 'user',
-          content: [{ type: 'text', text: promptText }, audioPart],
-        },
-      ],
-      reasoning_effort: 'none',
-    }
+    const body: Record<string, unknown> = isBailianAsrShape
+      ? {
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [audioPart],
+            },
+          ],
+        }
+      : {
+          model,
+          modalities: ['text'],
+          messages: [
+            {
+              role: 'user',
+              content: [{ type: 'text', text: promptText }, audioPart],
+            },
+          ],
+          reasoning_effort: 'none',
+        }
 
     if (options?.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError')

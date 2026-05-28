@@ -47,6 +47,7 @@ type IslandDeps = {
   getInteractionMode: () => InteractionMode
   setInteractionMode: (mode: InteractionMode) => Promise<void>
   getVadOptions: () => VoiceVadOptions
+  getBottomOffsetVh: () => number
 }
 
 /**
@@ -280,6 +281,15 @@ export class VoiceFloatingIslandController {
       this.stopMonitoring()
       return
     }
+
+    // Re-applied on every status change so updating the offset in settings
+    // takes effect on the next attach without needing a dedicated event.
+    // setCssProps (Obsidian helper) avoids the lint rule against direct
+    // element.style writes.
+    const offsetVh = this.deps.getBottomOffsetVh()
+    this.root.setCssProps({
+      '--yolo-voice-island-bottom': `${offsetVh}vh`,
+    })
 
     const state = status?.state ?? 'idle'
     this.root.dataset.voiceState = state
@@ -529,31 +539,43 @@ export class VoiceFloatingIslandController {
   ): void {
     button.empty()
     button.disabled = state === 'transcribing' || state === 'polishing'
+    // Use only aria-label for the tooltip. Setting both `title` and
+    // `aria-label` causes two tooltips to stack — the browser's native one
+    // from `title` plus Obsidian's styled one from `aria-label`.
+    button.removeAttribute('title')
     switch (state) {
       case 'recording':
         button.appendChild(buildStopSvg())
-        button.title = this.deps.t('voiceInput.buttonStop', 'Stop recording')
-        button.setAttribute('aria-label', button.title)
+        button.setAttribute(
+          'aria-label',
+          this.deps.t('voiceInput.buttonStop', 'Stop recording'),
+        )
         break
       case 'transcribing':
       case 'polishing':
         button.appendChild(buildSpinnerSvg())
-        button.title = this.buildStatusTitle(
-          state,
-          this.deps.getController()?.getStatus() ?? null,
+        button.setAttribute(
+          'aria-label',
+          this.buildStatusTitle(
+            state,
+            this.deps.getController()?.getStatus() ?? null,
+          ),
         )
-        button.setAttribute('aria-label', button.title)
         break
       case 'ready':
         button.appendChild(buildCheckSvg())
-        button.title = this.deps.t('voiceInput.buttonAccept', 'Insert draft')
-        button.setAttribute('aria-label', button.title)
+        button.setAttribute(
+          'aria-label',
+          this.deps.t('voiceInput.buttonAccept', 'Insert draft'),
+        )
         break
       case 'idle':
       default:
         button.appendChild(buildMicSvg())
-        button.title = this.deps.t('voiceInput.buttonStart', 'Start recording')
-        button.setAttribute('aria-label', button.title)
+        button.setAttribute(
+          'aria-label',
+          this.deps.t('voiceInput.buttonStart', 'Start recording'),
+        )
         break
     }
   }
@@ -676,29 +698,35 @@ export class VoiceFloatingIslandController {
     state: VoiceInputStatus['state'],
   ): void {
     button.empty()
+    // Drop any prior native `title` so we don't stack a browser tooltip on
+    // top of Obsidian's aria-label tooltip (see renderPrimaryButton).
+    button.removeAttribute('title')
     if (this.isModeButtonCancel(state)) {
       button.appendChild(buildCancelSvg())
-      button.title = this.deps.t(
-        'voiceInput.buttonCancel',
-        'Cancel voice input',
+      button.setAttribute(
+        'aria-label',
+        this.deps.t('voiceInput.buttonCancel', 'Cancel voice input'),
       )
-      button.setAttribute('aria-label', button.title)
       return
     }
     if (mode === 'toggle-listen') {
       button.appendChild(buildToggleSvg())
-      button.title = this.deps.t(
-        'voiceInput.modeSwitchToHold',
-        'Click to switch to push-to-talk',
+      button.setAttribute(
+        'aria-label',
+        this.deps.t(
+          'voiceInput.modeSwitchToHold',
+          'Click to switch to push-to-talk',
+        ),
       )
-      button.setAttribute('aria-label', button.title)
     } else {
       button.appendChild(buildHoldSvg())
-      button.title = this.deps.t(
-        'voiceInput.modeSwitchToToggle',
-        'Click to switch to click-toggle',
+      button.setAttribute(
+        'aria-label',
+        this.deps.t(
+          'voiceInput.modeSwitchToToggle',
+          'Click to switch to click-toggle',
+        ),
       )
-      button.setAttribute('aria-label', button.title)
     }
   }
 

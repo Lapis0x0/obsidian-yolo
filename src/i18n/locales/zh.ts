@@ -1303,7 +1303,6 @@ export const zh: TranslationKeys = {
       title: '语音识别 (ASR)',
       descriptionV2:
         '每一行是一个 ASR 端点。点齿轮编辑，拖手柄换序。具体启用哪一条、以及打磨用的 LLM，都在 编辑器 → 语音输入 中选择。',
-      colActive: '当前',
       colName: '名称',
       colSummary: '格式 · 模型',
       colActions: '操作',
@@ -1314,7 +1313,6 @@ export const zh: TranslationKeys = {
       configName: '名称',
       configNameDesc: '列表里显示的名字。',
       apiFormat: 'API 形式',
-      apiFormatDesc: '决定语音识别服务的连接方式。',
       apiFormatTranscription: 'Transcription',
       apiFormatChatAudio: 'Chat audio',
       apiFormatWebSocket: 'WebSocket',
@@ -1341,7 +1339,8 @@ export const zh: TranslationKeys = {
       chatCompletionsPath: '对话补全路径',
       chatCompletionsPathDesc: '默认 /chat/completions。',
       audioContentFormat: '音频内容载体',
-      audioContentFormatDesc: '部分服务要求 input_audio，部分要求 audio_url。',
+      audioContentFormatDesc:
+        'OpenAI / OpenRouter 选 input_audio (base64)；阿里百炼选 input_audio (data URL)；部分 vLLM 镜像选 audio_url。',
       webSocketProtocol: 'WS 语音协议',
       webSocketProtocolDesc: '切换后会自动填入该协议常用的 Base URL 和路径。',
       webSocketProtocolDeepgram: 'Deepgram',
@@ -1355,14 +1354,6 @@ export const zh: TranslationKeys = {
         '默认用浏览器录音格式。服务要求 wav 时再切换。',
       audioFormatDescWebSocket: 'PCM 通常兼容性更好。',
       transport: '请求方式',
-      transportDesc:
-        '与提供商请求传输模式一致：桌面端自动模式先尝试 Node fetch，再在 CORS/网络错误时回退到浏览器 fetch；移动端先尝试浏览器 fetch，再回退到 Obsidian requestUrl。',
-      transportMode: {
-        auto: '自动（推荐）',
-        node: '仅桌面端 Node fetch',
-        obsidian: '仅 Obsidian requestUrl',
-        browser: '仅浏览器 fetch',
-      },
       language: '语言',
       languageDesc: '留空或 auto 让服务自己识别。',
       microphone: '麦克风',
@@ -1416,17 +1407,8 @@ export const zh: TranslationKeys = {
         '仅展示供检查；内置预设锁定不可编辑，切到「自定义」后可写自己的提示词。',
       customSystemPrompt: '自定义提示词',
       customSystemPromptDesc: '必须输出 { action, text } JSON。',
-      pauseTabCompletion: '聆听时暂停 Tab 补全',
-      pauseTabCompletionDesc:
-        '推荐打开 — 避免 Tab 灰字和语音灰字同屏抢占光标。',
       tabCompletionAlwaysPaused:
         '语音输入激活时会强制暂停 Tab 补全，此时 Tab 只用于接受语音草稿。',
-      contextRangeChars: '初始上文窗口（字符数）',
-      contextRangeCharsDesc:
-        '第一次发给打磨模型的光标前文字符数。连续听写时会锚定这段前缀，并随着接受/书写自然扩大。与下文窗口相互独立。',
-      maxAfterContextChars: '下文窗口（字符数）',
-      maxAfterContextCharsDesc:
-        '发给打磨模型的光标后文字符数。避免模型把后面已有内容重复一遍；与上文窗口相互独立。不限制语音最终插入的长度。',
       beforeWindowChars: '初始上文窗口（字符数）',
       beforeWindowCharsDesc:
         '第一次发给打磨模型的光标前文字符数。连续听写时会锚定这段前缀，并随着接受/书写自然扩大。与下文窗口相互独立。',
@@ -1444,9 +1426,10 @@ export const zh: TranslationKeys = {
       vadSilenceHoldMs: '静音多久后切段 (ms)',
       vadSilenceHoldMsDesc:
         '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
+      floatingIslandBottomOffsetVh: '浮岛距底部距离（vh）',
+      floatingIslandBottomOffsetVhDesc:
+        '浮岛麦克风与编辑器底部的距离，单位为视窗高度百分比。默认 9。',
       advancedToggle: '高级选项',
-      advancedToggleDesc:
-        '调节温度、VAD 阈值、最大录音时长等技术参数。普通使用一般不需要改。',
       autoRestartAfterAccept: 'Tab 接受后继续聆听',
       autoRestartAfterAcceptDesc:
         '仅点按模式。Tab 接受当前草稿后立刻开始下一段录音，免去再点麦克风的步骤。',
@@ -1468,22 +1451,17 @@ export const zh: TranslationKeys = {
   },
 
   voiceInput: {
-    barRecording: '录音中',
     barTranscribing: '正在转写…',
     barPolishing: '正在打磨…',
     barReady: 'Tab 插入 · Esc 放弃',
     barReadyShort: 'Tab 插入',
     barReadyEsc: 'Esc 放弃',
-    barTabPaused: ' · Tab 已暂停',
-    barCancelHint: ' · Esc 取消',
     buttonStart: '开始录音',
     buttonStop: '结束录音',
     buttonCancel: '取消语音输入',
     buttonAccept: '插入草稿',
     modeSwitchToHold: '点击切换为长按模式',
     modeSwitchToToggle: '点击切换为点按模式',
-    cancelledByDirective:
-      '本段录音被模型判定为取消指令（如「算了」「不要了」），未写入编辑器。',
     holdToTalkHint: '按住麦克风说话',
     noticePrefix: '语音打磨',
     malformedOutput: '语音打磨输出格式异常，未写入编辑器。',

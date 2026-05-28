@@ -1181,7 +1181,6 @@ export type TranslationKeys = {
     asr?: {
       title?: string
       descriptionV2?: string
-      colActive?: string
       colName?: string
       colSummary?: string
       colActions?: string
@@ -1192,7 +1191,6 @@ export type TranslationKeys = {
       configName?: string
       configNameDesc?: string
       apiFormat?: string
-      apiFormatDesc?: string
       apiFormatTranscription?: string
       apiFormatChatAudio?: string
       apiFormatWebSocket?: string
@@ -1229,13 +1227,6 @@ export type TranslationKeys = {
       audioFormatDescTranscription?: string
       audioFormatDescWebSocket?: string
       transport?: string
-      transportDesc?: string
-      transportMode?: {
-        auto?: string
-        obsidian?: string
-        browser?: string
-        node?: string
-      }
       language?: string
       languageDesc?: string
       microphone?: string
@@ -1283,13 +1274,7 @@ export type TranslationKeys = {
       builtinSystemPromptDesc?: string
       customSystemPrompt?: string
       customSystemPromptDesc?: string
-      pauseTabCompletion?: string
-      pauseTabCompletionDesc?: string
       tabCompletionAlwaysPaused?: string
-      contextRangeChars?: string
-      contextRangeCharsDesc?: string
-      maxAfterContextChars?: string
-      maxAfterContextCharsDesc?: string
       beforeWindowChars?: string
       beforeWindowCharsDesc?: string
       afterWindowChars?: string
@@ -1302,8 +1287,9 @@ export type TranslationKeys = {
       vadSilenceDecibelsDesc?: string
       vadSilenceHoldMs?: string
       vadSilenceHoldMsDesc?: string
+      floatingIslandBottomOffsetVh?: string
+      floatingIslandBottomOffsetVhDesc?: string
       advancedToggle?: string
-      advancedToggleDesc?: string
       autoRestartAfterAccept?: string
       autoRestartAfterAcceptDesc?: string
       documentSummaryEnabled?: string
@@ -1318,21 +1304,17 @@ export type TranslationKeys = {
 
   // Voice input runtime UI (floating island)
   voiceInput?: {
-    barRecording?: string
     barTranscribing?: string
     barPolishing?: string
     barReady?: string
     barReadyShort?: string
     barReadyEsc?: string
-    barTabPaused?: string
-    barCancelHint?: string
     buttonStart?: string
     buttonStop?: string
     buttonCancel?: string
     buttonAccept?: string
     modeSwitchToHold?: string
     modeSwitchToToggle?: string
-    cancelledByDirective?: string
     holdToTalkHint?: string
     noticePrefix?: string
     malformedOutput?: string

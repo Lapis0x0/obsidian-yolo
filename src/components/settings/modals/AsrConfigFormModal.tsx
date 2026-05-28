@@ -345,8 +345,6 @@ function AsrConfigFormComponent({
             existing.some((c) => c.id === voice.activeAsrConfigId)
               ? voice.activeAsrConfigId
               : formData.id,
-          lastAsrTestStatus: 'untested',
-          lastAsrTestMessage: '',
         },
       })
       onClose()
@@ -693,7 +691,8 @@ function AsrConfigFormComponent({
             <ObsidianDropdown
               value={formData.audioContentFormat || 'input_audio'}
               options={{
-                input_audio: 'input_audio',
+                input_audio: 'input_audio (base64)',
+                input_audio_data_url: 'input_audio (data URL)',
                 audio_url: 'audio_url',
               }}
               onChange={(value) => handlePatch({ audioContentFormat: value })}

@@ -126,7 +126,13 @@ export function buildVoiceInputMessages(
   if (before.length > 0) {
     sections.push(`<cursor_before>\n${before}\n</cursor_before>`)
   }
-  if (after.length > 0) {
+  // Skip the cursor_after block when it would only contain whitespace
+  // (most commonly a single trailing newline). Including a near-empty
+  // <cursor_after>\n\n\n</cursor_after> tends to signal "you're at end of
+  // a paragraph" to the polish model and triggers the "empty text" branch
+  // of the system prompt, which leaves the stage-1 ASR ghost stuck on
+  // screen because the controller never receives a usable polish text.
+  if (after.trim().length > 0) {
     sections.push(`<cursor_after>\n${after}\n</cursor_after>`)
   }
   if (target.hasSelection && target.selectionText.length > 0) {

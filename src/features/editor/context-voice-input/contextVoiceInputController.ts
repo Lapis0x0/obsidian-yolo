@@ -885,15 +885,23 @@ export class ContextVoiceInputController {
 
       const polishedText = decision.text.trim()
       if (polishedText.length === 0) {
-        // Empty text: two distinct sub-cases.
+        // Empty text: three sub-cases.
         //
         //  1) hasNotice → the model intentionally cancelled or transformed
         //     something to nothing. Honour that as a session-wide reset:
         //     wipe the running draft so the NEXT segment doesn't bring
         //     back the cancelled text via previous_model_output.
-        //  2) no notice → "I had nothing substantive to add" (filler, noise,
-        //     a stray pop). Keep the prior draft alive so the user can
-        //     still Tab-accept it.
+        //  2) no notice + had a prior draft → "I had nothing substantive to
+        //     add" (filler, noise, a stray pop). Keep the prior draft alive
+        //     so the user can still Tab-accept it.
+        //  3) no notice + no prior draft → polish ran but returned nothing
+        //     usable. Without intervention the stage-1 ASR ghost would stay
+        //     on screen forever, making it look like the bar is stuck
+        //     polishing. Clear the preview + surface a notice so the user
+        //     knows the polish call landed but produced nothing — typically
+        //     caused by cursor_after being end-of-line / whitespace, which
+        //     the model interprets as "user is at a paragraph boundary,
+        //     emit nothing".
         if (hasNotice) {
           session.previousModelOutput = ''
           session.decision = null
@@ -904,7 +912,16 @@ export class ContextVoiceInputController {
         } else if (baselinePrev.trim().length > 0) {
           session.decision = { action: 'insert_at_cursor', text: baselinePrev }
         } else {
+          // Polish completed with no text and no notice. Silently drop the
+          // stage-1 ASR ghost so the bar doesn't look like it's still
+          // working; no toast — the user just sees the preview clear and
+          // can dictate again.
+          session.previousModelOutput = ''
           session.decision = null
+          if (session.view) {
+            this.deps.setInlineSuggestionGhost(session.view, null)
+          }
+          this.deps.setActiveVoiceSuggestion(null)
         }
         continue
       }
@@ -1369,6 +1386,23 @@ export class ContextVoiceInputController {
     if (session.view !== view) return false
     this.cancelActiveSession('rejected')
     return true
+  }
+
+  /**
+   * Called by main.ts on `active-leaf-change`. If the currently active
+   * markdown view is no longer the file the session is bound to, abort the
+   * session — recording into a different document silently would lose work
+   * and the floating island would re-attach to the new view but still be
+   * processing audio recorded against the old one.
+   */
+  cancelIfFileChanged(): void {
+    const session = this.session
+    if (!session) return
+    const activeView = this.deps.getActiveMarkdownView()
+    const activeFilePath = activeView?.file?.path ?? ''
+    if (activeFilePath !== session.filePath) {
+      this.cancelActiveSession('file-changed')
+    }
   }
 
   cancelActiveSession(reason: string): void {

@@ -970,6 +970,8 @@ export default class YoloPlugin extends Plugin {
           silenceHoldMs: voice.vadSilenceHoldMs,
         }
       },
+      getBottomOffsetVh: () =>
+        this.settings.contextVoiceInputOptions.floatingIslandBottomOffsetVh,
     })
     this.voiceFloatingIslandController = island
     return island
@@ -2250,6 +2252,11 @@ export default class YoloPlugin extends Plugin {
           this.selectionChatController?.handleActiveLeafChange(leaf ?? null)
           // Update selection manager with new editor container
           this.initializeSelectionChat()
+          // Cancel an in-progress voice session if the user switched to a
+          // different file — recording / polish would otherwise complete
+          // against the old file silently and either insert into the wrong
+          // place or be lost when the bar re-attaches to the new view.
+          this.contextVoiceInputController?.cancelIfFileChanged()
           // Re-attach the voice floating island to whichever markdown view is
           // now active. No-op unless voice input is configured and enabled.
           this.syncVoiceFloatingIsland()

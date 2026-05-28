@@ -1409,7 +1409,6 @@ export const en: TranslationKeys = {
       title: 'Voice recognition (ASR)',
       descriptionV2:
         'Each row is one ASR endpoint. Click the gear to edit, drag the handle to reorder. Which endpoint is in use, and the polish LLM, are picked under Editor → Voice input.',
-      colActive: 'Active',
       colName: 'Name',
       colSummary: 'Format · model',
       colActions: 'Actions',
@@ -1421,7 +1420,6 @@ export const en: TranslationKeys = {
       configName: 'Name',
       configNameDesc: 'Shown in the ASR list.',
       apiFormat: 'API format',
-      apiFormatDesc: 'Chooses how YOLO connects to the speech service.',
       apiFormatTranscription: 'Transcription',
       apiFormatChatAudio: 'Chat audio',
       apiFormatWebSocket: 'WebSocket',
@@ -1454,7 +1452,7 @@ export const en: TranslationKeys = {
       chatCompletionsPathDesc: 'Defaults to /chat/completions.',
       audioContentFormat: 'Audio content carrier',
       audioContentFormatDesc:
-        'Some endpoints expect input_audio, others expect audio_url.',
+        'OpenAI / OpenRouter: input_audio (base64). Aliyun Bailian: input_audio (data URL). Some vLLM mimics: audio_url.',
       webSocketProtocol: 'WS speech protocol',
       webSocketProtocolDesc:
         'Changing this fills the common Base URL and path for that protocol.',
@@ -1470,14 +1468,6 @@ export const en: TranslationKeys = {
         'Auto uses the browser recording. Choose wav only if the service requires it.',
       audioFormatDescWebSocket: 'PCM usually has better compatibility.',
       transport: 'Transport',
-      transportDesc:
-        'Matches provider request transport modes: Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl.',
-      transportMode: {
-        auto: 'Auto (recommended)',
-        node: 'Desktop Node fetch only',
-        obsidian: 'Obsidian requestUrl only',
-        browser: 'Browser fetch only',
-      },
       language: 'Language',
       languageDesc: 'Leave empty or "auto" to let the provider detect.',
       microphone: 'Microphone',
@@ -1536,17 +1526,8 @@ export const en: TranslationKeys = {
       customSystemPrompt: 'Custom system prompt',
       customSystemPromptDesc:
         'Must still emit { action, text } JSON. See the design doc for the schema.',
-      pauseTabCompletion: 'Pause Tab completion while listening',
-      pauseTabCompletionDesc:
-        'Recommended — prevents ghost text from competing for the cursor.',
       tabCompletionAlwaysPaused:
         'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
-      contextRangeChars: 'Initial before-cursor window (characters)',
-      contextRangeCharsDesc:
-        'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, this anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
-      maxAfterContextChars: 'After-cursor window (characters)',
-      maxAfterContextCharsDesc:
-        'Characters of editor text AFTER the cursor sent to the polish model. Helps the model avoid repeating text that already follows the cursor. Independent from the before-cursor window above. Does not limit how much text voice input can insert.',
       beforeWindowChars: 'Initial before-cursor window (characters)',
       beforeWindowCharsDesc:
         'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, this anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
@@ -1565,9 +1546,10 @@ export const en: TranslationKeys = {
       vadSilenceHoldMs: 'Silence duration to stop (ms)',
       vadSilenceHoldMsDesc:
         'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+      floatingIslandBottomOffsetVh: 'Floating mic bottom offset (vh)',
+      floatingIslandBottomOffsetVhDesc:
+        'Distance from the editor bottom to the floating mic, in viewport-height percent. Default: 9.',
       advancedToggle: 'Advanced options',
-      advancedToggleDesc:
-        'Polish temperature, VAD thresholds, max recording length. Most users will not need to touch these.',
       autoRestartAfterAccept: 'Keep listening after Tab accept',
       autoRestartAfterAcceptDesc:
         'Click-toggle mode only. After Tab accepts a polished draft, automatically start the next recording segment without clicking the mic again.',
@@ -1585,22 +1567,17 @@ export const en: TranslationKeys = {
   },
 
   voiceInput: {
-    barRecording: 'Recording',
     barTranscribing: 'Transcribing…',
     barPolishing: 'Polishing…',
     barReady: 'Tab to insert · Esc to discard',
     barReadyShort: 'Tab insert',
     barReadyEsc: 'Esc discard',
-    barTabPaused: ' · Tab completion paused',
-    barCancelHint: ' · Esc to cancel',
     buttonStart: 'Start recording',
     buttonStop: 'Stop recording',
     buttonCancel: 'Cancel voice input',
     buttonAccept: 'Insert draft',
     modeSwitchToHold: 'Click to switch to push-to-talk',
     modeSwitchToToggle: 'Click to switch to click-toggle',
-    cancelledByDirective:
-      'The polish model treated this clip as a cancel directive (e.g. "never mind"). Nothing was inserted.',
     holdToTalkHint: 'Press & hold to talk',
     noticePrefix: 'Voice polish',
     malformedOutput:

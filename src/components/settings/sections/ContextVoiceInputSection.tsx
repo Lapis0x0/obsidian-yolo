@@ -61,6 +61,7 @@ export function ContextVoiceInputSection() {
     vadSpeechStartDecibels: String(voice.vadSpeechStartDecibels),
     vadSilenceDecibels: String(voice.vadSilenceDecibels),
     vadSilenceHoldMs: String(voice.vadSilenceHoldMs),
+    floatingIslandBottomOffsetVh: String(voice.floatingIslandBottomOffsetVh),
   })
 
   const updateVoice = useCallback(
@@ -636,6 +637,36 @@ export function ContextVoiceInputSection() {
                     }
                   }}
                   placeholder="1200"
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t(
+                  'settings.contextVoiceInput.floatingIslandBottomOffsetVh',
+                  'Floating mic bottom offset (vh)',
+                )}
+                desc={t(
+                  'settings.contextVoiceInput.floatingIslandBottomOffsetVhDesc',
+                  'Distance from the editor bottom to the floating mic, in viewport-height percent. Default: 9.',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={numberInputs.floatingIslandBottomOffsetVh}
+                  onChange={(value) => {
+                    setNumberInputs((s) => ({
+                      ...s,
+                      floatingIslandBottomOffsetVh: value,
+                    }))
+                    const parsed = parseNumber(value)
+                    if (parsed !== null && parsed >= 0 && parsed <= 50) {
+                      updateVoice(
+                        { floatingIslandBottomOffsetVh: parsed },
+                        'floatingIslandBottomOffsetVh',
+                      )
+                    }
+                  }}
+                  placeholder="9"
                 />
               </ObsidianSetting>
             </>
