@@ -1471,7 +1471,8 @@ export class ContextVoiceInputController {
   tryRejectFromView(view: EditorView): boolean {
     const session = this.session
     if (!session || !session.decision) return false
-    if (session.view !== view) return false
+    const currentView = this.resolveSessionView(session)
+    if (!currentView || currentView !== view) return false
     this.cancelActiveSession('rejected')
     return true
   }

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { isAsrConfigured } from '../../../core/asr/manager'
+import { hasConfiguredAsrConfig } from '../../../core/asr/configStatus'
 import type {
   ContextVoiceInputOptions,
   DocumentSummaryRefreshMode,
@@ -47,7 +47,7 @@ export function ContextVoiceInputSection() {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
-  const asrReady = isAsrConfigured(voice)
+  const asrReady = hasConfiguredAsrConfig(voice)
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const [numberInputs, setNumberInputs] = useState({

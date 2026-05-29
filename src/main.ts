@@ -19,7 +19,7 @@ import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
-import { isAsrConfigured } from './core/asr/manager'
+import { hasConfiguredAsrConfig } from './core/asr/configStatus'
 import {
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
@@ -949,7 +949,7 @@ export default class YoloPlugin extends Plugin {
       t: (key, fallback) => this.t(key, fallback),
       isFeatureReady: () => {
         const opts = this.settings?.contextVoiceInputOptions
-        return !!opts && opts.enabled && isAsrConfigured(opts)
+        return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
       },
       getInteractionMode: () =>
         this.settings.contextVoiceInputOptions.interactionMode,
@@ -979,7 +979,7 @@ export default class YoloPlugin extends Plugin {
 
   private isContextVoiceInputFeatureReady(): boolean {
     const opts = this.settings?.contextVoiceInputOptions
-    return !!opts && opts.enabled && isAsrConfigured(opts)
+    return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
   }
 
   private syncVoiceFloatingIsland(): void {

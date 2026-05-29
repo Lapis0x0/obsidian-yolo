@@ -2,12 +2,11 @@ import { App, Notice } from 'obsidian'
 import { useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import { buildAsrProviderForConfig } from '../../../core/asr/manager'
+import type { BaseAsrProvider } from '../../../core/asr/base'
 import type {
   AsrAudioInput,
   AsrStreamingSession,
 } from '../../../core/asr/types'
-import { VoiceInputRecorder } from '../../../features/editor/context-voice-input/voiceInputRecorder'
 import YoloPlugin from '../../../main'
 import {
   ASR_AUDIO_FORMATS,
@@ -122,10 +121,6 @@ const WS_PROTOCOL_DEFAULTS: Record<
 
 const generateId = (): string =>
   `asr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-
-const failMissingRecording = (): never => {
-  throw new Error('Recording did not produce audio.')
-}
 
 export class AddAsrConfigModal extends ReactModal<AsrConfigFormProps> {
   constructor(app: App, plugin: YoloPlugin) {
@@ -363,8 +358,18 @@ function AsrConfigFormComponent({
     setTestMessage(`Recording ${TEST_RECORDING_SECONDS} s…`)
     setTestTranscript('')
 
-    let provider
+    let provider: BaseAsrProvider
+    let Recorder: typeof import('../../../features/editor/context-voice-input/voiceInputRecorder').VoiceInputRecorder
     try {
+      const [{ buildAsrProviderForConfig }, recorderModule] = await Promise.all(
+        [
+          import('../../../core/asr/manager'),
+          import(
+            '../../../features/editor/context-voice-input/voiceInputRecorder'
+          ),
+        ],
+      )
+      Recorder = recorderModule.VoiceInputRecorder
       provider = buildAsrProviderForConfig(providerFormData)
     } catch (error: unknown) {
       setTestStatus('failed')
@@ -373,7 +378,7 @@ function AsrConfigFormComponent({
       return
     }
 
-    const recorder = new VoiceInputRecorder()
+    const recorder = new Recorder()
     let streamSession: AsrStreamingSession | null = null
     let recorded: AsrAudioInput | null = null
     try {
@@ -420,27 +425,16 @@ function AsrConfigFormComponent({
           durationMs: audio.durationMs,
         }
       }
-    } catch (error: unknown) {
-      try {
-        streamSession?.cancel()
-        recorder.cancel()
-      } catch {
-        // noop
+      let result
+      if (streamSession) {
+        result = await streamSession.finish()
+      } else if (recorded) {
+        result = await provider.transcribe(recorded, {
+          language: formData.language,
+        })
+      } else {
+        throw new Error('Recording did not produce audio.')
       }
-      setTestStatus('failed')
-      setTestMessage(
-        error instanceof Error ? error.message : 'Recording failed.',
-      )
-      setTestRunning(false)
-      return
-    }
-
-    try {
-      const result = streamSession
-        ? await streamSession.finish()
-        : await provider.transcribe(recorded ?? failMissingRecording(), {
-            language: formData.language,
-          })
       const text = (result.text ?? '').trim()
       setTestTranscript(text)
       if (text.length > 0) {
@@ -451,8 +445,19 @@ function AsrConfigFormComponent({
         setTestMessage('ASR returned empty text.')
       }
     } catch (error: unknown) {
+      recorder.cancel()
+      if (streamSession) {
+        try {
+          streamSession.cancel()
+        } catch {
+          // ignore cleanup failure
+        }
+      }
       setTestStatus('failed')
-      setTestMessage(error instanceof Error ? error.message : 'Request failed.')
+      setTestMessage(
+        error instanceof Error ? error.message : 'ASR test failed.',
+      )
+      new Notice(error instanceof Error ? error.message : 'ASR test failed.')
     } finally {
       setTestRunning(false)
     }
