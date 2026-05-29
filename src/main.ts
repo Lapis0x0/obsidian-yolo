@@ -137,7 +137,7 @@ export type RunAgentTaskOptions = {
 
 export type RunAgentTaskResult = {
   success: boolean
-  answer: string
+  message: string
 }
 
 export default class YoloPlugin extends Plugin {
@@ -2643,7 +2643,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     return {
       success: true,
-      answer: 'Agent task submitted',
+      message: 'Agent task submitted',
     }
   }
 
