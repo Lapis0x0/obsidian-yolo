@@ -277,7 +277,7 @@ export class ChatViewNavigator {
   async openChatWithAgentPromptAndSend(
     text: string,
     options: OpenChatWithAgentPromptOptions = {},
-  ) {
+  ): Promise<void> {
     const shouldCreateFreshLeaf =
       options.openNewChat === true || options.forceNewLeaf === true
     const existingLeaf = this.resolveTargetChatLeaf({
@@ -288,7 +288,7 @@ export class ChatViewNavigator {
       existingLeaf ??
       (await this.createChatLeaf(options.placement ?? 'sidebar'))
     if (!targetLeaf || !(targetLeaf.view instanceof ChatView)) {
-      return
+      throw new Error('Failed to open a chat view for agent task submission')
     }
 
     await this.activateChatLeaf(targetLeaf)

@@ -325,7 +325,10 @@ export class ChatView extends ItemView {
   ): Promise<void> {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     const chatRef = await this.waitForChatRef()
-    chatRef?.submitAgentPrompt(text, options)
+    if (!chatRef) {
+      throw new Error('Chat view did not finish mounting in time')
+    }
+    chatRef.submitAgentPrompt(text, options)
   }
 
   addFolderToChat(folder: TFolder) {

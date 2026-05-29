@@ -266,4 +266,44 @@ describe('ChatViewNavigator', () => {
       folderToAdd: undefined,
     })
   })
+
+  it('throws when it cannot open a usable chat view for agent prompt submissions', async () => {
+    const newLeaf = {
+      view: {},
+      setViewState: jest.fn().mockResolvedValue(undefined),
+    } as unknown as WorkspaceLeaf
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => null,
+      revealLeaf: jest.fn().mockResolvedValue(undefined),
+      getRightLeaf: () => newLeaf,
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await expect(
+      navigator.openChatWithAgentPromptAndSend('Write a project summary'),
+    ).rejects.toThrow(
+      'Failed to open a chat view for agent task submission',
+    )
+  })
+
+  it('propagates chat mount timeouts from agent prompt submissions', async () => {
+    const view =
+      new (MockChatView as unknown as new () => MockChatViewInstance)()
+    view.submitAgentPrompt.mockRejectedValueOnce(
+      new Error('Chat view did not finish mounting in time'),
+    )
+    const leaf = { view } as unknown as WorkspaceLeaf
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => leaf,
+      revealLeaf: jest.fn().mockResolvedValue(undefined),
+      touchLeafInteracted: jest.fn(),
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await expect(
+      navigator.openChatWithAgentPromptAndSend('Summarize today'),
+    ).rejects.toThrow('Chat view did not finish mounting in time')
+  })
 })
