@@ -11,7 +11,7 @@ import type { SettingMigration } from '../setting.types'
  *     activeAsrConfigId: string
  *     autoRestartAfterAccept: boolean
  *     documentSummaryEnabled: boolean
- *     documentSummaryRefreshMode: 'session' | '15min' | '1hour'
+ *     documentSummaryRefreshMode: 'smart' | 'session' | '15min' | '1hour'
  *     ...
  *   }
  *
@@ -23,7 +23,8 @@ import type { SettingMigration } from '../setting.types'
  * rather than as a radio button in the Models tab.
  *
  * Most v62 vaults never touched this section, so they end up with an empty
- * `asrConfigs: []` and the feature stays inert until the user adds a config.
+ * `asrConfigs: []`, default smart summaries, and the feature stays
+ * inert until the user adds a config.
  *
  * Pre-list legacy shape (`selectedAsrApiFormat + asrProviderProfiles` from
  * the in-development branch) is converted to entries of the new list with

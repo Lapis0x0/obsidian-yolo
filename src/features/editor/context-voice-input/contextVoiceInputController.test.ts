@@ -259,3 +259,152 @@ describe('ContextVoiceInputController streaming ASR stop', () => {
     expect(order).toEqual(['stop-start', 'send-tail', 'stop-end', 'finish'])
   })
 })
+
+describe('ContextVoiceInputController polish worker', () => {
+  it('clears the previous preview when the model returns empty text', async () => {
+    const currentView = { id: 'current' } as unknown as EditorView
+    const {
+      controller,
+      editor,
+      setInlineSuggestionGhost,
+      setActiveVoiceSuggestion,
+    } = makeController(currentView)
+    seedReadySession(controller, { editor, cachedView: currentView })
+
+    const session = (
+      controller as unknown as {
+        session: {
+          pendingSegments: Array<{ transcribePromise: Promise<string> }>
+        }
+      }
+    ).session
+    session.pendingSegments.push({
+      transcribePromise: Promise.resolve('这段会被模型判为空'),
+    })
+    ;(
+      controller as unknown as {
+        polishTranscript: jest.Mock
+      }
+    ).polishTranscript = jest.fn(async () => ({
+      action: 'insert_at_cursor',
+      text: '',
+    }))
+
+    await (
+      controller as unknown as {
+        runPolishWorker: (
+          activeSession: unknown,
+          settings: YoloSettings,
+        ) => Promise<void>
+      }
+    ).runPolishWorker(session, {
+      contextVoiceInputOptions: {},
+    } as YoloSettings)
+
+    expect(setInlineSuggestionGhost).toHaveBeenLastCalledWith(currentView, null)
+    expect(setActiveVoiceSuggestion).toHaveBeenLastCalledWith(null)
+    expect(controller.getStatus().state).toBe('idle')
+  })
+
+  it('clears an empty polish result without leaving continuous recording stuck in ASR state', async () => {
+    const currentView = { id: 'current' } as unknown as EditorView
+    const {
+      controller,
+      editor,
+      setInlineSuggestionGhost,
+      setActiveVoiceSuggestion,
+    } = makeController(currentView)
+    seedReadySession(controller, { editor, cachedView: currentView })
+
+    const internals = controller as unknown as {
+      session: {
+        pendingSegments: Array<{ transcribePromise: Promise<string> }>
+      }
+      recorder: { getMediaStream: () => null }
+      status: unknown
+      polishTranscript: jest.Mock
+      runPolishWorker: (
+        activeSession: unknown,
+        settings: YoloSettings,
+      ) => Promise<void>
+    }
+    const session = internals.session
+    internals.recorder = { getMediaStream: () => null }
+    internals.status = {
+      state: 'recording',
+      overlayState: 'polishing',
+      recordingStartedAt: 1,
+      mediaStream: null,
+      canCancel: true,
+    }
+    session.pendingSegments.push({
+      transcribePromise: Promise.resolve('清空'),
+    })
+    internals.polishTranscript = jest.fn(async () => ({
+      action: 'insert_at_cursor',
+      text: '',
+    }))
+
+    await internals.runPolishWorker(session, {
+      contextVoiceInputOptions: {},
+    } as YoloSettings)
+
+    expect(setInlineSuggestionGhost).toHaveBeenLastCalledWith(currentView, null)
+    expect(setActiveVoiceSuggestion).toHaveBeenLastCalledWith(null)
+    expect(controller.getStatus()).toMatchObject({
+      state: 'recording',
+      overlayState: 'ready',
+    })
+  })
+
+  it('restarts if a segment is queued during worker shutdown', async () => {
+    const currentView = { id: 'current' } as unknown as EditorView
+    const { controller, editor } = makeController(currentView)
+    seedReadySession(controller, { editor, cachedView: currentView })
+
+    const session = (
+      controller as unknown as {
+        session: {
+          pendingSegments: Array<{ transcribePromise: Promise<string> }>
+          polishWorkerRunning: boolean
+        }
+      }
+    ).session
+    session.pendingSegments = []
+    session.polishWorkerRunning = false
+
+    const runPolishWorker = jest
+      .fn()
+      .mockImplementationOnce(async (activeSession: typeof session) => {
+        activeSession.pendingSegments.push({
+          transcribePromise: Promise.resolve('第二段'),
+        })
+      })
+      .mockImplementationOnce(async (activeSession: typeof session) => {
+        activeSession.pendingSegments.shift()
+      })
+    ;(
+      controller as unknown as {
+        runPolishWorker: typeof runPolishWorker
+      }
+    ).runPolishWorker = runPolishWorker
+    ;(
+      controller as unknown as {
+        ensurePolishWorker: (
+          activeSession: unknown,
+          settings: YoloSettings,
+        ) => void
+      }
+    ).ensurePolishWorker(session, {
+      contextVoiceInputOptions: {},
+    } as YoloSettings)
+
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(runPolishWorker).toHaveBeenCalledTimes(2)
+    expect(session.pendingSegments).toHaveLength(0)
+    expect(session.polishWorkerRunning).toBe(false)
+  })
+})

@@ -428,14 +428,16 @@ export type AsrConfig = z.infer<typeof asrConfigSchema>
  * keeps speaking into the same file. All summaries live in memory only — they
  * are never persisted, and they expire when Obsidian closes.
  *
+ * - `smart`: default; refresh lazily when the document content itself changes
+ *   substantially, without a fixed time interval.
  * - `session`: build the summary once on first need, then keep using it for
- *   the rest of this Obsidian session (no automatic re-summarisation). Most
- *   conservative cost-wise.
- * - `15min` / `1hour`: re-summarise after the given interval has elapsed
- *   since the last summary completed, but only when a voice-input request
- *   actually needs it (lazy).
+ *   the rest of this Obsidian session. Most conservative cost-wise.
+ * - `15min` / `1hour`: time-based only; re-summarise after the given
+ *   interval has elapsed since the last summary completed. Refreshing is lazy
+ *   and only happens when voice input needs it.
  */
 export const DOCUMENT_SUMMARY_REFRESH_MODES = [
+  'smart',
   'session',
   '15min',
   '1hour',
@@ -483,11 +485,11 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   // the session alive and start the next recording segment automatically
   // (same UX as Wispr Flow / Superwhisper continuous dictation).
   autoRestartAfterAccept: false,
-  // Opt-in: include a per-document summary in the polish prompt so the
-  // model can match terminology / topic over very long files. Cost-aware:
-  // summaries are LLM-generated and the toggle warns about it.
-  documentSummaryEnabled: false,
-  documentSummaryRefreshMode: '1hour' as DocumentSummaryRefreshMode,
+  // Include a per-document summary in the polish prompt so the model can
+  // match terminology / topic over very long files. Cost-aware: summaries
+  // are LLM-generated, in-memory only, and controlled from advanced settings.
+  documentSummaryEnabled: true,
+  documentSummaryRefreshMode: 'smart' as DocumentSummaryRefreshMode,
 } as const
 
 const contextVoiceInputOptionsSchema = z
@@ -511,16 +513,18 @@ const contextVoiceInputOptionsSchema = z
     contextRangeChars: z.number().int().min(0).catch(2000),
     maxAfterContextChars: z.number().int().min(0).catch(600),
     maxRecordingSeconds: z.number().int().min(5).max(900).catch(120),
-    vadSpeechStartDecibels: z.number().min(-90).max(0).catch(-42),
-    vadSilenceDecibels: z.number().min(-90).max(0).catch(-38),
+    vadSpeechStartDecibels: z.number().min(-50).max(-5).catch(-42),
+    vadSilenceDecibels: z.number().min(-50).max(-5).catch(-38),
     vadSilenceHoldMs: z.number().int().min(300).max(5000).catch(1200),
     floatingIslandBottomOffsetVh: z.number().min(0).max(50).catch(9),
     microphoneDeviceId: z.string().catch(''),
     autoRestartAfterAccept: z.boolean().catch(false),
-    documentSummaryEnabled: z.boolean().catch(false),
+    documentSummaryEnabled: z
+      .boolean()
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.documentSummaryEnabled),
     documentSummaryRefreshMode: z
       .enum(DOCUMENT_SUMMARY_REFRESH_MODES)
-      .catch('1hour'),
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.documentSummaryRefreshMode),
   })
   .catch({ ...DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS })
 

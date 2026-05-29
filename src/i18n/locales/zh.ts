@@ -1406,12 +1406,24 @@ export const zh: TranslationKeys = {
         '发给打磨模型的光标后文字符数。避免模型把后面已有内容重复一遍；与上文窗口相互独立。不限制语音最终插入的长度。',
       maxRecordingSeconds: '最大录音时长（秒）',
       maxRecordingSecondsDesc: '自动停止被遗忘的录音，避免浪费 ASR 调用次数。',
+      decibelMeter: '麦克风分贝计',
+      decibelMeterDesc:
+        '本地监听并按 -50 至 -5 dB 累积显示麦克风响度分布，方便调整下面的开口和静音阈值。音频不会被录制或发送。',
+      decibelMeterStart: '开始',
+      decibelMeterStop: '停止',
+      decibelMeterLevel: '麦克风响度分布',
+      decibelMeterPeak: '峰值',
+      decibelMeterSpeechStart: '开口',
+      decibelMeterSilence: '静音',
+      decibelMeterUnavailable: '当前环境无法使用麦克风分贝计。',
+      decibelMeterPermissionError:
+        '无法读取麦克风。请检查权限和麦克风设备选择。',
       vadSpeechStartDecibels: '开口检测阈值 (dB)',
       vadSpeechStartDecibelsDesc:
-        '数值越负越容易捕获小声说话；越接近 0 越能忽略背景噪声。默认 -42。',
+        '可调范围 -50 到 -5。数值越负越容易捕获小声说话；越接近 -5 越能忽略背景噪声。默认 -42。',
       vadSilenceDecibels: '说话后静音阈值 (dB)',
       vadSilenceDecibelsDesc:
-        '确认开始说话后，低于这个音量会计为静音。默认 -38。',
+        '可调范围 -50 到 -5。确认开始说话后，低于这个音量会计为静音。默认 -38。',
       vadSilenceHoldMs: '静音多久后切段 (ms)',
       vadSilenceHoldMsDesc:
         '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
@@ -1422,11 +1434,13 @@ export const zh: TranslationKeys = {
       autoRestartAfterAccept: 'Tab 接受后继续聆听',
       autoRestartAfterAcceptDesc:
         '仅点按模式。Tab 接受当前草稿后立刻开始下一段录音，免去再点麦克风的步骤。',
-      documentSummaryEnabled: '附带文档摘要 + 热词（实验性）',
+      documentSummaryEnabled: '附带文档摘要 + 热词',
       documentSummaryEnabledDesc:
         '在录音开始时让 LLM 生成当前文档的摘要，并同时提取 ASR 容易听错的热词（专有名词、术语、缩写等）。摘要供打磨模型理解术语和语气；热词供打磨模型在听到近音词时优先选用文档里的拼写。会增加一次 LLM 调用与开销。摘要与热词只存在内存中，关闭 Obsidian 即丢失。',
       documentSummaryRefresh: '摘要刷新方式',
-      documentSummaryRefreshDesc: '决定同一个文档的摘要多久重新生成一次。',
+      documentSummaryRefreshDesc:
+        '首次语音输入时会自动生成全文摘要；这里决定同一个文档的摘要何时重新生成。',
+      documentSummaryRefresh_smart: '智能刷新',
       documentSummaryRefresh_session: '本次会话不刷新',
       documentSummaryRefresh_15min: '每 15 分钟刷新',
       documentSummaryRefresh_1hour: '每 1 小时刷新',

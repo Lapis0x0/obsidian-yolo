@@ -873,14 +873,26 @@ export class ContextVoiceInputController {
       session.mergeAbortTimers.push(timer)
     }
 
-    if (!session.polishWorkerRunning) {
-      session.polishWorkerRunning = true
-      void this.runPolishWorker(session, settings).finally(() => {
-        if (this.session === session) {
-          session.polishWorkerRunning = false
-        }
-      })
-    }
+    this.ensurePolishWorker(session, settings)
+  }
+
+  private ensurePolishWorker(
+    session: ActiveSession,
+    settings: YoloSettings,
+  ): void {
+    if (this.session !== session || session.polishWorkerRunning) return
+    session.polishWorkerRunning = true
+    void this.runPolishWorker(session, settings).finally(() => {
+      if (this.session !== session) return
+      session.polishWorkerRunning = false
+      // A new segment can be enqueued after the worker's final loop check
+      // but before this finally handler flips `polishWorkerRunning` back to
+      // false. Restart here so that narrow shutdown window cannot strand an
+      // ASR preview without a follow-up polish pass.
+      if (session.pendingSegments.length > 0) {
+        this.ensurePolishWorker(session, this.deps.getSettings())
+      }
+    })
   }
 
   private async finishStreamingAsrSegment({
@@ -960,6 +972,7 @@ export class ContextVoiceInputController {
       // arrives too late to ever render. This was the hold-to-talk
       // "ASR/LLM run fine but editor stays blank" bug.
       const baselinePrev = session.previousModelOutput
+      const baselineDecision = session.decision ? { ...session.decision } : null
       const controller = new AbortController()
       const polishStartedAt = Date.now()
       const polishPromise = this.polishTranscript({
@@ -1017,9 +1030,14 @@ export class ContextVoiceInputController {
           'Voice polish returned malformed output; nothing inserted.',
         )
         new Notice(`${prefix}: ${msg}`)
-        // Keep prior draft alive if there was one.
         if (baselinePrev.trim().length > 0) {
-          session.decision = { action: 'insert_at_cursor', text: baselinePrev }
+          const restoredDecision =
+            baselineDecision && baselineDecision.text.trim().length > 0
+              ? baselineDecision
+              : { action: 'insert_at_cursor' as const, text: baselinePrev }
+          session.decision = restoredDecision
+          session.previousModelOutput = restoredDecision.text
+          this.showPolishedPreview(session, restoredDecision)
         } else {
           session.decision = null
         }
@@ -1037,44 +1055,17 @@ export class ContextVoiceInputController {
 
       const polishedText = decision.text.trim()
       if (polishedText.length === 0) {
-        // Empty text: three sub-cases.
-        //
-        //  1) hasNotice → the model intentionally cancelled or transformed
-        //     something to nothing. Honour that as a session-wide reset:
-        //     wipe the running draft so the NEXT segment doesn't bring
-        //     back the cancelled text via previous_model_output.
-        //  2) no notice + had a prior draft → "I had nothing substantive to
-        //     add" (filler, noise, a stray pop). Keep the prior draft alive
-        //     so the user can still Tab-accept it.
-        //  3) no notice + no prior draft → polish ran but returned nothing
-        //     usable. Without intervention the stage-1 ASR ghost would stay
-        //     on screen forever, making it look like the bar is stuck
-        //     polishing. Clear the preview + surface a notice so the user
-        //     knows the polish call landed but produced nothing — typically
-        //     caused by cursor_after being end-of-line / whitespace, which
-        //     the model interprets as "user is at a paragraph boundary,
-        //     emit nothing".
-        if (hasNotice) {
-          session.previousModelOutput = ''
-          session.decision = null
-          if (session.view) {
-            this.deps.setInlineSuggestionGhost(session.view, null)
-          }
-          this.deps.setActiveVoiceSuggestion(null)
-        } else if (baselinePrev.trim().length > 0) {
-          session.decision = { action: 'insert_at_cursor', text: baselinePrev }
-        } else {
-          // Polish completed with no text and no notice. Silently drop the
-          // stage-1 ASR ghost so the bar doesn't look like it's still
-          // working; no toast — the user just sees the preview clear and
-          // can dictate again.
-          session.previousModelOutput = ''
-          session.decision = null
-          if (session.view) {
-            this.deps.setInlineSuggestionGhost(session.view, null)
-          }
-          this.deps.setActiveVoiceSuggestion(null)
+        // Empty text is a real model decision: the user may have said
+        // "清空/取消/不要了". The prompt tells the model to return
+        // previous_model_output unchanged for filler/noise, so do not
+        // resurrect a previous draft here. Just clear the visible ASR ghost
+        // and the running draft so the next segment starts cleanly.
+        session.previousModelOutput = ''
+        session.decision = null
+        if (session.view) {
+          this.deps.setInlineSuggestionGhost(session.view, null)
         }
+        this.deps.setActiveVoiceSuggestion(null)
         continue
       }
 

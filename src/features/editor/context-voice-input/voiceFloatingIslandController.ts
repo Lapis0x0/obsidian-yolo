@@ -61,7 +61,10 @@ type IslandDeps = {
 const READY_LATENCY_HOLD_MS = 3000
 
 const WAVE_HISTORY_SAMPLES = 80 // ~2.5 s of audio at 32 fps draw rate
-const WAVE_FFT_SIZE = 1024
+// 4096 samples gives VAD and the waveform a ~85ms window at 48kHz
+// (~93ms at 44.1kHz), smoothing out short spikes while keeping auto-stop
+// responsive enough for dictation.
+const WAVE_FFT_SIZE = 4096
 const WAVE_BAR_WIDTH = 3 // px per amplitude sample in the scrolling band
 
 // VAD tuning. Start detection is a little more sensitive so quiet speech can

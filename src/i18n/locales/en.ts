@@ -1524,12 +1524,25 @@ export const en: TranslationKeys = {
       maxRecordingSeconds: 'Max recording (seconds)',
       maxRecordingSecondsDesc:
         'Auto-stops a forgotten recording so it does not waste ASR calls.',
+      decibelMeter: 'Microphone level meter',
+      decibelMeterDesc:
+        'Listen locally and accumulate microphone loudness from -50 to -5 dB, so you can tune the speech and silence thresholds below. Audio is not recorded or sent.',
+      decibelMeterStart: 'Start',
+      decibelMeterStop: 'Stop',
+      decibelMeterLevel: 'Microphone loudness distribution',
+      decibelMeterPeak: 'Peak',
+      decibelMeterSpeechStart: 'Speech start',
+      decibelMeterSilence: 'Silence',
+      decibelMeterUnavailable:
+        'Microphone level meter is not available in this environment.',
+      decibelMeterPermissionError:
+        'Could not read the microphone. Check permission and device selection.',
       vadSpeechStartDecibels: 'Speech start threshold (dB)',
       vadSpeechStartDecibelsDesc:
-        'More negative catches quieter speech; less negative ignores more background noise. Default: -42.',
+        'Range: -50 to -5. More negative catches quieter speech; closer to -5 ignores more background noise. Default: -42.',
       vadSilenceDecibels: 'Silence threshold after speech (dB)',
       vadSilenceDecibelsDesc:
-        'After speech has started, audio below this level counts as silence. Default: -38.',
+        'Range: -50 to -5. After speech has started, audio below this level counts as silence. Default: -38.',
       vadSilenceHoldMs: 'Silence duration to stop (ms)',
       vadSilenceHoldMsDesc:
         'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
@@ -1540,14 +1553,14 @@ export const en: TranslationKeys = {
       autoRestartAfterAccept: 'Keep listening after Tab accept',
       autoRestartAfterAcceptDesc:
         'Click-toggle mode only. After Tab accepts a polished draft, automatically start the next recording segment without clicking the mic again.',
-      documentSummaryEnabled:
-        'Include document summary + hot words (experimental)',
+      documentSummaryEnabled: 'Include document summary + hot words',
       documentSummaryEnabledDesc:
         "At recording start, ask an LLM to summarise the current file and extract ASR-confusable hot words (proper nouns, jargon, abbreviations). The summary keeps the polish model on tone and terminology; the hot words let it prefer the document's spelling when the transcript came back with a near-miss. Adds one LLM call per refresh cycle. Both stay in memory only and are dropped when Obsidian closes.",
       documentSummaryRefresh: 'Summary refresh',
       documentSummaryRefreshDesc:
-        'How often the per-document summary is regenerated.',
-      documentSummaryRefresh_session: 'Hold for this Obsidian session',
+        'A full-document summary is generated automatically on first voice input; this controls when it is regenerated.',
+      documentSummaryRefresh_smart: 'Smart refresh',
+      documentSummaryRefresh_session: 'Do not refresh this session',
       documentSummaryRefresh_15min: 'Every 15 minutes',
       documentSummaryRefresh_1hour: 'Every 1 hour',
     },

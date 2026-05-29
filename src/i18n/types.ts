@@ -1273,6 +1273,16 @@ export type TranslationKeys = {
       afterWindowCharsDesc?: string
       maxRecordingSeconds?: string
       maxRecordingSecondsDesc?: string
+      decibelMeter?: string
+      decibelMeterDesc?: string
+      decibelMeterStart?: string
+      decibelMeterStop?: string
+      decibelMeterLevel?: string
+      decibelMeterPeak?: string
+      decibelMeterSpeechStart?: string
+      decibelMeterSilence?: string
+      decibelMeterUnavailable?: string
+      decibelMeterPermissionError?: string
       vadSpeechStartDecibels?: string
       vadSpeechStartDecibelsDesc?: string
       vadSilenceDecibels?: string
@@ -1288,6 +1298,7 @@ export type TranslationKeys = {
       documentSummaryEnabledDesc?: string
       documentSummaryRefresh?: string
       documentSummaryRefreshDesc?: string
+      documentSummaryRefresh_smart?: string
       documentSummaryRefresh_session?: string
       documentSummaryRefresh_15min?: string
       documentSummaryRefresh_1hour?: string

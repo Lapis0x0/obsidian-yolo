@@ -24,6 +24,12 @@ import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 
+import {
+  DECIBEL_CHART_CEILING,
+  DECIBEL_CHART_FLOOR,
+  VoiceDecibelMeter,
+} from './ContextVoiceDecibelMeter'
+
 // Translation-key suffixes for the polish-prompt dropdown. Picking any
 // non-custom mode applies the matching prompt from VOICE_POLISH_PROMPT_PRESETS
 // (in setting.types.ts) at request time — no textarea step required.
@@ -39,7 +45,8 @@ const SUMMARY_REFRESH_LABEL_FALLBACK: Record<
   DocumentSummaryRefreshMode,
   string
 > = {
-  session: 'Hold for this Obsidian session',
+  smart: 'Smart refresh',
+  session: 'Do not refresh this session',
   '15min': 'Every 15 minutes',
   '1hour': 'Every 1 hour',
 }
@@ -157,6 +164,54 @@ export function ContextVoiceInputSection() {
     if (trimmed.length === 0) return null
     const parsed = Number(trimmed)
     return Number.isFinite(parsed) ? parsed : null
+  }
+
+  const parseVisibleDecibel = (value: string, fallback: number): number => {
+    const parsed = parseNumber(value)
+    return parsed !== null &&
+      parsed >= DECIBEL_CHART_FLOOR &&
+      parsed <= DECIBEL_CHART_CEILING
+      ? parsed
+      : fallback
+  }
+
+  const visibleSpeechStartDecibels = parseVisibleDecibel(
+    numberInputs.vadSpeechStartDecibels,
+    voice.vadSpeechStartDecibels,
+  )
+  const visibleSilenceDecibels = parseVisibleDecibel(
+    numberInputs.vadSilenceDecibels,
+    voice.vadSilenceDecibels,
+  )
+
+  const updateSpeechStartDecibelsInput = (value: string) => {
+    setNumberInputs((s) => ({
+      ...s,
+      vadSpeechStartDecibels: value,
+    }))
+    const parsed = parseNumber(value)
+    if (
+      parsed !== null &&
+      parsed >= DECIBEL_CHART_FLOOR &&
+      parsed <= DECIBEL_CHART_CEILING
+    ) {
+      updateVoice({ vadSpeechStartDecibels: parsed }, 'vadSpeechStartDecibels')
+    }
+  }
+
+  const updateSilenceDecibelsInput = (value: string) => {
+    setNumberInputs((s) => ({
+      ...s,
+      vadSilenceDecibels: value,
+    }))
+    const parsed = parseNumber(value)
+    if (
+      parsed !== null &&
+      parsed >= DECIBEL_CHART_FLOOR &&
+      parsed <= DECIBEL_CHART_CEILING
+    ) {
+      updateVoice({ vadSilenceDecibels: parsed }, 'vadSilenceDecibels')
+    }
   }
 
   const selectedPromptBody =
@@ -400,67 +455,8 @@ export function ContextVoiceInputSection() {
             />
           </ObsidianSetting>
 
-          {/* Document summary: optional, opt-in, in-memory only. */}
-          <ObsidianSetting
-            name={t(
-              'settings.contextVoiceInput.documentSummaryEnabled',
-              'Include document summary (experimental)',
-            )}
-            desc={t(
-              'settings.contextVoiceInput.documentSummaryEnabledDesc',
-              'Attach an LLM-generated summary of the current file to each polish request so the model can match terminology and tone over long documents. Increases LLM cost. Summaries stay in memory only and are dropped when Obsidian closes.',
-            )}
-            className="yolo-settings-card"
-          >
-            <ObsidianToggle
-              value={!!voice.documentSummaryEnabled}
-              onChange={(value) =>
-                updateVoice(
-                  { documentSummaryEnabled: value },
-                  'documentSummaryEnabled',
-                )
-              }
-            />
-          </ObsidianSetting>
-
-          {voice.documentSummaryEnabled && (
-            <ObsidianSetting
-              name={t(
-                'settings.contextVoiceInput.documentSummaryRefresh',
-                'Summary refresh',
-              )}
-              desc={t(
-                'settings.contextVoiceInput.documentSummaryRefreshDesc',
-                'How often the per-document summary is regenerated.',
-              )}
-              className="yolo-models-select-card"
-            >
-              <ObsidianDropdown
-                value={voice.documentSummaryRefreshMode}
-                options={Object.fromEntries(
-                  DOCUMENT_SUMMARY_REFRESH_MODES.map((mode) => [
-                    mode,
-                    t(
-                      `settings.contextVoiceInput.documentSummaryRefresh_${mode}`,
-                      SUMMARY_REFRESH_LABEL_FALLBACK[mode],
-                    ),
-                  ]),
-                )}
-                onChange={(value) =>
-                  updateVoice(
-                    {
-                      documentSummaryRefreshMode:
-                        value as DocumentSummaryRefreshMode,
-                    },
-                    'documentSummaryRefreshMode',
-                  )
-                }
-              />
-            </ObsidianSetting>
-          )}
-
-          {/* Advanced options collapse — temperature, VAD thresholds, max
-              recording length live here so the primary panel stays short.
+          {/* Advanced options collapse — summary cost knobs, temperature, VAD
+              thresholds, and max recording length live here so the primary panel stays short.
               Reuses the shared `yolo-settings-advanced-toggle` pattern
               (RAGSection / ContinuationSection / Composer all use it) for
               visual consistency with the rest of the settings UI. */}
@@ -484,6 +480,64 @@ export function ContextVoiceInputSection() {
 
           {advancedOpen && (
             <>
+              <ObsidianSetting
+                name={t(
+                  'settings.contextVoiceInput.documentSummaryEnabled',
+                  'Include document summary + hot words',
+                )}
+                desc={t(
+                  'settings.contextVoiceInput.documentSummaryEnabledDesc',
+                  'Attach an LLM-generated summary of the current file to each polish request so the model can match terminology and tone over long documents. Increases LLM cost. Summaries stay in memory only and are dropped when Obsidian closes.',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianToggle
+                  value={!!voice.documentSummaryEnabled}
+                  onChange={(value) =>
+                    updateVoice(
+                      { documentSummaryEnabled: value },
+                      'documentSummaryEnabled',
+                    )
+                  }
+                />
+              </ObsidianSetting>
+
+              {voice.documentSummaryEnabled && (
+                <ObsidianSetting
+                  name={t(
+                    'settings.contextVoiceInput.documentSummaryRefresh',
+                    'Summary refresh',
+                  )}
+                  desc={t(
+                    'settings.contextVoiceInput.documentSummaryRefreshDesc',
+                    'A full-document summary is generated automatically on first voice input; this controls when it is regenerated.',
+                  )}
+                  className="yolo-models-select-card"
+                >
+                  <ObsidianDropdown
+                    value={voice.documentSummaryRefreshMode}
+                    options={Object.fromEntries(
+                      DOCUMENT_SUMMARY_REFRESH_MODES.map((mode) => [
+                        mode,
+                        t(
+                          `settings.contextVoiceInput.documentSummaryRefresh_${mode}`,
+                          SUMMARY_REFRESH_LABEL_FALLBACK[mode],
+                        ),
+                      ]),
+                    )}
+                    onChange={(value) =>
+                      updateVoice(
+                        {
+                          documentSummaryRefreshMode:
+                            value as DocumentSummaryRefreshMode,
+                        },
+                        'documentSummaryRefreshMode',
+                      )
+                    }
+                  />
+                </ObsidianSetting>
+              )}
+
               <ObsidianSetting
                 name={t(
                   'settings.contextVoiceInput.polishTemperature',
@@ -556,6 +610,60 @@ export function ContextVoiceInputSection() {
 
               <ObsidianSetting
                 name={t(
+                  'settings.contextVoiceInput.floatingIslandBottomOffsetVh',
+                  'Floating mic bottom offset (vh)',
+                )}
+                desc={t(
+                  'settings.contextVoiceInput.floatingIslandBottomOffsetVhDesc',
+                  'Distance from the editor bottom to the floating mic, in viewport-height percent. Default: 9.',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={numberInputs.floatingIslandBottomOffsetVh}
+                  onChange={(value) => {
+                    setNumberInputs((s) => ({
+                      ...s,
+                      floatingIslandBottomOffsetVh: value,
+                    }))
+                    const parsed = parseNumber(value)
+                    if (parsed !== null && parsed >= 0 && parsed <= 50) {
+                      updateVoice(
+                        { floatingIslandBottomOffsetVh: parsed },
+                        'floatingIslandBottomOffsetVh',
+                      )
+                    }
+                  }}
+                  placeholder="9"
+                />
+              </ObsidianSetting>
+
+              <div className="yolo-voice-decibel-card">
+                <div className="setting-item-info yolo-voice-decibel-card__head">
+                  <div className="setting-item-name">
+                    {t(
+                      'settings.contextVoiceInput.decibelMeter',
+                      'Microphone level meter',
+                    )}
+                  </div>
+                  <div className="setting-item-description">
+                    {t(
+                      'settings.contextVoiceInput.decibelMeterDesc',
+                      'Listen locally and show the current microphone level so you can tune the speech and silence thresholds below. Audio is not recorded or sent.',
+                    )}
+                  </div>
+                </div>
+                <VoiceDecibelMeter
+                  t={t}
+                  deviceId={voice.microphoneDeviceId ?? ''}
+                  speechStartDecibels={visibleSpeechStartDecibels}
+                  silenceDecibels={visibleSilenceDecibels}
+                  silenceHoldMs={voice.vadSilenceHoldMs}
+                />
+              </div>
+
+              <ObsidianSetting
+                name={t(
                   'settings.contextVoiceInput.vadSpeechStartDecibels',
                   'Speech start threshold (dB)',
                 )}
@@ -567,19 +675,12 @@ export function ContextVoiceInputSection() {
               >
                 <ObsidianTextInput
                   value={numberInputs.vadSpeechStartDecibels}
-                  onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
-                      vadSpeechStartDecibels: value,
-                    }))
-                    const parsed = parseNumber(value)
-                    if (parsed !== null && parsed >= -90 && parsed <= 0) {
-                      updateVoice(
-                        { vadSpeechStartDecibels: parsed },
-                        'vadSpeechStartDecibels',
-                      )
-                    }
-                  }}
+                  type="number"
+                  inputMode="decimal"
+                  min={DECIBEL_CHART_FLOOR}
+                  max={DECIBEL_CHART_CEILING}
+                  step={1}
+                  onChange={updateSpeechStartDecibelsInput}
                   placeholder="-42"
                 />
               </ObsidianSetting>
@@ -597,19 +698,12 @@ export function ContextVoiceInputSection() {
               >
                 <ObsidianTextInput
                   value={numberInputs.vadSilenceDecibels}
-                  onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
-                      vadSilenceDecibels: value,
-                    }))
-                    const parsed = parseNumber(value)
-                    if (parsed !== null && parsed >= -90 && parsed <= 0) {
-                      updateVoice(
-                        { vadSilenceDecibels: parsed },
-                        'vadSilenceDecibels',
-                      )
-                    }
-                  }}
+                  type="number"
+                  inputMode="decimal"
+                  min={DECIBEL_CHART_FLOOR}
+                  max={DECIBEL_CHART_CEILING}
+                  step={1}
+                  onChange={updateSilenceDecibelsInput}
                   placeholder="-38"
                 />
               </ObsidianSetting>
@@ -641,36 +735,6 @@ export function ContextVoiceInputSection() {
                     }
                   }}
                   placeholder="1200"
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t(
-                  'settings.contextVoiceInput.floatingIslandBottomOffsetVh',
-                  'Floating mic bottom offset (vh)',
-                )}
-                desc={t(
-                  'settings.contextVoiceInput.floatingIslandBottomOffsetVhDesc',
-                  'Distance from the editor bottom to the floating mic, in viewport-height percent. Default: 9.',
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianTextInput
-                  value={numberInputs.floatingIslandBottomOffsetVh}
-                  onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
-                      floatingIslandBottomOffsetVh: value,
-                    }))
-                    const parsed = parseNumber(value)
-                    if (parsed !== null && parsed >= 0 && parsed <= 50) {
-                      updateVoice(
-                        { floatingIslandBottomOffsetVh: parsed },
-                        'floatingIslandBottomOffsetVh',
-                      )
-                    }
-                  }}
-                  placeholder="9"
                 />
               </ObsidianSetting>
             </>

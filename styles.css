@@ -18822,6 +18822,193 @@ textarea.yolo-voice-prompt-textarea-input {
   line-height: 1.45;
 }
 
+.yolo-voice-decibel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+}
+
+.yolo-voice-decibel-card__head {
+  max-width: none;
+}
+
+.yolo-voice-decibel-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.yolo-voice-decibel-meter__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yolo-voice-decibel-meter__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.yolo-voice-decibel-meter__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.yolo-voice-decibel-meter__peak {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-voice-decibel-meter__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.yolo-voice-decibel-meter__button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.yolo-voice-decibel-meter__stop-icon {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.yolo-voice-decibel-meter__plot {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 62%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(
+    in srgb,
+    var(--background-primary) 88%,
+    var(--background-secondary) 12%
+  );
+}
+
+.yolo-voice-decibel-meter__histogram {
+  display: block;
+  width: 100%;
+  height: 112px;
+}
+
+.yolo-voice-decibel-meter__axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.yolo-voice-decibel-meter__marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.yolo-voice-decibel-meter__marker::before {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--text-muted) 78%, transparent);
+  content: '';
+  transition: border-left-color 520ms ease;
+}
+
+.yolo-voice-decibel-meter__marker.is-active::before {
+  border-left-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 82%,
+    transparent
+  );
+  border-left-style: solid;
+  transition: none;
+}
+
+.yolo-voice-decibel-meter__marker span {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  max-width: 150px;
+  padding: 1px 5px;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  transition:
+    background 520ms ease,
+    border-color 520ms ease,
+    color 520ms ease;
+}
+
+.yolo-voice-decibel-meter__marker.is-active span {
+  border-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 45%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 12%,
+    var(--background-primary)
+  );
+  color: var(--interactive-accent);
+  transition: none;
+}
+
+.yolo-voice-decibel-meter__marker--speech span,
+.yolo-voice-decibel-meter__marker--silence span {
+  top: 6px;
+}
+
+.yolo-voice-decibel-meter__error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.35;
+}
+
+@media (max-width: 700px) {
+  .yolo-voice-decibel-meter__top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
 /* ---------- ASR config test-result panel -------------------------------- */
 
 .yolo-asr-test-result {
