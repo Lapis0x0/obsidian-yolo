@@ -241,13 +241,14 @@ export class InlineSuggestionController {
   tryAcceptInlineSuggestionFromView(view: EditorView): boolean {
     const suggestion = this.activeInlineSuggestion
     if (!suggestion) return false
-    if (suggestion.view !== view) return false
 
     if (suggestion.source === 'tab') {
+      if (suggestion.view !== view) return false
       return this.getTabCompletionController().tryAcceptFromView(view)
     }
 
     if (suggestion.source === 'continuation') {
+      if (suggestion.view !== view) return false
       return this.tryAcceptContinuationFromView(view)
     }
 
@@ -268,6 +269,16 @@ export class InlineSuggestionController {
   tryRejectInlineSuggestionFromView(view: EditorView): boolean {
     const suggestion = this.activeInlineSuggestion
     if (!suggestion) return false
+    if (suggestion.source === 'voice') {
+      const voice = this.getContextVoiceInputController()
+      if (!voice) return false
+      const rejected = voice.tryRejectFromView(view)
+      if (rejected) {
+        this.voiceInlineSuggestion = null
+        this.activeInlineSuggestion = null
+      }
+      return rejected
+    }
     if (suggestion.view !== view) return false
     this.clearInlineSuggestion()
     return true

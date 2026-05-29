@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
+import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { hasConfiguredAsrConfig } from '../../../core/asr/configStatus'
 import type {
@@ -45,6 +46,7 @@ const SUMMARY_REFRESH_LABEL_FALLBACK: Record<
 
 export function ContextVoiceInputSection() {
   const { settings, setSettings } = useSettings()
+  const plugin = usePlugin()
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
   const asrReady = hasConfiguredAsrConfig(voice)
@@ -68,10 +70,12 @@ export function ContextVoiceInputSection() {
     (patch: Partial<ContextVoiceInputOptions>, context: string) => {
       void (async () => {
         try {
+          const latestSettings = plugin.settings
+          const latestVoice = latestSettings.contextVoiceInputOptions
           await setSettings({
-            ...settings,
+            ...latestSettings,
             contextVoiceInputOptions: {
-              ...voice,
+              ...latestVoice,
               ...patch,
             },
           })
@@ -83,7 +87,7 @@ export function ContextVoiceInputSection() {
         }
       })()
     },
-    [settings, setSettings, voice],
+    [plugin, setSettings],
   )
 
   const enabledChatModels = useMemo(

@@ -13,8 +13,8 @@ describe('applyVoiceDecisionBoundaryFallback', () => {
   test('trims trailing terminal punctuation when cursor_after starts with adjacent punctuation', () => {
     expect(
       applyVoiceDecisionBoundaryFallback(decision('还要记录。'), {
-        before: '前文',
-        after: '，后文',
+        before: '会议纪要里写到',
+        after: '，下周继续跟进',
         asrTranscript: '还要记录。',
       }).text,
     ).toBe('还要记录')
@@ -48,21 +48,31 @@ describe('applyVoiceDecisionBoundaryFallback', () => {
     ).toBe('需要标注来源。')
   })
 
-  test('removes leading punctuation copied from cursor_after when ASR did not start with it', () => {
+  test('keeps single leading punctuation when it starts a new clause', () => {
     expect(
       applyVoiceDecisionBoundaryFallback(decision('，也不能牺牲停顿。'), {
-        before: '前文',
-        after: '，后文',
+        before: '这段话已经强调清晰表达',
+        after: '，但预算还没批',
         asrTranscript: '也不能牺牲停顿。',
       }).text,
-    ).toBe('也不能牺牲停顿')
+    ).toBe('，也不能牺牲停顿')
+  })
+
+  test('removes one duplicated leading boundary punctuation', () => {
+    expect(
+      applyVoiceDecisionBoundaryFallback(decision('，，需要补充验收标准。'), {
+        before: '这项任务已经完成开发',
+        after: '，后续还要安排验收',
+        asrTranscript: '需要补充验收标准。',
+      }).text,
+    ).toBe('，需要补充验收标准')
   })
 
   test('keeps leading punctuation when it belongs to ASR', () => {
     expect(
       applyVoiceDecisionBoundaryFallback(decision('，而且更容易维护。'), {
-        before: '前文',
-        after: '，后文',
+        before: '这版实现不只是能跑',
+        after: '，后续还要加测试',
         asrTranscript: '，而且更容易维护。',
       }).text,
     ).toBe('，而且更容易维护')

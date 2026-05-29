@@ -92,7 +92,7 @@ export const openWhisperLiveKitNativeStream = async (args: {
     const armSettleTimeout = () => {
       if (settleTimeoutId !== null) window.clearTimeout(settleTimeoutId)
       settleTimeoutId = window.setTimeout(() => {
-        if (!settled) complete()
+        if (!settled && latestText.trim().length > 0) complete()
       }, FINALIZE_SETTLE_MS)
     }
 

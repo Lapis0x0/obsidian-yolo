@@ -85,7 +85,9 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
       transcriptionPath: '',
       chatCompletionsPath: stringOr(chatAudio.chatCompletionsPath, ''),
       audioContentFormat: stringOr(chatAudio.audioContentFormat, 'input_audio'),
-      audioFormat: 'auto',
+      // Legacy chat-audio recordings were sent as wav for broad endpoint
+      // compatibility (notably Gemini-compatible OpenAI facades).
+      audioFormat: 'wav',
       transportMode: 'node',
       language: stringOr(chatAudio.language, topLevelLanguage),
     })

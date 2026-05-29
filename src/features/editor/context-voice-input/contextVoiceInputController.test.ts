@@ -70,6 +70,7 @@ const seedReadySession = (
     pendingSegments: [],
     polishWorkerRunning: false,
     inFlightPolish: null,
+    mergeAbortTimers: [],
     streamingAsr: null,
     streamingAsrStartedAt: null,
   }
@@ -119,6 +120,7 @@ const seedStreamingRecordingSession = (
     pendingSegments: [],
     polishWorkerRunning: false,
     inFlightPolish: null,
+    mergeAbortTimers: [],
     streamingAsr: input.streamingAsr,
     streamingAsrStartedAt: 1,
   }

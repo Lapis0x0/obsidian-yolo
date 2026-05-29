@@ -95,6 +95,8 @@ type ActiveSession = {
   polishWorkerRunning: boolean
   /** Most recent polish call still running, if any. */
   inFlightPolish: InFlightPolish | null
+  /** Merge-wait timers armed to abort the current in-flight polish. */
+  mergeAbortTimers: number[]
   streamingAsr: AsrStreamingSession | null
   streamingAsrStartedAt: number | null
   asrDurationMs?: number
@@ -247,6 +249,13 @@ export class ContextVoiceInputController {
     if (this.softRestartTimer === null) return
     window.clearTimeout(this.softRestartTimer)
     this.softRestartTimer = null
+  }
+
+  private clearMergeAbortTimers(session: ActiveSession): void {
+    for (const timer of session.mergeAbortTimers) {
+      window.clearTimeout(timer)
+    }
+    session.mergeAbortTimers = []
   }
 
   setSummaryManager(manager: DocumentSummaryManager | null): void {
@@ -489,10 +498,12 @@ export class ContextVoiceInputController {
       pendingSegments: [],
       polishWorkerRunning: false,
       inFlightPolish: null,
+      mergeAbortTimers: [],
       streamingAsr: null,
       streamingAsrStartedAt: null,
     }
 
+    const activeSession = this.session
     const recorder = new VoiceInputRecorder()
     try {
       this.session.streamingAsr = await this.startStreamingAsrIfSupported(
@@ -512,6 +523,15 @@ export class ContextVoiceInputController {
           ? (chunk) => this.handleRecordingChunk(this.session, chunk)
           : undefined,
         onAutoStop: () => this.handleRecorderAutoStop(recorder),
+        onError: (error) => {
+          if (
+            this.session !== activeSession ||
+            (this.recorder !== null && this.recorder !== recorder)
+          ) {
+            return
+          }
+          this.handleSessionError(error)
+        },
       })
     } catch (error) {
       try {
@@ -653,6 +673,7 @@ export class ContextVoiceInputController {
 
     if (!audio.blob || audio.blob.size === 0) {
       if (session.decision) {
+        if (!this.ensureDecisionAnchorStillCurrent(session)) return
         this.updateStatus('ready')
         return
       }
@@ -724,6 +745,7 @@ export class ContextVoiceInputController {
 
     if (!audio.blob || audio.blob.size === 0) {
       if (session.decision) {
+        if (!this.ensureDecisionAnchorStillCurrent(session)) return
         await this.startNextRecordingSegment(session, this.deps.getSettings())
         return
       }
@@ -767,6 +789,15 @@ export class ContextVoiceInputController {
           ? (chunk) => this.handleRecordingChunk(session, chunk)
           : undefined,
         onAutoStop: () => this.handleRecorderAutoStop(recorder),
+        onError: (error) => {
+          if (
+            this.session !== session ||
+            (this.recorder !== null && this.recorder !== recorder)
+          ) {
+            return
+          }
+          this.handleSessionError(error)
+        },
       })
     } catch (error) {
       try {
@@ -827,7 +858,10 @@ export class ContextVoiceInputController {
     // forget — abort() is idempotent and the worker handles the abort path.
     const inflight = session.inFlightPolish
     if (inflight) {
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        session.mergeAbortTimers = session.mergeAbortTimers.filter(
+          (id) => id !== timer,
+        )
         if (this.session !== session) return
         if (session.inFlightPolish !== inflight) return
         try {
@@ -836,6 +870,7 @@ export class ContextVoiceInputController {
           // Best-effort.
         }
       }, MERGE_WAIT_FOR_INFLIGHT_MS)
+      session.mergeAbortTimers.push(timer)
     }
 
     if (!session.polishWorkerRunning) {
@@ -958,13 +993,15 @@ export class ContextVoiceInputController {
           })
           // The aborted polish never committed; the baseline previousModelOutput
           // is still the truth.
-          if (session.inFlightPolish === record) session.inFlightPolish = null
           continue
         }
         this.handleSessionError(error)
         return
       } finally {
-        if (session.inFlightPolish === record) session.inFlightPolish = null
+        if (session.inFlightPolish === record) {
+          session.inFlightPolish = null
+          this.clearMergeAbortTimers(session)
+        }
       }
 
       if (!decision) continue
@@ -1123,6 +1160,39 @@ export class ContextVoiceInputController {
     }
   }
 
+  private ensureDecisionAnchorStillCurrent(session: ActiveSession): boolean {
+    const view = this.resolveSessionView(session)
+    if (!view) {
+      this.cancelActiveSession('editor-changed')
+      return false
+    }
+
+    const editor = session.editor
+    if (session.hasSelection) {
+      if ((editor.getSelection() ?? '').length === 0) {
+        this.cancelActiveSession('selection-lost')
+        return false
+      }
+      const currentFromOffset = editor.posToOffset(editor.getCursor('from'))
+      const currentToOffset = editor.posToOffset(editor.getCursor('to'))
+      if (
+        currentFromOffset !== session.selectionFromOffset ||
+        currentToOffset !== session.selectionToOffset
+      ) {
+        this.cancelActiveSession('selection-moved')
+        return false
+      }
+      return true
+    }
+
+    const currentCursorOffset = editor.posToOffset(editor.getCursor())
+    if (currentCursorOffset !== session.startCursorOffset) {
+      this.cancelActiveSession('cursor-moved')
+      return false
+    }
+    return true
+  }
+
   acceptPendingPreview(editor?: Editor): boolean {
     const view = editor ? this.deps.getEditorView(editor) : this.session?.view
     if (!view) return false
@@ -1209,9 +1279,9 @@ export class ContextVoiceInputController {
     let documentHotWords: string[] | null = null
     if (options.documentSummaryEnabled && this.summaryManager) {
       try {
-        // The summary cache is keyed by file path; the content arg is used
-        // only for drift detection. Use the full editor value so the hash
-        // matches what `warm()` was called with at recording start.
+        // The summary manager owns its refresh policy (session / timed TTL).
+        // Pass the full editor value so any scheduled refresh summarizes the
+        // current note, while lookups can still serve a warm cached result.
         const fullContent = session.editor.getValue()
         const cached = this.summaryManager.getSummary({
           filePath: session.filePath,
@@ -1540,6 +1610,7 @@ export class ContextVoiceInputController {
     this.clearSoftRestartTimer()
     const session = this.session
     if (session) {
+      this.clearMergeAbortTimers(session)
       try {
         session.streamingAsr?.cancel()
       } catch {
@@ -1581,6 +1652,7 @@ export class ContextVoiceInputController {
       this.deps.setInlineSuggestionGhost(session.view, null)
     }
     if (session) {
+      this.clearMergeAbortTimers(session)
       try {
         session.streamingAsr?.cancel()
       } catch {

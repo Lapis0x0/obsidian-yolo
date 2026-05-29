@@ -136,23 +136,39 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   }, [micDevices, t])
 
   const persistConfigs = useCallback(
-    async (
-      nextConfigs: AsrConfig[],
-      nextActiveId: string = activeId,
-    ): Promise<void> => {
+    async (nextConfigs: AsrConfig[], nextActiveId?: string): Promise<void> => {
+      const latestSettings = plugin.settings
+      const latestVoice = latestSettings.contextVoiceInputOptions
+      const latestConfigs = latestVoice.asrConfigs ?? []
+      const visibleIds = new Set(configs.map((config) => config.id))
+      const latestById = new Map(
+        latestConfigs.map((config) => [config.id, config]),
+      )
+      const rehydratedConfigs = nextConfigs.map(
+        (config) => latestById.get(config.id) ?? config,
+      )
+      const nextIds = new Set(rehydratedConfigs.map((config) => config.id))
+      const concurrentConfigs = latestConfigs.filter(
+        (config) => !visibleIds.has(config.id) && !nextIds.has(config.id),
+      )
+      const mergedConfigs = [...rehydratedConfigs, ...concurrentConfigs]
+      const preferredActiveId =
+        nextActiveId ?? latestVoice.activeAsrConfigId ?? activeId
+
       await setSettings({
-        ...settings,
+        ...latestSettings,
         contextVoiceInputOptions: {
-          ...voice,
-          asrConfigs: nextConfigs,
+          ...latestVoice,
+          asrConfigs: mergedConfigs,
           activeAsrConfigId:
-            nextActiveId && nextConfigs.some((c) => c.id === nextActiveId)
-              ? nextActiveId
-              : (nextConfigs[0]?.id ?? ''),
+            preferredActiveId &&
+            mergedConfigs.some((c) => c.id === preferredActiveId)
+              ? preferredActiveId
+              : (mergedConfigs[0]?.id ?? ''),
         },
       })
     },
-    [settings, setSettings, voice, activeId],
+    [activeId, configs, plugin, setSettings],
   )
 
   const handleDelete = (config: AsrConfig) => {
@@ -186,10 +202,12 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   const handleMicChange = (value: string) => {
     void (async () => {
       try {
+        const latestSettings = plugin.settings
+        const latestVoice = latestSettings.contextVoiceInputOptions
         await setSettings({
-          ...settings,
+          ...latestSettings,
           contextVoiceInputOptions: {
-            ...voice,
+            ...latestVoice,
             microphoneDeviceId: value,
           },
         })

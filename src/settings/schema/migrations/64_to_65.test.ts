@@ -74,7 +74,7 @@ describe('migrateFrom64To65', () => {
       chatCompletionsPath: '/chat/completions',
       audioContentFormat: 'input_audio',
       language: 'zh',
-      audioFormat: 'auto',
+      audioFormat: 'wav',
       transportMode: 'node',
     })
     expect(voice.activeAsrConfigId).toBe(configs[1].id)

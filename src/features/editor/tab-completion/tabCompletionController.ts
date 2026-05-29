@@ -573,33 +573,43 @@ export class TabCompletionController {
           }
 
           let rawText = ''
-          for await (const chunk of stream) {
-            // Streaming chunks may carry partial usage; the last one usually
-            // has the final totals. Track the latest so we can log on close.
-            if (chunk.usage) {
-              aggregatedUsage = chunk.usage
-            }
-            const delta = chunk.choices?.[0]?.delta?.content ?? ''
-            if (!delta) continue
-            rawText += delta
-
-            const currentView = this.deps.getEditorView(editor)
-            if (!currentView) return
-            if (currentView.state.selection.main.head !== scheduledCursorOffset)
-              return
-            if (editor.getSelection()?.length) return
-
-            if (!rawText.trim()) continue
-            updateSuggestion(rawText, currentView)
+          let streamUsageLogged = false
+          const logStreamUsage = () => {
+            if (streamUsageLogged) return
+            streamUsageLogged = true
+            logAuxiliaryLLMUsage({
+              purpose: 'tab-completion:stream',
+              modelName: model.name ?? model.model,
+              providerId: model.providerId,
+              usage: aggregatedUsage,
+              durationMs: Date.now() - auxStartedAt,
+            })
           }
+          try {
+            for await (const chunk of stream) {
+              // Streaming chunks may carry partial usage; the last one usually
+              // has the final totals. Track the latest so we can log on close.
+              if (chunk.usage) {
+                aggregatedUsage = chunk.usage
+              }
+              const delta = chunk.choices?.[0]?.delta?.content ?? ''
+              if (!delta) continue
+              rawText += delta
 
-          logAuxiliaryLLMUsage({
-            purpose: 'tab-completion:stream',
-            modelName: model.name ?? model.model,
-            providerId: model.providerId,
-            usage: aggregatedUsage,
-            durationMs: Date.now() - auxStartedAt,
-          })
+              const currentView = this.deps.getEditorView(editor)
+              if (!currentView) return
+              if (
+                currentView.state.selection.main.head !== scheduledCursorOffset
+              )
+                return
+              if (editor.getSelection()?.length) return
+
+              if (!rawText.trim()) continue
+              updateSuggestion(rawText, currentView)
+            }
+          } finally {
+            logStreamUsage()
+          }
 
           if (rawText.length === 0) return
           const currentView = this.deps.getEditorView(editor)

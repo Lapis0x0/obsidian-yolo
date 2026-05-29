@@ -52,6 +52,7 @@ export const transcodeToWav = async (
   const arrayBuffer = await input.blob.arrayBuffer()
   const ctx = getDecodeContext()
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  assertDecodedAudioNotEmpty(audioBuffer)
 
   const wavBlob = encodePcm16Wav(audioBuffer)
   return {
@@ -68,11 +69,19 @@ export const transcodeToPcm16 = async (
   const arrayBuffer = await input.blob.arrayBuffer()
   const ctx = getDecodeContext()
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  assertDecodedAudioNotEmpty(audioBuffer)
   return {
     audio: encodePcm16Raw(audioBuffer, targetSampleRate),
     sampleRate: targetSampleRate,
     durationMs: Math.round(audioBuffer.duration * 1000),
   }
+}
+
+const assertDecodedAudioNotEmpty = (audioBuffer: AudioBuffer): void => {
+  if (audioBuffer.length > 0 && audioBuffer.numberOfChannels > 0) return
+  throw new Error(
+    'Decoded audio is empty; cannot transcode an empty recording.',
+  )
 }
 
 /**

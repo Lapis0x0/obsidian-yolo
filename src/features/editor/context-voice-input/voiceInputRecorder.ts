@@ -24,6 +24,8 @@ export type VoiceInputRecorderStartOptions = {
   deviceId?: string
   onChunk?: (chunk: Blob) => void
   onPcm16Chunk?: (chunk: ArrayBuffer, sampleRate: number) => void
+  /** Called when MediaRecorder fails before a caller has entered stop(). */
+  onError?: (error: VoiceInputRecorderError) => void
   /**
    * Called when the max-duration guard fires. Return `true` when the caller
    * took ownership of stopping; return `false` to fall back to recorder-owned
@@ -227,12 +229,17 @@ export class VoiceInputRecorder {
         ((event as any).error?.message as string | undefined) ??
         'Recorder error.'
       const error = new VoiceInputRecorderError(message, 'unknown')
+      this.cancelRequested = true
       if (this.rejectStop) {
         const reject = this.rejectStop
         this.resetCallbacks()
         this.cleanup()
         reject(error)
+        return
       }
+      this.resetCallbacks()
+      this.cleanup()
+      opts.onError?.(error)
     }
     ;(recorder as any).onstop = () => {
       if (this.cancelRequested) {
@@ -349,6 +356,10 @@ export class VoiceInputRecorder {
   }
 
   private cleanup() {
+    if (this.autoStopTimer) {
+      clearTimeout(this.autoStopTimer)
+      this.autoStopTimer = null
+    }
     this.stopPcm16Streaming()
     this.releaseStream()
     this.mediaRecorder = null

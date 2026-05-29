@@ -50,6 +50,27 @@ describe('VoicePrefixCacheManager', () => {
     expect(second.slice.length).toBe(first.slice.length + 500)
   })
 
+  it('warm hit: short initial anchor window stays valid as the cursor grows', () => {
+    const mgr = new VoicePrefixCacheManager()
+    const doc = genText(16, 1000)
+    const first = mgr.pickBeforeSlice({
+      filePath: '/a.md',
+      fullDocBefore: doc.slice(0, 100),
+      minPrefixChars: MIN,
+      maxPrefixChars: MAX,
+    })
+    const second = mgr.pickBeforeSlice({
+      filePath: '/a.md',
+      fullDocBefore: doc.slice(0, 300),
+      minPrefixChars: MIN,
+      maxPrefixChars: MAX,
+    })
+    expect(first.cacheMissExpected).toBe(true)
+    expect(second.cacheMissExpected).toBe(false)
+    expect(second.prefixStart).toBe(first.prefixStart)
+    expect(second.slice).toBe(doc.slice(first.prefixStart, 300))
+  })
+
   it('backward jump past anchor → new anchor (legal anchor exists but is too far ahead)', () => {
     const mgr = new VoicePrefixCacheManager()
     const doc = genText(3, 10000)

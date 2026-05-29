@@ -60,10 +60,11 @@ type CacheEntry = {
   prefixStart: number
   /**
    * The actual characters at `[prefixStart, prefixStart + ANCHOR_WINDOW_CHARS)`
-   * when the anchor was set. On the next call we re-read this region from the
-   * current document and compare bytes directly; if they differ, the user has
-   * edited at or before the anchor offset and the anchor is no longer pointing
-   * at the same content as before — re-anchor.
+   * when the anchor was set, truncated if the cursor was closer than that.
+   * On the next call we re-read the same captured length from the current
+   * document and compare bytes directly; if they differ, the user has edited
+   * at or before the anchor offset and the anchor is no longer pointing at
+   * the same content as before — re-anchor.
    */
   anchorBytes: string
   /**
@@ -159,7 +160,7 @@ export class VoicePrefixCacheManager {
       if (entry.prefixStart > cursor) continue
       if (cursor - entry.prefixStart > input.maxPrefixChars) continue
       if (
-        anchorBytesAt(input.fullDocBefore, entry.prefixStart) !==
+        anchorBytesAt(input.fullDocBefore, entry.prefixStart, entry) !==
         entry.anchorBytes
       ) {
         continue
@@ -229,13 +230,18 @@ export class VoicePrefixCacheManager {
 //    way.
 //  - Saving the original bytes is what we actually mean: "is the doc still
 //    the same at this offset?". The hash was an obfuscation of that.
-//  - When the anchor sits near doc end, the window naturally truncates to
-//    fewer than 256 chars. String compare handles different-length windows
-//    correctly (different strings); the old hash had to encode length as a
-//    prefix to avoid collisions on truncated windows. Removing that
-//    bookkeeping.
+//  - When the anchor sits near the cursor, the first window may be shorter
+//    than 256 chars. Later typing extends the document tail, so compare only
+//    the originally captured length; otherwise a stable anchor would miss
+//    just because more text now exists after it.
 //
 // Memory cost: 256 chars × slotsPerFile (4) × N files ≈ 100KB at 100 cached
 // files. Negligible.
-const anchorBytesAt = (text: string, start: number): string =>
-  text.slice(start, start + ANCHOR_WINDOW_CHARS)
+const anchorBytesAt = (
+  text: string,
+  start: number,
+  existing?: Pick<CacheEntry, 'anchorBytes'>,
+): string => {
+  const length = existing?.anchorBytes.length ?? ANCHOR_WINDOW_CHARS
+  return text.slice(start, start + length)
+}
