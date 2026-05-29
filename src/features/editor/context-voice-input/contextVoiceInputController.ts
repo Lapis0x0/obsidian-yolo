@@ -17,6 +17,10 @@ import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSu
 
 import type { DocumentSummaryManager } from './documentSummaryManager'
 import {
+  applyVoiceDecisionBoundaryFallback,
+  getVoiceDecisionInsertionOffset,
+} from './voiceDecisionBoundaryFallback'
+import {
   type VoiceEditorDecision,
   parseVoiceEditorDecision,
 } from './voiceDecisionParser'
@@ -181,6 +185,13 @@ const sliceAfter = (
   const endPos = { line: lastLine, ch: lastLineLen }
   const fullAfter = editor.getRange(fromPos, endPos)
   return fullAfter.slice(0, maxChars)
+}
+
+const sliceBoundaryBefore = (editor: Editor, offset: number): string => {
+  if (offset <= 0) return ''
+  const fromPos = editor.offsetToPos(offset - 1)
+  const toPos = editor.offsetToPos(offset)
+  return editor.getRange(fromPos, toPos)
 }
 
 const IDLE_STATUS: VoiceInputStatus = {
@@ -1224,8 +1235,18 @@ export class ContextVoiceInputController {
       purpose: 'auxiliary',
     })
 
-    return parseVoiceEditorDecision(result.content ?? '', {
+    const decision = parseVoiceEditorDecision(result.content ?? '', {
       hasSelection: session.hasSelection,
+    })
+    const insertionOffset = getVoiceDecisionInsertionOffset(decision.action, {
+      startCursorOffset: session.startCursorOffset,
+      selectionFromOffset: session.selectionFromOffset,
+      selectionToOffset: session.selectionToOffset,
+    })
+    return applyVoiceDecisionBoundaryFallback(decision, {
+      before: sliceBoundaryBefore(session.editor, insertionOffset),
+      after,
+      asrTranscript: transcript,
     })
   }
 
