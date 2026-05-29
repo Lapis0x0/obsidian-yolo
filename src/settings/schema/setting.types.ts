@@ -468,8 +468,9 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   // Independent from the before-cursor window above.
   maxAfterContextChars: 600,
   maxRecordingSeconds: 120,
-  vadSpeechStartDecibels: -42,
-  vadSilenceDecibels: -38,
+  vadSpeechStartDecibels: -40,
+  vadSilenceDecibels: -36,
+  vadSpeechRequiredMs: 200,
   vadSilenceHoldMs: 1200,
   // Distance from the bottom of the active editor pane to the floating
   // island, expressed in vh so the same value reads similarly on a desktop
@@ -513,8 +514,9 @@ const contextVoiceInputOptionsSchema = z
     contextRangeChars: z.number().int().min(0).catch(2000),
     maxAfterContextChars: z.number().int().min(0).catch(600),
     maxRecordingSeconds: z.number().int().min(5).max(900).catch(120),
-    vadSpeechStartDecibels: z.number().min(-50).max(-5).catch(-42),
-    vadSilenceDecibels: z.number().min(-50).max(-5).catch(-38),
+    vadSpeechStartDecibels: z.number().min(-50).max(-5).catch(-40),
+    vadSilenceDecibels: z.number().min(-50).max(-5).catch(-36),
+    vadSpeechRequiredMs: z.number().int().min(50).max(2000).catch(200),
     vadSilenceHoldMs: z.number().int().min(300).max(5000).catch(1200),
     floatingIslandBottomOffsetVh: z.number().min(0).max(50).catch(9),
     microphoneDeviceId: z.string().catch(''),

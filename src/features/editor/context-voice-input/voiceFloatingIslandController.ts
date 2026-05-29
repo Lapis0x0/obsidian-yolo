@@ -36,6 +36,7 @@ type InteractionMode = 'toggle-listen' | 'hold-to-talk'
 type VoiceVadOptions = {
   speechStartDecibels: number
   silenceDecibels: number
+  speechRequiredMs: number
   silenceHoldMs: number
 }
 
@@ -70,10 +71,10 @@ const WAVE_BAR_WIDTH = 3 // px per amplitude sample in the scrolling band
 // VAD tuning. Start detection is a little more sensitive so quiet speech can
 // arm the session; once speech has been heard, the stop threshold becomes
 // stricter so room noise does not keep toggle-listen alive forever.
-const DEFAULT_VAD_SPEECH_START_DECIBELS = -42
-const DEFAULT_VAD_SILENCE_DECIBELS = -38
+const DEFAULT_VAD_SPEECH_START_DECIBELS = -40
+const DEFAULT_VAD_SILENCE_DECIBELS = -36
 const DEFAULT_VAD_SILENCE_HOLD_MS = 1200 // stop ~1.2 s after speech tails off
-const VAD_SPEECH_REQUIRED_MS = 120 // ignore stray pops < this duration
+const DEFAULT_VAD_SPEECH_REQUIRED_MS = 200 // ignore stray pops < this duration
 
 export class VoiceFloatingIslandController {
   private root: HTMLElement | null = null
@@ -840,6 +841,8 @@ export class VoiceFloatingIslandController {
     ) {
       const now = Date.now()
       const vadOptions = this.deps.getVadOptions()
+      const speechRequiredMs =
+        vadOptions.speechRequiredMs ?? DEFAULT_VAD_SPEECH_REQUIRED_MS
       const speakingThreshold = this.vadEverHeardSpeech
         ? (vadOptions.silenceDecibels ?? DEFAULT_VAD_SILENCE_DECIBELS)
         : (vadOptions.speechStartDecibels ?? DEFAULT_VAD_SPEECH_START_DECIBELS)
@@ -849,7 +852,7 @@ export class VoiceFloatingIslandController {
           this.vadSpeechActiveSinceMs = now
         }
         this.vadSilenceSinceMs = 0
-        if (now - this.vadSpeechActiveSinceMs >= VAD_SPEECH_REQUIRED_MS) {
+        if (now - this.vadSpeechActiveSinceMs >= speechRequiredMs) {
           this.vadEverHeardSpeech = true
         }
       } else {

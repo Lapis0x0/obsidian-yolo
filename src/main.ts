@@ -967,6 +967,7 @@ export default class YoloPlugin extends Plugin {
         return {
           speechStartDecibels: voice.vadSpeechStartDecibels,
           silenceDecibels: voice.vadSilenceDecibels,
+          speechRequiredMs: voice.vadSpeechRequiredMs,
           silenceHoldMs: voice.vadSilenceHoldMs,
         }
       },

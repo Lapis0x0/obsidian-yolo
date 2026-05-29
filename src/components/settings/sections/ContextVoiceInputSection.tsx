@@ -69,6 +69,7 @@ export function ContextVoiceInputSection() {
         : '',
     vadSpeechStartDecibels: String(voice.vadSpeechStartDecibels),
     vadSilenceDecibels: String(voice.vadSilenceDecibels),
+    vadSpeechRequiredMs: String(voice.vadSpeechRequiredMs),
     vadSilenceHoldMs: String(voice.vadSilenceHoldMs),
     floatingIslandBottomOffsetVh: String(voice.floatingIslandBottomOffsetVh),
   })
@@ -658,6 +659,7 @@ export function ContextVoiceInputSection() {
                   deviceId={voice.microphoneDeviceId ?? ''}
                   speechStartDecibels={visibleSpeechStartDecibels}
                   silenceDecibels={visibleSilenceDecibels}
+                  speechRequiredMs={voice.vadSpeechRequiredMs}
                   silenceHoldMs={voice.vadSilenceHoldMs}
                 />
               </div>
@@ -669,7 +671,7 @@ export function ContextVoiceInputSection() {
                 )}
                 desc={t(
                   'settings.contextVoiceInput.vadSpeechStartDecibelsDesc',
-                  'More negative catches quieter speech; less negative ignores more background noise. Default: -42.',
+                  'More negative catches quieter speech; less negative ignores more background noise. Default: -40.',
                 )}
                 className="yolo-settings-card"
               >
@@ -681,7 +683,7 @@ export function ContextVoiceInputSection() {
                   max={DECIBEL_CHART_CEILING}
                   step={1}
                   onChange={updateSpeechStartDecibelsInput}
-                  placeholder="-42"
+                  placeholder="-40"
                 />
               </ObsidianSetting>
 
@@ -692,7 +694,7 @@ export function ContextVoiceInputSection() {
                 )}
                 desc={t(
                   'settings.contextVoiceInput.vadSilenceDecibelsDesc',
-                  'After speech has started, audio below this level counts as silence. Default: -38.',
+                  'After speech has started, audio below this level counts as silence. Default: -36.',
                 )}
                 className="yolo-settings-card"
               >
@@ -704,7 +706,37 @@ export function ContextVoiceInputSection() {
                   max={DECIBEL_CHART_CEILING}
                   step={1}
                   onChange={updateSilenceDecibelsInput}
-                  placeholder="-38"
+                  placeholder="-36"
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t(
+                  'settings.contextVoiceInput.vadSpeechRequiredMs',
+                  'Speech confirmation duration (ms)',
+                )}
+                desc={t(
+                  'settings.contextVoiceInput.vadSpeechRequiredMsDesc',
+                  'How long audio must stay above the speech threshold before it counts as speech. Default: 200.',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={numberInputs.vadSpeechRequiredMs}
+                  onChange={(value) => {
+                    setNumberInputs((s) => ({
+                      ...s,
+                      vadSpeechRequiredMs: value,
+                    }))
+                    const parsed = parseInteger(value)
+                    if (parsed !== null && parsed >= 50 && parsed <= 2000) {
+                      updateVoice(
+                        { vadSpeechRequiredMs: parsed },
+                        'vadSpeechRequiredMs',
+                      )
+                    }
+                  }}
+                  placeholder="200"
                 />
               </ObsidianSetting>
 

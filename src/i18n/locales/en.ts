@@ -1539,10 +1539,13 @@ export const en: TranslationKeys = {
         'Could not read the microphone. Check permission and device selection.',
       vadSpeechStartDecibels: 'Speech start threshold (dB)',
       vadSpeechStartDecibelsDesc:
-        'Range: -50 to -5. More negative catches quieter speech; closer to -5 ignores more background noise. Default: -42.',
+        'Range: -50 to -5. More negative catches quieter speech; closer to -5 ignores more background noise. Default: -40.',
       vadSilenceDecibels: 'Silence threshold after speech (dB)',
       vadSilenceDecibelsDesc:
-        'Range: -50 to -5. After speech has started, audio below this level counts as silence. Default: -38.',
+        'Range: -50 to -5. After speech has started, audio below this level counts as silence. Default: -36.',
+      vadSpeechRequiredMs: 'Speech confirmation duration (ms)',
+      vadSpeechRequiredMsDesc:
+        'How long audio must stay above the speech threshold before it counts as speech. Default: 200.',
       vadSilenceHoldMs: 'Silence duration to stop (ms)',
       vadSilenceHoldMsDesc:
         'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',

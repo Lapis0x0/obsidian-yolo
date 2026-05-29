@@ -7,7 +7,6 @@ export const DECIBEL_CHART_CEILING = -5
 const DECIBEL_HISTOGRAM_BINS = 100
 const DECIBEL_AXIS_TICKS = [-50, -40, -30, -20, -10, -5] as const
 const DECIBEL_ANALYSER_FFT_SIZE = 4096
-const VAD_SPEECH_REQUIRED_MS = 120
 
 const clampChartDecibels = (value: number): number =>
   Math.min(DECIBEL_CHART_CEILING, Math.max(DECIBEL_CHART_FLOOR, value))
@@ -111,6 +110,7 @@ type VoiceDecibelMeterProps = {
   deviceId: string
   speechStartDecibels: number
   silenceDecibels: number
+  speechRequiredMs: number
   silenceHoldMs: number
 }
 
@@ -121,6 +121,7 @@ export function VoiceDecibelMeter({
   deviceId,
   speechStartDecibels,
   silenceDecibels,
+  speechRequiredMs,
   silenceHoldMs,
 }: VoiceDecibelMeterProps) {
   const [monitoring, setMonitoring] = useState(false)
@@ -139,6 +140,12 @@ export function VoiceDecibelMeter({
   const vadSpeechActiveSinceMsRef = useRef(0)
   const vadSilenceSinceMsRef = useRef(0)
   const vadEverHeardSpeechRef = useRef(false)
+  const vadOptionsRef = useRef({
+    speechStartDecibels,
+    silenceDecibels,
+    speechRequiredMs,
+    silenceHoldMs,
+  })
 
   useEffect(() => {
     paintDecibelHistogram({
@@ -147,6 +154,15 @@ export function VoiceDecibelMeter({
       highlight: highlightRef.current,
     })
   }, [levelDb])
+
+  useEffect(() => {
+    vadOptionsRef.current = {
+      speechStartDecibels,
+      silenceDecibels,
+      speechRequiredMs,
+      silenceHoldMs,
+    }
+  }, [silenceDecibels, silenceHoldMs, speechRequiredMs, speechStartDecibels])
 
   const stop = useCallback(() => {
     startRunRef.current += 1
@@ -252,14 +268,15 @@ export function VoiceDecibelMeter({
         // so the settings meter reflects the thresholds used at runtime.
         const nextDb = rms > 0 ? 20 * Math.log10(rms) : -120
         const now = Date.now()
+        const vadOptions = vadOptionsRef.current
         if (!vadEverHeardSpeechRef.current) {
-          if (nextDb > speechStartDecibels) {
+          if (nextDb > vadOptions.speechStartDecibels) {
             if (vadSpeechActiveSinceMsRef.current === 0) {
               vadSpeechActiveSinceMsRef.current = now
             }
             if (
               now - vadSpeechActiveSinceMsRef.current >=
-              VAD_SPEECH_REQUIRED_MS
+              vadOptions.speechRequiredMs
             ) {
               vadEverHeardSpeechRef.current = true
               vadSilenceSinceMsRef.current = 0
@@ -271,7 +288,7 @@ export function VoiceDecibelMeter({
             vadSpeechActiveSinceMsRef.current = 0
             setActiveVadState('silence')
           }
-        } else if (nextDb > silenceDecibels) {
+        } else if (nextDb > vadOptions.silenceDecibels) {
           vadSilenceSinceMsRef.current = 0
           setActiveVadState('speech')
         } else {
@@ -279,7 +296,7 @@ export function VoiceDecibelMeter({
           if (vadSilenceSinceMsRef.current === 0) {
             vadSilenceSinceMsRef.current = now
           }
-          if (now - vadSilenceSinceMsRef.current >= silenceHoldMs) {
+          if (now - vadSilenceSinceMsRef.current >= vadOptions.silenceHoldMs) {
             vadSilenceSinceMsRef.current = 0
             vadEverHeardSpeechRef.current = false
             setActiveVadState('silence')
@@ -316,7 +333,7 @@ export function VoiceDecibelMeter({
         ),
       )
     }
-  }, [deviceId, silenceDecibels, silenceHoldMs, speechStartDecibels, stop, t])
+  }, [deviceId, stop, t])
 
   const toggle = () => {
     if (monitoring) {

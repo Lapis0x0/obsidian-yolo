@@ -1287,6 +1287,8 @@ export type TranslationKeys = {
       vadSpeechStartDecibelsDesc?: string
       vadSilenceDecibels?: string
       vadSilenceDecibelsDesc?: string
+      vadSpeechRequiredMs?: string
+      vadSpeechRequiredMsDesc?: string
       vadSilenceHoldMs?: string
       vadSilenceHoldMsDesc?: string
       floatingIslandBottomOffsetVh?: string

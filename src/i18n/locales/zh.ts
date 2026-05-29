@@ -1420,10 +1420,13 @@ export const zh: TranslationKeys = {
         '无法读取麦克风。请检查权限和麦克风设备选择。',
       vadSpeechStartDecibels: '开口检测阈值 (dB)',
       vadSpeechStartDecibelsDesc:
-        '可调范围 -50 到 -5。数值越负越容易捕获小声说话；越接近 -5 越能忽略背景噪声。默认 -42。',
+        '可调范围 -50 到 -5。数值越负越容易捕获小声说话；越接近 -5 越能忽略背景噪声。默认 -40。',
       vadSilenceDecibels: '说话后静音阈值 (dB)',
       vadSilenceDecibelsDesc:
-        '可调范围 -50 到 -5。确认开始说话后，低于这个音量会计为静音。默认 -38。',
+        '可调范围 -50 到 -5。确认开始说话后，低于这个音量会计为静音。默认 -36。',
+      vadSpeechRequiredMs: '开口确认时间 (ms)',
+      vadSpeechRequiredMsDesc:
+        '声音持续超过开口阈值多久后，才确认已经开始说话。默认 200。',
       vadSilenceHoldMs: '静音多久后切段 (ms)',
       vadSilenceHoldMsDesc:
         '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
