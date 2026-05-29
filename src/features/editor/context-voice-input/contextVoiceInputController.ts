@@ -220,8 +220,22 @@ export class ContextVoiceInputController {
   private listeners = new Set<VoiceInputStateListener>()
   private summaryManager: DocumentSummaryManager | null = null
   private prefixCacheManager: VoicePrefixCacheManager | null = null
+  /**
+   * Pending soft-restart timer set by {@link handleEditorSelectionChange}.
+   * Debounces rapid cursor moves (arrow keys, drag-select) into one restart
+   * after the user settles, instead of thrashing the recorder. Cleared by
+   * {@link cancelActiveSession} so a session teardown can't leave a stray
+   * fire that would spin up a new recording.
+   */
+  private softRestartTimer: number | null = null
 
   constructor(private readonly deps: VoiceInputControllerDeps) {}
+
+  private clearSoftRestartTimer(): void {
+    if (this.softRestartTimer === null) return
+    window.clearTimeout(this.softRestartTimer)
+    this.softRestartTimer = null
+  }
 
   setSummaryManager(manager: DocumentSummaryManager | null): void {
     this.summaryManager = manager
@@ -258,6 +272,59 @@ export class ContextVoiceInputController {
   destroy() {
     this.cancelActiveSession('shutdown')
     this.listeners.clear()
+  }
+
+  /**
+   * Called from a global CodeMirror updateListener on every selection
+   * change. When the user clicks / arrow-keys away during recording, we
+   * soft-restart the session at the new cursor position: stop the recorder,
+   * drop the captured audio / unaccepted preview, and spin up a fresh
+   * recording rooted at the new offset. From the user's point of view the
+   * mic just "follows" the cursor.
+   *
+   * Guarded so this is a no-op in the cases where moving the cursor should
+   * NOT trigger a restart:
+   *   - No active session, or selection change in some other editor.
+   *   - Top-level state isn't 'recording' (once the user has stopped
+   *     listening, honour the existing cancel-on-accept contract).
+   *   - Hold-to-talk: the user's finger is on the mic button, so cursor
+   *     moves are accidental focus / scroll artefacts, not navigation.
+   *   - Cursor didn't actually move (selectionSet fires on every transaction
+   *     where the selection field is in the effects, even if the head /
+   *     anchor is identical to before).
+   */
+  handleEditorSelectionChange(view: EditorView): void {
+    const session = this.session
+    if (!session) return
+    const currentView = this.resolveSessionView(session)
+    if (!currentView || currentView !== view) return
+    if (this.status.state !== 'recording') return
+    const options = this.deps.getSettings().contextVoiceInputOptions
+    if (!options || options.interactionMode !== 'toggle-listen') return
+    const newOffset = view.state.selection.main.head
+    if (newOffset === session.startCursorOffset) return
+
+    this.clearSoftRestartTimer()
+    this.softRestartTimer = window.setTimeout(() => {
+      this.softRestartTimer = null
+      void this.performSoftRestart()
+    }, 200)
+  }
+
+  private async performSoftRestart(): Promise<void> {
+    const session = this.session
+    if (!session) return
+    if (this.status.state !== 'recording') return
+    const editor = session.editor
+    // cancelActiveSession aborts the recorder, in-flight ASR, the polish
+    // worker, and clears the ghost. After it returns this.session is null
+    // and we can safely re-enter initRecordingSession via startRecording.
+    this.cancelActiveSession('cursor-moved-soft-restart')
+    try {
+      await this.startRecording(editor)
+    } catch (error) {
+      console.error('Voice soft-restart failed:', error)
+    }
   }
 
   async toggle(editor: Editor): Promise<void> {
@@ -1406,6 +1473,7 @@ export class ContextVoiceInputController {
   }
 
   cancelActiveSession(reason: string): void {
+    this.clearSoftRestartTimer()
     const session = this.session
     if (session) {
       try {
@@ -1443,6 +1511,7 @@ export class ContextVoiceInputController {
   }
 
   private finishSession(): void {
+    this.clearSoftRestartTimer()
     const session = this.session
     if (session?.view) {
       this.deps.setInlineSuggestionGhost(session.view, null)

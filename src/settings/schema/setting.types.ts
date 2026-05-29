@@ -16,6 +16,17 @@ import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS, ReasoningLevel } from '../../types/reasoning'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
+import {
+  VOICE_POLISH_PROMPT_MODES,
+  type VoicePolishPromptMode,
+} from './voicePromptPresets'
+
+export {
+  DEFAULT_VOICE_INPUT_SYSTEM_PROMPT,
+  VOICE_POLISH_PROMPT_MODES,
+  VOICE_POLISH_PROMPT_PRESETS,
+} from './voicePromptPresets'
+export type { VoicePolishPromptMode } from './voicePromptPresets'
 
 const resilientArraySchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
@@ -346,123 +357,6 @@ export const ASR_TRANSPORT_MODES = [
   'node',
 ] as const
 export type AsrTransportMode = (typeof ASR_TRANSPORT_MODES)[number]
-
-/**
- * System-prompt presets for the voice polish step. Picking anything other
- * than `custom` swaps in a built-in starter prompt; `custom` exposes the
- * textarea so users can type their own. Presets are baked into
- * `VOICE_POLISH_PROMPT_PRESETS` below to keep the dropdown and the prompt
- * source in lockstep.
- */
-export const VOICE_POLISH_PROMPT_MODES = [
-  'default',
-  'translate',
-  'expand',
-  'polish',
-  'custom',
-] as const
-export type VoicePolishPromptMode = (typeof VOICE_POLISH_PROMPT_MODES)[number]
-
-export const DEFAULT_VOICE_INPUT_SYSTEM_PROMPT = `Polish one speech-to-text segment for insertion at the user's cursor. Cleanup only — do not paraphrase, expand, summarise, or change tone unless the transcript explicitly asks.
-
-Output: strict JSON. No Markdown fences, no commentary.
-  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
-    "text": string,
-    "notice"?: string }
-
-"text" — only the characters to INSERT (or replace the selection).
-- Fix obvious ASR slips (homophones, missing punctuation, mis-segmented words, dropped particles). For technical terms, proper nouns, or anything you're unsure about, KEEP the transcript's wording — do not guess.
-- If <asr_hot_words> is provided and the transcript contains a word that sounds like one of them but differs in spelling, prefer the hot-word spelling.
-- Honour spoken self-corrections ("not A, B" / "scratch that"): emit only the final version.
-- NEVER echo content from cursor_before, cursor_after, current_selection, document_summary, or asr_hot_words. Those blocks are read-only reference material; copying them into "text" will duplicate user content in the editor.
-- NEVER include the directive itself when the user speaks a transformation request (e.g. "change the last word to X"). Apply the transformation silently and explain in "notice".
-- For cancel directives ("never mind", "cancel"): set "text": "" and explain in "notice".
-- Empty "text" is allowed; never invent filler.
-
-"notice" — optional short string shown to the user via a toast.
-- Use ONLY when the inserted text alone would confuse the user (cancel, directive applied, transform of earlier content). One short sentence in the user's language.
-- Omit for normal dictation.
-
-Action choice:
-- has_selection=true + naturally replaces → "replace_selection"
-- has_selection=true + naturally follows → "insert_after_selection"
-- otherwise → "insert_at_cursor"
-
-When previous_model_output is present:
-- It is YOUR earlier polish of an earlier audio segment — still a preview, not yet in the editor. The user can Tab-accept it at any moment.
-- current_asr_final is the NEW segment only.
-- Default action: emit previous_model_output verbatim + a single space + the polished new segment, as ONE combined "text". No newline unless the user clearly indicated a paragraph break.
-- You may rewrite previous_model_output ONLY to merge an obvious spoken correction / restart from current_asr_final. Treat phrases such as "no, ...", "不是/不对，...", "重新说...", "我重说一下...", "应该是...", "改成...", "scratch that...", "I mean..." as instructions to revise the relevant previous words, not as literal text to append.
-- If current_asr_final is clearly the user re-saying the same sentence or clause with corrections, output ONE corrected version. Do NOT duplicate both the old draft and the new restatement.
-- If the new segment only corrects the tail of previous_model_output, preserve the untouched prefix and replace only the corrected tail.
-- If it is not clearly a correction/restart, keep previous_model_output intact and append the new segment.
-- Special cases:
-  * current_asr_final is empty / whitespace / only punctuation / only filler ("um", "啊") → emit previous_model_output VERBATIM. Do NOT erase it. Do NOT shorten it. Do NOT add a notice.
-  * current_asr_final is a cancel directive → emit "text": "" and set "notice".
-  * current_asr_final is a transform directive about previous_model_output → apply, emit only the transformed text, set "notice".
-- Returning only the new segment, or an empty string, when current_asr_final is normal dictation, is WRONG: it erases the user's earlier words. Always include previous_model_output unless one of the special cases above applies.`
-
-/**
- * Built-in prompt presets for voice polish. Each preset is a fully-formed
- * system prompt — picking it from the dropdown replaces the active polish
- * prompt directly (no extra textarea step). `custom` is the escape hatch
- * that surfaces the user's editable prompt instead.
- */
-export const VOICE_POLISH_PROMPT_PRESETS: Record<
-  Exclude<VoicePolishPromptMode, 'custom'>,
-  string
-> = {
-  default: DEFAULT_VOICE_INPUT_SYSTEM_PROMPT,
-  translate: `Translate one speech-to-text segment into the OPPOSITE of its detected language (Chinese ⇆ English).
-
-Output: strict JSON, no Markdown fences, no commentary.
-  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
-    "text": string,
-    "notice"?: string }
-
-- "text" is the translation only, in the target language. NEVER include the original alongside.
-- NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text" — they are read-only reference.
-- For cancel directives ("cancel", "never mind"): set "text": "", "notice": brief explanation.
-- "notice": optional one-line toast in the user's language; use only when "text" alone would confuse.
-- has_selection=true + transcript replaces it → "replace_selection"; otherwise "insert_at_cursor".
-- previous_model_output (if present) is your earlier translation of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the translation of current_asr_final, as ONE "text".
-- If current_asr_final clearly re-says or corrects the previous segment ("no...", "不是/不对...", "重新说...", "改成...", "I mean...", "scratch that..."), merge automatically: output ONE corrected translation, preserving untouched earlier text and replacing only the corrected span. Do not translate and append both versions.
-- If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).
-
-Examples:
-  "你好世界"   → { "action": "insert_at_cursor", "text": "Hello world" }
-  "scrap that" → { "action": "insert_at_cursor", "text": "", "notice": "Cancelled." }`,
-  expand: `Expand one speech-to-text segment from an outline / bullet idea into a coherent paragraph.
-
-Output: strict JSON, no Markdown fences, no commentary.
-  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
-    "text": string,
-    "notice"?: string }
-
-- Keep the user's language. Respect surrounding Markdown / list / heading structure.
-- NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text".
-- For cancel directives: set "text": "", "notice": brief explanation.
-- "notice": optional one-line toast; use only when "text" alone would confuse.
-- previous_model_output (if present) is your earlier expansion of an earlier segment. Default: emit previous_model_output VERBATIM + a space + the new expansion as ONE "text".
-- If current_asr_final clearly re-says or corrects the previous segment ("no...", "不是/不对...", "重新说...", "改成...", "I mean...", "scratch that..."), merge automatically: output ONE corrected expanded draft, preserving untouched earlier text and replacing only the corrected span. Do not append both versions.
-- If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
-  polish: `Polish one speech-to-text segment so it reads more formally and precisely. Preserve meaning and intent. You may refine word choice, tighten grammar, and tune cadence for academic, professional, or literary prose. Do NOT add facts, examples, or arguments the user did not say.
-
-Output: strict JSON, no Markdown fences, no commentary.
-  { "action": "insert_at_cursor" | "insert_after_selection" | "replace_selection",
-    "text": string,
-    "notice"?: string }
-
-- Keep the user's language and technical terms (do not replace jargon with lay synonyms).
-- Fix ASR slips first, then refine register. Be cautious with proper nouns / IDs / domain terms — keep the transcript's wording when in doubt.
-- Honour spoken self-corrections; emit only the final version.
-- NEVER echo cursor_before / cursor_after / current_selection / document_summary into "text".
-- For cancel directives: set "text": "", "notice": brief explanation.
-- "notice": optional one-line toast; use only when "text" alone would confuse.
-- previous_model_output (if present) is your earlier polish of an earlier segment. Default: emit previous_model_output + a space + polished new segment as ONE "text". Light cohesion retouch of previous_model_output is OK.
-- If current_asr_final clearly re-says or corrects the previous segment ("no...", "不是/不对...", "重新说...", "改成...", "I mean...", "scratch that..."), merge automatically: output ONE corrected polished draft, preserving untouched earlier text and replacing only the corrected span. Do not append both versions.
-- Dropping, shortening, or replacing previous_model_output with content the user did not say is NOT allowed. If current_asr_final is empty / whitespace / punctuation / filler only, emit previous_model_output verbatim (no notice).`,
-}
 
 /**
  * Single ASR configuration entry. Mirrors the provider/model pattern (one

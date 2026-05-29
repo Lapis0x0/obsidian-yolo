@@ -686,9 +686,19 @@ export class VoiceFloatingIslandController {
   }
 
   private isModeButtonCancel(state: VoiceInputStatus['state']): boolean {
+    if (this.deps.getInteractionMode() !== 'toggle-listen') return false
+    // Cancel button replaces the mode-switch icon for every active phase of
+    // a click-mode session. Switching interaction mode mid-flow has no useful
+    // meaning (the current session is already past the listen phase) and
+    // accidentally clicking would just be a click-eaten no-op — turning the
+    // right button into an explicit ✕ both prevents mistaken mode flips and
+    // exposes one-click bail-out from any in-flight ASR / LLM call or pending
+    // preview, matching the behaviour the user already sees while recording.
     return (
-      state === 'recording' &&
-      this.deps.getInteractionMode() === 'toggle-listen'
+      state === 'recording' ||
+      state === 'transcribing' ||
+      state === 'polishing' ||
+      state === 'ready'
     )
   }
 

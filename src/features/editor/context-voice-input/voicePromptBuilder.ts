@@ -58,7 +58,7 @@ const renderTargetBlock = (target: VoiceInputTarget): string => {
   ]
     .filter(Boolean)
     .join('\n')
-  return `<target_metadata>\n${meta}\n</target_metadata>`
+  return `<target_metadata>${meta}</target_metadata>`
 }
 
 export function buildVoiceInputMessages(
@@ -93,14 +93,13 @@ export function buildVoiceInputMessages(
   })
 
   // Section ordering is deliberate: stable / rarely-changing blocks first,
-  // then per-session blocks, then per-segment blocks. Providers with prompt
-  // caching (Anthropic explicit `cache_control`, OpenAI / DeepSeek automatic
-  // prefix cache) reuse the cached prefix for free across all polish calls
-  // in the same session, so the verbose system prompt + document context
-  // only costs full tokens on the first call of the session — everything
-  // after is cache-cheap. Don't reorder lightly: any change to a leading
-  // block invalidates the cache for the rest.
+  // then per-session blocks, then per-segment blocks. Provider prefix caches
+  // (Anthropic explicit `cache_control`, OpenAI / DeepSeek automatic) reuse
+  // the leading bytes across polish calls in the same session, so don't
+  // reorder lightly: any change to a leading block invalidates the cache for
+  // the rest.
   //
+  // Section layout:
   //   1. target_metadata   — changes only when the file changes
   //   2. document_summary  — refresh interval (default 1h)
   //   3. asr_hot_words     — same refresh as document_summary
@@ -112,7 +111,7 @@ export function buildVoiceInputMessages(
   const sections: string[] = [renderTargetBlock(target)]
   if (documentSummary && documentSummary.trim().length > 0) {
     sections.push(
-      `<document_summary>\n${documentSummary.trim()}\n</document_summary>`,
+      `<document_summary>${documentSummary.trim()}</document_summary>`,
     )
   }
   if (documentHotWords && documentHotWords.length > 0) {
@@ -120,34 +119,46 @@ export function buildVoiceInputMessages(
     // quoting noise). The system prompt already tells the model how to use
     // these — no per-prompt instruction needed.
     sections.push(
-      `<asr_hot_words>\n${documentHotWords.join(' | ')}\n</asr_hot_words>`,
+      `<asr_hot_words>${documentHotWords.join(' | ')}</asr_hot_words>`,
     )
   }
+  // Every tag wraps its payload tight — no padding newline between the
+  // opening tag and the payload, nor between the payload and the closing
+  // tag. For raw-content tags (cursor_*, current_selection, *_model_output,
+  // current_asr_final) this avoids the polish model misreading wrapper "\n"s
+  // as positional signal (e.g. "selection ended at end-of-paragraph" or
+  // "cursor sits on a fresh line"). For structured tags (target_metadata,
+  // document_summary, asr_hot_words) the wrapper newlines were purely
+  // cosmetic — stripping them saves a handful of tokens per call without
+  // changing parseability.
   if (before.length > 0) {
-    sections.push(`<cursor_before>\n${before}\n</cursor_before>`)
+    sections.push(`<cursor_before>${before}</cursor_before>`)
   }
   // Skip the cursor_after block when it would only contain whitespace
   // (most commonly a single trailing newline). Including a near-empty
-  // <cursor_after>\n\n\n</cursor_after> tends to signal "you're at end of
-  // a paragraph" to the polish model and triggers the "empty text" branch
+  // <cursor_after></cursor_after> tends to signal "you're at end of a
+  // paragraph" to the polish model and triggers the "empty text" branch
   // of the system prompt, which leaves the stage-1 ASR ghost stuck on
   // screen because the controller never receives a usable polish text.
   if (after.trim().length > 0) {
-    sections.push(`<cursor_after>\n${after}\n</cursor_after>`)
+    sections.push(`<cursor_after>${after}</cursor_after>`)
   }
   if (target.hasSelection && target.selectionText.length > 0) {
     sections.push(
-      `<current_selection>\n${target.selectionText}\n</current_selection>`,
+      `<current_selection>${target.selectionText}</current_selection>`,
     )
   }
   if (previousModelOutput && previousModelOutput.trim().length > 0) {
     sections.push(
-      `<previous_model_output>\n${previousModelOutput}\n</previous_model_output>`,
+      `<previous_model_output>${previousModelOutput}</previous_model_output>`,
     )
   }
-  sections.push(`<current_asr_final>\n${asrTranscript}\n</current_asr_final>`)
+  sections.push(`<current_asr_final>${asrTranscript}</current_asr_final>`)
 
-  const userContent = sections.join('\n\n')
+  // Single newline between sections (was '\n\n'). The closing tag of each
+  // section is already an unambiguous boundary; the blank line was visual
+  // formatting that the model paid tokens for without benefit.
+  const userContent = sections.join('\n')
 
   return [
     { role: 'system', content: systemPromptBody },

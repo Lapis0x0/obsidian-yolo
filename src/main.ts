@@ -1915,6 +1915,19 @@ export default class YoloPlugin extends Plugin {
     this.registerEditorExtension(
       this.getTabCompletionController().createTriggerExtension(),
     )
+    // Soft-restart voice-input session at the new cursor position whenever
+    // the user clicks / arrow-keys away during the recording phase. Listener
+    // is global but cheap (early-exits when there's no active voice session)
+    // — see ContextVoiceInputController.handleEditorSelectionChange for the
+    // full guard list (toggle-listen only, same editor, etc).
+    this.registerEditorExtension(
+      EditorView.updateListener.of((update) => {
+        if (!update.selectionSet) return
+        this.contextVoiceInputController?.handleEditorSelectionChange(
+          update.view,
+        )
+      }),
+    )
 
     // This creates an icon in the left ribbon.
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
