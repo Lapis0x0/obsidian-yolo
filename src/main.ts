@@ -130,9 +130,6 @@ export type RunAgentTaskOptions = {
   filePath?: string
   folderPath?: string
   assistantId?: string
-  placement?: ChatLeafPlacement
-  openNewChat?: boolean
-  forceNewLeaf?: boolean
 }
 
 export type RunAgentTaskResult = {
@@ -2633,9 +2630,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       folderToAdd instanceof TFolder ? folderToAdd : undefined
 
     await this.getChatViewNavigator().openChatWithAgentPromptAndSend(prompt, {
-      placement: options.placement ?? 'sidebar',
-      openNewChat: options.openNewChat ?? true,
-      forceNewLeaf: options.forceNewLeaf,
+      placement: 'sidebar',
+      openNewChat: true,
       assistantId: options.assistantId,
       fileToAdd,
       folderToAdd: resolvedFolderToAdd,
