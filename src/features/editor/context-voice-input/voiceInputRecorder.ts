@@ -307,9 +307,14 @@ export class VoiceInputRecorder {
       }
     })
     this.inFlightStop = promise
-    void promise.finally(() => {
-      if (this.inFlightStop === promise) this.inFlightStop = null
-    })
+    void promise.then(
+      () => {
+        if (this.inFlightStop === promise) this.inFlightStop = null
+      },
+      () => {
+        if (this.inFlightStop === promise) this.inFlightStop = null
+      },
+    )
     return promise
   }
 

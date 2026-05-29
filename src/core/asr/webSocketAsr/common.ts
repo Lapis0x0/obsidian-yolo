@@ -41,6 +41,7 @@ export type WhisperLiveKitNativeMessage = {
 }
 
 export const DEFAULT_LISTEN_PATH = '/listen'
+export const CONNECT_TIMEOUT_MS = 15_000
 export const FINALIZE_TIMEOUT_MS = 30_000
 export const FINALIZE_SETTLE_MS = 2_000
 export const LINEAR16_SAMPLE_RATE = 16_000
@@ -107,6 +108,34 @@ export const createAsrWebSocket = async (args: {
   return protocols && protocols.length > 0
     ? new WebSocket(url, protocols)
     : new WebSocket(url)
+}
+
+export const armWebSocketConnectTimeout = (args: {
+  socket: WebSocket
+  isSettled: () => boolean
+  onTimeout: (error: Error) => void
+}): (() => void) => {
+  const { socket, isSettled, onTimeout } = args
+  let timeoutId: number | null = window.setTimeout(() => {
+    timeoutId = null
+    if (isSettled() || socket.readyState !== WebSocket.CONNECTING) return
+    onTimeout(new Error('ASR WebSocket timed out while connecting.'))
+  }, CONNECT_TIMEOUT_MS)
+
+  const clear = () => {
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId)
+      timeoutId = null
+    }
+    socket.removeEventListener('open', clear)
+    socket.removeEventListener('error', clear)
+    socket.removeEventListener('close', clear)
+  }
+
+  socket.addEventListener('open', clear, { once: true })
+  socket.addEventListener('error', clear, { once: true })
+  socket.addEventListener('close', clear, { once: true })
+  return clear
 }
 
 const errorMessage = (value: unknown): string => {

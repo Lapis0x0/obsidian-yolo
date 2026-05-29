@@ -16,6 +16,7 @@ import {
   FINALIZE_SETTLE_MS,
   FINALIZE_TIMEOUT_MS,
   type WhisperLiveKitNativeMessage,
+  armWebSocketConnectTimeout,
   asError,
   createAsrWebSocket,
   errorMessage,
@@ -43,8 +44,11 @@ export const openWhisperLiveKitNativeStream = async (args: {
     const startedAt = Date.now()
     let timeoutId: number | null = null
     let settleTimeoutId: number | null = null
+    let clearConnectTimeout: (() => void) | null = null
 
     const cleanup = () => {
+      clearConnectTimeout?.()
+      clearConnectTimeout = null
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId)
         timeoutId = null
@@ -94,6 +98,11 @@ export const openWhisperLiveKitNativeStream = async (args: {
 
     const onAbort = () => fail(new DOMException('Aborted', 'AbortError'))
     signal?.addEventListener('abort', onAbort, { once: true })
+    clearConnectTimeout = armWebSocketConnectTimeout({
+      socket,
+      isSettled: () => settled || opened,
+      onTimeout: fail,
+    })
 
     const session: AsrStreamingSession = {
       sendAudioChunk(chunk: Blob | ArrayBuffer): void {

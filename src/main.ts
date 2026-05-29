@@ -1922,6 +1922,11 @@ export default class YoloPlugin extends Plugin {
     // full guard list (toggle-listen only, same editor, etc).
     this.registerEditorExtension(
       EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          this.contextVoiceInputController?.handleEditorDocumentChange(
+            update.view,
+          )
+        }
         if (!update.selectionSet) return
         this.contextVoiceInputController?.handleEditorSelectionChange(
           update.view,

@@ -231,6 +231,7 @@ export class ContextVoiceInputController {
   private listeners = new Set<VoiceInputStateListener>()
   private summaryManager: DocumentSummaryManager | null = null
   private prefixCacheManager: VoicePrefixCacheManager | null = null
+  private applyingAcceptedPreview = false
   /**
    * Pending soft-restart timer set by {@link handleEditorSelectionChange}.
    * Debounces rapid cursor moves (arrow keys, drag-select) into one restart
@@ -320,6 +321,33 @@ export class ContextVoiceInputController {
       this.softRestartTimer = null
       void this.performSoftRestart()
     }, 200)
+  }
+
+  /**
+   * Any external document edit invalidates the captured cursor context and
+   * offsets. The only doc change we intentionally allow through is the one
+   * produced by accepting the voice preview itself.
+   */
+  handleEditorDocumentChange(view: EditorView): void {
+    if (this.applyingAcceptedPreview) return
+    const session = this.session
+    if (!session) return
+    const currentView = this.resolveSessionView(session)
+    if (!currentView || currentView !== view) return
+
+    if (this.status.state === 'recording') {
+      const options = this.deps.getSettings().contextVoiceInputOptions
+      if (options?.interactionMode === 'toggle-listen') {
+        this.clearSoftRestartTimer()
+        this.softRestartTimer = window.setTimeout(() => {
+          this.softRestartTimer = null
+          void this.performSoftRestart()
+        }, 200)
+        return
+      }
+    }
+
+    this.cancelActiveSession('document-changed')
   }
 
   private async performSoftRestart(): Promise<void> {
@@ -589,13 +617,18 @@ export class ContextVoiceInputController {
     if (session.streamingAsr) {
       const streamingAsr = session.streamingAsr
       const streamingAsrStartedAt = session.streamingAsrStartedAt
+      try {
+        // Let MediaRecorder flush its final dataavailable chunk before
+        // finalising the WebSocket. `cancel()` skips that browser-owned tail,
+        // which can contain the last syllable right before the user stops.
+        await recorder.stop()
+      } catch (error) {
+        this.handleSessionError(error)
+        return
+      }
+      if (!this.session || this.session !== session) return
       session.streamingAsr = null
       session.streamingAsrStartedAt = null
-      try {
-        recorder.cancel()
-      } catch {
-        // Best-effort; audio has already been streamed.
-      }
       this.recorder = null
       this.enqueueTranscriptSegment({
         session,
@@ -649,13 +682,17 @@ export class ContextVoiceInputController {
     if (session.streamingAsr) {
       const streamingAsr = session.streamingAsr
       const streamingAsrStartedAt = session.streamingAsrStartedAt
+      try {
+        // Keep streamingAsr attached until stop() resolves so the final
+        // recorder chunk is still forwarded by handleRecordingChunk.
+        await recorder.stop()
+      } catch (error) {
+        this.handleSessionError(error)
+        return
+      }
+      if (!this.session || this.session !== session) return
       session.streamingAsr = null
       session.streamingAsrStartedAt = null
-      try {
-        recorder.cancel()
-      } catch {
-        // Best-effort; audio has already been streamed.
-      }
       this.recorder = null
       const transcribePromise = this.finishStreamingAsrSegment({
         session,
@@ -1384,26 +1421,31 @@ export class ContextVoiceInputController {
     })
 
     let endCursor: { line: number; ch: number }
-    switch (decision.action) {
-      case 'replace_selection': {
-        editor.replaceRange(insertionText, fromPos, toPos)
-        endCursor = this.computeEndCursor(fromPos, insertionText)
-        editor.setCursor(endCursor)
-        break
+    this.applyingAcceptedPreview = true
+    try {
+      switch (decision.action) {
+        case 'replace_selection': {
+          editor.replaceRange(insertionText, fromPos, toPos)
+          endCursor = this.computeEndCursor(fromPos, insertionText)
+          editor.setCursor(endCursor)
+          break
+        }
+        case 'insert_after_selection': {
+          editor.replaceRange(insertionText, toPos, toPos)
+          endCursor = this.computeEndCursor(toPos, insertionText)
+          editor.setCursor(endCursor)
+          break
+        }
+        case 'insert_at_cursor':
+        default: {
+          editor.replaceRange(insertionText, startPos, startPos)
+          endCursor = this.computeEndCursor(startPos, insertionText)
+          editor.setCursor(endCursor)
+          break
+        }
       }
-      case 'insert_after_selection': {
-        editor.replaceRange(insertionText, toPos, toPos)
-        endCursor = this.computeEndCursor(toPos, insertionText)
-        editor.setCursor(endCursor)
-        break
-      }
-      case 'insert_at_cursor':
-      default: {
-        editor.replaceRange(insertionText, startPos, startPos)
-        endCursor = this.computeEndCursor(startPos, insertionText)
-        editor.setCursor(endCursor)
-        break
-      }
+    } finally {
+      this.applyingAcceptedPreview = false
     }
 
     const settings = this.deps.getSettings()

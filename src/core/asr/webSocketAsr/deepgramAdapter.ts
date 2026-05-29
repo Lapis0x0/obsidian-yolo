@@ -19,6 +19,7 @@ import {
   type DeepgramResultsMessage,
   FINALIZE_SETTLE_MS,
   FINALIZE_TIMEOUT_MS,
+  armWebSocketConnectTimeout,
   asError,
   combineTranscript,
   createAsrWebSocket,
@@ -47,6 +48,7 @@ export const sendDeepgramCompatibleClip = async (args: {
     let lastTranscript = ''
     const finalParts: string[] = []
     let timeoutId: number | null = null
+    let clearConnectTimeout: (() => void) | null = null
 
     const fail = (error: unknown) => {
       if (settled) return
@@ -63,6 +65,8 @@ export const sendDeepgramCompatibleClip = async (args: {
     }
 
     const cleanup = () => {
+      clearConnectTimeout?.()
+      clearConnectTimeout = null
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId)
         timeoutId = null
@@ -83,6 +87,11 @@ export const sendDeepgramCompatibleClip = async (args: {
     const onAbort = () => fail(new DOMException('Aborted', 'AbortError'))
 
     signal?.addEventListener('abort', onAbort, { once: true })
+    clearConnectTimeout = armWebSocketConnectTimeout({
+      socket,
+      isSettled: () => settled,
+      onTimeout: fail,
+    })
 
     timeoutId = window.setTimeout(() => {
       fail(new Error('ASR WebSocket timed out waiting for final transcript.'))
@@ -184,8 +193,11 @@ export const openDeepgramCompatibleStream = async (args: {
     const startedAt = Date.now()
     let timeoutId: number | null = null
     let settleTimeoutId: number | null = null
+    let clearConnectTimeout: (() => void) | null = null
 
     const cleanup = () => {
+      clearConnectTimeout?.()
+      clearConnectTimeout = null
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId)
         timeoutId = null
@@ -238,6 +250,11 @@ export const openDeepgramCompatibleStream = async (args: {
 
     const onAbort = () => fail(new DOMException('Aborted', 'AbortError'))
     signal?.addEventListener('abort', onAbort, { once: true })
+    clearConnectTimeout = armWebSocketConnectTimeout({
+      socket,
+      isSettled: () => settled || opened,
+      onTimeout: fail,
+    })
 
     const session: AsrStreamingSession = {
       sendAudioChunk(chunk: Blob | ArrayBuffer): void {
