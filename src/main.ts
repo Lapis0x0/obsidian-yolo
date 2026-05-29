@@ -77,6 +77,7 @@ import {
   ChatLeafPlacement,
   ChatLeafSessionManager,
 } from './features/chat/chatLeafSessionManager'
+import { buildRunAgentTaskSubmissionOptions } from './features/chat/runAgentTaskSubmission'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { ExportConfigModal } from './features/config-transfer/components/ExportConfigModal'
@@ -2629,13 +2630,16 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const resolvedFolderToAdd =
       folderToAdd instanceof TFolder ? folderToAdd : undefined
 
-    await this.getChatViewNavigator().openChatWithAgentPromptAndSend(prompt, {
-      placement: 'sidebar',
-      openNewChat: true,
-      assistantId: options.assistantId,
-      fileToAdd,
-      folderToAdd: resolvedFolderToAdd,
-    })
+    await this
+      .getChatViewNavigator()
+      .openChatWithAgentPromptAndSend(
+        prompt,
+        buildRunAgentTaskSubmissionOptions({
+          assistantId: options.assistantId,
+          fileToAdd,
+          folderToAdd: resolvedFolderToAdd,
+        }),
+      )
 
     return {
       success: true,
