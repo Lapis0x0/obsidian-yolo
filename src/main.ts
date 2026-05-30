@@ -19,7 +19,10 @@ import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
-import { hasConfiguredAsrConfig } from './core/asr/configStatus'
+import {
+  hasConfiguredAsrConfig,
+  hasConfiguredAudioFileAsrConfig,
+} from './core/asr/configStatus'
 import {
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
@@ -137,6 +140,9 @@ type VoiceModules = {
   VoiceFloatingIslandController: typeof import('./features/editor/context-voice-input/voiceFloatingIslandController').VoiceFloatingIslandController
   VoicePrefixCacheManager: typeof import('./features/editor/context-voice-input/voicePrefixCacheManager').VoicePrefixCacheManager
 }
+
+type AudioDropSource = { file: File } | { vaultFile: TFile }
+type AudioFileDragKind = 'audio' | 'maybe-audio' | 'unsupported'
 
 export default class YoloPlugin extends Plugin {
   settings: YoloSettings
@@ -952,22 +958,21 @@ export default class YoloPlugin extends Plugin {
         return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
       },
       isAudioFileModeEnabled: () => {
-        const opts = this.settings?.contextVoiceInputOptions
-        return (
-          !!opts &&
-          opts.enabled &&
-          opts.audioFileTranscriptionEnabled &&
-          hasConfiguredAsrConfig(opts)
-        )
+        return this.isAudioFileTranscriptionFeatureReady()
       },
-      getInteractionMode: () =>
-        this.settings.contextVoiceInputOptions.interactionMode,
+      getAudioFileDragKind: (event) => this.getAudioFileDragKind(event),
+      resolveAudioFileFromDrop: (event) => this.resolveAudioFileFromDrop(event),
+      getInteractionMode: () => this.getVoiceInteractionMode(),
       setInteractionMode: async (mode) => {
+        const nextMode =
+          mode === 'audio-file' && !this.isAudioFileTranscriptionFeatureReady()
+            ? 'toggle-listen'
+            : mode
         await this.setSettings({
           ...this.settings,
           contextVoiceInputOptions: {
             ...this.settings.contextVoiceInputOptions,
-            interactionMode: mode,
+            interactionMode: nextMode,
           },
         })
       },
@@ -990,6 +995,18 @@ export default class YoloPlugin extends Plugin {
   private isContextVoiceInputFeatureReady(): boolean {
     const opts = this.settings?.contextVoiceInputOptions
     return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
+  }
+
+  private getVoiceInteractionMode():
+    | 'toggle-listen'
+    | 'hold-to-talk'
+    | 'audio-file' {
+    const mode =
+      this.settings.contextVoiceInputOptions.interactionMode ?? 'toggle-listen'
+    if (mode === 'audio-file' && !this.isAudioFileTranscriptionFeatureReady()) {
+      return 'toggle-listen'
+    }
+    return mode
   }
 
   private syncVoiceFloatingIsland(): void {
@@ -1017,25 +1034,90 @@ export default class YoloPlugin extends Plugin {
       (event) => this.handleVoiceAudioDragReveal(event),
       options,
     )
+    this.registerDomEvent(
+      document,
+      'drop',
+      (event) => {
+        this.clearVoiceAudioDragReveal()
+        this.handleVoiceAudioDrop(event)
+      },
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'dragend',
+      () => this.clearVoiceAudioDragReveal(),
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'dragleave',
+      (event) => this.handleVoiceAudioDragLeave(event),
+      options,
+    )
+    this.registerDomEvent(window, 'blur', () =>
+      this.clearVoiceAudioDragReveal(),
+    )
   }
 
   private handleVoiceAudioDragReveal(event: DragEvent): void {
     if (!this.isAudioFileTranscriptionFeatureReady()) return
-    if (!this.isPotentialAudioFileDrag(event)) return
+    const dragKind = this.getAudioFileDragKind(event)
+    if (!dragKind) return
     const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
     if (!markdownView) return
-    void this.revealVoiceFloatingIslandForAudioDrag(markdownView)
+    void this.revealVoiceFloatingIslandForAudioDrag(markdownView, dragKind)
+  }
+
+  private handleVoiceAudioDrop(event: DragEvent): void {
+    if (!this.isAudioFileTranscriptionFeatureReady()) return
+    const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
+    if (!markdownView) return
+    const source = this.resolveAudioDropSource(event)
+    if (!source) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    void this.startVoiceAudioDropTranscription(markdownView, source)
+  }
+
+  private handleVoiceAudioDragLeave(event: DragEvent): void {
+    if (event.relatedTarget !== null) return
+    this.clearVoiceAudioDragReveal()
+  }
+
+  private clearVoiceAudioDragReveal(): void {
+    this.voiceFloatingIslandController?.clearAudioDropTargetReveal()
   }
 
   private async revealVoiceFloatingIslandForAudioDrag(
     markdownView: MarkdownView,
+    dragKind: AudioFileDragKind,
   ): Promise<void> {
     try {
       await this.ensureContextVoiceInputController()
       const island = await this.ensureVoiceFloatingIsland()
-      island.revealAudioDropTargetForView(markdownView)
+      island.revealAudioDropTargetForView(markdownView, dragKind)
     } catch (error) {
       console.warn('Voice audio drag reveal failed:', error)
+    }
+  }
+
+  private async startVoiceAudioDropTranscription(
+    markdownView: MarkdownView,
+    source: AudioDropSource,
+  ): Promise<void> {
+    try {
+      await this.ensureContextVoiceInputController()
+      const file = await this.materializeAudioDropSource(source)
+      const island = await this.ensureVoiceFloatingIsland()
+      island.attachToView(markdownView)
+      await this.contextVoiceInputController?.startAudioFileTranscription(
+        file,
+        markdownView.editor,
+      )
+    } catch (error) {
+      console.warn('Voice audio drop transcription failed:', error)
     }
   }
 
@@ -1055,39 +1137,241 @@ export default class YoloPlugin extends Plugin {
       !!opts &&
       opts.enabled &&
       opts.audioFileTranscriptionEnabled &&
-      hasConfiguredAsrConfig(opts)
+      hasConfiguredAudioFileAsrConfig(opts)
     )
   }
 
-  private isPotentialAudioFileDrag(event: DragEvent): boolean {
+  private getAudioFileDragKind(event: DragEvent): AudioFileDragKind | null {
     const dataTransfer = event.dataTransfer
-    if (!dataTransfer) return false
+    if (!dataTransfer) return null
     const files = Array.from(dataTransfer.files ?? [])
-    if (files.some((file) => this.isLikelyAudioDragFile(file))) return true
-    const items = Array.from(dataTransfer.items ?? [])
-    if (
-      items.some(
-        (item) =>
-          item.kind === 'file' &&
-          (item.type === '' || item.type.toLowerCase().startsWith('audio/')),
-      )
-    ) {
-      return true
+    if (files.length > 0) {
+      return files.some((file) => this.isLikelyAudioDragFile(file))
+        ? 'audio'
+        : 'unsupported'
     }
+
+    const items = Array.from(dataTransfer.items ?? [])
+    const fileItems = items.filter((item) => item.kind === 'file')
+    if (fileItems.length > 0) {
+      if (
+        fileItems.some((item) => item.type.toLowerCase().startsWith('audio/'))
+      ) {
+        return 'audio'
+      }
+      if (fileItems.some((item) => item.type === '')) return 'maybe-audio'
+      return 'unsupported'
+    }
+
+    const textCandidateKind =
+      this.getAudioFileDragKindFromDataTransferText(dataTransfer)
+    if (textCandidateKind) return textCandidateKind
+
     return Array.from(dataTransfer.types ?? []).some((type) => {
       const lower = type.toLowerCase()
       return (
         lower === 'files' ||
+        lower === 'text/uri-list' ||
         lower.includes('file') ||
         lower.includes('obsidian')
       )
     })
+      ? 'maybe-audio'
+      : null
+  }
+
+  private getAudioFileDragKindFromDataTransferText(
+    dataTransfer: DataTransfer,
+  ): AudioFileDragKind | null {
+    let sawFileLikeCandidate = false
+    for (const type of Array.from(dataTransfer.types ?? [])) {
+      const text = this.safeReadDropData(dataTransfer, type)
+      for (const candidate of this.extractVaultPathCandidates(text)) {
+        const fileLike =
+          candidate.includes('/') || /\.[a-z0-9]{2,8}$/i.test(candidate)
+        if (!fileLike) continue
+        if (this.resolveAudioVaultFileCandidate(candidate)) return 'audio'
+        if (this.isLikelyAudioPath(candidate)) return 'audio'
+        sawFileLikeCandidate = true
+      }
+    }
+    return sawFileLikeCandidate ? 'unsupported' : null
+  }
+
+  private async resolveAudioFileFromDrop(
+    event: DragEvent,
+  ): Promise<File | null> {
+    const source = this.resolveAudioDropSource(event)
+    return source ? this.materializeAudioDropSource(source) : null
+  }
+
+  private resolveAudioDropSource(event: DragEvent): AudioDropSource | null {
+    const dataTransfer = event.dataTransfer
+    if (!dataTransfer) return null
+
+    const file = Array.from(dataTransfer.files ?? []).find((candidate) =>
+      this.isLikelyAudioDragFile(candidate),
+    )
+    if (file) return { file }
+
+    const vaultFile = this.resolveAudioVaultFileFromDataTransfer(dataTransfer)
+    return vaultFile ? { vaultFile } : null
+  }
+
+  private async materializeAudioDropSource(
+    source: AudioDropSource,
+  ): Promise<File> {
+    if ('file' in source) return source.file
+
+    const data = await this.app.vault.readBinary(source.vaultFile)
+    return new File([data], source.vaultFile.name, {
+      type: this.getAudioMimeType(source.vaultFile.path),
+      lastModified: source.vaultFile.stat.mtime,
+    })
+  }
+
+  private resolveAudioVaultFileFromDataTransfer(
+    dataTransfer: DataTransfer,
+  ): TFile | null {
+    const candidates = new Set<string>()
+    for (const type of Array.from(dataTransfer.types ?? [])) {
+      const text = this.safeReadDropData(dataTransfer, type)
+      for (const candidate of this.extractVaultPathCandidates(text)) {
+        candidates.add(candidate)
+      }
+    }
+    for (const candidate of candidates) {
+      const file = this.resolveAudioVaultFileCandidate(candidate)
+      if (file) return file
+    }
+    return null
+  }
+
+  private safeReadDropData(dataTransfer: DataTransfer, type: string): string {
+    try {
+      return dataTransfer.getData(type) || ''
+    } catch {
+      return ''
+    }
+  }
+
+  private extractVaultPathCandidates(text: string): string[] {
+    if (!text.trim()) return []
+    const candidates: string[] = []
+    const add = (value: string) => {
+      const normalized = this.normalizeDroppedVaultPath(value)
+      if (normalized) candidates.push(normalized)
+    }
+
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      add(trimmed)
+    }
+
+    const wikiLinkPattern = /!?\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g
+    for (const match of text.matchAll(wikiLinkPattern)) {
+      add(match[1] ?? '')
+    }
+
+    const markdownLinkPattern = /!?\[[^\]]*]\(([^)]+)\)/g
+    for (const match of text.matchAll(markdownLinkPattern)) {
+      add(match[1] ?? '')
+    }
+
+    return candidates
+  }
+
+  private normalizeDroppedVaultPath(value: string): string | null {
+    let candidate = value.trim()
+    if (!candidate) return null
+
+    candidate = candidate.replace(/^["'<]+|[">'）]+$/g, '').trim()
+    if (!candidate) return null
+
+    try {
+      candidate = decodeURIComponent(candidate)
+    } catch {
+      // Keep the raw string when it is not a URI-encoded path.
+    }
+
+    if (candidate.startsWith('file://')) {
+      candidate = candidate.replace(/^file:\/+/, '')
+    }
+
+    const queryIndex = candidate.indexOf('?')
+    if (candidate.startsWith('obsidian://') && queryIndex !== -1) {
+      const params = new URLSearchParams(candidate.slice(queryIndex + 1))
+      candidate = params.get('file') ?? params.get('path') ?? candidate
+    }
+
+    candidate = candidate.replace(/^!?\[\[|\]\]$/g, '')
+    const aliasIndex = candidate.indexOf('|')
+    if (aliasIndex !== -1) candidate = candidate.slice(0, aliasIndex)
+    const headingIndex = candidate.indexOf('#')
+    if (headingIndex !== -1) candidate = candidate.slice(0, headingIndex)
+    candidate = candidate.trim()
+    if (!candidate) return null
+
+    return normalizePath(candidate.replace(/^\/+/, ''))
+  }
+
+  private resolveAudioVaultFileCandidate(candidate: string): TFile | null {
+    const linked = this.app.metadataCache.getFirstLinkpathDest(candidate, '')
+    if (linked instanceof TFile && this.isLikelyAudioPath(linked.path)) {
+      return linked
+    }
+
+    const direct = this.app.vault.getAbstractFileByPath(candidate)
+    if (direct instanceof TFile && this.isLikelyAudioPath(direct.path)) {
+      return direct
+    }
+
+    if (candidate.includes('/')) return null
+    return (
+      this.app.vault
+        .getFiles()
+        .find(
+          (file) =>
+            file.name.toLowerCase() === candidate.toLowerCase() &&
+            this.isLikelyAudioPath(file.path),
+        ) ?? null
+    )
   }
 
   private isLikelyAudioDragFile(file: File): boolean {
     if (file.type.toLowerCase().startsWith('audio/')) return true
-    const name = file.name.toLowerCase()
-    return /\.(mp3|m4a|mp4|wav|webm|ogg|opus|flac|aac|amr)$/.test(name)
+    return this.isLikelyAudioPath(file.name)
+  }
+
+  private isLikelyAudioPath(path: string): boolean {
+    return /\.(mp3|m4a|mp4|wav|webm|ogg|opus|flac|aac|amr)$/i.test(path)
+  }
+
+  private getAudioMimeType(path: string): string {
+    const extension = path.split('.').pop()?.toLowerCase()
+    switch (extension) {
+      case 'mp3':
+        return 'audio/mpeg'
+      case 'm4a':
+      case 'mp4':
+        return 'audio/mp4'
+      case 'wav':
+        return 'audio/wav'
+      case 'webm':
+        return 'audio/webm'
+      case 'ogg':
+      case 'opus':
+        return 'audio/ogg'
+      case 'flac':
+        return 'audio/flac'
+      case 'aac':
+        return 'audio/aac'
+      case 'amr':
+        return 'audio/amr'
+      default:
+        return 'application/octet-stream'
+    }
   }
 
   private resolveMarkdownViewFromEventTarget(

@@ -4,8 +4,10 @@ import type {
 } from '../../settings/schema/setting.types'
 
 import type { BaseAsrProvider } from './base'
-import { OpenAiCompatibleChatAudioAsrProvider } from './openAiCompatibleChatAudio'
-import { OpenAiCompatibleTranscriptionProvider } from './openAiCompatibleTranscription'
+import {
+  OpenAiCompatibleChatAudioAsrProvider,
+  OpenAiCompatibleTranscriptionProvider,
+} from './httpAsr'
 import { WebSocketAsrProvider } from './webSocketAsr'
 
 export class AsrConfigError extends Error {
@@ -27,7 +29,7 @@ export class AsrConfigError extends Error {
 export function resolveActiveAsrConfig(
   options: ContextVoiceInputOptions,
 ): AsrConfig | null {
-  const list = options.asrConfigs
+  const list = options.asrConfigs.filter(isContextVoiceRuntimeAsrConfig)
   if (!Array.isArray(list) || list.length === 0) return null
   if (options.activeAsrConfigId) {
     const match = list.find((c) => c.id === options.activeAsrConfigId)
@@ -52,6 +54,9 @@ export function resolveActiveAudioFileAsrConfig(
   return list[0] ?? null
 }
 
+const isContextVoiceRuntimeAsrConfig = (config: AsrConfig): boolean =>
+  config.asrCategory !== 'http-long-audio'
+
 /**
  * Build an ASR provider client from the currently-active config.
  * Throws `AsrConfigError` when no config is configured or the active one is
@@ -75,6 +80,12 @@ export function getAsrProvider(
  * button to validate a specific entry without activating it).
  */
 export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
+  if (config.asrCategory === 'http-long-audio') {
+    throw new AsrConfigError(
+      'Long-audio ASR provider adapters are not implemented yet.',
+    )
+  }
+
   switch (config.format) {
     case 'openai-compatible-transcription': {
       if (!config.baseURL.trim() || !config.model.trim()) {
@@ -119,6 +130,9 @@ export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
         model: config.model,
         listenPath: config.transcriptionPath,
         webSocketProtocol: config.webSocketProtocol,
+        webSocketPunctuate: config.webSocketPunctuate,
+        webSocketDiarizeMode: config.webSocketDiarizeMode,
+        webSocketDictation: config.webSocketDictation,
         audioFormat: config.audioFormat,
         language: config.language,
       })

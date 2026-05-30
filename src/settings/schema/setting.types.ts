@@ -335,6 +335,17 @@ export const ASR_WEBSOCKET_PROTOCOLS = [
 ] as const
 export type AsrWebSocketProtocol = (typeof ASR_WEBSOCKET_PROTOCOLS)[number]
 
+export const ASR_CONFIG_CATEGORIES = [
+  'http-short-audio',
+  'http-long-audio',
+  'websocket',
+] as const
+export type AsrConfigCategory = (typeof ASR_CONFIG_CATEGORIES)[number]
+
+export const ASR_WEBSOCKET_FEATURE_MODES = ['auto', 'on', 'off'] as const
+export type AsrWebSocketFeatureMode =
+  (typeof ASR_WEBSOCKET_FEATURE_MODES)[number]
+
 /**
  * Network transport used for outbound ASR HTTP requests. Mirrors the LLM
  * provider's `requestTransportMode` enum so users do not have to learn a
@@ -372,6 +383,8 @@ const asrConfigSchema = z
   .object({
     id: z.string(),
     name: z.string().catch(''),
+    asrCategory: z.enum(ASR_CONFIG_CATEGORIES).catch('http-short-audio'),
+    asrProvider: z.string().catch(''),
     format: z.enum(ASR_API_FORMATS).catch('openai-compatible-transcription'),
     baseURL: z.string().catch(''),
     apiKey: z.string().catch(''),
@@ -388,6 +401,10 @@ const asrConfigSchema = z
         }),
       )
       .catch('deepgram-compatible'),
+    /** Deepgram-compatible /listen options. Ignored by other WS protocols. */
+    webSocketPunctuate: z.boolean().catch(true),
+    webSocketDiarizeMode: z.enum(ASR_WEBSOCKET_FEATURE_MODES).catch('off'),
+    webSocketDictation: z.boolean().catch(false),
     /** See `ASR_AUDIO_FORMATS` for semantics. Only relevant to chat-audio. */
     audioFormat: z.enum(ASR_AUDIO_FORMATS).catch('auto'),
     /** Outbound HTTP transport. See `ASR_TRANSPORT_MODES`. */
@@ -408,6 +425,8 @@ const asrConfigSchema = z
   .catch({
     id: '',
     name: '',
+    asrCategory: 'http-short-audio' as AsrConfigCategory,
+    asrProvider: '',
     format: 'openai-compatible-transcription' as AsrApiFormat,
     baseURL: '',
     apiKey: '',
@@ -416,6 +435,9 @@ const asrConfigSchema = z
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
     webSocketProtocol: 'deepgram-compatible' as AsrWebSocketProtocol,
+    webSocketPunctuate: true,
+    webSocketDiarizeMode: 'off' as AsrWebSocketFeatureMode,
+    webSocketDictation: false,
     audioFormat: 'auto' as AsrAudioFormat,
     transportMode: 'node' as AsrTransportMode,
     language: 'auto',
@@ -555,7 +577,7 @@ const contextVoiceInputOptionsSchema = z
     audioFileChunkTargetDurationSec: z
       .number()
       .int()
-      .min(60)
+      .min(15)
       .max(600)
       .catch(
         DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkTargetDurationSec,

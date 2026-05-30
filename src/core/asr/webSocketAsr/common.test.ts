@@ -1,4 +1,9 @@
-import { CONNECT_TIMEOUT_MS, armWebSocketConnectTimeout } from './common'
+import {
+  CONNECT_TIMEOUT_MS,
+  armWebSocketConnectTimeout,
+  readTranscript,
+  readWhisperLiveKitNativeTranscript,
+} from './common'
 
 class FakeWebSocket {
   static readonly CONNECTING = 0
@@ -81,5 +86,64 @@ describe('armWebSocketConnectTimeout', () => {
 
     expect(onTimeout).not.toHaveBeenCalled()
     cleanup()
+  })
+})
+
+describe('readWhisperLiveKitNativeTranscript', () => {
+  it('can include speaker labels when requested', () => {
+    const result = readWhisperLiveKitNativeTranscript(
+      {
+        lines: [
+          { speaker: 0, text: 'hello' },
+          { speaker: 0, text: 'again' },
+          { speaker: 1, text: 'hi' },
+          { speaker: -2, text: 'noise' },
+        ],
+      },
+      { includeSpeakerLabels: true },
+    )
+
+    expect(result.text).toBe('Speaker 1: hello\nagain\nSpeaker 2: hi')
+  })
+})
+
+describe('readTranscript', () => {
+  it('can carry Deepgram speaker labels across final messages', () => {
+    const speakerState = { lastSpeakerLabel: '' }
+    const first = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: 'hello again',
+              words: [
+                { speaker: 0, word: 'hello' },
+                { speaker: 0, word: 'again' },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState },
+    )
+    const second = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: 'still here',
+              words: [
+                { speaker: 0, word: 'still' },
+                { speaker: 0, word: 'here' },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState },
+    )
+
+    expect(first).toBe('Speaker 1: hello again')
+    expect(second).toBe('still here')
   })
 })

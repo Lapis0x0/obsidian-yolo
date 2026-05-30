@@ -49,8 +49,17 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
     input: AsrAudioInput,
     options?: AsrOptions,
   ): Promise<AsrResult> {
-    const { baseURL, apiKey, model, listenPath, audioFormat, language } =
-      this.profile
+    const {
+      baseURL,
+      apiKey,
+      model,
+      listenPath,
+      audioFormat,
+      language,
+      webSocketPunctuate,
+      webSocketDiarizeMode,
+      webSocketDictation,
+    } = this.profile
     if (!baseURL.trim()) {
       throw new Error('ASR provider is missing baseURL.')
     }
@@ -67,7 +76,15 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
       model,
       language:
         langCandidate && langCandidate !== 'auto' ? langCandidate : undefined,
-      smart_format: 'true',
+      smart_format: webSocketPunctuate ? 'true' : undefined,
+      punctuate: webSocketPunctuate ? 'true' : 'false',
+      diarize: resolveAutoFeature(
+        webSocketDiarizeMode,
+        options?.purpose ?? 'settings-test',
+      )
+        ? 'true'
+        : undefined,
+      dictation: webSocketPunctuate && webSocketDictation ? 'true' : undefined,
       ...(audioFormat === 'wav'
         ? {
             encoding: 'linear16',
@@ -107,6 +124,9 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
       language,
       audioFormat,
       webSocketProtocol,
+      webSocketPunctuate,
+      webSocketDiarizeMode,
+      webSocketDictation,
     } = this.profile
     if (!baseURL.trim()) {
       throw new Error('ASR provider is missing baseURL.')
@@ -123,11 +143,30 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
     const languageParam =
       langCandidate && langCandidate !== 'auto' ? langCandidate : undefined
     const baseWsUrl = joinUrl(baseURL, path)
+    const isDeepgramCompatible = webSocketProtocol === 'deepgram-compatible'
+    const speakerFeatureEnabled = resolveAutoFeature(
+      webSocketDiarizeMode,
+      options.purpose ?? 'context-voice-input',
+    )
+    const includeSpeakerLabels =
+      speakerFeatureEnabled && options.purpose === 'audio-file-transcription'
     const url = appendQuery(baseWsUrl, {
       model,
       language: languageParam,
-      smart_format: 'true',
-      interim_results: 'true',
+      smart_format:
+        isDeepgramCompatible && webSocketPunctuate ? 'true' : undefined,
+      punctuate: isDeepgramCompatible
+        ? webSocketPunctuate
+          ? 'true'
+          : 'false'
+        : undefined,
+      diarize:
+        isDeepgramCompatible && speakerFeatureEnabled ? 'true' : undefined,
+      dictation:
+        isDeepgramCompatible && webSocketPunctuate && webSocketDictation
+          ? 'true'
+          : undefined,
+      interim_results: isDeepgramCompatible ? 'true' : undefined,
       ...(audioFormat === 'wav'
         ? {
             encoding: 'linear16',
@@ -142,10 +181,20 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
       apiKey,
       signal: options.signal,
       callbacks,
+      includeSpeakerLabels,
     }
     if (webSocketProtocol === 'whisperlivekit-native') {
       return openWhisperLiveKitNativeStream(streamArgs)
     }
     return openDeepgramCompatibleStream(streamArgs)
   }
+}
+
+const resolveAutoFeature = (
+  mode: import('../../../settings/schema/setting.types').AsrWebSocketFeatureMode,
+  purpose: AsrStreamingOptions['purpose'] | undefined,
+): boolean => {
+  if (mode === 'on') return true
+  if (mode === 'off') return false
+  return purpose === 'audio-file-transcription'
 }

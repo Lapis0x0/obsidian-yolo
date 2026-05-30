@@ -25,6 +25,8 @@ export type AsrOptions = {
   prompt?: string
   /** Caller-supplied abort signal. Providers MUST honour it. */
   signal?: AbortSignal
+  /** Caller context for ASR options whose "auto" value differs by workflow. */
+  purpose?: 'context-voice-input' | 'audio-file-transcription' | 'settings-test'
 }
 
 export type AsrStreamingOptions = AsrOptions & {

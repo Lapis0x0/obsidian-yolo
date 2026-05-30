@@ -1173,15 +1173,44 @@ export type TranslationKeys = {
     asr?: {
       title?: string
       descriptionV2?: string
+      descriptionV3?: string
+      sectionTitle?: {
+        'http-short-audio'?: string
+        'http-long-audio'?: string
+        websocket?: string
+      }
+      sectionEmpty?: {
+        'http-short-audio'?: string
+        'http-long-audio'?: string
+        websocket?: string
+      }
       colName?: string
       colSummary?: string
       colActions?: string
+      dragHandle?: string
+      unnamedConfig?: string
       activePill?: string
       activePillLabel?: string
+      audioFileActivePill?: string
+      audioFileActivePillLabel?: string
+      editConfigAria?: string
+      deleteConfigAria?: string
+      deleteConfigMessagePrefix?: string
+      deleteConfigTitle?: string
+      deleteConfigFailed?: string
+      reorderConfigFailed?: string
       emptyHint?: string
       addConfig?: string
       configName?: string
       configNameDesc?: string
+      baseURLRequired?: string
+      modelRequired?: string
+      errorNoProvider?: string
+      errorLongAudioNotImplemented?: string
+      errorIncompleteConfig?: string
+      errorWebSocketMissingBaseUrl?: string
+      errorTranscriptionRequestFailed?: string
+      errorChatAudioRequestFailed?: string
       apiFormat?: string
       apiFormatTranscription?: string
       apiFormatChatAudio?: string
@@ -1209,8 +1238,25 @@ export type TranslationKeys = {
       audioContentFormatDesc?: string
       webSocketProtocol?: string
       webSocketProtocolDesc?: string
+      webSocketProvider?: string
+      webSocketProviderDesc?: string
       webSocketProtocolDeepgram?: string
       webSocketProtocolWhisperLiveKit?: string
+      webSocketPunctuate?: string
+      webSocketPunctuateDesc?: string
+      webSocketDiarize?: string
+      webSocketDiarizeDesc?: string
+      webSocketDictation?: string
+      webSocketDictationDesc?: string
+      longProvider?: string
+      longProviderDesc?: string
+      longProviderFunasr?: string
+      longProviderDeepgram?: string
+      longProviderSpeechmatics?: string
+      featureModeAuto?: string
+      featureModeOn?: string
+      featureModeOff?: string
+      addConfigShort?: string
       audioFormat?: string
       audioFormatAuto?: string
       audioFormatPcm16?: string
@@ -1224,18 +1270,66 @@ export type TranslationKeys = {
       microphone?: string
       microphoneDesc?: string
       micDefault?: string
+      microphoneFallbackName?: string
       microphoneUnlock?: string
       microphoneUnlockDesc?: string
       microphoneUnlockButton?: string
       testRecording?: string
       testRecordingDesc?: string
+      testRecordingDescWebSocket?: string
       testRun?: string
+      testStopStreaming?: string
       testRunning?: string
+      testFinalizing?: string
+      testFailed?: string
+      testTookMs?: string
+      testEmptyResult?: string
+      testStreamingRunning?: string
+      testStreamingUnsupported?: string
+      testStreamingAutoStop?: string
+      testInvalidConfig?: string
+      testRecordingSeconds?: string
+      testCallingAsr?: string
+      testLongAudioUnavailable?: string
       testBadgePassed?: string
       testBadgeFailed?: string
       testBadgeRecording?: string
       testBadgeFinalizing?: string
       testBadgeTranscribing?: string
+    }
+
+    audioFileTranscription?: {
+      title?: string
+      description?: string
+      voiceRequiredHint?: string
+      asrRequiredHint?: string
+      enable?: string
+      enableDesc?: string
+      asrProvider?: string
+      asrProviderDesc?: string
+      chunkHeaderMode?: string
+      chunkHeaderModeDesc?: string
+      chunkHeaderMode_none?: string
+      'chunkHeaderMode_local-start-time'?: string
+      outputMetadataMode?: string
+      outputMetadataModeDesc?: string
+      outputMetadataMode_none?: string
+      outputMetadataMode_title?: string
+      outputMetadataMode_full?: string
+      fallbackNotePathTemplate?: string
+      fallbackNotePathTemplateDesc?: string
+      advancedToggle?: string
+      chunkTargetDurationSec?: string
+      chunkTargetDurationSecDesc?: string
+      maxConcurrentChunks?: string
+      maxConcurrentChunksDesc?: string
+      chunkStartStaggerMs?: string
+      chunkStartStaggerMsDesc?: string
+      chunkOverlapMs?: string
+      chunkOverlapMsDesc?: string
+      chunkDurationLimitNotice?: string
+      chunkDurationLimitSuggestion?: string
+      chunkDurationLimitSuffix?: string
     }
 
     // Context-aware voice input
@@ -1322,6 +1416,65 @@ export type TranslationKeys = {
     modeSwitchToAudioFile?: string
     modeSwitchToToggle?: string
     holdToTalkHint?: string
+    audioFileDropHint?: string
+    audioFileCheckDropHint?: string
+    audioFileUnsupportedDropHint?: string
+    audioFileChecking?: string
+    audioFileConfirm?: string
+    audioFilePreparing?: string
+    audioFileUploading?: string
+    audioFileInserting?: string
+    audioFileIdleHint?: string
+    audioFileConfirmButton?: string
+    audioFileChooseButton?: string
+    audioFileFinished?: string
+    audioFileCancelled?: string
+    audioFilePlanStream?: string
+    audioFilePlanChunked?: string
+    audioFilePlanDirect?: string
+    audioFileProgressInsertingChunks?: string
+    audioFileProgressTranscribingChunks?: string
+    audioFileProgressStreamingPercent?: string
+    audioFileFallbackNotice?: string
+    audioFileSubmissionChunks?: string
+    audioFileSubmissionWebSocket?: string
+    audioFileSubmissionDirect?: string
+    audioFileMetadataSource?: string
+    audioFileMetadataTranscribed?: string
+    audioFileMetadataProvider?: string
+    audioFileMetadataSubmission?: string
+    audioFileFailed?: string
+    audioFileFailedWithMessage?: string
+    audioFileErrorNoProvider?: string
+    audioFileErrorLongAudioNotImplemented?: string
+    audioFileErrorUnsupportedLocalFile?: string
+    audioFileErrorUnsupportedChunking?: string
+    audioFileErrorDecodeRequiredForChunking?: string
+    audioFileErrorMissingChunkPlan?: string
+    audioFileErrorChunkFailed?: string
+    audioFileErrorStreamingUnsupported?: string
+    audioFileDirectChunkDurationHint?: string
+    audioFileChunkedChunkDurationHint?: string
+    audioFileProviderGenericDurationHint?: string
+    audioFileProviderMaxDurationHint?: string
+    disabledNotice?: string
+    configureAsrNotice?: string
+    selectPolishModelNotice?: string
+    focusedEditorNotice?: string
+    asrConfigIncompleteNotice?: string
+    asrConfigMissingBaseUrlNotice?: string
+    asrTranscriptionRequestFailed?: string
+    asrChatAudioRequestFailed?: string
+    recorderPermissionDenied?: string
+    recorderNoDevice?: string
+    recorderDeviceBusy?: string
+    recorderUnsupported?: string
+    recordingCancelled?: string
+    finishCurrentTaskNotice?: string
+    audioFileDisabledNotice?: string
+    failed?: string
+    failedWithMessage?: string
+    startRecordingFailed?: string
     noticePrefix?: string
     malformedOutput?: string
   }

@@ -1,10 +1,13 @@
+import { Notice } from 'obsidian'
 import { useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { hasConfiguredAsrConfig } from '../../../core/asr/configStatus'
+import { getAudioFileChunkDurationAdvisory } from '../../../core/asr/capabilities'
+import { hasConfiguredAudioFileAsrConfig } from '../../../core/asr/configStatus'
 import type {
+  AsrConfig,
   AudioFileChunkHeaderMode,
   AudioFileOutputMetadataMode,
   ContextVoiceInputOptions,
@@ -13,10 +16,18 @@ import {
   AUDIO_FILE_CHUNK_HEADER_MODES,
   AUDIO_FILE_OUTPUT_METADATA_MODES,
 } from '../../../settings/schema/setting.types'
-import { ObsidianDropdown } from '../../common/ObsidianDropdown'
+import {
+  ObsidianDropdown,
+  type ObsidianDropdownOptionGroup,
+} from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+
+import {
+  buildGroupedAsrConfigOptions,
+  isHttpShortAudioAsrConfig,
+} from './asrConfigLabels'
 
 const AUDIO_FILE_CHUNK_HEADER_LABEL_FALLBACK: Record<
   AudioFileChunkHeaderMode,
@@ -40,7 +51,7 @@ export function AudioFileTranscriptionSection() {
   const plugin = usePlugin()
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
-  const asrReady = hasConfiguredAsrConfig(voice)
+  const asrReady = hasConfiguredAudioFileAsrConfig(voice)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [numberInputs, setNumberInputs] = useState({
     audioFileChunkTargetDurationSec: String(
@@ -77,20 +88,37 @@ export function AudioFileTranscriptionSection() {
 
   const asrConfigs = voice.asrConfigs ?? []
   const asrProviderOptions = useMemo<Record<string, string>>(() => {
-    if (asrConfigs.length === 0) {
-      return {
-        '': t(
-          'settings.contextVoiceInput.asrProviderNone',
-          '(none — add one under Models → Voice recognition)',
-        ),
-      }
+    if (asrConfigs.length > 0) {
+      return {} as Record<string, string>
     }
-    return Object.fromEntries(
-      asrConfigs.map((config) => [
-        config.id,
-        `${config.name || '(unnamed)'} · ${config.model || config.format}`,
-      ]),
-    )
+    return {
+      '': t(
+        'settings.contextVoiceInput.asrProviderNone',
+        '(none — add one under Models → Voice recognition)',
+      ),
+    }
+  }, [asrConfigs.length, t])
+  const groupedAsrProviderOptions = useMemo<
+    ObsidianDropdownOptionGroup[]
+  >(() => {
+    if (asrConfigs.length === 0) return []
+    const unnamedLabel = t('settings.asr.unnamedConfig', '(unnamed)')
+    return buildGroupedAsrConfigOptions({
+      configs: asrConfigs,
+      unnamedLabel,
+      includeCategories: ['http-short-audio', 'http-long-audio', 'websocket'],
+      categoryLabels: {
+        'http-short-audio': t(
+          'settings.asr.sectionTitle.http-short-audio',
+          'HTTP short audio',
+        ),
+        'http-long-audio': t(
+          'settings.asr.sectionTitle.http-long-audio',
+          'HTTP long audio',
+        ),
+        websocket: t('settings.asr.sectionTitle.websocket', 'WebSocket'),
+      },
+    })
   }, [asrConfigs, t])
 
   const activeAsrConfigId =
@@ -104,12 +132,53 @@ export function AudioFileTranscriptionSection() {
     asrConfigs.some((config) => config.id === voice.activeAudioFileAsrConfigId)
       ? voice.activeAudioFileAsrConfigId
       : activeAsrConfigId
+  const activeAudioFileAsrConfig =
+    asrConfigs.find((config) => config.id === activeAudioFileAsrConfigId) ??
+    null
+  const showChunkSettings = isHttpShortAudioAsrConfig(activeAudioFileAsrConfig)
 
   const parseInteger = (value: string) => {
     const trimmed = value.trim()
     if (trimmed.length === 0) return null
     if (!/^-?\d+$/.test(trimmed)) return null
     return parseInt(trimmed, 10)
+  }
+
+  const warnIfChunkDurationExceedsKnownRequestLimit = useCallback(
+    (config: AsrConfig | null, chunkDurationSec: number) => {
+      const advisory = getAudioFileChunkDurationAdvisory({
+        config,
+        chunkDurationMs: chunkDurationSec * 1000,
+      })
+      if (!advisory) return
+      const limitMiB = Math.round(advisory.maxRequestBytes / 1024 / 1024)
+      const suggestedSec = Math.floor(advisory.suggestedMaxDurationMs / 1000)
+      new Notice(
+        `${t(
+          'settings.audioFileTranscription.chunkDurationLimitNotice',
+          'This provider has a known request-size limit for WAV chunks.',
+        )} ${t(
+          'settings.audioFileTranscription.chunkDurationLimitSuggestion',
+          'Suggested chunk duration:',
+        )} ${suggestedSec}s ${t(
+          'settings.audioFileTranscription.chunkDurationLimitSuffix',
+          'or less',
+        )} (${limitMiB} MiB).`,
+      )
+    },
+    [t],
+  )
+
+  const handleAudioFileAsrProviderChange = (value: string) => {
+    updateVoice(
+      { activeAudioFileAsrConfigId: value },
+      'activeAudioFileAsrConfigId',
+    )
+    const nextConfig = asrConfigs.find((config) => config.id === value) ?? null
+    warnIfChunkDurationExceedsKnownRequestLimit(
+      nextConfig,
+      voice.audioFileChunkTargetDurationSec,
+    )
   }
 
   return (
@@ -200,48 +269,46 @@ export function AudioFileTranscriptionSection() {
                 <ObsidianDropdown
                   value={activeAudioFileAsrConfigId}
                   options={asrProviderOptions}
-                  onChange={(value) =>
-                    updateVoice(
-                      { activeAudioFileAsrConfigId: value },
-                      'activeAudioFileAsrConfigId',
-                    )
-                  }
+                  groupedOptions={groupedAsrProviderOptions}
+                  onChange={handleAudioFileAsrProviderChange}
                 />
               </ObsidianSetting>
 
-              <ObsidianSetting
-                name={t(
-                  'settings.audioFileTranscription.chunkHeaderMode',
-                  'Chunk header',
-                )}
-                desc={t(
-                  'settings.audioFileTranscription.chunkHeaderModeDesc',
-                  'For HTTP chunked transcription, optionally insert the local chunk start time before each chunk.',
-                )}
-                className="yolo-models-select-card"
-              >
-                <ObsidianDropdown
-                  value={voice.audioFileChunkHeaderMode}
-                  options={Object.fromEntries(
-                    AUDIO_FILE_CHUNK_HEADER_MODES.map((mode) => [
-                      mode,
-                      t(
-                        `settings.audioFileTranscription.chunkHeaderMode_${mode}`,
-                        AUDIO_FILE_CHUNK_HEADER_LABEL_FALLBACK[mode],
-                      ),
-                    ]),
+              {showChunkSettings && (
+                <ObsidianSetting
+                  name={t(
+                    'settings.audioFileTranscription.chunkHeaderMode',
+                    'Chunk header',
                   )}
-                  onChange={(value) =>
-                    updateVoice(
-                      {
-                        audioFileChunkHeaderMode:
-                          value as AudioFileChunkHeaderMode,
-                      },
-                      'audioFileChunkHeaderMode',
-                    )
-                  }
-                />
-              </ObsidianSetting>
+                  desc={t(
+                    'settings.audioFileTranscription.chunkHeaderModeDesc',
+                    'For HTTP chunked transcription, optionally insert the local chunk start time before each chunk.',
+                  )}
+                  className="yolo-models-select-card"
+                >
+                  <ObsidianDropdown
+                    value={voice.audioFileChunkHeaderMode}
+                    options={Object.fromEntries(
+                      AUDIO_FILE_CHUNK_HEADER_MODES.map((mode) => [
+                        mode,
+                        t(
+                          `settings.audioFileTranscription.chunkHeaderMode_${mode}`,
+                          AUDIO_FILE_CHUNK_HEADER_LABEL_FALLBACK[mode],
+                        ),
+                      ]),
+                    )}
+                    onChange={(value) =>
+                      updateVoice(
+                        {
+                          audioFileChunkHeaderMode:
+                            value as AudioFileChunkHeaderMode,
+                        },
+                        'audioFileChunkHeaderMode',
+                      )
+                    }
+                  />
+                </ObsidianSetting>
+              )}
 
               <ObsidianSetting
                 name={t(
@@ -300,28 +367,30 @@ export function AudioFileTranscriptionSection() {
                 />
               </ObsidianSetting>
 
-              <div
-                className={`yolo-settings-advanced-toggle yolo-clickable${
-                  advancedOpen ? ' is-expanded' : ''
-                }`}
-                onClick={() => setAdvancedOpen((prev) => !prev)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    setAdvancedOpen((prev) => !prev)
-                  }
-                }}
-              >
-                <span className="yolo-settings-advanced-toggle-icon">▶</span>
-                {t(
-                  'settings.audioFileTranscription.advancedToggle',
-                  'Advanced options',
-                )}
-              </div>
+              {showChunkSettings && (
+                <div
+                  className={`yolo-settings-advanced-toggle yolo-clickable${
+                    advancedOpen ? ' is-expanded' : ''
+                  }`}
+                  onClick={() => setAdvancedOpen((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setAdvancedOpen((prev) => !prev)
+                    }
+                  }}
+                >
+                  <span className="yolo-settings-advanced-toggle-icon">▶</span>
+                  {t(
+                    'settings.audioFileTranscription.advancedToggle',
+                    'Advanced options',
+                  )}
+                </div>
+              )}
 
-              {advancedOpen && (
+              {showChunkSettings && advancedOpen && (
                 <>
                   <ObsidianSetting
                     name={t(
@@ -330,7 +399,7 @@ export function AudioFileTranscriptionSection() {
                     )}
                     desc={t(
                       'settings.audioFileTranscription.chunkTargetDurationSecDesc',
-                      'HTTP file transcription target chunk length. Actual chunks are shortened when the provider request limit requires it. Range: 60-600.',
+                      'WAV chunks; some providers need 30s or less. Range: 15-600.',
                     )}
                     className="yolo-settings-card"
                   >
@@ -342,10 +411,14 @@ export function AudioFileTranscriptionSection() {
                           audioFileChunkTargetDurationSec: value,
                         }))
                         const parsed = parseInteger(value)
-                        if (parsed !== null && parsed >= 60 && parsed <= 600) {
+                        if (parsed !== null && parsed >= 15 && parsed <= 600) {
                           updateVoice(
                             { audioFileChunkTargetDurationSec: parsed },
                             'audioFileChunkTargetDurationSec',
+                          )
+                          warnIfChunkDurationExceedsKnownRequestLimit(
+                            activeAudioFileAsrConfig,
+                            parsed,
                           )
                         }
                       }}

@@ -25,6 +25,10 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 
 import {
+  buildGroupedAsrConfigOptions,
+  isContextVoiceAsrConfig,
+} from './asrConfigLabels'
+import {
   DECIBEL_CHART_CEILING,
   DECIBEL_CHART_FLOOR,
   VoiceDecibelMeter,
@@ -129,22 +133,35 @@ export function ContextVoiceInputSection() {
       .filter((group): group is ObsidianDropdownOptionGroup => group !== null)
   }, [enabledChatModels, settings.providers])
 
-  const asrConfigs = voice.asrConfigs ?? []
+  const asrConfigs = (voice.asrConfigs ?? []).filter(isContextVoiceAsrConfig)
   const asrProviderOptions = useMemo<Record<string, string>>(() => {
-    if (asrConfigs.length === 0) {
-      return {
-        '': t(
-          'settings.contextVoiceInput.asrProviderNone',
-          '(none — add one under Models → Voice recognition)',
-        ),
-      }
+    if (asrConfigs.length > 0) {
+      return {} as Record<string, string>
     }
-    return Object.fromEntries(
-      asrConfigs.map((c) => [
-        c.id,
-        `${c.name || '(unnamed)'} · ${c.model || c.format}`,
-      ]),
-    )
+    return {
+      '': t(
+        'settings.contextVoiceInput.asrProviderNone',
+        '(none — add one under Models → Voice recognition)',
+      ),
+    }
+  }, [asrConfigs.length, t])
+  const groupedAsrProviderOptions = useMemo<
+    ObsidianDropdownOptionGroup[]
+  >(() => {
+    if (asrConfigs.length === 0) return []
+    const unnamedLabel = t('settings.asr.unnamedConfig', '(unnamed)')
+    return buildGroupedAsrConfigOptions({
+      configs: asrConfigs,
+      unnamedLabel,
+      includeCategories: ['http-short-audio', 'websocket'],
+      categoryLabels: {
+        'http-short-audio': t(
+          'settings.asr.sectionTitle.http-short-audio',
+          'HTTP short audio',
+        ),
+        websocket: t('settings.asr.sectionTitle.websocket', 'WebSocket'),
+      },
+    })
   }, [asrConfigs, t])
 
   const activeAsrConfigId =
@@ -280,6 +297,7 @@ export function ContextVoiceInputSection() {
             <ObsidianDropdown
               value={activeAsrConfigId}
               options={asrProviderOptions}
+              groupedOptions={groupedAsrProviderOptions}
               onChange={(value) =>
                 updateVoice({ activeAsrConfigId: value }, 'activeAsrConfigId')
               }

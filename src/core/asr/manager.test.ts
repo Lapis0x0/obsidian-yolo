@@ -5,14 +5,18 @@ import type {
 
 import {
   AsrConfigError,
+  buildAsrProviderForConfig,
   getAsrProvider,
   isAsrConfigured,
   resolveActiveAsrConfig,
+  resolveActiveAudioFileAsrConfig,
 } from './manager'
 
 const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   id: 'asr-1',
   name: 'ASR',
+  asrCategory: 'http-short-audio',
+  asrProvider: 'openai-compatible-transcription',
   format: 'openai-compatible-transcription',
   baseURL: 'https://example.com/v1',
   apiKey: '',
@@ -21,6 +25,9 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   chatCompletionsPath: '/chat/completions',
   audioContentFormat: 'input_audio',
   webSocketProtocol: 'deepgram-compatible',
+  webSocketPunctuate: true,
+  webSocketDiarizeMode: 'off',
+  webSocketDictation: false,
   audioFormat: 'auto',
   transportMode: 'node',
   language: 'auto',
@@ -57,6 +64,54 @@ describe('ASR manager config resolution', () => {
         }),
       ),
     ).toBe(first)
+  })
+
+  it('skips long-audio placeholders when resolving context voice ASR configs', () => {
+    const longOnly = config({
+      id: 'long',
+      asrCategory: 'http-long-audio',
+      asrProvider: 'funasr-local',
+      model: 'paraformer-zh',
+    })
+    const short = config({ id: 'short' })
+
+    expect(
+      resolveActiveAsrConfig(options({ asrConfigs: [longOnly] })),
+    ).toBeNull()
+    expect(
+      resolveActiveAsrConfig(options({ asrConfigs: [longOnly, short] })),
+    ).toBe(short)
+  })
+
+  it('allows audio-file transcription to select long-audio configs', () => {
+    const long = config({
+      id: 'long',
+      asrCategory: 'http-long-audio',
+      asrProvider: 'funasr-local',
+      model: 'paraformer-zh',
+    })
+    const short = config({ id: 'short' })
+
+    expect(
+      resolveActiveAudioFileAsrConfig(
+        options({
+          asrConfigs: [short, long],
+          activeAudioFileAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(long)
+  })
+
+  it('blocks long-audio configs until their native adapters are implemented', () => {
+    expect(() =>
+      buildAsrProviderForConfig(
+        config({
+          asrCategory: 'http-long-audio',
+          asrProvider: 'funasr-local',
+          model: 'paraformer-zh',
+        }),
+      ),
+    ).toThrow(AsrConfigError)
   })
 
   it('reports configured only when the active config can build a provider', () => {

@@ -16,7 +16,7 @@ import {
   type AudioFileChunk,
   type AudioFileChunkSchedule,
   buildAudioFileChunkSchedule,
-  createAudioFileChunks,
+  createAudioFileChunk,
 } from './audioFileChunker'
 import {
   type AudioFileInspection,
@@ -58,26 +58,67 @@ export type OrderedAudioFileText = {
   chunkStartMs: number | null
 }
 
+export type AudioFileTranscriptionMessages = {
+  noProvider: string
+  longAudioNotImplemented: string
+  unsupportedLocalFile: string
+  unsupportedChunking: string
+  decodeRequiredForChunking: string
+  missingChunkPlan: string
+  chunkFailed: string
+  streamingUnsupported: string
+  directChunkDurationHint: (seconds: number) => string
+  chunkedChunkDurationHint: (seconds: number) => string
+  providerGenericDurationHint: string
+  providerMaxDurationHint: (seconds: number) => string
+}
+
+const DEFAULT_MESSAGES: AudioFileTranscriptionMessages = {
+  noProvider:
+    'No ASR provider is configured. Add one under Models -> Voice recognition.',
+  longAudioNotImplemented:
+    'Long-audio ASR provider adapters are not implemented yet.',
+  unsupportedLocalFile:
+    'The selected ASR provider cannot transcribe local files.',
+  unsupportedChunking:
+    'The selected ASR provider cannot split this audio file.',
+  decodeRequiredForChunking:
+    'This file is too large for one request and cannot be decoded locally for chunking.',
+  missingChunkPlan: 'Missing chunk plan for audio file transcription.',
+  chunkFailed: 'Chunk failed.',
+  streamingUnsupported: 'The selected ASR provider does not support streaming.',
+  directChunkDurationHint: (seconds) =>
+    `If this is a provider upload-size limit, choose a shorter Audio file chunk duration (currently ${seconds}s) so the file is split before upload.`,
+  chunkedChunkDurationHint: (seconds) =>
+    `If this is a provider upload-size limit, lower Audio file chunk duration (currently ${seconds}s).`,
+  providerGenericDurationHint: 'Some providers need shorter WAV chunks.',
+  providerMaxDurationHint: (seconds) =>
+    `This provider may need WAV chunks at ${seconds}s or less.`,
+}
+
 export async function inspectAndPlanAudioFileTranscription(input: {
   file: File
   options: ContextVoiceInputOptions
+  messages?: AudioFileTranscriptionMessages
 }): Promise<AudioFileTranscriptionPlan> {
+  const messages = input.messages ?? DEFAULT_MESSAGES
   const providerConfig = resolveActiveAudioFileAsrConfig(input.options)
   if (!providerConfig) {
-    throw new Error(
-      'No ASR provider is configured. Add one under Models -> Voice recognition.',
-    )
+    throw new Error(messages.noProvider)
+  }
+  if (providerConfig.asrCategory === 'http-long-audio') {
+    throw new Error(messages.longAudioNotImplemented)
   }
 
   const inspection = await inspectAudioFile(input.file)
   const capability = getAudioFileAsrCapability(providerConfig)
   if (!capability.supportsLocalFile) {
-    throw new Error('The selected ASR provider cannot transcribe local files.')
+    throw new Error(messages.unsupportedLocalFile)
   }
 
   const targetChunkDurationSec = clampInt(
     input.options.audioFileChunkTargetDurationSec,
-    60,
+    15,
     600,
   )
   const chunkOverlapMs = clampInt(
@@ -114,6 +155,7 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   }
 
   const maxBytes = capability.maxRequestBytes
+  const maxDurationMs = capability.maxDurationMs
   const effectiveSingleRequestBytes = estimateSingleRequestBytes({
     file: input.file,
     inspection,
@@ -121,11 +163,19 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   })
   const exceedsSingleRequest =
     maxBytes !== null && effectiveSingleRequestBytes > maxBytes
+  const exceedsProviderDuration =
+    maxDurationMs !== null &&
+    inspection.durationMs !== null &&
+    inspection.durationMs > maxDurationMs
   const exceedsTargetDuration =
     inspection.durationMs !== null &&
     inspection.durationMs > targetChunkDurationSec * 1000
 
-  if (!exceedsSingleRequest && !exceedsTargetDuration) {
+  if (
+    !exceedsSingleRequest &&
+    !exceedsProviderDuration &&
+    !exceedsTargetDuration
+  ) {
     return {
       mode: 'direct-upload',
       fileName: input.file.name,
@@ -143,19 +193,17 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   }
 
   if (!capability.supportsChunkedUpload) {
-    throw new Error('The selected ASR provider cannot split this audio file.')
+    throw new Error(messages.unsupportedChunking)
   }
   if (!inspection.decodedAudio) {
-    throw new Error(
-      'This file is too large for one request and cannot be decoded locally for chunking.',
-    )
+    throw new Error(messages.decodeRequiredForChunking)
   }
 
   const schedule = buildAudioFileChunkSchedule({
     audioBuffer: inspection.decodedAudio,
     targetDurationSec: targetChunkDurationSec,
     overlapMs: chunkOverlapMs,
-    maxChunkBytes: maxBytes,
+    maxChunkDurationMs: maxDurationMs,
   })
 
   return {
@@ -179,6 +227,7 @@ export async function executeAudioFileTranscriptionPlan(input: {
   signal: AbortSignal
   onProgress: (progress: AudioFileTranscriptionProgress) => void
   onText: (result: OrderedAudioFileText) => Promise<void>
+  messages?: AudioFileTranscriptionMessages
 }): Promise<void> {
   switch (input.plan.mode) {
     case 'direct-upload':
@@ -222,20 +271,29 @@ async function executeDirectUpload(input: {
   signal: AbortSignal
   onProgress: (progress: AudioFileTranscriptionProgress) => void
   onText: (result: OrderedAudioFileText) => Promise<void>
+  messages?: AudioFileTranscriptionMessages
 }): Promise<void> {
   const provider = buildAsrProviderForConfig(input.plan.providerConfig)
   input.onProgress({ phase: 'uploading', completedChunks: 0, totalChunks: 1 })
-  const result = await provider.transcribe(
-    {
-      blob: input.plan.inspection.file,
-      mimeType: input.plan.mimeType || input.plan.inspection.file.type,
-      durationMs: input.plan.durationMs ?? undefined,
-    },
-    {
-      language: input.plan.providerConfig.language,
-      signal: input.signal,
-    },
-  )
+  let result: Awaited<ReturnType<typeof provider.transcribe>>
+  try {
+    result = await provider.transcribe(
+      {
+        blob: input.plan.inspection.file,
+        mimeType: input.plan.mimeType || input.plan.inspection.file.type,
+        durationMs: input.plan.durationMs ?? undefined,
+      },
+      {
+        language: input.plan.providerConfig.language,
+        signal: input.signal,
+      },
+    )
+  } catch (error) {
+    throw withChunkDurationHint(error, input.plan, {
+      requestMode: 'direct',
+      messages: input.messages,
+    })
+  }
   throwIfAborted(input.signal)
   input.onProgress({ phase: 'inserting', completedChunks: 1, totalChunks: 1 })
   await input.onText({
@@ -250,11 +308,14 @@ async function executeChunkedUpload(input: {
   signal: AbortSignal
   onProgress: (progress: AudioFileTranscriptionProgress) => void
   onText: (result: OrderedAudioFileText) => Promise<void>
+  messages?: AudioFileTranscriptionMessages
 }): Promise<void> {
   const { plan, signal, onProgress, onText } = input
+  const messages = input.messages ?? DEFAULT_MESSAGES
   if (!plan.schedule || !plan.inspection.decodedAudio) {
-    throw new Error('Missing chunk plan for audio file transcription.')
+    throw new Error(messages.missingChunkPlan)
   }
+  const decodedAudio = plan.inspection.decodedAudio
 
   onProgress({
     phase: 'preparing',
@@ -262,10 +323,7 @@ async function executeChunkedUpload(input: {
     totalChunks: plan.schedule.chunks.length,
   })
   await yieldToBrowser(signal)
-  const chunks = createAudioFileChunks(
-    plan.inspection.decodedAudio,
-    plan.schedule,
-  )
+  const entries = plan.schedule.chunks
   const provider = buildAsrProviderForConfig(plan.providerConfig)
   const results = new Map<number, OrderedAudioFileText>()
   let nextChunkIndex = 0
@@ -273,14 +331,14 @@ async function executeChunkedUpload(input: {
   let launchCount = 0
   let launchGate = Promise.resolve()
 
-  const queue = chunks.slice()
+  const queue = entries.slice()
   const workers = Array.from(
-    { length: Math.min(plan.maxConcurrentChunks, chunks.length) },
+    { length: Math.min(plan.maxConcurrentChunks, entries.length) },
     async () => {
       while (queue.length > 0) {
         throwIfAborted(signal)
-        const chunk = queue.shift()
-        if (!chunk) return
+        const entry = queue.shift()
+        if (!entry) return
         launchGate = launchGate.then(async () => {
           if (launchCount > 0) {
             await delay(plan.chunkStartStaggerMs, signal)
@@ -293,13 +351,16 @@ async function executeChunkedUpload(input: {
         onProgress({
           phase: 'uploading',
           completedChunks,
-          totalChunks: chunks.length,
+          totalChunks: entries.length,
         })
+        await yieldToBrowser(signal)
+        const chunk = createAudioFileChunk(decodedAudio, entry)
         const text = await transcribeChunkWithRetry({
           provider,
           chunk,
           plan,
           signal,
+          messages,
         })
         completedChunks += 1
         results.set(chunk.index, {
@@ -313,7 +374,7 @@ async function executeChunkedUpload(input: {
           onProgress({
             phase: 'inserting',
             completedChunks,
-            totalChunks: chunks.length,
+            totalChunks: entries.length,
           })
           await onText(ordered)
           nextChunkIndex += 1
@@ -321,7 +382,7 @@ async function executeChunkedUpload(input: {
         onProgress({
           phase: 'uploading',
           completedChunks,
-          totalChunks: chunks.length,
+          totalChunks: entries.length,
         })
       }
     },
@@ -335,6 +396,7 @@ async function transcribeChunkWithRetry(input: {
   chunk: AudioFileChunk
   plan: AudioFileTranscriptionPlan
   signal: AbortSignal
+  messages: AudioFileTranscriptionMessages
 }): Promise<string> {
   let lastError: unknown = null
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -358,7 +420,13 @@ async function transcribeChunkWithRetry(input: {
       if (attempt === 0) await delay(1000, input.signal)
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('Chunk failed.')
+  throw withChunkDurationHint(
+    lastError instanceof Error
+      ? lastError
+      : new Error(input.messages.chunkFailed),
+    input.plan,
+    { messages: input.messages },
+  )
 }
 
 async function executeWebSocketStream(input: {
@@ -366,10 +434,12 @@ async function executeWebSocketStream(input: {
   signal: AbortSignal
   onProgress: (progress: AudioFileTranscriptionProgress) => void
   onText: (result: OrderedAudioFileText) => Promise<void>
+  messages?: AudioFileTranscriptionMessages
 }): Promise<void> {
+  const messages = input.messages ?? DEFAULT_MESSAGES
   const provider = buildAsrProviderForConfig(input.plan.providerConfig)
   if (typeof provider.startStreaming !== 'function') {
-    throw new Error('The selected ASR provider does not support streaming.')
+    throw new Error(messages.streamingUnsupported)
   }
 
   let emittedFinalText = ''
@@ -396,6 +466,7 @@ async function executeWebSocketStream(input: {
   const session = await provider.startStreaming(
     {
       language: input.plan.providerConfig.language,
+      purpose: 'audio-file-transcription',
       signal: input.signal,
     },
     {
@@ -439,6 +510,18 @@ async function sendFileThroughStreamingSession(input: {
   onProgress: (progress: AudioFileTranscriptionProgress) => void
 }): Promise<void> {
   const { plan, session, signal, onProgress } = input
+  let lastProgressPct = -1
+  const reportProgress = (sentBytes: number, totalBytes: number) => {
+    const pct =
+      totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 100
+    if (pct === lastProgressPct && sentBytes < totalBytes) return
+    lastProgressPct = pct
+    onProgress({
+      phase: 'uploading',
+      sentBytes,
+      totalBytes,
+    })
+  }
   if (plan.providerConfig.audioFormat === 'wav') {
     const pcm = await transcodeToPcm16({
       blob: plan.inspection.file,
@@ -452,11 +535,7 @@ async function sendFileThroughStreamingSession(input: {
       throwIfAborted(signal)
       const end = Math.min(pcm.audio.byteLength, offset + frameBytes)
       session.sendAudioChunk(pcm.audio.slice(offset, end))
-      onProgress({
-        phase: 'uploading',
-        sentBytes: end,
-        totalBytes: pcm.audio.byteLength,
-      })
+      reportProgress(end, pcm.audio.byteLength)
       await delay(40, signal)
     }
     return
@@ -468,11 +547,7 @@ async function sendFileThroughStreamingSession(input: {
     throwIfAborted(signal)
     const end = Math.min(bytes.byteLength, offset + frameBytes)
     session.sendAudioChunk(bytes.slice(offset, end))
-    onProgress({
-      phase: 'uploading',
-      sentBytes: end,
-      totalBytes: bytes.byteLength,
-    })
+    reportProgress(end, bytes.byteLength)
     await delay(100, signal)
   }
 }
@@ -542,6 +617,37 @@ function estimateSingleRequestBytes(input: {
     )
   }
   return input.file.size
+}
+
+function withChunkDurationHint(
+  error: unknown,
+  plan: AudioFileTranscriptionPlan,
+  options: {
+    requestMode?: 'direct' | 'chunked'
+    messages?: AudioFileTranscriptionMessages
+  } = {},
+): Error {
+  if (isAbortError(error)) return error
+  const messages = options.messages ?? DEFAULT_MESSAGES
+  const message = error instanceof Error ? error.message : String(error)
+  const providerMaxMs = getAudioFileAsrCapability(
+    plan.providerConfig,
+  ).maxDurationMs
+  const providerMaxSec =
+    providerMaxMs === null ? null : Math.floor(providerMaxMs / 1000)
+  const providerHint =
+    providerMaxSec === null
+      ? messages.providerGenericDurationHint
+      : messages.providerMaxDurationHint(providerMaxSec)
+  const chunkHint =
+    options.requestMode === 'direct'
+      ? messages.directChunkDurationHint(plan.targetChunkDurationSec)
+      : messages.chunkedChunkDurationHint(plan.targetChunkDurationSec)
+  return new Error(`${message}\n\n${chunkHint} ${providerHint}`)
+}
+
+function isAbortError(error: unknown): error is Error {
+  return error instanceof Error && error.name === 'AbortError'
 }
 
 function throwIfAborted(signal: AbortSignal): void {

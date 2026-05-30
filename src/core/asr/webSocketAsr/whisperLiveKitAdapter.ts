@@ -27,8 +27,9 @@ export const openWhisperLiveKitNativeStream = async (args: {
   url: string
   signal?: AbortSignal
   callbacks: AsrStreamingCallbacks
+  includeSpeakerLabels?: boolean
 }): Promise<AsrStreamingSession> => {
-  const { url, signal, callbacks } = args
+  const { url, signal, callbacks, includeSpeakerLabels } = args
   const socket = await createAsrWebSocket({
     url,
   })
@@ -192,8 +193,13 @@ export const openWhisperLiveKitNativeStream = async (args: {
         return
       }
 
-      const { text, buffer } = readWhisperLiveKitNativeTranscript(payload)
-      const combined = [text, buffer].filter(Boolean).join(' ').trim()
+      const { text, buffer } = readWhisperLiveKitNativeTranscript(payload, {
+        includeSpeakerLabels,
+      })
+      const combined = [text, buffer]
+        .filter(Boolean)
+        .join(includeSpeakerLabels ? '\n' : ' ')
+        .trim()
       if (!combined) return
       if (text) {
         latestText = text

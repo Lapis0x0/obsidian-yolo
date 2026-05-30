@@ -1,12 +1,18 @@
 import type {
   AsrAudioFormat,
   AsrTransportMode,
-} from '../../settings/schema/setting.types'
+} from '../../../settings/schema/setting.types'
+import { transcodeToWav } from '../audioTranscode'
+import { BaseAsrProvider } from '../base'
+import { sendAsrJsonRequest } from '../httpTransport'
+import type { AsrAudioInput, AsrOptions, AsrResult } from '../types'
 
-import { transcodeToWav } from './audioTranscode'
-import { BaseAsrProvider } from './base'
-import { sendAsrJsonRequest } from './httpTransport'
-import type { AsrAudioInput, AsrOptions, AsrResult } from './types'
+import {
+  blobToBase64,
+  guessAudioFormatLabelFromMime,
+  joinUrl,
+  truncateResponseBody,
+} from './common'
 
 export type ChatAudioProviderProfile = {
   baseURL: string
@@ -20,38 +26,6 @@ export type ChatAudioProviderProfile = {
 }
 
 const DEFAULT_CHAT_COMPLETIONS_PATH = '/chat/completions'
-
-const guessFormatLabelFromMime = (mimeType: string): string => {
-  const lower = mimeType.toLowerCase()
-  if (lower.includes('webm')) return 'webm'
-  if (lower.includes('ogg')) return 'ogg'
-  if (lower.includes('mp4') || lower.includes('m4a')) return 'm4a'
-  if (lower.includes('mpeg') || lower.includes('mp3')) return 'mp3'
-  if (lower.includes('wav')) return 'wav'
-  if (lower.includes('flac')) return 'flac'
-  return 'webm'
-}
-
-const joinUrl = (baseURL: string, path: string): string => {
-  const trimmedBase = baseURL.replace(/\/+$/, '')
-  const trimmedPath = path.replace(/^\/+/, '')
-  return `${trimmedBase}/${trimmedPath}`
-}
-
-const blobToBase64 = async (blob: Blob): Promise<string> => {
-  const buffer = await blob.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize)
-    binary += String.fromCharCode(...chunk)
-  }
-  if (typeof btoa === 'function') return btoa(binary)
-  // Fallback for environments without atob/btoa
-
-  return (globalThis as any).Buffer.from(binary, 'binary').toString('base64')
-}
 
 const buildAudioContentPart = (
   format: string,
@@ -186,7 +160,7 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
     const effectiveInput =
       audioFormat === 'wav' ? await transcodeToWav(input) : input
 
-    const audioFormatLabel = guessFormatLabelFromMime(
+    const audioFormatLabel = guessAudioFormatLabelFromMime(
       effectiveInput.mimeType || effectiveInput.blob.type || '',
     )
     const base64Audio = await blobToBase64(effectiveInput.blob)
@@ -267,9 +241,7 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      const errBody = response.text
-      const truncated =
-        errBody.length > 500 ? `${errBody.slice(0, 500)}…` : errBody
+      const truncated = truncateResponseBody(response.text)
       throw new Error(
         `ASR chat-audio request failed: ${response.status}${truncated ? ` — ${truncated}` : ''}`,
       )

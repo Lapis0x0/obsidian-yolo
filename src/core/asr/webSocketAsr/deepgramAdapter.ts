@@ -172,8 +172,9 @@ export const openDeepgramCompatibleStream = async (args: {
   apiKey: string
   signal?: AbortSignal
   callbacks: AsrStreamingCallbacks
+  includeSpeakerLabels?: boolean
 }): Promise<AsrStreamingSession> => {
-  const { url, apiKey, signal, callbacks } = args
+  const { url, apiKey, signal, callbacks, includeSpeakerLabels } = args
   const protocols =
     apiKey.trim().length > 0 ? ['token', apiKey.trim()] : undefined
   const socket = await createAsrWebSocket({
@@ -190,6 +191,7 @@ export const openDeepgramCompatibleStream = async (args: {
     let sendChain = Promise.resolve()
     let lastTranscript = ''
     const finalParts: string[] = []
+    const speakerState = { lastSpeakerLabel: '' }
     const startedAt = Date.now()
     let timeoutId: number | null = null
     let settleTimeoutId: number | null = null
@@ -343,11 +345,15 @@ export const openDeepgramCompatibleStream = async (args: {
 
       const result = payload
       if (result.type && result.type !== 'Results') return
-      const transcript = readTranscript(result).trim()
+      const isFinal = result.is_final === true || result.speech_final === true
+      const transcript = readTranscript(result, {
+        includeSpeakerLabels: !!includeSpeakerLabels && isFinal,
+        speakerState,
+      }).trim()
       if (!transcript) return
 
       lastTranscript = transcript
-      if (result.is_final === true || result.speech_final === true) {
+      if (isFinal) {
         pushFinalPart(finalParts, transcript)
         callbacks.onFinal?.(combineTranscript(finalParts))
       } else {

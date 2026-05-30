@@ -13,7 +13,9 @@ import type {
 export function resolveConfiguredAsrConfig(
   options: ContextVoiceInputOptions,
 ): AsrConfig | null {
-  const list = options.asrConfigs
+  const list = options.asrConfigs.filter(
+    (config) => config.asrCategory !== 'http-long-audio',
+  )
   if (!Array.isArray(list) || list.length === 0) return null
 
   const active =
@@ -30,6 +32,32 @@ export function hasConfiguredAsrConfig(
   return resolveConfiguredAsrConfig(options) !== null
 }
 
+export function resolveConfiguredAudioFileAsrConfig(
+  options: ContextVoiceInputOptions,
+): AsrConfig | null {
+  const list = options.asrConfigs
+  if (!Array.isArray(list) || list.length === 0) return null
+
+  const activeAudioFileId = options.activeAudioFileAsrConfigId ?? ''
+  const activeVoiceId = options.activeAsrConfigId ?? ''
+  const activeAudioFile =
+    activeAudioFileId.length > 0
+      ? list.find((config) => config.id === activeAudioFileId)
+      : undefined
+  const activeVoice =
+    activeVoiceId.length > 0
+      ? list.find((config) => config.id === activeVoiceId)
+      : undefined
+  const config = activeAudioFile ?? activeVoice ?? list[0] ?? null
+  return config && isUsableAudioFileAsrConfig(config) ? config : null
+}
+
+export function hasConfiguredAudioFileAsrConfig(
+  options: ContextVoiceInputOptions,
+): boolean {
+  return resolveConfiguredAudioFileAsrConfig(options) !== null
+}
+
 export function isUsableAsrConfig(config: AsrConfig): boolean {
   switch (config.format) {
     case 'openai-compatible-transcription':
@@ -40,4 +68,11 @@ export function isUsableAsrConfig(config: AsrConfig): boolean {
     default:
       return false
   }
+}
+
+function isUsableAudioFileAsrConfig(config: AsrConfig): boolean {
+  if (config.asrCategory === 'http-long-audio') {
+    return false
+  }
+  return isUsableAsrConfig(config)
 }

@@ -46,4 +46,17 @@ describe('migrateFrom65To66', () => {
       audioFileChunkOverlapMs: 0,
     })
   })
+
+  it('allows shorter chunk targets for stricter upload providers', () => {
+    const result = migrateFrom65To66({
+      version: 65,
+      contextVoiceInputOptions: {
+        audioFileChunkTargetDurationSec: 5,
+      },
+    })
+
+    expect(result.contextVoiceInputOptions).toMatchObject({
+      audioFileChunkTargetDurationSec: 15,
+    })
+  })
 })

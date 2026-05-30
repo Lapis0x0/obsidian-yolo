@@ -1,12 +1,20 @@
 import type {
   AsrAudioFormat,
   AsrTransportMode,
-} from '../../settings/schema/setting.types'
+} from '../../../settings/schema/setting.types'
+import { transcodeToWav } from '../audioTranscode'
+import { BaseAsrProvider } from '../base'
+import { sendAsrMultipartRequest } from '../httpTransport'
+import type { AsrAudioInput, AsrOptions, AsrResult } from '../types'
 
-import { transcodeToWav } from './audioTranscode'
-import { BaseAsrProvider } from './base'
-import { sendAsrMultipartRequest } from './httpTransport'
-import type { AsrAudioInput, AsrOptions, AsrResult } from './types'
+import {
+  type MultipartField,
+  buildMultipartBody,
+  generateMultipartBoundary,
+  guessAudioExtensionFromMime,
+  joinUrl,
+  truncateResponseBody,
+} from './common'
 
 export type TranscriptionProviderProfile = {
   baseURL: string
@@ -25,79 +33,6 @@ export type TranscriptionProviderProfile = {
 }
 
 const DEFAULT_TRANSCRIPTION_PATH = '/audio/transcriptions'
-
-const guessExtensionFromMime = (mimeType: string): string => {
-  const lower = mimeType.toLowerCase()
-  if (lower.includes('webm')) return 'webm'
-  if (lower.includes('ogg')) return 'ogg'
-  if (lower.includes('mp4') || lower.includes('m4a')) return 'm4a'
-  if (lower.includes('mpeg') || lower.includes('mp3')) return 'mp3'
-  if (lower.includes('wav')) return 'wav'
-  if (lower.includes('flac')) return 'flac'
-  return 'webm'
-}
-
-const joinUrl = (baseURL: string, path: string): string => {
-  const trimmedBase = baseURL.replace(/\/+$/, '')
-  const trimmedPath = path.replace(/^\/+/, '')
-  return `${trimmedBase}/${trimmedPath}`
-}
-
-const encodeUtf8 = (input: string): Uint8Array =>
-  new TextEncoder().encode(input)
-
-const concatUint8 = (parts: Uint8Array[]): Uint8Array => {
-  const total = parts.reduce((sum, part) => sum + part.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const part of parts) {
-    out.set(part, offset)
-    offset += part.length
-  }
-  return out
-}
-
-const generateBoundary = (): string =>
-  `----yolo-asr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-
-const buildMultipartBody = async (
-  boundary: string,
-  fields: Array<
-    | { name: string; value: string }
-    | { name: string; filename: string; contentType: string; blob: Blob }
-  >,
-): Promise<ArrayBuffer> => {
-  const parts: Uint8Array[] = []
-  const crlf = '\r\n'
-  for (const field of fields) {
-    parts.push(encodeUtf8(`--${boundary}${crlf}`))
-    if ('value' in field) {
-      parts.push(
-        encodeUtf8(
-          `Content-Disposition: form-data; name="${field.name}"${crlf}${crlf}`,
-        ),
-      )
-      parts.push(encodeUtf8(field.value))
-      parts.push(encodeUtf8(crlf))
-    } else {
-      parts.push(
-        encodeUtf8(
-          `Content-Disposition: form-data; name="${field.name}"; filename="${field.filename}"${crlf}` +
-            `Content-Type: ${field.contentType}${crlf}${crlf}`,
-        ),
-      )
-      const bytes = new Uint8Array(await field.blob.arrayBuffer())
-      parts.push(bytes)
-      parts.push(encodeUtf8(crlf))
-    }
-  }
-  parts.push(encodeUtf8(`--${boundary}--${crlf}`))
-  const merged = concatUint8(parts)
-  return merged.buffer.slice(
-    merged.byteOffset,
-    merged.byteOffset + merged.byteLength,
-  )
-}
 
 /**
  * OpenAI-compatible `/v1/audio/transcriptions` provider.
@@ -157,7 +92,7 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
     const effectiveInput =
       audioFormat === 'wav' ? await transcodeToWav(input) : input
 
-    const ext = guessExtensionFromMime(
+    const ext = guessAudioExtensionFromMime(
       effectiveInput.mimeType || effectiveInput.blob.type || '',
     )
     const filename = `recording.${ext}`
@@ -165,10 +100,7 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
       effectiveInput.blob.type || effectiveInput.mimeType || 'audio/webm'
 
     const langCandidate = (options?.language ?? language ?? '').trim()
-    const fields: Array<
-      | { name: string; value: string }
-      | { name: string; filename: string; contentType: string; blob: Blob }
-    > = [
+    const fields: MultipartField[] = [
       {
         name: 'file',
         filename,
@@ -185,7 +117,7 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
       fields.push({ name: 'prompt', value: options.prompt })
     }
 
-    const boundary = generateBoundary()
+    const boundary = generateMultipartBoundary()
     const body = await buildMultipartBody(boundary, fields)
 
     const startedAt = Date.now()
@@ -208,9 +140,7 @@ export class OpenAiCompatibleTranscriptionProvider extends BaseAsrProvider {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      const errBody = response.text
-      const truncated =
-        errBody.length > 500 ? `${errBody.slice(0, 500)}…` : errBody
+      const truncated = truncateResponseBody(response.text)
       throw new Error(
         `ASR transcription failed: ${response.status}${truncated ? ` — ${truncated}` : ''}`,
       )

@@ -21,6 +21,7 @@ import type { AsrAudioInput } from './types'
 
 const SAMPLE_BITS = 16
 const BYTES_PER_SAMPLE = SAMPLE_BITS / 8
+const AUDIO_DECODE_TIMEOUT_MS = 60_000
 
 let cachedDecodeContext: AudioContext | null = null
 
@@ -76,7 +77,11 @@ export const transcodeToPcm16 = async (
 export const decodeAudioBlob = async (blob: Blob): Promise<AudioBuffer> => {
   const arrayBuffer = await blob.arrayBuffer()
   const ctx = getDecodeContext()
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  const audioBuffer = await withTimeout(
+    ctx.decodeAudioData(arrayBuffer.slice(0)),
+    AUDIO_DECODE_TIMEOUT_MS,
+    'Audio decoding timed out.',
+  )
   assertDecodedAudioNotEmpty(audioBuffer)
   return audioBuffer
 }
@@ -130,6 +135,26 @@ const assertDecodedAudioNotEmpty = (audioBuffer: AudioBuffer): void => {
 
 const clampFrame = (frame: number, maxFrame: number): number =>
   Math.min(maxFrame, Math.max(0, frame))
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> => {
+  let timeout: number | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = window.setTimeout(() => {
+          reject(new Error(message))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout !== null) window.clearTimeout(timeout)
+  }
+}
 
 /**
  * Encode an `AudioBuffer` to a 16-bit PCM WAV blob.

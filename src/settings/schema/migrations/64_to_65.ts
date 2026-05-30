@@ -59,6 +59,8 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
     configs.push({
       id: makeId(),
       name: 'Transcription',
+      asrCategory: 'http-short-audio',
+      asrProvider: 'openai-compatible-transcription',
       format: 'openai-compatible-transcription',
       baseURL: stringOr(transcription.baseURL, ''),
       apiKey: stringOr(transcription.apiKey, ''),
@@ -66,6 +68,10 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
       transcriptionPath: stringOr(transcription.transcriptionPath, ''),
       chatCompletionsPath: '',
       audioContentFormat: 'input_audio',
+      webSocketProtocol: 'deepgram-compatible',
+      webSocketPunctuate: true,
+      webSocketDiarizeMode: 'off',
+      webSocketDictation: false,
       audioFormat: 'auto',
       transportMode: 'node',
       language: stringOr(transcription.language, topLevelLanguage),
@@ -79,6 +85,8 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
     configs.push({
       id: makeId(),
       name: 'Chat audio ASR',
+      asrCategory: 'http-short-audio',
+      asrProvider: 'openai-compatible-chat-audio-asr',
       format: 'openai-compatible-chat-audio-asr',
       baseURL: stringOr(chatAudio.baseURL, ''),
       apiKey: stringOr(chatAudio.apiKey, ''),
@@ -86,6 +94,10 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
       transcriptionPath: '',
       chatCompletionsPath: stringOr(chatAudio.chatCompletionsPath, ''),
       audioContentFormat: stringOr(chatAudio.audioContentFormat, 'input_audio'),
+      webSocketProtocol: 'deepgram-compatible',
+      webSocketPunctuate: true,
+      webSocketDiarizeMode: 'off',
+      webSocketDictation: false,
       // Legacy chat-audio recordings were sent as wav for broad endpoint
       // compatibility (notably Gemini-compatible OpenAI facades).
       audioFormat: 'wav',

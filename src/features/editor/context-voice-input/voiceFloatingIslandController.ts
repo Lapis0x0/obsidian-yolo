@@ -32,6 +32,7 @@ import type {
 } from './contextVoiceInputController'
 
 type InteractionMode = 'toggle-listen' | 'hold-to-talk' | 'audio-file'
+type AudioFileDragKind = 'audio' | 'maybe-audio' | 'unsupported'
 
 type VoiceVadOptions = {
   speechStartDecibels: number
@@ -46,6 +47,8 @@ type IslandDeps = {
   t: (key: string, fallback: string) => string
   isFeatureReady: () => boolean
   isAudioFileModeEnabled: () => boolean
+  getAudioFileDragKind: (event: DragEvent) => AudioFileDragKind | null
+  resolveAudioFileFromDrop: (event: DragEvent) => Promise<File | null>
   getInteractionMode: () => InteractionMode
   setInteractionMode: (mode: InteractionMode) => Promise<void>
   getVadOptions: () => VoiceVadOptions
@@ -121,7 +124,12 @@ export class VoiceFloatingIslandController {
   private activeStatusHost: 'a' | 'b' = 'a'
   private audioDragDepth = 0
   private audioDragOver = false
+  private audioDragKind: AudioFileDragKind | null = null
   private externalAudioDragRevealTimeout: number | null = null
+  private lastPrimaryButtonKey: string | null = null
+  private lastModeButtonKey: string | null = null
+  private suppressModeButtonClickOnce = false
+  private suppressModeButtonClickClearTimeout: number | null = null
 
   constructor(private readonly deps: IslandDeps) {}
 
@@ -148,10 +156,19 @@ export class VoiceFloatingIslandController {
     this.subscribeToController()
   }
 
-  revealAudioDropTargetForView(view: MarkdownView): void {
+  revealAudioDropTargetForView(
+    view: MarkdownView,
+    kind: AudioFileDragKind,
+  ): void {
     this.attachToView(view)
-    this.setAudioDragOver(true)
+    this.setAudioDragOver(true, kind)
     this.scheduleExternalAudioDragRevealClear()
+  }
+
+  clearAudioDropTargetReveal(): void {
+    this.audioDragDepth = 0
+    this.clearExternalAudioDragRevealTimeout()
+    this.setAudioDragOver(false, null)
   }
 
   destroy(): void {
@@ -186,6 +203,10 @@ export class VoiceFloatingIslandController {
     this.root = null
     this.audioDragDepth = 0
     this.audioDragOver = false
+    this.audioDragKind = null
+    this.lastPrimaryButtonKey = null
+    this.lastModeButtonKey = null
+    this.clearSuppressedModeButtonClick()
   }
 
   private animateRootRemoval(root: HTMLElement): void {
@@ -241,6 +262,15 @@ export class VoiceFloatingIslandController {
     })
     this.renderModeButton(modeToggle, this.deps.getInteractionMode(), 'idle')
     modeToggle.addEventListener('mousedown', (e) => e.preventDefault())
+    modeToggle.addEventListener('pointerdown', (e) => {
+      const controller = this.deps.getController()
+      const state = controller?.getStatus().state ?? 'idle'
+      if (!this.isModeButtonCancel(state)) return
+      e.preventDefault()
+      e.stopPropagation()
+      this.suppressNextModeButtonClick()
+      controller?.cancelActiveSession('mode-button-cancel')
+    })
     modeToggle.addEventListener(
       'click',
       () => void this.handleModeButtonClick(),
@@ -343,6 +373,10 @@ export class VoiceFloatingIslandController {
     }
     this.root.classList.remove('is-hidden')
     this.root.classList.toggle('is-audio-drag-over', this.audioDragOver)
+    this.root.classList.toggle(
+      'is-audio-drag-unsupported',
+      this.audioDragKind === 'unsupported',
+    )
     if (this.micButton) {
       this.renderPrimaryButton(this.micButton, state)
     }
@@ -408,6 +442,18 @@ export class VoiceFloatingIslandController {
   ): string {
     const latency = this.formatCompactStateLatency(state, status)
     if (this.audioDragOver && state === 'idle') {
+      if (this.audioDragKind === 'unsupported') {
+        return this.deps.t(
+          'voiceInput.audioFileUnsupportedDropHint',
+          'Only audio files',
+        )
+      }
+      if (this.audioDragKind === 'maybe-audio') {
+        return this.deps.t(
+          'voiceInput.audioFileCheckDropHint',
+          'Drop file to check audio',
+        )
+      }
       return this.deps.t(
         'voiceInput.audioFileDropHint',
         'Drop audio to transcribe',
@@ -620,7 +666,6 @@ export class VoiceFloatingIslandController {
     button: HTMLButtonElement,
     state: VoiceInputStatus['state'],
   ): void {
-    button.empty()
     button.disabled =
       state === 'transcribing' ||
       state === 'polishing' ||
@@ -628,6 +673,13 @@ export class VoiceFloatingIslandController {
       state === 'preparing' ||
       state === 'uploading' ||
       state === 'inserting'
+    const renderKey = this.getPrimaryButtonRenderKey(state)
+    if (this.lastPrimaryButtonKey === renderKey) {
+      this.updatePrimaryButtonLabel(button, state)
+      return
+    }
+    this.lastPrimaryButtonKey = renderKey
+    button.empty()
     // Use only aria-label for the tooltip. Setting both `title` and
     // `aria-label` causes two tooltips to stack — the browser's native one
     // from `title` plus Obsidian's styled one from `aria-label`.
@@ -682,6 +734,44 @@ export class VoiceFloatingIslandController {
             : this.deps.t('voiceInput.buttonStart', 'Start recording'),
         )
         break
+    }
+  }
+
+  private getPrimaryButtonRenderKey(state: VoiceInputStatus['state']): string {
+    switch (state) {
+      case 'transcribing':
+      case 'checking':
+      case 'preparing':
+      case 'uploading':
+      case 'inserting':
+      case 'polishing':
+        return 'processing'
+      case 'idle':
+        return `idle:${this.deps.getInteractionMode()}`
+      default:
+        return state
+    }
+  }
+
+  private updatePrimaryButtonLabel(
+    button: HTMLButtonElement,
+    state: VoiceInputStatus['state'],
+  ): void {
+    if (
+      state === 'transcribing' ||
+      state === 'checking' ||
+      state === 'preparing' ||
+      state === 'uploading' ||
+      state === 'inserting' ||
+      state === 'polishing'
+    ) {
+      button.setAttribute(
+        'aria-label',
+        this.buildStatusTitle(
+          state,
+          this.deps.getController()?.getStatus() ?? null,
+        ),
+      )
     }
   }
 
@@ -767,6 +857,10 @@ export class VoiceFloatingIslandController {
   }
 
   private async handleModeButtonClick(): Promise<void> {
+    if (this.suppressModeButtonClickOnce) {
+      this.clearSuppressedModeButtonClick()
+      return
+    }
     const controller = this.deps.getController()
     const state = controller?.getStatus().state ?? 'idle'
     if (this.isModeButtonCancel(state)) {
@@ -774,6 +868,22 @@ export class VoiceFloatingIslandController {
       return
     }
     await this.cycleMode()
+  }
+
+  private suppressNextModeButtonClick(): void {
+    this.clearSuppressedModeButtonClick()
+    this.suppressModeButtonClickOnce = true
+    this.suppressModeButtonClickClearTimeout = window.setTimeout(() => {
+      this.clearSuppressedModeButtonClick()
+    }, 1000)
+  }
+
+  private clearSuppressedModeButtonClick(): void {
+    this.suppressModeButtonClickOnce = false
+    if (this.suppressModeButtonClickClearTimeout !== null) {
+      window.clearTimeout(this.suppressModeButtonClickClearTimeout)
+      this.suppressModeButtonClickClearTimeout = null
+    }
   }
 
   private async cycleMode(): Promise<void> {
@@ -831,6 +941,9 @@ export class VoiceFloatingIslandController {
     mode: InteractionMode,
     state: VoiceInputStatus['state'],
   ): void {
+    const renderKey = this.getModeButtonRenderKey(mode, state)
+    if (this.lastModeButtonKey === renderKey) return
+    this.lastModeButtonKey = renderKey
     button.empty()
     // Drop any prior native `title` so we don't stack a browser tooltip on
     // top of Obsidian's aria-label tooltip (see renderPrimaryButton).
@@ -874,49 +987,71 @@ export class VoiceFloatingIslandController {
     }
   }
 
+  private getModeButtonRenderKey(
+    mode: InteractionMode,
+    state: VoiceInputStatus['state'],
+  ): string {
+    return this.isModeButtonCancel(state)
+      ? 'cancel'
+      : `mode:${this.getNextInteractionMode(mode)}`
+  }
+
   private attachAudioFileDragListeners(root: HTMLElement): void {
     root.addEventListener('dragenter', (event) => {
-      if (!this.shouldAcceptAudioFileDrop(event)) return
+      const kind = this.resolveAudioFileDragKind(event)
+      if (!kind) return
       event.preventDefault()
       this.clearExternalAudioDragRevealTimeout()
       this.audioDragDepth += 1
-      this.setAudioDragOver(true)
+      this.setAudioDragOver(true, kind)
     })
     root.addEventListener('dragover', (event) => {
-      if (!this.shouldAcceptAudioFileDrop(event)) return
+      const kind = this.resolveAudioFileDragKind(event)
+      if (!kind) return
       event.preventDefault()
       this.clearExternalAudioDragRevealTimeout()
-      event.dataTransfer!.dropEffect = 'copy'
-      this.setAudioDragOver(true)
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = kind === 'unsupported' ? 'none' : 'copy'
+      }
+      this.setAudioDragOver(true, kind)
     })
     root.addEventListener('dragleave', (event) => {
       if (!this.audioDragOver) return
       event.preventDefault()
       this.audioDragDepth = Math.max(0, this.audioDragDepth - 1)
-      if (this.audioDragDepth === 0) this.setAudioDragOver(false)
+      if (this.audioDragDepth === 0) this.setAudioDragOver(false, null)
     })
     root.addEventListener('drop', (event) => {
-      if (!this.shouldAcceptAudioFileDrop(event)) return
+      const kind = this.resolveAudioFileDragKind(event)
+      if (!kind) return
       event.preventDefault()
+      event.stopPropagation()
       this.audioDragDepth = 0
-      this.setAudioDragOver(false)
-      const file = Array.from(event.dataTransfer?.files ?? [])[0]
-      if (file) void this.startAudioFileTranscription(file)
+      this.setAudioDragOver(false, null)
+      if (kind === 'unsupported') return
+      void this.handleAudioFileDrop(event)
     })
   }
 
-  private shouldAcceptAudioFileDrop(event: DragEvent): boolean {
-    if (!this.deps.isAudioFileModeEnabled()) return false
+  private resolveAudioFileDragKind(event: DragEvent): AudioFileDragKind | null {
+    if (!this.deps.isAudioFileModeEnabled()) return null
     const controller = this.deps.getController()
-    if (controller?.getStatus().state !== 'idle') return false
-    return Array.from(event.dataTransfer?.items ?? []).some(
-      (item) => item.kind === 'file',
-    )
+    if (controller?.getStatus().state !== 'idle') return null
+    return this.deps.getAudioFileDragKind(event)
   }
 
-  private setAudioDragOver(value: boolean): void {
-    if (this.audioDragOver === value) return
+  private async handleAudioFileDrop(event: DragEvent): Promise<void> {
+    const file = await this.deps.resolveAudioFileFromDrop(event)
+    if (file) await this.startAudioFileTranscription(file)
+  }
+
+  private setAudioDragOver(
+    value: boolean,
+    kind: AudioFileDragKind | null,
+  ): void {
+    if (this.audioDragOver === value && this.audioDragKind === kind) return
     this.audioDragOver = value
+    this.audioDragKind = value ? kind : null
     this.applyStatus(this.deps.getController()?.getStatus() ?? null)
   }
 
@@ -924,7 +1059,7 @@ export class VoiceFloatingIslandController {
     this.clearExternalAudioDragRevealTimeout()
     this.externalAudioDragRevealTimeout = window.setTimeout(() => {
       this.externalAudioDragRevealTimeout = null
-      if (this.audioDragDepth === 0) this.setAudioDragOver(false)
+      if (this.audioDragDepth === 0) this.setAudioDragOver(false, null)
     }, 300)
   }
 

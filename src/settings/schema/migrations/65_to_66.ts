@@ -42,7 +42,7 @@ export const migrateFrom65To66: SettingMigration['migrate'] = (data) => {
           : 'Transcriptions/{{date}} {{time}} {{basename}}.md',
       audioFileChunkTargetDurationSec: clampInt(
         voice.audioFileChunkTargetDurationSec,
-        60,
+        15,
         600,
         120,
       ),

@@ -1,7 +1,4 @@
-import {
-  encodeAudioBufferSliceToWav,
-  estimatePcm16WavByteLength,
-} from '../../../core/asr/audioTranscode'
+import { encodeAudioBufferSliceToWav } from '../../../core/asr/audioTranscode'
 
 export type AudioFileChunk = {
   index: number
@@ -30,30 +27,19 @@ export function buildAudioFileChunkSchedule(input: {
   audioBuffer: AudioBuffer
   targetDurationSec: number
   overlapMs: number
-  maxChunkBytes: number | null
+  maxChunkDurationMs: number | null
 }): AudioFileChunkSchedule {
   const totalMs = Math.max(1, Math.round(input.audioBuffer.duration * 1000))
-  const targetMs = clampInt(input.targetDurationSec, 60, 600) * 1000
+  const targetMs = clampInt(input.targetDurationSec, 15, 600) * 1000
   const overlapMs = clampInt(input.overlapMs, 0, 1500)
-  const maxPayloadDurationMs =
-    input.maxChunkBytes && input.maxChunkBytes > 44
-      ? estimateMaxDurationMs(input.audioBuffer, input.maxChunkBytes)
-      : null
   const maxDurationMs =
-    maxPayloadDurationMs === null
+    input.maxChunkDurationMs === null
       ? null
-      : Math.max(1000, maxPayloadDurationMs - overlapMs * 2)
+      : Math.max(1000, input.maxChunkDurationMs - overlapMs * 2)
   const effectiveChunkDurationMs = Math.max(
     1000,
     Math.min(targetMs, maxDurationMs ?? targetMs),
   )
-  if (
-    input.maxChunkBytes &&
-    estimatePcm16WavByteLength(input.audioBuffer, 1000 + overlapMs * 2) >
-      input.maxChunkBytes
-  ) {
-    throw new Error('Audio chunks would exceed the provider request limit.')
-  }
 
   const chunks: AudioFileChunkScheduleEntry[] = []
   let startMs = 0
@@ -76,7 +62,16 @@ export function createAudioFileChunks(
   audioBuffer: AudioBuffer,
   schedule: AudioFileChunkSchedule,
 ): AudioFileChunk[] {
-  return schedule.chunks.map((entry) => ({
+  return schedule.chunks.map((entry) =>
+    createAudioFileChunk(audioBuffer, entry),
+  )
+}
+
+export function createAudioFileChunk(
+  audioBuffer: AudioBuffer,
+  entry: AudioFileChunkScheduleEntry,
+): AudioFileChunk {
+  return {
     ...entry,
     blob: encodeAudioBufferSliceToWav(
       audioBuffer,
@@ -84,24 +79,7 @@ export function createAudioFileChunks(
       entry.actualEndMs,
     ),
     mimeType: 'audio/wav',
-  }))
-}
-
-function estimateMaxDurationMs(
-  audioBuffer: AudioBuffer,
-  maxChunkBytes: number,
-): number {
-  let low = 1000
-  let high = Math.max(1000, Math.floor(audioBuffer.duration * 1000))
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2)
-    if (estimatePcm16WavByteLength(audioBuffer, mid) <= maxChunkBytes) {
-      low = mid
-    } else {
-      high = mid - 1
-    }
   }
-  return low
 }
 
 function clampInt(value: number, min: number, max: number): number {

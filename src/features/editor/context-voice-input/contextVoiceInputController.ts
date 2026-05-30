@@ -16,6 +16,15 @@ import type { LLMRequestBase } from '../../../types/llm/request'
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
 
+import {
+  type AudioFileTranscriptionMessages,
+  type AudioFileTranscriptionPlan,
+  type AudioFileTranscriptionProgress,
+  type OrderedAudioFileText,
+  executeAudioFileTranscriptionPlan,
+  inspectAndPlanAudioFileTranscription,
+  trimDuplicateChunkBoundary,
+} from './audioFileTranscriptionService'
 import type { DocumentSummaryManager } from './documentSummaryManager'
 import {
   applyVoiceDecisionBoundaryFallback,
@@ -31,14 +40,6 @@ import {
   VoiceInputRecorderError,
 } from './voiceInputRecorder'
 import type { VoicePrefixCacheManager } from './voicePrefixCacheManager'
-import {
-  type AudioFileTranscriptionPlan,
-  type AudioFileTranscriptionProgress,
-  type OrderedAudioFileText,
-  executeAudioFileTranscriptionPlan,
-  inspectAndPlanAudioFileTranscription,
-  trimDuplicateChunkBoundary,
-} from './audioFileTranscriptionService'
 import {
   type VoiceInputTarget,
   buildVoiceInputMessages,
@@ -303,6 +304,155 @@ export class ContextVoiceInputController {
 
   constructor(private readonly deps: VoiceInputControllerDeps) {}
 
+  private tFormat(
+    key: string,
+    fallback: string,
+    values: Record<string, string | number>,
+  ): string {
+    let text = this.deps.t(key, fallback)
+    Object.entries(values).forEach(([name, value]) => {
+      text = text.replace(new RegExp(`{{${name}}}`, 'g'), String(value))
+    })
+    return text
+  }
+
+  private getAudioFileTranscriptionMessages(): AudioFileTranscriptionMessages {
+    return {
+      noProvider: this.deps.t(
+        'voiceInput.audioFileErrorNoProvider',
+        'No ASR provider is configured. Add one under Models → Voice recognition.',
+      ),
+      longAudioNotImplemented: this.deps.t(
+        'voiceInput.audioFileErrorLongAudioNotImplemented',
+        'Long-audio provider adapters are not implemented yet.',
+      ),
+      unsupportedLocalFile: this.deps.t(
+        'voiceInput.audioFileErrorUnsupportedLocalFile',
+        'The selected ASR provider cannot transcribe local files.',
+      ),
+      unsupportedChunking: this.deps.t(
+        'voiceInput.audioFileErrorUnsupportedChunking',
+        'The selected ASR provider cannot split this audio file.',
+      ),
+      decodeRequiredForChunking: this.deps.t(
+        'voiceInput.audioFileErrorDecodeRequiredForChunking',
+        'This file is too large for one request and cannot be decoded locally for chunking.',
+      ),
+      missingChunkPlan: this.deps.t(
+        'voiceInput.audioFileErrorMissingChunkPlan',
+        'Missing chunk plan for audio file transcription.',
+      ),
+      chunkFailed: this.deps.t(
+        'voiceInput.audioFileErrorChunkFailed',
+        'Chunk failed.',
+      ),
+      streamingUnsupported: this.deps.t(
+        'voiceInput.audioFileErrorStreamingUnsupported',
+        'The selected ASR provider does not support streaming.',
+      ),
+      directChunkDurationHint: (seconds) =>
+        this.tFormat(
+          'voiceInput.audioFileDirectChunkDurationHint',
+          'If this is a provider upload-size limit, choose a shorter Audio file chunk duration (currently {{seconds}}s) so the file is split before upload.',
+          { seconds },
+        ),
+      chunkedChunkDurationHint: (seconds) =>
+        this.tFormat(
+          'voiceInput.audioFileChunkedChunkDurationHint',
+          'If this is a provider upload-size limit, lower Audio file chunk duration (currently {{seconds}}s).',
+          { seconds },
+        ),
+      providerGenericDurationHint: this.deps.t(
+        'voiceInput.audioFileProviderGenericDurationHint',
+        'Some providers need shorter WAV chunks.',
+      ),
+      providerMaxDurationHint: (seconds) =>
+        this.tFormat(
+          'voiceInput.audioFileProviderMaxDurationHint',
+          'This provider may need WAV chunks at {{seconds}}s or less.',
+          { seconds },
+        ),
+    }
+  }
+
+  private localizeAsrConfigError(message: string): string {
+    switch (message) {
+      case 'No ASR provider is configured. Add one under Models → Voice recognition.':
+        return this.deps.t(
+          'voiceInput.configureAsrNotice',
+          'Configure an ASR provider before using voice input.',
+        )
+      case 'Long-audio ASR provider adapters are not implemented yet.':
+        return this.deps.t(
+          'voiceInput.audioFileErrorLongAudioNotImplemented',
+          'Long-audio provider adapters are not implemented yet.',
+        )
+      case 'Transcription ASR config needs both baseURL and model.':
+      case 'Chat-audio ASR config needs both baseURL and model.':
+        return this.deps.t(
+          'voiceInput.asrConfigIncompleteNotice',
+          'The selected ASR provider is incomplete.',
+        )
+      case 'WebSocket ASR config needs a baseURL.':
+        return this.deps.t(
+          'voiceInput.asrConfigMissingBaseUrlNotice',
+          'The selected WebSocket provider needs a Base URL.',
+        )
+      default:
+        return message
+    }
+  }
+
+  private localizeAsrRuntimeError(message: string): string {
+    if (message.startsWith('ASR transcription failed: ')) {
+      return this.tFormat(
+        'voiceInput.asrTranscriptionRequestFailed',
+        'ASR transcription failed: {{detail}}',
+        { detail: message.slice('ASR transcription failed: '.length) },
+      )
+    }
+    if (message.startsWith('ASR chat-audio request failed: ')) {
+      return this.tFormat(
+        'voiceInput.asrChatAudioRequestFailed',
+        'ASR chat-audio request failed: {{detail}}',
+        { detail: message.slice('ASR chat-audio request failed: '.length) },
+      )
+    }
+    return message
+  }
+
+  private localizeRecorderError(error: VoiceInputRecorderError): string {
+    switch (error.kind) {
+      case 'permission-denied':
+        return this.deps.t(
+          'voiceInput.recorderPermissionDenied',
+          'Microphone access was denied. Grant the permission in your system or Obsidian settings.',
+        )
+      case 'no-device':
+        return this.deps.t(
+          'voiceInput.recorderNoDevice',
+          'No microphone was found.',
+        )
+      case 'device-busy':
+        return this.deps.t(
+          'voiceInput.recorderDeviceBusy',
+          'The microphone is busy or not readable.',
+        )
+      case 'unsupported':
+        return this.deps.t(
+          'voiceInput.recorderUnsupported',
+          'Recording is not supported in this environment.',
+        )
+      case 'aborted':
+        return this.deps.t(
+          'voiceInput.recordingCancelled',
+          'Recording cancelled.',
+        )
+      default:
+        return error.message
+    }
+  }
+
   private clearSoftRestartTimer(): void {
     if (this.softRestartTimer === null) return
     window.clearTimeout(this.softRestartTimer)
@@ -345,7 +495,12 @@ export class ContextVoiceInputController {
     editor: Editor | null,
   ): Promise<void> {
     if (this.status.state !== 'idle') {
-      new Notice('Finish the current voice task before transcribing a file.')
+      new Notice(
+        this.deps.t(
+          'voiceInput.finishCurrentTaskNotice',
+          'Finish the current voice task before transcribing a file.',
+        ),
+      )
       return
     }
 
@@ -353,7 +508,10 @@ export class ContextVoiceInputController {
     const options = settings.contextVoiceInputOptions
     if (!options?.enabled || !options.audioFileTranscriptionEnabled) {
       new Notice(
-        'Audio file transcription is disabled in voice input settings.',
+        this.deps.t(
+          'voiceInput.audioFileDisabledNotice',
+          'Audio file transcription is disabled in voice input settings.',
+        ),
       )
       return
     }
@@ -387,13 +545,14 @@ export class ContextVoiceInputController {
     }
     this.audioFileSession = session
     this.updateStatus('checking', undefined, {
-      message: 'Checking audio file...',
+      message: this.deps.t('voiceInput.audioFileChecking', 'Checking…'),
     })
 
     try {
       const plan = await inspectAndPlanAudioFileTranscription({
         file,
         options,
+        messages: this.getAudioFileTranscriptionMessages(),
       })
       if (this.audioFileSession !== session) return
       session.plan = plan
@@ -412,7 +571,7 @@ export class ContextVoiceInputController {
     if (!session || !plan || this.status.state !== 'confirm-plan') return
 
     this.updateStatus('preparing', undefined, {
-      message: 'Preparing transcription...',
+      message: this.deps.t('voiceInput.audioFilePreparing', 'Preparing…'),
       audioFilePlan: this.summariseAudioFilePlan(plan),
     })
     try {
@@ -422,14 +581,25 @@ export class ContextVoiceInputController {
         onProgress: (progress) =>
           this.handleAudioFileProgress(session, progress),
         onText: (result) => this.insertAudioFileText(session, result),
+        messages: this.getAudioFileTranscriptionMessages(),
       })
       if (this.audioFileSession !== session) return
-      new Notice('Audio file transcription finished.')
+      new Notice(
+        this.deps.t(
+          'voiceInput.audioFileFinished',
+          'Audio file transcription finished.',
+        ),
+      )
       this.finishAudioFileSession()
     } catch (error) {
       if (isAbortError(error) || session.abortController.signal.aborted) {
         if (this.audioFileSession === session) {
-          new Notice('Audio file transcription cancelled.')
+          new Notice(
+            this.deps.t(
+              'voiceInput.audioFileCancelled',
+              'Audio file transcription cancelled.',
+            ),
+          )
           this.finishAudioFileSession()
         }
         return
@@ -568,13 +738,20 @@ export class ContextVoiceInputController {
 
   private buildAudioFilePlanMessage(plan: AudioFileTranscriptionPlan): string {
     if (plan.mode === 'websocket-stream') {
-      return 'Stream audio file through ASR?'
+      return this.deps.t('voiceInput.audioFilePlanStream', 'Stream audio?')
     }
     if (plan.mode === 'chunked-upload') {
       const chunks = plan.schedule?.chunks.length ?? 0
-      return `Upload ${chunks} audio chunks?`
+      return this.tFormat(
+        'voiceInput.audioFilePlanChunked',
+        'Upload {{count}} audio chunks?',
+        { count: chunks },
+      )
     }
-    return 'Upload this audio file for transcription?'
+    return this.deps.t(
+      'voiceInput.audioFilePlanDirect',
+      'Upload this audio file for transcription?',
+    )
   }
 
   private handleAudioFileProgress(
@@ -605,9 +782,23 @@ export class ContextVoiceInputController {
       typeof progress.totalChunks === 'number'
     ) {
       if (progress.phase === 'inserting') {
-        return `Inserting ${progress.completedChunks}/${progress.totalChunks}...`
+        return this.tFormat(
+          'voiceInput.audioFileProgressInsertingChunks',
+          'Inserting {{done}}/{{total}}…',
+          {
+            done: progress.completedChunks,
+            total: progress.totalChunks,
+          },
+        )
       }
-      return `Transcribing ${progress.completedChunks}/${progress.totalChunks}...`
+      return this.tFormat(
+        'voiceInput.audioFileProgressTranscribingChunks',
+        'Transcribing {{done}}/{{total}}…',
+        {
+          done: progress.completedChunks,
+          total: progress.totalChunks,
+        },
+      )
     }
     if (
       typeof progress.sentBytes === 'number' &&
@@ -620,12 +811,22 @@ export class ContextVoiceInputController {
           Math.round((progress.sentBytes / progress.totalBytes) * 100),
         ),
       )
-      return `Streaming ${pct}%...`
+      return this.tFormat(
+        'voiceInput.audioFileProgressStreamingPercent',
+        'Streaming {{percent}}%…',
+        { percent: pct },
+      )
     }
-    if (progress.phase === 'transcribing') return 'Transcribing...'
-    if (progress.phase === 'inserting') return 'Inserting...'
-    if (progress.phase === 'preparing') return 'Preparing...'
-    return 'Uploading...'
+    if (progress.phase === 'transcribing') {
+      return this.deps.t('voiceInput.barTranscribing', 'Transcribing…')
+    }
+    if (progress.phase === 'inserting') {
+      return this.deps.t('voiceInput.audioFileInserting', 'Inserting…')
+    }
+    if (progress.phase === 'preparing') {
+      return this.deps.t('voiceInput.audioFilePreparing', 'Preparing…')
+    }
+    return this.deps.t('voiceInput.audioFileUploading', 'Uploading…')
   }
 
   private formatAudioFileProgressLabel(
@@ -730,7 +931,13 @@ export class ContextVoiceInputController {
     }
     await this.deps.appendToMarkdownFile(session.fallbackPath, text)
     if (!session.fallbackNoticeShown) {
-      new Notice(`Transcription is being written to ${session.fallbackPath}.`)
+      new Notice(
+        this.tFormat(
+          'voiceInput.audioFileFallbackNotice',
+          'Transcription is being written to {{path}}.',
+          { path: session.fallbackPath },
+        ),
+      )
       session.fallbackNoticeShown = true
     }
   }
@@ -763,7 +970,12 @@ export class ContextVoiceInputController {
       parts.push(this.formatChunkStartTime(result.chunkStartMs))
     }
     parts.push(text)
-    const prefix = session.hasInsertedText ? '\n\n' : ''
+    const prefix =
+      session.hasInsertedText && plan.mode === 'websocket-stream'
+        ? ' '
+        : session.hasInsertedText
+          ? '\n\n'
+          : ''
     return `${prefix}${parts.filter(Boolean).join('\n\n')}`
   }
 
@@ -780,17 +992,24 @@ export class ContextVoiceInputController {
       plan.providerConfig.format
     const submitted =
       plan.mode === 'chunked-upload'
-        ? `${plan.schedule?.chunks.length ?? 0} chunks`
+        ? this.tFormat(
+            'voiceInput.audioFileSubmissionChunks',
+            '{{count}} chunks',
+            { count: plan.schedule?.chunks.length ?? 0 },
+          )
         : plan.mode === 'websocket-stream'
-          ? 'WebSocket stream'
-          : 'direct upload'
+          ? this.deps.t(
+              'voiceInput.audioFileSubmissionWebSocket',
+              'WebSocket stream',
+            )
+          : this.deps.t('voiceInput.audioFileSubmissionDirect', 'direct upload')
     return [
       title,
       '',
-      `- Source: ${plan.fileName}`,
-      `- Transcribed: ${new Date().toLocaleString()}`,
-      `- Provider: ${provider}`,
-      `- Submission: ${submitted}`,
+      `- ${this.deps.t('voiceInput.audioFileMetadataSource', 'Source')}: ${plan.fileName}`,
+      `- ${this.deps.t('voiceInput.audioFileMetadataTranscribed', 'Transcribed')}: ${new Date().toLocaleString()}`,
+      `- ${this.deps.t('voiceInput.audioFileMetadataProvider', 'Provider')}: ${provider}`,
+      `- ${this.deps.t('voiceInput.audioFileMetadataSubmission', 'Submission')}: ${submitted}`,
       '',
       '---',
     ].join('\n')
@@ -828,12 +1047,21 @@ export class ContextVoiceInputController {
   private handleAudioFileError(error: unknown): void {
     const message =
       error instanceof Error
-        ? error.message
+        ? this.localizeAsrRuntimeError(error.message)
         : typeof error === 'string'
           ? error
-          : 'Audio file transcription failed.'
+          : this.deps.t(
+              'voiceInput.audioFileFailed',
+              'Audio file transcription failed.',
+            )
     console.error('Audio file transcription failed:', error)
-    new Notice(`Audio file transcription failed: ${message}`)
+    new Notice(
+      this.tFormat(
+        'voiceInput.audioFileFailedWithMessage',
+        'Audio file transcription failed: {{message}}',
+        { message },
+      ),
+    )
     this.finishAudioFileSession()
   }
 
@@ -886,7 +1114,12 @@ export class ContextVoiceInputController {
     const settings = this.deps.getSettings()
     const options = settings.contextVoiceInputOptions
     if (!options || !options.enabled) {
-      new Notice('Context-aware voice input is disabled in settings.')
+      new Notice(
+        this.deps.t(
+          'voiceInput.disabledNotice',
+          'Context-aware voice input is disabled in settings.',
+        ),
+      )
       return
     }
     try {
@@ -894,21 +1127,34 @@ export class ContextVoiceInputController {
     } catch (error) {
       const message =
         error instanceof AsrConfigError
-          ? error.message
-          : 'Configure an ASR provider before using voice input.'
+          ? this.localizeAsrConfigError(error.message)
+          : this.deps.t(
+              'voiceInput.configureAsrNotice',
+              'Configure an ASR provider before using voice input.',
+            )
       new Notice(message)
       return
     }
 
     const polishModelId = resolvePolishModelId(settings)
     if (!polishModelId) {
-      new Notice('Select a polish model in Editor → Voice input settings.')
+      new Notice(
+        this.deps.t(
+          'voiceInput.selectPolishModelNotice',
+          'Select a polish model in Editor → Voice input settings.',
+        ),
+      )
       return
     }
 
     const view = this.deps.getEditorView(editor)
     if (!view) {
-      new Notice('Voice input needs a focused editor.')
+      new Notice(
+        this.deps.t(
+          'voiceInput.focusedEditorNotice',
+          'Voice input needs a focused editor.',
+        ),
+      )
       return
     }
 
@@ -1021,10 +1267,13 @@ export class ContextVoiceInputController {
       this.deps.setVoiceInputInProgress(false)
       const message =
         error instanceof VoiceInputRecorderError
-          ? error.message
+          ? this.localizeRecorderError(error)
           : error instanceof Error
             ? error.message
-            : 'Could not start recording.'
+            : this.deps.t(
+                'voiceInput.startRecordingFailed',
+                'Could not start recording.',
+              )
       new Notice(message)
       // The status may have been pre-pivoted to 'recording' by the auto-
       // restart path; reset to idle so the bar doesn't get stuck.
@@ -1054,6 +1303,7 @@ export class ContextVoiceInputController {
     return asrProvider.startStreaming(
       {
         language: activeConfig?.language,
+        purpose: 'context-voice-input',
         signal: session.abortController.signal,
       },
       {
@@ -2086,7 +2336,12 @@ export class ContextVoiceInputController {
       this.deps.removeAbortController(audioFileSession.abortController)
       this.audioFileSession = null
       if (reason !== 'shutdown') {
-        new Notice('Audio file transcription cancelled.')
+        new Notice(
+          this.deps.t(
+            'voiceInput.audioFileCancelled',
+            'Audio file transcription cancelled.',
+          ),
+        )
       }
     }
     const session = this.session
@@ -2153,12 +2408,22 @@ export class ContextVoiceInputController {
     if (!aborted) {
       const message =
         error instanceof Error
-          ? error.message
+          ? error instanceof VoiceInputRecorderError
+            ? this.localizeRecorderError(error)
+            : this.localizeAsrRuntimeError(error.message)
           : typeof error === 'string'
             ? error
-            : 'Voice input failed.'
+            : this.deps.t('voiceInput.failed', 'Voice input failed.')
       console.error('Context voice input failed:', error)
-      new Notice(`Voice input failed: ${message}`)
+      new Notice(
+        this.tFormat(
+          'voiceInput.failedWithMessage',
+          'Voice input failed: {{message}}',
+          {
+            message,
+          },
+        ),
+      )
     }
     this.cancelActiveSession(aborted ? 'aborted' : 'error')
   }

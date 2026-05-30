@@ -1,34 +1,37 @@
 import { App, Notice } from 'obsidian'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { BaseAsrProvider } from '../../../core/asr/base'
-import type {
-  AsrAudioInput,
-  AsrStreamingSession,
-} from '../../../core/asr/types'
+import type { AsrStreamingSession } from '../../../core/asr/types'
+import type { VoiceInputRecorder } from '../../../features/editor/context-voice-input/voiceInputRecorder'
 import YoloPlugin from '../../../main'
 import {
   ASR_AUDIO_FORMATS,
   type AsrApiFormat,
   type AsrAudioFormat,
   type AsrConfig,
+  type AsrConfigCategory,
   type AsrTransportMode,
+  type AsrWebSocketFeatureMode,
   type AsrWebSocketProtocol,
 } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 
 type AsrConfigFormProps = {
   plugin: YoloPlugin
   /** null when adding a brand-new config. */
   config: AsrConfig | null
+  category?: AsrConfigCategory
 }
 
 const TEST_RECORDING_SECONDS = 5
+const STREAMING_TEST_MAX_SECONDS = 24 * 60 * 60
 
 // Per-format defaults that get *written* into the form (not just shown as
 // placeholder) when the user picks that format. Previous version showed
@@ -36,12 +39,17 @@ const TEST_RECORDING_SECONDS = 5
 // fields are now genuinely pre-filled and ready.
 type FormatDefaults = {
   name: string
+  asrCategory: AsrConfigCategory
+  asrProvider: string
   baseURL: string
   model: string
   transcriptionPath: string
   chatCompletionsPath: string
   audioContentFormat: string
   webSocketProtocol: AsrWebSocketProtocol
+  webSocketPunctuate: boolean
+  webSocketDiarizeMode: AsrWebSocketFeatureMode
+  webSocketDictation: boolean
   audioFormat: AsrAudioFormat
   language: string
 }
@@ -52,23 +60,33 @@ type FormatDefaults = {
 const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
   'openai-compatible-transcription': {
     name: 'OpenAI Whisper',
+    asrCategory: 'http-short-audio',
+    asrProvider: 'openai-compatible-transcription',
     baseURL: 'https://api.openai.com/v1',
     model: 'whisper-1',
     transcriptionPath: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
     webSocketProtocol: 'deepgram-compatible',
+    webSocketPunctuate: true,
+    webSocketDiarizeMode: 'off',
+    webSocketDictation: false,
     audioFormat: 'auto',
     language: 'auto',
   },
   'openai-compatible-chat-audio-asr': {
     name: 'Chat audio ASR',
+    asrCategory: 'http-short-audio',
+    asrProvider: 'openai-compatible-chat-audio-asr',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
     model: 'gemini-3.1-flash-lite',
     transcriptionPath: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
     webSocketProtocol: 'deepgram-compatible',
+    webSocketPunctuate: true,
+    webSocketDiarizeMode: 'off',
+    webSocketDictation: false,
     // Many chat-audio endpoints reject webm — wav transcode is the safest
     // default. Switch to `auto` if you know your endpoint takes webm/opus.
     audioFormat: 'wav',
@@ -76,12 +94,17 @@ const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
   },
   'deepgram-compatible-websocket': {
     name: 'Deepgram WS',
+    asrCategory: 'websocket',
+    asrProvider: 'deepgram',
     baseURL: 'wss://api.deepgram.com/v1',
     model: 'nova-3',
     transcriptionPath: '/listen',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
     webSocketProtocol: 'deepgram-compatible',
+    webSocketPunctuate: true,
+    webSocketDiarizeMode: 'auto',
+    webSocketDictation: false,
     audioFormat: 'wav',
     language: 'zh',
   },
@@ -100,34 +123,126 @@ const WS_PROTOCOL_DEFAULTS: Record<
   AsrWebSocketProtocol,
   Pick<
     FormatDefaults,
-    'name' | 'baseURL' | 'model' | 'transcriptionPath' | 'audioFormat'
+    | 'name'
+    | 'baseURL'
+    | 'model'
+    | 'transcriptionPath'
+    | 'audioFormat'
+    | 'asrProvider'
+    | 'webSocketPunctuate'
+    | 'webSocketDiarizeMode'
+    | 'webSocketDictation'
   >
 > = {
   'deepgram-compatible': {
     name: 'Deepgram WS',
+    asrProvider: 'deepgram',
     baseURL: 'wss://api.deepgram.com/v1',
     model: 'nova-3',
     transcriptionPath: '/listen',
     audioFormat: 'wav',
+    webSocketPunctuate: true,
+    webSocketDiarizeMode: 'auto',
+    webSocketDictation: false,
   },
   'whisperlivekit-native': {
     name: 'WhisperLiveKit WS',
+    asrProvider: 'whisperlivekit',
     baseURL: 'ws://127.0.0.1:8000',
     model: '',
     transcriptionPath: '/asr',
     audioFormat: 'auto',
+    webSocketPunctuate: false,
+    webSocketDiarizeMode: 'auto',
+    webSocketDictation: false,
+  },
+}
+
+type AsrLongAudioProvider =
+  | 'funasr-local'
+  | 'deepgram-prerecorded'
+  | 'speechmatics-batch'
+
+type AsrTestStatus =
+  | 'idle'
+  | 'recording'
+  | 'finalizing'
+  | 'transcribing'
+  | 'passed'
+  | 'failed'
+
+type StreamingTestRuntime = {
+  recorder: VoiceInputRecorder
+  session: AsrStreamingSession
+}
+
+type VoiceInputRecorderConstructor = new () => VoiceInputRecorder
+
+const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
+  AsrLongAudioProvider,
+  Pick<
+    FormatDefaults,
+    | 'name'
+    | 'asrProvider'
+    | 'baseURL'
+    | 'model'
+    | 'transcriptionPath'
+    | 'audioFormat'
+    | 'language'
+  >
+> = {
+  'funasr-local': {
+    name: 'FunASR local',
+    asrProvider: 'funasr-local',
+    baseURL: 'http://127.0.0.1:8001',
+    model: 'paraformer-zh + fsmn-vad + ct-punc + cam++',
+    transcriptionPath: '/recognize',
+    audioFormat: 'auto',
+    language: 'zh',
+  },
+  'deepgram-prerecorded': {
+    name: 'Deepgram pre-recorded',
+    asrProvider: 'deepgram-prerecorded',
+    baseURL: 'https://api.deepgram.com',
+    model: 'nova-3',
+    transcriptionPath: '/v1/listen',
+    audioFormat: 'auto',
+    language: 'auto',
+  },
+  'speechmatics-batch': {
+    name: 'Speechmatics Batch',
+    asrProvider: 'speechmatics-batch',
+    baseURL: 'https://asr.api.speechmatics.com/v2',
+    model: '',
+    transcriptionPath: '/jobs',
+    audioFormat: 'auto',
+    language: 'auto',
   },
 }
 
 const generateId = (): string =>
   `asr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 
+const formatTemplate = (
+  template: string,
+  values: Record<string, string | number>,
+): string =>
+  Object.entries(values).reduce(
+    (text, [key, value]) =>
+      text.replace(new RegExp(`{{${key}}}`, 'g'), String(value)),
+    template,
+  )
+
 export class AddAsrConfigModal extends ReactModal<AsrConfigFormProps> {
-  constructor(app: App, plugin: YoloPlugin) {
+  constructor(
+    app: App,
+    plugin: YoloPlugin,
+    category: AsrConfigCategory = 'http-short-audio',
+  ) {
     super({
       app,
       Component: AsrConfigFormComponent,
-      props: { plugin, config: null },
+      props: { plugin, config: null, category },
       options: { title: 'Add ASR configuration' },
       plugin,
     })
@@ -149,6 +264,7 @@ export class EditAsrConfigModal extends ReactModal<AsrConfigFormProps> {
 function AsrConfigFormComponent({
   plugin,
   config,
+  category,
   onClose,
 }: AsrConfigFormProps & { onClose: () => void }) {
   const { t } = useLanguage()
@@ -158,38 +274,173 @@ function AsrConfigFormComponent({
     if (config) return { ...config }
     // First-time add: start from the transcription default (most common new
     // user flow). The Format picker swaps in matching defaults when changed.
-    const fmt: AsrApiFormat = 'openai-compatible-transcription'
+    const initialCategory = category ?? 'http-short-audio'
+    const fmt: AsrApiFormat =
+      initialCategory === 'websocket'
+        ? 'deepgram-compatible-websocket'
+        : 'openai-compatible-transcription'
     const def = FORMAT_DEFAULTS[fmt]
+    const longDef = LONG_AUDIO_PROVIDER_DEFAULTS['funasr-local']
     return {
       id: generateId(),
-      name: def.name,
+      name: initialCategory === 'http-long-audio' ? longDef.name : def.name,
+      asrCategory: initialCategory,
+      asrProvider:
+        initialCategory === 'http-long-audio'
+          ? longDef.asrProvider
+          : def.asrProvider,
       format: fmt,
-      baseURL: def.baseURL,
+      baseURL:
+        initialCategory === 'http-long-audio' ? longDef.baseURL : def.baseURL,
       apiKey: '',
-      model: def.model,
-      transcriptionPath: def.transcriptionPath,
+      model: initialCategory === 'http-long-audio' ? longDef.model : def.model,
+      transcriptionPath:
+        initialCategory === 'http-long-audio'
+          ? longDef.transcriptionPath
+          : def.transcriptionPath,
       chatCompletionsPath: def.chatCompletionsPath,
       audioContentFormat: def.audioContentFormat,
       webSocketProtocol: def.webSocketProtocol,
-      audioFormat: def.audioFormat,
+      webSocketPunctuate: def.webSocketPunctuate,
+      webSocketDiarizeMode: def.webSocketDiarizeMode,
+      webSocketDictation: def.webSocketDictation,
+      audioFormat:
+        initialCategory === 'http-long-audio'
+          ? longDef.audioFormat
+          : def.audioFormat,
       transportMode: 'node',
-      language: def.language,
+      language:
+        initialCategory === 'http-long-audio' ? longDef.language : def.language,
     }
   })
   const [testRunning, setTestRunning] = useState(false)
+  const [streamingTestActive, setStreamingTestActive] = useState(false)
   const [testMessage, setTestMessage] = useState<string>('')
   const [testTranscript, setTestTranscript] = useState<string>('')
-  const [testStatus, setTestStatus] = useState<
-    'idle' | 'recording' | 'finalizing' | 'transcribing' | 'passed' | 'failed'
-  >('idle')
+  const [testStatus, setTestStatus] = useState<AsrTestStatus>('idle')
+  const streamingTestRef = useRef<StreamingTestRuntime | null>(null)
 
   const isChatAudio = formData.format === 'openai-compatible-chat-audio-asr'
-  const isDeepgramWs = formData.format === 'deepgram-compatible-websocket'
-  const providerFormData: AsrConfig = isDeepgramWs
+  const isHttpLongAudio = formData.asrCategory === 'http-long-audio'
+  const isWebSocketAsr =
+    formData.asrCategory === 'websocket' ||
+    formData.format === 'deepgram-compatible-websocket'
+  const isDeepgramCompatibleWs =
+    isWebSocketAsr && formData.webSocketProtocol === 'deepgram-compatible'
+  const providerFormData: AsrConfig = isWebSocketAsr
     ? { ...formData, transportMode: 'browser' }
     : formData
+  const tf = useCallback(
+    (key: string, fallback: string, values: Record<string, string | number>) =>
+      formatTemplate(t(key, fallback), values),
+    [t],
+  )
+  const localizeAsrErrorMessage = useCallback(
+    (message: string): string => {
+      switch (message) {
+        case 'No ASR provider is configured. Add one under Models → Voice recognition.':
+          return t(
+            'settings.asr.errorNoProvider',
+            'No ASR provider is configured.',
+          )
+        case 'Long-audio ASR provider adapters are not implemented yet.':
+          return t(
+            'settings.asr.errorLongAudioNotImplemented',
+            'Long-audio provider adapters are not implemented yet.',
+          )
+        case 'Transcription ASR config needs both baseURL and model.':
+        case 'Chat-audio ASR config needs both baseURL and model.':
+        case 'ASR provider is missing baseURL.':
+        case 'ASR provider is missing model.':
+          return t(
+            'settings.asr.errorIncompleteConfig',
+            'This ASR configuration is incomplete.',
+          )
+        case 'WebSocket ASR config needs a baseURL.':
+          return t(
+            'settings.asr.errorWebSocketMissingBaseUrl',
+            'This WebSocket provider needs a Base URL.',
+          )
+        default:
+          if (message.startsWith('ASR transcription failed: ')) {
+            return formatTemplate(
+              t(
+                'settings.asr.errorTranscriptionRequestFailed',
+                'ASR transcription failed: {{detail}}',
+              ),
+              { detail: message.slice('ASR transcription failed: '.length) },
+            )
+          }
+          if (message.startsWith('ASR chat-audio request failed: ')) {
+            return formatTemplate(
+              t(
+                'settings.asr.errorChatAudioRequestFailed',
+                'ASR chat-audio request failed: {{detail}}',
+              ),
+              {
+                detail: message.slice('ASR chat-audio request failed: '.length),
+              },
+            )
+          }
+          return message
+      }
+    },
+    [t],
+  )
+  const localizeTestError = useCallback(
+    (error: Error): string => {
+      const kind =
+        typeof (error as { kind?: unknown }).kind === 'string'
+          ? (error as Error & { kind: string }).kind
+          : ''
+      switch (kind) {
+        case 'permission-denied':
+          return t(
+            'voiceInput.recorderPermissionDenied',
+            'Microphone access was denied. Grant the permission in your system or Obsidian settings.',
+          )
+        case 'no-device':
+          return t('voiceInput.recorderNoDevice', 'No microphone was found.')
+        case 'device-busy':
+          return t(
+            'voiceInput.recorderDeviceBusy',
+            'The microphone is busy or not readable.',
+          )
+        case 'unsupported':
+          return t(
+            'voiceInput.recorderUnsupported',
+            'Recording is not supported in this environment.',
+          )
+        case 'aborted':
+          return t('voiceInput.recordingCancelled', 'Recording cancelled.')
+        default:
+          return localizeAsrErrorMessage(error.message)
+      }
+    },
+    [localizeAsrErrorMessage, t],
+  )
+
+  const cancelStreamingTest = useCallback((updateState = true) => {
+    const runtime = streamingTestRef.current
+    streamingTestRef.current = null
+    if (!runtime) return
+    runtime.recorder.cancel()
+    try {
+      runtime.session.cancel()
+    } catch {
+      // Best-effort cleanup when the modal is closed or the config changes.
+    }
+    if (!updateState) return
+    setStreamingTestActive(false)
+    setTestRunning(false)
+  }, [])
+
+  useEffect(() => {
+    return () => cancelStreamingTest(false)
+  }, [cancelStreamingTest])
 
   const handlePatch = (patch: Partial<AsrConfig>) => {
+    cancelStreamingTest()
     setFormData((prev) => ({ ...prev, ...patch }))
     setTestMessage('')
     setTestTranscript('')
@@ -201,6 +452,7 @@ function AsrConfigFormComponent({
   // the OLD format's default; if unchanged, replace; if user overwrote it,
   // leave alone.
   const handleFormatChange = (nextFormat: AsrApiFormat) => {
+    cancelStreamingTest()
     const oldFormat = formData.format
     const oldDef = FORMAT_DEFAULTS[oldFormat]
     const newDef = FORMAT_DEFAULTS[nextFormat]
@@ -216,6 +468,8 @@ function AsrConfigFormComponent({
     }
     setFormData((prev) => ({
       ...prev,
+      asrCategory: 'http-short-audio',
+      asrProvider: newDef.asrProvider,
       format: nextFormat,
       name: keepIfEdited('name'),
       baseURL: keepIfEdited('baseURL'),
@@ -224,6 +478,9 @@ function AsrConfigFormComponent({
       chatCompletionsPath: keepIfEdited('chatCompletionsPath'),
       audioContentFormat: keepIfEdited('audioContentFormat'),
       webSocketProtocol: keepIfEdited('webSocketProtocol'),
+      webSocketPunctuate: keepIfEdited('webSocketPunctuate'),
+      webSocketDiarizeMode: keepIfEdited('webSocketDiarizeMode'),
+      webSocketDictation: keepIfEdited('webSocketDictation'),
       audioFormat: keepIfEdited('audioFormat'),
       transportMode:
         nextFormat === 'deepgram-compatible-websocket'
@@ -239,15 +496,22 @@ function AsrConfigFormComponent({
   const handleWebSocketProtocolChange = (
     nextProtocol: AsrWebSocketProtocol,
   ) => {
+    cancelStreamingTest()
     const defaults = WS_PROTOCOL_DEFAULTS[nextProtocol]
     setFormData((prev) => ({
       ...prev,
       webSocketProtocol: nextProtocol,
+      asrCategory: 'websocket',
+      asrProvider: defaults.asrProvider,
+      format: 'deepgram-compatible-websocket',
       name: defaults.name,
       baseURL: defaults.baseURL,
       model: defaults.model,
       transcriptionPath: defaults.transcriptionPath,
       audioFormat: defaults.audioFormat,
+      webSocketPunctuate: defaults.webSocketPunctuate,
+      webSocketDiarizeMode: defaults.webSocketDiarizeMode,
+      webSocketDictation: defaults.webSocketDictation,
       transportMode: 'browser',
     }))
     setTestMessage('')
@@ -256,13 +520,38 @@ function AsrConfigFormComponent({
   }
 
   const validate = (): string | null => {
-    if (!formData.baseURL.trim()) return 'Base URL is required.'
-    if (!isDeepgramWs && !formData.model.trim()) return 'Model is required.'
+    if (!formData.baseURL.trim()) {
+      return t('settings.asr.baseURLRequired', 'Base URL is required.')
+    }
+    if (isHttpLongAudio) return null
+    if (!isWebSocketAsr && !formData.model.trim()) {
+      return t('settings.asr.modelRequired', 'Model is required.')
+    }
     return null
   }
 
+  const handleLongAudioProviderChange = (provider: AsrLongAudioProvider) => {
+    cancelStreamingTest()
+    const defaults = LONG_AUDIO_PROVIDER_DEFAULTS[provider]
+    setFormData((prev) => ({
+      ...prev,
+      asrCategory: 'http-long-audio',
+      asrProvider: defaults.asrProvider,
+      name: defaults.name,
+      baseURL: defaults.baseURL,
+      model: defaults.model,
+      transcriptionPath: defaults.transcriptionPath,
+      audioFormat: defaults.audioFormat,
+      language: defaults.language,
+      transportMode: 'node',
+    }))
+    setTestMessage('')
+    setTestTranscript('')
+    setTestStatus('idle')
+  }
+
   const buildApiFormatDesc = (): string => {
-    if (isDeepgramWs) {
+    if (isWebSocketAsr) {
       return t(
         'settings.asr.apiFormatDescWebSocket',
         'Live WebSocket ASR. Supports Deepgram-compatible /listen and WhisperLiveKit native /asr.',
@@ -281,7 +570,7 @@ function AsrConfigFormComponent({
   }
 
   const buildAudioFormatDesc = (): string => {
-    if (isDeepgramWs) {
+    if (isWebSocketAsr) {
       return t(
         'settings.asr.audioFormatDescWebSocket',
         'PCM usually has better compatibility.',
@@ -300,7 +589,7 @@ function AsrConfigFormComponent({
   }
 
   const buildLanguageDesc = (): string => {
-    if (isDeepgramWs) {
+    if (isWebSocketAsr) {
       return t(
         'settings.asr.deepgramWsLanguageDesc',
         'auto omits the language parameter; fill it for non-English speech, for example zh.',
@@ -313,6 +602,7 @@ function AsrConfigFormComponent({
   }
 
   const handleSave = () => {
+    cancelStreamingTest()
     const err = validate()
     if (err) {
       new Notice(err)
@@ -336,17 +626,174 @@ function AsrConfigFormComponent({
           ...voice,
           asrConfigs: next,
           activeAsrConfigId:
-            voice.activeAsrConfigId &&
-            existing.some((c) => c.id === voice.activeAsrConfigId)
+            providerFormData.asrCategory === 'http-long-audio'
               ? voice.activeAsrConfigId
-              : formData.id,
+              : voice.activeAsrConfigId &&
+                  existing.some((c) => c.id === voice.activeAsrConfigId)
+                ? voice.activeAsrConfigId
+                : formData.id,
         },
       })
       onClose()
     })()
   }
 
-  const runTest = async () => {
+  const loadTestProvider = async (): Promise<{
+    provider: BaseAsrProvider
+    Recorder: VoiceInputRecorderConstructor
+  }> => {
+    const [{ buildAsrProviderForConfig }, recorderModule] = await Promise.all([
+      import('../../../core/asr/manager'),
+      import('../../../features/editor/context-voice-input/voiceInputRecorder'),
+    ])
+    return {
+      provider: buildAsrProviderForConfig(providerFormData),
+      Recorder: recorderModule.VoiceInputRecorder,
+    }
+  }
+
+  const reportTestError = (
+    error: unknown,
+    fallback = t('settings.asr.testFailed', 'ASR test failed.'),
+  ) => {
+    const message = error instanceof Error ? localizeTestError(error) : fallback
+    setTestStatus('failed')
+    setTestMessage(message)
+    new Notice(message)
+  }
+
+  const finishStreamingTest = async (
+    message = t('settings.asr.testFinalizing', 'Stopping…'),
+  ): Promise<void> => {
+    const runtime = streamingTestRef.current
+    if (!runtime) return
+    streamingTestRef.current = null
+    setStreamingTestActive(false)
+    setTestStatus('finalizing')
+    setTestMessage(message)
+    try {
+      await runtime.recorder.stop()
+      const result = await runtime.session.finish()
+      const text = (result.text ?? '').trim()
+      setTestTranscript(text)
+      if (text.length > 0) {
+        setTestStatus('passed')
+        setTestMessage(
+          tf('settings.asr.testTookMs', 'Took {{ms}} ms', {
+            ms: result.requestDurationMs ?? 0,
+          }),
+        )
+      } else {
+        setTestStatus('failed')
+        setTestMessage(
+          t('settings.asr.testEmptyResult', 'ASR returned empty text.'),
+        )
+      }
+    } catch (error: unknown) {
+      runtime.recorder.cancel()
+      try {
+        runtime.session.cancel()
+      } catch {
+        // ignore cleanup failure
+      }
+      reportTestError(error)
+    } finally {
+      setTestRunning(false)
+    }
+  }
+
+  const runStreamingTest = async () => {
+    const err = validate()
+    if (err) {
+      setTestStatus('failed')
+      setTestMessage(err)
+      return
+    }
+    setTestRunning(true)
+    setStreamingTestActive(false)
+    setTestStatus('recording')
+    setTestMessage(
+      t(
+        'settings.asr.testStreamingRunning',
+        'Streaming ASR test is running. Click Stop when done.',
+      ),
+    )
+    setTestTranscript('')
+
+    let recorder: VoiceInputRecorder | null = null
+    let session: AsrStreamingSession | null = null
+    try {
+      const { provider, Recorder } = await loadTestProvider()
+      if (typeof provider.startStreaming !== 'function') {
+        throw new Error(
+          t(
+            'settings.asr.testStreamingUnsupported',
+            'This ASR provider does not support streaming tests.',
+          ),
+        )
+      }
+      session = await provider.startStreaming(
+        { language: formData.language, purpose: 'settings-test' },
+        {
+          onPartial: (text) => setTestTranscript(text.trim()),
+          onFinal: (text) => setTestTranscript(text.trim()),
+        },
+      )
+      recorder = new Recorder()
+      await recorder.start({
+        maxRecordingSeconds: STREAMING_TEST_MAX_SECONDS,
+        deviceId: plugin.settings.contextVoiceInputOptions.microphoneDeviceId,
+        onChunk:
+          providerFormData.audioFormat !== 'wav'
+            ? (chunk) => session?.sendAudioChunk(chunk)
+            : undefined,
+        onPcm16Chunk:
+          providerFormData.audioFormat === 'wav'
+            ? (chunk) => session?.sendAudioChunk(chunk)
+            : undefined,
+        onError: (error) => {
+          const runtime = streamingTestRef.current
+          streamingTestRef.current = null
+          runtime?.recorder.cancel()
+          try {
+            runtime?.session.cancel()
+          } catch {
+            // ignore cleanup failure
+          }
+          setStreamingTestActive(false)
+          setTestRunning(false)
+          reportTestError(error)
+        },
+        onAutoStop: () => {
+          void finishStreamingTest(
+            t(
+              'settings.asr.testStreamingAutoStop',
+              'Streaming ASR test reached the maximum duration. Stopping…',
+            ),
+          )
+          return true
+        },
+      })
+      streamingTestRef.current = { recorder, session }
+      setStreamingTestActive(true)
+    } catch (error: unknown) {
+      recorder?.cancel()
+      try {
+        session?.cancel()
+      } catch {
+        // ignore cleanup failure
+      }
+      streamingTestRef.current = null
+      setStreamingTestActive(false)
+      setTestRunning(false)
+      reportTestError(
+        error,
+        t('settings.asr.testInvalidConfig', 'Invalid config.'),
+      )
+    }
+  }
+
+  const runHttpTest = async () => {
     const err = validate()
     if (err) {
       setTestStatus('failed')
@@ -355,112 +802,78 @@ function AsrConfigFormComponent({
     }
     setTestRunning(true)
     setTestStatus('recording')
-    setTestMessage(`Recording ${TEST_RECORDING_SECONDS} s…`)
+    setTestMessage(
+      tf('settings.asr.testRecordingSeconds', 'Recording {{seconds}} s…', {
+        seconds: TEST_RECORDING_SECONDS,
+      }),
+    )
     setTestTranscript('')
 
-    let provider: BaseAsrProvider
-    let Recorder: typeof import('../../../features/editor/context-voice-input/voiceInputRecorder').VoiceInputRecorder
+    let recorder: VoiceInputRecorder | null = null
     try {
-      const [{ buildAsrProviderForConfig }, recorderModule] = await Promise.all(
-        [
-          import('../../../core/asr/manager'),
-          import(
-            '../../../features/editor/context-voice-input/voiceInputRecorder'
-          ),
-        ],
-      )
-      Recorder = recorderModule.VoiceInputRecorder
-      provider = buildAsrProviderForConfig(providerFormData)
-    } catch (error: unknown) {
-      setTestStatus('failed')
-      setTestMessage(error instanceof Error ? error.message : 'Invalid config.')
-      setTestRunning(false)
-      return
-    }
-
-    const recorder = new Recorder()
-    let streamSession: AsrStreamingSession | null = null
-    let recorded: AsrAudioInput | null = null
-    try {
-      if (typeof provider.startStreaming === 'function') {
-        streamSession = await provider.startStreaming(
-          { language: formData.language },
-          {
-            onPartial: (text) => setTestTranscript(text.trim()),
-            onFinal: (text) => setTestTranscript(text.trim()),
-          },
-        )
-      }
+      const { provider, Recorder } = await loadTestProvider()
+      recorder = new Recorder()
       await recorder.start({
-        maxRecordingSeconds: streamSession
-          ? TEST_RECORDING_SECONDS + 30
-          : TEST_RECORDING_SECONDS,
+        maxRecordingSeconds: TEST_RECORDING_SECONDS,
         deviceId: plugin.settings.contextVoiceInputOptions.microphoneDeviceId,
-        onChunk:
-          streamSession && providerFormData.audioFormat !== 'wav'
-            ? (chunk) => streamSession?.sendAudioChunk(chunk)
-            : undefined,
-        onPcm16Chunk:
-          streamSession && providerFormData.audioFormat === 'wav'
-            ? (chunk) => streamSession?.sendAudioChunk(chunk)
-            : undefined,
       })
       await new Promise<void>((resolve) =>
         setTimeout(resolve, TEST_RECORDING_SECONDS * 1000),
       )
       setTestStatus('transcribing')
-      if (streamSession) {
-        setTestStatus('finalizing')
-        setTestMessage('Finalizing ASR…')
-      } else {
-        setTestMessage('Calling ASR…')
-      }
-      if (streamSession) {
-        recorder.cancel()
-      } else {
-        const audio = await recorder.stop()
-        recorded = {
+      setTestMessage(t('settings.asr.testCallingAsr', 'Calling ASR…'))
+      const audio = await recorder.stop()
+      const result = await provider.transcribe(
+        {
           blob: audio.blob,
           mimeType: audio.mimeType,
           durationMs: audio.durationMs,
-        }
-      }
-      let result
-      if (streamSession) {
-        result = await streamSession.finish()
-      } else if (recorded) {
-        result = await provider.transcribe(recorded, {
+        },
+        {
           language: formData.language,
-        })
-      } else {
-        throw new Error('Recording did not produce audio.')
-      }
+          purpose: 'settings-test',
+        },
+      )
       const text = (result.text ?? '').trim()
       setTestTranscript(text)
       if (text.length > 0) {
         setTestStatus('passed')
-        setTestMessage(`Took ${result.requestDurationMs ?? 0} ms`)
+        setTestMessage(
+          tf('settings.asr.testTookMs', 'Took {{ms}} ms', {
+            ms: result.requestDurationMs ?? 0,
+          }),
+        )
       } else {
         setTestStatus('failed')
-        setTestMessage('ASR returned empty text.')
+        setTestMessage(
+          t('settings.asr.testEmptyResult', 'ASR returned empty text.'),
+        )
       }
     } catch (error: unknown) {
-      recorder.cancel()
-      if (streamSession) {
-        try {
-          streamSession.cancel()
-        } catch {
-          // ignore cleanup failure
-        }
-      }
-      setTestStatus('failed')
-      setTestMessage(
-        error instanceof Error ? error.message : 'ASR test failed.',
-      )
-      new Notice(error instanceof Error ? error.message : 'ASR test failed.')
+      recorder?.cancel()
+      reportTestError(error)
     } finally {
       setTestRunning(false)
     }
+  }
+
+  const runTest = async () => {
+    if (isHttpLongAudio) {
+      setTestStatus('failed')
+      setTestMessage(
+        t(
+          'settings.asr.testLongAudioUnavailable',
+          'Long-audio providers are configured here, but their native adapters are implemented separately from the short-audio ASR test.',
+        ),
+      )
+      return
+    }
+    if (streamingTestRef.current) {
+      await finishStreamingTest()
+      return
+    }
+    if (isWebSocketAsr) await runStreamingTest()
+    else await runHttpTest()
   }
 
   const formatOptions = useMemo<Record<string, string>>(
@@ -473,16 +886,12 @@ function AsrConfigFormComponent({
         'settings.asr.apiFormatChatAudio',
         'Chat audio',
       ),
-      'deepgram-compatible-websocket': t(
-        'settings.asr.apiFormatWebSocket',
-        'WebSocket',
-      ),
     }),
     [t],
   )
   const audioFormatOptions = useMemo<Record<string, string>>(
     () =>
-      isDeepgramWs
+      isWebSocketAsr
         ? {
             wav: t('settings.asr.audioFormatPcm16', 'PCM 16k'),
             auto: t('settings.asr.audioFormatAuto', 'auto'),
@@ -495,18 +904,40 @@ function AsrConfigFormComponent({
                 : t('settings.asr.audioFormatAuto', 'auto'),
             ]),
           ),
-    [isDeepgramWs, t],
+    [isWebSocketAsr, t],
   )
   const webSocketProtocolOptions = useMemo<Record<string, string>>(
     () => ({
       'deepgram-compatible': t(
         'settings.asr.webSocketProtocolDeepgram',
-        'Deepgram /listen',
+        'Deepgram',
       ),
       'whisperlivekit-native': t(
         'settings.asr.webSocketProtocolWhisperLiveKit',
-        'WhisperLiveKit /asr',
+        'WhisperLiveKit',
       ),
+    }),
+    [t],
+  )
+  const longAudioProviderOptions = useMemo<Record<string, string>>(
+    () => ({
+      'funasr-local': t('settings.asr.longProviderFunasr', 'FunASR local'),
+      'deepgram-prerecorded': t(
+        'settings.asr.longProviderDeepgram',
+        'Deepgram pre-recorded',
+      ),
+      'speechmatics-batch': t(
+        'settings.asr.longProviderSpeechmatics',
+        'Speechmatics Batch',
+      ),
+    }),
+    [t],
+  )
+  const featureModeOptions = useMemo<Record<string, string>>(
+    () => ({
+      auto: t('settings.asr.featureModeAuto', 'Auto'),
+      on: t('settings.asr.featureModeOn', 'On'),
+      off: t('settings.asr.featureModeOff', 'Off'),
     }),
     [t],
   )
@@ -533,11 +964,10 @@ function AsrConfigFormComponent({
   }, [t])
 
   return (
-    <div>
+    <div className="yolo-asr-config-form">
       <ObsidianSetting
         name={t('settings.asr.configName', 'Name')}
         desc={t('settings.asr.configNameDesc', 'Shown in the ASR list.')}
-        className="yolo-models-select-card"
       >
         <ObsidianTextInput
           value={formData.name}
@@ -546,26 +976,26 @@ function AsrConfigFormComponent({
         />
       </ObsidianSetting>
 
-      <ObsidianSetting
-        name={t('settings.asr.apiFormat', 'API format')}
-        desc={buildApiFormatDesc()}
-        className="yolo-models-select-card"
-      >
-        <ObsidianDropdown
-          value={formData.format}
-          options={formatOptions}
-          onChange={(value) => handleFormatChange(value as AsrApiFormat)}
-        />
-      </ObsidianSetting>
-
-      {isDeepgramWs && (
+      {formData.asrCategory === 'http-short-audio' && (
         <ObsidianSetting
-          name={t('settings.asr.webSocketProtocol', 'WS speech protocol')}
+          name={t('settings.asr.apiFormat', 'API format')}
+          desc={buildApiFormatDesc()}
+        >
+          <ObsidianDropdown
+            value={formData.format}
+            options={formatOptions}
+            onChange={(value) => handleFormatChange(value as AsrApiFormat)}
+          />
+        </ObsidianSetting>
+      )}
+
+      {isWebSocketAsr && (
+        <ObsidianSetting
+          name={t('settings.asr.webSocketProvider', 'WebSocket provider')}
           desc={t(
-            'settings.asr.webSocketProtocolDesc',
-            'Changing this fills the common Base URL and path for that protocol.',
+            'settings.asr.webSocketProviderDesc',
+            'Changing this fills that provider’s common Base URL and path.',
           )}
-          className="yolo-models-select-card"
         >
           <ObsidianDropdown
             value={formData.webSocketProtocol ?? 'deepgram-compatible'}
@@ -577,21 +1007,126 @@ function AsrConfigFormComponent({
         </ObsidianSetting>
       )}
 
+      {isHttpLongAudio && (
+        <ObsidianSetting
+          name={t('settings.asr.longProvider', 'Long-audio provider')}
+          desc={t(
+            'settings.asr.longProviderDesc',
+            'Fixed long-audio provider adapters keep their own request and result parsing.',
+          )}
+        >
+          <ObsidianDropdown
+            value={formData.asrProvider || 'funasr-local'}
+            options={longAudioProviderOptions}
+            onChange={(value) =>
+              handleLongAudioProviderChange(value as AsrLongAudioProvider)
+            }
+          />
+        </ObsidianSetting>
+      )}
+
+      {isWebSocketAsr && (
+        <>
+          {isDeepgramCompatibleWs && (
+            <ObsidianSetting
+              name={t('settings.asr.webSocketPunctuate', 'Punctuation')}
+              desc={t(
+                'settings.asr.webSocketPunctuateDesc',
+                'Adds punctuation and capitalization to Deepgram-compatible transcripts.',
+              )}
+            >
+              <ObsidianToggle
+                value={formData.webSocketPunctuate}
+                onChange={(value) =>
+                  handlePatch({
+                    webSocketPunctuate: value,
+                    webSocketDictation: value
+                      ? formData.webSocketDictation
+                      : false,
+                  })
+                }
+              />
+            </ObsidianSetting>
+          )}
+
+          {isDeepgramCompatibleWs && (
+            <ObsidianSetting
+              name={t('settings.asr.webSocketDictation', 'Dictation commands')}
+              desc={t(
+                'settings.asr.webSocketDictationDesc',
+                'Turns spoken punctuation commands such as comma, period, and new line into marks. Requires punctuation.',
+              )}
+            >
+              <ObsidianToggle
+                value={formData.webSocketDictation}
+                onChange={(value) =>
+                  handlePatch({
+                    webSocketDictation: value,
+                    webSocketPunctuate: value
+                      ? true
+                      : formData.webSocketPunctuate,
+                  })
+                }
+              />
+            </ObsidianSetting>
+          )}
+        </>
+      )}
+
       <ObsidianSetting
         name={t('settings.asr.baseURL', 'Base URL')}
         desc={t('settings.asr.baseURLDesc', 'Do not include the path here.')}
-        className="yolo-models-select-card"
       >
         <ObsidianTextInput
           value={formData.baseURL}
           onChange={(value) => handlePatch({ baseURL: value })}
           placeholder={
-            isDeepgramWs
+            isWebSocketAsr
               ? 'wss://api.deepgram.com/v1 or ws://127.0.0.1:8000/v1'
               : 'https://api.openai.com/v1'
           }
         />
       </ObsidianSetting>
+
+      {!isChatAudio && (
+        <ObsidianSetting
+          name={
+            isWebSocketAsr
+              ? t('settings.asr.listenPath', 'Path')
+              : t('settings.asr.transcriptionPath', 'Transcription path')
+          }
+          desc={t(
+            isWebSocketAsr
+              ? 'settings.asr.listenPathDesc'
+              : 'settings.asr.transcriptionPathDesc',
+            isWebSocketAsr
+              ? 'Use the path expected by the selected WS speech protocol.'
+              : 'Defaults to /audio/transcriptions.',
+          )}
+        >
+          <ObsidianTextInput
+            value={formData.transcriptionPath}
+            onChange={(value) => handlePatch({ transcriptionPath: value })}
+            placeholder={isWebSocketAsr ? '/listen' : '/audio/transcriptions'}
+          />
+        </ObsidianSetting>
+      )}
+
+      {isChatAudio && (
+        <ObsidianSetting
+          name={t('settings.asr.chatCompletionsPath', 'Chat completions path')}
+          desc={t(
+            'settings.asr.chatCompletionsPathDesc',
+            'Defaults to /chat/completions.',
+          )}
+        >
+          <ObsidianTextInput
+            value={formData.chatCompletionsPath}
+            onChange={(value) => handlePatch({ chatCompletionsPath: value })}
+            placeholder="/chat/completions"
+          />
+        </ObsidianSetting>
+      )}
 
       <ObsidianSetting
         name={t('settings.asr.apiKey', 'API key')}
@@ -599,7 +1134,6 @@ function AsrConfigFormComponent({
           'settings.asr.apiKeyDesc',
           'Leave empty for local servers without auth.',
         )}
-        className="yolo-models-select-card"
       >
         <ObsidianTextInput
           value={formData.apiKey}
@@ -614,7 +1148,7 @@ function AsrConfigFormComponent({
       <ObsidianSetting
         name={t('settings.asr.model', 'Model')}
         desc={
-          isDeepgramWs
+          isWebSocketAsr
             ? t(
                 'settings.asr.deepgramWsModelDesc',
                 'Optional Deepgram model query parameter. Local compatible servers may ignore it.',
@@ -626,13 +1160,12 @@ function AsrConfigFormComponent({
                 )
               : t('settings.asr.modelDesc', 'Speech-to-text model id.')
         }
-        className="yolo-models-select-card"
       >
         <ObsidianTextInput
           value={formData.model}
           onChange={(value) => handlePatch({ model: value })}
           placeholder={
-            isDeepgramWs
+            isWebSocketAsr
               ? 'nova-3'
               : isChatAudio
                 ? 'gemini-3.1-flash-lite'
@@ -641,69 +1174,24 @@ function AsrConfigFormComponent({
         />
       </ObsidianSetting>
 
-      {!isChatAudio && (
+      {isChatAudio && (
         <ObsidianSetting
-          name={
-            isDeepgramWs
-              ? t('settings.asr.listenPath', 'Path')
-              : t('settings.asr.transcriptionPath', 'Transcription path')
-          }
+          name={t('settings.asr.audioContentFormat', 'Audio content carrier')}
           desc={t(
-            isDeepgramWs
-              ? 'settings.asr.listenPathDesc'
-              : 'settings.asr.transcriptionPathDesc',
-            isDeepgramWs
-              ? 'Use the path expected by the selected WS speech protocol.'
-              : 'Defaults to /audio/transcriptions.',
+            'settings.asr.audioContentFormatDesc',
+            'OpenAI-style services want input_audio; some others want audio_url.',
           )}
-          className="yolo-models-select-card"
         >
-          <ObsidianTextInput
-            value={formData.transcriptionPath}
-            onChange={(value) => handlePatch({ transcriptionPath: value })}
-            placeholder={isDeepgramWs ? '/listen' : '/audio/transcriptions'}
+          <ObsidianDropdown
+            value={formData.audioContentFormat || 'input_audio'}
+            options={{
+              input_audio: 'input_audio (base64)',
+              input_audio_data_url: 'input_audio (data URL)',
+              audio_url: 'audio_url',
+            }}
+            onChange={(value) => handlePatch({ audioContentFormat: value })}
           />
         </ObsidianSetting>
-      )}
-
-      {isChatAudio && (
-        <>
-          <ObsidianSetting
-            name={t(
-              'settings.asr.chatCompletionsPath',
-              'Chat completions path',
-            )}
-            desc={t(
-              'settings.asr.chatCompletionsPathDesc',
-              'Defaults to /chat/completions.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianTextInput
-              value={formData.chatCompletionsPath}
-              onChange={(value) => handlePatch({ chatCompletionsPath: value })}
-              placeholder="/chat/completions"
-            />
-          </ObsidianSetting>
-          <ObsidianSetting
-            name={t('settings.asr.audioContentFormat', 'Audio content carrier')}
-            desc={t(
-              'settings.asr.audioContentFormatDesc',
-              'OpenAI-style services want input_audio; some others want audio_url.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={formData.audioContentFormat || 'input_audio'}
-              options={{
-                input_audio: 'input_audio (base64)',
-                input_audio_data_url: 'input_audio (data URL)',
-                audio_url: 'audio_url',
-              }}
-              onChange={(value) => handlePatch({ audioContentFormat: value })}
-            />
-          </ObsidianSetting>
-        </>
       )}
 
       {/* 音频格式同样对 transcription 协议生效 — 例如智谱 GLM 的
@@ -711,7 +1199,6 @@ function AsrConfigFormComponent({
       <ObsidianSetting
         name={t('settings.asr.audioFormat', 'Audio format')}
         desc={buildAudioFormatDesc()}
-        className="yolo-models-select-card"
       >
         <ObsidianDropdown
           value={providerFormData.audioFormat}
@@ -724,14 +1211,13 @@ function AsrConfigFormComponent({
         />
       </ObsidianSetting>
 
-      {!isDeepgramWs && (
+      {!isWebSocketAsr && (
         <ObsidianSetting
           name={t('settings.asr.transport', 'Transport')}
           desc={t(
             'settings.providers.requestTransportModeDesc',
             'Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl. Obsidian buffers responses; Node uses the desktop proxy-aware fetch.',
           )}
-          className="yolo-models-select-card"
         >
           <ObsidianDropdown
             value={formData.transportMode}
@@ -746,7 +1232,6 @@ function AsrConfigFormComponent({
       <ObsidianSetting
         name={t('settings.asr.language', 'Language')}
         desc={buildLanguageDesc()}
-        className="yolo-models-select-card"
       >
         <ObsidianTextInput
           value={formData.language}
@@ -755,21 +1240,48 @@ function AsrConfigFormComponent({
         />
       </ObsidianSetting>
 
+      {isWebSocketAsr && (
+        <ObsidianSetting
+          name={t('settings.asr.webSocketDiarize', 'Speaker diarization')}
+          desc={t(
+            'settings.asr.webSocketDiarizeDesc',
+            'Auto keeps speaker handling off for context voice input and on for audio file transcription.',
+          )}
+        >
+          <ObsidianDropdown
+            value={formData.webSocketDiarizeMode}
+            options={featureModeOptions}
+            onChange={(value) =>
+              handlePatch({
+                webSocketDiarizeMode: value as AsrWebSocketFeatureMode,
+              })
+            }
+          />
+        </ObsidianSetting>
+      )}
+
       <ObsidianSetting
         name={t('settings.asr.testRecording', 'Test recording')}
         desc={t(
-          'settings.asr.testRecordingDesc',
-          `Records a ${TEST_RECORDING_SECONDS}s clip with the current configuration to verify URL / key / model / format.`,
+          isWebSocketAsr
+            ? 'settings.asr.testRecordingDescWebSocket'
+            : 'settings.asr.testRecordingDesc',
+          isWebSocketAsr
+            ? 'Starts a live streaming ASR test. Click Stop when done speaking.'
+            : `Records a ${TEST_RECORDING_SECONDS}s clip with the current configuration to verify URL / key / model / format.`,
         )}
-        className="yolo-models-select-card"
       >
         <ObsidianButton
           text={
-            testRunning
-              ? t('settings.asr.testRunning', 'Recording…')
-              : t('settings.asr.testRun', 'Run test')
+            streamingTestActive
+              ? t('settings.asr.testStopStreaming', 'Stop')
+              : testRunning
+                ? testStatus === 'finalizing'
+                  ? t('settings.asr.testFinalizing', 'Stopping…')
+                  : t('settings.asr.testRunning', 'Recording…')
+                : t('settings.asr.testRun', 'Run test')
           }
-          disabled={testRunning}
+          disabled={testRunning && !streamingTestActive}
           onClick={() => void runTest()}
         />
       </ObsidianSetting>

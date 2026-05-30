@@ -214,11 +214,27 @@
   );
 }
 
+.yolo-voice-island.is-audio-drag-unsupported {
+  border-color: color-mix(
+    in srgb,
+    var(--text-warning) 62%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--text-warning) 13%,
+    var(--background-secondary)
+  );
+}
+
 .yolo-voice-island__file-input {
   display: none;
 }
 
 .yolo-voice-island__spinner-svg {
+  display: block;
+  transform-origin: 50% 50%;
+  will-change: transform;
   animation: yolo-voice-spinner 900ms linear infinite;
 }
 
@@ -782,6 +798,18 @@ textarea.yolo-voice-prompt-textarea-input {
 }
 
 /* Footer for the ASR config modal — Cancel / Save buttons */
+.yolo-asr-config-form .setting-item:not(.yolo-settings-kv-entry) {
+  align-items: center;
+  padding-top: var(--size-4-2) !important;
+  padding-bottom: var(--size-4-2) !important;
+}
+
+.yolo-asr-config-form
+  .setting-item:not(.yolo-settings-kv-entry)
+  .setting-item-description {
+  margin-top: 6px;
+}
+
 .yolo-asr-config-form__footer {
   display: flex;
   justify-content: flex-end;

@@ -1532,6 +1532,26 @@
   gap: var(--size-4-2);
 }
 
+.yolo-asr-settings-block .yolo-settings-block-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.yolo-asr-route-block {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  padding: var(--size-4-3);
+  overflow: hidden;
+}
+
+.yolo-asr-configs-table td:nth-child(2),
+.yolo-asr-configs-table td:nth-child(3) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .yolo-provider-section {
   /* Enable container queries so the header's hide-pill rule reacts to
      the card's own width, not the viewport. Required because the
@@ -18558,11 +18578,27 @@ body.yolo-quick-ask-global-interaction * {
   );
 }
 
+.yolo-voice-island.is-audio-drag-unsupported {
+  border-color: color-mix(
+    in srgb,
+    var(--text-warning) 62%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--text-warning) 13%,
+    var(--background-secondary)
+  );
+}
+
 .yolo-voice-island__file-input {
   display: none;
 }
 
 .yolo-voice-island__spinner-svg {
+  display: block;
+  transform-origin: 50% 50%;
+  will-change: transform;
   animation: yolo-voice-spinner 900ms linear infinite;
 }
 
@@ -19138,6 +19174,18 @@ textarea.yolo-voice-prompt-textarea-input {
 }
 
 /* Footer for the ASR config modal — Cancel / Save buttons */
+
+.yolo-asr-config-form .setting-item:not(.yolo-settings-kv-entry) {
+  align-items: center;
+  padding-top: var(--size-4-2) !important;
+  padding-bottom: var(--size-4-2) !important;
+}
+
+.yolo-asr-config-form
+  .setting-item:not(.yolo-settings-kv-entry)
+  .setting-item-description {
+  margin-top: 6px;
+}
 
 .yolo-asr-config-form__footer {
   display: flex;

@@ -1396,17 +1396,48 @@ export const en: TranslationKeys = {
     asr: {
       title: 'Voice recognition (ASR)',
       descriptionV2:
-        'Each row is one ASR endpoint. Click the gear to edit, drag the handle to reorder. Which endpoint is in use, and the polish LLM, are picked under Editor → Voice input.',
+        'Each row is one ASR endpoint. Badges show which features have selected it; choose them under Editor → Voice input and Editor → Audio file transcription.',
+      descriptionV3:
+        'Voice providers are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active providers under Editor → Voice input and Editor → Audio file transcription.',
+      sectionTitle: {
+        'http-short-audio': 'HTTP short audio',
+        'http-long-audio': 'HTTP long audio',
+        websocket: 'WebSocket',
+      },
+      sectionEmpty: {
+        'http-short-audio': 'No short-audio HTTP provider configured.',
+        'http-long-audio': 'No long-audio HTTP provider configured.',
+        websocket: 'No WebSocket provider configured.',
+      },
       colName: 'Name',
       colSummary: 'Format · model',
       colActions: 'Actions',
-      activePill: 'Currently used by voice input',
-      activePillLabel: 'in use',
+      dragHandle: 'Drag to reorder',
+      unnamedConfig: '(unnamed)',
+      activePill: 'Selected for voice input',
+      activePillLabel: 'voice',
+      audioFileActivePill: 'Selected for audio file transcription',
+      audioFileActivePillLabel: 'audio file',
+      editConfigAria: 'Edit configuration',
+      deleteConfigAria: 'Delete configuration',
+      deleteConfigMessagePrefix: 'Delete',
+      deleteConfigTitle: 'Delete ASR configuration',
+      deleteConfigFailed: 'Failed to delete ASR.',
+      reorderConfigFailed: 'Failed to reorder ASR.',
       emptyHint:
         'No ASR endpoint configured yet. Use "Add ASR configuration" in the header.',
       addConfig: 'Add ASR configuration',
       configName: 'Name',
       configNameDesc: 'Shown in the ASR list.',
+      baseURLRequired: 'Base URL is required.',
+      modelRequired: 'Model is required.',
+      errorNoProvider: 'No ASR provider is configured.',
+      errorLongAudioNotImplemented:
+        'Long-audio provider adapters are not implemented yet.',
+      errorIncompleteConfig: 'This ASR configuration is incomplete.',
+      errorWebSocketMissingBaseUrl: 'This WebSocket provider needs a Base URL.',
+      errorTranscriptionRequestFailed: 'ASR transcription failed: {{detail}}',
+      errorChatAudioRequestFailed: 'ASR chat-audio request failed: {{detail}}',
       apiFormat: 'API format',
       apiFormatTranscription: 'Transcription',
       apiFormatChatAudio: 'Chat audio',
@@ -1444,8 +1475,30 @@ export const en: TranslationKeys = {
       webSocketProtocol: 'WS speech protocol',
       webSocketProtocolDesc:
         'Changing this fills the common Base URL and path for that protocol.',
+      webSocketProvider: 'WebSocket provider',
+      webSocketProviderDesc:
+        'Changing this fills the common Base URL and path for that provider.',
       webSocketProtocolDeepgram: 'Deepgram',
       webSocketProtocolWhisperLiveKit: 'WhisperLiveKit',
+      webSocketPunctuate: 'Punctuation',
+      webSocketPunctuateDesc:
+        'Adds punctuation and capitalization to Deepgram-compatible transcripts.',
+      webSocketDiarize: 'Speaker diarization',
+      webSocketDiarizeDesc:
+        'Auto keeps speaker handling off for context voice input and on for audio file transcription.',
+      webSocketDictation: 'Dictation commands',
+      webSocketDictationDesc:
+        'Turns spoken punctuation commands such as comma, period, and new line into marks. Requires punctuation.',
+      longProvider: 'Long-audio provider',
+      longProviderDesc:
+        'Fixed long-audio providers keep their own request and result parsing.',
+      longProviderFunasr: 'FunASR local',
+      longProviderDeepgram: 'Deepgram pre-recorded',
+      longProviderSpeechmatics: 'Speechmatics Batch',
+      featureModeAuto: 'Auto',
+      featureModeOn: 'On',
+      featureModeOff: 'Off',
+      addConfigShort: '+ Add',
       audioFormat: 'Audio format',
       audioFormatAuto: 'auto',
       audioFormatPcm16: 'PCM 16k',
@@ -1462,6 +1515,7 @@ export const en: TranslationKeys = {
       microphoneDesc:
         'Pick a specific input device. Labels appear after granting mic permission once.',
       micDefault: 'System default',
+      microphoneFallbackName: 'Microphone',
       microphoneUnlock: 'Unlock device labels',
       microphoneUnlockDesc:
         'Grants the mic permission once so device names become visible. No audio is recorded.',
@@ -1469,13 +1523,78 @@ export const en: TranslationKeys = {
       testRecording: 'Test recording',
       testRecordingDesc:
         'Records a short clip with the current configuration to verify URL / key / model / format.',
+      testRecordingDescWebSocket:
+        'Starts a live streaming ASR test. Click Stop when done speaking.',
       testRun: 'Run test',
+      testStopStreaming: 'Stop',
       testRunning: 'Recording…',
+      testFinalizing: 'Stopping…',
+      testFailed: 'ASR test failed.',
+      testTookMs: 'Took {{ms}} ms',
+      testEmptyResult: 'ASR returned empty text.',
+      testStreamingRunning:
+        'Streaming ASR test is running. Click Stop when done.',
+      testStreamingUnsupported:
+        'This ASR provider does not support streaming tests.',
+      testStreamingAutoStop:
+        'Streaming ASR test reached the maximum duration. Stopping…',
+      testInvalidConfig: 'Invalid config.',
+      testRecordingSeconds: 'Recording {{seconds}} s…',
+      testCallingAsr: 'Calling ASR…',
+      testLongAudioUnavailable:
+        'Long-audio providers are configured here, but their native adapters are implemented separately from the short-audio ASR test.',
       testBadgePassed: '✓ Passed',
       testBadgeFailed: '× Failed',
       testBadgeRecording: '● Recording',
-      testBadgeFinalizing: '… Finalizing',
+      testBadgeFinalizing: '… Stopping',
       testBadgeTranscribing: '… Transcribing',
+    },
+
+    audioFileTranscription: {
+      title: 'Audio file transcription',
+      description:
+        'Transcribe dropped or selected audio files through ASR and insert the transcript into the editor.',
+      voiceRequiredHint:
+        'Enable voice input above to show the floating island used for choosing or dropping audio files.',
+      asrRequiredHint:
+        'Configure an ASR provider under the Models tab → Voice recognition first.',
+      enable: 'Enable audio file transcription',
+      enableDesc:
+        'Adds an audio-file mode to the floating voice island. File transcription only runs ASR and does not use context-aware polishing.',
+      asrProvider: 'Audio file ASR provider',
+      asrProviderDesc:
+        'Defaults to the voice input ASR provider, but can be set separately for longer local audio files.',
+      chunkHeaderMode: 'Chunk header',
+      chunkHeaderModeDesc:
+        'For HTTP chunked transcription, optionally insert the local chunk start time before each chunk.',
+      chunkHeaderMode_none: 'No chunk headers',
+      'chunkHeaderMode_local-start-time': 'Local start time',
+      outputMetadataMode: 'Output metadata',
+      outputMetadataModeDesc:
+        'Inline insertion defaults to body-only; fallback notes automatically include full metadata when this is body-only.',
+      outputMetadataMode_none: 'Body only',
+      outputMetadataMode_title: 'Title',
+      outputMetadataMode_full: 'Full metadata',
+      fallbackNotePathTemplate: 'Fallback note path',
+      fallbackNotePathTemplateDesc:
+        'Used when the original insertion anchor is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
+      advancedToggle: 'Advanced options',
+      chunkTargetDurationSec: 'Audio file chunk duration (seconds)',
+      chunkTargetDurationSecDesc:
+        'WAV chunks; some providers need 30s or less. Range: 15-600.',
+      maxConcurrentChunks: 'Max concurrent chunks',
+      maxConcurrentChunksDesc:
+        'Maximum HTTP chunks in flight at once. Range: 1-5.',
+      chunkStartStaggerMs: 'Chunk start stagger (ms)',
+      chunkStartStaggerMsDesc:
+        'Delay between starting chunk uploads, reducing rate-limit spikes. Range: 1000-3000.',
+      chunkOverlapMs: 'Chunk overlap (ms)',
+      chunkOverlapMsDesc:
+        'Small overlap around chunk boundaries to reduce missed words. Range: 0-1500.',
+      chunkDurationLimitNotice:
+        'This provider has a known request-size limit for WAV chunks.',
+      chunkDurationLimitSuggestion: 'Suggested chunk duration:',
+      chunkDurationLimitSuffix: 'or less',
     },
 
     contextVoiceInput: {
@@ -1583,6 +1702,81 @@ export const en: TranslationKeys = {
     modeSwitchToAudioFile: 'Click to switch to audio file mode',
     modeSwitchToToggle: 'Click to switch to click-toggle',
     holdToTalkHint: 'Press & hold to talk',
+    audioFileDropHint: 'Drop audio to transcribe',
+    audioFileCheckDropHint: 'Drop file to check audio',
+    audioFileUnsupportedDropHint: 'Only audio files',
+    audioFileChecking: 'Checking…',
+    audioFileConfirm: 'Confirm upload',
+    audioFilePreparing: 'Preparing…',
+    audioFileUploading: 'Uploading…',
+    audioFileInserting: 'Inserting…',
+    audioFileIdleHint: 'Drop or choose audio',
+    audioFileConfirmButton: 'Start upload',
+    audioFileChooseButton: 'Choose audio file',
+    audioFileFinished: 'Audio file transcription finished.',
+    audioFileCancelled: 'Audio file transcription cancelled.',
+    audioFilePlanStream: 'Stream audio?',
+    audioFilePlanChunked: 'Upload {{count}} audio chunks?',
+    audioFilePlanDirect: 'Upload this audio file for transcription?',
+    audioFileProgressInsertingChunks: 'Inserting {{done}}/{{total}}…',
+    audioFileProgressTranscribingChunks: 'Transcribing {{done}}/{{total}}…',
+    audioFileProgressStreamingPercent: 'Streaming {{percent}}%…',
+    audioFileFallbackNotice: 'Transcription is being written to {{path}}.',
+    audioFileSubmissionChunks: '{{count}} chunks',
+    audioFileSubmissionWebSocket: 'WebSocket stream',
+    audioFileSubmissionDirect: 'direct upload',
+    audioFileMetadataSource: 'Source',
+    audioFileMetadataTranscribed: 'Transcribed',
+    audioFileMetadataProvider: 'Provider',
+    audioFileMetadataSubmission: 'Submission',
+    audioFileFailed: 'Audio file transcription failed.',
+    audioFileFailedWithMessage: 'Audio file transcription failed: {{message}}',
+    audioFileErrorNoProvider:
+      'No ASR provider is configured. Add one under Models → Voice recognition.',
+    audioFileErrorLongAudioNotImplemented:
+      'Long-audio provider adapters are not implemented yet.',
+    audioFileErrorUnsupportedLocalFile:
+      'The selected ASR provider cannot transcribe local files.',
+    audioFileErrorUnsupportedChunking:
+      'The selected ASR provider cannot split this audio file.',
+    audioFileErrorDecodeRequiredForChunking:
+      'This file is too large for one request and cannot be decoded locally for chunking.',
+    audioFileErrorMissingChunkPlan:
+      'Missing chunk plan for audio file transcription.',
+    audioFileErrorChunkFailed: 'Chunk failed.',
+    audioFileErrorStreamingUnsupported:
+      'The selected ASR provider does not support streaming.',
+    audioFileDirectChunkDurationHint:
+      'If this is a provider upload-size limit, choose a shorter Audio file chunk duration (currently {{seconds}}s) so the file is split before upload.',
+    audioFileChunkedChunkDurationHint:
+      'If this is a provider upload-size limit, lower Audio file chunk duration (currently {{seconds}}s).',
+    audioFileProviderGenericDurationHint:
+      'Some providers need shorter WAV chunks.',
+    audioFileProviderMaxDurationHint:
+      'This provider may need WAV chunks at {{seconds}}s or less.',
+    disabledNotice: 'Context-aware voice input is disabled in settings.',
+    configureAsrNotice: 'Configure an ASR provider before using voice input.',
+    selectPolishModelNotice:
+      'Select a polish model in Editor → Voice input settings.',
+    focusedEditorNotice: 'Voice input needs a focused editor.',
+    asrConfigIncompleteNotice: 'The selected ASR provider is incomplete.',
+    asrConfigMissingBaseUrlNotice:
+      'The selected WebSocket provider needs a Base URL.',
+    asrTranscriptionRequestFailed: 'ASR transcription failed: {{detail}}',
+    asrChatAudioRequestFailed: 'ASR chat-audio request failed: {{detail}}',
+    recorderPermissionDenied:
+      'Microphone access was denied. Grant the permission in your system or Obsidian settings.',
+    recorderNoDevice: 'No microphone was found.',
+    recorderDeviceBusy: 'The microphone is busy or not readable.',
+    recorderUnsupported: 'Recording is not supported in this environment.',
+    recordingCancelled: 'Recording cancelled.',
+    finishCurrentTaskNotice:
+      'Finish the current voice task before transcribing a file.',
+    audioFileDisabledNotice:
+      'Audio file transcription is disabled in voice input settings.',
+    failed: 'Voice input failed.',
+    failedWithMessage: 'Voice input failed: {{message}}',
+    startRecordingFailed: 'Could not start recording.',
     noticePrefix: 'Voice polish',
     malformedOutput:
       'Voice polish returned malformed output; nothing inserted.',

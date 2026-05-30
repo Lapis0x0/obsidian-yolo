@@ -14,8 +14,17 @@ export type WebSocketAsrProfile = {
   model: string
   listenPath: string
   webSocketProtocol: import('../../../settings/schema/setting.types').AsrWebSocketProtocol
+  webSocketPunctuate: boolean
+  webSocketDiarizeMode: import('../../../settings/schema/setting.types').AsrWebSocketFeatureMode
+  webSocketDictation: boolean
   audioFormat: AsrAudioFormat
   language: string
+}
+
+export type DeepgramWord = {
+  word?: unknown
+  punctuated_word?: unknown
+  speaker?: unknown
 }
 
 export type DeepgramResultsMessage = {
@@ -26,8 +35,13 @@ export type DeepgramResultsMessage = {
   channel?: {
     alternatives?: Array<{
       transcript?: unknown
+      words?: DeepgramWord[]
     }>
   }
+}
+
+export type TranscriptSpeakerState = {
+  lastSpeakerLabel: string
 }
 
 export type WhisperLiveKitNativeMessage = {
@@ -78,26 +92,103 @@ export const appendQuery = (
   return u.toString()
 }
 
-export const readTranscript = (payload: DeepgramResultsMessage): string => {
-  const transcript = payload.channel?.alternatives?.[0]?.transcript
+export const readTranscript = (
+  payload: DeepgramResultsMessage,
+  options: {
+    includeSpeakerLabels?: boolean
+    speakerState?: TranscriptSpeakerState
+  } = {},
+): string => {
+  const alternative = payload.channel?.alternatives?.[0]
+  if (options.includeSpeakerLabels) {
+    const speakerTranscript = readDeepgramSpeakerTranscript(
+      alternative?.words,
+      options.speakerState,
+    )
+    if (speakerTranscript) return speakerTranscript
+  }
+  const transcript = alternative?.transcript
   return typeof transcript === 'string' ? transcript : ''
+}
+
+const readDeepgramSpeakerTranscript = (
+  words: DeepgramWord[] | undefined,
+  state?: TranscriptSpeakerState,
+): string => {
+  if (!Array.isArray(words) || words.length === 0) return ''
+  const lines: string[] = []
+  let current = ''
+  let lastSpeakerLabel = state?.lastSpeakerLabel ?? ''
+
+  for (const word of words) {
+    const text = readDeepgramWordText(word)
+    if (!text) continue
+    const label = formatSpeakerLabel(word.speaker)
+    if (label && label !== lastSpeakerLabel) {
+      if (current.trim()) lines.push(current.trim())
+      current = `${label}: ${text}`
+      lastSpeakerLabel = label
+      continue
+    }
+    current = appendTranscriptWord(current, text)
+  }
+
+  if (current.trim()) lines.push(current.trim())
+  if (state) state.lastSpeakerLabel = lastSpeakerLabel
+  return lines.join('\n').trim()
+}
+
+const readDeepgramWordText = (word: {
+  word?: unknown
+  punctuated_word?: unknown
+}): string => {
+  const punctuated =
+    typeof word.punctuated_word === 'string' ? word.punctuated_word.trim() : ''
+  if (punctuated) return punctuated
+  return typeof word.word === 'string' ? word.word.trim() : ''
+}
+
+const appendTranscriptWord = (current: string, word: string): string => {
+  if (!current) return word
+  if (/^[,.;:!?，。！？；：）\])}]/.test(word)) return `${current}${word}`
+  return `${current} ${word}`
 }
 
 export const readWhisperLiveKitNativeTranscript = (
   payload: WhisperLiveKitNativeMessage,
+  options: { includeSpeakerLabels?: boolean } = {},
 ): { text: string; buffer: string } => {
+  let lastSpeakerLabel = ''
   const lineText =
     payload.lines
       ?.filter((line) => line.speaker !== -2)
-      .map((line) => (typeof line.text === 'string' ? line.text.trim() : ''))
+      .map((line) => {
+        const text = typeof line.text === 'string' ? line.text.trim() : ''
+        if (!text || !options.includeSpeakerLabels) return text
+        const label = formatSpeakerLabel(line.speaker)
+        if (!label) return text
+        if (label === lastSpeakerLabel) return text
+        lastSpeakerLabel = label
+        return `${label}: ${text}`
+      })
       .filter((text) => text.length > 0)
-      .join(' ')
+      .join(options.includeSpeakerLabels ? '\n' : ' ')
       .trim() ?? ''
   const buffer =
     typeof payload.buffer_transcription === 'string'
       ? payload.buffer_transcription.trim()
       : ''
   return { text: lineText, buffer }
+}
+
+const formatSpeakerLabel = (speaker: unknown): string => {
+  if (typeof speaker === 'number' && Number.isFinite(speaker) && speaker >= 0) {
+    return `Speaker ${speaker + 1}`
+  }
+  if (typeof speaker === 'string' && speaker.trim().length > 0) {
+    return `Speaker ${speaker.trim()}`
+  }
+  return ''
 }
 
 export const createAsrWebSocket = async (args: {
@@ -167,5 +258,6 @@ export const combineTranscript = (
   const parts = [...finalParts]
   const trimmedPartial = partial.trim()
   if (trimmedPartial) parts.push(trimmedPartial)
-  return parts.join(' ').trim()
+  const separator = parts.some((part) => part.includes('\n')) ? '\n' : ' '
+  return parts.join(separator).trim()
 }

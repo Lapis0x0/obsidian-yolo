@@ -1,11 +1,25 @@
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Settings, Trash2 } from 'lucide-react'
 import { App, Notice } from 'obsidian'
 import {
-  type DragEvent,
+  type CSSProperties,
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react'
 
@@ -15,6 +29,8 @@ import YoloPlugin from '../../../main'
 import type {
   AsrApiFormat,
   AsrConfig,
+  AsrConfigCategory,
+  AsrWebSocketProtocol,
 } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
@@ -31,6 +47,13 @@ type AsrProvidersSectionProps = {
 }
 
 type MicDevice = { deviceId: string; label: string }
+type Translator = ReturnType<typeof useLanguage>['t']
+
+const CATEGORY_ORDER: AsrConfigCategory[] = [
+  'http-short-audio',
+  'http-long-audio',
+  'websocket',
+]
 
 const FORMAT_LABEL: Record<AsrApiFormat, string> = {
   'openai-compatible-transcription': 'Transcription',
@@ -38,9 +61,45 @@ const FORMAT_LABEL: Record<AsrApiFormat, string> = {
   'deepgram-compatible-websocket': 'WebSocket',
 }
 
+const WS_PROVIDER_LABEL: Record<AsrWebSocketProtocol, string> = {
+  'deepgram-compatible': 'Deepgram',
+  'whisperlivekit-native': 'WhisperLiveKit',
+}
+
+const LONG_PROVIDER_LABEL: Record<string, string> = {
+  'funasr-local': 'FunASR local',
+  'deepgram-prerecorded': 'Deepgram pre-recorded',
+  'speechmatics-batch': 'Speechmatics Batch',
+}
+
+const isWebSocketConfig = (config: AsrConfig): boolean =>
+  config.asrCategory === 'websocket' ||
+  config.format === 'deepgram-compatible-websocket' ||
+  config.webSocketProtocol === 'whisperlivekit-native' ||
+  config.asrProvider === 'whisperlivekit-native'
+
+const inferCategory = (config: AsrConfig): AsrConfigCategory => {
+  if (isWebSocketConfig(config)) return 'websocket'
+  if (config.asrCategory === 'http-long-audio') return 'http-long-audio'
+  return config.asrCategory ?? 'http-short-audio'
+}
+
+const isSelectableAsrConfig = (config: AsrConfig): boolean =>
+  inferCategory(config) !== 'http-long-audio'
+
+const providerLabel = (config: AsrConfig): string => {
+  const category = inferCategory(config)
+  if (category === 'websocket') {
+    return WS_PROVIDER_LABEL[config.webSocketProtocol] ?? config.asrProvider
+  }
+  if (category === 'http-long-audio') {
+    return LONG_PROVIDER_LABEL[config.asrProvider] ?? config.asrProvider
+  }
+  return FORMAT_LABEL[config.format] ?? config.format
+}
+
 const summariseConfig = (config: AsrConfig): string => {
-  const parts: string[] = []
-  parts.push(FORMAT_LABEL[config.format] ?? config.format)
+  const parts: string[] = [providerLabel(config)]
   if (config.model) parts.push(config.model)
   if (
     config.audioFormat === 'wav' &&
@@ -48,7 +107,160 @@ const summariseConfig = (config: AsrConfig): string => {
   ) {
     parts.push('wav')
   }
-  return parts.join(' · ')
+  return parts.filter(Boolean).join(' · ')
+}
+
+const groupConfigs = (
+  configs: AsrConfig[],
+): Record<AsrConfigCategory, AsrConfig[]> => ({
+  'http-short-audio': configs.filter(
+    (config) => inferCategory(config) === 'http-short-audio',
+  ),
+  'http-long-audio': configs.filter(
+    (config) => inferCategory(config) === 'http-long-audio',
+  ),
+  websocket: configs.filter((config) => inferCategory(config) === 'websocket'),
+})
+
+const sectionTitle = (category: AsrConfigCategory): string => {
+  switch (category) {
+    case 'http-short-audio':
+      return 'HTTP short audio'
+    case 'http-long-audio':
+      return 'HTTP long audio'
+    case 'websocket':
+      return 'WebSocket'
+  }
+}
+
+const sectionEmptyText = (category: AsrConfigCategory): string => {
+  switch (category) {
+    case 'http-short-audio':
+      return 'No short-audio HTTP provider configured.'
+    case 'http-long-audio':
+      return 'No long-audio HTTP provider configured.'
+    case 'websocket':
+      return 'No WebSocket provider configured.'
+  }
+}
+
+const normalizeConfigForEdit = (config: AsrConfig): AsrConfig => {
+  if (inferCategory(config) !== 'websocket') return config
+  const webSocketProtocol: AsrWebSocketProtocol =
+    config.webSocketProtocol === 'whisperlivekit-native' ||
+    config.asrProvider === 'whisperlivekit-native'
+      ? 'whisperlivekit-native'
+      : (config.webSocketProtocol ?? 'deepgram-compatible')
+  return {
+    ...config,
+    asrCategory: 'websocket',
+    format: 'deepgram-compatible-websocket',
+    webSocketProtocol,
+    asrProvider:
+      webSocketProtocol === 'whisperlivekit-native'
+        ? 'whisperlivekit'
+        : config.asrProvider || 'deepgram',
+    transportMode: 'browser',
+  }
+}
+
+type AsrConfigRowProps = {
+  config: AsrConfig
+  activeId: string
+  activeAudioFileId: string
+  t: Translator
+  onEdit: (config: AsrConfig) => void
+  onDelete: (config: AsrConfig) => void
+}
+
+function AsrConfigRow({
+  config,
+  activeId,
+  activeAudioFileId,
+  t,
+  onEdit,
+  onDelete,
+}: AsrConfigRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: config.id })
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={isDragging ? 'yolo-row-dragging' : ''}
+      data-config-id={config.id}
+      {...attributes}
+      {...listeners}
+    >
+      <td>
+        <button
+          type="button"
+          className="yolo-drag-handle"
+          aria-label={t('settings.asr.dragHandle', 'Drag to reorder')}
+        >
+          <GripVertical />
+        </button>
+      </td>
+      <td>
+        {config.name || t('settings.asr.unnamedConfig', '(unnamed)')}
+        {config.id === activeId && (
+          <span
+            className="yolo-asr-active-pill"
+            title={t('settings.asr.activePill', 'Selected for voice input')}
+          >
+            {t('settings.asr.activePillLabel', 'voice')}
+          </span>
+        )}
+        {config.id === activeAudioFileId && (
+          <span
+            className="yolo-asr-active-pill"
+            title={t(
+              'settings.asr.audioFileActivePill',
+              'Selected for audio file transcription',
+            )}
+          >
+            {t('settings.asr.audioFileActivePillLabel', 'audio file')}
+          </span>
+        )}
+      </td>
+      <td style={{ color: 'var(--text-muted)' }}>{summariseConfig(config)}</td>
+      <td onPointerDown={(event) => event.stopPropagation()}>
+        <div className="yolo-settings-actions">
+          <button
+            type="button"
+            className="clickable-icon"
+            onClick={() => onEdit(config)}
+            aria-label={t('settings.asr.editConfigAria', 'Edit configuration')}
+          >
+            <Settings />
+          </button>
+          <button
+            type="button"
+            className="clickable-icon"
+            onClick={() => onDelete(config)}
+            aria-label={t(
+              'settings.asr.deleteConfigAria',
+              'Delete configuration',
+            )}
+          >
+            <Trash2 />
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
 }
 
 export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
@@ -56,22 +268,30 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
   const configs: AsrConfig[] = voice.asrConfigs ?? []
-  // Active selection is picked under Editor → Voice input now. We still
-  // resolve it here so persistConfigs can keep the id valid when entries
-  // get reordered or removed.
+  const selectableConfigs = configs.filter(isSelectableAsrConfig)
+  // Long-audio configs are displayed here for the upcoming native adapters,
+  // but they should not become the active short/streaming ASR by accident.
   const activeId =
     voice.activeAsrConfigId &&
-    configs.some((c) => c.id === voice.activeAsrConfigId)
+    selectableConfigs.some((c) => c.id === voice.activeAsrConfigId)
       ? voice.activeAsrConfigId
-      : (configs[0]?.id ?? '')
+      : (selectableConfigs[0]?.id ?? '')
+  const activeAudioFileId =
+    voice.activeAudioFileAsrConfigId &&
+    configs.some((c) => c.id === voice.activeAudioFileAsrConfigId)
+      ? voice.activeAudioFileAsrConfigId
+      : (configs[0]?.id ?? activeId)
 
-  const dragIndexRef = useRef<number | null>(null)
-  const dragOverRowRef = useRef<HTMLTableRowElement | null>(null)
-  const lastDropPosRef = useRef<'before' | 'after' | null>(null)
-  const lastInsertIndexRef = useRef<number | null>(null)
   const [micDevices, setMicDevices] = useState<MicDevice[]>([])
   const [micEnumerationLabelsBlocked, setMicEnumerationLabelsBlocked] =
     useState(false)
+  const configSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+  )
+
+  const groupedConfigs = useMemo(() => groupConfigs(configs), [configs])
 
   const refreshMicDevices = useCallback(async () => {
     if (
@@ -129,14 +349,16 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
       '': t('settings.asr.micDefault', 'System default'),
     }
     micDevices.forEach((device, index) => {
-      const label = device.label || `Microphone ${index + 1}`
+      const label =
+        device.label ||
+        `${t('settings.asr.microphoneFallbackName', 'Microphone')} ${index + 1}`
       out[device.deviceId] = label
     })
     return out
   }, [micDevices, t])
 
   const persistConfigs = useCallback(
-    async (nextConfigs: AsrConfig[], nextActiveId?: string): Promise<void> => {
+    async (nextConfigs: AsrConfig[]): Promise<void> => {
       const latestSettings = plugin.settings
       const latestVoice = latestSettings.contextVoiceInputOptions
       const latestConfigs = latestVoice.asrConfigs ?? []
@@ -152,31 +374,43 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
         (config) => !visibleIds.has(config.id) && !nextIds.has(config.id),
       )
       const mergedConfigs = [...rehydratedConfigs, ...concurrentConfigs]
-      const preferredActiveId =
-        nextActiveId ?? latestVoice.activeAsrConfigId ?? activeId
+      const selectable = mergedConfigs.filter(isSelectableAsrConfig)
+      const preferredActiveId = latestVoice.activeAsrConfigId || activeId
+      const nextActiveId =
+        preferredActiveId &&
+        selectable.some((config) => config.id === preferredActiveId)
+          ? preferredActiveId
+          : (selectable[0]?.id ?? '')
+      const preferredAudioFileId =
+        latestVoice.activeAudioFileAsrConfigId || activeAudioFileId
+      const nextAudioFileId =
+        preferredAudioFileId &&
+        mergedConfigs.some((config) => config.id === preferredAudioFileId)
+          ? preferredAudioFileId
+          : (mergedConfigs[0]?.id ?? nextActiveId)
 
       await setSettings({
         ...latestSettings,
         contextVoiceInputOptions: {
           ...latestVoice,
           asrConfigs: mergedConfigs,
-          activeAsrConfigId:
-            preferredActiveId &&
-            mergedConfigs.some((c) => c.id === preferredActiveId)
-              ? preferredActiveId
-              : (mergedConfigs[0]?.id ?? ''),
+          activeAsrConfigId: nextActiveId,
+          activeAudioFileAsrConfigId: nextAudioFileId,
         },
       })
     },
-    [activeId, configs, plugin, setSettings],
+    [activeAudioFileId, activeId, configs, plugin, setSettings],
   )
 
   const handleDelete = (config: AsrConfig) => {
-    const message = `Delete "${config.name || config.id}"?`
+    const message = `${t(
+      'settings.asr.deleteConfigMessagePrefix',
+      'Delete',
+    )} "${config.name || config.id}"?`
     new ConfirmModal(app, {
-      title: 'Delete ASR configuration',
+      title: t('settings.asr.deleteConfigTitle', 'Delete ASR configuration'),
       message,
-      ctaText: 'Delete',
+      ctaText: t('common.delete', 'Delete'),
       onConfirm: () => {
         void (async () => {
           try {
@@ -184,7 +418,9 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
             await persistConfigs(next)
           } catch (error: unknown) {
             console.error('Failed to delete ASR config', error)
-            new Notice('Failed to delete ASR config.')
+            new Notice(
+              t('settings.asr.deleteConfigFailed', 'Failed to delete ASR.'),
+            )
           }
         })()
       },
@@ -192,11 +428,11 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   }
 
   const handleEdit = (config: AsrConfig) => {
-    new EditAsrConfigModal(app, plugin, config).open()
+    new EditAsrConfigModal(app, plugin, normalizeConfigForEdit(config)).open()
   }
 
-  const handleAdd = () => {
-    new AddAsrConfigModal(app, plugin).open()
+  const handleAdd = (category: AsrConfigCategory) => {
+    new AddAsrConfigModal(app, plugin, category).open()
   }
 
   const handleMicChange = (value: string) => {
@@ -237,147 +473,113 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
     requestAnimationFrame(() => tryFind())
   }
 
-  const clearDragOverIndicator = () => {
-    if (dragOverRowRef.current) {
-      dragOverRowRef.current.classList.remove(
-        'yolo-row-drag-over-before',
-        'yolo-row-drag-over-after',
-      )
-      dragOverRowRef.current = null
-    }
-  }
-
-  const handleDragStart = (
-    event: DragEvent<HTMLTableRowElement>,
-    index: number,
+  const handleConfigDragEnd = async (
+    category: AsrConfigCategory,
+    { active, over }: DragEndEvent,
   ) => {
-    dragIndexRef.current = index
-    if (event.dataTransfer) {
-      event.dataTransfer.setData('text/plain', configs[index]?.id ?? '')
-      event.dataTransfer.effectAllowed = 'move'
-    }
-    event.currentTarget.classList.add('yolo-row-dragging')
-    const handle = event.currentTarget.querySelector('.yolo-drag-handle')
-    if (handle) handle.classList.add('yolo-drag-handle--active')
-  }
+    if (!over || active.id === over.id) return
 
-  const handleDragOver = (
-    event: DragEvent<HTMLTableRowElement>,
-    targetIndex: number,
-  ) => {
-    // preventDefault + matching dropEffect together are what actually arm the
-    // row as a drop target. Dropping `dropEffect = 'move'` here was the bug
-    // that made reordering look non-functional.
-    event.preventDefault()
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move'
-    }
-    if (dragIndexRef.current === null) return
+    const activeConfigId = String(active.id)
+    const overConfigId = String(over.id)
+    const rows = groupedConfigs[category]
+    const oldIndex = rows.findIndex((config) => config.id === activeConfigId)
+    const newIndex = rows.findIndex((config) => config.id === overConfigId)
+    if (oldIndex < 0 || newIndex < 0) return
 
-    const row = event.currentTarget
-    const rect = row.getBoundingClientRect()
-    const rel = (event.clientY - rect.top) / rect.height
-
-    if (dragIndexRef.current === targetIndex) {
-      row.classList.remove(
-        'yolo-row-drag-over-before',
-        'yolo-row-drag-over-after',
-      )
-      if (dragOverRowRef.current && dragOverRowRef.current !== row) {
-        dragOverRowRef.current.classList.remove(
-          'yolo-row-drag-over-before',
-          'yolo-row-drag-over-after',
-        )
+    try {
+      const nextGrouped = {
+        ...groupedConfigs,
+        [category]: arrayMove(rows, oldIndex, newIndex),
       }
-      dragOverRowRef.current = row
-      lastDropPosRef.current = null
-      lastInsertIndexRef.current = null
-      return
-    }
-
-    const hysteresis = 0.05
-    let dropAfter: boolean
-    if (lastDropPosRef.current) {
-      if (rel > 0.5 + hysteresis) dropAfter = true
-      else if (rel < 0.5 - hysteresis) dropAfter = false
-      else dropAfter = lastDropPosRef.current === 'after'
-    } else {
-      dropAfter = rel > 0.5
-    }
-
-    const sourceIndex = dragIndexRef.current
-    let insertIndex = targetIndex + (dropAfter ? 1 : 0)
-    if (sourceIndex < targetIndex) insertIndex -= 1
-    if (lastInsertIndexRef.current === insertIndex) return
-
-    if (dragOverRowRef.current) {
-      dragOverRowRef.current.classList.remove(
-        'yolo-row-drag-over-before',
-        'yolo-row-drag-over-after',
+      await persistConfigs(
+        CATEGORY_ORDER.flatMap((section) => nextGrouped[section]),
+      )
+      triggerDropSuccess(activeConfigId)
+    } catch (error: unknown) {
+      console.error('Failed to reorder ASR configs', error)
+      new Notice(
+        t('settings.asr.reorderConfigFailed', 'Failed to reorder ASR.'),
       )
     }
-
-    row.classList.remove(
-      'yolo-row-drag-over-before',
-      'yolo-row-drag-over-after',
-    )
-    row.classList.add(
-      dropAfter ? 'yolo-row-drag-over-after' : 'yolo-row-drag-over-before',
-    )
-    dragOverRowRef.current = row
-    lastDropPosRef.current = dropAfter ? 'after' : 'before'
-    lastInsertIndexRef.current = insertIndex
   }
 
-  const handleDragEnd = () => {
-    dragIndexRef.current = null
-    clearDragOverIndicator()
-    lastDropPosRef.current = null
-    lastInsertIndexRef.current = null
-    const dragging = document.querySelector('tr.yolo-row-dragging')
-    if (dragging) dragging.classList.remove('yolo-row-dragging')
-    const activeHandle = document.querySelector(
-      '.yolo-drag-handle.yolo-drag-handle--active',
+  const renderProviderGroup = (category: AsrConfigCategory) => {
+    const rows = groupedConfigs[category]
+    const items = rows.map((config) => config.id)
+
+    return (
+      <div className="yolo-asr-route-block" key={category}>
+        <div className="yolo-models-subsection-header">
+          <span>
+            {t(`settings.asr.sectionTitle.${category}`, sectionTitle(category))}
+          </span>
+          <button
+            type="button"
+            className="yolo-add-model-btn"
+            onClick={() => handleAdd(category)}
+          >
+            {t('settings.asr.addConfigShort', '+ Add')}
+          </button>
+        </div>
+
+        <div>
+          {rows.length > 0 ? (
+            <DndContext
+              sensors={configSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(event) => void handleConfigDragEnd(category, event)}
+            >
+              <SortableContext
+                items={items}
+                strategy={verticalListSortingStrategy}
+              >
+                <table className="yolo-models-table yolo-asr-configs-table">
+                  <colgroup>
+                    <col width={16} />
+                    <col />
+                    <col />
+                    <col width={90} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>{t('settings.asr.colName', 'Name')}</th>
+                      <th>{t('settings.asr.colSummary', 'Format · model')}</th>
+                      <th>{t('settings.asr.colActions', 'Actions')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((config) => (
+                      <AsrConfigRow
+                        key={config.id}
+                        config={config}
+                        activeId={activeId}
+                        activeAudioFileId={activeAudioFileId}
+                        t={t}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="yolo-no-models">
+              {t(
+                `settings.asr.sectionEmpty.${category}`,
+                sectionEmptyText(category),
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     )
-    if (activeHandle) activeHandle.classList.remove('yolo-drag-handle--active')
-  }
-
-  const handleDrop = (
-    event: DragEvent<HTMLTableRowElement>,
-    targetIndex: number,
-  ) => {
-    event.preventDefault()
-    const sourceIndex = dragIndexRef.current
-    dragIndexRef.current = null
-    clearDragOverIndicator()
-    if (sourceIndex === null || sourceIndex === targetIndex) return
-
-    const rect = event.currentTarget.getBoundingClientRect()
-    const dropAfter = event.clientY - rect.top > rect.height / 2
-
-    void (async () => {
-      try {
-        const next = [...configs]
-        const [moved] = next.splice(sourceIndex, 1)
-        if (!moved) return
-        let insertIndex = targetIndex + (dropAfter ? 1 : 0)
-        if (sourceIndex < insertIndex) insertIndex -= 1
-        if (insertIndex < 0) insertIndex = 0
-        if (insertIndex > next.length) insertIndex = next.length
-        next.splice(insertIndex, 0, moved)
-        await persistConfigs(next)
-        triggerDropSuccess(moved.id)
-      } catch (error: unknown) {
-        console.error('Failed to reorder ASR configs', error)
-      } finally {
-        handleDragEnd()
-      }
-    })()
   }
 
   return (
     <div className="yolo-settings-section yolo-settings-section--tight">
-      <section className="yolo-settings-block">
+      <section className="yolo-settings-block yolo-asr-settings-block">
         <div className="yolo-settings-block-head">
           <div className="yolo-settings-block-head-title-row">
             <div className="yolo-settings-sub-header yolo-settings-block-title">
@@ -385,108 +587,15 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
             </div>
             <div className="yolo-settings-desc yolo-settings-block-desc">
               {t(
-                'settings.asr.descriptionV2',
-                'Each entry is one ASR endpoint. The radio button picks which one is used at runtime; click the gear to edit fields, drag the handle to reorder. The polish LLM is selected separately under Editor → Voice input.',
+                'settings.asr.descriptionV3',
+                'Voice providers are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active providers under Editor → Voice input and Editor → Audio file transcription.',
               )}
             </div>
-          </div>
-          <div className="yolo-settings-block-action">
-            <ObsidianButton
-              text={t('settings.asr.addConfig', 'Add ASR configuration')}
-              onClick={handleAdd}
-              cta
-            />
           </div>
         </div>
 
         <div className="yolo-settings-block-content">
-          <div className="yolo-settings-table-container">
-            <table className="yolo-settings-table">
-              <colgroup>
-                <col width={16} />
-                <col />
-                <col />
-                <col width={90} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>{t('settings.asr.colName', 'Name')}</th>
-                  <th>{t('settings.asr.colSummary', 'Format · model')}</th>
-                  <th>{t('settings.asr.colActions', 'Actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {configs.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ color: 'var(--text-muted)' }}>
-                      {t(
-                        'settings.asr.emptyHint',
-                        'No ASR endpoint configured yet. Use the add button above.',
-                      )}
-                    </td>
-                  </tr>
-                )}
-                {configs.map((config, index) => (
-                  <tr
-                    key={config.id}
-                    data-config-id={config.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDrop={(e) => handleDrop(e, index)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <td>
-                      <span
-                        className="yolo-drag-handle"
-                        aria-label="Drag to reorder"
-                      >
-                        <GripVertical />
-                      </span>
-                    </td>
-                    <td>
-                      {config.name || '(unnamed)'}
-                      {config.id === activeId && (
-                        <span
-                          className="yolo-asr-active-pill"
-                          title={t(
-                            'settings.asr.activePill',
-                            'Currently used by voice input',
-                          )}
-                        >
-                          {t('settings.asr.activePillLabel', 'in use')}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ color: 'var(--text-muted)' }}>
-                      {summariseConfig(config)}
-                    </td>
-                    <td>
-                      <div className="yolo-settings-actions">
-                        <button
-                          type="button"
-                          className="clickable-icon"
-                          onClick={() => handleEdit(config)}
-                          aria-label="Edit configuration"
-                        >
-                          <Settings />
-                        </button>
-                        <button
-                          type="button"
-                          className="clickable-icon"
-                          onClick={() => handleDelete(config)}
-                          aria-label="Delete configuration"
-                        >
-                          <Trash2 />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {CATEGORY_ORDER.map(renderProviderGroup)}
 
           <ObsidianSetting
             name={t('settings.asr.microphone', 'Microphone')}
