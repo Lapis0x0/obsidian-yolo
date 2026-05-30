@@ -11,7 +11,7 @@ export type AudioFileSource = {
   createObjectUrl(): Promise<{ url: string; revoke: () => void } | null>
 }
 
-const VAULT_MEMORY_FILE_LIMIT_BYTES = 32 * 1024 * 1024
+const VAULT_RANGE_FALLBACK_LIMIT_BYTES = 32 * 1024 * 1024
 
 export function createBlobAudioFileSource(file: File): AudioFileSource {
   return {
@@ -50,9 +50,6 @@ export function createVaultAudioFileSource(input: {
     type: mimeType,
     lastModified: file.stat.mtime,
     async getFile() {
-      if (file.stat.size > VAULT_MEMORY_FILE_LIMIT_BYTES) {
-        throw new Error(materializeLimitMessage)
-      }
       const data = await app.vault.readBinary(file)
       return new File([data], file.name, {
         type: mimeType,
@@ -74,7 +71,7 @@ export function createVaultAudioFileSource(input: {
         })
       }
 
-      if (file.stat.size > VAULT_MEMORY_FILE_LIMIT_BYTES) {
+      if (file.stat.size > VAULT_RANGE_FALLBACK_LIMIT_BYTES) {
         throw new Error(materializeLimitMessage)
       }
       const data = await app.vault.readBinary(file)
