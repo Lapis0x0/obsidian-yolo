@@ -86,7 +86,10 @@ const ContextUsageRing = forwardRef<HTMLButtonElement, ContextUsageRingProps>(
         data-tone={tone}
         data-has-max={hasMax ? 'true' : 'false'}
         aria-label={titleLabel}
-        title={title ?? titleLabel}
+        // Don't fall back to titleLabel: Obsidian already shows its own
+        // tooltip from aria-label; adding title on top stacks a second
+        // native browser tooltip (same issue as LLMDebugButton).
+        title={title}
       >
         <svg
           className="yolo-context-usage-ring__svg"
