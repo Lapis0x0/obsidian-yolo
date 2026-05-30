@@ -7,9 +7,12 @@ import {
   buildAsrProviderForConfig,
   resolveActiveAudioFileAsrConfig,
 } from '../../../core/asr/manager'
-import type {
-  AsrConfig,
-  ContextVoiceInputOptions,
+import {
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX,
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN,
+  type AsrConfig,
+  type ContextVoiceInputOptions,
 } from '../../../settings/schema/setting.types'
 
 import {
@@ -59,7 +62,11 @@ export type OrderedAudioFileText = {
   text: string
   chunkIndex: number | null
   chunkStartMs: number | null
+  replacePrevious?: boolean
+  isFinal?: boolean
 }
+
+export const DEEPGRAM_MAX_STREAMING_REALTIME_RATE = 1.25
 
 export type AudioFileTranscriptionMessages = {
   noProvider: string
@@ -69,6 +76,7 @@ export type AudioFileTranscriptionMessages = {
   decodeRequiredForChunking: string
   localDecodeTooLarge: string
   webSocketPcmLargeUnsupported: string
+  webSocketMp4TailMoovUnsupported: string
   wavPcmDurationLimitExceeded: (seconds: number) => string
   missingChunkPlan: string
   chunkFailed: string
@@ -94,6 +102,8 @@ const DEFAULT_MESSAGES: AudioFileTranscriptionMessages = {
     'This audio file is too large for local processing. Use a long-audio provider.',
   webSocketPcmLargeUnsupported:
     'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
+  webSocketMp4TailMoovUnsupported:
+    'This m4a/mp4 file cannot be streamed directly. Use a long-audio provider, or choose PCM 16k in the WebSocket provider.',
   wavPcmDurationLimitExceeded: (seconds) =>
     `WAV/PCM upload is limited to ${formatLimitMinutes(seconds)} minutes to avoid freezes and excessive upload traffic. Use a long-audio provider for longer files.`,
   missingChunkPlan: 'Missing chunk plan for audio file transcription.',
@@ -155,17 +165,11 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   )
 
   if (capability.supportsFileStreaming) {
-    assertWavPcmSendWithinDurationLimit({
-      inspection,
-      providerConfig,
-      wavMaxDurationSec,
-      messages,
-    })
     if (
-      providerConfig.audioFormat === 'wav' &&
-      !canDecodeLocallyWithinDurationLimit(inspection, wavMaxDurationSec)
+      providerConfig.audioFormat !== 'wav' &&
+      inspection.mp4MoovPosition === 'after-mdat'
     ) {
-      throw new Error(messages.webSocketPcmLargeUnsupported)
+      throw new Error(messages.webSocketMp4TailMoovUnsupported)
     }
     return {
       mode: 'websocket-stream',
@@ -521,8 +525,34 @@ async function executeWebSocketStream(input: {
 
   let emittedFinalText = ''
   let latestText = ''
+  let emittedRevisionText = ''
   let pendingFlush = Promise.resolve()
+  const useRevisionStreaming =
+    input.plan.providerConfig.webSocketProtocol === 'whisperlivekit-native'
+  const emitRevision = (text: string, isFinal: boolean) => {
+    const combined = text.trim()
+    if (!combined || (!isFinal && combined === emittedRevisionText)) return
+    latestText = combined
+    emittedRevisionText = combined
+    pendingFlush = pendingFlush.then(() =>
+      input.onText({
+        text: combined,
+        chunkIndex: null,
+        chunkStartMs: null,
+        replacePrevious: true,
+        isFinal,
+      }),
+    )
+    void pendingFlush.catch(() => {
+      // The final await below owns surfacing insertion failures; this handler
+      // only prevents an early unhandled-rejection report while streaming.
+    })
+  }
   const emitFinal = (combined: string) => {
+    if (useRevisionStreaming) {
+      emitRevision(combined, true)
+      return
+    }
     const delta = diffAppendedText(emittedFinalText, combined)
     latestText = combined
     if (!delta.trim()) return
@@ -549,9 +579,12 @@ async function executeWebSocketStream(input: {
     {
       onPartial: (text) => {
         latestText = text
+        if (useRevisionStreaming) emitRevision(text, false)
         input.onProgress({
           phase: 'transcribing',
-          finalTextChars: emittedFinalText.length,
+          finalTextChars: useRevisionStreaming
+            ? emittedRevisionText.length
+            : emittedFinalText.length,
         })
       },
       onFinal: emitFinal,
@@ -609,17 +642,36 @@ async function sendFileThroughStreamingSession(input: {
     const frameMs = 250
     const bytesPerMs = (pcm.sampleRate * 2) / 1000
     const frameBytes = Math.max(2, Math.floor(frameMs * bytesPerMs))
+    const startedAt = Date.now()
+    const realtimeRateLimit = resolveWebSocketStreamingRealtimeRateLimit(
+      plan.providerConfig,
+    )
     for (let offset = 0; offset < pcm.audio.byteLength; offset += frameBytes) {
       throwIfAborted(signal)
       const end = Math.min(pcm.audio.byteLength, offset + frameBytes)
       session.sendAudioChunk(pcm.audio.slice(offset, end))
       reportProgress(end, pcm.audio.byteLength)
-      await delay(40, signal)
+      if (realtimeRateLimit !== null && pcm.durationMs > 0) {
+        await paceStreaming({
+          durationMs: pcm.durationMs,
+          totalBytes: pcm.audio.byteLength,
+          sentBytes: end,
+          startedAt,
+          realtimeRateLimit,
+          signal,
+        })
+      } else {
+        await delay(40, signal)
+      }
     }
     return
   }
 
   const frameBytes = 64 * 1024
+  const startedAt = Date.now()
+  const realtimeRateLimit = resolveWebSocketStreamingRealtimeRateLimit(
+    plan.providerConfig,
+  )
   for (
     let offset = 0;
     offset < plan.inspection.source.size;
@@ -629,8 +681,108 @@ async function sendFileThroughStreamingSession(input: {
     const end = Math.min(plan.inspection.source.size, offset + frameBytes)
     session.sendAudioChunk(await plan.inspection.source.readSlice(offset, end))
     reportProgress(end, plan.inspection.source.size)
-    await delay(100, signal)
+    if (realtimeRateLimit !== null && plan.durationMs && plan.durationMs > 0) {
+      await paceStreaming({
+        durationMs: plan.durationMs,
+        totalBytes: plan.inspection.source.size,
+        sentBytes: end,
+        startedAt,
+        realtimeRateLimit,
+        signal,
+      })
+    } else {
+      await delay(100, signal)
+    }
   }
+}
+
+function resolveWebSocketStreamingRealtimeRateLimit(
+  config: AsrConfig,
+): number | null {
+  if (config.format !== 'deepgram-compatible-websocket') {
+    return null
+  }
+  if (
+    config.webSocketProtocol === 'deepgram-compatible' &&
+    config.asrProvider === 'deepgram'
+  ) {
+    return DEEPGRAM_MAX_STREAMING_REALTIME_RATE
+  }
+  if (config.webSocketProtocol === 'whisperlivekit-native') {
+    return clampWebSocketFileStreamingRate(config.webSocketFileStreamingRate)
+  }
+  return null
+}
+
+async function paceStreaming(input: {
+  durationMs: number | null | undefined
+  totalBytes: number
+  sentBytes: number
+  startedAt: number
+  realtimeRateLimit: number
+  signal: AbortSignal
+}): Promise<void> {
+  const delayMs = calculateStreamingPaceDelayMs({
+    durationMs: input.durationMs,
+    totalBytes: input.totalBytes,
+    sentBytes: input.sentBytes,
+    startedAt: input.startedAt,
+    now: Date.now(),
+    realtimeRateLimit: input.realtimeRateLimit,
+  })
+  if (delayMs > 0) {
+    await delay(delayMs, input.signal)
+  }
+}
+
+export function calculateDeepgramStreamingPaceDelayMs(input: {
+  durationMs: number | null | undefined
+  totalBytes: number
+  sentBytes: number
+  startedAt: number
+  now: number
+}): number {
+  return calculateStreamingPaceDelayMs({
+    ...input,
+    realtimeRateLimit: DEEPGRAM_MAX_STREAMING_REALTIME_RATE,
+  })
+}
+
+export function calculateStreamingPaceDelayMs(input: {
+  durationMs: number | null | undefined
+  totalBytes: number
+  sentBytes: number
+  startedAt: number
+  now: number
+  realtimeRateLimit: number
+}): number {
+  if (
+    !input.durationMs ||
+    input.durationMs <= 0 ||
+    input.totalBytes <= 0 ||
+    input.sentBytes <= 0 ||
+    input.realtimeRateLimit <= 0
+  ) {
+    return 0
+  }
+  const sentRatio = Math.min(1, input.sentBytes / input.totalBytes)
+  const minimumElapsedMs =
+    (input.durationMs * sentRatio) / input.realtimeRateLimit
+  return Math.max(
+    0,
+    Math.ceil(minimumElapsedMs - (input.now - input.startedAt)),
+  )
+}
+
+function clampWebSocketFileStreamingRate(value: number | undefined): number {
+  const candidate =
+    typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT
+  return Math.min(
+    ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX,
+    Math.max(ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN, candidate),
+  )
 }
 
 function diffAppendedText(previous: string, next: string): string {

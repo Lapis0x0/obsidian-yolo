@@ -1,6 +1,8 @@
 import {
   CONNECT_TIMEOUT_MS,
   armWebSocketConnectTimeout,
+  combineTranscript,
+  createWhisperLiveKitNativeTranscriptState,
   readTranscript,
   readWhisperLiveKitNativeTranscript,
 } from './common'
@@ -103,7 +105,162 @@ describe('readWhisperLiveKitNativeTranscript', () => {
       { includeSpeakerLabels: true },
     )
 
-    expect(result.text).toBe('Speaker 1: hello\nagain\nSpeaker 2: hi')
+    expect(result.text).toBe(
+      'Speaker 1: hello\nagain\nSpeaker 2: hi\nSpeaker -2: noise',
+    )
+  })
+
+  it('keeps WhisperLiveKit negative speaker ids instead of dropping them', () => {
+    const result = readWhisperLiveKitNativeTranscript(
+      {
+        lines: [
+          { speaker: -2, text: 'first speaker' },
+          { speaker: 1, text: 'second speaker' },
+        ],
+      },
+      { includeSpeakerLabels: true },
+    )
+
+    expect(result.text).toBe(
+      'Speaker -2: first speaker\nSpeaker 2: second speaker',
+    )
+  })
+
+  it('reconstructs WhisperLiveKit diff mode without dropping pruned text', () => {
+    const state = createWhisperLiveKitNativeTranscriptState()
+    const snapshot = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'snapshot',
+        lines: [{ speaker: 0, text: 'first' }],
+        buffer_transcription: '',
+      },
+      { includeSpeakerLabels: true, state },
+    )
+    const diff = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        lines_pruned: 1,
+        n_lines: 1,
+        new_lines: [{ speaker: 1, text: 'second' }],
+        buffer_transcription: 'draft',
+      },
+      { includeSpeakerLabels: true, state },
+    )
+
+    expect(snapshot.text).toBe('Speaker 1: first')
+    expect(snapshot.committedChanged).toBe(true)
+    expect(diff.text).toBe('Speaker 1: first\nSpeaker 2: second')
+    expect(diff.buffer).toBe('draft')
+    expect(diff.committedChanged).toBe(true)
+  })
+
+  it('updates a growing WhisperLiveKit diff line without duplicating text', () => {
+    const state = createWhisperLiveKitNativeTranscriptState()
+    const first = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 1,
+        new_lines: [{ text: 'hello' }],
+      },
+      { state },
+    )
+    const second = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 1,
+        new_lines: [{ text: 'hello world' }],
+      },
+      { state },
+    )
+
+    expect(first.text).toBe('hello')
+    expect(first.committedChanged).toBe(true)
+    expect(second.text).toBe('hello world')
+    expect(second.committedChanged).toBe(true)
+  })
+
+  it('treats same-start pruned WhisperLiveKit lines as replacements', () => {
+    const state = createWhisperLiveKitNativeTranscriptState()
+    const first = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 1,
+        new_lines: [{ speaker: 1, text: '1975年夏季的', start: '0:00:00.18' }],
+      },
+      { includeSpeakerLabels: true, state },
+    )
+    const second = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        lines_pruned: 1,
+        n_lines: 1,
+        new_lines: [
+          { speaker: 1, text: '1975年夏季的一天', start: '0:00:00.18' },
+        ],
+      },
+      { includeSpeakerLabels: true, state },
+    )
+
+    expect(first.text).toBe('Speaker 2: 1975年夏季的')
+    expect(first.committedChanged).toBe(true)
+    expect(second.text).toBe('Speaker 2: 1975年夏季的一天')
+    expect(second.committedChanged).toBe(true)
+  })
+
+  it('preserves stable WhisperLiveKit lines while refreshing the growing tail', () => {
+    const state = createWhisperLiveKitNativeTranscriptState()
+    readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 1,
+        new_lines: [{ text: 'first line' }],
+      },
+      { state },
+    )
+    readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 2,
+        new_lines: [{ text: 'second' }],
+      },
+      { state },
+    )
+
+    const result = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 2,
+        new_lines: [{ text: 'second line' }],
+      },
+      { state },
+    )
+
+    expect(result.text).toBe('first line second line')
+    expect(result.committedChanged).toBe(true)
+  })
+
+  it('treats WhisperLiveKit buffer-only diffs as partial updates', () => {
+    const state = createWhisperLiveKitNativeTranscriptState()
+    readWhisperLiveKitNativeTranscript(
+      {
+        type: 'snapshot',
+        lines: [{ speaker: 0, text: 'first' }],
+      },
+      { state },
+    )
+
+    const result = readWhisperLiveKitNativeTranscript(
+      {
+        type: 'diff',
+        n_lines: 1,
+        buffer_transcription: 'partial',
+      },
+      { state },
+    )
+
+    expect(result.text).toBe('first')
+    expect(result.buffer).toBe('partial')
+    expect(result.committedChanged).toBe(false)
   })
 })
 
@@ -143,7 +300,52 @@ describe('readTranscript', () => {
       { includeSpeakerLabels: true, speakerState },
     )
 
-    expect(first).toBe('Speaker 1: hello again')
-    expect(second).toBe('still here')
+    expect(first).toBe('Speaker 1: helloagain')
+    expect(second).toBe('stillhere')
+    expect(combineTranscript([first, second])).toBe(
+      'Speaker 1: helloagain stillhere',
+    )
+  })
+
+  it('adds a line break when Deepgram speaker changes across final messages', () => {
+    const speakerState = { lastSpeakerLabel: '' }
+    const first = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: 'hello again',
+              words: [
+                { speaker: 0, word: 'hello' },
+                { speaker: 0, word: 'again' },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState },
+    )
+    const second = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: 'hi there',
+              words: [
+                { speaker: 1, word: 'hi' },
+                { speaker: 1, word: 'there' },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState },
+    )
+
+    expect(first).toBe('Speaker 1: helloagain')
+    expect(second).toBe('Speaker 2: hithere')
+    expect(combineTranscript([first, second])).toBe(
+      'Speaker 1: helloagain\nSpeaker 2: hithere',
+    )
   })
 })

@@ -1375,6 +1375,9 @@ export const zh: TranslationKeys = {
       webSocketDictation: '口述命令',
       webSocketDictationDesc:
         '把 comma、period、new line 等口述标点命令转为符号。需要开启标点。',
+      webSocketFileStreamingRate: '速率节流',
+      webSocketFileStreamingRateDesc:
+        '范围 1-20，默认 2；拖入音频文件时，最多按这个实时倍速发送到 WhisperLiveKit。',
       longProvider: '长音频提供商',
       longProviderDesc: '固定长音频 provider 会保留自己的请求和结果解析方式。',
       longProviderFunasr: 'FunASR 本地',
@@ -1625,6 +1628,8 @@ export const zh: TranslationKeys = {
       '这个音频太大，不能在本地处理。请改用长音频提供商。',
     audioFileErrorWebSocketPcmLargeUnsupported:
       '大文件不能以 WAV/PCM 方式流式发送。请改用长音频提供商。',
+    audioFileErrorWebSocketMp4TailMoovUnsupported:
+      '这个 m4a/mp4 文件不能直接流式发送。请改用长音频提供商，或在 WebSocket 提供商里选择 PCM 16k。',
     audioFileErrorWavPcmDurationLimitExceeded:
       'WAV/PCM 上传限制为 {{minutes}} 分钟，避免卡死和上传流量过大。更长的文件请改用长音频提供商。',
     audioFileErrorMissingChunkPlan: '缺少音频分段计划。',

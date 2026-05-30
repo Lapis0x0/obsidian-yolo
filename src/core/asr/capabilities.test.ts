@@ -21,6 +21,7 @@ const baseConfig: AsrConfig = {
   webSocketPunctuate: true,
   webSocketDiarizeMode: 'off',
   webSocketDictation: false,
+  webSocketFileStreamingRate: 2,
   audioFormat: 'auto',
   transportMode: 'node',
   language: 'auto',

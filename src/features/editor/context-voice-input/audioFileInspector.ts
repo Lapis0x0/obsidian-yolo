@@ -21,12 +21,20 @@ export type AudioFileInspection = {
   extension: string
   fileSizeBytes: number
   durationMs: number | null
+  mp4MoovPosition: Mp4MoovPosition | null
   decodedAudio: AudioBuffer | null
   canDecodeLocally: boolean
 }
 
 export type AudioFileInspectionOptions = {
   decode?: boolean
+}
+
+export type Mp4MoovPosition = 'before-mdat' | 'after-mdat' | 'unknown'
+
+type ContainerMetadata = {
+  durationMs: number | null
+  mp4MoovPosition: Mp4MoovPosition | null
 }
 
 export async function inspectAudioFile(
@@ -43,9 +51,8 @@ export async function inspectAudioFile(
   }
 
   let durationMs = await probeAudioDurationMs(source)
-  if (durationMs === null) {
-    durationMs = await probeContainerDurationMs(source, extension)
-  }
+  const containerMetadata = await probeContainerMetadata(source, extension)
+  durationMs = durationMs ?? containerMetadata.durationMs
   let decodedAudio: AudioBuffer | null = null
   if (options.decode) {
     const file = await source.getFile()
@@ -70,6 +77,7 @@ export async function inspectAudioFile(
     extension,
     fileSizeBytes: source.size,
     durationMs,
+    mp4MoovPosition: containerMetadata.mp4MoovPosition,
     decodedAudio,
     canDecodeLocally: decodedAudio !== null,
   }
@@ -131,19 +139,24 @@ async function probeAudioDurationMs(
   })
 }
 
-async function probeContainerDurationMs(
+async function probeContainerMetadata(
   source: AudioFileSource,
   extension: string,
-): Promise<number | null> {
+): Promise<ContainerMetadata> {
   try {
-    if (extension === 'wav') return await probeWavDurationMs(source)
+    if (extension === 'wav') {
+      return {
+        durationMs: await probeWavDurationMs(source),
+        mp4MoovPosition: null,
+      }
+    }
     if (extension === 'm4a' || extension === 'mp4') {
-      return await probeMp4DurationMs(source)
+      return await probeMp4Metadata(source)
     }
   } catch {
-    return null
+    return { durationMs: null, mp4MoovPosition: null }
   }
-  return null
+  return { durationMs: null, mp4MoovPosition: null }
 }
 
 async function probeWavDurationMs(
@@ -189,23 +202,28 @@ async function probeWavDurationMs(
 // audio-only fallback mainly serves Obsidian sidebar drags, where vault
 // resource URLs can fail browser metadata probing; video/* inputs are rejected
 // before this path.
-async function probeMp4DurationMs(
+async function probeMp4Metadata(
   source: AudioFileSource,
-): Promise<number | null> {
+): Promise<ContainerMetadata> {
   let offset = 0
+  let seenMdat = false
+  let mp4MoovPosition: Mp4MoovPosition = 'unknown'
   for (let count = 0; count < 2048 && offset + 8 <= source.size; count++) {
     const box = await readMp4BoxHeader(source, offset, source.size)
-    if (!box) return null
+    if (!box) return { durationMs: null, mp4MoovPosition }
+    if (box.type === 'mdat') seenMdat = true
     if (box.type === 'moov') {
-      return await probeMp4MoovDurationMs(
+      mp4MoovPosition = seenMdat ? 'after-mdat' : 'before-mdat'
+      const durationMs = await probeMp4MoovDurationMs(
         source,
         offset + box.headerSize,
         offset + box.size,
       )
+      return { durationMs, mp4MoovPosition }
     }
     offset += box.size
   }
-  return null
+  return { durationMs: null, mp4MoovPosition }
 }
 
 async function probeMp4MoovDurationMs(

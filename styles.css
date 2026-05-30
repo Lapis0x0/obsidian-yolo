@@ -18451,7 +18451,8 @@ body.yolo-quick-ask-global-interaction * {
     transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     filter 180ms ease,
     visibility 0ms linear 0ms,
-    background 120ms ease;
+    background 90ms ease,
+    border-color 90ms ease;
   will-change: opacity, transform, filter;
 }
 
@@ -18466,7 +18467,8 @@ body.yolo-quick-ask-global-interaction * {
     transform 160ms cubic-bezier(0.4, 0, 1, 1),
     filter 140ms ease,
     visibility 0ms linear 160ms,
-    background 120ms ease;
+    background 90ms ease,
+    border-color 90ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

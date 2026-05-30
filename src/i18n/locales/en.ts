@@ -1489,6 +1489,9 @@ export const en: TranslationKeys = {
       webSocketDictation: 'Dictation commands',
       webSocketDictationDesc:
         'Turns spoken punctuation commands such as comma, period, and new line into marks. Requires punctuation.',
+      webSocketFileStreamingRate: 'Rate limit',
+      webSocketFileStreamingRateDesc:
+        'Range 1-20, default 2. When an audio file is dropped in, stream to WhisperLiveKit at up to this realtime speed.',
       longProvider: 'Long-audio provider',
       longProviderDesc:
         'Fixed long-audio providers keep their own request and result parsing.',
@@ -1755,6 +1758,8 @@ export const en: TranslationKeys = {
       'This audio file is too large for local processing. Use a long-audio provider.',
     audioFileErrorWebSocketPcmLargeUnsupported:
       'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
+    audioFileErrorWebSocketMp4TailMoovUnsupported:
+      'This m4a/mp4 file cannot be streamed directly. Use a long-audio provider, or choose PCM 16k in the WebSocket provider.',
     audioFileErrorWavPcmDurationLimitExceeded:
       'WAV/PCM upload is limited to {{minutes}} minutes to avoid freezes and excessive upload traffic. Use a long-audio provider for longer files.',
     audioFileErrorMissingChunkPlan:

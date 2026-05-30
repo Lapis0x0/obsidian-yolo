@@ -346,6 +346,10 @@ export const ASR_WEBSOCKET_FEATURE_MODES = ['auto', 'on', 'off'] as const
 export type AsrWebSocketFeatureMode =
   (typeof ASR_WEBSOCKET_FEATURE_MODES)[number]
 
+export const ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN = 1
+export const ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX = 20
+export const ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT = 2
+
 /**
  * Network transport used for outbound ASR HTTP requests. Mirrors the LLM
  * provider's `requestTransportMode` enum so users do not have to learn a
@@ -405,6 +409,15 @@ const asrConfigSchema = z
     webSocketPunctuate: z.boolean().catch(true),
     webSocketDiarizeMode: z.enum(ASR_WEBSOCKET_FEATURE_MODES).catch('off'),
     webSocketDictation: z.boolean().catch(false),
+    /**
+     * Max realtime multiplier when streaming an existing audio file into
+     * WhisperLiveKit. Mic input is naturally realtime and ignores this.
+     */
+    webSocketFileStreamingRate: z
+      .number()
+      .min(ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN)
+      .max(ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX)
+      .catch(ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT),
     /** See `ASR_AUDIO_FORMATS` for semantics. Only relevant to chat-audio. */
     audioFormat: z.enum(ASR_AUDIO_FORMATS).catch('auto'),
     /** Outbound HTTP transport. See `ASR_TRANSPORT_MODES`. */
@@ -438,6 +451,7 @@ const asrConfigSchema = z
     webSocketPunctuate: true,
     webSocketDiarizeMode: 'off' as AsrWebSocketFeatureMode,
     webSocketDictation: false,
+    webSocketFileStreamingRate: ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
     audioFormat: 'auto' as AsrAudioFormat,
     transportMode: 'node' as AsrTransportMode,
     language: 'auto',

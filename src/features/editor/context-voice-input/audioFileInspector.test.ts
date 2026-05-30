@@ -30,6 +30,33 @@ describe('inspectAudioFile', () => {
     const inspection = await inspectAudioFile(source, { decode: false })
 
     expect(inspection.durationMs).toBe(123_456)
+    expect(inspection.mp4MoovPosition).toBe('after-mdat')
+    expect(getFile).not.toHaveBeenCalled()
+  })
+
+  it('recognizes fast-start m4a metadata before media data', async () => {
+    Object.defineProperty(globalThis, 'Audio', {
+      configurable: true,
+      value: undefined,
+    })
+    const bytes = buildMp4Fixture({
+      durationMs: 123_456,
+      moovBeforeMdat: true,
+    })
+    const getFile = jest.fn(async () => {
+      throw new Error('should not materialize')
+    })
+    const source = createByteSource({
+      bytes,
+      name: 'meeting.m4a',
+      type: 'audio/mp4',
+      getFile,
+    })
+
+    const inspection = await inspectAudioFile(source, { decode: false })
+
+    expect(inspection.durationMs).toBe(123_456)
+    expect(inspection.mp4MoovPosition).toBe('before-mdat')
     expect(getFile).not.toHaveBeenCalled()
   })
 })
@@ -56,15 +83,19 @@ function createByteSource(input: {
   }
 }
 
-function buildMp4Fixture(input: { durationMs: number }): Uint8Array {
+function buildMp4Fixture(input: {
+  durationMs: number
+  moovBeforeMdat?: boolean
+}): Uint8Array {
   const timescale = 1000
   const mvhdPayload = new Uint8Array(20)
   writeUint32Be(mvhdPayload, 12, timescale)
   writeUint32Be(mvhdPayload, 16, input.durationMs)
+  const mediaData = box('mdat', new Uint8Array([1, 2, 3, 4]))
+  const metadata = box('moov', box('mvhd', mvhdPayload))
   return concatBytes(
     box('ftyp', new Uint8Array([0x4d, 0x34, 0x41, 0x20])),
-    box('mdat', new Uint8Array([1, 2, 3, 4])),
-    box('moov', box('mvhd', mvhdPayload)),
+    ...(input.moovBeforeMdat ? [metadata, mediaData] : [mediaData, metadata]),
   )
 }
 

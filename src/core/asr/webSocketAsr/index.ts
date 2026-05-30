@@ -167,6 +167,10 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
           ? 'true'
           : undefined,
       interim_results: isDeepgramCompatible ? 'true' : undefined,
+      mode:
+        !isDeepgramCompatible && options.purpose === 'audio-file-transcription'
+          ? 'diff'
+          : undefined,
       ...(audioFormat === 'wav'
         ? {
             encoding: 'linear16',

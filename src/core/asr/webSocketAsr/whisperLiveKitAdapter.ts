@@ -19,6 +19,7 @@ import {
   armWebSocketConnectTimeout,
   asError,
   createAsrWebSocket,
+  createWhisperLiveKitNativeTranscriptState,
   errorMessage,
   readWhisperLiveKitNativeTranscript,
 } from './common'
@@ -42,6 +43,7 @@ export const openWhisperLiveKitNativeStream = async (args: {
     let finishReject: ((error: Error) => void) | null = null
     let sendChain = Promise.resolve()
     let latestText = ''
+    const transcriptState = createWhisperLiveKitNativeTranscriptState()
     const startedAt = Date.now()
     let timeoutId: number | null = null
     let settleTimeoutId: number | null = null
@@ -195,6 +197,7 @@ export const openWhisperLiveKitNativeStream = async (args: {
 
       const { text, buffer } = readWhisperLiveKitNativeTranscript(payload, {
         includeSpeakerLabels,
+        state: transcriptState,
       })
       const combined = [text, buffer]
         .filter(Boolean)
@@ -203,10 +206,8 @@ export const openWhisperLiveKitNativeStream = async (args: {
       if (!combined) return
       if (text) {
         latestText = text
-        callbacks.onFinal?.(combined)
-      } else {
-        callbacks.onPartial?.(combined)
       }
+      callbacks.onPartial?.(combined)
       if (finished) armSettleTimeout()
     })
 

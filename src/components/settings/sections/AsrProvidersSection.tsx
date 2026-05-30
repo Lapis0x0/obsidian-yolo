@@ -26,11 +26,12 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import YoloPlugin from '../../../main'
-import type {
-  AsrApiFormat,
-  AsrConfig,
-  AsrConfigCategory,
-  AsrWebSocketProtocol,
+import {
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
+  type AsrApiFormat,
+  type AsrConfig,
+  type AsrConfigCategory,
+  type AsrWebSocketProtocol,
 } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
@@ -160,6 +161,9 @@ const normalizeConfigForEdit = (config: AsrConfig): AsrConfig => {
       webSocketProtocol === 'whisperlivekit-native'
         ? 'whisperlivekit'
         : config.asrProvider || 'deepgram',
+    webSocketFileStreamingRate:
+      config.webSocketFileStreamingRate ??
+      ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
     transportMode: 'browser',
   }
 }

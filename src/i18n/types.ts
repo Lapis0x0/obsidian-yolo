@@ -1248,6 +1248,8 @@ export type TranslationKeys = {
       webSocketDiarizeDesc?: string
       webSocketDictation?: string
       webSocketDictationDesc?: string
+      webSocketFileStreamingRate?: string
+      webSocketFileStreamingRateDesc?: string
       longProvider?: string
       longProviderDesc?: string
       longProviderFunasr?: string
@@ -1457,6 +1459,7 @@ export type TranslationKeys = {
     audioFileErrorDecodeRequiredForChunking?: string
     audioFileErrorLocalDecodeTooLarge?: string
     audioFileErrorWebSocketPcmLargeUnsupported?: string
+    audioFileErrorWebSocketMp4TailMoovUnsupported?: string
     audioFileErrorWavPcmDurationLimitExceeded?: string
     audioFileErrorMissingChunkPlan?: string
     audioFileErrorChunkFailed?: string

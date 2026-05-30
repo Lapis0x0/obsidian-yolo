@@ -147,6 +147,9 @@ type AudioFileSession = {
   startedAt: number
   previousInsertedText: string
   hasInsertedText: boolean
+  streamingRevisionStartOffset: number | null
+  streamingRevisionEndOffset: number | null
+  streamingRevisionPrefix: string
   fallbackPath: string | null
   fallbackNoticeShown: boolean
   applyingInsertion: boolean
@@ -364,6 +367,10 @@ export class ContextVoiceInputController {
         'voiceInput.audioFileErrorWebSocketPcmLargeUnsupported',
         'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
       ),
+      webSocketMp4TailMoovUnsupported: this.deps.t(
+        'voiceInput.audioFileErrorWebSocketMp4TailMoovUnsupported',
+        'This m4a/mp4 file cannot be streamed directly. Use a long-audio provider, or choose PCM 16k in the WebSocket provider.',
+      ),
       wavPcmDurationLimitExceeded: (seconds) =>
         this.tFormat(
           'voiceInput.audioFileErrorWavPcmDurationLimitExceeded',
@@ -573,6 +580,9 @@ export class ContextVoiceInputController {
       startedAt: Date.now(),
       previousInsertedText: '',
       hasInsertedText: false,
+      streamingRevisionStartOffset: null,
+      streamingRevisionEndOffset: null,
+      streamingRevisionPrefix: '',
       fallbackPath: null,
       fallbackNoticeShown: false,
       applyingInsertion: false,
@@ -733,6 +743,18 @@ export class ContextVoiceInputController {
     }
     if (session.appendOffset !== null) {
       session.appendOffset = changes.mapPos(session.appendOffset, 1)
+    }
+    if (session.streamingRevisionStartOffset !== null) {
+      session.streamingRevisionStartOffset = changes.mapPos(
+        session.streamingRevisionStartOffset,
+        1,
+      )
+    }
+    if (session.streamingRevisionEndOffset !== null) {
+      session.streamingRevisionEndOffset = changes.mapPos(
+        session.streamingRevisionEndOffset,
+        1,
+      )
     }
   }
 
@@ -933,14 +955,32 @@ export class ContextVoiceInputController {
     result: OrderedAudioFileText,
   ): Promise<void> {
     if (this.audioFileSession !== session || !session.plan) return
-    let text = result.text.trim()
-    if (!text) return
-    text = trimDuplicateChunkBoundary(session.previousInsertedText, text)
+    const plan = session.plan
+    const preserveStreamingSeparator =
+      plan.mode === 'websocket-stream' && session.hasInsertedText
+    // WebSocket final deltas already carry the boundary between accumulated
+    // text and the new fragment. Preserve it so speaker changes keep newlines.
+    let text = preserveStreamingSeparator
+      ? result.text.trimEnd()
+      : result.text.trim()
     if (!text.trim()) return
-    session.previousInsertedText = [session.previousInsertedText, text]
-      .filter(Boolean)
-      .join(' ')
-      .trim()
+    if (result.replacePrevious) {
+      await this.replaceAudioFileRevisionText(
+        session,
+        result,
+        text.trim(),
+        !!result.isFinal,
+      )
+      return
+    }
+    if (plan.mode !== 'websocket-stream') {
+      text = trimDuplicateChunkBoundary(session.previousInsertedText, text)
+    }
+    if (!text.trim()) return
+    session.previousInsertedText =
+      plan.mode === 'websocket-stream'
+        ? `${session.previousInsertedText}${text}`.trim()
+        : [session.previousInsertedText, text].filter(Boolean).join(' ').trim()
     const inlineText = this.formatAudioFileInsertion(
       session,
       text,
@@ -967,24 +1007,123 @@ export class ContextVoiceInputController {
     session.hasInsertedText = true
   }
 
+  private async replaceAudioFileRevisionText(
+    session: AudioFileSession,
+    result: OrderedAudioFileText,
+    text: string,
+    isFinal: boolean,
+  ): Promise<void> {
+    if (!text.trim()) return
+    const existingStart = session.streamingRevisionStartOffset
+    const existingEnd = session.streamingRevisionEndOffset
+    if (existingStart !== null && existingEnd !== null) {
+      const replacement = `${session.streamingRevisionPrefix}${text}`
+      if (
+        this.replaceAudioFileTextInlineRange(
+          session,
+          replacement,
+          existingStart,
+          existingEnd,
+        )
+      ) {
+        session.previousInsertedText = text
+        session.hasInsertedText = true
+        return
+      }
+      if (!isFinal) return
+    }
+
+    if (!session.hasInsertedText) {
+      const inlineText = this.formatAudioFileInsertion(
+        session,
+        text,
+        result,
+        'inline',
+      )
+      const range = inlineText.trim()
+        ? this.insertAudioFileTextInline(session, inlineText)
+        : null
+      if (range) {
+        session.streamingRevisionStartOffset = range.startOffset
+        session.streamingRevisionEndOffset = range.endOffset
+        session.streamingRevisionPrefix = inlineText.endsWith(text)
+          ? inlineText.slice(0, inlineText.length - text.length)
+          : ''
+        session.previousInsertedText = text
+        session.hasInsertedText = true
+        return
+      }
+      if (!isFinal) return
+    }
+
+    if (!isFinal) return
+    const fallbackText = this.formatAudioFileInsertion(
+      session,
+      text,
+      result,
+      'fallback',
+    )
+    if (!fallbackText.trim()) return
+    await this.appendAudioFileTextToFallback(session, fallbackText)
+    session.previousInsertedText = text
+    session.hasInsertedText = true
+  }
+
   private tryInsertAudioFileTextInline(
     session: AudioFileSession,
     text: string,
   ): boolean {
-    if (!session.editor || session.appendOffset === null) return false
+    return !!this.insertAudioFileTextInline(session, text)
+  }
+
+  private insertAudioFileTextInline(
+    session: AudioFileSession,
+    text: string,
+  ): { startOffset: number; endOffset: number } | null {
+    if (!session.editor || session.appendOffset === null) return null
     const view = this.deps.getEditorView(session.editor)
-    if (!view) return false
+    if (!view) return null
     session.view = view
     try {
+      const startOffset = session.appendOffset
       const from = session.editor.offsetToPos(session.appendOffset)
       session.applyingInsertion = true
       session.editor.replaceRange(text, from, from)
       const end = this.computeEndCursor(from, text)
       session.editor.setCursor(end)
       session.appendOffset = session.editor.posToOffset(end)
-      return true
+      return { startOffset, endOffset: session.appendOffset }
     } catch (error) {
       console.warn('Audio file transcription inline insert failed:', error)
+      return null
+    } finally {
+      session.applyingInsertion = false
+    }
+  }
+
+  private replaceAudioFileTextInlineRange(
+    session: AudioFileSession,
+    text: string,
+    startOffset: number,
+    endOffset: number,
+  ): boolean {
+    if (!session.editor) return false
+    const view = this.deps.getEditorView(session.editor)
+    if (!view) return false
+    session.view = view
+    try {
+      const from = session.editor.offsetToPos(startOffset)
+      const to = session.editor.offsetToPos(endOffset)
+      session.applyingInsertion = true
+      session.editor.replaceRange(text, from, to)
+      const end = this.computeEndCursor(from, text)
+      session.editor.setCursor(end)
+      const nextEndOffset = session.editor.posToOffset(end)
+      session.appendOffset = nextEndOffset
+      session.streamingRevisionEndOffset = nextEndOffset
+      return true
+    } catch (error) {
+      console.warn('Audio file transcription inline replace failed:', error)
       return false
     } finally {
       session.applyingInsertion = false
@@ -1046,7 +1185,11 @@ export class ContextVoiceInputController {
     parts.push(text)
     const prefix =
       session.hasInsertedText && plan.mode === 'websocket-stream'
-        ? ' '
+        ? // If the streaming delta starts with whitespace, it already encoded
+          // the right separator (space for same speaker, newline for new speaker).
+          /^\s/.test(text)
+          ? ''
+          : ' '
         : session.hasInsertedText
           ? '\n\n'
           : ''

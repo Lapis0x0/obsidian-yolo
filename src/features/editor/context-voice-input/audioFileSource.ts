@@ -1,5 +1,7 @@
 import { App, FileSystemAdapter, TFile } from 'obsidian'
 
+import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
+
 export type AudioFileSource = {
   kind: 'blob' | 'vault'
   name: string
@@ -99,8 +101,10 @@ async function readVaultFileSliceFromDisk(input: {
 }): Promise<Blob> {
   const length = input.end - input.start
   const buffer = new Uint8Array(length)
-  // eslint-disable-next-line import/no-nodejs-modules -- desktop vault files need range reads without loading the full audio into memory.
-  const { open } = await import('node:fs/promises')
+  const { open } =
+    await loadDesktopNodeModule<typeof import('node:fs/promises')>(
+      'node:fs/promises',
+    )
   const handle = await open(input.path, 'r')
   try {
     const { bytesRead } = await handle.read(buffer, 0, length, input.start)

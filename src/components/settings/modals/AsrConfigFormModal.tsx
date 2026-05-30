@@ -8,6 +8,9 @@ import type { VoiceInputRecorder } from '../../../features/editor/context-voice-
 import YoloPlugin from '../../../main'
 import {
   ASR_AUDIO_FORMATS,
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX,
+  ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN,
   type AsrApiFormat,
   type AsrAudioFormat,
   type AsrConfig,
@@ -50,6 +53,7 @@ type FormatDefaults = {
   webSocketPunctuate: boolean
   webSocketDiarizeMode: AsrWebSocketFeatureMode
   webSocketDictation: boolean
+  webSocketFileStreamingRate: number
   audioFormat: AsrAudioFormat
   language: string
 }
@@ -71,6 +75,7 @@ const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
     webSocketPunctuate: true,
     webSocketDiarizeMode: 'off',
     webSocketDictation: false,
+    webSocketFileStreamingRate: ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
     audioFormat: 'auto',
     language: 'auto',
   },
@@ -87,6 +92,7 @@ const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
     webSocketPunctuate: true,
     webSocketDiarizeMode: 'off',
     webSocketDictation: false,
+    webSocketFileStreamingRate: ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
     // Many chat-audio endpoints reject webm — wav transcode is the safest
     // default. Switch to `auto` if you know your endpoint takes webm/opus.
     audioFormat: 'wav',
@@ -105,6 +111,7 @@ const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
     webSocketPunctuate: true,
     webSocketDiarizeMode: 'auto',
     webSocketDictation: false,
+    webSocketFileStreamingRate: ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
     audioFormat: 'wav',
     language: 'zh',
   },
@@ -132,6 +139,7 @@ const WS_PROTOCOL_DEFAULTS: Record<
     | 'webSocketPunctuate'
     | 'webSocketDiarizeMode'
     | 'webSocketDictation'
+    | 'webSocketFileStreamingRate'
   >
 > = {
   'deepgram-compatible': {
@@ -144,6 +152,7 @@ const WS_PROTOCOL_DEFAULTS: Record<
     webSocketPunctuate: true,
     webSocketDiarizeMode: 'auto',
     webSocketDictation: false,
+    webSocketFileStreamingRate: ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
   },
   'whisperlivekit-native': {
     name: 'WhisperLiveKit WS',
@@ -155,6 +164,7 @@ const WS_PROTOCOL_DEFAULTS: Record<
     webSocketPunctuate: false,
     webSocketDiarizeMode: 'auto',
     webSocketDictation: false,
+    webSocketFileStreamingRate: ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
   },
 }
 
@@ -271,7 +281,14 @@ function AsrConfigFormComponent({
   const isEdit = !!config
 
   const [formData, setFormData] = useState<AsrConfig>(() => {
-    if (config) return { ...config }
+    if (config) {
+      return {
+        ...config,
+        webSocketFileStreamingRate:
+          config.webSocketFileStreamingRate ??
+          ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
+      }
+    }
     // First-time add: start from the transcription default (most common new
     // user flow). The Format picker swaps in matching defaults when changed.
     const initialCategory = category ?? 'http-short-audio'
@@ -304,6 +321,7 @@ function AsrConfigFormComponent({
       webSocketPunctuate: def.webSocketPunctuate,
       webSocketDiarizeMode: def.webSocketDiarizeMode,
       webSocketDictation: def.webSocketDictation,
+      webSocketFileStreamingRate: def.webSocketFileStreamingRate,
       audioFormat:
         initialCategory === 'http-long-audio'
           ? longDef.audioFormat
@@ -318,6 +336,13 @@ function AsrConfigFormComponent({
   const [testMessage, setTestMessage] = useState<string>('')
   const [testTranscript, setTestTranscript] = useState<string>('')
   const [testStatus, setTestStatus] = useState<AsrTestStatus>('idle')
+  const [webSocketFileStreamingRateInput, setWebSocketFileStreamingRateInput] =
+    useState(() =>
+      String(
+        config?.webSocketFileStreamingRate ??
+          ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
+      ),
+    )
   const streamingTestRef = useRef<StreamingTestRuntime | null>(null)
 
   const isChatAudio = formData.format === 'openai-compatible-chat-audio-asr'
@@ -327,6 +352,8 @@ function AsrConfigFormComponent({
     formData.format === 'deepgram-compatible-websocket'
   const isDeepgramCompatibleWs =
     isWebSocketAsr && formData.webSocketProtocol === 'deepgram-compatible'
+  const isWhisperLiveKitWs =
+    isWebSocketAsr && formData.webSocketProtocol === 'whisperlivekit-native'
   const providerFormData: AsrConfig = isWebSocketAsr
     ? { ...formData, transportMode: 'browser' }
     : formData
@@ -447,6 +474,30 @@ function AsrConfigFormComponent({
     setTestStatus('idle')
   }
 
+  const normalizeWebSocketFileStreamingRate = (value: number): number =>
+    Math.min(
+      ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX,
+      Math.max(
+        ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN,
+        Math.round(value * 100) / 100,
+      ),
+    )
+
+  const parseWebSocketFileStreamingRate = (value: string): number | null => {
+    const parsed = Number.parseFloat(value)
+    if (!Number.isFinite(parsed)) return null
+    return normalizeWebSocketFileStreamingRate(parsed)
+  }
+
+  useEffect(() => {
+    setWebSocketFileStreamingRateInput(
+      String(
+        formData.webSocketFileStreamingRate ??
+          ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
+      ),
+    )
+  }, [formData.webSocketFileStreamingRate])
+
   // When the user switches API format, swap in that format's defaults — but
   // only for fields the user hasn't customized yet. We compare each field to
   // the OLD format's default; if unchanged, replace; if user overwrote it,
@@ -481,6 +532,7 @@ function AsrConfigFormComponent({
       webSocketPunctuate: keepIfEdited('webSocketPunctuate'),
       webSocketDiarizeMode: keepIfEdited('webSocketDiarizeMode'),
       webSocketDictation: keepIfEdited('webSocketDictation'),
+      webSocketFileStreamingRate: keepIfEdited('webSocketFileStreamingRate'),
       audioFormat: keepIfEdited('audioFormat'),
       transportMode:
         nextFormat === 'deepgram-compatible-websocket'
@@ -512,6 +564,7 @@ function AsrConfigFormComponent({
       webSocketPunctuate: defaults.webSocketPunctuate,
       webSocketDiarizeMode: defaults.webSocketDiarizeMode,
       webSocketDictation: defaults.webSocketDictation,
+      webSocketFileStreamingRate: defaults.webSocketFileStreamingRate,
       transportMode: 'browser',
     }))
     setTestMessage('')
@@ -1210,6 +1263,40 @@ function AsrConfigFormComponent({
           }
         />
       </ObsidianSetting>
+
+      {isWhisperLiveKitWs && (
+        <ObsidianSetting
+          name={t('settings.asr.webSocketFileStreamingRate', 'Rate limit')}
+          desc={t(
+            'settings.asr.webSocketFileStreamingRateDesc',
+            'Range 1-20, default 2. When an audio file is dropped in, stream to WhisperLiveKit at up to this realtime speed.',
+          )}
+        >
+          <ObsidianTextInput
+            value={webSocketFileStreamingRateInput}
+            placeholder="2"
+            type="number"
+            inputMode="decimal"
+            min={ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN}
+            max={ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX}
+            step="0.25"
+            onChange={(value) => {
+              setWebSocketFileStreamingRateInput(value)
+              const parsed = parseWebSocketFileStreamingRate(value)
+              if (parsed !== null) {
+                handlePatch({ webSocketFileStreamingRate: parsed })
+              }
+            }}
+            onBlur={(value) => {
+              const parsed =
+                parseWebSocketFileStreamingRate(value) ??
+                ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT
+              handlePatch({ webSocketFileStreamingRate: parsed })
+              setWebSocketFileStreamingRateInput(String(parsed))
+            }}
+          />
+        </ObsidianSetting>
+      )}
 
       {!isWebSocketAsr && (
         <ObsidianSetting

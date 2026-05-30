@@ -94,7 +94,7 @@ describe('WebSocketAsrProvider', () => {
     expect(url.searchParams.get('dictation')).toBeNull()
   })
 
-  it('does not send Deepgram feature params to WhisperLiveKit native streams', async () => {
+  it('does not send Deepgram feature params to WhisperLiveKit context streams', async () => {
     const provider = new WebSocketAsrProvider(
       makeProfile({
         baseURL: 'ws://127.0.0.1:8000',
@@ -115,10 +115,28 @@ describe('WebSocketAsrProvider', () => {
     expect(url.searchParams.get('diarize')).toBeNull()
     expect(url.searchParams.get('dictation')).toBeNull()
     expect(url.searchParams.get('interim_results')).toBeNull()
+    expect(url.searchParams.get('mode')).toBeNull()
     expect(
       mockedOpenWhisperLiveKitNativeStream.mock.calls[0]?.[0]
         .includeSpeakerLabels,
     ).toBe(false)
+  })
+
+  it('uses WhisperLiveKit diff mode for audio file transcription streams', async () => {
+    const provider = new WebSocketAsrProvider(
+      makeProfile({
+        baseURL: 'ws://127.0.0.1:8000',
+        listenPath: '/asr',
+        webSocketProtocol: 'whisperlivekit-native',
+      }),
+    )
+
+    await provider.startStreaming({ purpose: 'audio-file-transcription' }, {})
+
+    const url = new URL(
+      mockedOpenWhisperLiveKitNativeStream.mock.calls[0]?.[0].url ?? '',
+    )
+    expect(url.searchParams.get('mode')).toBe('diff')
   })
 
   it('uses the same Deepgram-compatible options for settings test clips', async () => {

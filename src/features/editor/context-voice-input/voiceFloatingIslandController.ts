@@ -126,6 +126,7 @@ export class VoiceFloatingIslandController {
   private statusHostB: HTMLElement | null = null
   private activeStatusHost: 'a' | 'b' = 'a'
   private audioDragDepth = 0
+  private audioDragHintVisible = false
   private audioDragOver = false
   private audioDragKind: AudioFileDragKind | null = null
   private externalAudioDragRevealTimeout: number | null = null
@@ -164,7 +165,9 @@ export class VoiceFloatingIslandController {
     kind: AudioFileDragKind,
   ): void {
     this.attachToView(view)
-    this.setAudioDragOver(true, kind)
+    // Editor-wide drag reveal should only expose the drop hint. The accent
+    // background is reserved for the cursor being over the island itself.
+    this.setAudioDragHintVisible(true, kind)
     this.scheduleExternalAudioDragRevealClear()
   }
 
@@ -172,6 +175,7 @@ export class VoiceFloatingIslandController {
     this.audioDragDepth = 0
     this.clearExternalAudioDragRevealTimeout()
     this.setAudioDragOver(false, null)
+    this.setAudioDragHintVisible(false, null)
   }
 
   destroy(): void {
@@ -205,6 +209,7 @@ export class VoiceFloatingIslandController {
     this.host = null
     this.root = null
     this.audioDragDepth = 0
+    this.audioDragHintVisible = false
     this.audioDragOver = false
     this.audioDragKind = null
     this.lastPrimaryButtonKey = null
@@ -375,10 +380,12 @@ export class VoiceFloatingIslandController {
       delete this.root.dataset.voiceOverlayState
     }
     this.root.classList.remove('is-hidden')
+    const audioDragPromptVisible =
+      this.audioDragHintVisible || this.audioDragOver
     this.root.classList.toggle('is-audio-drag-over', this.audioDragOver)
     this.root.classList.toggle(
       'is-audio-drag-unsupported',
-      this.audioDragKind === 'unsupported',
+      this.audioDragOver && this.audioDragKind === 'unsupported',
     )
     if (this.micButton) {
       this.renderPrimaryButton(this.micButton, state)
@@ -398,7 +405,7 @@ export class VoiceFloatingIslandController {
     )
     this.root.classList.toggle(
       'is-audio-file-mode',
-      interactionMode === 'audio-file' || this.audioDragOver,
+      interactionMode === 'audio-file' || audioDragPromptVisible,
     )
 
     // Drive status text shown inside the bar.
@@ -444,7 +451,7 @@ export class VoiceFloatingIslandController {
     status: VoiceInputStatus | null,
   ): string {
     const latency = this.formatCompactStateLatency(state, status)
-    if (this.audioDragOver && state === 'idle') {
+    if ((this.audioDragHintVisible || this.audioDragOver) && state === 'idle') {
       if (this.audioDragKind === 'unsupported') {
         return this.deps.t(
           'voiceInput.audioFileUnsupportedDropHint',
@@ -1031,6 +1038,7 @@ export class VoiceFloatingIslandController {
       event.stopPropagation()
       this.audioDragDepth = 0
       this.setAudioDragOver(false, null)
+      this.setAudioDragHintVisible(false, null)
       if (kind === 'unsupported') return
       void this.handleAudioFileDrop(event)
     })
@@ -1052,9 +1060,34 @@ export class VoiceFloatingIslandController {
     value: boolean,
     kind: AudioFileDragKind | null,
   ): void {
-    if (this.audioDragOver === value && this.audioDragKind === kind) return
+    const nextKind = value
+      ? kind
+      : this.audioDragHintVisible
+        ? this.audioDragKind
+        : null
+    if (this.audioDragOver === value && this.audioDragKind === nextKind) return
     this.audioDragOver = value
-    this.audioDragKind = value ? kind : null
+    this.audioDragKind = nextKind
+    this.applyStatus(this.deps.getController()?.getStatus() ?? null)
+  }
+
+  private setAudioDragHintVisible(
+    value: boolean,
+    kind: AudioFileDragKind | null,
+  ): void {
+    const nextKind = value
+      ? kind
+      : this.audioDragOver
+        ? this.audioDragKind
+        : null
+    if (
+      this.audioDragHintVisible === value &&
+      this.audioDragKind === nextKind
+    ) {
+      return
+    }
+    this.audioDragHintVisible = value
+    this.audioDragKind = nextKind
     this.applyStatus(this.deps.getController()?.getStatus() ?? null)
   }
 
@@ -1062,7 +1095,9 @@ export class VoiceFloatingIslandController {
     this.clearExternalAudioDragRevealTimeout()
     this.externalAudioDragRevealTimeout = window.setTimeout(() => {
       this.externalAudioDragRevealTimeout = null
-      if (this.audioDragDepth === 0) this.setAudioDragOver(false, null)
+      if (this.audioDragDepth === 0) {
+        this.setAudioDragHintVisible(false, null)
+      }
     }, 300)
   }
 
