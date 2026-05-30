@@ -31,7 +31,7 @@ import type {
   VoiceInputStatus,
 } from './contextVoiceInputController'
 
-type InteractionMode = 'toggle-listen' | 'hold-to-talk'
+type InteractionMode = 'toggle-listen' | 'hold-to-talk' | 'audio-file'
 
 type VoiceVadOptions = {
   speechStartDecibels: number
@@ -45,6 +45,7 @@ type IslandDeps = {
   getActiveMarkdownView: () => MarkdownView | null
   t: (key: string, fallback: string) => string
   isFeatureReady: () => boolean
+  isAudioFileModeEnabled: () => boolean
   getInteractionMode: () => InteractionMode
   setInteractionMode: (mode: InteractionMode) => Promise<void>
   getVadOptions: () => VoiceVadOptions
@@ -83,7 +84,9 @@ export class VoiceFloatingIslandController {
   private waveCanvas: HTMLCanvasElement | null = null
   private timerEl: HTMLElement | null = null
   private statusEl: HTMLElement | null = null
+  private fileInput: HTMLInputElement | null = null
   private host: HTMLElement | null = null
+  private attachedView: MarkdownView | null = null
 
   private audioContext: AudioContext | null = null
   private analyser: AnalyserNode | null = null
@@ -116,6 +119,9 @@ export class VoiceFloatingIslandController {
   private statusHostA: HTMLElement | null = null
   private statusHostB: HTMLElement | null = null
   private activeStatusHost: 'a' | 'b' = 'a'
+  private audioDragDepth = 0
+  private audioDragOver = false
+  private externalAudioDragRevealTimeout: number | null = null
 
   constructor(private readonly deps: IslandDeps) {}
 
@@ -125,15 +131,27 @@ export class VoiceFloatingIslandController {
       this.detach()
       return
     }
+    this.attachToView(view)
+  }
+
+  attachToView(view: MarkdownView): void {
     const host = view.contentEl
     if (this.host === host && this.root) {
+      this.attachedView = view
       this.applyStatus(this.deps.getController()?.getStatus() ?? null)
       return
     }
     this.detach()
+    this.attachedView = view
     this.host = host
     this.mount(host)
     this.subscribeToController()
+  }
+
+  revealAudioDropTargetForView(view: MarkdownView): void {
+    this.attachToView(view)
+    this.setAudioDragOver(true)
+    this.scheduleExternalAudioDragRevealClear()
   }
 
   destroy(): void {
@@ -145,6 +163,7 @@ export class VoiceFloatingIslandController {
     this.unsubscribeController = null
     this.stopMonitoring()
     this.stopReadyHintReveal()
+    this.clearExternalAudioDragRevealTimeout()
     this.removeDocumentPointerUpListener()
     const root = this.root
     if (root) {
@@ -159,10 +178,14 @@ export class VoiceFloatingIslandController {
     this.waveCanvas = null
     this.timerEl = null
     this.statusEl = null
+    this.fileInput = null
+    this.attachedView = null
     this.statusHostA = null
     this.statusHostB = null
     this.host = null
     this.root = null
+    this.audioDragDepth = 0
+    this.audioDragOver = false
   }
 
   private animateRootRemoval(root: HTMLElement): void {
@@ -223,12 +246,28 @@ export class VoiceFloatingIslandController {
       () => void this.handleModeButtonClick(),
     )
 
+    const fileInput = root.createEl('input', {
+      cls: 'yolo-voice-island__file-input',
+      attr: {
+        type: 'file',
+        accept: 'audio/*,.mp3,.m4a,.mp4,.wav,.webm,.ogg,.opus,.flac,.aac,.amr',
+      },
+    })
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0] ?? null
+      fileInput.value = ''
+      if (file) void this.startAudioFileTranscription(file)
+    })
+
+    this.attachAudioFileDragListeners(root)
+
     this.root = root
     this.micButton = mic
     this.modeToggleButton = modeToggle
     this.waveCanvas = wave
     this.timerEl = timer
     this.statusEl = statusText
+    this.fileInput = fileInput
     this.statusHostA = statusA
     this.statusHostB = statusB
     this.activeStatusHost = 'a'
@@ -303,6 +342,7 @@ export class VoiceFloatingIslandController {
       delete this.root.dataset.voiceOverlayState
     }
     this.root.classList.remove('is-hidden')
+    this.root.classList.toggle('is-audio-drag-over', this.audioDragOver)
     if (this.micButton) {
       this.renderPrimaryButton(this.micButton, state)
     }
@@ -318,6 +358,10 @@ export class VoiceFloatingIslandController {
     this.root.classList.toggle(
       'is-hold-mode',
       interactionMode === 'hold-to-talk',
+    )
+    this.root.classList.toggle(
+      'is-audio-file-mode',
+      interactionMode === 'audio-file' || this.audioDragOver,
     )
 
     // Drive status text shown inside the bar.
@@ -363,6 +407,13 @@ export class VoiceFloatingIslandController {
     status: VoiceInputStatus | null,
   ): string {
     const latency = this.formatCompactStateLatency(state, status)
+    if (this.audioDragOver && state === 'idle') {
+      return this.deps.t(
+        'voiceInput.audioFileDropHint',
+        'Drop audio to transcribe',
+      )
+    }
+    if (status?.message) return status.message
     const displayState =
       state === 'recording' && status?.overlayState
         ? status.overlayState
@@ -370,6 +421,16 @@ export class VoiceFloatingIslandController {
     switch (displayState) {
       case 'transcribing':
         return this.deps.t('voiceInput.barTranscribing', 'Transcribing…')
+      case 'checking':
+        return this.deps.t('voiceInput.audioFileChecking', 'Checking…')
+      case 'confirm-plan':
+        return this.deps.t('voiceInput.audioFileConfirm', 'Confirm upload')
+      case 'preparing':
+        return this.deps.t('voiceInput.audioFilePreparing', 'Preparing…')
+      case 'uploading':
+        return this.deps.t('voiceInput.audioFileUploading', 'Uploading…')
+      case 'inserting':
+        return this.deps.t('voiceInput.audioFileInserting', 'Inserting…')
       case 'polishing':
         return this.deps.t('voiceInput.barPolishing', 'Polishing…') + latency
       case 'ready': {
@@ -393,6 +454,15 @@ export class VoiceFloatingIslandController {
           this.deps.getInteractionMode() === 'hold-to-talk'
         ) {
           return this.deps.t('voiceInput.holdToTalkHint', 'Press & hold')
+        }
+        if (
+          displayState === 'idle' &&
+          this.deps.getInteractionMode() === 'audio-file'
+        ) {
+          return this.deps.t(
+            'voiceInput.audioFileIdleHint',
+            'Drop or choose audio',
+          )
         }
         return ''
     }
@@ -457,6 +527,7 @@ export class VoiceFloatingIslandController {
     if (displayState === 'polishing') {
       return this.deps.t('voiceInput.barPolishing', 'Polishing…') + latency
     }
+    if (status?.message) return status.message
     if (displayState === 'ready') {
       return (
         this.deps.t('voiceInput.barReady', 'Tab to insert · Esc to discard') +
@@ -520,8 +591,16 @@ export class VoiceFloatingIslandController {
       controller.acceptPendingPreview(view.editor)
       return
     }
+    if (state === 'confirm-plan') {
+      void controller.confirmAudioFileTranscription()
+      return
+    }
     if (state === 'recording') {
       await controller.stopAndProcess()
+      return
+    }
+    if (state === 'idle' && this.deps.getInteractionMode() === 'audio-file') {
+      this.fileInput?.click()
       return
     }
     if (
@@ -542,7 +621,13 @@ export class VoiceFloatingIslandController {
     state: VoiceInputStatus['state'],
   ): void {
     button.empty()
-    button.disabled = state === 'transcribing' || state === 'polishing'
+    button.disabled =
+      state === 'transcribing' ||
+      state === 'polishing' ||
+      state === 'checking' ||
+      state === 'preparing' ||
+      state === 'uploading' ||
+      state === 'inserting'
     // Use only aria-label for the tooltip. Setting both `title` and
     // `aria-label` causes two tooltips to stack — the browser's native one
     // from `title` plus Obsidian's styled one from `aria-label`.
@@ -556,6 +641,10 @@ export class VoiceFloatingIslandController {
         )
         break
       case 'transcribing':
+      case 'checking':
+      case 'preparing':
+      case 'uploading':
+      case 'inserting':
       case 'polishing':
         button.appendChild(buildSpinnerSvg())
         button.setAttribute(
@@ -567,18 +656,30 @@ export class VoiceFloatingIslandController {
         )
         break
       case 'ready':
+      case 'confirm-plan':
         button.appendChild(buildCheckSvg())
         button.setAttribute(
           'aria-label',
-          this.deps.t('voiceInput.buttonAccept', 'Insert draft'),
+          state === 'confirm-plan'
+            ? this.deps.t('voiceInput.audioFileConfirmButton', 'Start upload')
+            : this.deps.t('voiceInput.buttonAccept', 'Insert draft'),
         )
         break
       case 'idle':
       default:
-        button.appendChild(buildMicSvg())
+        button.appendChild(
+          this.deps.getInteractionMode() === 'audio-file'
+            ? buildFileAudioSvg()
+            : buildMicSvg(),
+        )
         button.setAttribute(
           'aria-label',
-          this.deps.t('voiceInput.buttonStart', 'Start recording'),
+          this.deps.getInteractionMode() === 'audio-file'
+            ? this.deps.t(
+                'voiceInput.audioFileChooseButton',
+                'Choose audio file',
+              )
+            : this.deps.t('voiceInput.buttonStart', 'Start recording'),
         )
         break
     }
@@ -677,8 +778,7 @@ export class VoiceFloatingIslandController {
 
   private async cycleMode(): Promise<void> {
     const current = this.deps.getInteractionMode()
-    const next: InteractionMode =
-      current === 'toggle-listen' ? 'hold-to-talk' : 'toggle-listen'
+    const next = this.getNextInteractionMode(current)
     await this.deps.setInteractionMode(next)
     if (this.modeToggleButton) {
       this.renderModeButton(
@@ -690,6 +790,9 @@ export class VoiceFloatingIslandController {
   }
 
   private isModeButtonCancel(state: VoiceInputStatus['state']): boolean {
+    if (this.deps.getInteractionMode() === 'audio-file' && state !== 'idle') {
+      return true
+    }
     if (this.deps.getInteractionMode() !== 'toggle-listen') return false
     // Cancel button replaces the mode-switch icon for every active phase of
     // a click-mode session. Switching interaction mode mid-flow has no useful
@@ -700,10 +803,27 @@ export class VoiceFloatingIslandController {
     // preview, matching the behaviour the user already sees while recording.
     return (
       state === 'recording' ||
+      state === 'checking' ||
+      state === 'confirm-plan' ||
+      state === 'preparing' ||
+      state === 'uploading' ||
       state === 'transcribing' ||
+      state === 'inserting' ||
       state === 'polishing' ||
       state === 'ready'
     )
+  }
+
+  private getAvailableInteractionModes(): InteractionMode[] {
+    return this.deps.isAudioFileModeEnabled()
+      ? ['toggle-listen', 'hold-to-talk', 'audio-file']
+      : ['toggle-listen', 'hold-to-talk']
+  }
+
+  private getNextInteractionMode(current: InteractionMode): InteractionMode {
+    const modes = this.getAvailableInteractionModes()
+    const index = modes.indexOf(current)
+    return modes[(index + 1) % modes.length] ?? 'toggle-listen'
   }
 
   private renderModeButton(
@@ -723,8 +843,9 @@ export class VoiceFloatingIslandController {
       )
       return
     }
-    if (mode === 'toggle-listen') {
-      button.appendChild(buildToggleSvg())
+    const nextMode = this.getNextInteractionMode(mode)
+    if (nextMode === 'hold-to-talk') {
+      button.appendChild(buildHoldSvg())
       button.setAttribute(
         'aria-label',
         this.deps.t(
@@ -732,8 +853,17 @@ export class VoiceFloatingIslandController {
           'Click to switch to push-to-talk',
         ),
       )
+    } else if (nextMode === 'audio-file') {
+      button.appendChild(buildFileAudioSvg())
+      button.setAttribute(
+        'aria-label',
+        this.deps.t(
+          'voiceInput.modeSwitchToAudioFile',
+          'Click to switch to audio file mode',
+        ),
+      )
     } else {
-      button.appendChild(buildHoldSvg())
+      button.appendChild(buildToggleSvg())
       button.setAttribute(
         'aria-label',
         this.deps.t(
@@ -742,6 +872,73 @@ export class VoiceFloatingIslandController {
         ),
       )
     }
+  }
+
+  private attachAudioFileDragListeners(root: HTMLElement): void {
+    root.addEventListener('dragenter', (event) => {
+      if (!this.shouldAcceptAudioFileDrop(event)) return
+      event.preventDefault()
+      this.clearExternalAudioDragRevealTimeout()
+      this.audioDragDepth += 1
+      this.setAudioDragOver(true)
+    })
+    root.addEventListener('dragover', (event) => {
+      if (!this.shouldAcceptAudioFileDrop(event)) return
+      event.preventDefault()
+      this.clearExternalAudioDragRevealTimeout()
+      event.dataTransfer!.dropEffect = 'copy'
+      this.setAudioDragOver(true)
+    })
+    root.addEventListener('dragleave', (event) => {
+      if (!this.audioDragOver) return
+      event.preventDefault()
+      this.audioDragDepth = Math.max(0, this.audioDragDepth - 1)
+      if (this.audioDragDepth === 0) this.setAudioDragOver(false)
+    })
+    root.addEventListener('drop', (event) => {
+      if (!this.shouldAcceptAudioFileDrop(event)) return
+      event.preventDefault()
+      this.audioDragDepth = 0
+      this.setAudioDragOver(false)
+      const file = Array.from(event.dataTransfer?.files ?? [])[0]
+      if (file) void this.startAudioFileTranscription(file)
+    })
+  }
+
+  private shouldAcceptAudioFileDrop(event: DragEvent): boolean {
+    if (!this.deps.isAudioFileModeEnabled()) return false
+    const controller = this.deps.getController()
+    if (controller?.getStatus().state !== 'idle') return false
+    return Array.from(event.dataTransfer?.items ?? []).some(
+      (item) => item.kind === 'file',
+    )
+  }
+
+  private setAudioDragOver(value: boolean): void {
+    if (this.audioDragOver === value) return
+    this.audioDragOver = value
+    this.applyStatus(this.deps.getController()?.getStatus() ?? null)
+  }
+
+  private scheduleExternalAudioDragRevealClear(): void {
+    this.clearExternalAudioDragRevealTimeout()
+    this.externalAudioDragRevealTimeout = window.setTimeout(() => {
+      this.externalAudioDragRevealTimeout = null
+      if (this.audioDragDepth === 0) this.setAudioDragOver(false)
+    }, 300)
+  }
+
+  private clearExternalAudioDragRevealTimeout(): void {
+    if (this.externalAudioDragRevealTimeout === null) return
+    window.clearTimeout(this.externalAudioDragRevealTimeout)
+    this.externalAudioDragRevealTimeout = null
+  }
+
+  private async startAudioFileTranscription(file: File): Promise<void> {
+    const controller = this.deps.getController()
+    if (!controller) return
+    const view = this.attachedView ?? this.deps.getActiveMarkdownView()
+    await controller.startAudioFileTranscription(file, view?.editor ?? null)
   }
 
   // ---- VAD + Waveform monitoring ----------------------------------------
@@ -1107,5 +1304,46 @@ const buildHoldSvg = (): SVGSVGElement => {
     'M12 2v10M8 7v5a4 4 0 0 0 8 0V7M6 12v4a6 6 0 0 0 12 0v-4',
   )
   svg.appendChild(p1)
+  return svg
+}
+
+const buildFileAudioSvg = (): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+
+  const file = document.createElementNS(SVG_NS, 'path')
+  file.setAttribute(
+    'd',
+    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
+  )
+  svg.appendChild(file)
+
+  const fold = document.createElementNS(SVG_NS, 'path')
+  fold.setAttribute('d', 'M14 2v6h6')
+  svg.appendChild(fold)
+
+  const note = document.createElementNS(SVG_NS, 'path')
+  note.setAttribute('d', 'M9 17v-5l5-1v5')
+  svg.appendChild(note)
+
+  const leftStem = document.createElementNS(SVG_NS, 'circle')
+  leftStem.setAttribute('cx', '8')
+  leftStem.setAttribute('cy', '17')
+  leftStem.setAttribute('r', '1')
+  svg.appendChild(leftStem)
+
+  const rightStem = document.createElementNS(SVG_NS, 'circle')
+  rightStem.setAttribute('cx', '13')
+  rightStem.setAttribute('cy', '16')
+  rightStem.setAttribute('r', '1')
+  svg.appendChild(rightStem)
+
   return svg
 }

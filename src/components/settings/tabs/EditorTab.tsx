@@ -2,6 +2,7 @@ import { App } from 'obsidian'
 import React from 'react'
 
 import YoloPlugin from '../../../main'
+import { AudioFileTranscriptionSection } from '../sections/AudioFileTranscriptionSection'
 import { ContextVoiceInputSection } from '../sections/ContextVoiceInputSection'
 import { ContinuationSection } from '../sections/ContinuationSection'
 
@@ -15,6 +16,7 @@ export function EditorTab({ app }: EditorTabProps) {
     <>
       <ContinuationSection app={app} />
       <ContextVoiceInputSection />
+      <AudioFileTranscriptionSection />
     </>
   )
 }

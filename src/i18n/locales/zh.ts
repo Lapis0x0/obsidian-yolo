@@ -1467,6 +1467,7 @@ export const zh: TranslationKeys = {
     buttonCancel: '取消语音输入',
     buttonAccept: '插入草稿',
     modeSwitchToHold: '点击切换为长按模式',
+    modeSwitchToAudioFile: '点击切换为音频文件转写',
     modeSwitchToToggle: '点击切换为点按模式',
     holdToTalkHint: '按住麦克风说话',
     noticePrefix: '语音打磨',

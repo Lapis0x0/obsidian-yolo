@@ -1,3 +1,4 @@
+import type { ChangeDesc } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { Editor, MarkdownView, Notice } from 'obsidian'
 
@@ -31,6 +32,14 @@ import {
 } from './voiceInputRecorder'
 import type { VoicePrefixCacheManager } from './voicePrefixCacheManager'
 import {
+  type AudioFileTranscriptionPlan,
+  type AudioFileTranscriptionProgress,
+  type OrderedAudioFileText,
+  executeAudioFileTranscriptionPlan,
+  inspectAndPlanAudioFileTranscription,
+  trimDuplicateChunkBoundary,
+} from './audioFileTranscriptionService'
+import {
   type VoiceInputTarget,
   buildVoiceInputMessages,
 } from './voicePromptBuilder'
@@ -38,7 +47,12 @@ import {
 export type VoiceInputState =
   | 'idle'
   | 'recording'
+  | 'checking'
+  | 'confirm-plan'
+  | 'preparing'
+  | 'uploading'
   | 'transcribing'
+  | 'inserting'
   | 'polishing'
   | 'ready'
 
@@ -51,6 +65,9 @@ export type VoiceInputStatus = {
   canCancel: boolean
   asrDurationMs?: number
   polishDurationMs?: number
+  message?: string
+  progressLabel?: string
+  audioFilePlan?: AudioFilePlanSummary
 }
 
 export type VoiceInputStateListener = (status: VoiceInputStatus) => void
@@ -69,6 +86,16 @@ type InFlightPolish = {
   rawTranscript: string
   baselinePreviousOutput: string
   startedAt: number
+}
+
+type AudioFilePlanSummary = {
+  fileName: string
+  mode: AudioFileTranscriptionPlan['mode']
+  providerName: string
+  chunkCount: number | null
+  chunkDurationSec: number | null
+  maxConcurrentChunks: number
+  overlapMs: number
 }
 
 type ActiveSession = {
@@ -103,6 +130,23 @@ type ActiveSession = {
   polishDurationMs?: number
 }
 
+type AudioFileSession = {
+  file: File
+  editor: Editor | null
+  view: EditorView | null
+  filePath: string
+  anchorOffset: number | null
+  appendOffset: number | null
+  abortController: AbortController
+  plan: AudioFileTranscriptionPlan | null
+  startedAt: number
+  previousInsertedText: string
+  hasInsertedText: boolean
+  fallbackPath: string | null
+  fallbackNoticeShown: boolean
+  applyingInsertion: boolean
+}
+
 type VoiceInputControllerDeps = {
   getSettings: () => YoloSettings
   setSettings: (next: YoloSettings) => Promise<void>
@@ -125,6 +169,11 @@ type VoiceInputControllerDeps = {
   removeAbortController: (controller: AbortController) => void
   cancelPendingTabCompletion: () => void
   setVoiceInputInProgress: (inProgress: boolean) => void
+  createFallbackMarkdownFile: (
+    desiredPath: string,
+    content: string,
+  ) => Promise<string>
+  appendToMarkdownFile: (path: string, content: string) => Promise<void>
   getDocumentSummary?: (input: {
     filePath: string
     content: string
@@ -209,6 +258,14 @@ const isAbortError = (error: unknown): boolean =>
   (error as { name?: string })?.name === 'AbortError' ||
   (error instanceof VoiceInputRecorderError && error.kind === 'aborted')
 
+const stripFileExtension = (fileName: string): string => {
+  const idx = fileName.lastIndexOf('.')
+  return idx > 0 ? fileName.slice(0, idx) : fileName
+}
+
+const sanitizePathPart = (value: string): string =>
+  value.replace(/[\\/:*?"<>|]/g, '-').trim() || 'audio'
+
 /**
  * Orchestrates the context-aware voice input feature.
  *
@@ -229,6 +286,7 @@ const isAbortError = (error: unknown): boolean =>
 export class ContextVoiceInputController {
   private recorder: VoiceInputRecorder | null = null
   private session: ActiveSession | null = null
+  private audioFileSession: AudioFileSession | null = null
   private status: VoiceInputStatus = IDLE_STATUS
   private listeners = new Set<VoiceInputStateListener>()
   private summaryManager: DocumentSummaryManager | null = null
@@ -280,6 +338,104 @@ export class ContextVoiceInputController {
 
   hasPendingPreview(): boolean {
     return this.status.state === 'ready' && !!this.session?.decision
+  }
+
+  async startAudioFileTranscription(
+    file: File,
+    editor: Editor | null,
+  ): Promise<void> {
+    if (this.status.state !== 'idle') {
+      new Notice('Finish the current voice task before transcribing a file.')
+      return
+    }
+
+    const settings = this.deps.getSettings()
+    const options = settings.contextVoiceInputOptions
+    if (!options?.enabled || !options.audioFileTranscriptionEnabled) {
+      new Notice(
+        'Audio file transcription is disabled in voice input settings.',
+      )
+      return
+    }
+
+    const view = editor ? this.deps.getEditorView(editor) : null
+    const markdownView = this.deps.getActiveMarkdownView()
+    const cursorOffset =
+      editor && view ? editor.posToOffset(editor.getCursor()) : null
+    const filePath = markdownView?.file?.path ?? ''
+    const abortController = new AbortController()
+    this.deps.addAbortController(abortController)
+    this.deps.cancelPendingTabCompletion()
+    this.deps.clearInlineSuggestion()
+    this.deps.setVoiceInputInProgress(true)
+
+    const session: AudioFileSession = {
+      file,
+      editor,
+      view,
+      filePath,
+      anchorOffset: cursorOffset,
+      appendOffset: cursorOffset,
+      abortController,
+      plan: null,
+      startedAt: Date.now(),
+      previousInsertedText: '',
+      hasInsertedText: false,
+      fallbackPath: null,
+      fallbackNoticeShown: false,
+      applyingInsertion: false,
+    }
+    this.audioFileSession = session
+    this.updateStatus('checking', undefined, {
+      message: 'Checking audio file...',
+    })
+
+    try {
+      const plan = await inspectAndPlanAudioFileTranscription({
+        file,
+        options,
+      })
+      if (this.audioFileSession !== session) return
+      session.plan = plan
+      this.updateStatus('confirm-plan', undefined, {
+        message: this.buildAudioFilePlanMessage(plan),
+        audioFilePlan: this.summariseAudioFilePlan(plan),
+      })
+    } catch (error) {
+      this.handleAudioFileError(error)
+    }
+  }
+
+  async confirmAudioFileTranscription(): Promise<void> {
+    const session = this.audioFileSession
+    const plan = session?.plan
+    if (!session || !plan || this.status.state !== 'confirm-plan') return
+
+    this.updateStatus('preparing', undefined, {
+      message: 'Preparing transcription...',
+      audioFilePlan: this.summariseAudioFilePlan(plan),
+    })
+    try {
+      await executeAudioFileTranscriptionPlan({
+        plan,
+        signal: session.abortController.signal,
+        onProgress: (progress) =>
+          this.handleAudioFileProgress(session, progress),
+        onText: (result) => this.insertAudioFileText(session, result),
+      })
+      if (this.audioFileSession !== session) return
+      new Notice('Audio file transcription finished.')
+      this.finishAudioFileSession()
+    } catch (error) {
+      if (isAbortError(error) || session.abortController.signal.aborted) {
+        if (this.audioFileSession === session) {
+          new Notice('Audio file transcription cancelled.')
+          this.finishAudioFileSession()
+        }
+        return
+      }
+      this.handleAudioFileError(error)
+    }
   }
 
   subscribe(listener: VoiceInputStateListener): () => void {
@@ -337,7 +493,8 @@ export class ContextVoiceInputController {
    * offsets. The only doc change we intentionally allow through is the one
    * produced by accepting the voice preview itself.
    */
-  handleEditorDocumentChange(view: EditorView): void {
+  handleEditorDocumentChange(view: EditorView, changes?: ChangeDesc): void {
+    this.handleAudioFileDocumentChange(view, changes)
     if (this.applyingAcceptedPreview) return
     const session = this.session
     if (!session) return
@@ -359,6 +516,21 @@ export class ContextVoiceInputController {
     this.cancelActiveSession('document-changed')
   }
 
+  private handleAudioFileDocumentChange(
+    view: EditorView,
+    changes?: ChangeDesc,
+  ): void {
+    const session = this.audioFileSession
+    if (!session || session.view !== view || session.applyingInsertion) return
+    if (!changes) return
+    if (session.anchorOffset !== null) {
+      session.anchorOffset = changes.mapPos(session.anchorOffset, 1)
+    }
+    if (session.appendOffset !== null) {
+      session.appendOffset = changes.mapPos(session.appendOffset, 1)
+    }
+  }
+
   private async performSoftRestart(): Promise<void> {
     const session = this.session
     if (!session) return
@@ -373,6 +545,311 @@ export class ContextVoiceInputController {
     } catch (error) {
       console.error('Voice soft-restart failed:', error)
     }
+  }
+
+  private summariseAudioFilePlan(
+    plan: AudioFileTranscriptionPlan,
+  ): AudioFilePlanSummary {
+    return {
+      fileName: plan.fileName,
+      mode: plan.mode,
+      providerName:
+        plan.providerConfig.name ||
+        plan.providerConfig.model ||
+        plan.providerConfig.format,
+      chunkCount: plan.schedule?.chunks.length ?? null,
+      chunkDurationSec: plan.schedule
+        ? Math.round(plan.schedule.effectiveChunkDurationMs / 1000)
+        : null,
+      maxConcurrentChunks: plan.maxConcurrentChunks,
+      overlapMs: plan.chunkOverlapMs,
+    }
+  }
+
+  private buildAudioFilePlanMessage(plan: AudioFileTranscriptionPlan): string {
+    if (plan.mode === 'websocket-stream') {
+      return 'Stream audio file through ASR?'
+    }
+    if (plan.mode === 'chunked-upload') {
+      const chunks = plan.schedule?.chunks.length ?? 0
+      return `Upload ${chunks} audio chunks?`
+    }
+    return 'Upload this audio file for transcription?'
+  }
+
+  private handleAudioFileProgress(
+    session: AudioFileSession,
+    progress: AudioFileTranscriptionProgress,
+  ): void {
+    if (this.audioFileSession !== session || !session.plan) return
+    const statusState: VoiceInputState =
+      progress.phase === 'inserting'
+        ? 'inserting'
+        : progress.phase === 'preparing'
+          ? 'preparing'
+          : progress.phase === 'transcribing'
+            ? 'transcribing'
+            : 'uploading'
+    this.updateStatus(statusState, undefined, {
+      message: this.formatAudioFileProgress(progress),
+      progressLabel: this.formatAudioFileProgressLabel(progress),
+      audioFilePlan: this.summariseAudioFilePlan(session.plan),
+    })
+  }
+
+  private formatAudioFileProgress(
+    progress: AudioFileTranscriptionProgress,
+  ): string {
+    if (
+      typeof progress.completedChunks === 'number' &&
+      typeof progress.totalChunks === 'number'
+    ) {
+      if (progress.phase === 'inserting') {
+        return `Inserting ${progress.completedChunks}/${progress.totalChunks}...`
+      }
+      return `Transcribing ${progress.completedChunks}/${progress.totalChunks}...`
+    }
+    if (
+      typeof progress.sentBytes === 'number' &&
+      typeof progress.totalBytes === 'number'
+    ) {
+      const pct = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round((progress.sentBytes / progress.totalBytes) * 100),
+        ),
+      )
+      return `Streaming ${pct}%...`
+    }
+    if (progress.phase === 'transcribing') return 'Transcribing...'
+    if (progress.phase === 'inserting') return 'Inserting...'
+    if (progress.phase === 'preparing') return 'Preparing...'
+    return 'Uploading...'
+  }
+
+  private formatAudioFileProgressLabel(
+    progress: AudioFileTranscriptionProgress,
+  ): string {
+    if (
+      typeof progress.completedChunks === 'number' &&
+      typeof progress.totalChunks === 'number'
+    ) {
+      return `${progress.completedChunks}/${progress.totalChunks}`
+    }
+    if (
+      typeof progress.sentBytes === 'number' &&
+      typeof progress.totalBytes === 'number'
+    ) {
+      const pct = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round((progress.sentBytes / progress.totalBytes) * 100),
+        ),
+      )
+      return `${pct}%`
+    }
+    return ''
+  }
+
+  private async insertAudioFileText(
+    session: AudioFileSession,
+    result: OrderedAudioFileText,
+  ): Promise<void> {
+    if (this.audioFileSession !== session || !session.plan) return
+    let text = result.text.trim()
+    if (!text) return
+    text = trimDuplicateChunkBoundary(session.previousInsertedText, text)
+    if (!text.trim()) return
+    session.previousInsertedText = [session.previousInsertedText, text]
+      .filter(Boolean)
+      .join(' ')
+      .trim()
+    const inlineText = this.formatAudioFileInsertion(
+      session,
+      text,
+      result,
+      'inline',
+    )
+    if (
+      inlineText.trim() &&
+      !session.fallbackPath &&
+      this.tryInsertAudioFileTextInline(session, inlineText)
+    ) {
+      session.hasInsertedText = true
+      return
+    }
+
+    const fallbackText = this.formatAudioFileInsertion(
+      session,
+      text,
+      result,
+      'fallback',
+    )
+    if (!fallbackText.trim()) return
+    await this.appendAudioFileTextToFallback(session, fallbackText)
+    session.hasInsertedText = true
+  }
+
+  private tryInsertAudioFileTextInline(
+    session: AudioFileSession,
+    text: string,
+  ): boolean {
+    if (!session.editor || session.appendOffset === null) return false
+    const view = this.deps.getEditorView(session.editor)
+    if (!view) return false
+    session.view = view
+    try {
+      const from = session.editor.offsetToPos(session.appendOffset)
+      session.applyingInsertion = true
+      session.editor.replaceRange(text, from, from)
+      const end = this.computeEndCursor(from, text)
+      session.editor.setCursor(end)
+      session.appendOffset = session.editor.posToOffset(end)
+      return true
+    } catch (error) {
+      console.warn('Audio file transcription inline insert failed:', error)
+      return false
+    } finally {
+      session.applyingInsertion = false
+    }
+  }
+
+  private async appendAudioFileTextToFallback(
+    session: AudioFileSession,
+    text: string,
+  ): Promise<void> {
+    if (!session.plan) return
+    if (!session.fallbackPath) {
+      const desiredPath = this.renderAudioFileFallbackPath(session)
+      session.fallbackPath = await this.deps.createFallbackMarkdownFile(
+        desiredPath,
+        '',
+      )
+    }
+    await this.deps.appendToMarkdownFile(session.fallbackPath, text)
+    if (!session.fallbackNoticeShown) {
+      new Notice(`Transcription is being written to ${session.fallbackPath}.`)
+      session.fallbackNoticeShown = true
+    }
+  }
+
+  private formatAudioFileInsertion(
+    session: AudioFileSession,
+    text: string,
+    result: OrderedAudioFileText,
+    target: 'inline' | 'fallback',
+  ): string {
+    const plan = session.plan
+    if (!plan) return text
+    const options = this.deps.getSettings().contextVoiceInputOptions
+    const parts: string[] = []
+    if (!session.hasInsertedText) {
+      const mode =
+        target === 'fallback'
+          ? options.audioFileOutputMetadataMode === 'none'
+            ? 'full'
+            : options.audioFileOutputMetadataMode
+          : options.audioFileOutputMetadataMode
+      const metadata = this.renderAudioFileMetadata(plan, mode)
+      if (metadata) parts.push(metadata)
+    }
+    if (
+      plan.mode === 'chunked-upload' &&
+      options.audioFileChunkHeaderMode === 'local-start-time' &&
+      result.chunkStartMs !== null
+    ) {
+      parts.push(this.formatChunkStartTime(result.chunkStartMs))
+    }
+    parts.push(text)
+    const prefix = session.hasInsertedText ? '\n\n' : ''
+    return `${prefix}${parts.filter(Boolean).join('\n\n')}`
+  }
+
+  private renderAudioFileMetadata(
+    plan: AudioFileTranscriptionPlan,
+    mode: 'none' | 'title' | 'full',
+  ): string {
+    if (mode === 'none') return ''
+    const title = `# ${stripFileExtension(plan.fileName)}`
+    if (mode === 'title') return title
+    const provider =
+      plan.providerConfig.name ||
+      plan.providerConfig.model ||
+      plan.providerConfig.format
+    const submitted =
+      plan.mode === 'chunked-upload'
+        ? `${plan.schedule?.chunks.length ?? 0} chunks`
+        : plan.mode === 'websocket-stream'
+          ? 'WebSocket stream'
+          : 'direct upload'
+    return [
+      title,
+      '',
+      `- Source: ${plan.fileName}`,
+      `- Transcribed: ${new Date().toLocaleString()}`,
+      `- Provider: ${provider}`,
+      `- Submission: ${submitted}`,
+      '',
+      '---',
+    ].join('\n')
+  }
+
+  private renderAudioFileFallbackPath(session: AudioFileSession): string {
+    const plan = session.plan
+    const now = new Date()
+    const yyyy = String(now.getFullYear())
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    const hh = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    const ss = String(now.getSeconds()).padStart(2, '0')
+    const baseName = stripFileExtension(plan?.fileName ?? session.file.name)
+    const template =
+      this.deps.getSettings().contextVoiceInputOptions
+        .audioFileFallbackNotePathTemplate ||
+      'Transcriptions/{{date}} {{time}} {{basename}}.md'
+    return template
+      .replace(/\{\{date\}\}/g, `${yyyy}-${mm}-${dd}`)
+      .replace(/\{\{time\}\}/g, `${hh}-${min}-${ss}`)
+      .replace(/\{\{basename\}\}/g, sanitizePathPart(baseName))
+      .replace(/\{\{filename\}\}/g, sanitizePathPart(session.file.name))
+  }
+
+  private formatChunkStartTime(ms: number): string {
+    const totalSec = Math.max(0, Math.floor(ms / 1000))
+    const hours = Math.floor(totalSec / 3600)
+    const minutes = Math.floor((totalSec % 3600) / 60)
+    const seconds = totalSec % 60
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  private handleAudioFileError(error: unknown): void {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Audio file transcription failed.'
+    console.error('Audio file transcription failed:', error)
+    new Notice(`Audio file transcription failed: ${message}`)
+    this.finishAudioFileSession()
+  }
+
+  private finishAudioFileSession(): void {
+    const session = this.audioFileSession
+    if (session) {
+      try {
+        session.abortController.abort()
+      } catch {
+        // Best-effort.
+      }
+      this.deps.removeAbortController(session.abortController)
+    }
+    this.audioFileSession = null
+    this.deps.setVoiceInputInProgress(false)
+    this.updateStatus('idle')
   }
 
   async toggle(editor: Editor): Promise<void> {
@@ -1599,6 +2076,19 @@ export class ContextVoiceInputController {
 
   cancelActiveSession(reason: string): void {
     this.clearSoftRestartTimer()
+    const audioFileSession = this.audioFileSession
+    if (audioFileSession) {
+      try {
+        audioFileSession.abortController.abort()
+      } catch {
+        // Best-effort.
+      }
+      this.deps.removeAbortController(audioFileSession.abortController)
+      this.audioFileSession = null
+      if (reason !== 'shutdown') {
+        new Notice('Audio file transcription cancelled.')
+      }
+    }
     const session = this.session
     if (session) {
       this.clearMergeAbortTimers(session)
@@ -1676,6 +2166,10 @@ export class ContextVoiceInputController {
   private updateStatus(
     state: VoiceInputState,
     overlayState?: VoiceInputStatus['overlayState'],
+    extra?: Pick<
+      VoiceInputStatus,
+      'message' | 'progressLabel' | 'audioFilePlan'
+    >,
   ): void {
     const session = this.session
     const next: VoiceInputStatus = {
@@ -1689,6 +2183,9 @@ export class ContextVoiceInputController {
       canCancel: state !== 'idle',
       asrDurationMs: session?.asrDurationMs,
       polishDurationMs: session?.polishDurationMs,
+      message: extra?.message,
+      progressLabel: extra?.progressLabel,
+      audioFilePlan: extra?.audioFilePlan,
     }
     this.status = next
     for (const listener of this.listeners) {

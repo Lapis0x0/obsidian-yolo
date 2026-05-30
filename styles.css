@@ -18529,15 +18529,37 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__mic,
 .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__mic {
   background: var(--text-accent, #6c8fff);
   color: var(--text-on-accent, #fff);
   opacity: 0.85;
 }
 
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__mic,
 .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__mic {
   background: var(--interactive-accent);
   color: var(--text-on-accent, #fff);
+}
+
+.yolo-voice-island.is-audio-drag-over {
+  border-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 58%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 12%,
+    var(--background-secondary)
+  );
+}
+
+.yolo-voice-island__file-input {
+  display: none;
 }
 
 .yolo-voice-island__spinner-svg {
@@ -18602,9 +18624,15 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-voice-island.is-recording .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__center,
 .yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__center,
 .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
 .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+.yolo-voice-island.is-audio-file-mode .yolo-voice-island__center,
 .yolo-voice-island.is-hold-mode .yolo-voice-island__center {
   width: 160px;
   opacity: 1;
@@ -18674,9 +18702,16 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__overlay,
 .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__overlay,
 .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__overlay,
 .yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
+  .yolo-voice-island__overlay,
+.yolo-voice-island.is-audio-file-mode[data-voice-state='idle']
   .yolo-voice-island__overlay,
 .yolo-voice-island.is-hold-mode[data-voice-state='idle']
   .yolo-voice-island__overlay {
@@ -18688,16 +18723,30 @@ body.yolo-quick-ask-global-interaction * {
    above; the filter transition above gives a smooth on/off. */
 
 .yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__wave,
 .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__wave,
 .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__wave,
 .yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
   .yolo-voice-island__wave,
+.yolo-voice-island.is-audio-file-mode[data-voice-state='idle']
+  .yolo-voice-island__wave,
 .yolo-voice-island.is-hold-mode[data-voice-state='idle']
   .yolo-voice-island__wave,
 .yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__timer,
 .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__timer,
 .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__timer,
 .yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
+  .yolo-voice-island__timer,
+.yolo-voice-island.is-audio-file-mode[data-voice-state='idle']
   .yolo-voice-island__timer,
 .yolo-voice-island.is-hold-mode[data-voice-state='idle']
   .yolo-voice-island__timer {
@@ -18741,10 +18790,17 @@ body.yolo-quick-ask-global-interaction * {
     gap: 8px;
   }
   .yolo-voice-island.is-recording .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='confirm-plan']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__center,
   .yolo-voice-island[data-voice-state='transcribing']
     .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__center,
   .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
   .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+  .yolo-voice-island.is-audio-file-mode .yolo-voice-island__center,
   .yolo-voice-island.is-hold-mode .yolo-voice-island__center {
     width: 110px;
   }
@@ -18760,10 +18816,17 @@ body.yolo-quick-ask-global-interaction * {
 
 @media (max-width: 380px) {
   .yolo-voice-island.is-recording .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='confirm-plan']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__center,
   .yolo-voice-island[data-voice-state='transcribing']
     .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__center,
   .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
   .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+  .yolo-voice-island.is-audio-file-mode .yolo-voice-island__center,
   .yolo-voice-island.is-hold-mode .yolo-voice-island__center {
     display: none;
   }

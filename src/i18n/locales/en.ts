@@ -1580,6 +1580,7 @@ export const en: TranslationKeys = {
     buttonCancel: 'Cancel voice input',
     buttonAccept: 'Insert draft',
     modeSwitchToHold: 'Click to switch to push-to-talk',
+    modeSwitchToAudioFile: 'Click to switch to audio file mode',
     modeSwitchToToggle: 'Click to switch to click-toggle',
     holdToTalkHint: 'Press & hold to talk',
     noticePrefix: 'Voice polish',

@@ -423,6 +423,21 @@ const asrConfigSchema = z
 
 export type AsrConfig = z.infer<typeof asrConfigSchema>
 
+export const AUDIO_FILE_CHUNK_HEADER_MODES = [
+  'none',
+  'local-start-time',
+] as const
+export type AudioFileChunkHeaderMode =
+  (typeof AUDIO_FILE_CHUNK_HEADER_MODES)[number]
+
+export const AUDIO_FILE_OUTPUT_METADATA_MODES = [
+  'none',
+  'title',
+  'full',
+] as const
+export type AudioFileOutputMetadataMode =
+  (typeof AUDIO_FILE_OUTPUT_METADATA_MODES)[number]
+
 /**
  * How often the per-document summary should be regenerated while the user
  * keeps speaking into the same file. All summaries live in memory only — they
@@ -457,7 +472,20 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   polishTemperature: 0.2 as number | null,
   systemPromptMode: 'default' as VoicePolishPromptMode,
   customSystemPrompt: '',
-  interactionMode: 'toggle-listen' as 'toggle-listen' | 'hold-to-talk',
+  interactionMode: 'toggle-listen' as
+    | 'toggle-listen'
+    | 'hold-to-talk'
+    | 'audio-file',
+  audioFileTranscriptionEnabled: false,
+  activeAudioFileAsrConfigId: '',
+  audioFileChunkHeaderMode: 'none' as AudioFileChunkHeaderMode,
+  audioFileOutputMetadataMode: 'none' as AudioFileOutputMetadataMode,
+  audioFileFallbackNotePathTemplate:
+    'Transcriptions/{{date}} {{time}} {{basename}}.md',
+  audioFileChunkTargetDurationSec: 120,
+  audioFileMaxConcurrentChunks: 5,
+  audioFileChunkStartStaggerMs: 1500,
+  audioFileChunkOverlapMs: 500,
   // Initial characters of editor text BEFORE the cursor handed to the polish
   // model. Voice prefix caching anchors this first window and lets it grow
   // naturally as accepted dictation adds text after the anchor.
@@ -509,8 +537,47 @@ const contextVoiceInputOptionsSchema = z
     systemPromptMode: z.enum(VOICE_POLISH_PROMPT_MODES).catch('default'),
     customSystemPrompt: z.string().catch(''),
     interactionMode: z
-      .enum(['toggle-listen', 'hold-to-talk'])
+      .enum(['toggle-listen', 'hold-to-talk', 'audio-file'])
       .catch('toggle-listen'),
+    audioFileTranscriptionEnabled: z.boolean().catch(false),
+    activeAudioFileAsrConfigId: z.string().catch(''),
+    audioFileChunkHeaderMode: z
+      .enum(AUDIO_FILE_CHUNK_HEADER_MODES)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkHeaderMode),
+    audioFileOutputMetadataMode: z
+      .enum(AUDIO_FILE_OUTPUT_METADATA_MODES)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileOutputMetadataMode),
+    audioFileFallbackNotePathTemplate: z
+      .string()
+      .catch(
+        DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileFallbackNotePathTemplate,
+      ),
+    audioFileChunkTargetDurationSec: z
+      .number()
+      .int()
+      .min(60)
+      .max(600)
+      .catch(
+        DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkTargetDurationSec,
+      ),
+    audioFileMaxConcurrentChunks: z
+      .number()
+      .int()
+      .min(1)
+      .max(5)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileMaxConcurrentChunks),
+    audioFileChunkStartStaggerMs: z
+      .number()
+      .int()
+      .min(1000)
+      .max(3000)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkStartStaggerMs),
+    audioFileChunkOverlapMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(1500)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkOverlapMs),
     contextRangeChars: z.number().int().min(0).catch(2000),
     maxAfterContextChars: z.number().int().min(0).catch(600),
     maxRecordingSeconds: z.number().int().min(5).max(900).catch(120),

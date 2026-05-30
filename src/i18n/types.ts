@@ -1319,6 +1319,7 @@ export type TranslationKeys = {
     buttonCancel?: string
     buttonAccept?: string
     modeSwitchToHold?: string
+    modeSwitchToAudioFile?: string
     modeSwitchToToggle?: string
     holdToTalkHint?: string
     noticePrefix?: string

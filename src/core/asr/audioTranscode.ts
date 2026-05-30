@@ -49,9 +49,7 @@ const getDecodeContext = (): AudioContext => {
 export const transcodeToWav = async (
   input: AsrAudioInput,
 ): Promise<AsrAudioInput> => {
-  const arrayBuffer = await input.blob.arrayBuffer()
-  const ctx = getDecodeContext()
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  const audioBuffer = await decodeAudioBlob(input.blob)
   assertDecodedAudioNotEmpty(audioBuffer)
 
   const wavBlob = encodePcm16Wav(audioBuffer)
@@ -66,9 +64,7 @@ export const transcodeToPcm16 = async (
   input: AsrAudioInput,
   targetSampleRate = 16_000,
 ): Promise<{ audio: ArrayBuffer; sampleRate: number; durationMs: number }> => {
-  const arrayBuffer = await input.blob.arrayBuffer()
-  const ctx = getDecodeContext()
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  const audioBuffer = await decodeAudioBlob(input.blob)
   assertDecodedAudioNotEmpty(audioBuffer)
   return {
     audio: encodePcm16Raw(audioBuffer, targetSampleRate),
@@ -77,12 +73,63 @@ export const transcodeToPcm16 = async (
   }
 }
 
+export const decodeAudioBlob = async (blob: Blob): Promise<AudioBuffer> => {
+  const arrayBuffer = await blob.arrayBuffer()
+  const ctx = getDecodeContext()
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
+  assertDecodedAudioNotEmpty(audioBuffer)
+  return audioBuffer
+}
+
+export const encodeAudioBufferSliceToWav = (
+  audioBuffer: AudioBuffer,
+  startMs: number,
+  endMs: number,
+): Blob => {
+  assertDecodedAudioNotEmpty(audioBuffer)
+  const sampleRate = audioBuffer.sampleRate
+  const fromFrame = clampFrame(
+    Math.floor((startMs / 1000) * sampleRate),
+    audioBuffer.length,
+  )
+  const toFrame = clampFrame(
+    Math.ceil((endMs / 1000) * sampleRate),
+    audioBuffer.length,
+  )
+  const frameCount = Math.max(1, toFrame - fromFrame)
+  const ctx = getDecodeContext()
+  const slice = ctx.createBuffer(
+    audioBuffer.numberOfChannels,
+    frameCount,
+    sampleRate,
+  )
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const source = audioBuffer.getChannelData(ch).subarray(fromFrame, toFrame)
+    slice.copyToChannel(source, ch, 0)
+  }
+  return encodePcm16Wav(slice)
+}
+
+export const estimatePcm16WavByteLength = (
+  audioBuffer: AudioBuffer,
+  durationMs: number,
+): number => {
+  const frames = Math.max(
+    1,
+    Math.ceil((durationMs / 1000) * audioBuffer.sampleRate),
+  )
+  return 44 + frames * audioBuffer.numberOfChannels * BYTES_PER_SAMPLE
+}
+
 const assertDecodedAudioNotEmpty = (audioBuffer: AudioBuffer): void => {
   if (audioBuffer.length > 0 && audioBuffer.numberOfChannels > 0) return
   throw new Error(
     'Decoded audio is empty; cannot transcode an empty recording.',
   )
 }
+
+const clampFrame = (frame: number, maxFrame: number): number =>
+  Math.min(maxFrame, Math.max(0, frame))
 
 /**
  * Encode an `AudioBuffer` to a 16-bit PCM WAV blob.

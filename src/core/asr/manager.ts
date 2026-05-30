@@ -36,6 +36,22 @@ export function resolveActiveAsrConfig(
   return list[0] ?? null
 }
 
+export function resolveActiveAudioFileAsrConfig(
+  options: ContextVoiceInputOptions,
+): AsrConfig | null {
+  const list = options.asrConfigs
+  if (!Array.isArray(list) || list.length === 0) return null
+  if (options.activeAudioFileAsrConfigId) {
+    const match = list.find((c) => c.id === options.activeAudioFileAsrConfigId)
+    if (match) return match
+  }
+  if (options.activeAsrConfigId) {
+    const match = list.find((c) => c.id === options.activeAsrConfigId)
+    if (match) return match
+  }
+  return list[0] ?? null
+}
+
 /**
  * Build an ASR provider client from the currently-active config.
  * Throws `AsrConfigError` when no config is configured or the active one is

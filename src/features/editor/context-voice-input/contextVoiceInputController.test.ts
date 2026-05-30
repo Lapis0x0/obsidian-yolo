@@ -30,6 +30,8 @@ const makeController = (currentView: EditorView | null) => {
     removeAbortController,
     cancelPendingTabCompletion: jest.fn(),
     setVoiceInputInProgress,
+    createFallbackMarkdownFile: jest.fn(async () => 'Transcriptions/test.md'),
+    appendToMarkdownFile: jest.fn(),
     t: (_key, fallback) => fallback,
   })
 

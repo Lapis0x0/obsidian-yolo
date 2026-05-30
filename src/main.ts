@@ -951,6 +951,15 @@ export default class YoloPlugin extends Plugin {
         const opts = this.settings?.contextVoiceInputOptions
         return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
       },
+      isAudioFileModeEnabled: () => {
+        const opts = this.settings?.contextVoiceInputOptions
+        return (
+          !!opts &&
+          opts.enabled &&
+          opts.audioFileTranscriptionEnabled &&
+          hasConfiguredAsrConfig(opts)
+        )
+      },
       getInteractionMode: () =>
         this.settings.contextVoiceInputOptions.interactionMode,
       setInteractionMode: async (mode) => {
@@ -994,6 +1003,42 @@ export default class YoloPlugin extends Plugin {
     void this.attachVoiceFloatingIsland()
   }
 
+  private registerVoiceAudioDragReveal(): void {
+    const options: AddEventListenerOptions = { capture: true }
+    this.registerDomEvent(
+      document,
+      'dragenter',
+      (event) => this.handleVoiceAudioDragReveal(event),
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'dragover',
+      (event) => this.handleVoiceAudioDragReveal(event),
+      options,
+    )
+  }
+
+  private handleVoiceAudioDragReveal(event: DragEvent): void {
+    if (!this.isAudioFileTranscriptionFeatureReady()) return
+    if (!this.isPotentialAudioFileDrag(event)) return
+    const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
+    if (!markdownView) return
+    void this.revealVoiceFloatingIslandForAudioDrag(markdownView)
+  }
+
+  private async revealVoiceFloatingIslandForAudioDrag(
+    markdownView: MarkdownView,
+  ): Promise<void> {
+    try {
+      await this.ensureContextVoiceInputController()
+      const island = await this.ensureVoiceFloatingIsland()
+      island.revealAudioDropTargetForView(markdownView)
+    } catch (error) {
+      console.warn('Voice audio drag reveal failed:', error)
+    }
+  }
+
   private async attachVoiceFloatingIsland(): Promise<void> {
     try {
       await this.ensureContextVoiceInputController()
@@ -1002,6 +1047,60 @@ export default class YoloPlugin extends Plugin {
     } catch (error) {
       console.error('Voice floating island attach failed:', error)
     }
+  }
+
+  private isAudioFileTranscriptionFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    return (
+      !!opts &&
+      opts.enabled &&
+      opts.audioFileTranscriptionEnabled &&
+      hasConfiguredAsrConfig(opts)
+    )
+  }
+
+  private isPotentialAudioFileDrag(event: DragEvent): boolean {
+    const dataTransfer = event.dataTransfer
+    if (!dataTransfer) return false
+    const files = Array.from(dataTransfer.files ?? [])
+    if (files.some((file) => this.isLikelyAudioDragFile(file))) return true
+    const items = Array.from(dataTransfer.items ?? [])
+    if (
+      items.some(
+        (item) =>
+          item.kind === 'file' &&
+          (item.type === '' || item.type.toLowerCase().startsWith('audio/')),
+      )
+    ) {
+      return true
+    }
+    return Array.from(dataTransfer.types ?? []).some((type) => {
+      const lower = type.toLowerCase()
+      return (
+        lower === 'files' ||
+        lower.includes('file') ||
+        lower.includes('obsidian')
+      )
+    })
+  }
+
+  private isLikelyAudioDragFile(file: File): boolean {
+    if (file.type.toLowerCase().startsWith('audio/')) return true
+    const name = file.name.toLowerCase()
+    return /\.(mp3|m4a|mp4|wav|webm|ogg|opus|flac|aac|amr)$/.test(name)
+  }
+
+  private resolveMarkdownViewFromEventTarget(
+    target: EventTarget | null,
+  ): MarkdownView | null {
+    if (!(target instanceof Node)) return null
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
+    for (const leaf of markdownLeaves) {
+      const view = leaf.view
+      if (!(view instanceof MarkdownView)) continue
+      if (view.contentEl.contains(target)) return view
+    }
+    return null
   }
 
   private setupBackgroundActivityStatusBar(): void {
@@ -1695,6 +1794,10 @@ export default class YoloPlugin extends Plugin {
       setVoiceInputInProgress: (inProgress) => {
         this.isVoiceInputInProgress = inProgress
       },
+      createFallbackMarkdownFile: (desiredPath, content) =>
+        this.createVoiceFallbackMarkdownFile(desiredPath, content),
+      appendToMarkdownFile: (path, content) =>
+        this.appendToVoiceFallbackMarkdownFile(path, content),
       t: (key, fallback) => this.t(key, fallback),
     })
     controller.setSummaryManager(this.ensureDocumentSummaryManager(modules))
@@ -1703,6 +1806,78 @@ export default class YoloPlugin extends Plugin {
     )
     this.contextVoiceInputController = controller
     return controller
+  }
+
+  private async createVoiceFallbackMarkdownFile(
+    desiredPath: string,
+    content: string,
+  ): Promise<string> {
+    const path = await this.reserveVoiceFallbackMarkdownPath(desiredPath)
+    await this.ensureVaultFolderForPath(path)
+    const file = await this.app.vault.create(path, content)
+    return file.path
+  }
+
+  private async appendToVoiceFallbackMarkdownFile(
+    path: string,
+    content: string,
+  ): Promise<void> {
+    const normalized = this.normalizeMarkdownPath(path)
+    const existing = this.app.vault.getAbstractFileByPath(normalized)
+    if (existing instanceof TFile) {
+      const current = await this.app.vault.read(existing)
+      await this.app.vault.modify(existing, `${current}${content}`)
+      return
+    }
+    if (existing) {
+      throw new Error(
+        `Cannot write transcription to folder path: ${normalized}`,
+      )
+    }
+    await this.ensureVaultFolderForPath(normalized)
+    await this.app.vault.create(normalized, content)
+  }
+
+  private async reserveVoiceFallbackMarkdownPath(
+    desiredPath: string,
+  ): Promise<string> {
+    const normalized = this.normalizeMarkdownPath(desiredPath)
+    if (!this.app.vault.getAbstractFileByPath(normalized)) return normalized
+
+    const dot = normalized.toLowerCase().endsWith('.md')
+      ? normalized.length - 3
+      : normalized.length
+    const stem = normalized.slice(0, dot)
+    const ext = normalized.slice(dot)
+    let counter = 2
+    while (true) {
+      const candidate = `${stem} ${counter}${ext}`
+      if (!this.app.vault.getAbstractFileByPath(candidate)) return candidate
+      counter += 1
+    }
+  }
+
+  private normalizeMarkdownPath(path: string): string {
+    const trimmed =
+      path.trim().replace(/[\\:*?"<>|]/g, '-') || 'Transcriptions/audio'
+    const withExtension = trimmed.toLowerCase().endsWith('.md')
+      ? trimmed
+      : `${trimmed}.md`
+    return normalizePath(withExtension || 'Transcriptions/audio.md')
+  }
+
+  private async ensureVaultFolderForPath(path: string): Promise<void> {
+    const parts = path.split('/').slice(0, -1)
+    let current = ''
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part
+      const existing = this.app.vault.getAbstractFileByPath(current)
+      if (existing instanceof TFolder) continue
+      if (existing) {
+        throw new Error(`Cannot create folder for transcription: ${current}`)
+      }
+      await this.app.vault.createFolder(current)
+    }
   }
 
   /**
@@ -1926,6 +2101,7 @@ export default class YoloPlugin extends Plugin {
         if (update.docChanged) {
           this.contextVoiceInputController?.handleEditorDocumentChange(
             update.view,
+            update.changes,
           )
         }
         if (!update.selectionSet) return
@@ -2090,6 +2266,7 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.syncVoiceFloatingIsland()
+    this.registerVoiceAudioDragReveal()
 
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
