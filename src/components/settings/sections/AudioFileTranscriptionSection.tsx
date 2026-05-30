@@ -46,6 +46,11 @@ const AUDIO_FILE_METADATA_LABEL_FALLBACK: Record<
   full: 'Full metadata',
 }
 
+const formatDurationLimitMinutes = (seconds: number): string => {
+  const minutes = seconds / 60
+  return Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1)
+}
+
 export function AudioFileTranscriptionSection() {
   const { settings, setSettings } = useSettings()
   const plugin = usePlugin()
@@ -56,6 +61,12 @@ export function AudioFileTranscriptionSection() {
   const [numberInputs, setNumberInputs] = useState({
     audioFileChunkTargetDurationSec: String(
       voice.audioFileChunkTargetDurationSec,
+    ),
+    audioFileWavMaxDurationMin: String(
+      Math.max(
+        1,
+        Math.round((voice.audioFileWavMaxDurationSec ?? 60 * 60) / 60),
+      ),
     ),
     audioFileMaxConcurrentChunks: String(voice.audioFileMaxConcurrentChunks),
     audioFileChunkStartStaggerMs: String(voice.audioFileChunkStartStaggerMs),
@@ -136,6 +147,8 @@ export function AudioFileTranscriptionSection() {
     asrConfigs.find((config) => config.id === activeAudioFileAsrConfigId) ??
     null
   const showChunkSettings = isHttpShortAudioAsrConfig(activeAudioFileAsrConfig)
+  const wavMaxDurationSec = voice.audioFileWavMaxDurationSec ?? 60 * 60
+  const wavMaxDurationMinText = formatDurationLimitMinutes(wavMaxDurationSec)
 
   const parseInteger = (value: string) => {
     const trimmed = value.trim()
@@ -169,6 +182,27 @@ export function AudioFileTranscriptionSection() {
     [t],
   )
 
+  const buildWavDurationLimitNotice = useCallback(
+    () =>
+      t(
+        'settings.audioFileTranscription.wavDurationLimitProviderNotice',
+        'Current WAV/PCM limit is {{minutes}} minutes, based on upload-size conversion. Longer files are blocked to avoid freezes and excessive upload traffic.',
+      ).replace(/\{\{minutes\}\}/g, wavMaxDurationMinText),
+    [t, wavMaxDurationMinText],
+  )
+
+  const audioFileAsrProviderDesc = useMemo(() => {
+    const base = t(
+      'settings.audioFileTranscription.asrProviderDesc',
+      'Defaults to the voice input ASR provider, but can be set separately for longer local audio files.',
+    )
+    const maySendWav =
+      activeAudioFileAsrConfig?.audioFormat === 'wav' ||
+      isHttpShortAudioAsrConfig(activeAudioFileAsrConfig)
+    if (!maySendWav) return base
+    return `${base} ${buildWavDurationLimitNotice()}`
+  }, [activeAudioFileAsrConfig, buildWavDurationLimitNotice, t])
+
   const handleAudioFileAsrProviderChange = (value: string) => {
     updateVoice(
       { activeAudioFileAsrConfigId: value },
@@ -179,6 +213,12 @@ export function AudioFileTranscriptionSection() {
       nextConfig,
       voice.audioFileChunkTargetDurationSec,
     )
+    if (
+      nextConfig?.audioFormat === 'wav' ||
+      isHttpShortAudioAsrConfig(nextConfig)
+    ) {
+      new Notice(buildWavDurationLimitNotice())
+    }
   }
 
   return (
@@ -260,10 +300,7 @@ export function AudioFileTranscriptionSection() {
                   'settings.audioFileTranscription.asrProvider',
                   'Audio file ASR provider',
                 )}
-                desc={t(
-                  'settings.audioFileTranscription.asrProviderDesc',
-                  'Defaults to the voice input ASR provider, but can be set separately for longer local audio files.',
-                )}
+                desc={audioFileAsrProviderDesc}
                 className="yolo-models-select-card"
               >
                 <ObsidianDropdown
@@ -367,158 +404,198 @@ export function AudioFileTranscriptionSection() {
                 />
               </ObsidianSetting>
 
-              {showChunkSettings && (
-                <div
-                  className={`yolo-settings-advanced-toggle yolo-clickable${
-                    advancedOpen ? ' is-expanded' : ''
-                  }`}
-                  onClick={() => setAdvancedOpen((prev) => !prev)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setAdvancedOpen((prev) => !prev)
-                    }
-                  }}
-                >
-                  <span className="yolo-settings-advanced-toggle-icon">▶</span>
-                  {t(
-                    'settings.audioFileTranscription.advancedToggle',
-                    'Advanced options',
-                  )}
-                </div>
-              )}
+              <div
+                className={`yolo-settings-advanced-toggle yolo-clickable${
+                  advancedOpen ? ' is-expanded' : ''
+                }`}
+                onClick={() => setAdvancedOpen((prev) => !prev)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setAdvancedOpen((prev) => !prev)
+                  }
+                }}
+              >
+                <span className="yolo-settings-advanced-toggle-icon">▶</span>
+                {t(
+                  'settings.audioFileTranscription.advancedToggle',
+                  'Advanced options',
+                )}
+              </div>
 
-              {showChunkSettings && advancedOpen && (
+              {advancedOpen && (
                 <>
                   <ObsidianSetting
                     name={t(
-                      'settings.audioFileTranscription.chunkTargetDurationSec',
-                      'Audio file chunk duration (seconds)',
+                      'settings.audioFileTranscription.wavMaxDurationMin',
+                      'Max WAV/PCM duration (minutes)',
                     )}
                     desc={t(
-                      'settings.audioFileTranscription.chunkTargetDurationSecDesc',
-                      'WAV chunks; some providers need 30s or less. Range: 15-600.',
+                      'settings.audioFileTranscription.wavMaxDurationMinDesc',
+                      'Based on WAV/PCM upload-size conversion. Files beyond this limit are blocked before local conversion to avoid freezes and excessive upload traffic. Range: 1-120.',
                     )}
                     className="yolo-settings-card"
                   >
                     <ObsidianTextInput
-                      value={numberInputs.audioFileChunkTargetDurationSec}
+                      value={numberInputs.audioFileWavMaxDurationMin}
                       onChange={(value) => {
                         setNumberInputs((state) => ({
                           ...state,
-                          audioFileChunkTargetDurationSec: value,
+                          audioFileWavMaxDurationMin: value,
                         }))
                         const parsed = parseInteger(value)
-                        if (parsed !== null && parsed >= 15 && parsed <= 600) {
+                        if (parsed !== null && parsed >= 1 && parsed <= 120) {
                           updateVoice(
-                            { audioFileChunkTargetDurationSec: parsed },
-                            'audioFileChunkTargetDurationSec',
-                          )
-                          warnIfChunkDurationExceedsKnownRequestLimit(
-                            activeAudioFileAsrConfig,
-                            parsed,
+                            { audioFileWavMaxDurationSec: parsed * 60 },
+                            'audioFileWavMaxDurationSec',
                           )
                         }
                       }}
-                      placeholder="120"
+                      placeholder="60"
                     />
                   </ObsidianSetting>
 
-                  <ObsidianSetting
-                    name={t(
-                      'settings.audioFileTranscription.maxConcurrentChunks',
-                      'Max concurrent chunks',
-                    )}
-                    desc={t(
-                      'settings.audioFileTranscription.maxConcurrentChunksDesc',
-                      'Maximum HTTP chunks in flight at once. Range: 1-5.',
-                    )}
-                    className="yolo-settings-card"
-                  >
-                    <ObsidianTextInput
-                      value={numberInputs.audioFileMaxConcurrentChunks}
-                      onChange={(value) => {
-                        setNumberInputs((state) => ({
-                          ...state,
-                          audioFileMaxConcurrentChunks: value,
-                        }))
-                        const parsed = parseInteger(value)
-                        if (parsed !== null && parsed >= 1 && parsed <= 5) {
-                          updateVoice(
-                            { audioFileMaxConcurrentChunks: parsed },
-                            'audioFileMaxConcurrentChunks',
-                          )
-                        }
-                      }}
-                      placeholder="5"
-                    />
-                  </ObsidianSetting>
+                  {showChunkSettings && (
+                    <>
+                      <ObsidianSetting
+                        name={t(
+                          'settings.audioFileTranscription.chunkTargetDurationSec',
+                          'Audio file chunk duration (seconds)',
+                        )}
+                        desc={t(
+                          'settings.audioFileTranscription.chunkTargetDurationSecDesc',
+                          'WAV chunks; some providers need 30s or less. Range: 15-600.',
+                        )}
+                        className="yolo-settings-card"
+                      >
+                        <ObsidianTextInput
+                          value={numberInputs.audioFileChunkTargetDurationSec}
+                          onChange={(value) => {
+                            setNumberInputs((state) => ({
+                              ...state,
+                              audioFileChunkTargetDurationSec: value,
+                            }))
+                            const parsed = parseInteger(value)
+                            if (
+                              parsed !== null &&
+                              parsed >= 15 &&
+                              parsed <= 600
+                            ) {
+                              updateVoice(
+                                { audioFileChunkTargetDurationSec: parsed },
+                                'audioFileChunkTargetDurationSec',
+                              )
+                              warnIfChunkDurationExceedsKnownRequestLimit(
+                                activeAudioFileAsrConfig,
+                                parsed,
+                              )
+                            }
+                          }}
+                          placeholder="120"
+                        />
+                      </ObsidianSetting>
 
-                  <ObsidianSetting
-                    name={t(
-                      'settings.audioFileTranscription.chunkStartStaggerMs',
-                      'Chunk start stagger (ms)',
-                    )}
-                    desc={t(
-                      'settings.audioFileTranscription.chunkStartStaggerMsDesc',
-                      'Delay between starting chunk uploads, reducing rate-limit spikes. Range: 1000-3000.',
-                    )}
-                    className="yolo-settings-card"
-                  >
-                    <ObsidianTextInput
-                      value={numberInputs.audioFileChunkStartStaggerMs}
-                      onChange={(value) => {
-                        setNumberInputs((state) => ({
-                          ...state,
-                          audioFileChunkStartStaggerMs: value,
-                        }))
-                        const parsed = parseInteger(value)
-                        if (
-                          parsed !== null &&
-                          parsed >= 1000 &&
-                          parsed <= 3000
-                        ) {
-                          updateVoice(
-                            { audioFileChunkStartStaggerMs: parsed },
-                            'audioFileChunkStartStaggerMs',
-                          )
-                        }
-                      }}
-                      placeholder="1500"
-                    />
-                  </ObsidianSetting>
+                      <ObsidianSetting
+                        name={t(
+                          'settings.audioFileTranscription.maxConcurrentChunks',
+                          'Max concurrent chunks',
+                        )}
+                        desc={t(
+                          'settings.audioFileTranscription.maxConcurrentChunksDesc',
+                          'Maximum HTTP chunks in flight at once. Range: 1-5.',
+                        )}
+                        className="yolo-settings-card"
+                      >
+                        <ObsidianTextInput
+                          value={numberInputs.audioFileMaxConcurrentChunks}
+                          onChange={(value) => {
+                            setNumberInputs((state) => ({
+                              ...state,
+                              audioFileMaxConcurrentChunks: value,
+                            }))
+                            const parsed = parseInteger(value)
+                            if (parsed !== null && parsed >= 1 && parsed <= 5) {
+                              updateVoice(
+                                { audioFileMaxConcurrentChunks: parsed },
+                                'audioFileMaxConcurrentChunks',
+                              )
+                            }
+                          }}
+                          placeholder="5"
+                        />
+                      </ObsidianSetting>
 
-                  <ObsidianSetting
-                    name={t(
-                      'settings.audioFileTranscription.chunkOverlapMs',
-                      'Chunk overlap (ms)',
-                    )}
-                    desc={t(
-                      'settings.audioFileTranscription.chunkOverlapMsDesc',
-                      'Small overlap around chunk boundaries to reduce missed words. Range: 0-1500.',
-                    )}
-                    className="yolo-settings-card"
-                  >
-                    <ObsidianTextInput
-                      value={numberInputs.audioFileChunkOverlapMs}
-                      onChange={(value) => {
-                        setNumberInputs((state) => ({
-                          ...state,
-                          audioFileChunkOverlapMs: value,
-                        }))
-                        const parsed = parseInteger(value)
-                        if (parsed !== null && parsed >= 0 && parsed <= 1500) {
-                          updateVoice(
-                            { audioFileChunkOverlapMs: parsed },
-                            'audioFileChunkOverlapMs',
-                          )
-                        }
-                      }}
-                      placeholder="500"
-                    />
-                  </ObsidianSetting>
+                      <ObsidianSetting
+                        name={t(
+                          'settings.audioFileTranscription.chunkStartStaggerMs',
+                          'Chunk start stagger (ms)',
+                        )}
+                        desc={t(
+                          'settings.audioFileTranscription.chunkStartStaggerMsDesc',
+                          'Delay between starting chunk uploads, reducing rate-limit spikes. Range: 1000-3000.',
+                        )}
+                        className="yolo-settings-card"
+                      >
+                        <ObsidianTextInput
+                          value={numberInputs.audioFileChunkStartStaggerMs}
+                          onChange={(value) => {
+                            setNumberInputs((state) => ({
+                              ...state,
+                              audioFileChunkStartStaggerMs: value,
+                            }))
+                            const parsed = parseInteger(value)
+                            if (
+                              parsed !== null &&
+                              parsed >= 1000 &&
+                              parsed <= 3000
+                            ) {
+                              updateVoice(
+                                { audioFileChunkStartStaggerMs: parsed },
+                                'audioFileChunkStartStaggerMs',
+                              )
+                            }
+                          }}
+                          placeholder="1500"
+                        />
+                      </ObsidianSetting>
+
+                      <ObsidianSetting
+                        name={t(
+                          'settings.audioFileTranscription.chunkOverlapMs',
+                          'Chunk overlap (ms)',
+                        )}
+                        desc={t(
+                          'settings.audioFileTranscription.chunkOverlapMsDesc',
+                          'Small overlap around chunk boundaries to reduce missed words. Range: 0-1500.',
+                        )}
+                        className="yolo-settings-card"
+                      >
+                        <ObsidianTextInput
+                          value={numberInputs.audioFileChunkOverlapMs}
+                          onChange={(value) => {
+                            setNumberInputs((state) => ({
+                              ...state,
+                              audioFileChunkOverlapMs: value,
+                            }))
+                            const parsed = parseInteger(value)
+                            if (
+                              parsed !== null &&
+                              parsed >= 0 &&
+                              parsed <= 1500
+                            ) {
+                              updateVoice(
+                                { audioFileChunkOverlapMs: parsed },
+                                'audioFileChunkOverlapMs',
+                              )
+                            }
+                          }}
+                          placeholder="500"
+                        />
+                      </ObsidianSetting>
+                    </>
+                  )}
                 </>
               )}
             </>

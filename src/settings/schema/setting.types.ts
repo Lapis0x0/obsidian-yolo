@@ -505,6 +505,7 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   audioFileFallbackNotePathTemplate:
     'Transcriptions/{{date}} {{time}} {{basename}}.md',
   audioFileChunkTargetDurationSec: 120,
+  audioFileWavMaxDurationSec: 60 * 60,
   audioFileMaxConcurrentChunks: 5,
   audioFileChunkStartStaggerMs: 1500,
   audioFileChunkOverlapMs: 500,
@@ -582,6 +583,12 @@ const contextVoiceInputOptionsSchema = z
       .catch(
         DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkTargetDurationSec,
       ),
+    audioFileWavMaxDurationSec: z
+      .number()
+      .int()
+      .min(30)
+      .max(2 * 60 * 60)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileWavMaxDurationSec),
     audioFileMaxConcurrentChunks: z
       .number()
       .int()

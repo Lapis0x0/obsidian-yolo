@@ -1388,10 +1388,9 @@ export const zh: TranslationKeys = {
       audioFormatAuto: '自动',
       audioFormatPcm16: 'PCM 16k',
       audioFormatWav: 'wav',
-      audioFormatDescChat: '默认用浏览器录音格式。服务不支持时再切到 wav。',
-      audioFormatDescTranscription:
-        '默认用浏览器录音格式。服务要求 wav 时再切换。',
-      audioFormatDescWebSocket: 'PCM 通常兼容性更好。',
+      audioFormatDescChat: 'wav 兼容性好，但体积更大。',
+      audioFormatDescTranscription: 'wav 兼容性好，但体积更大。',
+      audioFormatDescWebSocket: 'PCM 兼容性好，但体积更大。',
       transport: '请求方式',
       language: '语言',
       languageDesc: '留空或 auto 让服务自己识别。',
@@ -1455,6 +1454,11 @@ export const zh: TranslationKeys = {
       fallbackNotePathTemplateDesc:
         '当原插入位置不可用时使用。支持 {{date}}、{{time}}、{{basename}} 和 {{filename}}。',
       advancedToggle: '高级选项',
+      wavMaxDurationMin: 'WAV/PCM 最大时长（分钟）',
+      wavMaxDurationMinDesc:
+        '按 WAV/PCM 上传体积换算。超过此时长会在本地转码前拦截，避免卡死和上传流量过大。范围：1-120。',
+      wavDurationLimitProviderNotice:
+        '当前 WAV/PCM 门限按上传体积换算为 {{minutes}} 分钟；更长的文件会被拦截，避免卡死和上传流量过大。',
       chunkTargetDurationSec: '音频分段时长（秒）',
       chunkTargetDurationSecDesc:
         'WAV 分段；部分提供商要求 30 秒或更短。范围：15-600。',
@@ -1596,6 +1600,10 @@ export const zh: TranslationKeys = {
     audioFileProgressTranscribingChunks: '正在转写 {{done}}/{{total}}…',
     audioFileProgressStreamingPercent: '正在流式传输 {{percent}}%…',
     audioFileFallbackNotice: '转写内容正在写入 {{path}}。',
+    audioFileWavPcmUploadNotice:
+      '这段音频会发送 WAV/PCM 数据，约 {{size}}。这通常比压缩音频消耗更多上传流量。',
+    audioFileLargeUploadNotice:
+      '这个音频文件大小为 {{size}}，会按原文件发送，可能消耗较多上传流量。',
     audioFileSubmissionChunks: '{{count}} 个分段',
     audioFileSubmissionWebSocket: 'WebSocket 流式传输',
     audioFileSubmissionDirect: '直接上传',
@@ -1613,6 +1621,12 @@ export const zh: TranslationKeys = {
       '当前 ASR 提供商不能分段转写这个音频文件。',
     audioFileErrorDecodeRequiredForChunking:
       '这个文件过大，无法一次请求完成，并且本地无法解码分段。',
+    audioFileErrorLocalDecodeTooLarge:
+      '这个音频太大，不能在本地处理。请改用长音频提供商。',
+    audioFileErrorWebSocketPcmLargeUnsupported:
+      '大文件不能以 WAV/PCM 方式流式发送。请改用长音频提供商。',
+    audioFileErrorWavPcmDurationLimitExceeded:
+      'WAV/PCM 上传限制为 {{minutes}} 分钟，避免卡死和上传流量过大。更长的文件请改用长音频提供商。',
     audioFileErrorMissingChunkPlan: '缺少音频分段计划。',
     audioFileErrorChunkFailed: '分段转写失败。',
     audioFileErrorStreamingUnsupported: '当前 ASR 提供商不支持流式传输。',

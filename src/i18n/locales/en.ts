@@ -1504,10 +1504,11 @@ export const en: TranslationKeys = {
       audioFormatPcm16: 'PCM 16k',
       audioFormatWav: 'wav',
       audioFormatDescChat:
-        'Auto uses the browser recording. Choose wav only if the service rejects it.',
+        'wav has better compatibility, but creates larger uploads.',
       audioFormatDescTranscription:
-        'Auto uses the browser recording. Choose wav only if the service requires it.',
-      audioFormatDescWebSocket: 'PCM usually has better compatibility.',
+        'wav has better compatibility, but creates larger uploads.',
+      audioFormatDescWebSocket:
+        'PCM has better compatibility, but sends larger data.',
       transport: 'Transport',
       language: 'Language',
       languageDesc: 'Leave empty or "auto" to let the provider detect.',
@@ -1579,6 +1580,11 @@ export const en: TranslationKeys = {
       fallbackNotePathTemplateDesc:
         'Used when the original insertion anchor is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
       advancedToggle: 'Advanced options',
+      wavMaxDurationMin: 'Max WAV/PCM duration (minutes)',
+      wavMaxDurationMinDesc:
+        'Based on WAV/PCM upload-size conversion. Files beyond this limit are blocked before local conversion to avoid freezes and excessive upload traffic. Range: 1-120.',
+      wavDurationLimitProviderNotice:
+        'Current WAV/PCM limit is {{minutes}} minutes, based on upload-size conversion. Longer files are blocked to avoid freezes and excessive upload traffic.',
       chunkTargetDurationSec: 'Audio file chunk duration (seconds)',
       chunkTargetDurationSecDesc:
         'WAV chunks; some providers need 30s or less. Range: 15-600.',
@@ -1722,6 +1728,10 @@ export const en: TranslationKeys = {
     audioFileProgressTranscribingChunks: 'Transcribing {{done}}/{{total}}…',
     audioFileProgressStreamingPercent: 'Streaming {{percent}}%…',
     audioFileFallbackNotice: 'Transcription is being written to {{path}}.',
+    audioFileWavPcmUploadNotice:
+      'This audio will send WAV/PCM data, about {{size}}. This can use much more traffic than compressed audio.',
+    audioFileLargeUploadNotice:
+      'This audio file is {{size}} and will be sent as-is. This may use a lot of upload traffic.',
     audioFileSubmissionChunks: '{{count}} chunks',
     audioFileSubmissionWebSocket: 'WebSocket stream',
     audioFileSubmissionDirect: 'direct upload',
@@ -1741,6 +1751,12 @@ export const en: TranslationKeys = {
       'The selected ASR provider cannot split this audio file.',
     audioFileErrorDecodeRequiredForChunking:
       'This file is too large for one request and cannot be decoded locally for chunking.',
+    audioFileErrorLocalDecodeTooLarge:
+      'This audio file is too large for local processing. Use a long-audio provider.',
+    audioFileErrorWebSocketPcmLargeUnsupported:
+      'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
+    audioFileErrorWavPcmDurationLimitExceeded:
+      'WAV/PCM upload is limited to {{minutes}} minutes to avoid freezes and excessive upload traffic. Use a long-audio provider for longer files.',
     audioFileErrorMissingChunkPlan:
       'Missing chunk plan for audio file transcription.',
     audioFileErrorChunkFailed: 'Chunk failed.',

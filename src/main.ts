@@ -85,6 +85,11 @@ import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { ExportConfigModal } from './features/config-transfer/components/ExportConfigModal'
 import { ImportConfigModal } from './features/config-transfer/components/ImportConfigModal'
+import {
+  type AudioFileSource,
+  createBlobAudioFileSource,
+  createVaultAudioFileSource,
+} from './features/editor/context-voice-input/audioFileSource'
 import type { ContextVoiceInputController } from './features/editor/context-voice-input/contextVoiceInputController'
 import type { DocumentSummaryManager } from './features/editor/context-voice-input/documentSummaryManager'
 import type { VoiceFloatingIslandController } from './features/editor/context-voice-input/voiceFloatingIslandController'
@@ -142,6 +147,7 @@ type VoiceModules = {
 }
 
 type AudioDropSource = { file: File } | { vaultFile: TFile }
+type AudioDropInput = File | AudioFileSource
 type AudioFileDragKind = 'audio' | 'maybe-audio' | 'unsupported'
 
 export default class YoloPlugin extends Plugin {
@@ -961,7 +967,8 @@ export default class YoloPlugin extends Plugin {
         return this.isAudioFileTranscriptionFeatureReady()
       },
       getAudioFileDragKind: (event) => this.getAudioFileDragKind(event),
-      resolveAudioFileFromDrop: (event) => this.resolveAudioFileFromDrop(event),
+      resolveAudioFileFromDrop: (event) =>
+        this.resolveAudioInputFromDrop(event),
       getInteractionMode: () => this.getVoiceInteractionMode(),
       setInteractionMode: async (mode) => {
         const nextMode =
@@ -1109,11 +1116,11 @@ export default class YoloPlugin extends Plugin {
   ): Promise<void> {
     try {
       await this.ensureContextVoiceInputController()
-      const file = await this.materializeAudioDropSource(source)
+      const audioInput = this.createAudioInputFromDropSource(source)
       const island = await this.ensureVoiceFloatingIsland()
       island.attachToView(markdownView)
       await this.contextVoiceInputController?.startAudioFileTranscription(
-        file,
+        audioInput,
         markdownView.editor,
       )
     } catch (error) {
@@ -1198,11 +1205,11 @@ export default class YoloPlugin extends Plugin {
     return sawFileLikeCandidate ? 'unsupported' : null
   }
 
-  private async resolveAudioFileFromDrop(
+  private async resolveAudioInputFromDrop(
     event: DragEvent,
-  ): Promise<File | null> {
+  ): Promise<AudioDropInput | null> {
     const source = this.resolveAudioDropSource(event)
-    return source ? this.materializeAudioDropSource(source) : null
+    return source ? this.createAudioInputFromDropSource(source) : null
   }
 
   private resolveAudioDropSource(event: DragEvent): AudioDropSource | null {
@@ -1218,15 +1225,19 @@ export default class YoloPlugin extends Plugin {
     return vaultFile ? { vaultFile } : null
   }
 
-  private async materializeAudioDropSource(
+  private createAudioInputFromDropSource(
     source: AudioDropSource,
-  ): Promise<File> {
-    if ('file' in source) return source.file
+  ): AudioDropInput {
+    if ('file' in source) return createBlobAudioFileSource(source.file)
 
-    const data = await this.app.vault.readBinary(source.vaultFile)
-    return new File([data], source.vaultFile.name, {
-      type: this.getAudioMimeType(source.vaultFile.path),
-      lastModified: source.vaultFile.stat.mtime,
+    return createVaultAudioFileSource({
+      app: this.app,
+      file: source.vaultFile,
+      mimeType: this.getAudioMimeType(source.vaultFile.path),
+      materializeLimitMessage: this.t(
+        'voiceInput.audioFileErrorLocalDecodeTooLarge',
+        'This audio file is too large for local processing. Use a long-audio provider.',
+      ),
     })
   }
 

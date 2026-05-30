@@ -17,6 +17,10 @@ import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
 
 import {
+  type AudioFileSource,
+  createBlobAudioFileSource,
+} from './audioFileSource'
+import {
   type AudioFileTranscriptionMessages,
   type AudioFileTranscriptionPlan,
   type AudioFileTranscriptionProgress,
@@ -132,7 +136,7 @@ type ActiveSession = {
 }
 
 type AudioFileSession = {
-  file: File
+  source: AudioFileSource
   editor: Editor | null
   view: EditorView | null
   filePath: string
@@ -198,6 +202,8 @@ const DEFAULT_FALLBACK_MODEL_KEYS = [
  */
 const MERGE_WAIT_FOR_INFLIGHT_MS = 1500
 const PREFIX_CACHE_GROWTH_MULTIPLIER = 4
+const WAV_PCM_UPLOAD_NOTICE_MIN_DURATION_MS = 5 * 60 * 1000
+const LARGE_AUDIO_UPLOAD_NOTICE_MIN_BYTES = 100 * 1024 * 1024
 
 const resolvePolishModelId = (settings: YoloSettings): string | null => {
   const voice = settings.contextVoiceInputOptions
@@ -266,6 +272,18 @@ const stripFileExtension = (fileName: string): string => {
 
 const sanitizePathPart = (value: string): string =>
   value.replace(/[\\/:*?"<>|]/g, '-').trim() || 'audio'
+
+const formatDurationLimitMinutes = (seconds: number): string => {
+  const minutes = seconds / 60
+  return Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1)
+}
+
+const formatBytes = (bytes: number): string => {
+  const mib = bytes / 1024 / 1024
+  if (mib < 1024) return `${mib >= 10 ? Math.round(mib) : mib.toFixed(1)} MiB`
+  const gib = mib / 1024
+  return `${gib >= 10 ? Math.round(gib) : gib.toFixed(1)} GiB`
+}
 
 /**
  * Orchestrates the context-aware voice input feature.
@@ -338,6 +356,20 @@ export class ContextVoiceInputController {
         'voiceInput.audioFileErrorDecodeRequiredForChunking',
         'This file is too large for one request and cannot be decoded locally for chunking.',
       ),
+      localDecodeTooLarge: this.deps.t(
+        'voiceInput.audioFileErrorLocalDecodeTooLarge',
+        'This audio file is too large for local processing. Use a long-audio provider.',
+      ),
+      webSocketPcmLargeUnsupported: this.deps.t(
+        'voiceInput.audioFileErrorWebSocketPcmLargeUnsupported',
+        'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
+      ),
+      wavPcmDurationLimitExceeded: (seconds) =>
+        this.tFormat(
+          'voiceInput.audioFileErrorWavPcmDurationLimitExceeded',
+          'WAV/PCM upload is limited to {{minutes}} minutes to avoid freezes and excessive upload traffic. Use a long-audio provider for longer files.',
+          { minutes: formatDurationLimitMinutes(seconds) },
+        ),
       missingChunkPlan: this.deps.t(
         'voiceInput.audioFileErrorMissingChunkPlan',
         'Missing chunk plan for audio file transcription.',
@@ -491,7 +523,7 @@ export class ContextVoiceInputController {
   }
 
   async startAudioFileTranscription(
-    file: File,
+    input: File | AudioFileSource,
     editor: Editor | null,
   ): Promise<void> {
     if (this.status.state !== 'idle') {
@@ -522,13 +554,15 @@ export class ContextVoiceInputController {
       editor && view ? editor.posToOffset(editor.getCursor()) : null
     const filePath = markdownView?.file?.path ?? ''
     const abortController = new AbortController()
+    const source =
+      input instanceof File ? createBlobAudioFileSource(input) : input
     this.deps.addAbortController(abortController)
     this.deps.cancelPendingTabCompletion()
     this.deps.clearInlineSuggestion()
     this.deps.setVoiceInputInProgress(true)
 
     const session: AudioFileSession = {
-      file,
+      source,
       editor,
       view,
       filePath,
@@ -550,7 +584,7 @@ export class ContextVoiceInputController {
 
     try {
       const plan = await inspectAndPlanAudioFileTranscription({
-        file,
+        source,
         options,
         messages: this.getAudioFileTranscriptionMessages(),
       })
@@ -575,6 +609,7 @@ export class ContextVoiceInputController {
       audioFilePlan: this.summariseAudioFilePlan(plan),
     })
     try {
+      this.showAudioFileUploadNotices(plan)
       await executeAudioFileTranscriptionPlan({
         plan,
         signal: session.abortController.signal,
@@ -752,6 +787,45 @@ export class ContextVoiceInputController {
       'voiceInput.audioFilePlanDirect',
       'Upload this audio file for transcription?',
     )
+  }
+
+  private showAudioFileUploadNotices(plan: AudioFileTranscriptionPlan): void {
+    const showedWavPcmNotice = this.showAudioFileWavPcmUploadNotice(plan)
+    if (showedWavPcmNotice) return
+    if (
+      plan.wavPcmUploadEstimateBytes !== null ||
+      plan.fileSizeBytes <= LARGE_AUDIO_UPLOAD_NOTICE_MIN_BYTES
+    ) {
+      return
+    }
+    new Notice(
+      this.tFormat(
+        'voiceInput.audioFileLargeUploadNotice',
+        'This audio file is {{size}} and will be sent as-is. This may use a lot of upload traffic.',
+        { size: formatBytes(plan.fileSizeBytes) },
+      ),
+    )
+  }
+
+  private showAudioFileWavPcmUploadNotice(
+    plan: AudioFileTranscriptionPlan,
+  ): boolean {
+    if (
+      plan.wavPcmUploadEstimateBytes === null ||
+      ((plan.durationMs === null ||
+        plan.durationMs <= WAV_PCM_UPLOAD_NOTICE_MIN_DURATION_MS) &&
+        plan.wavPcmUploadEstimateBytes <= LARGE_AUDIO_UPLOAD_NOTICE_MIN_BYTES)
+    ) {
+      return false
+    }
+    new Notice(
+      this.tFormat(
+        'voiceInput.audioFileWavPcmUploadNotice',
+        'This audio will send WAV/PCM data, about {{size}}. This can use much more traffic than compressed audio.',
+        { size: formatBytes(plan.wavPcmUploadEstimateBytes) },
+      ),
+    )
+    return true
   }
 
   private handleAudioFileProgress(
@@ -1024,7 +1098,7 @@ export class ContextVoiceInputController {
     const hh = String(now.getHours()).padStart(2, '0')
     const min = String(now.getMinutes()).padStart(2, '0')
     const ss = String(now.getSeconds()).padStart(2, '0')
-    const baseName = stripFileExtension(plan?.fileName ?? session.file.name)
+    const baseName = stripFileExtension(plan?.fileName ?? session.source.name)
     const template =
       this.deps.getSettings().contextVoiceInputOptions
         .audioFileFallbackNotePathTemplate ||
@@ -1033,7 +1107,7 @@ export class ContextVoiceInputController {
       .replace(/\{\{date\}\}/g, `${yyyy}-${mm}-${dd}`)
       .replace(/\{\{time\}\}/g, `${hh}-${min}-${ss}`)
       .replace(/\{\{basename\}\}/g, sanitizePathPart(baseName))
-      .replace(/\{\{filename\}\}/g, sanitizePathPart(session.file.name))
+      .replace(/\{\{filename\}\}/g, sanitizePathPart(session.source.name))
   }
 
   private formatChunkStartTime(ms: number): string {

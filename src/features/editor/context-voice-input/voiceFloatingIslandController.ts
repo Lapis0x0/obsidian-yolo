@@ -26,6 +26,7 @@
 
 import type { MarkdownView } from 'obsidian'
 
+import type { AudioFileSource } from './audioFileSource'
 import type {
   ContextVoiceInputController,
   VoiceInputStatus,
@@ -48,7 +49,9 @@ type IslandDeps = {
   isFeatureReady: () => boolean
   isAudioFileModeEnabled: () => boolean
   getAudioFileDragKind: (event: DragEvent) => AudioFileDragKind | null
-  resolveAudioFileFromDrop: (event: DragEvent) => Promise<File | null>
+  resolveAudioFileFromDrop: (
+    event: DragEvent,
+  ) => Promise<File | AudioFileSource | null>
   getInteractionMode: () => InteractionMode
   setInteractionMode: (mode: InteractionMode) => Promise<void>
   getVadOptions: () => VoiceVadOptions
@@ -1069,7 +1072,9 @@ export class VoiceFloatingIslandController {
     this.externalAudioDragRevealTimeout = null
   }
 
-  private async startAudioFileTranscription(file: File): Promise<void> {
+  private async startAudioFileTranscription(
+    file: File | AudioFileSource,
+  ): Promise<void> {
     const controller = this.deps.getController()
     if (!controller) return
     const view = this.attachedView ?? this.deps.getActiveMarkdownView()

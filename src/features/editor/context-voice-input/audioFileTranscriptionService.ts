@@ -22,6 +22,7 @@ import {
   type AudioFileInspection,
   inspectAudioFile,
 } from './audioFileInspector'
+import type { AudioFileSource } from './audioFileSource'
 
 export type AudioFileSubmissionMode =
   | 'direct-upload'
@@ -30,6 +31,7 @@ export type AudioFileSubmissionMode =
 
 export type AudioFileTranscriptionPlan = {
   mode: AudioFileSubmissionMode
+  source: AudioFileSource
   fileName: string
   fileSizeBytes: number
   mimeType: string
@@ -41,6 +43,7 @@ export type AudioFileTranscriptionPlan = {
   chunkOverlapMs: number
   targetChunkDurationSec: number
   inspection: AudioFileInspection
+  wavPcmUploadEstimateBytes: number | null
 }
 
 export type AudioFileTranscriptionProgress = {
@@ -64,6 +67,9 @@ export type AudioFileTranscriptionMessages = {
   unsupportedLocalFile: string
   unsupportedChunking: string
   decodeRequiredForChunking: string
+  localDecodeTooLarge: string
+  webSocketPcmLargeUnsupported: string
+  wavPcmDurationLimitExceeded: (seconds: number) => string
   missingChunkPlan: string
   chunkFailed: string
   streamingUnsupported: string
@@ -84,6 +90,12 @@ const DEFAULT_MESSAGES: AudioFileTranscriptionMessages = {
     'The selected ASR provider cannot split this audio file.',
   decodeRequiredForChunking:
     'This file is too large for one request and cannot be decoded locally for chunking.',
+  localDecodeTooLarge:
+    'This audio file is too large for local processing. Use a long-audio provider.',
+  webSocketPcmLargeUnsupported:
+    'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
+  wavPcmDurationLimitExceeded: (seconds) =>
+    `WAV/PCM upload is limited to ${formatLimitMinutes(seconds)} minutes to avoid freezes and excessive upload traffic. Use a long-audio provider for longer files.`,
   missingChunkPlan: 'Missing chunk plan for audio file transcription.',
   chunkFailed: 'Chunk failed.',
   streamingUnsupported: 'The selected ASR provider does not support streaming.',
@@ -97,7 +109,7 @@ const DEFAULT_MESSAGES: AudioFileTranscriptionMessages = {
 }
 
 export async function inspectAndPlanAudioFileTranscription(input: {
-  file: File
+  source: AudioFileSource
   options: ContextVoiceInputOptions
   messages?: AudioFileTranscriptionMessages
 }): Promise<AudioFileTranscriptionPlan> {
@@ -110,11 +122,16 @@ export async function inspectAndPlanAudioFileTranscription(input: {
     throw new Error(messages.longAudioNotImplemented)
   }
 
-  const inspection = await inspectAudioFile(input.file)
   const capability = getAudioFileAsrCapability(providerConfig)
+  const inspection = await inspectAudioFile(input.source, { decode: false })
   if (!capability.supportsLocalFile) {
     throw new Error(messages.unsupportedLocalFile)
   }
+  const wavMaxDurationSec = clampInt(
+    input.options.audioFileWavMaxDurationSec ?? 60 * 60,
+    30,
+    2 * 60 * 60,
+  )
 
   const targetChunkDurationSec = clampInt(
     input.options.audioFileChunkTargetDurationSec,
@@ -138,11 +155,24 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   )
 
   if (capability.supportsFileStreaming) {
+    assertWavPcmSendWithinDurationLimit({
+      inspection,
+      providerConfig,
+      wavMaxDurationSec,
+      messages,
+    })
+    if (
+      providerConfig.audioFormat === 'wav' &&
+      !canDecodeLocallyWithinDurationLimit(inspection, wavMaxDurationSec)
+    ) {
+      throw new Error(messages.webSocketPcmLargeUnsupported)
+    }
     return {
       mode: 'websocket-stream',
-      fileName: input.file.name,
-      fileSizeBytes: input.file.size,
-      mimeType: inspection.mimeType || input.file.type || 'audio/*',
+      source: input.source,
+      fileName: input.source.name,
+      fileSizeBytes: input.source.size,
+      mimeType: inspection.mimeType || input.source.type || 'audio/*',
       durationMs: inspection.durationMs,
       providerConfig,
       schedule: null,
@@ -151,13 +181,17 @@ export async function inspectAndPlanAudioFileTranscription(input: {
       chunkOverlapMs: 0,
       targetChunkDurationSec,
       inspection,
+      wavPcmUploadEstimateBytes: estimateWavPcmUploadBytes({
+        mode: 'websocket-stream',
+        providerConfig,
+        inspection,
+      }),
     }
   }
 
   const maxBytes = capability.maxRequestBytes
   const maxDurationMs = capability.maxDurationMs
   const effectiveSingleRequestBytes = estimateSingleRequestBytes({
-    file: input.file,
     inspection,
     providerConfig,
   })
@@ -170,6 +204,21 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   const exceedsTargetDuration =
     inspection.durationMs !== null &&
     inspection.durationMs > targetChunkDurationSec * 1000
+  const requiresLocalTranscode = providerConfig.audioFormat === 'wav'
+
+  assertWavPcmSendWithinDurationLimit({
+    inspection,
+    providerConfig,
+    wavMaxDurationSec,
+    messages,
+  })
+
+  if (
+    requiresLocalTranscode &&
+    !canDecodeLocallyWithinDurationLimit(inspection, wavMaxDurationSec)
+  ) {
+    throw new Error(messages.localDecodeTooLarge)
+  }
 
   if (
     !exceedsSingleRequest &&
@@ -178,9 +227,10 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   ) {
     return {
       mode: 'direct-upload',
-      fileName: input.file.name,
-      fileSizeBytes: input.file.size,
-      mimeType: inspection.mimeType || input.file.type || 'audio/*',
+      source: input.source,
+      fileName: input.source.name,
+      fileSizeBytes: input.source.size,
+      mimeType: inspection.mimeType || input.source.type || 'audio/*',
       durationMs: inspection.durationMs,
       providerConfig,
       schedule: null,
@@ -189,18 +239,37 @@ export async function inspectAndPlanAudioFileTranscription(input: {
       chunkOverlapMs,
       targetChunkDurationSec,
       inspection,
+      wavPcmUploadEstimateBytes: estimateWavPcmUploadBytes({
+        mode: 'direct-upload',
+        providerConfig,
+        inspection,
+      }),
     }
   }
 
   if (!capability.supportsChunkedUpload) {
     throw new Error(messages.unsupportedChunking)
   }
-  if (!inspection.decodedAudio) {
+  assertWavPcmSendWithinDurationLimit({
+    inspection,
+    providerConfig,
+    wavMaxDurationSec,
+    messages,
+    forceWavPcm: true,
+  })
+  if (!canDecodeLocallyWithinDurationLimit(inspection, wavMaxDurationSec)) {
+    throw new Error(messages.localDecodeTooLarge)
+  }
+
+  const decodedInspection = await inspectAudioFile(input.source, {
+    decode: true,
+  })
+  if (!decodedInspection.decodedAudio) {
     throw new Error(messages.decodeRequiredForChunking)
   }
 
   const schedule = buildAudioFileChunkSchedule({
-    audioBuffer: inspection.decodedAudio,
+    audioBuffer: decodedInspection.decodedAudio,
     targetDurationSec: targetChunkDurationSec,
     overlapMs: chunkOverlapMs,
     maxChunkDurationMs: maxDurationMs,
@@ -208,17 +277,24 @@ export async function inspectAndPlanAudioFileTranscription(input: {
 
   return {
     mode: 'chunked-upload',
-    fileName: input.file.name,
-    fileSizeBytes: input.file.size,
-    mimeType: inspection.mimeType || input.file.type || 'audio/*',
-    durationMs: inspection.durationMs,
+    source: input.source,
+    fileName: input.source.name,
+    fileSizeBytes: input.source.size,
+    mimeType: decodedInspection.mimeType || input.source.type || 'audio/*',
+    durationMs: decodedInspection.durationMs,
     providerConfig,
     schedule,
     maxConcurrentChunks,
     chunkStartStaggerMs,
     chunkOverlapMs,
     targetChunkDurationSec,
-    inspection,
+    inspection: decodedInspection,
+    wavPcmUploadEstimateBytes: estimateWavPcmUploadBytes({
+      mode: 'chunked-upload',
+      providerConfig,
+      inspection: decodedInspection,
+      schedule,
+    }),
   }
 }
 
@@ -277,10 +353,11 @@ async function executeDirectUpload(input: {
   input.onProgress({ phase: 'uploading', completedChunks: 0, totalChunks: 1 })
   let result: Awaited<ReturnType<typeof provider.transcribe>>
   try {
+    const file = await input.plan.inspection.source.getFile()
     result = await provider.transcribe(
       {
-        blob: input.plan.inspection.file,
-        mimeType: input.plan.mimeType || input.plan.inspection.file.type,
+        blob: file,
+        mimeType: input.plan.mimeType || file.type,
         durationMs: input.plan.durationMs ?? undefined,
       },
       {
@@ -523,8 +600,9 @@ async function sendFileThroughStreamingSession(input: {
     })
   }
   if (plan.providerConfig.audioFormat === 'wav') {
+    const file = await plan.inspection.source.getFile()
     const pcm = await transcodeToPcm16({
-      blob: plan.inspection.file,
+      blob: file,
       mimeType: plan.mimeType,
       durationMs: plan.durationMs ?? undefined,
     })
@@ -541,13 +619,16 @@ async function sendFileThroughStreamingSession(input: {
     return
   }
 
-  const bytes = await plan.inspection.file.arrayBuffer()
   const frameBytes = 64 * 1024
-  for (let offset = 0; offset < bytes.byteLength; offset += frameBytes) {
+  for (
+    let offset = 0;
+    offset < plan.inspection.source.size;
+    offset += frameBytes
+  ) {
     throwIfAborted(signal)
-    const end = Math.min(bytes.byteLength, offset + frameBytes)
-    session.sendAudioChunk(bytes.slice(offset, end))
-    reportProgress(end, bytes.byteLength)
+    const end = Math.min(plan.inspection.source.size, offset + frameBytes)
+    session.sendAudioChunk(await plan.inspection.source.readSlice(offset, end))
+    reportProgress(end, plan.inspection.source.size)
     await delay(100, signal)
   }
 }
@@ -602,21 +683,137 @@ function yieldToBrowser(signal: AbortSignal): Promise<void> {
 }
 
 function estimateSingleRequestBytes(input: {
-  file: File
   inspection: AudioFileInspection
   providerConfig: AsrConfig
 }): number {
   if (
     input.providerConfig.audioFormat === 'wav' &&
-    input.inspection.decodedAudio &&
     input.inspection.durationMs !== null
   ) {
-    return estimatePcm16WavByteLength(
-      input.inspection.decodedAudio,
-      input.inspection.durationMs,
+    return estimatePcm16WavByteLength(input.inspection.durationMs)
+  }
+  return input.inspection.fileSizeBytes
+}
+
+function estimateWavPcmUploadBytes(input: {
+  mode: AudioFileSubmissionMode
+  providerConfig: AsrConfig
+  inspection: AudioFileInspection
+  schedule?: AudioFileChunkSchedule | null
+}): number | null {
+  if (!willSendWavPcmAudio(input.providerConfig, input.inspection)) {
+    if (input.mode !== 'chunked-upload') return null
+  }
+
+  if (input.mode === 'websocket-stream') {
+    if (input.providerConfig.audioFormat === 'wav') {
+      return input.inspection.durationMs === null
+        ? null
+        : estimateLinear16MonoByteLength(input.inspection.durationMs)
+    }
+    return isWavLikeSource(input.inspection)
+      ? input.inspection.fileSizeBytes
+      : null
+  }
+
+  if (input.mode === 'chunked-upload') {
+    const chunks = input.schedule?.chunks ?? []
+    if (chunks.length === 0) return null
+    return chunks.reduce(
+      (sum, chunk) =>
+        sum +
+        estimatePcm16WavByteLength(chunk.actualEndMs - chunk.actualStartMs),
+      0,
     )
   }
-  return input.file.size
+
+  if (input.providerConfig.audioFormat === 'wav') {
+    return input.inspection.durationMs === null
+      ? null
+      : estimatePcm16WavByteLength(input.inspection.durationMs)
+  }
+
+  return isWavLikeSource(input.inspection)
+    ? input.inspection.fileSizeBytes
+    : null
+}
+
+function assertWavPcmSendWithinDurationLimit(input: {
+  inspection: AudioFileInspection
+  providerConfig: AsrConfig
+  wavMaxDurationSec: number
+  messages: AudioFileTranscriptionMessages
+  forceWavPcm?: boolean
+}): void {
+  if (
+    !input.forceWavPcm &&
+    !willSendWavPcmAudio(input.providerConfig, input.inspection)
+  ) {
+    return
+  }
+
+  const limitMs = input.wavMaxDurationSec * 1000
+  if (
+    input.inspection.durationMs !== null &&
+    input.inspection.durationMs > limitMs
+  ) {
+    throw new Error(
+      input.messages.wavPcmDurationLimitExceeded(input.wavMaxDurationSec),
+    )
+  }
+
+  if (
+    input.inspection.durationMs === null &&
+    isWavLikeSource(input.inspection) &&
+    input.inspection.fileSizeBytes > estimatePcm16WavByteLength(limitMs)
+  ) {
+    throw new Error(
+      input.messages.wavPcmDurationLimitExceeded(input.wavMaxDurationSec),
+    )
+  }
+}
+
+function willSendWavPcmAudio(
+  providerConfig: AsrConfig,
+  inspection: AudioFileInspection,
+): boolean {
+  return providerConfig.audioFormat === 'wav' || isWavLikeSource(inspection)
+}
+
+function isWavLikeSource(inspection: AudioFileInspection): boolean {
+  const mimeType = inspection.mimeType.toLowerCase()
+  return (
+    inspection.extension === 'wav' ||
+    inspection.extension === 'pcm' ||
+    mimeType.includes('wav') ||
+    mimeType.includes('wave') ||
+    mimeType.includes('pcm')
+  )
+}
+
+function canDecodeLocallyWithinDurationLimit(
+  inspection: AudioFileInspection,
+  wavMaxDurationSec: number,
+): boolean {
+  return (
+    inspection.durationMs !== null &&
+    inspection.durationMs <= wavMaxDurationSec * 1000
+  )
+}
+
+function estimateLinear16MonoByteLength(durationMs: number): number {
+  const sampleRate = 16_000
+  const channels = 1
+  const pcm16BytesPerSample = 2
+  return Math.ceil(
+    (durationMs / 1000) * sampleRate * channels * pcm16BytesPerSample,
+  )
+}
+
+function formatLimitMinutes(seconds: number): string {
+  const minutes = seconds / 60
+  if (Number.isInteger(minutes)) return String(minutes)
+  return minutes.toFixed(1)
 }
 
 function withChunkDurationHint(

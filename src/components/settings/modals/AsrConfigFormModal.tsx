@@ -573,18 +573,18 @@ function AsrConfigFormComponent({
     if (isWebSocketAsr) {
       return t(
         'settings.asr.audioFormatDescWebSocket',
-        'PCM usually has better compatibility.',
+        'PCM has better compatibility, but sends larger data.',
       )
     }
     if (isChatAudio) {
       return t(
         'settings.asr.audioFormatDescChat',
-        'Auto uses the browser recording. Choose wav only if the service rejects webm/opus.',
+        'wav has better compatibility, but creates larger uploads.',
       )
     }
     return t(
       'settings.asr.audioFormatDescTranscription',
-      'Auto uses the browser recording. Choose wav only if the service requires it.',
+      'wav has better compatibility, but creates larger uploads.',
     )
   }
 

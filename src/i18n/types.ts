@@ -1319,6 +1319,9 @@ export type TranslationKeys = {
       fallbackNotePathTemplate?: string
       fallbackNotePathTemplateDesc?: string
       advancedToggle?: string
+      wavMaxDurationMin?: string
+      wavMaxDurationMinDesc?: string
+      wavDurationLimitProviderNotice?: string
       chunkTargetDurationSec?: string
       chunkTargetDurationSecDesc?: string
       maxConcurrentChunks?: string
@@ -1436,6 +1439,8 @@ export type TranslationKeys = {
     audioFileProgressTranscribingChunks?: string
     audioFileProgressStreamingPercent?: string
     audioFileFallbackNotice?: string
+    audioFileWavPcmUploadNotice?: string
+    audioFileLargeUploadNotice?: string
     audioFileSubmissionChunks?: string
     audioFileSubmissionWebSocket?: string
     audioFileSubmissionDirect?: string
@@ -1450,6 +1455,9 @@ export type TranslationKeys = {
     audioFileErrorUnsupportedLocalFile?: string
     audioFileErrorUnsupportedChunking?: string
     audioFileErrorDecodeRequiredForChunking?: string
+    audioFileErrorLocalDecodeTooLarge?: string
+    audioFileErrorWebSocketPcmLargeUnsupported?: string
+    audioFileErrorWavPcmDurationLimitExceeded?: string
     audioFileErrorMissingChunkPlan?: string
     audioFileErrorChunkFailed?: string
     audioFileErrorStreamingUnsupported?: string

@@ -7,14 +7,16 @@
  *     "Invalid audio format. Valid formats are: [wav, mp3]".
  *
  * Strategy: decode via the host's AudioContext (Obsidian runs on Electron, so
- * Web Audio is available), then write a 16-bit PCM WAV by hand. No external
- * encoder dependency, no main-thread blocking beyond the decode itself
- * (browser-native, very fast for ≤120 s clips).
+ * Web Audio is available), then write a speech-focused 16 kHz mono 16-bit PCM
+ * WAV by hand. No external encoder dependency, no main-thread blocking beyond
+ * the decode itself (browser-native, very fast for ≤120 s clips).
  *
  * We do NOT offer mp3 transcoding: it would require ~150 KB of lamejs in the
  * bundle and adds an extra lossy hop on top of an already-lossy opus capture.
- * WAV is universally accepted by chat-audio providers (OpenAI, Google, Qwen3,
- * FireRedASR2) and remains lossless re-packaging of the captured PCM.
+ * WAV is widely accepted by chat-audio providers (OpenAI, Google, Qwen3,
+ * FireRedASR2). 16 kHz mono keeps the outgoing bitrate predictable and avoids
+ * sending high-sample-rate stereo files when speech recognition does not need
+ * them.
  */
 
 import type { AsrAudioInput } from './types'
@@ -22,6 +24,7 @@ import type { AsrAudioInput } from './types'
 const SAMPLE_BITS = 16
 const BYTES_PER_SAMPLE = SAMPLE_BITS / 8
 const AUDIO_DECODE_TIMEOUT_MS = 60_000
+const ASR_WAV_SAMPLE_RATE = 16_000
 
 let cachedDecodeContext: AudioContext | null = null
 
@@ -53,7 +56,7 @@ export const transcodeToWav = async (
   const audioBuffer = await decodeAudioBlob(input.blob)
   assertDecodedAudioNotEmpty(audioBuffer)
 
-  const wavBlob = encodePcm16Wav(audioBuffer)
+  const wavBlob = encodePcm16Wav(audioBuffer, ASR_WAV_SAMPLE_RATE)
   return {
     blob: wavBlob,
     mimeType: 'audio/wav',
@@ -112,19 +115,11 @@ export const encodeAudioBufferSliceToWav = (
     const source = audioBuffer.getChannelData(ch).subarray(fromFrame, toFrame)
     slice.copyToChannel(source, ch, 0)
   }
-  return encodePcm16Wav(slice)
+  return encodePcm16Wav(slice, ASR_WAV_SAMPLE_RATE)
 }
 
-export const estimatePcm16WavByteLength = (
-  audioBuffer: AudioBuffer,
-  durationMs: number,
-): number => {
-  const frames = Math.max(
-    1,
-    Math.ceil((durationMs / 1000) * audioBuffer.sampleRate),
-  )
-  return 44 + frames * audioBuffer.numberOfChannels * BYTES_PER_SAMPLE
-}
+export const estimatePcm16WavByteLength = (durationMs: number): number =>
+  44 + estimatePcm16RawByteLength(durationMs, ASR_WAV_SAMPLE_RATE)
 
 const assertDecodedAudioNotEmpty = (audioBuffer: AudioBuffer): void => {
   if (audioBuffer.length > 0 && audioBuffer.numberOfChannels > 0) return
@@ -164,12 +159,14 @@ const withTimeout = async <T>(
  *   fmt chunk (24 bytes, PCM)
  *   data chunk (8 bytes + samples * 2 * channels)
  */
-const encodePcm16Wav = (audioBuffer: AudioBuffer): Blob => {
-  const numChannels = audioBuffer.numberOfChannels
-  const sampleRate = audioBuffer.sampleRate
-  const numFrames = audioBuffer.length
-
-  const dataBytes = numFrames * numChannels * BYTES_PER_SAMPLE
+const encodePcm16Wav = (
+  audioBuffer: AudioBuffer,
+  targetSampleRate: number,
+): Blob => {
+  const audio = encodePcm16Raw(audioBuffer, targetSampleRate)
+  const numChannels = 1
+  const sampleRate = targetSampleRate
+  const dataBytes = audio.byteLength
   const buffer = new ArrayBuffer(44 + dataBytes)
   const view = new DataView(buffer)
 
@@ -192,27 +189,7 @@ const encodePcm16Wav = (audioBuffer: AudioBuffer): Blob => {
   writeAscii(view, 36, 'data')
   view.setUint32(40, dataBytes, true)
 
-  // Interleave channels: L R L R L R …  (mono just gives a flat stream).
-  // We read channel by channel into typed arrays to avoid per-sample
-  // function call overhead from getChannelData on every frame.
-  const channelData: Float32Array[] = []
-  for (let ch = 0; ch < numChannels; ch++) {
-    channelData.push(audioBuffer.getChannelData(ch))
-  }
-
-  let offset = 44
-  for (let frame = 0; frame < numFrames; frame++) {
-    for (let ch = 0; ch < numChannels; ch++) {
-      let sample = channelData[ch][frame]
-      // clamp to [-1, 1] before quantising to int16
-      if (sample > 1) sample = 1
-      else if (sample < -1) sample = -1
-      const intSample =
-        sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff)
-      view.setInt16(offset, intSample, true)
-      offset += 2
-    }
-  }
+  new Uint8Array(buffer, 44).set(new Uint8Array(audio))
 
   return new Blob([buffer], { type: 'audio/wav' })
 }
@@ -223,7 +200,7 @@ const encodePcm16Raw = (
 ): ArrayBuffer => {
   const mono = mixToMono(audioBuffer)
   const ratio = audioBuffer.sampleRate / targetSampleRate
-  const outputLength = Math.max(1, Math.floor(mono.length / ratio))
+  const outputLength = Math.max(1, Math.ceil(mono.length / ratio))
   const buffer = new ArrayBuffer(outputLength * BYTES_PER_SAMPLE)
   const view = new DataView(buffer)
   for (let i = 0; i < outputLength; i++) {
@@ -231,6 +208,14 @@ const encodePcm16Raw = (
     writePcm16Sample(view, i * BYTES_PER_SAMPLE, mono[sourceIndex])
   }
   return buffer
+}
+
+const estimatePcm16RawByteLength = (
+  durationMs: number,
+  sampleRate: number,
+): number => {
+  const frames = Math.max(1, Math.ceil((durationMs / 1000) * sampleRate))
+  return frames * BYTES_PER_SAMPLE
 }
 
 const mixToMono = (audioBuffer: AudioBuffer): Float32Array => {
