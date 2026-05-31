@@ -307,6 +307,8 @@ export type TranslationKeys = {
       builtinFsSearchDesc?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string
+      builtinContextPruneToolResultsLabel?: string
+      builtinContextPruneToolResultsDesc?: string
       builtinContextCompactLabel?: string
       builtinContextCompactDesc?: string
       builtinToolSearchLabel?: string

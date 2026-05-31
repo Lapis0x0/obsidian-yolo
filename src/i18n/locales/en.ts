@@ -431,6 +431,9 @@ export const en: TranslationKeys = {
       builtinFsSearchDesc: 'Search vault files and content',
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc: 'Read vault files',
+      builtinContextPruneToolResultsLabel: 'Prune Tool Results',
+      builtinContextPruneToolResultsDesc:
+        'Exclude past tool results from future context',
       builtinContextCompactLabel: 'Compact Context',
       builtinContextCompactDesc: 'Compress earlier conversation into a summary',
       builtinToolSearchLabel: 'Load Tool',

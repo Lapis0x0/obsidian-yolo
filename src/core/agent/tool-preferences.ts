@@ -58,7 +58,11 @@ const FULL_ACCESS_LOCAL_TOOLS: ReadonlySet<string> = new Set([
  * and runtime read the same policy.
  */
 export const BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES: ReadonlySet<string> =
-  new Set(['context_compact', JS_SANDBOX_TOOL_NAME])
+  new Set([
+    'context_prune_tool_results',
+    'context_compact',
+    JS_SANDBOX_TOOL_NAME,
+  ])
 
 /**
  * Full set of user-facing built-in tool FQNs that default to on. Used by the

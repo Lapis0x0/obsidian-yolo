@@ -419,6 +419,9 @@ export const it: TranslationKeys = {
       builtinFsSearchDesc: 'Cerca file e contenuti nel vault',
       builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc: 'Leggi file del vault',
+      builtinContextPruneToolResultsLabel: 'Pota risultati strumenti',
+      builtinContextPruneToolResultsDesc:
+        'Escludi i risultati storici degli strumenti dal contesto futuro',
       builtinContextCompactLabel: 'Compatta contesto',
       builtinContextCompactDesc:
         'Comprimi la cronologia meno recente in un riepilogo',
