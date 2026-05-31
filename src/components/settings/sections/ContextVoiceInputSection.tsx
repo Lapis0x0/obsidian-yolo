@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
@@ -15,6 +15,7 @@ import {
   VOICE_POLISH_PROMPT_MODES,
   VOICE_POLISH_PROMPT_PRESETS,
 } from '../../../settings/schema/setting.types'
+import { ObsidianButton } from '../../common/ObsidianButton'
 import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
@@ -33,7 +34,6 @@ import {
   DECIBEL_CHART_FLOOR,
   VoiceDecibelMeter,
 } from './ContextVoiceDecibelMeter'
-
 // Translation-key suffixes for the polish-prompt dropdown. Picking any
 // non-custom mode applies the matching prompt from VOICE_POLISH_PROMPT_PRESETS
 // (in setting.types.ts) at request time — no textarea step required.
@@ -55,6 +55,8 @@ const SUMMARY_REFRESH_LABEL_FALLBACK: Record<
   '1hour': 'Every 1 hour',
 }
 
+type MicDevice = { deviceId: string; label: string }
+
 export function ContextVoiceInputSection() {
   const { settings, setSettings } = useSettings()
   const plugin = usePlugin()
@@ -62,20 +64,22 @@ export function ContextVoiceInputSection() {
   const voice = settings.contextVoiceInputOptions
   const asrReady = hasConfiguredAsrConfig(voice)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [micDevices, setMicDevices] = useState<MicDevice[]>([])
+  const [micEnumerationLabelsBlocked, setMicEnumerationLabelsBlocked] =
+    useState(false)
 
   const [numberInputs, setNumberInputs] = useState({
     contextRangeChars: String(voice.contextRangeChars),
     maxAfterContextChars: String(voice.maxAfterContextChars),
     maxRecordingSeconds: String(voice.maxRecordingSeconds),
-    polishTemperature:
-      typeof voice.polishTemperature === 'number'
-        ? String(voice.polishTemperature)
-        : '',
     vadSpeechStartDecibels: String(voice.vadSpeechStartDecibels),
     vadSilenceDecibels: String(voice.vadSilenceDecibels),
     vadSpeechRequiredMs: String(voice.vadSpeechRequiredMs),
     vadSilenceHoldMs: String(voice.vadSilenceHoldMs),
-    floatingIslandBottomOffsetVh: String(voice.floatingIslandBottomOffsetVh),
+    polishTemperature:
+      typeof voice.polishTemperature === 'number'
+        ? String(voice.polishTemperature)
+        : '',
   })
 
   const updateVoice = useCallback(
@@ -101,6 +105,62 @@ export function ContextVoiceInputSection() {
     },
     [plugin, setSettings],
   )
+
+  const refreshMicDevices = useCallback(async () => {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.enumerateDevices !== 'function'
+    ) {
+      return
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const mics = devices
+        .filter((device) => device.kind === 'audioinput')
+        .map<MicDevice>((device) => ({
+          deviceId: device.deviceId,
+          label: device.label || '',
+        }))
+      setMicDevices(mics)
+      setMicEnumerationLabelsBlocked(
+        mics.length > 0 && mics.every((mic) => mic.label.length === 0),
+      )
+    } catch (error) {
+      console.error('Failed to enumerate microphones', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshMicDevices()
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.addEventListener === 'function'
+    ) {
+      const handler = () => void refreshMicDevices()
+      navigator.mediaDevices.addEventListener('devicechange', handler)
+      return () => {
+        navigator.mediaDevices?.removeEventListener?.('devicechange', handler)
+      }
+    }
+  }, [refreshMicDevices])
+
+  const unlockMicLabels = useCallback(async () => {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((track) => track.stop())
+      await refreshMicDevices()
+    } catch (error) {
+      console.error('Mic permission grant failed', error)
+    }
+  }, [refreshMicDevices])
 
   const enabledChatModels = useMemo(
     () => settings.chatModels.filter(({ enable }) => enable ?? true),
@@ -170,6 +230,19 @@ export function ContextVoiceInputSection() {
       ? voice.activeAsrConfigId
       : (asrConfigs[0]?.id ?? '')
 
+  const micOptions = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {
+      '': t('settings.asr.micDefault', 'System default'),
+    }
+    micDevices.forEach((device, index) => {
+      const label =
+        device.label ||
+        `${t('settings.asr.microphoneFallbackName', 'Microphone')} ${index + 1}`
+      out[device.deviceId] = label
+    })
+    return out
+  }, [micDevices, t])
+
   const parseInteger = (value: string) => {
     const trimmed = value.trim()
     if (trimmed.length === 0) return null
@@ -203,8 +276,8 @@ export function ContextVoiceInputSection() {
   )
 
   const updateSpeechStartDecibelsInput = (value: string) => {
-    setNumberInputs((s) => ({
-      ...s,
+    setNumberInputs((state) => ({
+      ...state,
       vadSpeechStartDecibels: value,
     }))
     const parsed = parseNumber(value)
@@ -218,8 +291,8 @@ export function ContextVoiceInputSection() {
   }
 
   const updateSilenceDecibelsInput = (value: string) => {
-    setNumberInputs((s) => ({
-      ...s,
+    setNumberInputs((state) => ({
+      ...state,
       vadSilenceDecibels: value,
     }))
     const parsed = parseNumber(value)
@@ -230,6 +303,10 @@ export function ContextVoiceInputSection() {
     ) {
       updateVoice({ vadSilenceDecibels: parsed }, 'vadSilenceDecibels')
     }
+  }
+
+  const handleMicChange = (value: string) => {
+    updateVoice({ microphoneDeviceId: value }, 'microphoneDeviceId')
   }
 
   const selectedPromptBody =
@@ -611,8 +688,8 @@ export function ContextVoiceInputSection() {
                 <ObsidianTextInput
                   value={numberInputs.maxRecordingSeconds}
                   onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
+                    setNumberInputs((state) => ({
+                      ...state,
                       maxRecordingSeconds: value,
                     }))
                     const parsed = parseInteger(value)
@@ -628,34 +705,38 @@ export function ContextVoiceInputSection() {
               </ObsidianSetting>
 
               <ObsidianSetting
-                name={t(
-                  'settings.contextVoiceInput.floatingIslandBottomOffsetVh',
-                  'Floating mic bottom offset (vh)',
-                )}
+                name={t('settings.asr.microphone', 'Microphone')}
                 desc={t(
-                  'settings.contextVoiceInput.floatingIslandBottomOffsetVhDesc',
-                  'Distance from the editor bottom to the floating mic, in viewport-height percent. Default: 9.',
+                  'settings.asr.microphoneDesc',
+                  'Pick a specific input device. Labels appear after granting microphone permission once — use the unlock button if they show as "Microphone 1/2/...".',
                 )}
-                className="yolo-settings-card"
+                className="yolo-models-select-card"
               >
-                <ObsidianTextInput
-                  value={numberInputs.floatingIslandBottomOffsetVh}
-                  onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
-                      floatingIslandBottomOffsetVh: value,
-                    }))
-                    const parsed = parseNumber(value)
-                    if (parsed !== null && parsed >= 0 && parsed <= 50) {
-                      updateVoice(
-                        { floatingIslandBottomOffsetVh: parsed },
-                        'floatingIslandBottomOffsetVh',
-                      )
-                    }
-                  }}
-                  placeholder="9"
+                <ObsidianDropdown
+                  value={voice.microphoneDeviceId ?? ''}
+                  options={micOptions}
+                  onChange={handleMicChange}
                 />
               </ObsidianSetting>
+
+              {micEnumerationLabelsBlocked && (
+                <ObsidianSetting
+                  name={t(
+                    'settings.asr.microphoneUnlock',
+                    'Unlock microphone labels',
+                  )}
+                  desc={t(
+                    'settings.asr.microphoneUnlockDesc',
+                    'Grants the mic permission once so the device names become visible. Audio is not recorded.',
+                  )}
+                  className="yolo-models-select-card"
+                >
+                  <ObsidianButton
+                    text={t('settings.asr.microphoneUnlockButton', 'Grant')}
+                    onClick={() => void unlockMicLabels()}
+                  />
+                </ObsidianSetting>
+              )}
 
               <div className="yolo-voice-decibel-card">
                 <div className="setting-item-info yolo-voice-decibel-card__head">
@@ -742,8 +823,8 @@ export function ContextVoiceInputSection() {
                 <ObsidianTextInput
                   value={numberInputs.vadSpeechRequiredMs}
                   onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
+                    setNumberInputs((state) => ({
+                      ...state,
                       vadSpeechRequiredMs: value,
                     }))
                     const parsed = parseInteger(value)
@@ -772,8 +853,8 @@ export function ContextVoiceInputSection() {
                 <ObsidianTextInput
                   value={numberInputs.vadSilenceHoldMs}
                   onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
+                    setNumberInputs((state) => ({
+                      ...state,
                       vadSilenceHoldMs: value,
                     }))
                     const parsed = parseInteger(value)

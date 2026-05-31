@@ -1,6 +1,6 @@
 ﻿import type { ChangeDesc } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
-import type { Editor, MarkdownView } from 'obsidian'
+import type { App, Editor, MarkdownView } from 'obsidian'
 
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
@@ -10,6 +10,7 @@ import { AudioFileTranscriptionController } from './audio-file-transcription/aud
 import { ContextVoiceInputWorkflow } from './context-input/contextVoiceInputWorkflow'
 import type { DocumentSummaryManager } from './context-input/documentSummaryManager'
 import type { VoicePrefixCacheManager } from './context-input/voicePrefixCacheManager'
+import { ReadAloudController } from './read-aloud/readAloudController'
 import {
   IDLE_VOICE_INPUT_STATUS,
   type VoiceInputState,
@@ -18,6 +19,7 @@ import {
 } from './voiceStatus'
 
 type VoiceControllerDeps = {
+  app: App
   getSettings: () => YoloSettings
   setSettings: (next: YoloSettings) => Promise<void>
   getEditorView: (editor: Editor) => EditorView | null
@@ -61,6 +63,7 @@ type VoiceControllerDeps = {
 export class VoiceController {
   private readonly contextInputWorkflow: ContextVoiceInputWorkflow
   private readonly audioFileTranscriptionController: AudioFileTranscriptionController
+  private readonly readAloudController: ReadAloudController
   private status: VoiceInputStatus = IDLE_VOICE_INPUT_STATUS
   private listeners = new Set<VoiceInputStateListener>()
 
@@ -100,6 +103,20 @@ export class VoiceController {
           this.contextInputWorkflow.localizeAsrRuntimeError(message),
         t: this.deps.t,
       })
+    this.readAloudController = new ReadAloudController({
+      app: this.deps.app,
+      getSettings: this.deps.getSettings,
+      getStatusState: () => this.status.state,
+      updateStatus: (state, extra) =>
+        this.updateStatus(state, undefined, extra),
+      getActiveMarkdownView: this.deps.getActiveMarkdownView,
+      clearInlineSuggestion: this.deps.clearInlineSuggestion,
+      addAbortController: this.deps.addAbortController,
+      removeAbortController: this.deps.removeAbortController,
+      cancelPendingTabCompletion: this.deps.cancelPendingTabCompletion,
+      setVoiceInputInProgress: this.deps.setVoiceInputInProgress,
+      t: this.deps.t,
+    })
   }
 
   setSummaryManager(manager: DocumentSummaryManager | null): void {
@@ -135,6 +152,42 @@ export class VoiceController {
 
   async confirmAudioFileTranscription(): Promise<void> {
     await this.audioFileTranscriptionController.confirm()
+  }
+
+  async startReadAloudSelectionOrDocument(): Promise<void> {
+    await this.readAloudController.start('selection-or-document')
+  }
+
+  async startReadAloudSelection(): Promise<void> {
+    await this.readAloudController.start('selection')
+  }
+
+  async startReadAloudDocument(): Promise<void> {
+    await this.readAloudController.start('document')
+  }
+
+  async confirmReadAloudLongText(): Promise<void> {
+    await this.readAloudController.confirmLongText()
+  }
+
+  async pauseReadAloud(): Promise<void> {
+    await this.readAloudController.pause()
+  }
+
+  async resumeReadAloud(): Promise<void> {
+    await this.readAloudController.resume()
+  }
+
+  prepareGeneratedAudioDrag(event: DragEvent): boolean {
+    return this.readAloudController.prepareGeneratedAudioDrag(event)
+  }
+
+  hasGeneratedAudio(): boolean {
+    return this.readAloudController.hasGeneratedAudio()
+  }
+
+  seekReadAloudToRatio(ratio: number): void {
+    this.readAloudController.seekToRatio(ratio)
   }
 
   subscribe(listener: VoiceInputStateListener): () => void {
@@ -202,6 +255,7 @@ export class VoiceController {
   }
 
   cancelActiveSession(reason: string): void {
+    this.readAloudController.stop(reason)
     this.audioFileTranscriptionController.cancelActiveSession(reason)
     this.contextInputWorkflow.cancelActiveSession(reason)
     if (reason === 'shutdown') {
@@ -214,7 +268,7 @@ export class VoiceController {
     overlayState?: VoiceInputStatus['overlayState'],
     extra?: Pick<
       VoiceInputStatus,
-      'message' | 'progressLabel' | 'audioFilePlan'
+      'message' | 'progressLabel' | 'audioFilePlan' | 'readAloud'
     >,
   ): void {
     this.setStatus({
@@ -226,6 +280,7 @@ export class VoiceController {
       message: extra?.message,
       progressLabel: extra?.progressLabel,
       audioFilePlan: extra?.audioFilePlan,
+      readAloud: extra?.readAloud,
     })
   }
 

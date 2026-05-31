@@ -67,7 +67,11 @@ async function createProgressReadable(
   async function* chunks() {
     const totalBytes = buffer.byteLength
     onUploadProgress({ sentBytes: 0, totalBytes })
-    for (let offset = 0; offset < totalBytes; offset += UPLOAD_PROGRESS_CHUNK_BYTES) {
+    for (
+      let offset = 0;
+      offset < totalBytes;
+      offset += UPLOAD_PROGRESS_CHUNK_BYTES
+    ) {
       const end = Math.min(totalBytes, offset + UPLOAD_PROGRESS_CHUNK_BYTES)
       onUploadProgress({ sentBytes: end, totalBytes })
       yield buffer.subarray(offset, end)
@@ -82,7 +86,10 @@ function toBuffer(body: RawBody): Buffer {
   return Buffer.from(body.buffer, body.byteOffset, body.byteLength)
 }
 
-function hasHeader(headers: Record<string, string>, headerName: string): boolean {
+function hasHeader(
+  headers: Record<string, string>,
+  headerName: string,
+): boolean {
   const lower = headerName.toLowerCase()
   return Object.keys(headers).some((key) => key.toLowerCase() === lower)
 }

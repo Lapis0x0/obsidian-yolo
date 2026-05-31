@@ -129,8 +129,15 @@ async function sendRaw(args: {
   signal?: AbortSignal
   onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
-  const { url, method, headers, body, transportMode, signal, onUploadProgress } =
-    args
+  const {
+    url,
+    method,
+    headers,
+    body,
+    transportMode,
+    signal,
+    onUploadProgress,
+  } = args
 
   if (transportMode === 'auto') {
     return sendViaAuto({ url, method, headers, body, signal, onUploadProgress })

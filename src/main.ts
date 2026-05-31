@@ -65,6 +65,7 @@ import {
   RagIndexRunSnapshot,
   RagIndexService,
 } from './core/rag/ragIndexService'
+import { hasConfiguredTtsConfig } from './core/tts/configStatus'
 import {
   type UpdateCheckResult,
   checkForUpdate,
@@ -111,6 +112,7 @@ import {
 import type { DocumentSummaryManager } from './features/editor/voice/context-input/documentSummaryManager'
 import type { VoicePrefixCacheManager } from './features/editor/voice/context-input/voicePrefixCacheManager'
 import type { VoiceFloatingIslandController } from './features/editor/voice/floating-island/voiceFloatingIslandController'
+import { GENERATED_AUDIO_DRAG_MIME } from './features/editor/voice/read-aloud/generatedAudioDragSource'
 import type { VoiceController } from './features/editor/voice/voiceController'
 import type { ActiveVoiceModeId } from './features/editor/voice/voiceModes'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
@@ -962,15 +964,16 @@ export default class YoloPlugin extends Plugin {
       isAudioFileModeEnabled: () => {
         return this.isAudioFileTranscriptionFeatureReady()
       },
+      getAvailableVoiceModes: () => this.getAvailableVoiceModes(),
       getAudioFileDragKind: (event) => this.getAudioFileDragKind(event),
       resolveAudioFileFromDrop: (event) =>
         this.resolveAudioInputFromDrop(event),
       getVoiceMode: () => this.getActiveVoiceMode(),
       setVoiceMode: async (mode) => {
-        const nextMode =
-          mode === 'audio-file' && !this.isAudioFileTranscriptionFeatureReady()
-            ? 'toggle-listen'
-            : mode
+        const availableModes = this.getAvailableVoiceModes()
+        const nextMode = availableModes.includes(mode)
+          ? mode
+          : (availableModes[0] ?? 'toggle-listen')
         await this.setSettings({
           ...this.settings,
           contextVoiceInputOptions: {
@@ -1001,19 +1004,48 @@ export default class YoloPlugin extends Plugin {
   }
 
   private isVoiceFloatingIslandFeatureReady(): boolean {
-    return (
-      this.isContextVoiceInputFeatureReady() ||
-      this.isAudioFileTranscriptionFeatureReady()
-    )
+    const opts = this.settings?.contextVoiceInputOptions
+    if (!opts?.floatingIslandEnabled) return false
+    return this.getAvailableVoiceModes().length > 0
   }
 
   private getActiveVoiceMode(): ActiveVoiceModeId {
     const mode =
       this.settings.contextVoiceInputOptions.interactionMode ?? 'toggle-listen'
-    if (mode === 'audio-file' && !this.isAudioFileTranscriptionFeatureReady()) {
-      return 'toggle-listen'
+    const availableModes = this.getAvailableVoiceModes()
+    return availableModes.includes(mode)
+      ? mode
+      : (availableModes[0] ?? 'toggle-listen')
+  }
+
+  private getAvailableVoiceModes(): ActiveVoiceModeId[] {
+    const opts = this.settings.contextVoiceInputOptions
+    const available = new Set<ActiveVoiceModeId>()
+    if (this.isContextVoiceInputFeatureReady()) {
+      available.add('toggle-listen')
+      available.add('hold-to-talk')
     }
-    return mode
+    if (this.isAudioFileTranscriptionFeatureReady()) {
+      available.add('audio-file')
+    }
+    if (this.isReadAloudFeatureReady()) {
+      available.add('read-aloud')
+    }
+    const order = opts.floatingIslandModeOrder ?? [
+      'toggle-listen',
+      'hold-to-talk',
+      'audio-file',
+      'read-aloud',
+    ]
+    const hidden = new Set(opts.floatingIslandHiddenModes ?? [])
+    const ordered = order.filter(
+      (mode): mode is ActiveVoiceModeId =>
+        available.has(mode) && !hidden.has(mode),
+    )
+    for (const mode of available) {
+      if (!ordered.includes(mode) && !hidden.has(mode)) ordered.push(mode)
+    }
+    return ordered
   }
 
   private syncVoiceFloatingIsland(): void {
@@ -1069,6 +1101,7 @@ export default class YoloPlugin extends Plugin {
 
   private handleVoiceAudioDragReveal(event: DragEvent): void {
     if (!this.isAudioFileTranscriptionFeatureReady()) return
+    if (this.isGeneratedReadAloudAudioDrag(event.dataTransfer)) return
     const dragKind = this.getAudioFileDragKind(event)
     if (!dragKind) return
     const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
@@ -1078,6 +1111,7 @@ export default class YoloPlugin extends Plugin {
 
   private handleVoiceAudioDrop(event: DragEvent): void {
     if (!this.isAudioFileTranscriptionFeatureReady()) return
+    if (this.isGeneratedReadAloudAudioDrag(event.dataTransfer)) return
     const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
     if (!markdownView) return
     const source = this.resolveAudioDropSource(event)
@@ -1142,15 +1176,20 @@ export default class YoloPlugin extends Plugin {
     const opts = this.settings?.contextVoiceInputOptions
     return (
       !!opts &&
-      opts.enabled &&
       opts.audioFileTranscriptionEnabled &&
       hasConfiguredAudioFileAsrConfig(opts)
     )
   }
 
+  private isReadAloudFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    return !!opts && opts.voiceReadAloudEnabled && hasConfiguredTtsConfig(opts)
+  }
+
   private getAudioFileDragKind(event: DragEvent): AudioFileDragKind | null {
     const dataTransfer = event.dataTransfer
     if (!dataTransfer) return null
+    if (this.isGeneratedReadAloudAudioDrag(dataTransfer)) return null
     const files = Array.from(dataTransfer.files ?? [])
     if (files.length > 0) {
       return files.some((file) => this.isLikelyAudioDragFile(file))
@@ -1215,6 +1254,7 @@ export default class YoloPlugin extends Plugin {
   private resolveAudioDropSource(event: DragEvent): AudioDropSource | null {
     const dataTransfer = event.dataTransfer
     if (!dataTransfer) return null
+    if (this.isGeneratedReadAloudAudioDrag(dataTransfer)) return null
 
     const file = Array.from(dataTransfer.files ?? []).find((candidate) =>
       this.isLikelyAudioDragFile(candidate),
@@ -1223,6 +1263,15 @@ export default class YoloPlugin extends Plugin {
 
     const vaultFile = this.resolveAudioVaultFileFromDataTransfer(dataTransfer)
     return vaultFile ? { vaultFile } : null
+  }
+
+  private isGeneratedReadAloudAudioDrag(
+    dataTransfer: DataTransfer | null,
+  ): boolean {
+    if (!dataTransfer) return false
+    return Array.from(dataTransfer.types ?? []).some(
+      (type) => type.toLowerCase() === GENERATED_AUDIO_DRAG_MIME,
+    )
   }
 
   private createAudioInputFromDropSource(
@@ -2067,6 +2116,7 @@ export default class YoloPlugin extends Plugin {
     }
     const inlineSuggestionController = this.getInlineSuggestionController()
     const controller = new modules.VoiceController({
+      app: this.app,
       getSettings: () => this.settings,
       setSettings: (next) => this.setSettings(next),
       getEditorView: (editor) => this.getEditorView(editor),
@@ -2101,6 +2151,27 @@ export default class YoloPlugin extends Plugin {
     )
     this.voiceController = controller
     return controller
+  }
+
+  private async startReadAloud(
+    mode: 'selection' | 'document' | 'selection-or-document',
+  ): Promise<void> {
+    try {
+      const controller = await this.ensureVoiceController()
+      this.syncVoiceFloatingIsland()
+      if (mode === 'selection') {
+        await controller.startReadAloudSelection()
+        return
+      }
+      if (mode === 'document') {
+        await controller.startReadAloudDocument()
+        return
+      }
+      await controller.startReadAloudSelectionOrDocument()
+    } catch (error) {
+      console.error('Read aloud failed to start:', error)
+      new Notice(this.t('voiceInput.readAloudFailed', 'Read aloud failed.'))
+    }
   }
 
   private async createVoiceFallbackMarkdownFile(
@@ -2555,6 +2626,30 @@ export default class YoloPlugin extends Plugin {
         if (this.voiceController?.isBusy()) {
           this.voiceController.cancelActiveSession('user-cancel')
         }
+      },
+    })
+
+    this.addCommand({
+      id: 'read-aloud-selection',
+      name: this.t('commands.readAloudSelection', 'Read selection aloud'),
+      editorCallback: () => {
+        void this.startReadAloud('selection')
+      },
+    })
+
+    this.addCommand({
+      id: 'read-aloud-current-file',
+      name: this.t('commands.readAloudCurrentFile', 'Read current file aloud'),
+      editorCallback: () => {
+        void this.startReadAloud('document')
+      },
+    })
+
+    this.addCommand({
+      id: 'stop-read-aloud',
+      name: this.t('commands.stopReadAloud', 'Stop read aloud'),
+      callback: () => {
+        this.voiceController?.cancelActiveSession('user-cancel')
       },
     })
 

@@ -23,9 +23,7 @@ export type AsrUploadProgress = {
   totalBytes: number
 }
 
-export type AsrUploadProgressCallback = (
-  progress: AsrUploadProgress,
-) => void
+export type AsrUploadProgressCallback = (progress: AsrUploadProgress) => void
 
 export type AsrOptions = {
   /** BCP47 language hint, or `'auto'` to defer to the provider. */

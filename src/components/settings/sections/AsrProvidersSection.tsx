@@ -15,13 +15,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Settings, Trash2 } from 'lucide-react'
 import { App, Notice } from 'obsidian'
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { type CSSProperties, useCallback, useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -33,9 +27,6 @@ import {
   type AsrConfigCategory,
   type AsrWebSocketProtocol,
 } from '../../../settings/schema/setting.types'
-import { ObsidianButton } from '../../common/ObsidianButton'
-import { ObsidianDropdown } from '../../common/ObsidianDropdown'
-import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import {
   AddAsrConfigModal,
@@ -47,7 +38,6 @@ type AsrProvidersSectionProps = {
   plugin: YoloPlugin
 }
 
-type MicDevice = { deviceId: string; label: string }
 type Translator = ReturnType<typeof useLanguage>['t']
 
 const CATEGORY_ORDER: AsrConfigCategory[] = [
@@ -287,9 +277,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
       ? voice.activeAudioFileAsrConfigId
       : (configs[0]?.id ?? activeId)
 
-  const [micDevices, setMicDevices] = useState<MicDevice[]>([])
-  const [micEnumerationLabelsBlocked, setMicEnumerationLabelsBlocked] =
-    useState(false)
   const configSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -297,70 +284,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   )
 
   const groupedConfigs = useMemo(() => groupConfigs(configs), [configs])
-
-  const refreshMicDevices = useCallback(async () => {
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.mediaDevices ||
-      typeof navigator.mediaDevices.enumerateDevices !== 'function'
-    ) {
-      return
-    }
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const mics = devices
-        .filter((d) => d.kind === 'audioinput')
-        .map<MicDevice>((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || '',
-        }))
-      setMicDevices(mics)
-      setMicEnumerationLabelsBlocked(
-        mics.length > 0 && mics.every((m) => m.label.length === 0),
-      )
-    } catch (error) {
-      console.error('Failed to enumerate microphones', error)
-    }
-  }, [])
-
-  useEffect(() => {
-    void refreshMicDevices()
-    if (
-      typeof navigator !== 'undefined' &&
-      navigator.mediaDevices &&
-      typeof navigator.mediaDevices.addEventListener === 'function'
-    ) {
-      const handler = () => void refreshMicDevices()
-      navigator.mediaDevices.addEventListener('devicechange', handler)
-      return () => {
-        navigator.mediaDevices?.removeEventListener?.('devicechange', handler)
-      }
-    }
-  }, [refreshMicDevices])
-
-  const unlockMicLabels = useCallback(async () => {
-    if (!navigator?.mediaDevices?.getUserMedia) return
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      stream.getTracks().forEach((t) => t.stop())
-      await refreshMicDevices()
-    } catch (error) {
-      console.error('Mic permission grant failed', error)
-    }
-  }, [refreshMicDevices])
-
-  const micOptions = useMemo<Record<string, string>>(() => {
-    const out: Record<string, string> = {
-      '': t('settings.asr.micDefault', 'System default'),
-    }
-    micDevices.forEach((device, index) => {
-      const label =
-        device.label ||
-        `${t('settings.asr.microphoneFallbackName', 'Microphone')} ${index + 1}`
-      out[device.deviceId] = label
-    })
-    return out
-  }, [micDevices, t])
 
   const persistConfigs = useCallback(
     async (nextConfigs: AsrConfig[]): Promise<void> => {
@@ -438,24 +361,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
 
   const handleAdd = (category: AsrConfigCategory) => {
     new AddAsrConfigModal(app, plugin, category).open()
-  }
-
-  const handleMicChange = (value: string) => {
-    void (async () => {
-      try {
-        const latestSettings = plugin.settings
-        const latestVoice = latestSettings.contextVoiceInputOptions
-        await setSettings({
-          ...latestSettings,
-          contextVoiceInputOptions: {
-            ...latestVoice,
-            microphoneDeviceId: value,
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to update microphone device', error)
-      }
-    })()
   }
 
   const triggerDropSuccess = (movedId: string) => {
@@ -593,7 +498,7 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
             <div className="yolo-settings-desc yolo-settings-block-desc">
               {t(
                 'settings.asr.descriptionV3',
-                'Voice providers are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active providers under Editor → Voice input and Editor → Audio file transcription.',
+                'Voice providers are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active providers under Voice → Voice input and Voice → Audio file transcription.',
               )}
             </div>
           </div>
@@ -601,40 +506,6 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
 
         <div className="yolo-settings-block-content">
           {CATEGORY_ORDER.map(renderProviderGroup)}
-
-          <ObsidianSetting
-            name={t('settings.asr.microphone', 'Microphone')}
-            desc={t(
-              'settings.asr.microphoneDesc',
-              'Pick a specific input device. Labels appear after granting microphone permission once — use the unlock button if they show as "Microphone 1/2/...".',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={voice.microphoneDeviceId ?? ''}
-              options={micOptions}
-              onChange={handleMicChange}
-            />
-          </ObsidianSetting>
-
-          {micEnumerationLabelsBlocked && (
-            <ObsidianSetting
-              name={t(
-                'settings.asr.microphoneUnlock',
-                'Unlock microphone labels',
-              )}
-              desc={t(
-                'settings.asr.microphoneUnlockDesc',
-                'Grants the mic permission once so the device names become visible. Audio is not recorded.',
-              )}
-              className="yolo-models-select-card"
-            >
-              <ObsidianButton
-                text={t('settings.asr.microphoneUnlockButton', 'Grant')}
-                onClick={() => void unlockMicLabels()}
-              />
-            </ObsidianSetting>
-          )}
         </div>
       </section>
     </div>

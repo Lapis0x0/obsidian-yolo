@@ -11,6 +11,24 @@ export type VoiceInputState =
   | 'inserting'
   | 'polishing'
   | 'ready'
+  | 'read-aloud-preparing'
+  | 'read-aloud-confirm'
+  | 'read-aloud-synthesizing'
+  | 'read-aloud-playing'
+  | 'read-aloud-paused'
+  | 'read-aloud-failed'
+  | 'read-aloud-completed'
+
+export type VoiceReadAloudStatus = {
+  currentSegment: number
+  totalSegments: number
+  elapsedSeconds: number
+  durationSeconds: number | null
+  progressRatio: number | null
+  waveformPeaks: number[] | null
+  hasGeneratedAudio: boolean
+  sourceName: string
+}
 
 export type VoiceInputStatus = {
   state: VoiceInputState
@@ -24,6 +42,7 @@ export type VoiceInputStatus = {
   message?: string
   progressLabel?: string
   audioFilePlan?: AudioFilePlanSummary
+  readAloud?: VoiceReadAloudStatus
 }
 
 export type VoiceInputStateListener = (status: VoiceInputStatus) => void

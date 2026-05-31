@@ -1223,13 +1223,13 @@ function AsrConfigFormComponent({
 
       {!isChatAudio && (
         <ObsidianSetting
-        name={
-          isWebSocketAsr
-            ? t('settings.asr.listenPath', 'Path')
-            : t('settings.asr.transcriptionPath', 'Transcription path')
-        }
-        desc={buildTranscriptionPathDesc()}
-      >
+          name={
+            isWebSocketAsr
+              ? t('settings.asr.listenPath', 'Path')
+              : t('settings.asr.transcriptionPath', 'Transcription path')
+          }
+          desc={buildTranscriptionPathDesc()}
+        >
           <ObsidianTextInput
             value={formData.transcriptionPath}
             onChange={(value) => handlePatch({ transcriptionPath: value })}

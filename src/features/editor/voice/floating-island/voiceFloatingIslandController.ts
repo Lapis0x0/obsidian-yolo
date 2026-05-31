@@ -28,11 +28,7 @@ import type { MarkdownView } from 'obsidian'
 
 import type { AudioFileSource } from '../audio-file-transcription/audioFileSource'
 import type { VoiceController } from '../voiceController'
-import {
-  type ActiveVoiceModeId,
-  CONTEXT_INPUT_VOICE_MODES,
-  CURRENT_FLOATING_VOICE_MODES,
-} from '../voiceModes'
+import type { ActiveVoiceModeId } from '../voiceModes'
 import type { VoiceInputStatus } from '../voiceStatus'
 
 type AudioFileDragKind = 'audio' | 'maybe-audio' | 'unsupported'
@@ -50,6 +46,7 @@ type IslandDeps = {
   t: (key: string, fallback: string) => string
   isFeatureReady: () => boolean
   isAudioFileModeEnabled: () => boolean
+  getAvailableVoiceModes: () => ActiveVoiceModeId[]
   getAudioFileDragKind: (event: DragEvent) => AudioFileDragKind | null
   resolveAudioFileFromDrop: (
     event: DragEvent,
@@ -89,7 +86,9 @@ export class VoiceFloatingIslandController {
   private root: HTMLElement | null = null
   private micButton: HTMLButtonElement | null = null
   private modeToggleButton: HTMLButtonElement | null = null
+  private generatedAudioDragHandle: HTMLElement | null = null
   private waveCanvas: HTMLCanvasElement | null = null
+  private segmentEl: HTMLElement | null = null
   private timerEl: HTMLElement | null = null
   private statusEl: HTMLElement | null = null
   private fileInput: HTMLInputElement | null = null
@@ -102,6 +101,7 @@ export class VoiceFloatingIslandController {
   private waveBuffer: Uint8Array | null = null
   private waveHistory: Float32Array = new Float32Array(WAVE_HISTORY_SAMPLES)
   private waveRafId: number | null = null
+  private readAloudProgressRafId: number | null = null
   private timerInterval: number | null = null
   private currentStream: MediaStream | null = null
   private unsubscribeController: (() => void) | null = null
@@ -134,6 +134,7 @@ export class VoiceFloatingIslandController {
   private externalAudioDragRevealTimeout: number | null = null
   private lastPrimaryButtonKey: string | null = null
   private lastModeButtonKey: string | null = null
+  private animateNextModeButtonIcon = false
   private suppressModeButtonClickOnce = false
   private suppressModeButtonClickClearTimeout: number | null = null
 
@@ -188,6 +189,7 @@ export class VoiceFloatingIslandController {
     this.unsubscribeController?.()
     this.unsubscribeController = null
     this.stopMonitoring()
+    this.stopReadAloudProgress()
     this.stopReadyHintReveal()
     this.clearExternalAudioDragRevealTimeout()
     this.removeDocumentPointerUpListener()
@@ -201,7 +203,9 @@ export class VoiceFloatingIslandController {
     }
     this.micButton = null
     this.modeToggleButton = null
+    this.generatedAudioDragHandle = null
     this.waveCanvas = null
+    this.segmentEl = null
     this.timerEl = null
     this.statusEl = null
     this.fileInput = null
@@ -216,6 +220,7 @@ export class VoiceFloatingIslandController {
     this.audioDragKind = null
     this.lastPrimaryButtonKey = null
     this.lastModeButtonKey = null
+    this.animateNextModeButtonIcon = false
     this.clearSuppressedModeButtonClick()
   }
 
@@ -249,6 +254,10 @@ export class VoiceFloatingIslandController {
     })
     wave.width = WAVE_HISTORY_SAMPLES * WAVE_BAR_WIDTH
     wave.height = 32
+    this.attachReadAloudSeekListeners(wave)
+
+    const segment = center.createDiv({ cls: 'yolo-voice-island__segment' })
+    segment.textContent = ''
 
     const timer = center.createDiv({ cls: 'yolo-voice-island__timer' })
     timer.textContent = '0:00'
@@ -265,6 +274,24 @@ export class VoiceFloatingIslandController {
       cls: 'yolo-voice-island__status-text yolo-voice-island__status-text--b',
     })
     const statusText = statusA
+
+    const generatedAudioDragHandle = root.createDiv({
+      cls: 'yolo-voice-island__generated-audio',
+      attr: {
+        draggable: 'true',
+        'aria-label': this.deps.t(
+          'voiceInput.readAloudDragGeneratedAudio',
+          'Drag generated audio',
+        ),
+      },
+    })
+    generatedAudioDragHandle.appendChild(buildAudioWaveSvg())
+    generatedAudioDragHandle.addEventListener('dragstart', (event) => {
+      const prepared = this.deps
+        .getController()
+        ?.prepareGeneratedAudioDrag(event)
+      if (!prepared) event.preventDefault()
+    })
 
     const modeToggle = root.createEl('button', {
       cls: 'yolo-voice-island__mode',
@@ -304,7 +331,9 @@ export class VoiceFloatingIslandController {
     this.root = root
     this.micButton = mic
     this.modeToggleButton = modeToggle
+    this.generatedAudioDragHandle = generatedAudioDragHandle
     this.waveCanvas = wave
+    this.segmentEl = segment
     this.timerEl = timer
     this.statusEl = statusText
     this.fileInput = fileInput
@@ -362,6 +391,7 @@ export class VoiceFloatingIslandController {
     if (!ready) {
       this.root.classList.add('is-hidden')
       this.stopMonitoring()
+      this.stopReadAloudProgress()
       return
     }
 
@@ -406,6 +436,12 @@ export class VoiceFloatingIslandController {
       'is-audio-file-mode',
       voiceMode === 'audio-file' || audioDragPromptVisible,
     )
+    this.root.classList.toggle('is-read-aloud-mode', voiceMode === 'read-aloud')
+    const hasGeneratedAudio =
+      voiceMode === 'read-aloud' &&
+      (!!status?.readAloud?.hasGeneratedAudio ||
+        !!this.deps.getController()?.hasGeneratedAudio())
+    this.root.classList.toggle('has-generated-audio', hasGeneratedAudio)
 
     // Drive status text shown inside the bar.
     if (this.statusHostA && this.statusHostB) {
@@ -423,6 +459,7 @@ export class VoiceFloatingIslandController {
 
     if (state === 'recording') {
       this.root.classList.add('is-recording')
+      this.stopReadAloudProgress()
       // If the user released the button before recording actually began
       // (hold-to-talk race), fire the stop now that we're live.
       if (this.pendingHoldRelease) {
@@ -441,7 +478,17 @@ export class VoiceFloatingIslandController {
       // Stop waveform + VAD as soon as we leave 'recording'. Bar stays
       // visible while transcribing/polishing/ready so the user sees the
       // latency badges + status text without anything moving around.
-      this.stopMonitoring()
+      this.stopMonitoring({
+        clearCanvas: !this.isReadAloudProgressState(state),
+      })
+      if (this.isReadAloudProgressState(state)) {
+        this.beginReadAloudProgress(
+          status?.readAloud ?? null,
+          state === 'read-aloud-playing',
+        )
+      } else {
+        this.stopReadAloudProgress()
+      }
     }
   }
 
@@ -518,6 +565,12 @@ export class VoiceFloatingIslandController {
             'voiceInput.audioFileIdleHint',
             'Drop or choose audio',
           )
+        }
+        if (
+          displayState === 'idle' &&
+          this.deps.getVoiceMode() === 'read-aloud'
+        ) {
+          return this.getReadAloudIdleLabel()
         }
         return ''
     }
@@ -650,12 +703,28 @@ export class VoiceFloatingIslandController {
       void controller.confirmAudioFileTranscription()
       return
     }
+    if (state === 'read-aloud-confirm') {
+      await controller.confirmReadAloudLongText()
+      return
+    }
     if (state === 'recording') {
       await controller.stopAndProcess()
       return
     }
+    if (state === 'read-aloud-playing') {
+      await controller.pauseReadAloud()
+      return
+    }
+    if (state === 'read-aloud-paused') {
+      await controller.resumeReadAloud()
+      return
+    }
     if (state === 'idle' && this.deps.getVoiceMode() === 'audio-file') {
       this.fileInput?.click()
+      return
+    }
+    if (state === 'idle' && this.deps.getVoiceMode() === 'read-aloud') {
+      await controller.startReadAloudSelectionOrDocument()
       return
     }
     if (state === 'idle' && this.deps.getVoiceMode() === 'toggle-listen') {
@@ -678,8 +747,13 @@ export class VoiceFloatingIslandController {
       state === 'checking' ||
       state === 'preparing' ||
       state === 'uploading' ||
-      state === 'inserting'
+      state === 'inserting' ||
+      state === 'read-aloud-preparing' ||
+      state === 'read-aloud-synthesizing'
     const renderKey = this.getPrimaryButtonRenderKey(state)
+    const shouldAnimateIcon =
+      this.lastPrimaryButtonKey !== null &&
+      this.lastPrimaryButtonKey !== renderKey
     if (this.lastPrimaryButtonKey === renderKey) {
       this.updatePrimaryButtonLabel(button, state)
       return
@@ -704,6 +778,8 @@ export class VoiceFloatingIslandController {
       case 'uploading':
       case 'inserting':
       case 'polishing':
+      case 'read-aloud-preparing':
+      case 'read-aloud-synthesizing':
         button.appendChild(buildSpinnerSvg())
         button.setAttribute(
           'aria-label',
@@ -713,14 +789,34 @@ export class VoiceFloatingIslandController {
           ),
         )
         break
+      case 'read-aloud-playing':
+        button.appendChild(buildPauseSvg())
+        button.setAttribute(
+          'aria-label',
+          this.deps.t('voiceInput.readAloudPauseButton', 'Pause read aloud'),
+        )
+        break
+      case 'read-aloud-paused':
+        button.appendChild(buildPlaySvg())
+        button.setAttribute(
+          'aria-label',
+          this.deps.t('voiceInput.readAloudResumeButton', 'Resume read aloud'),
+        )
+        break
       case 'ready':
       case 'confirm-plan':
+      case 'read-aloud-confirm':
         button.appendChild(buildCheckSvg())
         button.setAttribute(
           'aria-label',
           state === 'confirm-plan'
             ? this.deps.t('voiceInput.audioFileConfirmButton', 'Start upload')
-            : this.deps.t('voiceInput.buttonAccept', 'Insert draft'),
+            : state === 'read-aloud-confirm'
+              ? this.deps.t(
+                  'voiceInput.readAloudConfirmButton',
+                  'Start read aloud',
+                )
+              : this.deps.t('voiceInput.buttonAccept', 'Insert draft'),
         )
         break
       case 'idle':
@@ -728,7 +824,9 @@ export class VoiceFloatingIslandController {
         button.appendChild(
           this.deps.getVoiceMode() === 'audio-file'
             ? buildFileAudioSvg()
-            : buildMicSvg(),
+            : this.deps.getVoiceMode() === 'read-aloud'
+              ? buildPlaySvg()
+              : buildMicSvg(),
         )
         button.setAttribute(
           'aria-label',
@@ -737,10 +835,13 @@ export class VoiceFloatingIslandController {
                 'voiceInput.audioFileChooseButton',
                 'Choose audio file',
               )
-            : this.deps.t('voiceInput.buttonStart', 'Start recording'),
+            : this.deps.getVoiceMode() === 'read-aloud'
+              ? this.getReadAloudIdleLabel()
+              : this.deps.t('voiceInput.buttonStart', 'Start recording'),
         )
         break
     }
+    if (shouldAnimateIcon) this.playButtonIconFade(button)
   }
 
   private getPrimaryButtonRenderKey(state: VoiceInputStatus['state']): string {
@@ -751,6 +852,8 @@ export class VoiceFloatingIslandController {
       case 'uploading':
       case 'inserting':
       case 'polishing':
+      case 'read-aloud-preparing':
+      case 'read-aloud-synthesizing':
         return 'processing'
       case 'idle':
         return `idle:${this.deps.getVoiceMode()}`
@@ -769,7 +872,9 @@ export class VoiceFloatingIslandController {
       state === 'preparing' ||
       state === 'uploading' ||
       state === 'inserting' ||
-      state === 'polishing'
+      state === 'polishing' ||
+      state === 'read-aloud-preparing' ||
+      state === 'read-aloud-synthesizing'
     ) {
       button.setAttribute(
         'aria-label',
@@ -895,18 +1000,29 @@ export class VoiceFloatingIslandController {
   private async cycleMode(): Promise<void> {
     const current = this.deps.getVoiceMode()
     const next = this.getNextVoiceMode(current)
-    await this.deps.setVoiceMode(next)
+    this.animateNextModeButtonIcon = true
+    try {
+      await this.deps.setVoiceMode(next)
+    } catch (error) {
+      this.animateNextModeButtonIcon = false
+      throw error
+    }
     if (this.modeToggleButton) {
       this.renderModeButton(
         this.modeToggleButton,
         next,
         this.deps.getController()?.getStatus().state ?? 'idle',
       )
+    } else {
+      this.animateNextModeButtonIcon = false
     }
   }
 
   private isModeButtonCancel(state: VoiceInputStatus['state']): boolean {
     if (this.deps.getVoiceMode() === 'audio-file' && state !== 'idle') {
+      return true
+    }
+    if (this.deps.getVoiceMode() === 'read-aloud' && state !== 'idle') {
       return true
     }
     if (this.deps.getVoiceMode() !== 'toggle-listen') return false
@@ -931,9 +1047,7 @@ export class VoiceFloatingIslandController {
   }
 
   private getAvailableVoiceModes(): ActiveVoiceModeId[] {
-    return this.deps.isAudioFileModeEnabled()
-      ? [...CURRENT_FLOATING_VOICE_MODES]
-      : [...CONTEXT_INPUT_VOICE_MODES]
+    return this.deps.getAvailableVoiceModes()
   }
 
   private getNextVoiceMode(current: ActiveVoiceModeId): ActiveVoiceModeId {
@@ -947,18 +1061,46 @@ export class VoiceFloatingIslandController {
     mode: ActiveVoiceModeId,
     state: VoiceInputStatus['state'],
   ): void {
-    const renderKey = this.getModeButtonRenderKey(mode, state)
+    const availableModes = this.getAvailableVoiceModes()
+    const shouldShowCancel = this.isModeButtonCancel(state)
+    const shouldDisableSingleMode =
+      availableModes.length <= 1 && !shouldShowCancel
+    button.classList.remove('is-hidden')
+    button.removeAttribute('aria-hidden')
+    button.disabled = shouldDisableSingleMode
+
+    const renderKey = this.getModeButtonRenderKey(
+      mode,
+      state,
+      availableModes.length,
+    )
+    const shouldAnimateIcon =
+      this.animateNextModeButtonIcon &&
+      this.lastModeButtonKey !== null &&
+      this.lastModeButtonKey !== renderKey
+    this.animateNextModeButtonIcon = false
     if (this.lastModeButtonKey === renderKey) return
     this.lastModeButtonKey = renderKey
     button.empty()
     // Drop any prior native `title` so we don't stack a browser tooltip on
     // top of Obsidian's aria-label tooltip (see renderPrimaryButton).
     button.removeAttribute('title')
-    if (this.isModeButtonCancel(state)) {
+    if (shouldShowCancel) {
       button.appendChild(buildCancelSvg())
       button.setAttribute(
         'aria-label',
         this.deps.t('voiceInput.buttonCancel', 'Cancel voice input'),
+      )
+      return
+    }
+    if (shouldDisableSingleMode) {
+      button.appendChild(buildCancelSvg())
+      button.setAttribute(
+        'aria-label',
+        this.deps.t(
+          'voiceInput.modeSwitchUnavailable',
+          'No other voice mode available',
+        ),
       )
       return
     }
@@ -981,6 +1123,15 @@ export class VoiceFloatingIslandController {
           'Click to switch to audio file mode',
         ),
       )
+    } else if (nextMode === 'read-aloud') {
+      button.appendChild(buildSpeakerSvg())
+      button.setAttribute(
+        'aria-label',
+        this.deps.t(
+          'voiceInput.modeSwitchToReadAloud',
+          'Click to switch to read aloud',
+        ),
+      )
     } else {
       button.appendChild(buildToggleSvg())
       button.setAttribute(
@@ -991,15 +1142,39 @@ export class VoiceFloatingIslandController {
         ),
       )
     }
+    if (shouldAnimateIcon) this.playButtonIconFade(button)
+  }
+
+  private playButtonIconFade(button: HTMLButtonElement): void {
+    if (this.prefersReducedMotion()) return
+    const icon = button.querySelector('svg')
+    if (!icon || typeof icon.animate !== 'function') return
+    icon.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 150,
+      easing: 'ease-out',
+    })
+  }
+
+  private prefersReducedMotion(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
   }
 
   private getModeButtonRenderKey(
     mode: ActiveVoiceModeId,
     state: VoiceInputStatus['state'],
+    availableModeCount: number,
   ): string {
-    return this.isModeButtonCancel(state)
-      ? 'cancel'
-      : `mode:${this.getNextVoiceMode(mode)}`
+    if (this.isModeButtonCancel(state)) {
+      return 'cancel'
+    }
+    if (availableModeCount <= 1) {
+      return 'single-disabled'
+    }
+    return `mode:${availableModeCount}:${this.getNextVoiceMode(mode)}`
   }
 
   private attachAudioFileDragListeners(root: HTMLElement): void {
@@ -1110,6 +1285,14 @@ export class VoiceFloatingIslandController {
     if (!controller) return
     const view = this.attachedView ?? this.deps.getActiveMarkdownView()
     await controller.startAudioFileTranscription(file, view?.editor ?? null)
+  }
+
+  private getReadAloudIdleLabel(): string {
+    const view = this.deps.getActiveMarkdownView()
+    const hasSelection = !!view?.editor?.getSelection()?.trim()
+    return hasSelection
+      ? this.deps.t('voiceInput.readSelection', 'Read selection')
+      : this.deps.t('voiceInput.readNote', 'Read note')
   }
 
   // ---- VAD + Waveform monitoring ----------------------------------------
@@ -1277,7 +1460,153 @@ export class VoiceFloatingIslandController {
     }
   }
 
-  private stopMonitoring(): void {
+  private isReadAloudProgressState(state: VoiceInputStatus['state']): boolean {
+    return state === 'read-aloud-playing' || state === 'read-aloud-paused'
+  }
+
+  private beginReadAloudProgress(
+    status: VoiceInputStatus['readAloud'] | null,
+    active: boolean,
+  ): void {
+    if (!this.waveCanvas) return
+    this.renderReadAloudTimer(status)
+    if (!active) {
+      this.stopReadAloudProgress({ clearCanvas: false })
+      const ctx2d = this.waveCanvas.getContext('2d')
+      if (ctx2d) this.repaintReadAloudProgress(ctx2d, this.waveCanvas, status)
+      return
+    }
+    if (this.readAloudProgressRafId !== null) return
+    const draw = () => {
+      const canvas = this.waveCanvas
+      if (!canvas) return
+      const ctx2d = canvas.getContext('2d')
+      const latestStatus =
+        this.deps.getController()?.getStatus().readAloud ?? status
+      this.renderReadAloudTimer(latestStatus)
+      if (ctx2d) this.repaintReadAloudProgress(ctx2d, canvas, latestStatus)
+      this.readAloudProgressRafId = window.requestAnimationFrame(draw)
+    }
+    draw()
+  }
+
+  private repaintReadAloudProgress(
+    ctx2d: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    status: VoiceInputStatus['readAloud'] | null,
+  ): void {
+    const w = canvas.width
+    const h = canvas.height
+    ctx2d.clearRect(0, 0, w, h)
+    const progress = status?.progressRatio ?? 0
+
+    ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.15)'
+    ctx2d.lineWidth = 1
+    ctx2d.beginPath()
+    ctx2d.moveTo(0, h / 2)
+    ctx2d.lineTo(w, h / 2)
+    ctx2d.stroke()
+
+    ctx2d.lineWidth = WAVE_BAR_WIDTH - 1
+    ctx2d.lineCap = 'round'
+    const waveformPeaks =
+      status?.waveformPeaks && status.waveformPeaks.length > 0
+        ? status.waveformPeaks
+        : null
+    for (let i = 0; i < WAVE_HISTORY_SAMPLES; i++) {
+      const x = i * WAVE_BAR_WIDTH + WAVE_BAR_WIDTH / 2
+      const fallbackAmplitude =
+        0.18 +
+        0.38 * Math.abs(Math.sin(i * 0.31)) +
+        0.18 * Math.abs(Math.sin(i * 0.73))
+      const sourceIndex = waveformPeaks
+        ? Math.min(
+            waveformPeaks.length - 1,
+            Math.floor((i / WAVE_HISTORY_SAMPLES) * waveformPeaks.length),
+          )
+        : -1
+      const amplitude = waveformPeaks?.[sourceIndex] ?? fallbackAmplitude
+      const halfHeight = Math.max(1, amplitude * (h / 2 - 1))
+      ctx2d.strokeStyle =
+        x / w <= progress
+          ? 'rgba(108, 143, 255, 0.95)'
+          : 'rgba(108, 143, 255, 0.28)'
+      ctx2d.beginPath()
+      ctx2d.moveTo(x, h / 2 - halfHeight)
+      ctx2d.lineTo(x, h / 2 + halfHeight)
+      ctx2d.stroke()
+    }
+  }
+
+  private stopReadAloudProgress(options?: { clearCanvas?: boolean }): void {
+    if (this.readAloudProgressRafId !== null) {
+      window.cancelAnimationFrame(this.readAloudProgressRafId)
+      this.readAloudProgressRafId = null
+    }
+    if (options?.clearCanvas === false || !this.waveCanvas) return
+    if (this.segmentEl) this.segmentEl.textContent = ''
+    const ctx2d = this.waveCanvas.getContext('2d')
+    if (ctx2d)
+      ctx2d.clearRect(0, 0, this.waveCanvas.width, this.waveCanvas.height)
+  }
+
+  private renderReadAloudTimer(
+    status: VoiceInputStatus['readAloud'] | null,
+  ): void {
+    if (!this.timerEl) return
+    if (!status) {
+      this.timerEl.textContent = '0:00'
+      if (this.segmentEl) this.segmentEl.textContent = ''
+      return
+    }
+    if (this.segmentEl) {
+      this.segmentEl.textContent =
+        status.totalSegments > 1
+          ? `${status.currentSegment}/${status.totalSegments}`
+          : ''
+    }
+    this.timerEl.textContent =
+      status.durationSeconds === null
+        ? formatSeconds(status.elapsedSeconds)
+        : `${formatSeconds(status.elapsedSeconds)}/${formatSeconds(
+            status.durationSeconds,
+          )}`
+  }
+
+  private attachReadAloudSeekListeners(canvas: HTMLCanvasElement): void {
+    const seek = (event: PointerEvent) => {
+      const status = this.deps.getController()?.getStatus()
+      if (!status || !this.isReadAloudProgressState(status.state)) return
+      if (!status.readAloud || status.readAloud.durationSeconds === null) return
+      const rect = canvas.getBoundingClientRect()
+      const ratio = (event.clientX - rect.left) / Math.max(1, rect.width)
+      this.deps.getController()?.seekReadAloudToRatio(ratio)
+    }
+    canvas.addEventListener('pointerdown', (event) => {
+      const status = this.deps.getController()?.getStatus()
+      if (!status || !this.isReadAloudProgressState(status.state)) return
+      event.preventDefault()
+      canvas.setPointerCapture(event.pointerId)
+      seek(event)
+    })
+    canvas.addEventListener('pointermove', (event) => {
+      if (!canvas.hasPointerCapture(event.pointerId)) return
+      event.preventDefault()
+      seek(event)
+    })
+    canvas.addEventListener('pointerup', (event) => {
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId)
+      }
+    })
+    canvas.addEventListener('pointercancel', (event) => {
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId)
+      }
+    })
+  }
+
+  private stopMonitoring(options?: { clearCanvas?: boolean }): void {
     if (this.waveRafId !== null) {
       window.cancelAnimationFrame(this.waveRafId)
       this.waveRafId = null
@@ -1306,12 +1635,13 @@ export class VoiceFloatingIslandController {
       window.clearInterval(this.timerInterval)
       this.timerInterval = null
     }
-    if (this.waveCanvas) {
+    if (options?.clearCanvas !== false && this.waveCanvas) {
       const ctx2d = this.waveCanvas.getContext('2d')
       if (ctx2d)
         ctx2d.clearRect(0, 0, this.waveCanvas.width, this.waveCanvas.height)
     }
     if (this.timerEl) this.timerEl.textContent = '0:00'
+    if (this.segmentEl) this.segmentEl.textContent = ''
   }
 
   private beginTimer(startedAt: number | null): void {
@@ -1377,6 +1707,86 @@ const buildStopSvg = (): SVGSVGElement => {
   rect.setAttribute('height', '10')
   rect.setAttribute('rx', '2')
   svg.appendChild(rect)
+  return svg
+}
+
+const buildPlaySvg = (): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('width', '15')
+  svg.setAttribute('height', '15')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'currentColor')
+  const path = document.createElementNS(SVG_NS, 'path')
+  path.setAttribute('d', 'M8 5v14l11-7z')
+  svg.appendChild(path)
+  return svg
+}
+
+const buildSpeakerSvg = (): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('width', '13')
+  svg.setAttribute('height', '13')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+
+  const body = document.createElementNS(SVG_NS, 'path')
+  body.setAttribute('d', 'M11 5 6 9H3v6h3l5 4V5z')
+  svg.appendChild(body)
+
+  const waveInner = document.createElementNS(SVG_NS, 'path')
+  waveInner.setAttribute('d', 'M15.5 8.5a5 5 0 0 1 0 7')
+  svg.appendChild(waveInner)
+
+  const waveOuter = document.createElementNS(SVG_NS, 'path')
+  waveOuter.setAttribute('d', 'M18.5 5.5a9 9 0 0 1 0 13')
+  svg.appendChild(waveOuter)
+
+  return svg
+}
+
+const buildPauseSvg = (): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('width', '15')
+  svg.setAttribute('height', '15')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'currentColor')
+  const left = document.createElementNS(SVG_NS, 'rect')
+  left.setAttribute('x', '7')
+  left.setAttribute('y', '5')
+  left.setAttribute('width', '4')
+  left.setAttribute('height', '14')
+  left.setAttribute('rx', '1')
+  svg.appendChild(left)
+  const right = document.createElementNS(SVG_NS, 'rect')
+  right.setAttribute('x', '13')
+  right.setAttribute('y', '5')
+  right.setAttribute('width', '4')
+  right.setAttribute('height', '14')
+  right.setAttribute('rx', '1')
+  svg.appendChild(right)
+  return svg
+}
+
+const buildAudioWaveSvg = (): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  const paths = ['M4 10v4', 'M8 7v10', 'M12 4v16', 'M16 8v8', 'M20 11v2']
+  for (const d of paths) {
+    const path = document.createElementNS(SVG_NS, 'path')
+    path.setAttribute('d', d)
+    svg.appendChild(path)
+  }
   return svg
 }
 
@@ -1517,4 +1927,11 @@ const buildFileAudioSvg = (): SVGSVGElement => {
   svg.appendChild(rightStem)
 
   return svg
+}
+
+const formatSeconds = (seconds: number): string => {
+  const total = Math.max(0, Math.floor(seconds))
+  const minutes = Math.floor(total / 60)
+  const rest = total % 60
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }

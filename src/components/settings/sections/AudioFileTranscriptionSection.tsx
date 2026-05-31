@@ -242,18 +242,6 @@ export function AudioFileTranscriptionSection() {
         </div>
 
         <div className="yolo-settings-block-content">
-          {!voice.enabled && (
-            <div
-              className="yolo-settings-card"
-              style={{ borderColor: 'var(--text-warning)' }}
-            >
-              {t(
-                'settings.audioFileTranscription.voiceRequiredHint',
-                'Enable voice input above to show the floating island used for choosing or dropping audio files.',
-              )}
-            </div>
-          )}
-
           {!asrReady && (
             <div
               className="yolo-settings-card"
@@ -278,12 +266,8 @@ export function AudioFileTranscriptionSection() {
             className="yolo-settings-card"
           >
             <ObsidianToggle
-              value={
-                !!voice.audioFileTranscriptionEnabled &&
-                !!voice.enabled &&
-                asrReady
-              }
-              disabled={!voice.enabled || !asrReady}
+              value={!!voice.audioFileTranscriptionEnabled && asrReady}
+              disabled={!asrReady}
               onChange={(value) =>
                 updateVoice(
                   { audioFileTranscriptionEnabled: value },

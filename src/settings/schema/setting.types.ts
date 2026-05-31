@@ -373,6 +373,46 @@ export const ASR_TRANSPORT_MODES = [
 ] as const
 export type AsrTransportMode = (typeof ASR_TRANSPORT_MODES)[number]
 
+export const VOICE_FLOATING_MODE_IDS = [
+  'toggle-listen',
+  'hold-to-talk',
+  'audio-file',
+  'read-aloud',
+] as const
+export type VoiceFloatingModeId = (typeof VOICE_FLOATING_MODE_IDS)[number]
+
+export const TTS_API_FORMATS = [
+  'openai-compatible-speech',
+  'mimo-chat-audio-tts',
+  'dashscope-cosyvoice',
+] as const
+export type TtsApiFormat = (typeof TTS_API_FORMATS)[number]
+
+export const TTS_OUTPUT_FORMATS = [
+  'mp3',
+  'pcm',
+  'wav',
+  'pcm16',
+  'opus',
+  'aac',
+  'flac',
+] as const
+export type TtsOutputFormat = (typeof TTS_OUTPUT_FORMATS)[number]
+
+export const TTS_TRANSPORT_MODES = ASR_TRANSPORT_MODES
+export type TtsTransportMode = (typeof TTS_TRANSPORT_MODES)[number]
+
+export const READ_ALOUD_SOURCE_MODES = [
+  'selection-or-document',
+  'selection',
+  'document',
+] as const
+export type ReadAloudSourceMode = (typeof READ_ALOUD_SOURCE_MODES)[number]
+
+export const READ_ALOUD_MARKDOWN_MODES = ['readable', 'raw'] as const
+export type ReadAloudMarkdownMode = (typeof READ_ALOUD_MARKDOWN_MODES)[number]
+export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = 'YOLO/read_aloud'
+
 /**
  * Single ASR configuration entry. Mirrors the provider/model pattern (one
  * flat outer list, no per-format sub-section). All format-specific fields
@@ -475,6 +515,46 @@ const asrConfigSchema = z
 
 export type AsrConfig = z.infer<typeof asrConfigSchema>
 
+const ttsConfigSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().catch(''),
+    format: z.enum(TTS_API_FORMATS).catch('openai-compatible-speech'),
+    baseURL: z.string().catch(''),
+    apiKey: z.string().catch(''),
+    model: z.string().catch(''),
+    voice: z.string().catch(''),
+    outputFormat: z.enum(TTS_OUTPUT_FORMATS).catch('mp3'),
+    sampleRate: z.number().int().positive().nullable().catch(null),
+    speed: z.number().positive().nullable().catch(null),
+    pitch: z.number().nullable().catch(null),
+    volume: z.number().nullable().catch(null),
+    language: z.string().catch(''),
+    styleInstruction: z.string().catch(''),
+    transportMode: z.enum(TTS_TRANSPORT_MODES).catch('node'),
+    requestPath: z.string().catch(''),
+  })
+  .catch({
+    id: '',
+    name: '',
+    format: 'openai-compatible-speech' as TtsApiFormat,
+    baseURL: '',
+    apiKey: '',
+    model: '',
+    voice: '',
+    outputFormat: 'mp3' as TtsOutputFormat,
+    sampleRate: null,
+    speed: null,
+    pitch: null,
+    volume: null,
+    language: '',
+    styleInstruction: '',
+    transportMode: 'node' as TtsTransportMode,
+    requestPath: '',
+  })
+
+export type TtsConfig = z.infer<typeof ttsConfigSchema>
+
 export const AUDIO_FILE_CHUNK_HEADER_MODES = [
   'none',
   'local-start-time',
@@ -524,9 +604,16 @@ export type DocumentSummaryRefreshMode =
   (typeof DOCUMENT_SUMMARY_REFRESH_MODES)[number]
 
 export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
+  floatingIslandEnabled: true,
+  floatingIslandModeOrder: [
+    ...VOICE_FLOATING_MODE_IDS,
+  ] as VoiceFloatingModeId[],
+  floatingIslandHiddenModes: [] as VoiceFloatingModeId[],
   enabled: false,
   asrConfigs: [] as AsrConfig[],
   activeAsrConfigId: '',
+  ttsConfigs: [] as TtsConfig[],
+  activeTtsConfigId: '',
   polishModelId: '',
   // Polish is a low-creativity cleanup task; a small but non-zero
   // temperature reads better than greedy decoding without introducing
@@ -538,8 +625,17 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   interactionMode: 'toggle-listen' as
     | 'toggle-listen'
     | 'hold-to-talk'
-    | 'audio-file',
+    | 'audio-file'
+    | 'read-aloud',
   audioFileTranscriptionEnabled: false,
+  voiceReadAloudEnabled: false,
+  readAloudSourceMode: 'selection-or-document' as ReadAloudSourceMode,
+  readAloudChunkTargetChars: 1000,
+  readAloudPreloadSegments: 1,
+  readAloudCacheEnabled: true,
+  readAloudGeneratedAudioAutoSaveEnabled: true,
+  readAloudGeneratedAudioSaveDir: DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR,
+  readAloudMarkdownMode: 'readable' as ReadAloudMarkdownMode,
   activeAudioFileAsrConfigId: '',
   audioFileChunkHeaderMode: 'none' as AudioFileChunkHeaderMode,
   audioFileOutputMetadataMode:
@@ -575,6 +671,10 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   // specific mic (USB headset, AirPods etc.) instead of whatever the OS
   // picks at the moment of recording.
   microphoneDeviceId: '',
+  // Empty string means "use the system default output device". When the host
+  // supports setSinkId, TTS tests and read-aloud playback can target a chosen
+  // speaker/headset without changing the OS default.
+  ttsOutputDeviceId: '',
   // Toggle-listen only: after the user Tab-accepts a polished draft, keep
   // the session alive and start the next recording segment automatically
   // (same UX as Wispr Flow / Superwhisper continuous dictation).
@@ -588,9 +688,18 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
 
 const contextVoiceInputOptionsSchema = z
   .object({
+    floatingIslandEnabled: z.boolean().catch(true),
+    floatingIslandModeOrder: z
+      .array(z.enum(VOICE_FLOATING_MODE_IDS))
+      .catch([...VOICE_FLOATING_MODE_IDS]),
+    floatingIslandHiddenModes: z
+      .array(z.enum(VOICE_FLOATING_MODE_IDS))
+      .catch([]),
     enabled: z.boolean().catch(false),
     asrConfigs: z.array(asrConfigSchema).catch([]),
     activeAsrConfigId: z.string().catch(''),
+    ttsConfigs: z.array(ttsConfigSchema).catch([]),
+    activeTtsConfigId: z.string().catch(''),
     polishModelId: z.string().catch(''),
     polishTemperature: z
       .number()
@@ -601,10 +710,22 @@ const contextVoiceInputOptionsSchema = z
       .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.polishTemperature),
     systemPromptMode: z.enum(VOICE_POLISH_PROMPT_MODES).catch('default'),
     customSystemPrompt: z.string().catch(''),
-    interactionMode: z
-      .enum(['toggle-listen', 'hold-to-talk', 'audio-file'])
-      .catch('toggle-listen'),
+    interactionMode: z.enum(VOICE_FLOATING_MODE_IDS).catch('toggle-listen'),
     audioFileTranscriptionEnabled: z.boolean().catch(false),
+    voiceReadAloudEnabled: z.boolean().catch(false),
+    readAloudSourceMode: z
+      .enum(READ_ALOUD_SOURCE_MODES)
+      .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.readAloudSourceMode),
+    readAloudChunkTargetChars: z.number().int().min(200).max(6000).catch(1000),
+    readAloudPreloadSegments: z.number().int().min(0).max(3).catch(1),
+    readAloudCacheEnabled: z.boolean().catch(true),
+    readAloudGeneratedAudioAutoSaveEnabled: z.boolean().catch(true),
+    readAloudGeneratedAudioSaveDir: z
+      .string()
+      .catch(
+        DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.readAloudGeneratedAudioSaveDir,
+      ),
+    readAloudMarkdownMode: z.enum(READ_ALOUD_MARKDOWN_MODES).catch('readable'),
     activeAudioFileAsrConfigId: z.string().catch(''),
     audioFileChunkHeaderMode: z
       .enum(AUDIO_FILE_CHUNK_HEADER_MODES)
@@ -659,6 +780,7 @@ const contextVoiceInputOptionsSchema = z
     vadSilenceHoldMs: z.number().int().min(300).max(5000).catch(1200),
     floatingIslandBottomOffsetVh: z.number().min(0).max(50).catch(9),
     microphoneDeviceId: z.string().catch(''),
+    ttsOutputDeviceId: z.string().catch(''),
     autoRestartAfterAccept: z.boolean().catch(false),
     documentSummaryEnabled: z
       .boolean()

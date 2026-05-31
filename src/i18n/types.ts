@@ -28,6 +28,9 @@ export type TranslationKeys = {
     importSettings?: string
     toggleVoiceInput?: string
     cancelVoiceInput?: string
+    readAloudSelection?: string
+    readAloudCurrentFile?: string
+    stopReadAloud?: string
   }
 
   // UI Common
@@ -130,6 +133,7 @@ export type TranslationKeys = {
     title: string
     tabs: {
       models: string
+      voice?: string
       editor: string
       knowledge: string
       tools: string
@@ -623,6 +627,114 @@ export type TranslationKeys = {
       qwenOAuthExpires?: string
       qwenOAuthDisconnectedHelp?: string
       qwenOAuthStreamingNotice?: string
+    }
+    tts?: {
+      title?: string
+      description?: string
+      addConfig?: string
+      addConfigTitle?: string
+      editConfigTitle?: string
+      empty?: string
+      none?: string
+      colName?: string
+      colSummary?: string
+      colActions?: string
+      dragHandle?: string
+      unnamedConfig?: string
+      activePillLabel?: string
+      editConfigAria?: string
+      deleteConfigAria?: string
+      deleteConfigTitle?: string
+      deleteConfigMessagePrefix?: string
+      reorderFailed?: string
+      deleteFailed?: string
+      saveFailed?: string
+      configName?: string
+      configNameDesc?: string
+      apiFormat?: string
+      apiFormatDesc?: string
+      format?: Record<string, string>
+      baseURL?: string
+      baseURLDesc?: string
+      requestPath?: string
+      requestPathDesc?: string
+      apiKey?: string
+      apiKeyDesc?: string
+      apiKeyPlaceholder?: string
+      model?: string
+      modelDesc?: string
+      voice?: string
+      voiceDesc?: string
+      outputFormat?: string
+      outputFormatDesc?: string
+      transport?: string
+      transportDesc?: string
+      transportMode?: Record<string, string>
+      language?: string
+      languageDesc?: string
+      sampleRate?: string
+      sampleRateDesc?: string
+      providerDefault?: string
+      speed?: string
+      speedDesc?: string
+      styleInstruction?: string
+      styleInstructionDesc?: string
+      testText?: string
+      testTextDesc?: string
+      testPlaying?: string
+      testReady?: string
+      testPlayback?: string
+      testPlaybackDesc?: string
+      testFailed?: string
+      testRunning?: string
+      testRun?: string
+    }
+    voiceIsland?: {
+      title?: string
+      description?: string
+      enable?: string
+      enableDesc?: string
+      bottomOffset?: string
+      bottomOffsetDesc?: string
+      dragHandle?: string
+      modeReady?: string
+      dictationUnavailable?: string
+      audioFileUnavailable?: string
+      readAloudUnavailable?: string
+      mode?: Record<string, string>
+    }
+    readAloud?: {
+      title?: string
+      description?: string
+      enable?: string
+      enableDesc?: string
+      enableDescUnavailable?: string
+      ttsProvider?: string
+      ttsProviderDesc?: string
+      markdownMode?: string
+      markdownModeOption?: Record<string, string>
+      markdownModeDesc?: string
+      advancedToggle?: string
+      chunkTargetChars?: string
+      chunkTargetCharsDesc?: string
+      preloadSegments?: string
+      preloadSegmentsDesc?: string
+      cacheEnabled?: string
+      cacheEnabledDesc?: string
+      autoSave?: string
+      autoSaveDesc?: string
+      saveDir?: string
+      saveDirDesc?: string
+      speaker?: string
+      speakerDesc?: string
+      speakerDefault?: string
+      speakerFallbackName?: string
+      speakerCurrent?: string
+      speakerTest?: string
+      speakerTesting?: string
+      speakerTestPlaying?: string
+      speakerTestFailed?: string
+      speakerUnsupported?: string
     }
     models: {
       title: string
@@ -1447,7 +1559,9 @@ export type TranslationKeys = {
     buttonAccept?: string
     modeSwitchToHold?: string
     modeSwitchToAudioFile?: string
+    modeSwitchToReadAloud?: string
     modeSwitchToToggle?: string
+    modeSwitchUnavailable?: string
     holdToTalkHint?: string
     audioFileDropHint?: string
     audioFileCheckDropHint?: string
@@ -1520,6 +1634,25 @@ export type TranslationKeys = {
     startRecordingFailed?: string
     noticePrefix?: string
     malformedOutput?: string
+    readAloudDisabledNotice?: string
+    readAloudNoProvider?: string
+    readAloudNoText?: string
+    readAloudPreparing?: string
+    readAloudConfirmLongText?: string
+    readAloudProgress?: string
+    readAloudPaused?: string
+    readAloudCompleted?: string
+    readAloudFailed?: string
+    readAloudFailedWithMessage?: string
+    readAloudPlaying?: string
+    readAloudCancelled?: string
+    readAloudAutoSaveFailed?: string
+    readSelection?: string
+    readNote?: string
+    readAloudDragGeneratedAudio?: string
+    readAloudConfirmButton?: string
+    readAloudPauseButton?: string
+    readAloudResumeButton?: string
   }
 
   // Selection Chat

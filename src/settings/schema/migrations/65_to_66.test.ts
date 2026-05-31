@@ -13,6 +13,14 @@ describe('migrateFrom65To66', () => {
     expect(result.version).toBe(66)
     expect(result.contextVoiceInputOptions).toMatchObject({
       enabled: true,
+      floatingIslandEnabled: true,
+      floatingIslandModeOrder: [
+        'toggle-listen',
+        'hold-to-talk',
+        'audio-file',
+        'read-aloud',
+      ],
+      floatingIslandHiddenModes: [],
       audioFileTranscriptionEnabled: false,
       activeAudioFileAsrConfigId: '',
       audioFileChunkHeaderMode: 'none',
@@ -23,6 +31,17 @@ describe('migrateFrom65To66', () => {
       audioFileMaxConcurrentChunks: 5,
       audioFileChunkStartStaggerMs: 1500,
       audioFileChunkOverlapMs: 500,
+      ttsConfigs: [],
+      activeTtsConfigId: '',
+      voiceReadAloudEnabled: false,
+      readAloudSourceMode: 'selection-or-document',
+      readAloudChunkTargetChars: 1000,
+      readAloudPreloadSegments: 1,
+      readAloudCacheEnabled: true,
+      readAloudGeneratedAudioAutoSaveEnabled: true,
+      readAloudGeneratedAudioSaveDir: 'YOLO/read_aloud',
+      readAloudMarkdownMode: 'readable',
+      ttsOutputDeviceId: '',
     })
   })
 
@@ -73,5 +92,31 @@ describe('migrateFrom65To66', () => {
         contextVoiceInputOptions: { audioFileOutputMetadataMode: 'none' },
       }).contextVoiceInputOptions,
     ).toMatchObject({ audioFileOutputMetadataMode: 'none' })
+  })
+
+  it('normalizes mode lists and clamps read-aloud numeric settings', () => {
+    const result = migrateFrom65To66({
+      version: 65,
+      contextVoiceInputOptions: {
+        floatingIslandModeOrder: ['read-aloud', 'read-aloud', 'bogus'],
+        floatingIslandHiddenModes: ['audio-file', 'bogus', 'audio-file'],
+        readAloudChunkTargetChars: 9999,
+        readAloudPreloadSegments: -10,
+        readAloudMarkdownMode: 'raw',
+      },
+    })
+
+    expect(result.contextVoiceInputOptions).toMatchObject({
+      floatingIslandModeOrder: [
+        'read-aloud',
+        'toggle-listen',
+        'hold-to-talk',
+        'audio-file',
+      ],
+      floatingIslandHiddenModes: ['audio-file'],
+      readAloudChunkTargetChars: 6000,
+      readAloudPreloadSegments: 0,
+      readAloudMarkdownMode: 'raw',
+    })
   })
 })

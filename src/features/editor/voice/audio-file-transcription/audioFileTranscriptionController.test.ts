@@ -322,15 +322,15 @@ describe('AudioFileTranscriptionController long-audio empty result', () => {
     }
     controller.session = session
     controller.deps.getStatusState.mockReturnValue('confirm-plan')
-    jest.mocked(executeAudioFileTranscriptionPlan).mockImplementation(
-      async ({ onText }) => {
+    jest
+      .mocked(executeAudioFileTranscriptionPlan)
+      .mockImplementation(async ({ onText }) => {
         await onText({
           text: '   ',
           chunkIndex: null,
           chunkStartMs: null,
         })
-      },
-    )
+      })
 
     await controller.confirm()
 
