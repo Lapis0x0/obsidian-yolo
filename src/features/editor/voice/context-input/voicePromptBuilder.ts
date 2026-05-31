@@ -1,9 +1,9 @@
-import {
+﻿import {
   type ContextVoiceInputOptions,
   DEFAULT_VOICE_INPUT_SYSTEM_PROMPT,
   VOICE_POLISH_PROMPT_PRESETS,
-} from '../../../settings/schema/setting.types'
-import type { RequestMessage } from '../../../types/llm/request'
+} from '../../../../settings/schema/setting.types'
+import type { RequestMessage } from '../../../../types/llm/request'
 
 export type VoiceInputTarget = {
   fileTitle: string

@@ -1,7 +1,7 @@
-import type {
+﻿import type {
   AsrConfig,
   ContextVoiceInputOptions,
-} from '../../../settings/schema/setting.types'
+} from '../../../../settings/schema/setting.types'
 
 import {
   type AudioFileSource,

@@ -1,6 +1,6 @@
-import { App, FileSystemAdapter, TFile } from 'obsidian'
+﻿import { App, FileSystemAdapter, TFile } from 'obsidian'
 
-import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
+import { loadDesktopNodeModule } from '../../../../utils/platform/desktopNodeModule'
 
 export type AudioFileSource = {
   kind: 'blob' | 'vault'

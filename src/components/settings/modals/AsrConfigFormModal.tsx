@@ -1,10 +1,10 @@
-import { App, Notice } from 'obsidian'
+﻿import { App, Notice } from 'obsidian'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { BaseAsrProvider } from '../../../core/asr/base'
 import type { AsrStreamingSession } from '../../../core/asr/types'
-import type { VoiceInputRecorder } from '../../../features/editor/context-voice-input/voiceInputRecorder'
+import type { VoiceInputRecorder } from '../../../features/editor/voice/context-input/voiceInputRecorder'
 import YoloPlugin from '../../../main'
 import {
   ASR_AUDIO_FORMATS,
@@ -697,7 +697,7 @@ function AsrConfigFormComponent({
   }> => {
     const [{ buildAsrProviderForConfig }, recorderModule] = await Promise.all([
       import('../../../core/asr/manager'),
-      import('../../../features/editor/context-voice-input/voiceInputRecorder'),
+      import('../../../features/editor/voice/context-input/voiceInputRecorder'),
     ])
     return {
       provider: buildAsrProviderForConfig(providerFormData),

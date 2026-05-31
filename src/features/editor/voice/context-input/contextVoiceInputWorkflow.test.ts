@@ -1,10 +1,10 @@
-import type { EditorView } from '@codemirror/view'
+﻿import type { EditorView } from '@codemirror/view'
 import type { Editor } from 'obsidian'
 
-import type { AsrStreamingSession } from '../../../core/asr/types'
-import type { YoloSettings } from '../../../settings/schema/setting.types'
+import type { AsrStreamingSession } from '../../../../core/asr/types'
+import type { YoloSettings } from '../../../../settings/schema/setting.types'
 
-import { ContextVoiceInputController } from './contextVoiceInputController'
+import { ContextVoiceInputWorkflow } from './contextVoiceInputWorkflow'
 import type { RecordedAudio } from './voiceInputRecorder'
 
 const makeController = (currentView: EditorView | null) => {
@@ -14,7 +14,7 @@ const makeController = (currentView: EditorView | null) => {
   const setVoiceInputInProgress = jest.fn()
   const removeAbortController = jest.fn()
 
-  const controller = new ContextVoiceInputController({
+  const controller = new ContextVoiceInputWorkflow({
     getSettings: () =>
       ({
         contextVoiceInputOptions: {},
@@ -30,8 +30,7 @@ const makeController = (currentView: EditorView | null) => {
     removeAbortController,
     cancelPendingTabCompletion: jest.fn(),
     setVoiceInputInProgress,
-    createFallbackMarkdownFile: jest.fn(async () => 'Transcriptions/test.md'),
-    appendToMarkdownFile: jest.fn(),
+    onStatusChange: jest.fn(),
     t: (_key, fallback) => fallback,
   })
 
@@ -46,7 +45,7 @@ const makeController = (currentView: EditorView | null) => {
 }
 
 const seedReadySession = (
-  controller: ContextVoiceInputController,
+  controller: ContextVoiceInputWorkflow,
   input: { editor: Editor; cachedView: EditorView },
 ) => {
   ;(
@@ -89,7 +88,7 @@ const seedReadySession = (
 }
 
 const seedStreamingRecordingSession = (
-  controller: ContextVoiceInputController,
+  controller: ContextVoiceInputWorkflow,
   input: {
     editor: Editor
     view: EditorView
@@ -144,7 +143,7 @@ const seedStreamingRecordingSession = (
   }
 }
 
-describe('ContextVoiceInputController.tryRejectFromView', () => {
+describe('ContextVoiceInputWorkflow.tryRejectFromView', () => {
   it('rejects the preview through the editor current view even if cached view drifted', () => {
     const staleView = { id: 'old' } as unknown as EditorView
     const currentView = { id: 'current' } as unknown as EditorView
@@ -178,7 +177,7 @@ describe('ContextVoiceInputController.tryRejectFromView', () => {
   })
 })
 
-describe('ContextVoiceInputController.handleEditorDocumentChange', () => {
+describe('ContextVoiceInputWorkflow.handleEditorDocumentChange', () => {
   it('cancels a pending preview when the bound editor document changes', () => {
     const currentView = { id: 'current' } as unknown as EditorView
     const {
@@ -214,7 +213,7 @@ describe('ContextVoiceInputController.handleEditorDocumentChange', () => {
   })
 })
 
-describe('ContextVoiceInputController streaming ASR stop', () => {
+describe('ContextVoiceInputWorkflow streaming ASR stop', () => {
   it('flushes the recorder before finalizing a streaming ASR segment', async () => {
     const currentView = { id: 'current' } as unknown as EditorView
     const { controller, editor } = makeController(currentView)
@@ -262,7 +261,7 @@ describe('ContextVoiceInputController streaming ASR stop', () => {
   })
 })
 
-describe('ContextVoiceInputController polish worker', () => {
+describe('ContextVoiceInputWorkflow polish worker', () => {
   it('clears the previous preview when the model returns empty text', async () => {
     const currentView = { id: 'current' } as unknown as EditorView
     const {

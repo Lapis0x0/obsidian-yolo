@@ -1,19 +1,19 @@
-import {
+﻿import {
   estimatePcm16WavByteLength,
   transcodeToPcm16,
-} from '../../../core/asr/audioTranscode'
-import { getAudioFileAsrCapability } from '../../../core/asr/capabilities'
+} from '../../../../core/asr/audioTranscode'
+import { getAudioFileAsrCapability } from '../../../../core/asr/capabilities'
 import {
   buildAsrProviderForConfig,
   resolveActiveAudioFileAsrConfig,
-} from '../../../core/asr/manager'
+} from '../../../../core/asr/manager'
 import {
   ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
   ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX,
   ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN,
   type AsrConfig,
   type ContextVoiceInputOptions,
-} from '../../../settings/schema/setting.types'
+} from '../../../../settings/schema/setting.types'
 
 import {
   type AudioFileChunk,

@@ -1,10 +1,10 @@
-import { Extension, Prec } from '@codemirror/state'
+﻿import { Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { Editor } from 'obsidian'
 
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
-import type { ContextVoiceInputController } from '../context-voice-input/contextVoiceInputController'
 import type { TabCompletionController } from '../tab-completion/tabCompletionController'
+import type { VoiceController } from '../voice/voiceController'
 
 import {
   InlineSuggestionGhostPayload,
@@ -42,13 +42,13 @@ type VoiceInlineSuggestion = {
 type InlineSuggestionControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getTabCompletionController: () => TabCompletionController
-  getContextVoiceInputController: () => ContextVoiceInputController | null
+  getVoiceController: () => VoiceController | null
 }
 
 export class InlineSuggestionController {
   private readonly getEditorView: (editor: Editor) => EditorView | null
   private readonly getTabCompletionController: () => TabCompletionController
-  private readonly getContextVoiceInputController: () => ContextVoiceInputController | null
+  private readonly getVoiceController: () => VoiceController | null
 
   private activeInlineSuggestion: ActiveInlineSuggestion | null = null
   private continuationInlineSuggestion: ContinuationInlineSuggestion | null =
@@ -58,7 +58,7 @@ export class InlineSuggestionController {
   constructor(deps: InlineSuggestionControllerDeps) {
     this.getEditorView = deps.getEditorView
     this.getTabCompletionController = deps.getTabCompletionController
-    this.getContextVoiceInputController = deps.getContextVoiceInputController
+    this.getVoiceController = deps.getVoiceController
   }
 
   createExtension(): Extension {
@@ -75,7 +75,7 @@ export class InlineSuggestionController {
           // user accepts (Tab) or rejects (Esc). This was the root cause
           // of the hold-to-talk "polish lands but no editor preview" bug:
           // focus changed → clearInlineSuggestion → voice ghost wiped.
-          const voice = this.getContextVoiceInputController()
+          const voice = this.getVoiceController()
           if (voice?.isBusy()) {
             return
           }
@@ -231,7 +231,7 @@ export class InlineSuggestionController {
       }
       this.voiceInlineSuggestion = null
     }
-    const voice = this.getContextVoiceInputController()
+    const voice = this.getVoiceController()
     if (voice && voice.hasPendingPreview()) {
       voice.cancelActiveSession('cleared')
     }
@@ -253,7 +253,7 @@ export class InlineSuggestionController {
     }
 
     if (suggestion.source === 'voice') {
-      const voice = this.getContextVoiceInputController()
+      const voice = this.getVoiceController()
       if (!voice) return false
       const accepted = voice.tryAcceptFromView(view)
       if (accepted) {
@@ -270,7 +270,7 @@ export class InlineSuggestionController {
     const suggestion = this.activeInlineSuggestion
     if (!suggestion) return false
     if (suggestion.source === 'voice') {
-      const voice = this.getContextVoiceInputController()
+      const voice = this.getVoiceController()
       if (!voice) return false
       const rejected = voice.tryRejectFromView(view)
       if (rejected) {

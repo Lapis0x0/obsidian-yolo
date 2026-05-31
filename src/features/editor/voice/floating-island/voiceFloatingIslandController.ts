@@ -1,5 +1,5 @@
-/**
- * Bottom-of-editor floating island for the context-aware voice input feature.
+﻿/**
+ * Bottom-of-editor floating island for shared voice input workflows.
  *
  * Design summary:
  *   - ONE persistent mic button. No outer double-ring; the button itself
@@ -26,13 +26,15 @@
 
 import type { MarkdownView } from 'obsidian'
 
-import type { AudioFileSource } from './audioFileSource'
-import type {
-  ContextVoiceInputController,
-  VoiceInputStatus,
-} from './contextVoiceInputController'
+import type { AudioFileSource } from '../audio-file-transcription/audioFileSource'
+import type { VoiceController } from '../voiceController'
+import {
+  type ActiveVoiceModeId,
+  CONTEXT_INPUT_VOICE_MODES,
+  CURRENT_FLOATING_VOICE_MODES,
+} from '../voiceModes'
+import type { VoiceInputStatus } from '../voiceStatus'
 
-type InteractionMode = 'toggle-listen' | 'hold-to-talk' | 'audio-file'
 type AudioFileDragKind = 'audio' | 'maybe-audio' | 'unsupported'
 
 type VoiceVadOptions = {
@@ -43,7 +45,7 @@ type VoiceVadOptions = {
 }
 
 type IslandDeps = {
-  getController: () => ContextVoiceInputController | null
+  getController: () => VoiceController | null
   getActiveMarkdownView: () => MarkdownView | null
   t: (key: string, fallback: string) => string
   isFeatureReady: () => boolean
@@ -52,8 +54,8 @@ type IslandDeps = {
   resolveAudioFileFromDrop: (
     event: DragEvent,
   ) => Promise<File | AudioFileSource | null>
-  getInteractionMode: () => InteractionMode
-  setInteractionMode: (mode: InteractionMode) => Promise<void>
+  getVoiceMode: () => ActiveVoiceModeId
+  setVoiceMode: (mode: ActiveVoiceModeId) => Promise<void>
   getVadOptions: () => VoiceVadOptions
   getBottomOffsetVh: () => number
 }
@@ -268,7 +270,7 @@ export class VoiceFloatingIslandController {
       cls: 'yolo-voice-island__mode',
       attr: { type: 'button', 'aria-label': 'Switch interaction mode' },
     })
-    this.renderModeButton(modeToggle, this.deps.getInteractionMode(), 'idle')
+    this.renderModeButton(modeToggle, this.deps.getVoiceMode(), 'idle')
     modeToggle.addEventListener('mousedown', (e) => e.preventDefault())
     modeToggle.addEventListener('pointerdown', (e) => {
       const controller = this.deps.getController()
@@ -335,7 +337,7 @@ export class VoiceFloatingIslandController {
       e.preventDefault()
       const controller = this.deps.getController()
       if (controller?.getStatus().state !== 'idle') return
-      const mode = this.deps.getInteractionMode()
+      const mode = this.deps.getVoiceMode()
       if (mode !== 'hold-to-talk') return
       void this.beginHoldToTalk()
     })
@@ -391,21 +393,18 @@ export class VoiceFloatingIslandController {
       this.renderPrimaryButton(this.micButton, state)
     }
 
-    const interactionMode = this.deps.getInteractionMode()
+    const voiceMode = this.deps.getVoiceMode()
     if (this.modeToggleButton) {
-      this.renderModeButton(this.modeToggleButton, interactionMode, state)
+      this.renderModeButton(this.modeToggleButton, voiceMode, state)
     }
     // In hold-to-talk mode, pre-expand the bar even when idle so pressing
     // the mic doesn't shift its horizontal position. The centre slot stays
     // empty until recording begins (no overlay text — the user said the
     // overlay should only appear when needed, not as a permanent label).
-    this.root.classList.toggle(
-      'is-hold-mode',
-      interactionMode === 'hold-to-talk',
-    )
+    this.root.classList.toggle('is-hold-mode', voiceMode === 'hold-to-talk')
     this.root.classList.toggle(
       'is-audio-file-mode',
-      interactionMode === 'audio-file' || audioDragPromptVisible,
+      voiceMode === 'audio-file' || audioDragPromptVisible,
     )
 
     // Drive status text shown inside the bar.
@@ -507,13 +506,13 @@ export class VoiceFloatingIslandController {
         // hold control; otherwise the centre slot stays empty.
         if (
           displayState === 'idle' &&
-          this.deps.getInteractionMode() === 'hold-to-talk'
+          this.deps.getVoiceMode() === 'hold-to-talk'
         ) {
           return this.deps.t('voiceInput.holdToTalkHint', 'Press & hold')
         }
         if (
           displayState === 'idle' &&
-          this.deps.getInteractionMode() === 'audio-file'
+          this.deps.getVoiceMode() === 'audio-file'
         ) {
           return this.deps.t(
             'voiceInput.audioFileIdleHint',
@@ -655,14 +654,11 @@ export class VoiceFloatingIslandController {
       await controller.stopAndProcess()
       return
     }
-    if (state === 'idle' && this.deps.getInteractionMode() === 'audio-file') {
+    if (state === 'idle' && this.deps.getVoiceMode() === 'audio-file') {
       this.fileInput?.click()
       return
     }
-    if (
-      state === 'idle' &&
-      this.deps.getInteractionMode() === 'toggle-listen'
-    ) {
+    if (state === 'idle' && this.deps.getVoiceMode() === 'toggle-listen') {
       if (!view?.editor) return
       try {
         await controller.startRecording(view.editor)
@@ -730,13 +726,13 @@ export class VoiceFloatingIslandController {
       case 'idle':
       default:
         button.appendChild(
-          this.deps.getInteractionMode() === 'audio-file'
+          this.deps.getVoiceMode() === 'audio-file'
             ? buildFileAudioSvg()
             : buildMicSvg(),
         )
         button.setAttribute(
           'aria-label',
-          this.deps.getInteractionMode() === 'audio-file'
+          this.deps.getVoiceMode() === 'audio-file'
             ? this.deps.t(
                 'voiceInput.audioFileChooseButton',
                 'Choose audio file',
@@ -757,7 +753,7 @@ export class VoiceFloatingIslandController {
       case 'polishing':
         return 'processing'
       case 'idle':
-        return `idle:${this.deps.getInteractionMode()}`
+        return `idle:${this.deps.getVoiceMode()}`
       default:
         return state
     }
@@ -897,9 +893,9 @@ export class VoiceFloatingIslandController {
   }
 
   private async cycleMode(): Promise<void> {
-    const current = this.deps.getInteractionMode()
-    const next = this.getNextInteractionMode(current)
-    await this.deps.setInteractionMode(next)
+    const current = this.deps.getVoiceMode()
+    const next = this.getNextVoiceMode(current)
+    await this.deps.setVoiceMode(next)
     if (this.modeToggleButton) {
       this.renderModeButton(
         this.modeToggleButton,
@@ -910,10 +906,10 @@ export class VoiceFloatingIslandController {
   }
 
   private isModeButtonCancel(state: VoiceInputStatus['state']): boolean {
-    if (this.deps.getInteractionMode() === 'audio-file' && state !== 'idle') {
+    if (this.deps.getVoiceMode() === 'audio-file' && state !== 'idle') {
       return true
     }
-    if (this.deps.getInteractionMode() !== 'toggle-listen') return false
+    if (this.deps.getVoiceMode() !== 'toggle-listen') return false
     // Cancel button replaces the mode-switch icon for every active phase of
     // a click-mode session. Switching interaction mode mid-flow has no useful
     // meaning (the current session is already past the listen phase) and
@@ -934,21 +930,21 @@ export class VoiceFloatingIslandController {
     )
   }
 
-  private getAvailableInteractionModes(): InteractionMode[] {
+  private getAvailableVoiceModes(): ActiveVoiceModeId[] {
     return this.deps.isAudioFileModeEnabled()
-      ? ['toggle-listen', 'hold-to-talk', 'audio-file']
-      : ['toggle-listen', 'hold-to-talk']
+      ? [...CURRENT_FLOATING_VOICE_MODES]
+      : [...CONTEXT_INPUT_VOICE_MODES]
   }
 
-  private getNextInteractionMode(current: InteractionMode): InteractionMode {
-    const modes = this.getAvailableInteractionModes()
+  private getNextVoiceMode(current: ActiveVoiceModeId): ActiveVoiceModeId {
+    const modes = this.getAvailableVoiceModes()
     const index = modes.indexOf(current)
     return modes[(index + 1) % modes.length] ?? 'toggle-listen'
   }
 
   private renderModeButton(
     button: HTMLButtonElement,
-    mode: InteractionMode,
+    mode: ActiveVoiceModeId,
     state: VoiceInputStatus['state'],
   ): void {
     const renderKey = this.getModeButtonRenderKey(mode, state)
@@ -966,7 +962,7 @@ export class VoiceFloatingIslandController {
       )
       return
     }
-    const nextMode = this.getNextInteractionMode(mode)
+    const nextMode = this.getNextVoiceMode(mode)
     if (nextMode === 'hold-to-talk') {
       button.appendChild(buildHoldSvg())
       button.setAttribute(
@@ -998,12 +994,12 @@ export class VoiceFloatingIslandController {
   }
 
   private getModeButtonRenderKey(
-    mode: InteractionMode,
+    mode: ActiveVoiceModeId,
     state: VoiceInputStatus['state'],
   ): string {
     return this.isModeButtonCancel(state)
       ? 'cancel'
-      : `mode:${this.getNextInteractionMode(mode)}`
+      : `mode:${this.getNextVoiceMode(mode)}`
   }
 
   private attachAudioFileDragListeners(root: HTMLElement): void {
@@ -1209,7 +1205,7 @@ export class VoiceFloatingIslandController {
     // user flipped the mode toggle mid-recording).
     if (
       !this.vadAutoStopRequested &&
-      this.deps.getInteractionMode() === 'toggle-listen'
+      this.deps.getVoiceMode() === 'toggle-listen'
     ) {
       const now = Date.now()
       const vadOptions = this.deps.getVadOptions()

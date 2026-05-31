@@ -1,4 +1,4 @@
-import type { ContextVoiceInputOptions } from '../../../settings/schema/setting.types'
+﻿import type { ContextVoiceInputOptions } from '../../../../settings/schema/setting.types'
 
 import {
   type VoiceInputTarget,
