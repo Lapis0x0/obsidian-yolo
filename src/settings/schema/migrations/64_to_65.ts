@@ -75,6 +75,10 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
       audioFormat: 'auto',
       transportMode: 'node',
       language: stringOr(transcription.language, topLevelLanguage),
+      longAudioPunctuation: true,
+      longAudioDiarization: true,
+      longAudioSpeakerCount: 0,
+      longAudioTimestamps: true,
     })
   }
 
@@ -103,6 +107,10 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
       audioFormat: 'wav',
       transportMode: 'node',
       language: stringOr(chatAudio.language, topLevelLanguage),
+      longAudioPunctuation: true,
+      longAudioDiarization: true,
+      longAudioSpeakerCount: 0,
+      longAudioTimestamps: true,
     })
   }
 

@@ -1227,6 +1227,7 @@ export type TranslationKeys = {
       modelDesc?: string
       chatAudioModelDesc?: string
       deepgramWsModelDesc?: string
+      deepgramLanguageDesc?: string
       deepgramWsLanguageDesc?: string
       listenPath?: string
       listenPathDesc?: string
@@ -1281,6 +1282,8 @@ export type TranslationKeys = {
       longProviderCredentialsRequired?: string
       funasrServerFeatures?: string
       funasrServerFeaturesDesc?: string
+      longAudioPunctuation?: string
+      longAudioPunctuationDesc?: string
       featureModeAuto?: string
       featureModeOn?: string
       featureModeOff?: string
@@ -1458,6 +1461,7 @@ export type TranslationKeys = {
     audioFileConfirmButton?: string
     audioFileChooseButton?: string
     audioFileFinished?: string
+    audioFileEmptyLongAudioResult?: string
     audioFileCancelled?: string
     audioFilePlanStream?: string
     audioFilePlanChunked?: string

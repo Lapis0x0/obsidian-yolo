@@ -114,22 +114,37 @@ export const readTranscript = (
   } = {},
 ): string => {
   const alternative = payload.channel?.alternatives?.[0]
+  const transcript =
+    typeof alternative?.transcript === 'string' ? alternative.transcript : ''
   if (options.includeSpeakerLabels) {
     const speakerTranscript = readDeepgramSpeakerTranscript(
       alternative?.words,
+      transcript,
       options.speakerState,
     )
     if (speakerTranscript) return speakerTranscript
   }
-  const transcript = alternative?.transcript
-  return typeof transcript === 'string' ? transcript : ''
+  return transcript
 }
 
 const readDeepgramSpeakerTranscript = (
   words: DeepgramWord[] | undefined,
+  transcript: string,
   state?: TranscriptSpeakerState,
 ): string => {
   if (!Array.isArray(words) || words.length === 0) return ''
+  const labels = words
+    .map((word) => formatSpeakerLabel(word.speaker))
+    .filter((label) => label.length > 0)
+  const uniqueLabels = [...new Set(labels)]
+  const trimmedTranscript = transcript.trim()
+  if (uniqueLabels.length === 1 && trimmedTranscript) {
+    const label = uniqueLabels[0]
+    const prefix = label === state?.lastSpeakerLabel ? '' : `${label}: `
+    if (state) state.lastSpeakerLabel = label
+    return `${prefix}${trimmedTranscript}`
+  }
+
   const lines: string[] = []
   let current = ''
   let lastSpeakerLabel = state?.lastSpeakerLabel ?? ''
@@ -164,8 +179,31 @@ const readDeepgramWordText = (word: {
 
 const appendTranscriptWord = (current: string, word: string): string => {
   if (!current) return word
-  return `${current}${word}`
+  if (/^[.,!?;:，。！？；：]/.test(word)) return `${current}${word}`
+  // Deepgram `words` are token-like: English tokens need spaces, while CJK
+  // tokens should stay adjacent when reconstructing a speaker-labeled line.
+  return shouldJoinTranscriptWordWithoutSpace(current, word)
+    ? `${current}${word}`
+    : `${current} ${word}`
 }
+
+const shouldJoinTranscriptWordWithoutSpace = (
+  current: string,
+  word: string,
+): boolean => {
+  const previous = current.trimEnd().at(-1) ?? ''
+  const next = word.trimStart().at(0) ?? ''
+  return (
+    (isCjkTranscriptChar(previous) || isCjkTranscriptPunctuation(previous)) &&
+    isCjkTranscriptChar(next)
+  )
+}
+
+const isCjkTranscriptChar = (char: string): boolean =>
+  /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(char)
+
+const isCjkTranscriptPunctuation = (char: string): boolean =>
+  /[，。！？；：、]/.test(char)
 
 export const readWhisperLiveKitNativeTranscript = (
   payload: WhisperLiveKitNativeMessage,

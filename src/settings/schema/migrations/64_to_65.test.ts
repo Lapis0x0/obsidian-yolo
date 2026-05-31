@@ -64,6 +64,9 @@ describe('migrateFrom64To65', () => {
       language: 'zh',
       audioFormat: 'auto',
       transportMode: 'node',
+      longAudioPunctuation: true,
+      longAudioDiarization: true,
+      longAudioTimestamps: true,
     })
     expect(configs[1]).toMatchObject({
       name: 'Chat Audio',
@@ -76,6 +79,9 @@ describe('migrateFrom64To65', () => {
       language: 'zh',
       audioFormat: 'wav',
       transportMode: 'node',
+      longAudioPunctuation: true,
+      longAudioDiarization: true,
+      longAudioTimestamps: true,
     })
     expect(voice.activeAsrConfigId).toBe(configs[1].id)
     expect(voice.selectedAsrApiFormat).toBeUndefined()

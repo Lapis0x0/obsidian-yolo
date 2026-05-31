@@ -1460,6 +1460,8 @@ export const en: TranslationKeys = {
         'A multimodal chat model that accepts audio in messages.',
       deepgramWsModelDesc:
         'Deepgram model name; local compatible servers may ignore it.',
+      deepgramLanguageDesc:
+        'auto omits the language parameter; fill it explicitly for non-English speech, for example zh.',
       deepgramWsLanguageDesc:
         'auto omits the language parameter; fill it for non-English speech, for example zh.',
       listenPath: 'Path',
@@ -1530,6 +1532,9 @@ export const en: TranslationKeys = {
       funasrServerFeatures: 'Server features',
       funasrServerFeaturesDesc:
         'Configure punctuation and speaker diarization on the FunASR server. The plugin automatically uses returned punctuation and speaker fields.',
+      longAudioPunctuation: 'Punctuation',
+      longAudioPunctuationDesc:
+        'Ask Deepgram to add punctuation, capitalization, and Smart Format. Turn off if the selected language produces unwanted formatting.',
       featureModeAuto: 'Auto',
       featureModeOn: 'On',
       featureModeOff: 'Off',
@@ -1753,6 +1758,8 @@ export const en: TranslationKeys = {
     audioFileConfirmButton: 'Start upload',
     audioFileChooseButton: 'Choose audio file',
     audioFileFinished: 'Audio file transcription finished.',
+    audioFileEmptyLongAudioResult:
+      'Long-audio transcription finished, but the provider returned no text to insert.',
     audioFileCancelled: 'Audio file transcription cancelled.',
     audioFilePlanStream: 'Stream audio?',
     audioFilePlanChunked: 'Upload {{count}} audio chunks?',

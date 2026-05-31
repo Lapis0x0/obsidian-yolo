@@ -189,6 +189,7 @@ function buildHttpLongAudioProvider(config: AsrConfig): BaseAsrProvider {
         transcriptionPath: config.transcriptionPath,
         transportMode: config.transportMode,
         language: config.language,
+        punctuation: config.longAudioPunctuation,
         diarization: config.longAudioDiarization,
         timestamps: config.longAudioTimestamps,
       })

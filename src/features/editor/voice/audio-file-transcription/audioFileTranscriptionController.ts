@@ -205,6 +205,16 @@ export class AudioFileTranscriptionController {
         messages: this.getMessages(),
       })
       if (this.session !== session) return
+      if (plan.mode === 'long-audio-upload' && !session.hasInsertedText) {
+        new Notice(
+          this.deps.t(
+            'voiceInput.audioFileEmptyLongAudioResult',
+            'Long-audio transcription finished, but the provider returned no text to insert.',
+          ),
+        )
+        this.finish()
+        return
+      }
       new Notice(
         this.deps.t(
           'voiceInput.audioFileFinished',

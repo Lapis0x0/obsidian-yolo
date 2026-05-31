@@ -191,6 +191,7 @@ type LongAudioProviderDefaults = Pick<
   appId: string
   apiSecret: string
   longAudioDiarization: boolean
+  longAudioPunctuation: boolean
   longAudioSpeakerCount: number
   longAudioTimestamps: boolean
 }
@@ -226,6 +227,7 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     language: 'zh',
     appId: '',
     apiSecret: '',
+    longAudioPunctuation: false,
     longAudioDiarization: true,
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
@@ -242,6 +244,7 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     language: 'auto',
     appId: '',
     apiSecret: '',
+    longAudioPunctuation: true,
     longAudioDiarization: true,
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
@@ -258,6 +261,7 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     language: 'zh',
     appId: '',
     apiSecret: '',
+    longAudioPunctuation: false,
     longAudioDiarization: true,
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
@@ -368,6 +372,10 @@ function AsrConfigFormComponent({
       transportMode: 'node',
       language:
         initialCategory === 'http-long-audio' ? longDef.language : def.language,
+      longAudioPunctuation:
+        initialCategory === 'http-long-audio'
+          ? longDef.longAudioPunctuation
+          : true,
       longAudioDiarization:
         initialCategory === 'http-long-audio'
           ? longDef.longAudioDiarization
@@ -400,6 +408,8 @@ function AsrConfigFormComponent({
   const isHttpLongAudio = formData.asrCategory === 'http-long-audio'
   const isTencentFlash =
     isHttpLongAudio && formData.asrProvider === 'tencent-flash'
+  const isDeepgramPreRecorded =
+    isHttpLongAudio && formData.asrProvider === 'deepgram-prerecorded'
   const isCloudLongAudio =
     isHttpLongAudio && formData.asrProvider !== 'funasr-local'
   const isWebSocketAsr =
@@ -678,6 +688,7 @@ function AsrConfigFormComponent({
       language: defaults.language,
       appId: defaults.appId,
       apiSecret: defaults.apiSecret,
+      longAudioPunctuation: defaults.longAudioPunctuation,
       longAudioDiarization: defaults.longAudioDiarization,
       longAudioSpeakerCount: defaults.longAudioSpeakerCount,
       longAudioTimestamps: defaults.longAudioTimestamps,
@@ -727,9 +738,9 @@ function AsrConfigFormComponent({
   }
 
   const buildLanguageDesc = (): string => {
-    if (isWebSocketAsr) {
+    if (isDeepgramCompatibleWs || isDeepgramPreRecorded) {
       return t(
-        'settings.asr.deepgramWsLanguageDesc',
+        'settings.asr.deepgramLanguageDesc',
         'auto omits the language parameter; fill it for non-English speech, for example zh.',
       )
     }
@@ -1367,6 +1378,21 @@ function AsrConfigFormComponent({
                 audioFormat: value === 'wav' ? 'wav' : 'auto',
               })
             }
+          />
+        </ObsidianSetting>
+      )}
+
+      {isDeepgramPreRecorded && (
+        <ObsidianSetting
+          name={t('settings.asr.longAudioPunctuation', 'Punctuation')}
+          desc={t(
+            'settings.asr.longAudioPunctuationDesc',
+            'Ask Deepgram to add punctuation, capitalization, and Smart Format. Turn off if the selected language produces unwanted formatting.',
+          )}
+        >
+          <ObsidianToggle
+            value={formData.longAudioPunctuation}
+            onChange={(value) => handlePatch({ longAudioPunctuation: value })}
           />
         </ObsidianSetting>
       )}

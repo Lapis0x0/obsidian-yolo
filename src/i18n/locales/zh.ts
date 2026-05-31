@@ -1350,6 +1350,8 @@ export const zh: TranslationKeys = {
       modelDesc: '语音转写模型 ID。',
       chatAudioModelDesc: '能接受音频内容的多模态聊天模型。',
       deepgramWsModelDesc: 'Deepgram 模型名；本地兼容服务可能会忽略。',
+      deepgramLanguageDesc:
+        'auto 会省略 language 参数；非英语建议明确填写，例如中文填 zh。',
       deepgramWsLanguageDesc:
         'auto 会省略 language 参数，非英语建议填写（例如 zh）',
       listenPath: 'Path',
@@ -1411,6 +1413,9 @@ export const zh: TranslationKeys = {
       funasrServerFeatures: '服务端能力',
       funasrServerFeaturesDesc:
         '标点和说话人识别需要在 FunASR 服务端配置。插件会自动适配返回的标点和 speaker 字段。',
+      longAudioPunctuation: '标点',
+      longAudioPunctuationDesc:
+        '请求 Deepgram 添加标点、大小写和 Smart Format。若当前语言产生不理想的格式化，可关闭。',
       featureModeAuto: '自动',
       featureModeOn: '开',
       featureModeOff: '关',
@@ -1621,6 +1626,8 @@ export const zh: TranslationKeys = {
     audioFileConfirmButton: '开始上传',
     audioFileChooseButton: '选择音频文件',
     audioFileFinished: '音频文件转录完成。',
+    audioFileEmptyLongAudioResult:
+      '长音频转写完成，但服务没有返回可插入的文本。',
     audioFileCancelled: '音频文件转录已取消。',
     audioFilePlanStream: '开始流式转写音频？',
     audioFilePlanChunked: '上传 {{count}} 个音频分段？',

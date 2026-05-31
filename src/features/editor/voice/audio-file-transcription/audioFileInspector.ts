@@ -15,6 +15,14 @@ const ACCEPTED_AUDIO_EXTENSIONS = new Set([
   'amr',
 ])
 
+const EXTENSION_BACKED_MIME_TYPES = new Set([
+  'application/octet-stream',
+  'application/ogg',
+  'application/mp4',
+  'video/mp4',
+  'video/webm',
+])
+
 export type AudioFileInspection = {
   source: AudioFileSource
   mimeType: string
@@ -87,11 +95,16 @@ function isAcceptedAudioFile(input: {
   mimeType: string
   extension: string
 }): boolean {
-  const mimeType = input.mimeType.toLowerCase()
-  if (mimeType.startsWith('video/')) return false
+  const mimeType = input.mimeType.toLowerCase().split(';')[0].trim()
+  const acceptedByExtension = ACCEPTED_AUDIO_EXTENSIONS.has(input.extension)
   if (mimeType.startsWith('audio/')) return true
-  if (mimeType.length > 0) return false
-  return ACCEPTED_AUDIO_EXTENSIONS.has(input.extension)
+  if (!mimeType) return acceptedByExtension
+  // Desktop drags can report audio containers as generic application/* or
+  // video/* MIME types. Trust the already-filtered extension for those common
+  // containers, but keep rejecting unrelated explicit MIME types.
+  if (EXTENSION_BACKED_MIME_TYPES.has(mimeType)) return acceptedByExtension
+  if (mimeType.startsWith('video/')) return false
+  return false
 }
 
 function getFileExtension(fileName: string): string {

@@ -16,6 +16,7 @@ export type DeepgramPreRecordedProviderProfile = {
   transcriptionPath: string
   transportMode: AsrTransportMode
   language: string
+  punctuation: boolean
   diarization: boolean
   timestamps: boolean
 }
@@ -90,8 +91,10 @@ export function buildDeepgramPreRecordedUrl(
   url.searchParams.set('model', model)
   if (language && language !== 'auto')
     url.searchParams.set('language', language)
-  url.searchParams.set('smart_format', 'true')
-  url.searchParams.set('punctuate', 'true')
+  if (profile.punctuation) {
+    url.searchParams.set('smart_format', 'true')
+    url.searchParams.set('punctuate', 'true')
+  }
   if (profile.diarization) {
     // Deepgram recommends `diarize_model` for new pre-recorded integrations;
     // it both enables diarization and pins the batch diarizer selection.
@@ -105,7 +108,9 @@ export function parseDeepgramPreRecordedResponse(payload: unknown): {
   text: string
   segments: AsrSegment[]
 } {
-  const channelTranscript = extractTranscript(payload).trim()
+  const channelTranscript = normalizeCjkTranscriptSpacing(
+    extractTranscript(payload).trim(),
+  )
   const utteranceSegments = extractUtteranceSegments(payload)
   if (utteranceSegments.length > 0) {
     const speakerLabel = readOnlySpeakerLabel(utteranceSegments)
@@ -117,9 +122,13 @@ export function parseDeepgramPreRecordedResponse(payload: unknown): {
     }
     return {
       text: utteranceSegments.some((segment) => segment.speakerId)
-        ? formatSpeakerAwareTranscript(utteranceSegments)
+        ? normalizeCjkTranscriptSpacing(
+            formatSpeakerAwareTranscript(utteranceSegments),
+          )
         : channelTranscript ||
-          utteranceSegments.map((segment) => segment.text).join('\n'),
+          normalizeCjkTranscriptSpacing(
+            utteranceSegments.map((segment) => segment.text).join('\n'),
+          ),
       segments: utteranceSegments,
     }
   }
@@ -135,9 +144,13 @@ export function parseDeepgramPreRecordedResponse(payload: unknown): {
     }
     return {
       text: wordSegments.some((segment) => segment.speakerId)
-        ? formatSpeakerAwareTranscript(wordSegments)
+        ? normalizeCjkTranscriptSpacing(
+            formatSpeakerAwareTranscript(wordSegments),
+          )
         : channelTranscript ||
-          wordSegments.map((segment) => segment.text).join(' '),
+          normalizeCjkTranscriptSpacing(
+            wordSegments.map((segment) => segment.text).join(' '),
+          ),
       segments: wordSegments,
     }
   }
@@ -150,7 +163,9 @@ function extractUtteranceSegments(payload: unknown): AsrSegment[] {
   return utterances.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return []
     const record = entry as Record<string, unknown>
-    const text = readString(record.transcript ?? record.text).trim()
+    const text = normalizeCjkTranscriptSpacing(
+      readString(record.transcript ?? record.text).trim(),
+    )
     if (!text) return []
     const speakerId = readSpeakerId(record.speaker)
     return [
@@ -177,7 +192,9 @@ function extractWordSpeakerSegments(payload: unknown): AsrSegment[] {
   for (const word of words) {
     if (!word || typeof word !== 'object') continue
     const record = word as Record<string, unknown>
-    const text = readString(record.punctuated_word ?? record.word).trim()
+    const text = normalizeCjkTranscriptSpacing(
+      readString(record.punctuated_word ?? record.word).trim(),
+    )
     if (!text) continue
     const speakerId = readSpeakerId(record.speaker)
     const last = segments[segments.length - 1]
@@ -248,9 +265,51 @@ function secondsToMs(value: unknown): number {
 
 function appendWord(current: string, word: string): string {
   if (!current) return word
-  return /^[.,!?;:，。！？；：]/.test(word)
+  if (/^[.,!?;:，。！？；：]/.test(word)) return `${current}${word}`
+  return shouldJoinCjkWithoutSpace(current, word)
     ? `${current}${word}`
     : `${current} ${word}`
+}
+
+function normalizeCjkTranscriptSpacing(text: string): string {
+  // Deepgram can emit whitespace-delimited CJK characters even when the
+  // readable transcript should be adjacent. Keep Latin word spacing intact.
+  let normalized = text
+  let previous = ''
+  while (normalized !== previous) {
+    previous = normalized
+    normalized = normalized
+      .replace(
+        /([\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af])\s+([\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af])/g,
+        '$1$2',
+      )
+      .replace(
+        /([\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af])\s+([，。！？；：、])/g,
+        '$1$2',
+      )
+      .replace(
+        /([，。！？；：、])\s+([\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af])/g,
+        '$1$2',
+      )
+  }
+  return normalized
+}
+
+function shouldJoinCjkWithoutSpace(current: string, word: string): boolean {
+  const previous = current.trimEnd().at(-1) ?? ''
+  const next = word.trimStart().at(0) ?? ''
+  return (
+    (isCjkTranscriptChar(previous) || isCjkTranscriptPunctuation(previous)) &&
+    isCjkTranscriptChar(next)
+  )
+}
+
+function isCjkTranscriptChar(char: string): boolean {
+  return /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(char)
+}
+
+function isCjkTranscriptPunctuation(char: string): boolean {
+  return /[，。！？；：、]/.test(char)
 }
 
 function readOnlySpeakerLabel(segments: AsrSegment[]): string | undefined {

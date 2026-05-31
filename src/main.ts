@@ -958,10 +958,7 @@ export default class YoloPlugin extends Plugin {
       getActiveMarkdownView: () =>
         this.app.workspace.getActiveViewOfType(MarkdownView),
       t: (key, fallback) => this.t(key, fallback),
-      isFeatureReady: () => {
-        const opts = this.settings?.contextVoiceInputOptions
-        return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
-      },
+      isFeatureReady: () => this.isVoiceFloatingIslandFeatureReady(),
       isAudioFileModeEnabled: () => {
         return this.isAudioFileTranscriptionFeatureReady()
       },
@@ -1003,6 +1000,13 @@ export default class YoloPlugin extends Plugin {
     return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
   }
 
+  private isVoiceFloatingIslandFeatureReady(): boolean {
+    return (
+      this.isContextVoiceInputFeatureReady() ||
+      this.isAudioFileTranscriptionFeatureReady()
+    )
+  }
+
   private getActiveVoiceMode(): ActiveVoiceModeId {
     const mode =
       this.settings.contextVoiceInputOptions.interactionMode ?? 'toggle-listen'
@@ -1013,7 +1017,7 @@ export default class YoloPlugin extends Plugin {
   }
 
   private syncVoiceFloatingIsland(): void {
-    if (!this.isContextVoiceInputFeatureReady()) {
+    if (!this.isVoiceFloatingIslandFeatureReady()) {
       if (!this.voiceController?.isBusy()) {
         this.voiceFloatingIslandController?.destroy()
         this.voiceFloatingIslandController = null

@@ -3,7 +3,18 @@ jest.mock('obsidian', () => ({
   Platform: { isDesktop: true, isMobile: false },
 }))
 
+jest.mock('./audioFileTranscriptionService', () => {
+  const actual = jest.requireActual('./audioFileTranscriptionService')
+  return {
+    ...actual,
+    executeAudioFileTranscriptionPlan: jest.fn(),
+  }
+})
+
+import { Notice } from 'obsidian'
+
 import { AudioFileTranscriptionController } from './audioFileTranscriptionController'
+import { executeAudioFileTranscriptionPlan } from './audioFileTranscriptionService'
 
 const createController = () => {
   const updateStatus = jest.fn()
@@ -263,6 +274,71 @@ describe('AudioFileTranscriptionController fallback insertion', () => {
     expect(createFallbackMarkdownFile).toHaveBeenCalledWith(
       expect.stringContaining('meeting.md'),
       expect.stringContaining('转写结果'),
+    )
+  })
+})
+
+describe('AudioFileTranscriptionController long-audio empty result', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('shows a notice when long-audio finishes without inserted text', async () => {
+    const { controller } = createController()
+    const session = {
+      source: { name: 'meeting.wav' },
+      editor: null,
+      view: null,
+      filePath: '',
+      anchorOffset: null,
+      appendOffset: null,
+      abortController: new AbortController(),
+      plan: {
+        fileName: 'meeting.wav',
+        mode: 'long-audio-upload',
+        providerConfig: {
+          name: 'Deepgram',
+          model: 'nova-3',
+          format: 'deepgram-prerecorded',
+        },
+        schedule: null,
+        maxConcurrentChunks: 1,
+        chunkOverlapMs: 0,
+        fileSizeBytes: 1024,
+        wavPcmUploadEstimateBytes: null,
+      },
+      startedAt: 0,
+      previousInsertedText: '',
+      hasInsertedText: false,
+      streamingRevisionStartOffset: null,
+      streamingRevisionEndOffset: null,
+      streamingRevisionPrefix: '',
+      streamingProgressMessage: null,
+      streamingProgressLabel: '',
+      streamingProgressHoldUntil: 0,
+      fallbackPath: null,
+      fallbackNoticeShown: false,
+      applyingInsertion: false,
+    }
+    controller.session = session
+    controller.deps.getStatusState.mockReturnValue('confirm-plan')
+    jest.mocked(executeAudioFileTranscriptionPlan).mockImplementation(
+      async ({ onText }) => {
+        await onText({
+          text: '   ',
+          chunkIndex: null,
+          chunkStartMs: null,
+        })
+      },
+    )
+
+    await controller.confirm()
+
+    expect(Notice).toHaveBeenCalledWith(
+      'Long-audio transcription finished, but the provider returned no text to insert.',
+    )
+    expect(Notice).not.toHaveBeenCalledWith(
+      'Audio file transcription finished.',
     )
   })
 })

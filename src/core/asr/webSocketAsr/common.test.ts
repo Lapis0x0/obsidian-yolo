@@ -300,10 +300,10 @@ describe('readTranscript', () => {
       { includeSpeakerLabels: true, speakerState },
     )
 
-    expect(first).toBe('Speaker 1: helloagain')
-    expect(second).toBe('stillhere')
+    expect(first).toBe('Speaker 1: hello again')
+    expect(second).toBe('still here')
     expect(combineTranscript([first, second])).toBe(
-      'Speaker 1: helloagain stillhere',
+      'Speaker 1: hello again still here',
     )
   })
 
@@ -342,10 +342,86 @@ describe('readTranscript', () => {
       { includeSpeakerLabels: true, speakerState },
     )
 
-    expect(first).toBe('Speaker 1: helloagain')
-    expect(second).toBe('Speaker 2: hithere')
+    expect(first).toBe('Speaker 1: hello again')
+    expect(second).toBe('Speaker 2: hi there')
     expect(combineTranscript([first, second])).toBe(
-      'Speaker 1: helloagain\n\nSpeaker 2: hithere',
+      'Speaker 1: hello again\n\nSpeaker 2: hi there',
     )
+  })
+
+  it('keeps punctuation attached when adding spaces between Deepgram words', () => {
+    const text = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: 'hello, world',
+              words: [
+                { speaker: 0, word: 'hello' },
+                { speaker: 0, punctuated_word: ',' },
+                { speaker: 0, word: 'world' },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState: { lastSpeakerLabel: '' } },
+    )
+
+    expect(text).toBe('Speaker 1: hello, world')
+  })
+
+  it('keeps CJK Deepgram words adjacent in speaker transcripts', () => {
+    const text = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: '你好，世界',
+              words: [
+                { speaker: 0, word: '你' },
+                { speaker: 0, word: '好' },
+                { speaker: 0, punctuated_word: '，' },
+                { speaker: 0, word: '世界' },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState: { lastSpeakerLabel: '' } },
+    )
+
+    expect(text).toBe('Speaker 1: 你好，世界')
+  })
+
+  it('uses Deepgram transcript text for single-speaker mixed-language frames', () => {
+    const text = readTranscript(
+      {
+        channel: {
+          alternatives: [
+            {
+              transcript: '在Googledepminds',
+              words: [
+                { speaker: 1, word: '在', punctuated_word: '' },
+                { speaker: 1, word: 'google', punctuated_word: '' },
+                { speaker: 1, word: 'de', punctuated_word: '' },
+                { speaker: 1, word: 'p', punctuated_word: '' },
+                { speaker: 1, word: 'm', punctuated_word: '' },
+                { speaker: 1, word: 'in', punctuated_word: '' },
+                { speaker: 1, word: 'd', punctuated_word: '' },
+                {
+                  speaker: 1,
+                  word: 's',
+                  punctuated_word: '在Googledepminds',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { includeSpeakerLabels: true, speakerState: { lastSpeakerLabel: '' } },
+    )
+
+    expect(text).toBe('Speaker 2: 在Googledepminds')
   })
 })

@@ -59,6 +59,43 @@ describe('inspectAudioFile', () => {
     expect(inspection.mp4MoovPosition).toBe('before-mdat')
     expect(getFile).not.toHaveBeenCalled()
   })
+
+  it('accepts audio files reported with generic or container MIME types', async () => {
+    Object.defineProperty(globalThis, 'Audio', {
+      configurable: true,
+      value: undefined,
+    })
+    const getFile = jest.fn(async () => {
+      throw new Error('should not materialize')
+    })
+    const genericSource = createByteSource({
+      bytes: new Uint8Array([1, 2, 3]),
+      name: 'clip.mp3',
+      type: 'application/octet-stream',
+      getFile,
+    })
+    const mp4Source = createByteSource({
+      bytes: buildMp4Fixture({ durationMs: 45_000 }),
+      name: 'meeting.mp4',
+      type: 'video/mp4',
+      getFile,
+    })
+
+    await expect(
+      inspectAudioFile(genericSource, { decode: false }),
+    ).resolves.toMatchObject({
+      extension: 'mp3',
+      mimeType: 'application/octet-stream',
+    })
+    await expect(
+      inspectAudioFile(mp4Source, { decode: false }),
+    ).resolves.toMatchObject({
+      durationMs: 45_000,
+      extension: 'mp4',
+      mimeType: 'video/mp4',
+    })
+    expect(getFile).not.toHaveBeenCalled()
+  })
 })
 
 function createByteSource(input: {

@@ -438,6 +438,7 @@ const asrConfigSchema = z
       )
       .catch('node'),
     language: z.string().catch('auto'),
+    longAudioPunctuation: z.boolean().catch(true),
     longAudioDiarization: z.boolean().catch(true),
     longAudioSpeakerCount: z.number().int().min(0).max(32).catch(0),
     longAudioTimestamps: z.boolean().catch(true),
@@ -466,6 +467,7 @@ const asrConfigSchema = z
     audioFormat: 'auto' as AsrAudioFormat,
     transportMode: 'node' as AsrTransportMode,
     language: 'auto',
+    longAudioPunctuation: true,
     longAudioDiarization: true,
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
