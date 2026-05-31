@@ -1078,54 +1078,6 @@ function AsrConfigFormComponent({
         </ObsidianSetting>
       )}
 
-      {isWebSocketAsr && (
-        <>
-          {isDeepgramCompatibleWs && (
-            <ObsidianSetting
-              name={t('settings.asr.webSocketPunctuate', 'Punctuation')}
-              desc={t(
-                'settings.asr.webSocketPunctuateDesc',
-                'Adds punctuation and capitalization to Deepgram-compatible transcripts.',
-              )}
-            >
-              <ObsidianToggle
-                value={formData.webSocketPunctuate}
-                onChange={(value) =>
-                  handlePatch({
-                    webSocketPunctuate: value,
-                    webSocketDictation: value
-                      ? formData.webSocketDictation
-                      : false,
-                  })
-                }
-              />
-            </ObsidianSetting>
-          )}
-
-          {isDeepgramCompatibleWs && (
-            <ObsidianSetting
-              name={t('settings.asr.webSocketDictation', 'Dictation commands')}
-              desc={t(
-                'settings.asr.webSocketDictationDesc',
-                'Turns spoken punctuation commands such as comma, period, and new line into marks. Requires punctuation.',
-              )}
-            >
-              <ObsidianToggle
-                value={formData.webSocketDictation}
-                onChange={(value) =>
-                  handlePatch({
-                    webSocketDictation: value,
-                    webSocketPunctuate: value
-                      ? true
-                      : formData.webSocketPunctuate,
-                  })
-                }
-              />
-            </ObsidianSetting>
-          )}
-        </>
-      )}
-
       <ObsidianSetting
         name={t('settings.asr.baseURL', 'Base URL')}
         desc={t('settings.asr.baseURLDesc', 'Do not include the path here.')}
@@ -1341,6 +1293,46 @@ function AsrConfigFormComponent({
             onChange={(value) =>
               handlePatch({
                 webSocketDiarizeMode: value as AsrWebSocketFeatureMode,
+              })
+            }
+          />
+        </ObsidianSetting>
+      )}
+
+      {isDeepgramCompatibleWs && (
+        <ObsidianSetting
+          name={t('settings.asr.webSocketPunctuate', 'Punctuation')}
+          desc={t(
+            'settings.asr.webSocketPunctuateDesc',
+            'Adds punctuation and capitalization to Deepgram-compatible transcripts.',
+          )}
+        >
+          <ObsidianToggle
+            value={formData.webSocketPunctuate}
+            onChange={(value) =>
+              handlePatch({
+                webSocketPunctuate: value,
+                webSocketDictation: value ? formData.webSocketDictation : false,
+              })
+            }
+          />
+        </ObsidianSetting>
+      )}
+
+      {isDeepgramCompatibleWs && (
+        <ObsidianSetting
+          name={t('settings.asr.webSocketDictation', 'Dictation commands')}
+          desc={t(
+            'settings.asr.webSocketDictationDesc',
+            'Turns spoken punctuation commands such as comma, period, and new line into marks. Requires punctuation.',
+          )}
+        >
+          <ObsidianToggle
+            value={formData.webSocketDictation}
+            onChange={(value) =>
+              handlePatch({
+                webSocketDictation: value,
+                webSocketPunctuate: value ? true : formData.webSocketPunctuate,
               })
             }
           />

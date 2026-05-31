@@ -228,7 +228,7 @@ const formatWhisperLiveKitLines = (
     .map((line) => {
       const text = typeof line.text === 'string' ? line.text.trim() : ''
       if (!text || !options.includeSpeakerLabels) return text
-      const label = formatSpeakerLabel(line.speaker)
+      const label = formatWhisperLiveKitSpeakerLabel(line.speaker)
       if (!label) return text
       if (label === speakerState.lastSpeakerLabel) return text
       speakerState.lastSpeakerLabel = label
@@ -346,6 +346,18 @@ const formatWhisperLiveKitStateText = (
 const formatSpeakerLabel = (speaker: unknown): string => {
   if (typeof speaker === 'number' && Number.isFinite(speaker)) {
     return speaker >= 0 ? `Speaker ${speaker + 1}` : `Speaker ${speaker}`
+  }
+  if (typeof speaker === 'string' && speaker.trim().length > 0) {
+    return `Speaker ${speaker.trim()}`
+  }
+  return ''
+}
+
+const formatWhisperLiveKitSpeakerLabel = (speaker: unknown): string => {
+  if (typeof speaker === 'number' && Number.isFinite(speaker)) {
+    // WhisperLiveKit emits speaker ids that are already user-facing; keep
+    // them as-is so the transcript matches the provider output.
+    return `Speaker ${speaker}`
   }
   if (typeof speaker === 'string' && speaker.trim().length > 0) {
     return `Speaker ${speaker.trim()}`

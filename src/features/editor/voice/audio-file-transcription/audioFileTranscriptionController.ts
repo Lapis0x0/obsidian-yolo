@@ -61,6 +61,9 @@ type AudioFileSession = {
   streamingRevisionStartOffset: number | null
   streamingRevisionEndOffset: number | null
   streamingRevisionPrefix: string
+  streamingProgressMessage: string | null
+  streamingProgressLabel: string
+  streamingProgressHoldUntil: number
   fallbackPath: string | null
   fallbackNoticeShown: boolean
   applyingInsertion: boolean
@@ -91,6 +94,7 @@ type AudioFileTranscriptionControllerDeps = {
 
 const WAV_PCM_UPLOAD_NOTICE_MIN_DURATION_MS = 5 * 60 * 1000
 const LARGE_AUDIO_UPLOAD_NOTICE_MIN_BYTES = 100 * 1024 * 1024
+const STREAMING_PROGRESS_MESSAGE_MIN_VISIBLE_MS = 3000
 
 export class AudioFileTranscriptionController {
   private session: AudioFileSession | null = null
@@ -151,6 +155,9 @@ export class AudioFileTranscriptionController {
       streamingRevisionStartOffset: null,
       streamingRevisionEndOffset: null,
       streamingRevisionPrefix: '',
+      streamingProgressMessage: null,
+      streamingProgressLabel: '',
+      streamingProgressHoldUntil: 0,
       fallbackPath: null,
       fallbackNoticeShown: false,
       applyingInsertion: false,
@@ -445,11 +452,46 @@ export class AudioFileTranscriptionController {
           : progress.phase === 'transcribing'
             ? 'transcribing'
             : 'uploading'
+    const display = this.resolveProgressDisplay(session, progress)
     this.deps.updateStatus(statusState, {
-      message: this.formatProgress(progress),
-      progressLabel: this.formatProgressLabel(progress),
+      message: display.message,
+      progressLabel: display.progressLabel,
       audioFilePlan: this.summarisePlan(session.plan),
     })
+  }
+
+  private resolveProgressDisplay(
+    session: AudioFileSession,
+    progress: AudioFileTranscriptionProgress,
+  ): Pick<AudioFileStatusExtra, 'message' | 'progressLabel'> {
+    const message = this.formatProgress(progress)
+    const progressLabel = this.formatProgressLabel(progress)
+    const now = Date.now()
+
+    if (isStreamingTransferProgress(progress)) {
+      session.streamingProgressMessage = message
+      session.streamingProgressLabel = progressLabel
+      session.streamingProgressHoldUntil =
+        now + STREAMING_PROGRESS_MESSAGE_MIN_VISIBLE_MS
+      return { message, progressLabel }
+    }
+
+    // WebSocket file streaming can receive provider partials while bytes are
+    // still being sent. Keep the transfer progress readable instead of letting
+    // each partial immediately flip the island back to a generic transcribing
+    // label.
+    if (
+      progress.phase === 'transcribing' &&
+      session.streamingProgressMessage &&
+      now < session.streamingProgressHoldUntil
+    ) {
+      return {
+        message: session.streamingProgressMessage,
+        progressLabel: session.streamingProgressLabel,
+      }
+    }
+
+    return { message, progressLabel }
   }
 
   private formatProgress(progress: AudioFileTranscriptionProgress): string {
@@ -476,10 +518,7 @@ export class AudioFileTranscriptionController {
         },
       )
     }
-    if (
-      typeof progress.sentBytes === 'number' &&
-      typeof progress.totalBytes === 'number'
-    ) {
+    if (isStreamingTransferProgress(progress)) {
       const pct = Math.max(
         0,
         Math.min(
@@ -514,10 +553,7 @@ export class AudioFileTranscriptionController {
     ) {
       return `${progress.completedChunks}/${progress.totalChunks}`
     }
-    if (
-      typeof progress.sentBytes === 'number' &&
-      typeof progress.totalBytes === 'number'
-    ) {
+    if (isStreamingTransferProgress(progress)) {
       const pct = Math.max(
         0,
         Math.min(
@@ -894,3 +930,14 @@ const computeEndCursor = (
 
 const isAbortError = (error: unknown): boolean =>
   (error as { name?: string })?.name === 'AbortError'
+
+type StreamingTransferProgress = AudioFileTranscriptionProgress & {
+  sentBytes: number
+  totalBytes: number
+}
+
+const isStreamingTransferProgress = (
+  progress: AudioFileTranscriptionProgress,
+): progress is StreamingTransferProgress =>
+  typeof progress.sentBytes === 'number' &&
+  typeof progress.totalBytes === 'number'

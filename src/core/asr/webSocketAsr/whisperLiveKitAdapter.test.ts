@@ -92,7 +92,7 @@ describe('openWhisperLiveKitNativeStream', () => {
       }),
     })
 
-    expect(onPartial).toHaveBeenLastCalledWith('Speaker 2: hello world')
+    expect(onPartial).toHaveBeenLastCalledWith('Speaker 1: hello world')
     expect(onFinal).not.toHaveBeenCalled()
 
     const finishPromise = session.finish()
@@ -102,7 +102,7 @@ describe('openWhisperLiveKitNativeStream', () => {
     })
     const result = await finishPromise
 
-    expect(result.text).toBe('Speaker 2: hello world')
+    expect(result.text).toBe('Speaker 1: hello world')
     expect(onFinal).not.toHaveBeenCalled()
   })
 })

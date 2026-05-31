@@ -106,7 +106,7 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     )
 
     expect(result.text).toBe(
-      'Speaker 1: hello\nagain\nSpeaker 2: hi\nSpeaker -2: noise',
+      'Speaker 0: hello\nagain\nSpeaker 1: hi\nSpeaker -2: noise',
     )
   })
 
@@ -122,7 +122,7 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     )
 
     expect(result.text).toBe(
-      'Speaker -2: first speaker\nSpeaker 2: second speaker',
+      'Speaker -2: first speaker\nSpeaker 1: second speaker',
     )
   })
 
@@ -147,9 +147,9 @@ describe('readWhisperLiveKitNativeTranscript', () => {
       { includeSpeakerLabels: true, state },
     )
 
-    expect(snapshot.text).toBe('Speaker 1: first')
+    expect(snapshot.text).toBe('Speaker 0: first')
     expect(snapshot.committedChanged).toBe(true)
-    expect(diff.text).toBe('Speaker 1: first\nSpeaker 2: second')
+    expect(diff.text).toBe('Speaker 0: first\nSpeaker 1: second')
     expect(diff.buffer).toBe('draft')
     expect(diff.committedChanged).toBe(true)
   })
@@ -201,9 +201,9 @@ describe('readWhisperLiveKitNativeTranscript', () => {
       { includeSpeakerLabels: true, state },
     )
 
-    expect(first.text).toBe('Speaker 2: 1975年夏季的')
+    expect(first.text).toBe('Speaker 1: 1975年夏季的')
     expect(first.committedChanged).toBe(true)
-    expect(second.text).toBe('Speaker 2: 1975年夏季的一天')
+    expect(second.text).toBe('Speaker 1: 1975年夏季的一天')
     expect(second.committedChanged).toBe(true)
   })
 
