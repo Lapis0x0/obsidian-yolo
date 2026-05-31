@@ -460,6 +460,8 @@ export const yoloSettingsSchema = z.object({
       enableSmartSpace: z.boolean().optional(),
       // enable selection chat (Cursor-like text selection actions)
       enableSelectionChat: z.boolean().optional(),
+      // persist selected editor block highlight while chatting in sidebar
+      persistSelectionHighlight: z.boolean().optional(),
       // enable manual context selection for continuation
       manualContextEnabled: z.boolean().optional(),
       // manual context folders picked by user from the vault
@@ -559,6 +561,7 @@ export const yoloSettingsSchema = z.object({
           ?.id ?? '',
       enableSmartSpace: true,
       enableSelectionChat: true,
+      persistSelectionHighlight: true,
       manualContextEnabled: false,
       manualContextFolders: [],
       referenceRuleFolders: [],

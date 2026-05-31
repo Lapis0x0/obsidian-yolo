@@ -1263,6 +1263,9 @@ export const zh: TranslationKeys = {
         '仅影响 Chat 侧边栏中的“应用”。可选择先进入内联审阅，或直接写入文件。关闭审阅后，点击应用将不再需要二次审批。',
       chatApplyModeReviewRequired: '先审阅后应用',
       chatApplyModeDirectApply: '直接写入文件',
+      persistSelectionHighlight: '保留选区块高亮',
+      persistSelectionHighlightDesc:
+        '在侧边栏 Chat 或 Quick Ask 交互时，持续显示编辑器中已选内容的块级高亮。',
       notifications: '通知提醒',
       notificationsDesc:
         '配置 Agent 的提醒方式。若当前环境不支持系统通知，会自动降级，不影响主流程。',

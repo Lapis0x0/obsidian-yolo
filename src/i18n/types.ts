@@ -1068,6 +1068,8 @@ export type TranslationKeys = {
       chatApplyModeDesc?: string
       chatApplyModeReviewRequired?: string
       chatApplyModeDirectApply?: string
+      persistSelectionHighlight?: string
+      persistSelectionHighlightDesc?: string
       notifications?: string
       notificationsDesc?: string
       notificationsEnabled?: string

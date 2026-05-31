@@ -1268,6 +1268,9 @@ export const it: TranslationKeys = {
         'Controlla come i file con @ vengono iniettati nel modello. In modalita leggera vengono iniettati solo i percorsi dei file citati, le proprieta della nota e la struttura Markdown, incoraggiando l agent a leggere solo il contenuto necessario.',
       mentionContextModeLight: 'Modalita leggera',
       mentionContextModeFull: 'Modalita completa',
+      persistSelectionHighlight: 'Mantieni evidenziazione blocco selezione',
+      persistSelectionHighlightDesc:
+        "Mantiene visibile l'evidenziazione a blocco del contenuto selezionato nell'editor durante l'interazione con la Chat laterale o Quick Ask.",
       notifications: 'Notifiche',
       notificationsDesc:
         "Configura gli avvisi per Agent. Le notifiche di sistema degradano automaticamente se l'ambiente non le supporta.",

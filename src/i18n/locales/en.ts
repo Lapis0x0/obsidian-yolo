@@ -1368,6 +1368,9 @@ export const en: TranslationKeys = {
         'Only affects Apply in the sidebar Chat. Choose whether edits open inline review first or write directly to the file. Turning review off skips the second confirmation step.',
       chatApplyModeReviewRequired: 'Review before apply',
       chatApplyModeDirectApply: 'Write directly to file',
+      persistSelectionHighlight: 'Keep selection block highlight',
+      persistSelectionHighlightDesc:
+        'Keep showing the block highlight for selected editor content while interacting with sidebar Chat or Quick Ask.',
       notifications: 'Notifications',
       notificationsDesc:
         'Configure alerts for Agent runs. System notifications automatically degrade when the environment does not support them.',
