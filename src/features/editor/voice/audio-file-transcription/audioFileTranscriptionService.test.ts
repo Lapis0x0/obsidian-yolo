@@ -155,13 +155,37 @@ describe('calculateStreamingPaceDelayMs', () => {
 })
 
 describe('inspectAndPlanAudioFileTranscription', () => {
-  it('rejects long-audio placeholders before local short-audio planning', async () => {
+  it('plans implemented long-audio providers as native uploads', async () => {
     const longConfig: AsrConfig = {
       ...baseConfig,
       id: 'long',
       asrCategory: 'http-long-audio',
       asrProvider: 'funasr-local',
-      model: 'paraformer-zh',
+      baseURL: 'http://127.0.0.1:8001/v1',
+      model: 'paraformer',
+    }
+
+    const plan = await inspectAndPlanAudioFileTranscription({
+      source: createBlobAudioFileSource(
+        new File(['audio'], 'meeting.wav', { type: 'audio/wav' }),
+      ),
+      options: options({
+        asrConfigs: [longConfig],
+        activeAudioFileAsrConfigId: 'long',
+      }),
+    })
+
+    expect(plan.mode).toBe('long-audio-upload')
+    expect(plan.schedule).toBeNull()
+  })
+
+  it('rejects unimplemented long-audio providers before local short-audio planning', async () => {
+    const longConfig: AsrConfig = {
+      ...baseConfig,
+      id: 'long',
+      asrCategory: 'http-long-audio',
+      asrProvider: 'deepgram-prerecorded',
+      model: 'nova-3',
     }
 
     await expect(

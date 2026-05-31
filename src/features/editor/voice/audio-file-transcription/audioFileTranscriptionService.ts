@@ -2,7 +2,10 @@
   estimatePcm16WavByteLength,
   transcodeToPcm16,
 } from '../../../../core/asr/audioTranscode'
-import { getAudioFileAsrCapability } from '../../../../core/asr/capabilities'
+import {
+  getAudioFileAsrCapability,
+  isSupportedHttpLongAudioAsrConfig,
+} from '../../../../core/asr/capabilities'
 import {
   buildAsrProviderForConfig,
   resolveActiveAudioFileAsrConfig,
@@ -30,6 +33,7 @@ import type { AudioFileSource } from './audioFileSource'
 export type AudioFileSubmissionMode =
   | 'direct-upload'
   | 'chunked-upload'
+  | 'long-audio-upload'
   | 'websocket-stream'
 
 export type AudioFileTranscriptionPlan = {
@@ -128,12 +132,30 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   if (!providerConfig) {
     throw new Error(messages.noProvider)
   }
-  if (providerConfig.asrCategory === 'http-long-audio') {
-    throw new Error(messages.longAudioNotImplemented)
-  }
 
   const capability = getAudioFileAsrCapability(providerConfig)
   const inspection = await inspectAudioFile(input.source, { decode: false })
+  if (providerConfig.asrCategory === 'http-long-audio') {
+    if (!isSupportedHttpLongAudioAsrConfig(providerConfig)) {
+      throw new Error(messages.longAudioNotImplemented)
+    }
+    return {
+      mode: 'long-audio-upload',
+      source: input.source,
+      fileName: input.source.name,
+      fileSizeBytes: input.source.size,
+      mimeType: inspection.mimeType || input.source.type || 'audio/*',
+      durationMs: inspection.durationMs,
+      providerConfig,
+      schedule: null,
+      maxConcurrentChunks: 1,
+      chunkStartStaggerMs: 0,
+      chunkOverlapMs: 0,
+      targetChunkDurationSec: 0,
+      inspection,
+      wavPcmUploadEstimateBytes: null,
+    }
+  }
   if (!capability.supportsLocalFile) {
     throw new Error(messages.unsupportedLocalFile)
   }
@@ -316,6 +338,9 @@ export async function executeAudioFileTranscriptionPlan(input: {
     case 'chunked-upload':
       await executeChunkedUpload(input)
       return
+    case 'long-audio-upload':
+      await executeLongAudioUpload(input)
+      return
     case 'websocket-stream':
       await executeWebSocketStream(input)
       return
@@ -344,6 +369,38 @@ export function trimDuplicateChunkBoundary(
     }
   }
   return nextText
+}
+
+async function executeLongAudioUpload(input: {
+  plan: AudioFileTranscriptionPlan
+  signal: AbortSignal
+  onProgress: (progress: AudioFileTranscriptionProgress) => void
+  onText: (result: OrderedAudioFileText) => Promise<void>
+}): Promise<void> {
+  const provider = buildAsrProviderForConfig(input.plan.providerConfig)
+  input.onProgress({ phase: 'uploading' })
+  const file = await input.plan.inspection.source.getFile()
+  throwIfAborted(input.signal)
+  input.onProgress({ phase: 'transcribing' })
+  const result = await provider.transcribe(
+    {
+      blob: file,
+      mimeType: input.plan.mimeType || file.type,
+      durationMs: input.plan.durationMs ?? undefined,
+    },
+    {
+      language: input.plan.providerConfig.language,
+      purpose: 'audio-file-transcription',
+      signal: input.signal,
+    },
+  )
+  throwIfAborted(input.signal)
+  input.onProgress({ phase: 'inserting' })
+  await input.onText({
+    text: result.text,
+    chunkIndex: null,
+    chunkStartMs: null,
+  })
 }
 
 async function executeDirectUpload(input: {

@@ -204,9 +204,9 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
   'funasr-local': {
     name: 'FunASR local',
     asrProvider: 'funasr-local',
-    baseURL: 'http://127.0.0.1:8001',
-    model: 'paraformer-zh + fsmn-vad + ct-punc + cam++',
-    transcriptionPath: '/recognize',
+    baseURL: 'http://127.0.0.1:8001/v1',
+    model: 'paraformer',
+    transcriptionPath: '/audio/transcriptions',
     audioFormat: 'auto',
     language: 'zh',
   },
@@ -911,7 +911,7 @@ function AsrConfigFormComponent({
   }
 
   const runTest = async () => {
-    if (isHttpLongAudio) {
+    if (isHttpLongAudio && formData.asrProvider !== 'funasr-local') {
       setTestStatus('failed')
       setTestMessage(
         t(
@@ -1076,6 +1076,16 @@ function AsrConfigFormComponent({
             }
           />
         </ObsidianSetting>
+      )}
+
+      {isHttpLongAudio && formData.asrProvider === 'funasr-local' && (
+        <ObsidianSetting
+          name={t('settings.asr.funasrServerFeatures', 'Server features')}
+          desc={t(
+            'settings.asr.funasrServerFeaturesDesc',
+            'Configure punctuation and speaker diarization on the FunASR server. The plugin automatically uses returned punctuation and speaker fields.',
+          )}
+        />
       )}
 
       <ObsidianSetting

@@ -15,6 +15,8 @@ export type AudioFileChunkDurationAdvisory = {
   suggestedMaxDurationMs: number
 }
 
+export const SUPPORTED_HTTP_LONG_AUDIO_ASR_PROVIDERS = ['funasr-local'] as const
+
 const OPENAI_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024
 // Chat-audio requests embed audio as data-uri base64. Providers such as
 // Aliyun reject data-uri items over 20 MiB, so the raw blob cap needs room for
@@ -52,6 +54,15 @@ export function getAudioFileAsrCapability(
   config: AsrConfig,
 ): AudioFileAsrCapability {
   if (config.asrCategory === 'http-long-audio') {
+    if (isSupportedHttpLongAudioAsrConfig(config)) {
+      return {
+        maxRequestBytes: null,
+        maxDurationMs: null,
+        supportsLocalFile: true,
+        supportsChunkedUpload: false,
+        supportsFileStreaming: false,
+      }
+    }
     return {
       maxRequestBytes: null,
       maxDurationMs: null,
@@ -93,6 +104,15 @@ export function getAudioFileAsrCapability(
       return exhaustive
     }
   }
+}
+
+export function isSupportedHttpLongAudioAsrConfig(config: AsrConfig): boolean {
+  return (
+    config.asrCategory === 'http-long-audio' &&
+    SUPPORTED_HTTP_LONG_AUDIO_ASR_PROVIDERS.some(
+      (provider) => provider === config.asrProvider,
+    )
+  )
 }
 
 /**

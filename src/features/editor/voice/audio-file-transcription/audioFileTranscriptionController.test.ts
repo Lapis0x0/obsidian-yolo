@@ -1,9 +1,26 @@
+jest.mock('obsidian', () => ({
+  Notice: jest.fn(),
+  Platform: { isDesktop: true, isMobile: false },
+}))
+
 import { AudioFileTranscriptionController } from './audioFileTranscriptionController'
 
 const createController = () => {
   const updateStatus = jest.fn()
+  const createFallbackMarkdownFile = jest.fn(async (path: string) => path)
+  const appendToMarkdownFile = jest.fn()
   const controller = new AudioFileTranscriptionController({
-    getSettings: jest.fn(),
+    getSettings: jest.fn(
+      () =>
+        ({
+          contextVoiceInputOptions: {
+            audioFileOutputMetadataMode: 'none',
+            audioFileChunkHeaderMode: 'none',
+            audioFileFallbackNotePathTemplate:
+              'Transcriptions/{{date}} {{time}} {{basename}}.md',
+          },
+        }) as any,
+    ),
     getStatusState: jest.fn(() => 'idle'),
     updateStatus,
     getEditorView: jest.fn(),
@@ -13,8 +30,8 @@ const createController = () => {
     removeAbortController: jest.fn(),
     cancelPendingTabCompletion: jest.fn(),
     setVoiceInputInProgress: jest.fn(),
-    createFallbackMarkdownFile: jest.fn(),
-    appendToMarkdownFile: jest.fn(),
+    createFallbackMarkdownFile,
+    appendToMarkdownFile,
     localizeAsrRuntimeError: jest.fn((message: string) => message),
     t: jest.fn((_key: string, fallback: string) => fallback),
   })
@@ -36,7 +53,13 @@ const createController = () => {
     streamingProgressHoldUntil: 0,
   }
   ;(controller as any).session = session
-  return { controller: controller as any, session, updateStatus }
+  return {
+    controller: controller as any,
+    session,
+    updateStatus,
+    createFallbackMarkdownFile,
+    appendToMarkdownFile,
+  }
 }
 
 describe('AudioFileTranscriptionController progress display', () => {
@@ -110,6 +133,123 @@ describe('AudioFileTranscriptionController progress display', () => {
         message: 'Inserting 1/1…',
         progressLabel: '1/1',
       }),
+    )
+  })
+
+  it('shows native long-audio upload progress without synthetic chunk labels', () => {
+    const { controller, session, updateStatus } = createController()
+    session.plan.mode = 'long-audio-upload'
+
+    controller.handleProgress(session, { phase: 'uploading' })
+    expect(updateStatus).toHaveBeenLastCalledWith(
+      'uploading',
+      expect.objectContaining({
+        message: 'Uploading…',
+        progressLabel: '',
+      }),
+    )
+
+    controller.handleProgress(session, { phase: 'transcribing' })
+    expect(updateStatus).toHaveBeenLastCalledWith(
+      'transcribing',
+      expect.objectContaining({
+        message: 'Transcribing…',
+        progressLabel: '',
+      }),
+    )
+
+    controller.handleProgress(session, { phase: 'inserting' })
+    expect(updateStatus).toHaveBeenLastCalledWith(
+      'inserting',
+      expect.objectContaining({
+        message: 'Inserting…',
+        progressLabel: '',
+      }),
+    )
+  })
+})
+
+describe('AudioFileTranscriptionController fallback insertion', () => {
+  it('creates a fallback note with the transcript when inline insertion is unavailable', async () => {
+    const { controller, createFallbackMarkdownFile, appendToMarkdownFile } =
+      createController()
+    const session = {
+      source: { name: 'cloud meeting.wav' },
+      editor: null,
+      appendOffset: null,
+      plan: {
+        fileName: 'cloud meeting.wav',
+        mode: 'long-audio-upload',
+        providerConfig: {
+          name: 'FunASR local',
+          model: 'paraformer',
+          format: 'funasr-local',
+        },
+        schedule: null,
+      },
+      previousInsertedText: '',
+      hasInsertedText: false,
+      fallbackPath: null,
+      fallbackNoticeShown: false,
+    }
+    controller.session = session
+
+    await controller.insertText(session, {
+      text: 'Speaker 1: 云端结果已经返回。',
+      chunkIndex: null,
+      chunkStartMs: null,
+    })
+
+    expect(createFallbackMarkdownFile).toHaveBeenCalledWith(
+      expect.stringContaining('cloud meeting.md'),
+      expect.stringContaining('Speaker 1: 云端结果已经返回。'),
+    )
+    expect(appendToMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a note when the editor throws during inline insertion', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { controller, createFallbackMarkdownFile } = createController()
+    const editor = {
+      offsetToPos: jest.fn(() => ({ line: 0, ch: 0 })),
+      replaceRange: jest.fn(() => {
+        throw new Error('closed editor')
+      }),
+      setCursor: jest.fn(),
+      posToOffset: jest.fn(() => 0),
+    }
+    const session = {
+      source: { name: 'meeting.wav' },
+      editor,
+      appendOffset: 0,
+      plan: {
+        fileName: 'meeting.wav',
+        mode: 'long-audio-upload',
+        providerConfig: {
+          name: 'FunASR local',
+          model: 'paraformer',
+          format: 'funasr-local',
+        },
+        schedule: null,
+      },
+      previousInsertedText: '',
+      hasInsertedText: false,
+      fallbackPath: null,
+      fallbackNoticeShown: false,
+      applyingInsertion: false,
+    }
+    controller.session = session
+    controller.deps.getEditorView.mockReturnValue({})
+
+    await controller.insertText(session, {
+      text: '转写结果',
+      chunkIndex: null,
+      chunkStartMs: null,
+    })
+
+    expect(createFallbackMarkdownFile).toHaveBeenCalledWith(
+      expect.stringContaining('meeting.md'),
+      expect.stringContaining('转写结果'),
     )
   })
 })

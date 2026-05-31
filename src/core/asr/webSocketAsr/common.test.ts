@@ -96,9 +96,9 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     const result = readWhisperLiveKitNativeTranscript(
       {
         lines: [
-          { speaker: 0, text: 'hello' },
-          { speaker: 0, text: 'again' },
-          { speaker: 1, text: 'hi' },
+          { speaker: 1, text: 'hello' },
+          { speaker: 1, text: 'again' },
+          { speaker: 2, text: 'hi' },
           { speaker: -2, text: 'noise' },
         ],
       },
@@ -106,7 +106,7 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     )
 
     expect(result.text).toBe(
-      'Speaker 0: hello\nagain\nSpeaker 1: hi\nSpeaker -2: noise',
+      'Speaker 1: hello\nagain\n\nSpeaker 2: hi\n\nSpeaker -2: noise',
     )
   })
 
@@ -122,7 +122,7 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     )
 
     expect(result.text).toBe(
-      'Speaker -2: first speaker\nSpeaker 1: second speaker',
+      'Speaker -2: first speaker\n\nSpeaker 1: second speaker',
     )
   })
 
@@ -131,7 +131,7 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     const snapshot = readWhisperLiveKitNativeTranscript(
       {
         type: 'snapshot',
-        lines: [{ speaker: 0, text: 'first' }],
+        lines: [{ speaker: 1, text: 'first' }],
         buffer_transcription: '',
       },
       { includeSpeakerLabels: true, state },
@@ -141,15 +141,15 @@ describe('readWhisperLiveKitNativeTranscript', () => {
         type: 'diff',
         lines_pruned: 1,
         n_lines: 1,
-        new_lines: [{ speaker: 1, text: 'second' }],
+        new_lines: [{ speaker: 2, text: 'second' }],
         buffer_transcription: 'draft',
       },
       { includeSpeakerLabels: true, state },
     )
 
-    expect(snapshot.text).toBe('Speaker 0: first')
+    expect(snapshot.text).toBe('Speaker 1: first')
     expect(snapshot.committedChanged).toBe(true)
-    expect(diff.text).toBe('Speaker 0: first\nSpeaker 1: second')
+    expect(diff.text).toBe('Speaker 1: first\n\nSpeaker 2: second')
     expect(diff.buffer).toBe('draft')
     expect(diff.committedChanged).toBe(true)
   })
@@ -244,7 +244,7 @@ describe('readWhisperLiveKitNativeTranscript', () => {
     readWhisperLiveKitNativeTranscript(
       {
         type: 'snapshot',
-        lines: [{ speaker: 0, text: 'first' }],
+        lines: [{ speaker: 1, text: 'first' }],
       },
       { state },
     )
@@ -307,7 +307,7 @@ describe('readTranscript', () => {
     )
   })
 
-  it('adds a line break when Deepgram speaker changes across final messages', () => {
+  it('adds a blank line when Deepgram speaker changes across final messages', () => {
     const speakerState = { lastSpeakerLabel: '' }
     const first = readTranscript(
       {
@@ -345,7 +345,7 @@ describe('readTranscript', () => {
     expect(first).toBe('Speaker 1: helloagain')
     expect(second).toBe('Speaker 2: hithere')
     expect(combineTranscript([first, second])).toBe(
-      'Speaker 1: helloagain\nSpeaker 2: hithere',
+      'Speaker 1: helloagain\n\nSpeaker 2: hithere',
     )
   })
 })

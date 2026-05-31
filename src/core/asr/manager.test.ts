@@ -103,12 +103,38 @@ describe('ASR manager config resolution', () => {
     ).toBe(long)
   })
 
+  it('builds the FunASR local adapter for long-audio configs', () => {
+    const provider = buildAsrProviderForConfig(
+      config({
+        asrCategory: 'http-long-audio',
+        asrProvider: 'funasr-local',
+        baseURL: 'http://127.0.0.1:8001/v1',
+        model: '',
+      }),
+    )
+
+    expect(provider.format).toBe('funasr-local')
+  })
+
+  it('builds the FunASR local adapter for short-audio configs too', () => {
+    const provider = buildAsrProviderForConfig(
+      config({
+        asrCategory: 'http-short-audio',
+        asrProvider: 'funasr-local',
+        baseURL: 'http://127.0.0.1:8001/v1',
+        model: '',
+      }),
+    )
+
+    expect(provider.format).toBe('funasr-local')
+  })
+
   it('blocks long-audio configs until their native adapters are implemented', () => {
     expect(() =>
       buildAsrProviderForConfig(
         config({
           asrCategory: 'http-long-audio',
-          asrProvider: 'funasr-local',
+          asrProvider: 'deepgram-prerecorded',
           model: 'paraformer-zh',
         }),
       ),

@@ -3,6 +3,8 @@ import type {
   ContextVoiceInputOptions,
 } from '../../settings/schema/setting.types'
 
+import { isSupportedHttpLongAudioAsrConfig } from './capabilities'
+
 /**
  * Lightweight ASR readiness checks for startup/settings UI.
  *
@@ -61,6 +63,10 @@ export function hasConfiguredAudioFileAsrConfig(
 export function isUsableAsrConfig(config: AsrConfig): boolean {
   switch (config.format) {
     case 'openai-compatible-transcription':
+      if (config.asrProvider === 'funasr-local') {
+        return config.baseURL.trim().length > 0
+      }
+      return config.baseURL.trim().length > 0 && config.model.trim().length > 0
     case 'openai-compatible-chat-audio-asr':
       return config.baseURL.trim().length > 0 && config.model.trim().length > 0
     case 'deepgram-compatible-websocket':
@@ -72,7 +78,10 @@ export function isUsableAsrConfig(config: AsrConfig): boolean {
 
 function isUsableAudioFileAsrConfig(config: AsrConfig): boolean {
   if (config.asrCategory === 'http-long-audio') {
-    return false
+    return (
+      isSupportedHttpLongAudioAsrConfig(config) &&
+      config.baseURL.trim().length > 0
+    )
   }
   return isUsableAsrConfig(config)
 }

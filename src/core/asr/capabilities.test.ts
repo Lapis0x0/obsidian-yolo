@@ -46,11 +46,23 @@ describe('getAudioFileAsrCapability', () => {
     expect(capability.maxDurationMs).toBeNull()
   })
 
-  it('does not expose short-audio upload capabilities for long-audio placeholders', () => {
+  it('exposes direct local-file support for implemented long-audio providers', () => {
     const capability = getAudioFileAsrCapability({
       ...baseConfig,
       asrCategory: 'http-long-audio',
       asrProvider: 'funasr-local',
+    })
+
+    expect(capability.supportsLocalFile).toBe(true)
+    expect(capability.supportsChunkedUpload).toBe(false)
+    expect(capability.supportsFileStreaming).toBe(false)
+  })
+
+  it('does not expose upload capabilities for unimplemented long-audio providers', () => {
+    const capability = getAudioFileAsrCapability({
+      ...baseConfig,
+      asrCategory: 'http-long-audio',
+      asrProvider: 'deepgram-prerecorded',
     })
 
     expect(capability.supportsLocalFile).toBe(false)

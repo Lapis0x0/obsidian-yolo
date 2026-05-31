@@ -115,6 +115,22 @@ describe('ASR config status', () => {
     ).toBe(false)
   })
 
+  it('allows FunASR short-audio configs to use the server default model', () => {
+    expect(
+      hasConfiguredAsrConfig(
+        options({
+          asrConfigs: [
+            config({
+              asrProvider: 'funasr-local',
+              baseURL: 'http://127.0.0.1:8001/v1',
+              model: '',
+            }),
+          ],
+        }),
+      ),
+    ).toBe(true)
+  })
+
   it('requires only baseURL for WebSocket ASR configs', () => {
     expect(
       hasConfiguredAsrConfig(
@@ -160,13 +176,40 @@ describe('ASR config status', () => {
     ).toBe(true)
   })
 
-  it('does not mark long-audio placeholders ready for audio-file transcription', () => {
+  it('marks implemented long-audio providers ready for audio-file transcription', () => {
     const long = config({
       id: 'long',
       asrCategory: 'http-long-audio',
       asrProvider: 'funasr-local',
-      baseURL: 'http://127.0.0.1:8001',
+      baseURL: 'http://127.0.0.1:8001/v1',
       model: '',
+    })
+
+    expect(
+      resolveConfiguredAudioFileAsrConfig(
+        options({
+          asrConfigs: [long],
+          activeAudioFileAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(long)
+    expect(
+      hasConfiguredAudioFileAsrConfig(
+        options({
+          asrConfigs: [long],
+          activeAudioFileAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('does not mark unimplemented long-audio providers ready for audio-file transcription', () => {
+    const long = config({
+      id: 'long',
+      asrCategory: 'http-long-audio',
+      asrProvider: 'deepgram-prerecorded',
+      baseURL: 'https://api.deepgram.com',
+      model: 'nova-3',
     })
 
     expect(

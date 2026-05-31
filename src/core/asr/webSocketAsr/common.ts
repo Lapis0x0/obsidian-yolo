@@ -71,6 +71,8 @@ export const CONNECT_TIMEOUT_MS = 15_000
 export const FINALIZE_TIMEOUT_MS = 30_000
 export const FINALIZE_SETTLE_MS = 2_000
 export const LINEAR16_SAMPLE_RATE = 16_000
+const SPEAKER_LABEL_START_RE = /^Speaker\s+[^:\n]+:\s/
+const SPEAKER_BLOCK_SEPARATOR = '\n\n'
 
 const toWebSocketBase = (baseURL: string): string => {
   const trimmed = baseURL.trim().replace(/\/+$/, '')
@@ -147,7 +149,7 @@ const readDeepgramSpeakerTranscript = (
 
   if (current.trim()) lines.push(current.trim())
   if (state) state.lastSpeakerLabel = lastSpeakerLabel
-  return lines.join('\n').trim()
+  return lines.join(SPEAKER_BLOCK_SEPARATOR).trim()
 }
 
 const readDeepgramWordText = (word: {
@@ -224,7 +226,7 @@ const formatWhisperLiveKitLines = (
   },
 ): string => {
   const speakerState = { lastSpeakerLabel: '' }
-  return lines
+  const textLines = lines
     .map((line) => {
       const text = typeof line.text === 'string' ? line.text.trim() : ''
       if (!text || !options.includeSpeakerLabels) return text
@@ -235,7 +237,21 @@ const formatWhisperLiveKitLines = (
       return `${label}: ${text}`
     })
     .filter((text) => text.length > 0)
-    .join(options.includeSpeakerLabels ? '\n' : ' ')
+  if (!options.includeSpeakerLabels) return textLines.join(' ').trim()
+  return joinSpeakerAwareLines(textLines)
+}
+
+const joinSpeakerAwareLines = (lines: string[]): string => {
+  return lines
+    .reduce((combined, line) => {
+      if (!combined) return line
+      // New speaker blocks should be visually separated, while continuation
+      // lines from the same speaker stay compact.
+      const separator = isSpeakerLabelStart(line)
+        ? SPEAKER_BLOCK_SEPARATOR
+        : '\n'
+      return `${combined}${separator}${line}`
+    }, '')
     .trim()
 }
 
@@ -245,8 +261,8 @@ const appendWhisperLiveKitText = (previous: string, next: string): string => {
   if (!trimmedNext) return trimmedPrevious
   if (!trimmedPrevious) return trimmedNext
   if (/^\s/.test(next)) return `${trimmedPrevious}${next}`
-  if (/^Speaker\s+[^:\n]+:\s/.test(trimmedNext)) {
-    return `${trimmedPrevious}\n${trimmedNext}`
+  if (isSpeakerLabelStart(trimmedNext)) {
+    return `${trimmedPrevious}${SPEAKER_BLOCK_SEPARATOR}${trimmedNext}`
   }
   return `${trimmedPrevious} ${trimmedNext}`
 }
@@ -441,4 +457,7 @@ export const combineTranscript = (
 }
 
 const getTranscriptPartSeparator = (nextPart: string): string =>
-  /^Speaker\s+[^:\n]+:\s/.test(nextPart) ? '\n' : ' '
+  isSpeakerLabelStart(nextPart) ? SPEAKER_BLOCK_SEPARATOR : ' '
+
+const isSpeakerLabelStart = (text: string): boolean =>
+  SPEAKER_LABEL_START_RE.test(text)

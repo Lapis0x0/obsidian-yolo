@@ -1255,6 +1255,8 @@ export type TranslationKeys = {
       longProviderFunasr?: string
       longProviderDeepgram?: string
       longProviderSpeechmatics?: string
+      funasrServerFeatures?: string
+      funasrServerFeaturesDesc?: string
       featureModeAuto?: string
       featureModeOn?: string
       featureModeOff?: string
@@ -1436,6 +1438,7 @@ export type TranslationKeys = {
     audioFileCancelled?: string
     audioFilePlanStream?: string
     audioFilePlanChunked?: string
+    audioFilePlanLongAudio?: string
     audioFilePlanDirect?: string
     audioFileProgressInsertingChunks?: string
     audioFileProgressTranscribingChunks?: string
@@ -1445,6 +1448,7 @@ export type TranslationKeys = {
     audioFileLargeUploadNotice?: string
     audioFileSubmissionChunks?: string
     audioFileSubmissionWebSocket?: string
+    audioFileSubmissionLongAudio?: string
     audioFileSubmissionDirect?: string
     audioFileMetadataSource?: string
     audioFileMetadataTranscribed?: string

@@ -4,7 +4,9 @@ import type {
 } from '../../settings/schema/setting.types'
 
 import type { BaseAsrProvider } from './base'
+import { isSupportedHttpLongAudioAsrConfig } from './capabilities'
 import {
+  FunAsrLocalProvider,
   OpenAiCompatibleChatAudioAsrProvider,
   OpenAiCompatibleTranscriptionProvider,
 } from './httpAsr'
@@ -81,9 +83,36 @@ export function getAsrProvider(
  */
 export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
   if (config.asrCategory === 'http-long-audio') {
+    if (isSupportedHttpLongAudioAsrConfig(config)) {
+      if (!config.baseURL.trim()) {
+        throw new AsrConfigError('ASR provider is missing baseURL.')
+      }
+      return new FunAsrLocalProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        model: config.model,
+        transcriptionPath: config.transcriptionPath,
+        transportMode: config.transportMode,
+        language: config.language,
+      })
+    }
     throw new AsrConfigError(
       'Long-audio ASR provider adapters are not implemented yet.',
     )
+  }
+
+  if (config.asrProvider === 'funasr-local') {
+    if (!config.baseURL.trim()) {
+      throw new AsrConfigError('ASR provider is missing baseURL.')
+    }
+    return new FunAsrLocalProvider({
+      baseURL: config.baseURL,
+      apiKey: config.apiKey,
+      model: config.model,
+      transcriptionPath: config.transcriptionPath,
+      transportMode: config.transportMode,
+      language: config.language,
+    })
   }
 
   switch (config.format) {

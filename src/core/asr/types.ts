@@ -52,6 +52,10 @@ export type AsrSegment = {
   startMs: number
   endMs: number
   text: string
+  /** Stable provider speaker id when the ASR backend returns diarization. */
+  speakerId?: string
+  /** Display label derived from the provider speaker id. */
+  speakerLabel?: string
 }
 
 export type AsrResult = {

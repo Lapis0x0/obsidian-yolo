@@ -385,8 +385,17 @@ export class AudioFileTranscriptionController {
   }
 
   private buildPlanMessage(plan: AudioFileTranscriptionPlan): string {
+    // The floating island has very little horizontal room, especially in
+    // English. Keep these plan prompts short; use Notice/settings docs for
+    // longer explanations.
     if (plan.mode === 'websocket-stream') {
       return this.deps.t('voiceInput.audioFilePlanStream', 'Stream audio?')
+    }
+    if (plan.mode === 'long-audio-upload') {
+      return this.deps.t(
+        'voiceInput.audioFilePlanLongAudio',
+        'Submit long audio?',
+      )
     }
     if (plan.mode === 'chunked-upload') {
       const chunks = plan.schedule?.chunks.length ?? 0
@@ -575,7 +584,8 @@ export class AudioFileTranscriptionController {
     const preserveStreamingSeparator =
       plan.mode === 'websocket-stream' && session.hasInsertedText
     // WebSocket final deltas already carry the boundary between accumulated
-    // text and the new fragment. Preserve it so speaker changes keep newlines.
+    // text and the new fragment. Preserve it so speaker changes keep blank
+    // lines.
     let text = preserveStreamingSeparator
       ? result.text.trimEnd()
       : result.text.trim()
@@ -733,18 +743,29 @@ export class AudioFileTranscriptionController {
     if (!session.plan) return
     if (!session.fallbackPath) {
       const desiredPath = this.renderFallbackPath(session)
+      // Once provider data has returned, the first fallback write must contain
+      // the transcript itself. Creating an empty note and appending afterward
+      // would add a second failure point that can lose long-audio results.
       session.fallbackPath = await this.deps.createFallbackMarkdownFile(
         desiredPath,
-        '',
+        text,
       )
+      this.showFallbackNotice(session)
+      return
     }
     await this.deps.appendToMarkdownFile(session.fallbackPath, text)
+    this.showFallbackNotice(session)
+  }
+
+  private showFallbackNotice(session: AudioFileSession): void {
+    const path = session.fallbackPath
+    if (!path) return
     if (!session.fallbackNoticeShown) {
       new Notice(
         this.tFormat(
           'voiceInput.audioFileFallbackNotice',
           'Transcription is being written to {{path}}.',
-          { path: session.fallbackPath },
+          { path },
         ),
       )
       session.fallbackNoticeShown = true
@@ -782,7 +803,8 @@ export class AudioFileTranscriptionController {
     const prefix =
       session.hasInsertedText && plan.mode === 'websocket-stream'
         ? // If the streaming delta starts with whitespace, it already encoded
-          // the right separator (space for same speaker, newline for new speaker).
+          // the right separator (space for same speaker, blank line for new
+          // speaker).
           /^\s/.test(text)
           ? ''
           : ' '
@@ -815,7 +837,15 @@ export class AudioFileTranscriptionController {
               'voiceInput.audioFileSubmissionWebSocket',
               'WebSocket stream',
             )
-          : this.deps.t('voiceInput.audioFileSubmissionDirect', 'direct upload')
+          : plan.mode === 'long-audio-upload'
+            ? this.deps.t(
+                'voiceInput.audioFileSubmissionLongAudio',
+                'long-audio provider',
+              )
+            : this.deps.t(
+                'voiceInput.audioFileSubmissionDirect',
+                'direct upload',
+              )
     return [
       title,
       '',
