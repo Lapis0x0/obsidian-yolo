@@ -61,7 +61,7 @@ export const migrateFrom65To66: SettingMigration['migrate'] = (data) => {
         typeof voice.audioFileFallbackNotePathTemplate === 'string' &&
         voice.audioFileFallbackNotePathTemplate.trim().length > 0
           ? voice.audioFileFallbackNotePathTemplate
-          : 'Transcriptions/{{date}} {{time}} {{basename}}.md',
+          : 'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md',
       audioFileChunkTargetDurationSec: clampInt(
         voice.audioFileChunkTargetDurationSec,
         15,
@@ -100,7 +100,7 @@ export const migrateFrom65To66: SettingMigration['migrate'] = (data) => {
         voice.readAloudChunkTargetChars,
         200,
         6000,
-        1000,
+        500,
       ),
       readAloudPreloadSegments: clampInt(
         voice.readAloudPreloadSegments,

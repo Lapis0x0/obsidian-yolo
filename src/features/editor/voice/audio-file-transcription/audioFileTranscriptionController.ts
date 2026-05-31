@@ -885,7 +885,7 @@ export class AudioFileTranscriptionController {
     const template =
       this.deps.getSettings().contextVoiceInputOptions
         .audioFileFallbackNotePathTemplate ||
-      'Transcriptions/{{date}} {{time}} {{basename}}.md'
+      'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md'
     return template
       .replace(/\{\{date\}\}/g, `${yyyy}-${mm}-${dd}`)
       .replace(/\{\{time\}\}/g, `${hh}-${min}-${ss}`)

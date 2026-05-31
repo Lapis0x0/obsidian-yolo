@@ -1620,7 +1620,7 @@ export const en: TranslationKeys = {
       'outputMetadataMode_metadata-timestamps': 'Metadata + timestamps',
       fallbackNotePathTemplate: 'Fallback note path',
       fallbackNotePathTemplateDesc:
-        'Used when the original insertion anchor is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
+        'Where results are saved if the transcription insertion point is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
       advancedToggle: 'Advanced options',
       wavMaxDurationMin: 'Max WAV/PCM duration (minutes)',
       wavMaxDurationMinDesc:
@@ -1716,9 +1716,9 @@ export const en: TranslationKeys = {
       vadSilenceHoldMs: 'Silence duration to stop (ms)',
       vadSilenceHoldMsDesc:
         'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
-      floatingIslandBottomOffsetVh: 'Floating mic bottom offset (vh)',
+      floatingIslandBottomOffsetVh: 'Floating island bottom distance',
       floatingIslandBottomOffsetVhDesc:
-        'Distance from the editor bottom to the floating mic, in viewport-height percent. Default: 9.',
+        'Distance as a percentage of the viewport height. Default: 9.',
       advancedToggle: 'Advanced options',
       autoRestartAfterAccept: 'Keep listening after Tab accept',
       autoRestartAfterAcceptDesc:
@@ -1816,9 +1816,9 @@ export const en: TranslationKeys = {
       enable: 'Show floating voice island',
       enableDesc:
         'The island appears only when at least one visible voice mode is enabled and configured.',
-      bottomOffset: 'Bottom offset (vh)',
+      bottomOffset: 'Floating island bottom distance',
       bottomOffsetDesc:
-        'Distance from the editor bottom to the floating island. Default: 9.',
+        'Distance as a percentage of the viewport height. Default: 9.',
       dragHandle: 'Drag to reorder',
       modeReady: 'Ready',
       dictationUnavailable: 'Enable voice input and configure ASR first.',

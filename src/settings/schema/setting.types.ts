@@ -630,7 +630,7 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   audioFileTranscriptionEnabled: false,
   voiceReadAloudEnabled: false,
   readAloudSourceMode: 'selection-or-document' as ReadAloudSourceMode,
-  readAloudChunkTargetChars: 1000,
+  readAloudChunkTargetChars: 500,
   readAloudPreloadSegments: 1,
   readAloudCacheEnabled: true,
   readAloudGeneratedAudioAutoSaveEnabled: true,
@@ -641,7 +641,7 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   audioFileOutputMetadataMode:
     'metadata-timestamps' as AudioFileOutputMetadataMode,
   audioFileFallbackNotePathTemplate:
-    'Transcriptions/{{date}} {{time}} {{basename}}.md',
+    'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md',
   audioFileChunkTargetDurationSec: 120,
   audioFileWavMaxDurationSec: 60 * 60,
   audioFileMaxConcurrentChunks: 5,
@@ -716,7 +716,7 @@ const contextVoiceInputOptionsSchema = z
     readAloudSourceMode: z
       .enum(READ_ALOUD_SOURCE_MODES)
       .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.readAloudSourceMode),
-    readAloudChunkTargetChars: z.number().int().min(200).max(6000).catch(1000),
+    readAloudChunkTargetChars: z.number().int().min(200).max(6000).catch(500),
     readAloudPreloadSegments: z.number().int().min(0).max(3).catch(1),
     readAloudCacheEnabled: z.boolean().catch(true),
     readAloudGeneratedAudioAutoSaveEnabled: z.boolean().catch(true),

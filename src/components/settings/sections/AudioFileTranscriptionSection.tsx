@@ -372,7 +372,7 @@ export function AudioFileTranscriptionSection() {
                 )}
                 desc={t(
                   'settings.audioFileTranscription.fallbackNotePathTemplateDesc',
-                  'Used when the original insertion anchor is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
+                  'Where results are saved if the transcription insertion point is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
                 )}
                 className="yolo-settings-card"
               >
@@ -384,7 +384,7 @@ export function AudioFileTranscriptionSection() {
                       'audioFileFallbackNotePathTemplate',
                     )
                   }
-                  placeholder="Transcriptions/{{date}} {{time}} {{basename}}.md"
+                  placeholder="YOLO/transcriptions/{{date}} {{time}} {{basename}}.md"
                 />
               </ObsidianSetting>
 

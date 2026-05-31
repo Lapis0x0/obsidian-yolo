@@ -248,10 +248,13 @@ export function VoiceFloatingIslandSettingsSection() {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.voiceIsland.bottomOffset', 'Bottom offset (vh)')}
+            name={t(
+              'settings.voiceIsland.bottomOffset',
+              'Floating island bottom distance',
+            )}
             desc={t(
               'settings.voiceIsland.bottomOffsetDesc',
-              'Distance from the editor bottom to the floating island. Default: 9.',
+              'Distance as a percentage of the viewport height. Default: 9.',
             )}
             className="yolo-settings-card"
           >

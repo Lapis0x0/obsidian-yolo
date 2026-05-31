@@ -76,6 +76,7 @@ export class GeneratedAudioStore {
   }
 
   private async writeIndex(session: GeneratedAudioSaveSession): Promise<void> {
+    const indexPath = normalizePath(`${session.rootDir}/index.md`)
     const lines = [
       `# ${session.sourceName}`,
       '',
@@ -92,13 +93,23 @@ export class GeneratedAudioStore {
         .filter(Boolean),
       '',
     ]
-    const indexPath = normalizePath(`${session.rootDir}/index.md`)
     const existing = this.app.vault.getAbstractFileByPath(indexPath)
     if (existing) {
       await this.app.vault.adapter.write(indexPath, lines.join('\n'))
       return
     }
-    await this.app.vault.create(indexPath, lines.join('\n'))
+    try {
+      await this.app.vault.create(indexPath, lines.join('\n'))
+    } catch (error) {
+      // Preloaded segments can finish close together. If another segment
+      // created index.md after our existence check, update it instead of
+      // failing the whole auto-save path.
+      if (await this.app.vault.adapter.exists(indexPath)) {
+        await this.app.vault.adapter.write(indexPath, lines.join('\n'))
+        return
+      }
+      throw error
+    }
   }
 }
 
@@ -125,7 +136,15 @@ const ensureVaultDir = async (app: App, dirPath: string): Promise<void> => {
   for (const part of parts) {
     current = current ? `${current}/${part}` : part
     if (await app.vault.adapter.exists(current)) continue
-    await app.vault.createFolder(current)
+    try {
+      await app.vault.createFolder(current)
+    } catch (error) {
+      // Concurrent segment saves may race while creating the same nested
+      // output directory. Treat "now exists" as success and surface only real
+      // filesystem errors.
+      if (await app.vault.adapter.exists(current)) continue
+      throw error
+    }
   }
 }
 

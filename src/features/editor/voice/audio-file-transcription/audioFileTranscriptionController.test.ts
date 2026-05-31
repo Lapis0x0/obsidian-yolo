@@ -28,7 +28,7 @@ const createController = () => {
             audioFileOutputMetadataMode: 'none',
             audioFileChunkHeaderMode: 'none',
             audioFileFallbackNotePathTemplate:
-              'Transcriptions/{{date}} {{time}} {{basename}}.md',
+              'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md',
           },
         }) as any,
     ),

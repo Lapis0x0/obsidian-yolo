@@ -433,7 +433,7 @@ export function VoiceReadAloudSection() {
                       )
                     }
                   }}
-                  placeholder="1000"
+                  placeholder="500"
                 />
               </ObsidianSetting>
 

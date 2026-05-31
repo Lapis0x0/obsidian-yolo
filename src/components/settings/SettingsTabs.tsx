@@ -51,16 +51,16 @@ const SETTINGS_TABS: SettingsTab[] = [
     component: AgentTab,
   },
   {
-    id: 'voice',
-    labelKey: 'settings.tabs.voice',
-    labelFallback: 'Voice',
-    component: VoiceTab,
-  },
-  {
     id: 'editor',
     labelKey: 'settings.tabs.editor',
     labelFallback: 'Editor',
     component: EditorTab,
+  },
+  {
+    id: 'voice',
+    labelKey: 'settings.tabs.voice',
+    labelFallback: 'Voice',
+    component: VoiceTab,
   },
   {
     id: 'knowledge',

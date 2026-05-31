@@ -26,7 +26,7 @@ describe('migrateFrom65To66', () => {
       audioFileChunkHeaderMode: 'none',
       audioFileOutputMetadataMode: 'metadata-timestamps',
       audioFileFallbackNotePathTemplate:
-        'Transcriptions/{{date}} {{time}} {{basename}}.md',
+        'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md',
       audioFileChunkTargetDurationSec: 120,
       audioFileMaxConcurrentChunks: 5,
       audioFileChunkStartStaggerMs: 1500,
@@ -35,7 +35,7 @@ describe('migrateFrom65To66', () => {
       activeTtsConfigId: '',
       voiceReadAloudEnabled: false,
       readAloudSourceMode: 'selection-or-document',
-      readAloudChunkTargetChars: 1000,
+      readAloudChunkTargetChars: 500,
       readAloudPreloadSegments: 1,
       readAloudCacheEnabled: true,
       readAloudGeneratedAudioAutoSaveEnabled: true,

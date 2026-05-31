@@ -60,6 +60,8 @@ type ReadAloudSession = {
   abortController: AbortController
   generatedSegments: Map<number, ReadAloudGeneratedSegment>
   synthesisPromises: Map<number, Promise<ReadAloudGeneratedSegment>>
+  scheduledPreloadIndexes: Set<number>
+  preloadTimerIds: Set<number>
   currentIndex: number
   audioElement: HTMLAudioElement | null
   saveSession: GeneratedAudioSaveSession | null
@@ -96,6 +98,7 @@ type ReadAloudControllerDeps = {
 
 const COMPLETED_STATUS_HOLD_MS = 1200
 const LONG_TEXT_CONFIRM_SEGMENTS = 2
+const READ_ALOUD_PRELOAD_DELAY_MS = 3000
 const READ_ALOUD_WAVEFORM_SAMPLES = 80
 const READ_ALOUD_WAVEFORM_MAX_DECODE_BYTES = 4 * 1024 * 1024
 const READ_ALOUD_STATUS_STATES: ReadAloudStatusState[] = [
@@ -318,33 +321,21 @@ export class ReadAloudController {
         !session.abortController.signal.aborted &&
         session.currentIndex < session.chunks.length
       ) {
-        const preload = Math.max(
-          0,
-          this.deps.getSettings().contextVoiceInputOptions
-            .readAloudPreloadSegments,
-        )
+        this.schedulePreloads(session, session.currentIndex)
         const segment = await this.ensureSegmentSynthesized(
           session,
           session.currentIndex,
         )
-        for (let offset = 1; offset <= preload; offset++) {
-          const index = session.currentIndex + offset
-          if (index >= session.chunks.length) continue
-          // Preload only after the current segment is ready, so we keep the
-          // first request single-shot while still reducing gaps between
-          // already-confirmed long-text segments.
-          void this.ensureSegmentSynthesized(session, index).catch((error) => {
-            if (
-              this.session === session &&
-              !session.abortController.signal.aborted
-            ) {
-              console.error('Read aloud preload failed:', error)
-            }
-          })
-        }
+        if (!this.isActiveSession(session)) return
         await this.ensureSegmentSavedForDrag(session, segment)
+        if (!this.isActiveSession(session)) return
         await this.playSegment(session, segment)
+        if (!this.isActiveSession(session)) return
+        session.audioElement = null
         session.currentIndex += 1
+        if (session.currentIndex < session.chunks.length) {
+          this.updateStatus(session, 'read-aloud-synthesizing')
+        }
       }
       if (this.session === session && !session.abortController.signal.aborted) {
         this.finishSession(session, 'completed')
@@ -492,6 +483,8 @@ export class ReadAloudController {
       abortController,
       generatedSegments: new Map(),
       synthesisPromises: new Map(),
+      scheduledPreloadIndexes: new Set(),
+      preloadTimerIds: new Set(),
       currentIndex: 0,
       audioElement: null,
       saveSession,
@@ -502,6 +495,59 @@ export class ReadAloudController {
     this.deps.addAbortController(abortController)
     this.updateStatus(session, 'read-aloud-preparing')
     void this.runSession(session)
+  }
+
+  private schedulePreloads(session: ReadAloudSession, fromIndex: number): void {
+    const preload = Math.max(
+      0,
+      this.deps.getSettings().contextVoiceInputOptions.readAloudPreloadSegments,
+    )
+    for (let offset = 1; offset <= preload; offset++) {
+      this.scheduleSegmentPreload(
+        session,
+        fromIndex + offset,
+        offset * READ_ALOUD_PRELOAD_DELAY_MS,
+      )
+    }
+  }
+
+  private scheduleSegmentPreload(
+    session: ReadAloudSession,
+    index: number,
+    delayMs: number,
+  ): void {
+    if (
+      index >= session.chunks.length ||
+      session.generatedSegments.has(index) ||
+      session.synthesisPromises.has(index) ||
+      session.scheduledPreloadIndexes.has(index)
+    ) {
+      return
+    }
+    session.scheduledPreloadIndexes.add(index)
+    const timerId = window.setTimeout(() => {
+      session.preloadTimerIds.delete(timerId)
+      session.scheduledPreloadIndexes.delete(index)
+      if (!this.isActiveSession(session)) return
+      void this.ensureSegmentSynthesized(session, index).catch((error) => {
+        if (this.isActiveSession(session)) {
+          console.error('Read aloud preload failed:', error)
+        }
+      })
+    }, delayMs)
+    session.preloadTimerIds.add(timerId)
+  }
+
+  private clearPreloadTimers(session: ReadAloudSession): void {
+    for (const timerId of session.preloadTimerIds) {
+      window.clearTimeout(timerId)
+    }
+    session.preloadTimerIds.clear()
+    session.scheduledPreloadIndexes.clear()
+  }
+
+  private isActiveSession(session: ReadAloudSession): boolean {
+    return this.session === session && !session.abortController.signal.aborted
   }
 
   private async autoSaveSegment(
@@ -773,6 +819,7 @@ export class ReadAloudController {
     } catch {
       // Best-effort.
     }
+    this.clearPreloadTimers(session)
     session.audioElement?.pause()
     session.audioElement = null
     for (const segment of session.generatedSegments.values()) {

@@ -2225,11 +2225,11 @@ export default class YoloPlugin extends Plugin {
 
   private normalizeMarkdownPath(path: string): string {
     const trimmed =
-      path.trim().replace(/[\\:*?"<>|]/g, '-') || 'Transcriptions/audio'
+      path.trim().replace(/[\\:*?"<>|]/g, '-') || 'YOLO/transcriptions/audio'
     const withExtension = trimmed.toLowerCase().endsWith('.md')
       ? trimmed
       : `${trimmed}.md`
-    return normalizePath(withExtension || 'Transcriptions/audio.md')
+    return normalizePath(withExtension || 'YOLO/transcriptions/audio.md')
   }
 
   private async ensureVaultFolderForPath(path: string): Promise<void> {

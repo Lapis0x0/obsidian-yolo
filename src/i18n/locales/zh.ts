@@ -1490,7 +1490,7 @@ export const zh: TranslationKeys = {
       'outputMetadataMode_metadata-timestamps': '元数据 + 时间戳',
       fallbackNotePathTemplate: '回退笔记路径',
       fallbackNotePathTemplateDesc:
-        '当原插入位置不可用时使用。支持 {{date}}、{{time}}、{{basename}} 和 {{filename}}。',
+        '如转写插入位置不可用，保存结果的位置。支持 {{date}}、{{time}}、{{basename}} 和 {{filename}}。',
       advancedToggle: '高级选项',
       wavMaxDurationMin: 'WAV/PCM 最大时长（分钟）',
       wavMaxDurationMinDesc:
@@ -1578,9 +1578,8 @@ export const zh: TranslationKeys = {
       vadSilenceHoldMs: '静音多久后切段 (ms)',
       vadSilenceHoldMsDesc:
         '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
-      floatingIslandBottomOffsetVh: '浮岛距底部距离（vh）',
-      floatingIslandBottomOffsetVhDesc:
-        '浮岛麦克风与编辑器底部的距离，单位为视窗高度百分比。默认 9。',
+      floatingIslandBottomOffsetVh: '浮岛与底部距离',
+      floatingIslandBottomOffsetVhDesc: '距离占视窗高度的比例（%）。默认：9。',
       advancedToggle: '高级选项',
       autoRestartAfterAccept: 'Tab 接受后继续聆听',
       autoRestartAfterAcceptDesc:
@@ -1672,8 +1671,8 @@ export const zh: TranslationKeys = {
       description: '选择编辑器浮动控件中显示哪些语音模式，并调整排序。',
       enable: '显示语音浮岛',
       enableDesc: '至少有一个已启用且配置完成的可见语音模式时，浮岛才会出现。',
-      bottomOffset: '距底部距离（vh）',
-      bottomOffsetDesc: '浮岛与编辑器底部的距离。默认：9。',
+      bottomOffset: '浮岛与底部距离',
+      bottomOffsetDesc: '距离占视窗高度的比例（%）。默认：9。',
       dragHandle: '拖拽排序',
       modeReady: '可用',
       dictationUnavailable: '请先启用语音输入并配置 ASR。',

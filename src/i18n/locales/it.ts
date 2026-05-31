@@ -823,9 +823,9 @@ export const it: TranslationKeys = {
       enable: 'Mostra isola vocale flottante',
       enableDesc:
         'L’isola appare solo quando almeno una modalita visibile e abilitata e configurata.',
-      bottomOffset: 'Distanza dal basso (vh)',
+      bottomOffset: 'Distanza dal fondo dell’isola flottante',
       bottomOffsetDesc:
-        "Distanza dal fondo dell'editor all'isola flottante. Predefinito: 9.",
+        "Distanza come percentuale dell'altezza della finestra. Predefinito: 9.",
       dragHandle: 'Trascina per riordinare',
       modeReady: 'Pronto',
       dictationUnavailable: 'Abilita input vocale e configura ASR.',
