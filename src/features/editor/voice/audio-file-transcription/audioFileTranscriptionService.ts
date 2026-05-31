@@ -10,11 +10,13 @@ import {
   buildAsrProviderForConfig,
   resolveActiveAudioFileAsrConfig,
 } from '../../../../core/asr/manager'
+import type { AsrResult, AsrSegment } from '../../../../core/asr/types'
 import {
   ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
   ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX,
   ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN,
   type AsrConfig,
+  type AudioFileOutputMetadataMode,
   type ContextVoiceInputOptions,
 } from '../../../../settings/schema/setting.types'
 
@@ -44,6 +46,7 @@ export type AudioFileTranscriptionPlan = {
   mimeType: string
   durationMs: number | null
   providerConfig: AsrConfig
+  outputMetadataMode: AudioFileOutputMetadataMode
   schedule: AudioFileChunkSchedule | null
   maxConcurrentChunks: number
   chunkStartStaggerMs: number
@@ -132,12 +135,27 @@ export async function inspectAndPlanAudioFileTranscription(input: {
   if (!providerConfig) {
     throw new Error(messages.noProvider)
   }
+  const outputMetadataMode =
+    input.options.audioFileOutputMetadataMode ?? 'metadata-timestamps'
 
   const capability = getAudioFileAsrCapability(providerConfig)
   const inspection = await inspectAudioFile(input.source, { decode: false })
   if (providerConfig.asrCategory === 'http-long-audio') {
     if (!isSupportedHttpLongAudioAsrConfig(providerConfig)) {
       throw new Error(messages.longAudioNotImplemented)
+    }
+    if (
+      capability.maxRequestBytes !== null &&
+      inspection.fileSizeBytes > capability.maxRequestBytes
+    ) {
+      throw new Error(messages.unsupportedLocalFile)
+    }
+    if (
+      capability.maxDurationMs !== null &&
+      inspection.durationMs !== null &&
+      inspection.durationMs > capability.maxDurationMs
+    ) {
+      throw new Error(messages.unsupportedLocalFile)
     }
     return {
       mode: 'long-audio-upload',
@@ -147,6 +165,7 @@ export async function inspectAndPlanAudioFileTranscription(input: {
       mimeType: inspection.mimeType || input.source.type || 'audio/*',
       durationMs: inspection.durationMs,
       providerConfig,
+      outputMetadataMode,
       schedule: null,
       maxConcurrentChunks: 1,
       chunkStartStaggerMs: 0,
@@ -201,6 +220,7 @@ export async function inspectAndPlanAudioFileTranscription(input: {
       mimeType: inspection.mimeType || input.source.type || 'audio/*',
       durationMs: inspection.durationMs,
       providerConfig,
+      outputMetadataMode,
       schedule: null,
       maxConcurrentChunks: 1,
       chunkStartStaggerMs,
@@ -259,6 +279,7 @@ export async function inspectAndPlanAudioFileTranscription(input: {
       mimeType: inspection.mimeType || input.source.type || 'audio/*',
       durationMs: inspection.durationMs,
       providerConfig,
+      outputMetadataMode,
       schedule: null,
       maxConcurrentChunks: 1,
       chunkStartStaggerMs,
@@ -309,6 +330,7 @@ export async function inspectAndPlanAudioFileTranscription(input: {
     mimeType: decodedInspection.mimeType || input.source.type || 'audio/*',
     durationMs: decodedInspection.durationMs,
     providerConfig,
+    outputMetadataMode,
     schedule,
     maxConcurrentChunks,
     chunkStartStaggerMs,
@@ -371,6 +393,19 @@ export function trimDuplicateChunkBoundary(
   return nextText
 }
 
+export function formatLongAudioResultForInsertion(
+  result: AsrResult,
+  outputMetadataMode: AudioFileOutputMetadataMode,
+): string {
+  if (
+    outputMetadataMode !== 'metadata-timestamps' ||
+    !result.segments?.length
+  ) {
+    return result.text
+  }
+  return formatTimestampedSegments(result.segments) || result.text
+}
+
 async function executeLongAudioUpload(input: {
   plan: AudioFileTranscriptionPlan
   signal: AbortSignal
@@ -378,10 +413,19 @@ async function executeLongAudioUpload(input: {
   onText: (result: OrderedAudioFileText) => Promise<void>
 }): Promise<void> {
   const provider = buildAsrProviderForConfig(input.plan.providerConfig)
-  input.onProgress({ phase: 'uploading' })
   const file = await input.plan.inspection.source.getFile()
   throwIfAborted(input.signal)
-  input.onProgress({ phase: 'transcribing' })
+  input.onProgress({
+    phase: 'uploading',
+    sentBytes: 0,
+    totalBytes: Math.max(0, file.size),
+  })
+  let uploadComplete = false
+  const markTranscribing = () => {
+    if (uploadComplete) return
+    uploadComplete = true
+    input.onProgress({ phase: 'transcribing' })
+  }
   const result = await provider.transcribe(
     {
       blob: file,
@@ -392,12 +436,31 @@ async function executeLongAudioUpload(input: {
       language: input.plan.providerConfig.language,
       purpose: 'audio-file-transcription',
       signal: input.signal,
+      onUploadProgress: (progress) => {
+        const totalBytes = Math.max(0, progress.totalBytes)
+        const sentBytes = Math.max(
+          0,
+          Math.min(progress.sentBytes, totalBytes || progress.sentBytes),
+        )
+        input.onProgress({
+          phase: 'uploading',
+          sentBytes,
+          totalBytes,
+        })
+        if (totalBytes > 0 && sentBytes >= totalBytes) {
+          markTranscribing()
+        }
+      },
     },
   )
+  markTranscribing()
   throwIfAborted(input.signal)
   input.onProgress({ phase: 'inserting' })
   await input.onText({
-    text: result.text,
+    text: formatLongAudioResultForInsertion(
+      result,
+      input.plan.outputMetadataMode,
+    ),
     chunkIndex: null,
     chunkStartMs: null,
   })
@@ -829,6 +892,52 @@ export function calculateStreamingPaceDelayMs(input: {
     0,
     Math.ceil(minimumElapsedMs - (input.now - input.startedAt)),
   )
+}
+
+function formatTimestampedSegments(segments: AsrSegment[]): string {
+  const parts: string[] = []
+  let previousSpeakerLabel: string | null = null
+  for (const segment of segments) {
+    const text = segment.text.trim()
+    if (!text) continue
+    const speakerLabel = segment.speakerLabel ?? null
+    const timeRange = formatSegmentTimeRange(segment)
+    const line = [
+      timeRange ? `[${timeRange}]` : '',
+      speakerLabel ? `${speakerLabel}:` : '',
+      text,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    const separator =
+      parts.length === 0
+        ? ''
+        : speakerLabel !== previousSpeakerLabel
+          ? '\n\n'
+          : '\n'
+    parts.push(`${separator}${line}`)
+    previousSpeakerLabel = speakerLabel
+  }
+  return parts.join('')
+}
+
+function formatSegmentTimeRange(segment: AsrSegment): string {
+  const startMs = Math.max(0, segment.startMs)
+  const endMs = Math.max(startMs, segment.endMs)
+  if (startMs === 0 && endMs === 0) return ''
+  return `${formatTimeMs(startMs, 'round')}-${formatTimeMs(endMs, 'ceil')}`
+}
+
+function formatTimeMs(ms: number, rounding: 'round' | 'ceil'): string {
+  const seconds =
+    rounding === 'ceil' ? Math.ceil(ms / 1000) : Math.round(ms / 1000)
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 function clampWebSocketFileStreamingRate(value: number | undefined): number {

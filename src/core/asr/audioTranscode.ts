@@ -1,5 +1,5 @@
 /**
- * Client-side audio transcoder for the chat-audio ASR path.
+ * Client-side audio transcoder for the Chat Audio path.
  *
  * Why this exists:
  *   - MediaRecorder hands us a webm/opus blob.

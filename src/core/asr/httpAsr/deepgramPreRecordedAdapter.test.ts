@@ -1,0 +1,109 @@
+import {
+  buildDeepgramPreRecordedUrl,
+  parseDeepgramPreRecordedResponse,
+} from './deepgramPreRecordedAdapter'
+
+describe('parseDeepgramPreRecordedResponse', () => {
+  it('formats utterance speaker labels with blank lines between speakers', () => {
+    const parsed = parseDeepgramPreRecordedResponse({
+      results: {
+        utterances: [
+          { start: 0, end: 1.2, transcript: 'hello', speaker: 0 },
+          { start: 1.3, end: 2, transcript: 'again', speaker: 0 },
+          { start: 2.1, end: 3, transcript: 'hi', speaker: 1 },
+        ],
+      },
+    })
+
+    expect(parsed.text).toBe('Speaker 1: hello again\n\nSpeaker 2: hi')
+    expect(parsed.segments).toMatchObject([
+      { startMs: 0, endMs: 1200, speakerLabel: 'Speaker 1' },
+      { startMs: 1300, endMs: 2000, speakerLabel: 'Speaker 1' },
+      { startMs: 2100, endMs: 3000, speakerLabel: 'Speaker 2' },
+    ])
+  })
+
+  it('falls back to word speaker aggregation when utterances are absent', () => {
+    const parsed = parseDeepgramPreRecordedResponse({
+      results: {
+        channels: [
+          {
+            alternatives: [
+              {
+                transcript: 'hello world',
+                words: [
+                  { start: 0, end: 0.5, punctuated_word: 'Hello', speaker: 0 },
+                  { start: 0.5, end: 1, punctuated_word: 'world.', speaker: 0 },
+                  { start: 1, end: 1.4, punctuated_word: 'Yes.', speaker: 1 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(parsed.text).toBe('Speaker 1: Hello world.\n\nSpeaker 2: Yes.')
+  })
+
+  it('uses the channel transcript when one speaker utterances contain spaced CJK words', () => {
+    const parsed = parseDeepgramPreRecordedResponse({
+      results: {
+        channels: [
+          {
+            alternatives: [
+              {
+                transcript: '你好谢谢小笼包再见',
+              },
+            ],
+          },
+        ],
+        utterances: [
+          {
+            start: 0.8,
+            end: 5.12,
+            transcript: '你 好 谢谢 小 笼 包 再见',
+            speaker: 0,
+            words: [
+              { punctuated_word: '你', speaker: 0 },
+              { punctuated_word: '好', speaker: 0 },
+              { punctuated_word: '谢谢', speaker: 0 },
+              { punctuated_word: '小', speaker: 0 },
+              { punctuated_word: '笼', speaker: 0 },
+              { punctuated_word: '包', speaker: 0 },
+              { punctuated_word: '再见', speaker: 0 },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(parsed.text).toBe('Speaker 1: 你好谢谢小笼包再见')
+  })
+})
+
+describe('buildDeepgramPreRecordedUrl', () => {
+  it('uses current pre-recorded diarization parameters', () => {
+    const url = new URL(
+      buildDeepgramPreRecordedUrl(
+        {
+          baseURL: 'https://api.deepgram.com',
+          apiKey: 'key',
+          model: 'nova-3',
+          transcriptionPath: '/v1/listen',
+          transportMode: 'node',
+          language: 'auto',
+          diarization: true,
+          timestamps: true,
+        },
+        { language: 'zh' },
+      ),
+    )
+
+    expect(url.pathname).toBe('/v1/listen')
+    expect(url.searchParams.get('model')).toBe('nova-3')
+    expect(url.searchParams.get('language')).toBe('zh')
+    expect(url.searchParams.get('diarize_model')).toBe('latest')
+    expect(url.searchParams.get('utterances')).toBe('true')
+  })
+})

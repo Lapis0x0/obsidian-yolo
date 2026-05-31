@@ -13,8 +13,12 @@ const baseConfig: AsrConfig = {
   format: 'openai-compatible-chat-audio-asr',
   baseURL: 'https://example.com/v1',
   apiKey: '',
+  apiSecret: '',
+  appId: '',
   model: 'model',
   transcriptionPath: '',
+  jobPath: '',
+  resultPath: '',
   chatCompletionsPath: '/chat/completions',
   audioContentFormat: 'input_audio',
   webSocketProtocol: 'deepgram-compatible',
@@ -25,6 +29,9 @@ const baseConfig: AsrConfig = {
   audioFormat: 'auto',
   transportMode: 'node',
   language: 'auto',
+  longAudioDiarization: true,
+  longAudioSpeakerCount: 0,
+  longAudioTimestamps: true,
 }
 
 describe('getAudioFileAsrCapability', () => {
@@ -58,14 +65,15 @@ describe('getAudioFileAsrCapability', () => {
     expect(capability.supportsFileStreaming).toBe(false)
   })
 
-  it('does not expose upload capabilities for unimplemented long-audio providers', () => {
+  it('exposes provider limits for implemented cloud long-audio providers', () => {
     const capability = getAudioFileAsrCapability({
       ...baseConfig,
       asrCategory: 'http-long-audio',
       asrProvider: 'deepgram-prerecorded',
     })
 
-    expect(capability.supportsLocalFile).toBe(false)
+    expect(capability.maxRequestBytes).toBe(2 * 1024 * 1024 * 1024)
+    expect(capability.supportsLocalFile).toBe(true)
     expect(capability.supportsChunkedUpload).toBe(false)
     expect(capability.supportsFileStreaming).toBe(false)
   })

@@ -15,7 +15,11 @@ export type AudioFileChunkDurationAdvisory = {
   suggestedMaxDurationMs: number
 }
 
-export const SUPPORTED_HTTP_LONG_AUDIO_ASR_PROVIDERS = ['funasr-local'] as const
+export const SUPPORTED_HTTP_LONG_AUDIO_ASR_PROVIDERS = [
+  'funasr-local',
+  'deepgram-prerecorded',
+  'tencent-flash',
+] as const
 
 const OPENAI_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024
 // Chat-audio requests embed audio as data-uri base64. Providers such as
@@ -56,8 +60,8 @@ export function getAudioFileAsrCapability(
   if (config.asrCategory === 'http-long-audio') {
     if (isSupportedHttpLongAudioAsrConfig(config)) {
       return {
-        maxRequestBytes: null,
-        maxDurationMs: null,
+        maxRequestBytes: getHttpLongAudioMaxRequestBytes(config),
+        maxDurationMs: getHttpLongAudioMaxDurationMs(config),
         supportsLocalFile: true,
         supportsChunkedUpload: false,
         supportsFileStreaming: false,
@@ -103,6 +107,26 @@ export function getAudioFileAsrCapability(
       const exhaustive: never = config.format
       return exhaustive
     }
+  }
+}
+
+function getHttpLongAudioMaxRequestBytes(config: AsrConfig): number | null {
+  switch (config.asrProvider) {
+    case 'deepgram-prerecorded':
+      return 2 * 1024 * 1024 * 1024
+    case 'tencent-flash':
+      return 100 * 1024 * 1024
+    default:
+      return null
+  }
+}
+
+function getHttpLongAudioMaxDurationMs(config: AsrConfig): number | null {
+  switch (config.asrProvider) {
+    case 'tencent-flash':
+      return 2 * 60 * 60 * 1000
+    default:
+      return null
   }
 }
 

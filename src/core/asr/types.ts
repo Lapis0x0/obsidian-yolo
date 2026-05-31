@@ -3,7 +3,7 @@
  *
  * Voice input has very different transport shapes per provider — multipart
  * file upload for OpenAI-compatible `/v1/audio/transcriptions`, JSON message
- * with embedded audio content for OpenAI-compatible chat-audio ASR, and
+ * with embedded audio content for OpenAI-compatible Chat Audio, and
  * binary PCM frames for WebSocket streaming ASR. The lowest common
  * denominator at the app layer is "give me audio, get me text".
  */
@@ -18,6 +18,15 @@ export type AsrAudioInput = {
   durationMs?: number
 }
 
+export type AsrUploadProgress = {
+  sentBytes: number
+  totalBytes: number
+}
+
+export type AsrUploadProgressCallback = (
+  progress: AsrUploadProgress,
+) => void
+
 export type AsrOptions = {
   /** BCP47 language hint, or `'auto'` to defer to the provider. */
   language?: string
@@ -25,6 +34,8 @@ export type AsrOptions = {
   prompt?: string
   /** Caller-supplied abort signal. Providers MUST honour it. */
   signal?: AbortSignal
+  /** Upload progress for large audio-file submissions. Best effort per transport. */
+  onUploadProgress?: AsrUploadProgressCallback
   /** Caller context for ASR options whose "auto" value differs by workflow. */
   purpose?: 'context-voice-input' | 'audio-file-transcription' | 'settings-test'
 }

@@ -25,6 +25,7 @@ const WS_PROVIDER_LABEL: Record<AsrWebSocketProtocol, string> = {
 const LONG_PROVIDER_LABEL: Record<string, string> = {
   'funasr-local': 'FunASR local',
   'deepgram-prerecorded': 'Deepgram pre-recorded',
+  'tencent-flash': 'Tencent Flash',
   'speechmatics-batch': 'Speechmatics Batch',
 }
 

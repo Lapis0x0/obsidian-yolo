@@ -10,6 +10,7 @@ import {
 import {
   calculateDeepgramStreamingPaceDelayMs,
   calculateStreamingPaceDelayMs,
+  formatLongAudioResultForInsertion,
   inspectAndPlanAudioFileTranscription,
   trimDuplicateChunkBoundary,
 } from './audioFileTranscriptionService'
@@ -22,8 +23,12 @@ const baseConfig: AsrConfig = {
   format: 'openai-compatible-transcription',
   baseURL: 'https://example.com/v1',
   apiKey: '',
+  apiSecret: '',
+  appId: '',
   model: 'whisper-1',
   transcriptionPath: '/audio/transcriptions',
+  jobPath: '',
+  resultPath: '',
   chatCompletionsPath: '/chat/completions',
   audioContentFormat: 'input_audio',
   webSocketProtocol: 'deepgram-compatible',
@@ -34,6 +39,9 @@ const baseConfig: AsrConfig = {
   audioFormat: 'auto',
   transportMode: 'node',
   language: 'auto',
+  longAudioDiarization: true,
+  longAudioSpeakerCount: 0,
+  longAudioTimestamps: true,
 }
 
 const options = (
@@ -44,6 +52,7 @@ const options = (
     activeAsrConfigId: '',
     activeAudioFileAsrConfigId: '',
     audioFileChunkTargetDurationSec: 120,
+    audioFileOutputMetadataMode: 'metadata-timestamps',
     audioFileWavMaxDurationSec: 600,
     audioFileChunkOverlapMs: 500,
     audioFileMaxConcurrentChunks: 5,
@@ -82,6 +91,66 @@ describe('trimDuplicateChunkBoundary', () => {
         'after reviewing the checklist',
       ),
     ).toBe('after reviewing the checklist')
+  })
+})
+
+describe('formatLongAudioResultForInsertion', () => {
+  it('renders cloud long-audio timestamps from provider segments', () => {
+    expect(
+      formatLongAudioResultForInsertion(
+        {
+          text: 'Speaker 1: 你好。\n\nSpeaker 2: 请继续。',
+          segments: [
+            {
+              startMs: 9100,
+              endMs: 36975,
+              text: '你好。',
+              speakerId: '0',
+              speakerLabel: 'Speaker 1',
+            },
+            {
+              startMs: 36975,
+              endMs: 38265,
+              text: '请继续。',
+              speakerId: '1',
+              speakerLabel: 'Speaker 2',
+            },
+          ],
+        },
+        'metadata-timestamps',
+      ),
+    ).toBe(
+      '[00:09-00:37] Speaker 1: 你好。\n\n[00:37-00:39] Speaker 2: 请继续。',
+    )
+  })
+
+  it('keeps plain provider text when timestamp output is disabled', () => {
+    expect(
+      formatLongAudioResultForInsertion(
+        {
+          text: 'Speaker 1: 你好。',
+          segments: [
+            {
+              startMs: 9100,
+              endMs: 36975,
+              text: '你好。',
+              speakerId: '0',
+              speakerLabel: 'Speaker 1',
+            },
+          ],
+        },
+        'metadata',
+      ),
+    ).toBe('Speaker 1: 你好。')
+  })
+
+  it('does not synthesize timestamps when the provider returns no segments', () => {
+    expect(
+      formatLongAudioResultForInsertion(
+        { text: '普通转写正文' },
+        'metadata-timestamps',
+      ),
+    ).toBe('普通转写正文')
   })
 })
 
@@ -179,13 +248,13 @@ describe('inspectAndPlanAudioFileTranscription', () => {
     expect(plan.schedule).toBeNull()
   })
 
-  it('rejects unimplemented long-audio providers before local short-audio planning', async () => {
+  it('rejects unknown long-audio providers before local short-audio planning', async () => {
     const longConfig: AsrConfig = {
       ...baseConfig,
       id: 'long',
       asrCategory: 'http-long-audio',
-      asrProvider: 'deepgram-prerecorded',
-      model: 'nova-3',
+      asrProvider: 'speechmatics-batch',
+      model: '',
     }
 
     await expect(

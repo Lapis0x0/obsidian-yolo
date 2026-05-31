@@ -3,7 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { BaseAsrProvider } from '../../../core/asr/base'
-import type { AsrStreamingSession } from '../../../core/asr/types'
+import type {
+  AsrAudioInput,
+  AsrStreamingSession,
+} from '../../../core/asr/types'
 import type { VoiceInputRecorder } from '../../../features/editor/voice/context-input/voiceInputRecorder'
 import YoloPlugin from '../../../main'
 import {
@@ -80,7 +83,7 @@ const FORMAT_DEFAULTS: Record<AsrApiFormat, FormatDefaults> = {
     language: 'auto',
   },
   'openai-compatible-chat-audio-asr': {
-    name: 'Chat audio ASR',
+    name: 'Chat Audio',
     asrCategory: 'http-short-audio',
     asrProvider: 'openai-compatible-chat-audio-asr',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -171,7 +174,26 @@ const WS_PROTOCOL_DEFAULTS: Record<
 type AsrLongAudioProvider =
   | 'funasr-local'
   | 'deepgram-prerecorded'
-  | 'speechmatics-batch'
+  | 'tencent-flash'
+
+type LongAudioProviderDefaults = Pick<
+  FormatDefaults,
+  | 'name'
+  | 'asrProvider'
+  | 'baseURL'
+  | 'model'
+  | 'transcriptionPath'
+  | 'audioFormat'
+  | 'language'
+> & {
+  jobPath: string
+  resultPath: string
+  appId: string
+  apiSecret: string
+  longAudioDiarization: boolean
+  longAudioSpeakerCount: number
+  longAudioTimestamps: boolean
+}
 
 type AsrTestStatus =
   | 'idle'
@@ -190,16 +212,7 @@ type VoiceInputRecorderConstructor = new () => VoiceInputRecorder
 
 const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
   AsrLongAudioProvider,
-  Pick<
-    FormatDefaults,
-    | 'name'
-    | 'asrProvider'
-    | 'baseURL'
-    | 'model'
-    | 'transcriptionPath'
-    | 'audioFormat'
-    | 'language'
-  >
+  LongAudioProviderDefaults
 > = {
   'funasr-local': {
     name: 'FunASR local',
@@ -207,8 +220,15 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     baseURL: 'http://127.0.0.1:8001/v1',
     model: 'paraformer',
     transcriptionPath: '/audio/transcriptions',
+    jobPath: '',
+    resultPath: '',
     audioFormat: 'auto',
     language: 'zh',
+    appId: '',
+    apiSecret: '',
+    longAudioDiarization: true,
+    longAudioSpeakerCount: 0,
+    longAudioTimestamps: true,
   },
   'deepgram-prerecorded': {
     name: 'Deepgram pre-recorded',
@@ -216,17 +236,31 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     baseURL: 'https://api.deepgram.com',
     model: 'nova-3',
     transcriptionPath: '/v1/listen',
+    jobPath: '',
+    resultPath: '',
     audioFormat: 'auto',
     language: 'auto',
+    appId: '',
+    apiSecret: '',
+    longAudioDiarization: true,
+    longAudioSpeakerCount: 0,
+    longAudioTimestamps: true,
   },
-  'speechmatics-batch': {
-    name: 'Speechmatics Batch',
-    asrProvider: 'speechmatics-batch',
-    baseURL: 'https://asr.api.speechmatics.com/v2',
-    model: '',
-    transcriptionPath: '/jobs',
+  'tencent-flash': {
+    name: 'Tencent Flash',
+    asrProvider: 'tencent-flash',
+    baseURL: 'https://asr.cloud.tencent.com',
+    model: '16k_zh',
+    transcriptionPath: '/asr/flash/v1',
+    jobPath: '',
+    resultPath: '',
     audioFormat: 'auto',
-    language: 'auto',
+    language: 'zh',
+    appId: '',
+    apiSecret: '',
+    longAudioDiarization: true,
+    longAudioSpeakerCount: 0,
+    longAudioTimestamps: true,
   },
 }
 
@@ -310,11 +344,16 @@ function AsrConfigFormComponent({
       baseURL:
         initialCategory === 'http-long-audio' ? longDef.baseURL : def.baseURL,
       apiKey: '',
+      apiSecret: initialCategory === 'http-long-audio' ? longDef.apiSecret : '',
+      appId: initialCategory === 'http-long-audio' ? longDef.appId : '',
       model: initialCategory === 'http-long-audio' ? longDef.model : def.model,
       transcriptionPath:
         initialCategory === 'http-long-audio'
           ? longDef.transcriptionPath
           : def.transcriptionPath,
+      jobPath: initialCategory === 'http-long-audio' ? longDef.jobPath : '',
+      resultPath:
+        initialCategory === 'http-long-audio' ? longDef.resultPath : '',
       chatCompletionsPath: def.chatCompletionsPath,
       audioContentFormat: def.audioContentFormat,
       webSocketProtocol: def.webSocketProtocol,
@@ -329,6 +368,18 @@ function AsrConfigFormComponent({
       transportMode: 'node',
       language:
         initialCategory === 'http-long-audio' ? longDef.language : def.language,
+      longAudioDiarization:
+        initialCategory === 'http-long-audio'
+          ? longDef.longAudioDiarization
+          : true,
+      longAudioSpeakerCount:
+        initialCategory === 'http-long-audio'
+          ? longDef.longAudioSpeakerCount
+          : 0,
+      longAudioTimestamps:
+        initialCategory === 'http-long-audio'
+          ? longDef.longAudioTimestamps
+          : true,
     }
   })
   const [testRunning, setTestRunning] = useState(false)
@@ -347,6 +398,10 @@ function AsrConfigFormComponent({
 
   const isChatAudio = formData.format === 'openai-compatible-chat-audio-asr'
   const isHttpLongAudio = formData.asrCategory === 'http-long-audio'
+  const isTencentFlash =
+    isHttpLongAudio && formData.asrProvider === 'tencent-flash'
+  const isCloudLongAudio =
+    isHttpLongAudio && formData.asrProvider !== 'funasr-local'
   const isWebSocketAsr =
     formData.asrCategory === 'websocket' ||
     formData.format === 'deepgram-compatible-websocket'
@@ -558,6 +613,7 @@ function AsrConfigFormComponent({
       format: 'deepgram-compatible-websocket',
       name: defaults.name,
       baseURL: defaults.baseURL,
+      apiKey: '',
       model: defaults.model,
       transcriptionPath: defaults.transcriptionPath,
       audioFormat: defaults.audioFormat,
@@ -576,7 +632,26 @@ function AsrConfigFormComponent({
     if (!formData.baseURL.trim()) {
       return t('settings.asr.baseURLRequired', 'Base URL is required.')
     }
-    if (isHttpLongAudio) return null
+    if (isHttpLongAudio) {
+      if (
+        formData.asrProvider === 'deepgram-prerecorded' &&
+        !formData.apiKey.trim()
+      ) {
+        return t('settings.asr.apiKeyRequired', 'API key is required.')
+      }
+      if (
+        formData.asrProvider === 'tencent-flash' &&
+        (!formData.appId.trim() ||
+          !formData.apiKey.trim() ||
+          !formData.apiSecret.trim())
+      ) {
+        return t(
+          'settings.asr.longProviderCredentialsRequired',
+          'AppID, API key, and API secret are required.',
+        )
+      }
+      return null
+    }
     if (!isWebSocketAsr && !formData.model.trim()) {
       return t('settings.asr.modelRequired', 'Model is required.')
     }
@@ -592,10 +667,20 @@ function AsrConfigFormComponent({
       asrProvider: defaults.asrProvider,
       name: defaults.name,
       baseURL: defaults.baseURL,
+      // Cloud long-audio credentials are not interchangeable. Clear API key
+      // when switching providers so stale keys cannot make validation pass.
+      apiKey: '',
       model: defaults.model,
       transcriptionPath: defaults.transcriptionPath,
+      jobPath: defaults.jobPath,
+      resultPath: defaults.resultPath,
       audioFormat: defaults.audioFormat,
       language: defaults.language,
+      appId: defaults.appId,
+      apiSecret: defaults.apiSecret,
+      longAudioDiarization: defaults.longAudioDiarization,
+      longAudioSpeakerCount: defaults.longAudioSpeakerCount,
+      longAudioTimestamps: defaults.longAudioTimestamps,
       transportMode: 'node',
     }))
     setTestMessage('')
@@ -652,6 +737,34 @@ function AsrConfigFormComponent({
       'settings.asr.languageDesc',
       'Leave empty or "auto" to let the provider detect.',
     )
+  }
+
+  const buildTranscriptionPathDesc = (): string => {
+    if (isWebSocketAsr) {
+      return t(
+        'settings.asr.listenPathDesc',
+        'Use the path expected by the selected WS speech protocol.',
+      )
+    }
+    if (isHttpLongAudio) {
+      return t(
+        'settings.asr.longAudioPathDesc',
+        'Provider-specific long-audio endpoint path. The selected provider fills its default value.',
+      )
+    }
+    return t(
+      'settings.asr.transcriptionPathDesc',
+      'Defaults to /audio/transcriptions.',
+    )
+  }
+
+  const buildTranscriptionPathPlaceholder = (): string => {
+    if (isWebSocketAsr) return '/listen'
+    if (isTencentFlash) return '/asr/flash/v1'
+    if (isHttpLongAudio && formData.asrProvider === 'deepgram-prerecorded') {
+      return '/v1/listen'
+    }
+    return '/audio/transcriptions'
   }
 
   const handleSave = () => {
@@ -876,17 +989,24 @@ function AsrConfigFormComponent({
       setTestStatus('transcribing')
       setTestMessage(t('settings.asr.testCallingAsr', 'Calling ASR…'))
       const audio = await recorder.stop()
-      const result = await provider.transcribe(
-        {
-          blob: audio.blob,
-          mimeType: audio.mimeType,
-          durationMs: audio.durationMs,
-        },
-        {
-          language: formData.language,
-          purpose: 'settings-test',
-        },
-      )
+      let testAudio: AsrAudioInput = {
+        blob: audio.blob,
+        mimeType: audio.mimeType,
+        durationMs: audio.durationMs,
+      }
+      if (isTencentFlash) {
+        // Tencent Flash rejects the MediaRecorder default webm/opus container.
+        // For the 5s settings test, transcode to the same 16 kHz mono WAV
+        // shape users would pick for compatibility.
+        const { transcodeToWav } = await import(
+          '../../../core/asr/audioTranscode'
+        )
+        testAudio = await transcodeToWav(testAudio)
+      }
+      const result = await provider.transcribe(testAudio, {
+        language: formData.language,
+        purpose: 'settings-test',
+      })
       const text = (result.text ?? '').trim()
       setTestTranscript(text)
       if (text.length > 0) {
@@ -911,16 +1031,6 @@ function AsrConfigFormComponent({
   }
 
   const runTest = async () => {
-    if (isHttpLongAudio && formData.asrProvider !== 'funasr-local') {
-      setTestStatus('failed')
-      setTestMessage(
-        t(
-          'settings.asr.testLongAudioUnavailable',
-          'Long-audio providers are configured here, but their native adapters are implemented separately from the short-audio ASR test.',
-        ),
-      )
-      return
-    }
     if (streamingTestRef.current) {
       await finishStreamingTest()
       return
@@ -937,7 +1047,7 @@ function AsrConfigFormComponent({
       ),
       'openai-compatible-chat-audio-asr': t(
         'settings.asr.apiFormatChatAudio',
-        'Chat audio',
+        'Chat Audio',
       ),
     }),
     [t],
@@ -979,10 +1089,7 @@ function AsrConfigFormComponent({
         'settings.asr.longProviderDeepgram',
         'Deepgram pre-recorded',
       ),
-      'speechmatics-batch': t(
-        'settings.asr.longProviderSpeechmatics',
-        'Speechmatics Batch',
-      ),
+      'tencent-flash': t('settings.asr.longProviderTencent', 'Tencent Flash'),
     }),
     [t],
   )
@@ -1105,24 +1212,17 @@ function AsrConfigFormComponent({
 
       {!isChatAudio && (
         <ObsidianSetting
-          name={
-            isWebSocketAsr
-              ? t('settings.asr.listenPath', 'Path')
-              : t('settings.asr.transcriptionPath', 'Transcription path')
-          }
-          desc={t(
-            isWebSocketAsr
-              ? 'settings.asr.listenPathDesc'
-              : 'settings.asr.transcriptionPathDesc',
-            isWebSocketAsr
-              ? 'Use the path expected by the selected WS speech protocol.'
-              : 'Defaults to /audio/transcriptions.',
-          )}
-        >
+        name={
+          isWebSocketAsr
+            ? t('settings.asr.listenPath', 'Path')
+            : t('settings.asr.transcriptionPath', 'Transcription path')
+        }
+        desc={buildTranscriptionPathDesc()}
+      >
           <ObsidianTextInput
             value={formData.transcriptionPath}
             onChange={(value) => handlePatch({ transcriptionPath: value })}
-            placeholder={isWebSocketAsr ? '/listen' : '/audio/transcriptions'}
+            placeholder={buildTranscriptionPathPlaceholder()}
           />
         </ObsidianSetting>
       )}
@@ -1143,11 +1243,35 @@ function AsrConfigFormComponent({
         </ObsidianSetting>
       )}
 
+      {isTencentFlash && (
+        <ObsidianSetting
+          name={t('settings.asr.appId', 'AppID')}
+          desc={t(
+            'settings.asr.tencentAppIdDesc',
+            'Use the Tencent Cloud main account AppID, not the account ID.',
+          )}
+        >
+          <ObsidianTextInput
+            value={formData.appId}
+            onChange={(value) => handlePatch({ appId: value })}
+            placeholder="1250000000"
+          />
+        </ObsidianSetting>
+      )}
+
       <ObsidianSetting
-        name={t('settings.asr.apiKey', 'API key')}
+        name={
+          isTencentFlash
+            ? t('settings.asr.secretId', 'SecretID')
+            : t('settings.asr.apiKey', 'API key')
+        }
         desc={t(
-          'settings.asr.apiKeyDesc',
-          'Leave empty for local servers without auth.',
+          isTencentFlash
+            ? 'settings.asr.apiKeyRequiredDesc'
+            : 'settings.asr.apiKeyDesc',
+          isTencentFlash
+            ? 'Required by this cloud provider.'
+            : 'Leave empty for local servers without auth.',
         )}
       >
         <ObsidianTextInput
@@ -1159,6 +1283,25 @@ function AsrConfigFormComponent({
           )}
         />
       </ObsidianSetting>
+
+      {isTencentFlash && (
+        <ObsidianSetting
+          name={t('settings.asr.secretKey', 'SecretKey')}
+          desc={t(
+            'settings.asr.apiSecretDesc',
+            'Used only for signing ASR requests.',
+          )}
+        >
+          <ObsidianTextInput
+            value={formData.apiSecret}
+            onChange={(value) => handlePatch({ apiSecret: value })}
+            placeholder={t(
+              'settings.asr.apiSecretPlaceholder',
+              'Enter your API secret',
+            )}
+          />
+        </ObsidianSetting>
+      )}
 
       <ObsidianSetting
         name={t('settings.asr.model', 'Model')}
@@ -1211,20 +1354,52 @@ function AsrConfigFormComponent({
 
       {/* 音频格式同样对 transcription 协议生效 — 例如智谱 GLM 的
           /v1/audio/transcriptions 也只接受 wav/mp3 而非 webm。 */}
-      <ObsidianSetting
-        name={t('settings.asr.audioFormat', 'Audio format')}
-        desc={buildAudioFormatDesc()}
-      >
-        <ObsidianDropdown
-          value={providerFormData.audioFormat}
-          options={audioFormatOptions}
-          onChange={(value) =>
-            handlePatch({
-              audioFormat: value === 'wav' ? 'wav' : 'auto',
-            })
-          }
-        />
-      </ObsidianSetting>
+      {!isHttpLongAudio && (
+        <ObsidianSetting
+          name={t('settings.asr.audioFormat', 'Audio format')}
+          desc={buildAudioFormatDesc()}
+        >
+          <ObsidianDropdown
+            value={providerFormData.audioFormat}
+            options={audioFormatOptions}
+            onChange={(value) =>
+              handlePatch({
+                audioFormat: value === 'wav' ? 'wav' : 'auto',
+              })
+            }
+          />
+        </ObsidianSetting>
+      )}
+
+      {isCloudLongAudio && (
+        <ObsidianSetting
+          name={t('settings.asr.longAudioDiarization', 'Speaker diarization')}
+          desc={t(
+            'settings.asr.longAudioDiarizationDesc',
+            'Ask the provider to return speaker labels when supported.',
+          )}
+        >
+          <ObsidianToggle
+            value={formData.longAudioDiarization}
+            onChange={(value) => handlePatch({ longAudioDiarization: value })}
+          />
+        </ObsidianSetting>
+      )}
+
+      {isCloudLongAudio && (
+        <ObsidianSetting
+          name={t('settings.asr.longAudioTimestamps', 'Timestamps')}
+          desc={t(
+            'settings.asr.longAudioTimestampsDesc',
+            'Request provider timestamps when the API supports that option.',
+          )}
+        >
+          <ObsidianToggle
+            value={formData.longAudioTimestamps}
+            onChange={(value) => handlePatch({ longAudioTimestamps: value })}
+          />
+        </ObsidianSetting>
+      )}
 
       {isWhisperLiveKitWs && (
         <ObsidianSetting

@@ -20,8 +20,12 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   format: 'openai-compatible-transcription',
   baseURL: 'https://example.com/v1',
   apiKey: '',
+  apiSecret: '',
+  appId: '',
   model: 'whisper-1',
   transcriptionPath: '/audio/transcriptions',
+  jobPath: '',
+  resultPath: '',
   chatCompletionsPath: '/chat/completions',
   audioContentFormat: 'input_audio',
   webSocketProtocol: 'deepgram-compatible',
@@ -32,6 +36,9 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   audioFormat: 'auto',
   transportMode: 'node',
   language: 'auto',
+  longAudioDiarization: true,
+  longAudioSpeakerCount: 0,
+  longAudioTimestamps: true,
   ...overrides,
 })
 
@@ -129,13 +136,40 @@ describe('ASR manager config resolution', () => {
     expect(provider.format).toBe('funasr-local')
   })
 
-  it('blocks long-audio configs until their native adapters are implemented', () => {
-    expect(() =>
+  it('builds the implemented cloud long-audio adapters', () => {
+    expect(
       buildAsrProviderForConfig(
         config({
           asrCategory: 'http-long-audio',
           asrProvider: 'deepgram-prerecorded',
-          model: 'paraformer-zh',
+          baseURL: 'https://api.deepgram.com',
+          apiKey: 'dg-key',
+          model: 'nova-3',
+        }),
+      ).format,
+    ).toBe('deepgram-prerecorded')
+    expect(
+      buildAsrProviderForConfig(
+        config({
+          asrCategory: 'http-long-audio',
+          asrProvider: 'tencent-flash',
+          baseURL: 'https://asr.cloud.tencent.com',
+          apiKey: 'secret-id',
+          apiSecret: 'secret-key',
+          appId: '1250000000',
+          model: '16k_zh',
+        }),
+      ).format,
+    ).toBe('tencent-flash')
+  })
+
+  it('blocks unknown long-audio configs until their native adapters are implemented', () => {
+    expect(() =>
+      buildAsrProviderForConfig(
+        config({
+          asrCategory: 'http-long-audio',
+          asrProvider: 'speechmatics-batch',
+          model: '',
         }),
       ),
     ).toThrow(AsrConfigError)

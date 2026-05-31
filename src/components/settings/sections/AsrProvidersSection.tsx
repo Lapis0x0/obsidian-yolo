@@ -58,7 +58,7 @@ const CATEGORY_ORDER: AsrConfigCategory[] = [
 
 const FORMAT_LABEL: Record<AsrApiFormat, string> = {
   'openai-compatible-transcription': 'Transcription',
-  'openai-compatible-chat-audio-asr': 'Chat audio ASR',
+  'openai-compatible-chat-audio-asr': 'Chat Audio',
   'deepgram-compatible-websocket': 'WebSocket',
 }
 
@@ -70,6 +70,7 @@ const WS_PROVIDER_LABEL: Record<AsrWebSocketProtocol, string> = {
 const LONG_PROVIDER_LABEL: Record<string, string> = {
   'funasr-local': 'FunASR local',
   'deepgram-prerecorded': 'Deepgram pre-recorded',
+  'tencent-flash': 'Tencent Flash',
   'speechmatics-batch': 'Speechmatics Batch',
 }
 

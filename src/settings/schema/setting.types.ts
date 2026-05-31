@@ -313,7 +313,7 @@ export const ASR_API_FORMATS = [
 export type AsrApiFormat = (typeof ASR_API_FORMATS)[number]
 
 /**
- * Outbound audio container override for chat-audio ASR.
+ * Outbound audio container override for Chat Audio.
  *
  * - `auto`: send whatever MediaRecorder captured (typically webm/opus). Works
  *   for OpenAI gpt-4o-audio, Qwen3-ASR, FireRedASR2.
@@ -392,8 +392,12 @@ const asrConfigSchema = z
     format: z.enum(ASR_API_FORMATS).catch('openai-compatible-transcription'),
     baseURL: z.string().catch(''),
     apiKey: z.string().catch(''),
+    apiSecret: z.string().catch(''),
+    appId: z.string().catch(''),
     model: z.string().catch(''),
     transcriptionPath: z.string().catch(''),
+    jobPath: z.string().catch(''),
+    resultPath: z.string().catch(''),
     chatCompletionsPath: z.string().catch(''),
     audioContentFormat: z.string().catch('input_audio'),
     webSocketProtocol: z
@@ -434,6 +438,9 @@ const asrConfigSchema = z
       )
       .catch('node'),
     language: z.string().catch('auto'),
+    longAudioDiarization: z.boolean().catch(true),
+    longAudioSpeakerCount: z.number().int().min(0).max(32).catch(0),
+    longAudioTimestamps: z.boolean().catch(true),
   })
   .catch({
     id: '',
@@ -443,8 +450,12 @@ const asrConfigSchema = z
     format: 'openai-compatible-transcription' as AsrApiFormat,
     baseURL: '',
     apiKey: '',
+    apiSecret: '',
+    appId: '',
     model: '',
     transcriptionPath: '',
+    jobPath: '',
+    resultPath: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
     webSocketProtocol: 'deepgram-compatible' as AsrWebSocketProtocol,
@@ -455,6 +466,9 @@ const asrConfigSchema = z
     audioFormat: 'auto' as AsrAudioFormat,
     transportMode: 'node' as AsrTransportMode,
     language: 'auto',
+    longAudioDiarization: true,
+    longAudioSpeakerCount: 0,
+    longAudioTimestamps: true,
   })
 
 export type AsrConfig = z.infer<typeof asrConfigSchema>
@@ -468,11 +482,22 @@ export type AudioFileChunkHeaderMode =
 
 export const AUDIO_FILE_OUTPUT_METADATA_MODES = [
   'none',
-  'title',
-  'full',
+  'metadata',
+  'metadata-timestamps',
 ] as const
 export type AudioFileOutputMetadataMode =
   (typeof AUDIO_FILE_OUTPUT_METADATA_MODES)[number]
+
+const normalizeAudioFileOutputMetadataMode = (
+  value: string,
+): AudioFileOutputMetadataMode => {
+  if (value === 'none') return 'none'
+  if (value === 'title' || value === 'full' || value === 'metadata') {
+    return 'metadata'
+  }
+  if (value === 'metadata-timestamps') return 'metadata-timestamps'
+  return 'metadata-timestamps'
+}
 
 /**
  * How often the per-document summary should be regenerated while the user
@@ -515,7 +540,8 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   audioFileTranscriptionEnabled: false,
   activeAudioFileAsrConfigId: '',
   audioFileChunkHeaderMode: 'none' as AudioFileChunkHeaderMode,
-  audioFileOutputMetadataMode: 'none' as AudioFileOutputMetadataMode,
+  audioFileOutputMetadataMode:
+    'metadata-timestamps' as AudioFileOutputMetadataMode,
   audioFileFallbackNotePathTemplate:
     'Transcriptions/{{date}} {{time}} {{basename}}.md',
   audioFileChunkTargetDurationSec: 120,
@@ -583,6 +609,7 @@ const contextVoiceInputOptionsSchema = z
       .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileChunkHeaderMode),
     audioFileOutputMetadataMode: z
       .enum(AUDIO_FILE_OUTPUT_METADATA_MODES)
+      .or(z.string().transform(normalizeAudioFileOutputMetadataMode))
       .catch(DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS.audioFileOutputMetadataMode),
     audioFileFallbackNotePathTemplate: z
       .string()

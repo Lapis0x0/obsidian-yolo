@@ -42,8 +42,8 @@ const AUDIO_FILE_METADATA_LABEL_FALLBACK: Record<
   string
 > = {
   none: 'Body only',
-  title: 'Title',
-  full: 'Full metadata',
+  metadata: 'Metadata',
+  'metadata-timestamps': 'Metadata + timestamps',
 }
 
 const formatDurationLimitMinutes = (seconds: number): string => {
@@ -354,7 +354,7 @@ export function AudioFileTranscriptionSection() {
                 )}
                 desc={t(
                   'settings.audioFileTranscription.outputMetadataModeDesc',
-                  'Inline insertion defaults to body-only; fallback notes automatically include full metadata when this is body-only.',
+                  'Controls whether transcription output includes file metadata and provider timestamps.',
                 )}
                 className="yolo-models-select-card"
               >

@@ -18,8 +18,12 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   format: 'openai-compatible-transcription',
   baseURL: 'https://example.com/v1',
   apiKey: '',
+  apiSecret: '',
+  appId: '',
   model: 'whisper-1',
   transcriptionPath: '/audio/transcriptions',
+  jobPath: '',
+  resultPath: '',
   chatCompletionsPath: '/chat/completions',
   audioContentFormat: 'input_audio',
   webSocketProtocol: 'deepgram-compatible',
@@ -30,6 +34,9 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   audioFormat: 'auto',
   transportMode: 'node',
   language: 'auto',
+  longAudioDiarization: true,
+  longAudioSpeakerCount: 0,
+  longAudioTimestamps: true,
   ...overrides,
 })
 
@@ -203,7 +210,7 @@ describe('ASR config status', () => {
     ).toBe(true)
   })
 
-  it('does not mark unimplemented long-audio providers ready for audio-file transcription', () => {
+  it('marks cloud long-audio providers ready only when credentials exist', () => {
     const long = config({
       id: 'long',
       asrCategory: 'http-long-audio',
@@ -220,6 +227,35 @@ describe('ASR config status', () => {
         }),
       ),
     ).toBeNull()
+    expect(
+      hasConfiguredAudioFileAsrConfig(
+        options({
+          asrConfigs: [long],
+          activeAudioFileAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(false)
+
+    const ready = { ...long, apiKey: 'dg-key' }
+    expect(
+      hasConfiguredAudioFileAsrConfig(
+        options({
+          asrConfigs: [ready],
+          activeAudioFileAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('does not mark unknown long-audio providers ready for audio-file transcription', () => {
+    const long = config({
+      id: 'long',
+      asrCategory: 'http-long-audio',
+      asrProvider: 'speechmatics-batch',
+      baseURL: 'https://asr.api.speechmatics.com/v2',
+      model: '',
+    })
+
     expect(
       hasConfiguredAudioFileAsrConfig(
         options({

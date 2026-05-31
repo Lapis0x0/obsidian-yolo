@@ -6,6 +6,7 @@ import type { AsrAudioInput, AsrOptions, AsrResult, AsrSegment } from '../types'
 import {
   type MultipartField,
   buildMultipartBody,
+  formatSpeakerAwareTranscript,
   generateMultipartBoundary,
   guessAudioExtensionFromMime,
   joinUrl,
@@ -100,6 +101,7 @@ export class FunAsrLocalProvider extends BaseAsrProvider {
       headers,
       transportMode,
       signal: options?.signal,
+      onUploadProgress: options?.onUploadProgress,
     })
 
     if (options?.signal?.aborted) {
@@ -195,27 +197,6 @@ function extractFunAsrSegments(payload: unknown): ParsedFunAsrSegment[] {
   })
 }
 
-function formatSpeakerAwareTranscript(segments: ParsedFunAsrSegment[]): string {
-  const blocks: Array<{ label: string | null; text: string[] }> = []
-  for (const segment of segments) {
-    const label = segment.speakerLabel ?? null
-    const last = blocks[blocks.length - 1]
-    if (last && last.label === label) {
-      last.text.push(segment.text)
-      continue
-    }
-    blocks.push({ label, text: [segment.text] })
-  }
-
-  return blocks
-    .map((block) => {
-      const text = block.text.join(' ').trim()
-      return block.label ? `${block.label}: ${text}` : text
-    })
-    .filter(Boolean)
-    .join('\n\n')
-}
-
 function firstArray(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null
 }
@@ -224,7 +205,7 @@ function extractText(value: unknown): string {
   if (!value || typeof value !== 'object') return ''
   const record = value as Record<string, unknown>
   for (const key of ['text', 'transcript', 'sentence']) {
-    if (typeof record[key] === 'string') return record[key] as string
+    if (typeof record[key] === 'string') return record[key]
   }
   return ''
 }

@@ -31,10 +31,7 @@ export const migrateFrom65To66: SettingMigration['migrate'] = (data) => {
           ? 'local-start-time'
           : 'none',
       audioFileOutputMetadataMode:
-        voice.audioFileOutputMetadataMode === 'title' ||
-        voice.audioFileOutputMetadataMode === 'full'
-          ? voice.audioFileOutputMetadataMode
-          : 'none',
+        normalizeAudioFileOutputMetadataMode(voice.audioFileOutputMetadataMode),
       audioFileFallbackNotePathTemplate:
         typeof voice.audioFileFallbackNotePathTemplate === 'string' &&
         voice.audioFileFallbackNotePathTemplate.trim().length > 0
@@ -66,6 +63,15 @@ export const migrateFrom65To66: SettingMigration['migrate'] = (data) => {
       ),
     },
   }
+}
+
+const normalizeAudioFileOutputMetadataMode = (value: unknown): string => {
+  if (value === 'none') return 'none'
+  if (value === 'title' || value === 'full' || value === 'metadata') {
+    return 'metadata'
+  }
+  if (value === 'metadata-timestamps') return 'metadata-timestamps'
+  return 'metadata-timestamps'
 }
 
 const clampInt = (

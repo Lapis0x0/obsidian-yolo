@@ -1440,7 +1440,7 @@ export const en: TranslationKeys = {
       errorChatAudioRequestFailed: 'ASR chat-audio request failed: {{detail}}',
       apiFormat: 'API format',
       apiFormatTranscription: 'Transcription',
-      apiFormatChatAudio: 'Chat audio',
+      apiFormatChatAudio: 'Chat Audio',
       apiFormatWebSocket: 'WebSocket',
       apiFormatDescTranscription:
         'Uploads a short recording to an OpenAI-style transcription endpoint.',
@@ -1467,6 +1467,10 @@ export const en: TranslationKeys = {
         'Use the path expected by the selected WS speech protocol.',
       transcriptionPath: 'Transcription path',
       transcriptionPathDesc: 'Defaults to /audio/transcriptions.',
+      longAudioPathDesc:
+        'Provider-specific long-audio endpoint path. Switching providers fills the matching default.',
+      uploadPath: 'Upload path',
+      uploadPathDesc: 'File upload endpoint path.',
       chatCompletionsPath: 'Chat completions path',
       chatCompletionsPathDesc: 'Defaults to /chat/completions.',
       audioContentFormat: 'Audio content carrier',
@@ -1497,7 +1501,32 @@ export const en: TranslationKeys = {
         'Fixed long-audio providers keep their own request and result parsing.',
       longProviderFunasr: 'FunASR local',
       longProviderDeepgram: 'Deepgram pre-recorded',
-      longProviderSpeechmatics: 'Speechmatics Batch',
+      longProviderTencent: 'Tencent Flash',
+      appId: 'AppID',
+      appIdDesc: 'Cloud account or application ID for this provider.',
+      tencentAppIdDesc:
+        'Use the Tencent Cloud main account AppID, not the account ID.',
+      apiKeyRequired: 'API key is required.',
+      apiKeyRequiredDesc: 'Required by this cloud provider.',
+      apiSecret: 'APISecret',
+      apiSecretDesc: 'Used only for signing ASR requests.',
+      apiSecretPlaceholder: 'Enter your API secret',
+      secretId: 'SecretID',
+      secretKey: 'SecretKey',
+      jobPath: 'Job path',
+      jobPathDesc: 'Task creation endpoint. Full URLs are allowed.',
+      resultPath: 'Result path',
+      resultPathDesc: 'Task polling endpoint. Full URLs are allowed.',
+      longAudioDiarization: 'Speaker diarization',
+      longAudioDiarizationDesc:
+        'Ask the provider to return speaker labels when supported.',
+      longAudioTimestamps: 'Timestamps',
+      longAudioTimestampsDesc:
+        'Request provider timestamps when the API supports that option.',
+      longAudioSpeakerCount: 'Speaker count',
+      longAudioSpeakerCountDesc: '0 means automatic speaker count.',
+      longProviderCredentialsRequired:
+        'AppID, API key, and API secret are required.',
       funasrServerFeatures: 'Server features',
       funasrServerFeaturesDesc:
         'Configure punctuation and speaker diarization on the FunASR server. The plugin automatically uses returned punctuation and speaker fields.',
@@ -1548,8 +1577,6 @@ export const en: TranslationKeys = {
       testInvalidConfig: 'Invalid config.',
       testRecordingSeconds: 'Recording {{seconds}} s…',
       testCallingAsr: 'Calling ASR…',
-      testLongAudioUnavailable:
-        'Long-audio providers are configured here, but their native adapters are implemented separately from the short-audio ASR test.',
       testBadgePassed: '✓ Passed',
       testBadgeFailed: '× Failed',
       testBadgeRecording: '● Recording',
@@ -1578,10 +1605,10 @@ export const en: TranslationKeys = {
       'chunkHeaderMode_local-start-time': 'Local start time',
       outputMetadataMode: 'Output metadata',
       outputMetadataModeDesc:
-        'Inline insertion defaults to body-only; fallback notes automatically include full metadata when this is body-only.',
+        'Controls whether transcription output includes file metadata and provider timestamps.',
       outputMetadataMode_none: 'Body only',
-      outputMetadataMode_title: 'Title',
-      outputMetadataMode_full: 'Full metadata',
+      outputMetadataMode_metadata: 'Metadata',
+      'outputMetadataMode_metadata-timestamps': 'Metadata + timestamps',
       fallbackNotePathTemplate: 'Fallback note path',
       fallbackNotePathTemplateDesc:
         'Used when the original insertion anchor is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
@@ -1734,6 +1761,7 @@ export const en: TranslationKeys = {
     audioFileProgressInsertingChunks: 'Inserting {{done}}/{{total}}…',
     audioFileProgressTranscribingChunks: 'Transcribing {{done}}/{{total}}…',
     audioFileProgressStreamingPercent: 'Streaming {{percent}}%…',
+    audioFileProgressUploadingPercent: 'Uploading {{percent}}%…',
     audioFileFallbackNotice: 'Transcription is being written to {{path}}.',
     audioFileWavPcmUploadNotice:
       'This audio will send WAV/PCM data, about {{size}}. This can use much more traffic than compressed audio.',

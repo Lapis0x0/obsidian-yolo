@@ -1,8 +1,11 @@
+import type { AsrSegment } from '../types'
+
 export type MultipartField =
   | { name: string; value: string }
   | { name: string; filename: string; contentType: string; blob: Blob }
 
 export const joinUrl = (baseURL: string, path: string): string => {
+  if (/^https?:\/\//i.test(path)) return path
   const trimmedBase = baseURL.replace(/\/+$/, '')
   const trimmedPath = path.replace(/^\/+/, '')
   return `${trimmedBase}/${trimmedPath}`
@@ -27,7 +30,10 @@ export const truncateResponseBody = (body: string): string =>
 
 export const blobToBase64 = async (blob: Blob): Promise<string> => {
   const buffer = await blob.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
+  return bytesToBase64(new Uint8Array(buffer))
+}
+
+export const bytesToBase64 = (bytes: Uint8Array): string => {
   let binary = ''
   const chunkSize = 0x8000
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -37,6 +43,29 @@ export const blobToBase64 = async (blob: Blob): Promise<string> => {
   if (typeof btoa === 'function') return btoa(binary)
   // Fallback for environments without atob/btoa.
   return (globalThis as any).Buffer.from(binary, 'binary').toString('base64')
+}
+
+export const formatSpeakerAwareTranscript = (
+  segments: AsrSegment[],
+): string => {
+  const blocks: Array<{ label: string | null; text: string[] }> = []
+  for (const segment of segments) {
+    const label = segment.speakerLabel ?? null
+    const last = blocks[blocks.length - 1]
+    if (last && last.label === label) {
+      last.text.push(segment.text)
+      continue
+    }
+    blocks.push({ label, text: [segment.text] })
+  }
+
+  return blocks
+    .map((block) => {
+      const text = block.text.join(' ').trim()
+      return block.label ? `${block.label}: ${text}` : text
+    })
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 const encodeUtf8 = (input: string): Uint8Array =>

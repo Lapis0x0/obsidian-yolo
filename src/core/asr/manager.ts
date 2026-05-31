@@ -6,9 +6,11 @@ import type {
 import type { BaseAsrProvider } from './base'
 import { isSupportedHttpLongAudioAsrConfig } from './capabilities'
 import {
+  DeepgramPreRecordedProvider,
   FunAsrLocalProvider,
   OpenAiCompatibleChatAudioAsrProvider,
   OpenAiCompatibleTranscriptionProvider,
+  TencentFlashProvider,
 } from './httpAsr'
 import { WebSocketAsrProvider } from './webSocketAsr'
 
@@ -87,14 +89,7 @@ export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
       if (!config.baseURL.trim()) {
         throw new AsrConfigError('ASR provider is missing baseURL.')
       }
-      return new FunAsrLocalProvider({
-        baseURL: config.baseURL,
-        apiKey: config.apiKey,
-        model: config.model,
-        transcriptionPath: config.transcriptionPath,
-        transportMode: config.transportMode,
-        language: config.language,
-      })
+      return buildHttpLongAudioProvider(config)
     }
     throw new AsrConfigError(
       'Long-audio ASR provider adapters are not implemented yet.',
@@ -172,6 +167,47 @@ export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
         `Unsupported ASR API format: ${String(exhaustive)}`,
       )
     }
+  }
+}
+
+function buildHttpLongAudioProvider(config: AsrConfig): BaseAsrProvider {
+  switch (config.asrProvider) {
+    case 'funasr-local':
+      return new FunAsrLocalProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        model: config.model,
+        transcriptionPath: config.transcriptionPath,
+        transportMode: config.transportMode,
+        language: config.language,
+      })
+    case 'deepgram-prerecorded':
+      return new DeepgramPreRecordedProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        model: config.model,
+        transcriptionPath: config.transcriptionPath,
+        transportMode: config.transportMode,
+        language: config.language,
+        diarization: config.longAudioDiarization,
+        timestamps: config.longAudioTimestamps,
+      })
+    case 'tencent-flash':
+      return new TencentFlashProvider({
+        baseURL: config.baseURL,
+        appId: config.appId,
+        secretId: config.apiKey,
+        secretKey: config.apiSecret,
+        engineType: config.model,
+        transcriptionPath: config.transcriptionPath,
+        transportMode: config.transportMode,
+        diarization: config.longAudioDiarization,
+        timestamps: config.longAudioTimestamps,
+      })
+    default:
+      throw new AsrConfigError(
+        'Long-audio ASR provider adapters are not implemented yet.',
+      )
   }
 }
 

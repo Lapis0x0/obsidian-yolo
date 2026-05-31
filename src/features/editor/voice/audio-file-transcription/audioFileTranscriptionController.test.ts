@@ -140,6 +140,19 @@ describe('AudioFileTranscriptionController progress display', () => {
     const { controller, session, updateStatus } = createController()
     session.plan.mode = 'long-audio-upload'
 
+    controller.handleProgress(session, {
+      phase: 'uploading',
+      sentBytes: 35,
+      totalBytes: 100,
+    })
+    expect(updateStatus).toHaveBeenLastCalledWith(
+      'uploading',
+      expect.objectContaining({
+        message: 'Uploading 35%…',
+        progressLabel: '35%',
+      }),
+    )
+
     controller.handleProgress(session, { phase: 'uploading' })
     expect(updateStatus).toHaveBeenLastCalledWith(
       'uploading',

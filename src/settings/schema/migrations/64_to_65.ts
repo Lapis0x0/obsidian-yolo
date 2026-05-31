@@ -84,7 +84,7 @@ export const migrateFrom64To65: SettingMigration['migrate'] = (data) => {
   if (chatAudio && hasMeaningfulField(chatAudio)) {
     configs.push({
       id: makeId(),
-      name: 'Chat audio ASR',
+      name: 'Chat Audio',
       asrCategory: 'http-short-audio',
       asrProvider: 'openai-compatible-chat-audio-asr',
       format: 'openai-compatible-chat-audio-asr',

@@ -1232,6 +1232,9 @@ export type TranslationKeys = {
       listenPathDesc?: string
       transcriptionPath?: string
       transcriptionPathDesc?: string
+      longAudioPathDesc?: string
+      uploadPath?: string
+      uploadPathDesc?: string
       chatCompletionsPath?: string
       chatCompletionsPathDesc?: string
       audioContentFormat?: string
@@ -1254,7 +1257,28 @@ export type TranslationKeys = {
       longProviderDesc?: string
       longProviderFunasr?: string
       longProviderDeepgram?: string
-      longProviderSpeechmatics?: string
+      longProviderTencent?: string
+      appId?: string
+      appIdDesc?: string
+      tencentAppIdDesc?: string
+      apiKeyRequired?: string
+      apiKeyRequiredDesc?: string
+      apiSecret?: string
+      apiSecretDesc?: string
+      apiSecretPlaceholder?: string
+      secretId?: string
+      secretKey?: string
+      jobPath?: string
+      jobPathDesc?: string
+      resultPath?: string
+      resultPathDesc?: string
+      longAudioDiarization?: string
+      longAudioDiarizationDesc?: string
+      longAudioTimestamps?: string
+      longAudioTimestampsDesc?: string
+      longAudioSpeakerCount?: string
+      longAudioSpeakerCountDesc?: string
+      longProviderCredentialsRequired?: string
       funasrServerFeatures?: string
       funasrServerFeaturesDesc?: string
       featureModeAuto?: string
@@ -1294,7 +1318,6 @@ export type TranslationKeys = {
       testInvalidConfig?: string
       testRecordingSeconds?: string
       testCallingAsr?: string
-      testLongAudioUnavailable?: string
       testBadgePassed?: string
       testBadgeFailed?: string
       testBadgeRecording?: string
@@ -1318,8 +1341,8 @@ export type TranslationKeys = {
       outputMetadataMode?: string
       outputMetadataModeDesc?: string
       outputMetadataMode_none?: string
-      outputMetadataMode_title?: string
-      outputMetadataMode_full?: string
+      outputMetadataMode_metadata?: string
+      'outputMetadataMode_metadata-timestamps'?: string
       fallbackNotePathTemplate?: string
       fallbackNotePathTemplateDesc?: string
       advancedToggle?: string
@@ -1443,6 +1466,7 @@ export type TranslationKeys = {
     audioFileProgressInsertingChunks?: string
     audioFileProgressTranscribingChunks?: string
     audioFileProgressStreamingPercent?: string
+    audioFileProgressUploadingPercent?: string
     audioFileFallbackNotice?: string
     audioFileWavPcmUploadNotice?: string
     audioFileLargeUploadNotice?: string

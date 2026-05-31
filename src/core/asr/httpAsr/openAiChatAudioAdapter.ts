@@ -108,7 +108,7 @@ const extractTextFromChatCompletion = (payload: unknown): string => {
 }
 
 /**
- * OpenAI-compatible chat-audio ASR.
+ * OpenAI-compatible Chat Audio.
  *
  * This is the other "OpenAI-compatible" path — audio embedded in a chat
  * message and submitted to `/v1/chat/completions`. Used by OpenAI

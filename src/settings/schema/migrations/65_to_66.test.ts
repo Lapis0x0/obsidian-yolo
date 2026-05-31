@@ -16,7 +16,7 @@ describe('migrateFrom65To66', () => {
       audioFileTranscriptionEnabled: false,
       activeAudioFileAsrConfigId: '',
       audioFileChunkHeaderMode: 'none',
-      audioFileOutputMetadataMode: 'none',
+      audioFileOutputMetadataMode: 'metadata-timestamps',
       audioFileFallbackNotePathTemplate:
         'Transcriptions/{{date}} {{time}} {{basename}}.md',
       audioFileChunkTargetDurationSec: 120,
@@ -58,5 +58,20 @@ describe('migrateFrom65To66', () => {
     expect(result.contextVoiceInputOptions).toMatchObject({
       audioFileChunkTargetDurationSec: 15,
     })
+  })
+
+  it('normalizes legacy metadata output modes', () => {
+    expect(
+      migrateFrom65To66({
+        version: 65,
+        contextVoiceInputOptions: { audioFileOutputMetadataMode: 'full' },
+      }).contextVoiceInputOptions,
+    ).toMatchObject({ audioFileOutputMetadataMode: 'metadata' })
+    expect(
+      migrateFrom65To66({
+        version: 65,
+        contextVoiceInputOptions: { audioFileOutputMetadataMode: 'none' },
+      }).contextVoiceInputOptions,
+    ).toMatchObject({ audioFileOutputMetadataMode: 'none' })
   })
 })

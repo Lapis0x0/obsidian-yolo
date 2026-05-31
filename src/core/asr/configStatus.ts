@@ -78,10 +78,19 @@ export function isUsableAsrConfig(config: AsrConfig): boolean {
 
 function isUsableAudioFileAsrConfig(config: AsrConfig): boolean {
   if (config.asrCategory === 'http-long-audio') {
-    return (
-      isSupportedHttpLongAudioAsrConfig(config) &&
-      config.baseURL.trim().length > 0
-    )
+    if (!isSupportedHttpLongAudioAsrConfig(config)) return false
+    if (config.baseURL.trim().length === 0) return false
+    if (config.asrProvider === 'deepgram-prerecorded') {
+      return config.apiKey.trim().length > 0
+    }
+    if (config.asrProvider === 'tencent-flash') {
+      return (
+        config.appId.trim().length > 0 &&
+        config.apiKey.trim().length > 0 &&
+        config.apiSecret.trim().length > 0
+      )
+    }
+    return true
   }
   return isUsableAsrConfig(config)
 }

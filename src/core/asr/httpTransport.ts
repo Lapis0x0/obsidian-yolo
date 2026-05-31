@@ -2,6 +2,8 @@ import { Platform, requestUrl } from 'obsidian'
 
 import type { AsrTransportMode } from '../../settings/schema/setting.types'
 
+import type { AsrUploadProgressCallback } from './types'
+
 /**
  * Thin uniform interface over the three ASR transports.
  *
@@ -32,6 +34,7 @@ export async function sendAsrJsonRequest(args: {
   headers: Record<string, string>
   transportMode: AsrTransportMode
   signal?: AbortSignal
+  onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
   const { url, body, headers, transportMode, signal } = args
   const payload = JSON.stringify(body)
@@ -46,6 +49,27 @@ export async function sendAsrJsonRequest(args: {
     body: payload,
     transportMode,
     signal,
+    onUploadProgress: args.onUploadProgress,
+  })
+}
+
+export async function sendAsrRawRequest(args: {
+  url: string
+  method?: 'GET' | 'POST'
+  headers: Record<string, string>
+  body?: RawBody
+  transportMode: AsrTransportMode
+  signal?: AbortSignal
+  onUploadProgress?: AsrUploadProgressCallback
+}): Promise<AsrHttpResponse> {
+  return sendRaw({
+    url: args.url,
+    method: args.method ?? 'POST',
+    headers: args.headers,
+    body: args.body,
+    transportMode: args.transportMode,
+    signal: args.signal,
+    onUploadProgress: args.onUploadProgress,
   })
 }
 
@@ -60,6 +84,7 @@ export async function sendAsrMultipartRequest(args: {
   headers: Record<string, string>
   transportMode: AsrTransportMode
   signal?: AbortSignal
+  onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
   const { url, body, boundary, headers, transportMode, signal } = args
   const merged: Record<string, string> = {
@@ -73,6 +98,7 @@ export async function sendAsrMultipartRequest(args: {
     body,
     transportMode,
     signal,
+    onUploadProgress: args.onUploadProgress,
   })
 }
 
@@ -96,20 +122,29 @@ const AUTO_RETRY_MESSAGE_PATTERNS = [
 
 async function sendRaw(args: {
   url: string
-  method: 'POST'
+  method: 'GET' | 'POST'
   headers: Record<string, string>
-  body: RawBody
+  body?: RawBody
   transportMode: AsrTransportMode
   signal?: AbortSignal
+  onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
-  const { url, method, headers, body, transportMode, signal } = args
+  const { url, method, headers, body, transportMode, signal, onUploadProgress } =
+    args
 
   if (transportMode === 'auto') {
-    return sendViaAuto({ url, method, headers, body, signal })
+    return sendViaAuto({ url, method, headers, body, signal, onUploadProgress })
   }
 
   if (transportMode === 'browser') {
-    return sendViaBrowserFetch({ url, method, headers, body, signal })
+    return sendViaBrowserFetch({
+      url,
+      method,
+      headers,
+      body,
+      signal,
+      onUploadProgress,
+    })
   }
 
   if (transportMode === 'node') {
@@ -117,21 +152,35 @@ async function sendRaw(args: {
       // Lazy-load the node:http transport to keep node builtins out of the
       // mobile bundle. See `nodeHttpTransport.ts` for the project convention.
       const { sendViaNodeHttp } = await import('./nodeHttpTransport')
-      return sendViaNodeHttp({ url, method, headers, body, signal })
+      return sendViaNodeHttp({
+        url,
+        method,
+        headers,
+        body,
+        signal,
+        onUploadProgress,
+      })
     }
-    return sendViaAuto({ url, method, headers, body, signal })
+    return sendViaAuto({ url, method, headers, body, signal, onUploadProgress })
   }
 
   // 'obsidian' falls through to requestUrl.
-  return sendViaObsidianRequest({ url, method, headers, body })
+  return sendViaObsidianRequest({
+    url,
+    method,
+    headers,
+    body,
+    onUploadProgress,
+  })
 }
 
 async function sendViaAuto(args: {
   url: string
-  method: 'POST'
+  method: 'GET' | 'POST'
   headers: Record<string, string>
-  body: RawBody
+  body?: RawBody
   signal?: AbortSignal
+  onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
   if (Platform.isDesktop) {
     try {
@@ -159,9 +208,21 @@ async function sendViaBrowserFetch(args: {
   url: string
   method: string
   headers: Record<string, string>
-  body: RawBody
+  body?: RawBody
   signal?: AbortSignal
+  onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
+  if (
+    args.onUploadProgress &&
+    args.body !== undefined &&
+    typeof XMLHttpRequest !== 'undefined'
+  ) {
+    return sendViaBrowserXhr({
+      ...args,
+      onUploadProgress: args.onUploadProgress,
+    })
+  }
+
   // The whole point of `browser` mode is opting into native fetch when
   // requestUrl mangles a particular endpoint. The user explicitly picked it.
   // eslint-disable-next-line no-restricted-globals -- explicit browser mode
@@ -175,11 +236,64 @@ async function sendViaBrowserFetch(args: {
   return { status: response.status, json: safeJsonParse(text), text }
 }
 
+function sendViaBrowserXhr(args: {
+  url: string
+  method: string
+  headers: Record<string, string>
+  body?: RawBody
+  signal?: AbortSignal
+  onUploadProgress: AsrUploadProgressCallback
+}): Promise<AsrHttpResponse> {
+  return new Promise((resolve, reject) => {
+    if (args.signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'))
+      return
+    }
+
+    const xhr = new XMLHttpRequest()
+    const fallbackTotal = getRawBodyByteLength(args.body)
+    const cleanup = () => {
+      args.signal?.removeEventListener('abort', onAbort)
+    }
+    const onAbort = () => {
+      xhr.abort()
+      cleanup()
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+
+    xhr.open(args.method, args.url, true)
+    for (const [key, value] of Object.entries(args.headers)) {
+      xhr.setRequestHeader(key, value)
+    }
+    xhr.upload.onprogress = (event) => {
+      args.onUploadProgress({
+        sentBytes: event.loaded,
+        totalBytes: event.lengthComputable ? event.total : fallbackTotal,
+      })
+    }
+    xhr.onload = () => {
+      cleanup()
+      const text = xhr.responseText ?? ''
+      resolve({ status: xhr.status, json: safeJsonParse(text), text })
+    }
+    xhr.onerror = () => {
+      cleanup()
+      reject(new TypeError('Failed to fetch'))
+    }
+    xhr.onabort = () => {
+      cleanup()
+    }
+    args.signal?.addEventListener('abort', onAbort, { once: true })
+    xhr.send(args.body as XMLHttpRequestBodyInit)
+  })
+}
+
 async function sendViaObsidianRequest(args: {
   url: string
   method: string
   headers: Record<string, string>
-  body: RawBody
+  body?: RawBody
+  onUploadProgress?: AsrUploadProgressCallback
 }): Promise<AsrHttpResponse> {
   const response = await requestUrl({
     url: args.url,
@@ -188,6 +302,10 @@ async function sendViaObsidianRequest(args: {
     body: args.body as ArrayBuffer,
     throw: false,
   })
+  if (args.onUploadProgress && args.body !== undefined) {
+    const totalBytes = getRawBodyByteLength(args.body)
+    args.onUploadProgress({ sentBytes: totalBytes, totalBytes })
+  }
   let parsed: unknown = null
   try {
     parsed = response.json
@@ -204,6 +322,13 @@ const safeJsonParse = (text: string): unknown => {
   } catch {
     return null
   }
+}
+
+const getRawBodyByteLength = (body: RawBody | undefined): number => {
+  if (body === undefined) return 0
+  if (typeof body === 'string') return new TextEncoder().encode(body).byteLength
+  if (body instanceof ArrayBuffer) return body.byteLength
+  return body.byteLength
 }
 
 const collectErrorMessages = (error: unknown, depth = 0): string[] => {

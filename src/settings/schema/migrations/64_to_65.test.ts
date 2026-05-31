@@ -66,7 +66,7 @@ describe('migrateFrom64To65', () => {
       transportMode: 'node',
     })
     expect(configs[1]).toMatchObject({
-      name: 'Chat audio ASR',
+      name: 'Chat Audio',
       format: 'openai-compatible-chat-audio-asr',
       baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
       apiKey: 'sk-chat',

@@ -473,7 +473,7 @@ export class AudioFileTranscriptionController {
     session: AudioFileSession,
     progress: AudioFileTranscriptionProgress,
   ): Pick<AudioFileStatusExtra, 'message' | 'progressLabel'> {
-    const message = this.formatProgress(progress)
+    const message = this.formatProgress(session, progress)
     const progressLabel = this.formatProgressLabel(progress)
     const now = Date.now()
 
@@ -491,6 +491,7 @@ export class AudioFileTranscriptionController {
     // label.
     if (
       progress.phase === 'transcribing' &&
+      session.plan?.mode === 'websocket-stream' &&
       session.streamingProgressMessage &&
       now < session.streamingProgressHoldUntil
     ) {
@@ -503,7 +504,10 @@ export class AudioFileTranscriptionController {
     return { message, progressLabel }
   }
 
-  private formatProgress(progress: AudioFileTranscriptionProgress): string {
+  private formatProgress(
+    session: AudioFileSession,
+    progress: AudioFileTranscriptionProgress,
+  ): string {
     if (
       typeof progress.completedChunks === 'number' &&
       typeof progress.totalChunks === 'number'
@@ -535,9 +539,16 @@ export class AudioFileTranscriptionController {
           Math.round((progress.sentBytes / progress.totalBytes) * 100),
         ),
       )
+      if (session.plan?.mode === 'websocket-stream') {
+        return this.tFormat(
+          'voiceInput.audioFileProgressStreamingPercent',
+          'Streaming {{percent}}%…',
+          { percent: pct },
+        )
+      }
       return this.tFormat(
-        'voiceInput.audioFileProgressStreamingPercent',
-        'Streaming {{percent}}%…',
+        'voiceInput.audioFileProgressUploadingPercent',
+        'Uploading {{percent}}%…',
         { percent: pct },
       )
     }
@@ -607,7 +618,7 @@ export class AudioFileTranscriptionController {
       plan.mode === 'websocket-stream'
         ? `${session.previousInsertedText}${text}`.trim()
         : [session.previousInsertedText, text].filter(Boolean).join(' ').trim()
-    const inlineText = this.formatInsertion(session, text, result, 'inline')
+    const inlineText = this.formatInsertion(session, text, result)
     if (
       inlineText.trim() &&
       !session.fallbackPath &&
@@ -617,7 +628,7 @@ export class AudioFileTranscriptionController {
       return
     }
 
-    const fallbackText = this.formatInsertion(session, text, result, 'fallback')
+    const fallbackText = this.formatInsertion(session, text, result)
     if (!fallbackText.trim()) return
     await this.appendTextToFallback(session, fallbackText)
     session.hasInsertedText = true
@@ -650,7 +661,7 @@ export class AudioFileTranscriptionController {
     }
 
     if (!session.hasInsertedText) {
-      const inlineText = this.formatInsertion(session, text, result, 'inline')
+      const inlineText = this.formatInsertion(session, text, result)
       const range = inlineText.trim()
         ? this.insertTextInline(session, inlineText)
         : null
@@ -668,7 +679,7 @@ export class AudioFileTranscriptionController {
     }
 
     if (!isFinal) return
-    const fallbackText = this.formatInsertion(session, text, result, 'fallback')
+    const fallbackText = this.formatInsertion(session, text, result)
     if (!fallbackText.trim()) return
     await this.appendTextToFallback(session, fallbackText)
     session.previousInsertedText = text
@@ -776,19 +787,13 @@ export class AudioFileTranscriptionController {
     session: AudioFileSession,
     text: string,
     result: OrderedAudioFileText,
-    target: 'inline' | 'fallback',
   ): string {
     const plan = session.plan
     if (!plan) return text
     const options = this.deps.getSettings().contextVoiceInputOptions
     const parts: string[] = []
     if (!session.hasInsertedText) {
-      const mode =
-        target === 'fallback'
-          ? options.audioFileOutputMetadataMode === 'none'
-            ? 'full'
-            : options.audioFileOutputMetadataMode
-          : options.audioFileOutputMetadataMode
+      const mode = options.audioFileOutputMetadataMode
       const metadata = this.renderMetadata(plan, mode)
       if (metadata) parts.push(metadata)
     }
@@ -816,11 +821,10 @@ export class AudioFileTranscriptionController {
 
   private renderMetadata(
     plan: AudioFileTranscriptionPlan,
-    mode: 'none' | 'title' | 'full',
+    mode: 'none' | 'metadata' | 'metadata-timestamps',
   ): string {
     if (mode === 'none') return ''
     const title = `# ${stripFileExtension(plan.fileName)}`
-    if (mode === 'title') return title
     const provider =
       plan.providerConfig.name ||
       plan.providerConfig.model ||
